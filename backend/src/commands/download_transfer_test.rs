@@ -264,3 +264,97 @@ async fn a_sidecar_takes_its_name_only_once_the_transfer_has_succeeded() {
         "the sidecar is at its name and no scratch remains"
     );
 }
+
+/// A tool can exit cleanly having written nothing — the transfer
+/// has always ended as a success then, with no file published — and
+/// a sidecar installed beside no media is one the next attempt keeps
+/// as the user's own and cannot refresh. The staged tracks are
+/// installed only once the episode is at its name; with nothing
+/// there, they drop with their scratches and the names stay free.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_tool_that_writes_nothing_installs_no_sidecar() {
+    let server = MockServer::start().await;
+    let dest = tempfile::tempdir().expect("dest");
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n"),
+        )
+        .mount(&server)
+        .await;
+    let bin = tempfile::tempdir().expect("bin");
+    // Exits before the stub's output line runs: a clean exit with
+    // nothing at the output path.
+    let path_env = stage_tool(bin.path(), "sleep 1\nexit 0");
+    let written = transfer_with_sidecars(
+        &reqwest::Client::new(),
+        &source(&server),
+        dest.path(),
+        "Show Episode 1",
+        Some("best"),
+        &path_env,
+        std::time::Duration::from_secs(30),
+        &mut |_| {},
+    )
+    .await
+    .expect("a tool that writes nothing is not a failed transfer");
+    assert!(
+        !dest.path().join("Show Episode 1.mp4").exists(),
+        "nothing was published"
+    );
+    assert!(written.is_empty(), "no sidecar is reported beside no media");
+    assert_eq!(
+        vtt_entries(dest.path()),
+        Vec::<String>::new(),
+        "the fetched track is gone, no scratch remains, the name is free"
+    );
+}
+
+/// The episode already at its name ends the transfer before a tool
+/// is spawned, and the sidecars still land beside it: the media is
+/// there, whoever put it there.
+#[cfg(unix)]
+#[tokio::test]
+async fn sidecars_install_beside_an_episode_already_at_its_name() {
+    let server = MockServer::start().await;
+    let dest = tempfile::tempdir().expect("dest");
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n"),
+        )
+        .mount(&server)
+        .await;
+    let media = dest.path().join("Show Episode 1.mp4");
+    std::fs::write(&media, "video from an earlier download").expect("media");
+    let bin = tempfile::tempdir().expect("bin");
+    let ran = dest.path().join("tool-ran");
+    let path_env = stage_tool(bin.path(), &format!("touch '{}'", ran.display()));
+    let written = transfer_with_sidecars(
+        &reqwest::Client::new(),
+        &source(&server),
+        dest.path(),
+        "Show Episode 1",
+        Some("best"),
+        &path_env,
+        std::time::Duration::from_secs(30),
+        &mut |_| {},
+    )
+    .await
+    .expect("having the episode already is not a failure");
+    assert!(
+        !ran.exists(),
+        "no tool is spawned for an episode already here"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&media).expect("media"),
+        "video from an earlier download",
+        "the episode at its name is untouched"
+    );
+    assert_eq!(
+        written,
+        vec![dest.path().join("Show Episode 1.en.vtt")],
+        "the sidecar lands beside the episode that is there"
+    );
+}
