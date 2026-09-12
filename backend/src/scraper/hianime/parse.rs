@@ -138,6 +138,18 @@ fn decode_entities(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// The rest of the Aired row after its label: up to the row's
+/// closing tag or the next row's label, whichever comes first, so
+/// the value read stays inside the row that carries the label.
+fn aired_row(after: &str) -> &str {
+    let end = ["</div>", "class=\"item-head\""]
+        .iter()
+        .filter_map(|marker| after.find(marker))
+        .min()
+        .unwrap_or(after.len());
+    &after[..end]
+}
+
 /// The digits after a slug's last hyphen — the entry id the AJAX
 /// listing is keyed on.
 #[must_use]
@@ -147,11 +159,13 @@ pub fn slug_id(slug: &str) -> Option<u64> {
 
 /// The year the entry page's `Aired:` line starts with
 /// (`Apr 3, 1998 to Apr 24, 1999` → 1998). `None` when the page
-/// carries no such line or the date is unannounced.
+/// carries no such line, the date is unannounced, or the row's
+/// value cannot be read: the value is looked for inside the Aired
+/// row alone, never in a named element further down the page.
 #[must_use]
 pub fn parse_detail_year(html: &str) -> Option<u32> {
     let (_, after) = html.split_once("Aired:</span>")?;
-    let (_, value) = after.split_once("class=\"name\">")?;
+    let (_, value) = aired_row(after).split_once("class=\"name\">")?;
     let text = value.split('<').next()?;
     let mut digits = String::new();
     for c in text.chars() {
