@@ -176,17 +176,24 @@ fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool 
 
 /// Whether a negative row's provider can stand behind it now. A miss
 /// is one provider's verdict — a miss does not fail over — so the
-/// row is served only while that provider is answering and every
-/// provider ahead of it in the order is refusing: the primary's
-/// negative through the primary's own outage would hide a show the
-/// fallback carries, and the fallback's negative, written during
-/// that outage, proves nothing about the primary once it is back.
-/// Refusing is the gate's word for it — an open breaker or a running
-/// rate-limit pause, either of which sends a walk asked now to the
-/// next provider. Otherwise the row is not served and the probe runs
-/// again. An unattributed negative counts as the primary's; one
-/// naming a provider the state no longer lists has nobody to stand
-/// behind it.
+/// row is served only while that provider has been seen answering
+/// and every provider ahead of it in the order is refusing: the
+/// primary's negative through the primary's own outage would hide a
+/// show the fallback carries, and the fallback's negative, written
+/// during that outage, proves nothing about the primary once it is
+/// back. The two halves ask the gate two different questions. The
+/// row's own provider is asked whether it has recovered — its
+/// breaker closed by a success, or never opened, and no pause
+/// running — because past the cooldown the breaker refuses nobody
+/// while nothing has yet answered, and a negative served on that
+/// alone would short-circuit the very probe whose trial could fail
+/// over. The providers ahead are asked whether they refuse — an open
+/// breaker or a running rate-limit pause, either of which sends a
+/// walk asked now to the next provider — so a half-open primary lets
+/// the fallback's row yield to the trial. Otherwise the row is not
+/// served and the probe runs again. An unattributed negative counts
+/// as the primary's; one naming a provider the state no longer lists
+/// has nobody to stand behind it.
 fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bool {
     let order = &state.provider_order;
     let Some(provider) = parsed.provider.or_else(|| order.first().copied()) else {
@@ -195,10 +202,9 @@ fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bo
     let Some(position) = order.iter().position(|p| *p == provider) else {
         return false;
     };
-    let refusing = |p: &crate::scraper::provider::ProviderId| {
-        crate::commands::providers::gate_of(state, *p).is_refusing()
-    };
-    !refusing(&provider) && order[..position].iter().all(refusing)
+    let gate =
+        |p: &crate::scraper::provider::ProviderId| crate::commands::providers::gate_of(state, *p);
+    gate(&provider).is_recovered() && order[..position].iter().all(|p| gate(p).is_refusing())
 }
 
 /// What a native resolve learned about a show, for its availability
