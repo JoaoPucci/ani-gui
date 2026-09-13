@@ -707,15 +707,21 @@ pub async fn resolve_allmanga_show_id(
 }
 
 /// Walk `terms` through Kitsu text search and return the first
-/// non-music hit, persisting the `(show_id → kitsu_id)` reverse
-/// mapping so subsequent calls short-circuit through the cache.
-/// Used by the slug-derived path.
+/// non-music hit whose cour agrees with the term's, persisting the
+/// `(show_id → kitsu_id)` reverse mapping so subsequent calls
+/// short-circuit through the cache. Used by the slug-derived path.
 ///
 /// A single term's search failure skips to the next term; a cache
 /// write failure is non-fatal — the resolution still succeeds for
 /// this request, the next call just searches again. Music-video hits
 /// are skipped so a "music" alias (the YOASOBI "Idol" MV) is never
-/// returned or persisted.
+/// returned or persisted. So is a hit whose slug disagrees with the
+/// cour the term carries ([`cour::hit_cour_disagrees`]): the words
+/// of a Part 2 slug say Part 2 like a title would, and Kitsu ranking
+/// the parent cour first is the poison the mapping guard refuses on
+/// the play path, so the resolve passes over it to the entry that
+/// agrees and answers none when there is none, rather than binding
+/// the slug to the wrong cour for the page to accept as given.
 async fn first_kitsu_match(
     state: &AppState,
     show_id: &str,
@@ -726,10 +732,10 @@ async fn first_kitsu_match(
             Ok(h) => h,
             Err(_) => continue,
         };
-        if let Some(first) = hits
-            .into_iter()
-            .find(|h| !is_music_subtype(h.subtype.as_deref()))
-        {
+        if let Some(first) = hits.into_iter().find(|h| {
+            !is_music_subtype(h.subtype.as_deref())
+                && !crate::commands::cour::hit_cour_disagrees(&term, h.slug.as_deref())
+        }) {
             if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
                 tracing::warn!(
                     show_id = show_id,

@@ -109,6 +109,21 @@ pub fn cours_agree(provider: Option<u32>, kitsu: Option<u32>) -> bool {
     provider.unwrap_or(1) == kitsu.unwrap_or(1)
 }
 
+/// Whether a Kitsu search hit's slug disagrees with the cour a
+/// search term carries: the term's trailing `Part N` against the
+/// slug's trailing `-part-N`, a slug without a suffix being the
+/// parent cour. A term without cour evidence, or a hit without a
+/// slug, disagrees with nothing — the same silence rule as the
+/// mapping guard's, which this reads without a detail fetch since
+/// the hit carries its slug.
+#[must_use]
+pub fn hit_cour_disagrees(term: &str, kitsu_slug: Option<&str>) -> bool {
+    match (cour_from_title(term), kitsu_slug) {
+        (Some(term_cour), Some(slug)) => term_cour != cour_from_slug(slug).unwrap_or(1),
+        _ => false,
+    }
+}
+
 /// Strip a trailing ` (<digits> episodes)` segment from a title, if
 /// present. Returns the original slice when no suffix matches so the
 /// caller can fall through transparently.
