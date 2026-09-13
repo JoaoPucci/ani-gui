@@ -1245,7 +1245,7 @@ impl Fetch for Site {
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21421") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz10Y2Ru\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly92aWR0dWJlLnNpdGUvZW1iZWQvODI3Mi9zdWI=\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1447,7 +1447,7 @@ impl Fetch for Site {
             // A zokoanime server whose master answers but whose 720
             // rendition refuses, then a megaplay server whose whole
             // chain answers.
-            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21434") => {
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21444") => {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsZWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
@@ -1457,7 +1457,7 @@ impl Fetch for Site {
                 }
             }
             // Both servers' masters answer; both 720 renditions refuse.
-            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21435") => {
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21445") => {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsZWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk1L3N1Yg==\"></div>"}"#,
@@ -1468,7 +1468,7 @@ impl Fetch for Site {
             }
             // A zokoanime server whose master never answers, then a
             // megaplay server whose chain answers.
-            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21436") => {
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21446") => {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
@@ -1478,7 +1478,7 @@ impl Fetch for Site {
                 }
             }
             // A lone zokoanime server whose master answers, slowly.
-            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21438") => {
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21448") => {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3Nsb3cvc3Vi\"></div>"}"#,
@@ -1489,7 +1489,7 @@ impl Fetch for Site {
             }
             // A zokoanime server whose master never answers, then a
             // megaplay server whose master answers, slowly.
-            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21439") => {
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21449") => {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk3L3N1Yg==\"></div>"}"#,
@@ -1501,7 +1501,7 @@ impl Fetch for Site {
             // Both servers' masters hold the connection: the first
             // for as long as it is waited for, the second until the
             // transport's own deadline reports it.
-            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21437") => {
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21447") => {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk2L3N1Yg==\"></div>"}"#,
@@ -1708,6 +1708,9 @@ impl Fetch for Site {
             }
             // megaplay's player page: no payload in the markup, the
             // sources come from a call its script makes.
+            "https://vidtube.site/embed/8272/sub" => ok(
+                r#"<html><head><title>VidTube</title></head><body><div id="player"></div><script src="/assets/vt.js"></script></body></html>"#,
+            ),
             "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn"
             | "https://megaplay.buzz/stream/s-2/8272/sub?s=bcdn" => ok(
                 r#"<html><head><title>File 143764 - MegaPlay</title></head><body><div id="player"></div><script src="/assets/player.js"></script></body></html>"#,
@@ -2512,7 +2515,7 @@ async fn every_servers_stream_host_dead_surfaces_the_loudest_failure() {
 #[tokio::test]
 async fn a_server_whose_rendition_refuses_is_stepped_over_for_one_whose_chain_answers() {
     let c = client();
-    let stream = c.stream_for(21434, "sub", "720").await.expect("resolved");
+    let stream = c.stream_for(21444, "sub", "720").await.expect("resolved");
     assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
     let urls: Vec<String> = c
@@ -2531,7 +2534,7 @@ async fn a_server_whose_rendition_refuses_is_stepped_over_for_one_whose_chain_an
 async fn every_servers_rendition_dead_surfaces_the_loudest_failure() {
     let c = client();
     let err = c
-        .stream_for(21435, "sub", "720")
+        .stream_for(21445, "sub", "720")
         .await
         .expect_err("no server served the rendition");
     assert!(matches!(err, AniError::Upstream { status: 503 }), "{err:?}");
@@ -2555,7 +2558,7 @@ fn client_with_server_budget(ms: u64) -> HianimeClient<Site> {
 async fn a_server_that_stalls_past_its_budget_is_stepped_over_for_the_next_server() {
     let c = client_with_server_budget(100);
     let started = std::time::Instant::now();
-    let stream = c.stream_for(21436, "sub", "720").await.expect("resolved");
+    let stream = c.stream_for(21446, "sub", "720").await.expect("resolved");
     assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
     assert!(
@@ -2583,7 +2586,7 @@ async fn a_server_that_stalls_past_its_budget_is_stepped_over_for_the_next_serve
 #[tokio::test]
 async fn a_lone_server_slower_than_the_per_server_budget_is_still_served() {
     let c = client_with_server_budget(100);
-    let stream = c.stream_for(21438, "sub", "720").await.expect("served");
+    let stream = c.stream_for(21448, "sub", "720").await.expect("served");
     assert_eq!(stream.url, "https://hls.example/v/slow/720/index.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://zokoanime.video/"));
 }
@@ -2591,7 +2594,7 @@ async fn a_lone_server_slower_than_the_per_server_budget_is_still_served() {
 #[tokio::test]
 async fn the_last_server_runs_on_the_remainder_after_an_earlier_one_was_cut_off() {
     let c = client_with_server_budget(100);
-    let stream = c.stream_for(21439, "sub", "720").await.expect("served");
+    let stream = c.stream_for(21449, "sub", "720").await.expect("served");
     assert_eq!(stream.url, "https://mp.example/v/slow/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
 }
@@ -2604,7 +2607,7 @@ async fn the_last_server_runs_on_the_remainder_after_an_earlier_one_was_cut_off(
 async fn every_server_stalling_surfaces_a_timeout() {
     let c = client_with_server_budget(100);
     let err = c
-        .stream_for(21437, "sub", "720")
+        .stream_for(21447, "sub", "720")
         .await
         .expect_err("no server answered in time");
     assert!(matches!(err, AniError::Timeout), "{err:?}");
