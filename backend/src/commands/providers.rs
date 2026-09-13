@@ -56,9 +56,9 @@ pub trait Attempt: Send {
     /// Whether an output is inconclusive — the probe's "found, and
     /// no sampled row answered for the mode" — which says nothing
     /// either way: the walk moves on from it to the next provider,
-    /// as from one unreachable, and surfaces an unknown verdict
-    /// when nobody answers. False for a walk whose outputs are all
-    /// answers.
+    /// holding the unknown verdict it leaves, which an answer that
+    /// is not negative replaces and no negative does. False for a
+    /// walk whose outputs are all answers.
     fn is_inconclusive(_output: &Self::Output) -> bool {
         false
     }
@@ -165,10 +165,16 @@ pub fn fails_over(error: &AniError) -> bool {
 /// unreachable leaves it standing. Background traffic keeps the
 /// skip.
 ///
-/// An inconclusive answer ([`Attempt::is_inconclusive`]) is nobody
-/// answering: the walk moves on from it as from a provider it could
-/// not reach, and it stands in for an unreachable error when no
-/// provider answers at all.
+/// An inconclusive answer ([`Attempt::is_inconclusive`]) found the
+/// show and said nothing about the mode: the walk moves on from it
+/// to the next provider, holding the unknown verdict it leaves. An
+/// answer that is not negative replaces it; no negative does — a
+/// clean miss or an absence from another provider says nothing
+/// about the mode where this one found the show, and persisted it
+/// would hide a title this one carries — so the unknown verdict
+/// outranks every negative, in either order and through the
+/// skipped providers' trial, and surfaces as a miss that is not
+/// clean, attributed to nobody.
 ///
 /// # Errors
 /// The first answer that is not a failover — a miss — or, when no
@@ -248,6 +254,15 @@ where
                 .await;
             }
             Tried::FailedOver => {}
+            Tried::Inconclusive(by) => {
+                // Held, not surfaced: the rest of the order may still
+                // answer, and only an answer that is not negative
+                // replaces what this one left.
+                set_aside = Some(against_set_aside(
+                    set_aside.take(),
+                    Negative::Unknown(Some(by)),
+                ));
+            }
             Tried::Missed(miss, by) => {
                 let negative = Negative::Miss(miss, Some(by));
                 if i == 0 && remembered == Some(provider) {
@@ -270,8 +285,9 @@ where
         }
     }
     // Nothing answered: the remembered provider's negative set aside,
-    // or the first unreachable error. Either way the skipped
-    // providers get their trial before it surfaces.
+    // the unknown verdict an inconclusive answer left, or the first
+    // unreachable error. Either way the skipped providers get their
+    // trial before it surfaces.
     let verdict = set_aside
         .or_else(|| {
             walk.first_unreachable
@@ -302,8 +318,8 @@ where
 
 /// What a walk has learned so far.
 struct Walk {
-    /// The first unreachable error — or the unknown verdict standing
-    /// in for an inconclusive answer — to surface when nobody answers.
+    /// The first unreachable error, to surface when nobody answers
+    /// and nothing was held.
     first_unreachable: Option<NativeError>,
     /// Whether any provider so far was unreachable, refusing, broken
     /// or skipped.
@@ -336,33 +352,39 @@ fn unpersistable_past_affinity(remembered_undenied: bool, mut miss: NativeError)
 }
 
 /// How one attempt ended: an answer, a failover — the provider
-/// unreachable, refusing or broken, or an inconclusive answer the
-/// walk moves on from the same way — or a miss with the provider
-/// whose miss it is.
+/// unreachable, refusing or broken — an inconclusive answer the walk
+/// moves on from holding the unknown verdict it leaves, or a miss
+/// with the provider whose miss it is.
 enum Tried<'c, T> {
     Answered(Attempted<'c, T>),
     FailedOver,
+    Inconclusive(ProviderId),
     Missed(NativeError, ProviderId),
 }
 
 /// A negative verdict the walk is about to surface: an answer that
-/// carries one ([`Attempt::is_negative`]), or a miss — or the error
+/// carries one ([`Attempt::is_negative`]), a miss — or the error
 /// standing in for one when nobody answered — with the provider
-/// whose miss it is, when known.
+/// whose miss it is, when known, or the unknown verdict an
+/// inconclusive answer left ([`Attempt::is_inconclusive`]), with the
+/// provider that gave it.
 enum Negative<'c, T> {
     Answer(Attempted<'c, T>),
     Miss(NativeError, Option<ProviderId>),
+    Unknown(Option<ProviderId>),
 }
 
 impl<T> Negative<'_, T> {
     /// Whether the negative found the show: a negative answer is a
-    /// show found without the requested mode, and an answered miss
-    /// that is not clean is an episode dead end on a show that was
-    /// found. A clean miss did not find it, and an unreachable
-    /// provider's error standing in for a miss says nothing.
+    /// show found without the requested mode, the unknown verdict
+    /// is a show found with nothing said about the mode, and an
+    /// answered miss that is not clean is an episode dead end on a
+    /// show that was found. A clean miss did not find it, and an
+    /// unreachable provider's error standing in for a miss says
+    /// nothing.
     fn found_the_show(&self) -> bool {
         match self {
-            Self::Answer(_) => true,
+            Self::Answer(_) | Self::Unknown(_) => true,
             Self::Miss(ne, _) => !fails_over(&ne.error) && !ne.clean_miss,
         }
     }
@@ -371,14 +393,23 @@ impl<T> Negative<'_, T> {
     fn is_clean_miss(&self) -> bool {
         matches!(self, Self::Miss(ne, _) if ne.clean_miss)
     }
+
+    /// Whether the negative is the unknown verdict.
+    fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown(_))
+    }
 }
 
-/// Whether an earlier negative outranks a later one: the earlier
-/// found the show and the later is a clean catalogue miss. The show
-/// was found, so a catalogue miss from another provider may not
-/// become the verdict a caller persists as a negative over it.
+/// Whether an earlier negative outranks a later one: the earlier is
+/// the unknown verdict and the later is not — the provider that
+/// gave it found the show and said nothing about the mode, which no
+/// negative from elsewhere unsays — or the earlier found the show
+/// and the later is a clean catalogue miss. The show was found, so
+/// a negative from another provider may not become the verdict a
+/// caller persists over it.
 fn negative_outranks<T>(earlier: &Negative<'_, T>, later: &Negative<'_, T>) -> bool {
-    earlier.found_the_show() && later.is_clean_miss()
+    (earlier.is_unknown() && !later.is_unknown())
+        || (earlier.found_the_show() && later.is_clean_miss())
 }
 
 /// The negative that stands of two, with its author, so the provider
@@ -498,17 +529,11 @@ where
         Ok(value) if A::is_inconclusive(&value) => {
             // Found the show and said nothing about the mode: not
             // an answer to walk home with, and not a denial — the
-            // walk moves on as from a provider it could not reach,
-            // and an unknown verdict stands in for the error when
-            // nobody answers at all.
+            // walk moves on, holding the unknown verdict this
+            // leaves.
             walk.any_unreachable = true;
             walk.remembered_undenied |= walk.remembered == Some(provider);
-            walk.first_unreachable.get_or_insert(NativeError {
-                error: AniError::NoResults,
-                clean_miss: false,
-                failed_at: None,
-            });
-            Tried::FailedOver
+            Tried::Inconclusive(provider)
         }
         Ok(value) => {
             // Heard from: a remembered provider that answers for
@@ -543,21 +568,24 @@ where
 }
 
 /// The walk's negative verdict so far — a negative answer, a miss,
-/// or the first unreachable error when nothing answered — stands,
-/// unless providers were skipped for refusing on an interactive
-/// walk, which the gate would have admitted anyway — an open
-/// breaker's half-open trial, a pause it ignores for a click. Those
-/// are asked now: an answer that is not negative is the walk's, a
-/// negative answer or a miss of theirs — the last answer given —
-/// replaces the verdict they were asked for, author and all, by
+/// the unknown verdict an inconclusive answer left, or the first
+/// unreachable error when nothing answered — stands, unless
+/// providers were skipped for refusing on an interactive walk, which
+/// the gate would have admitted anyway — an open breaker's half-open
+/// trial, a pause it ignores for a click. Those are asked now: an
+/// answer that is not negative is the walk's, a negative answer, a
+/// miss or an inconclusive answer of theirs — the last answer given
+/// — replaces the verdict they were asked for, author and all, by
 /// rank ([`firmer_negative`]): a clean miss does not replace a
-/// negative that found the show, and one unreachable too leaves it
-/// standing. A miss that surfaces tells the attempt whose it is
-/// first, and surfaces unpersistable when the remembered provider
-/// has not denied the show; a negative answer surfaces as its
-/// provider gave it, saying whether it came past an undenied
-/// affinity as the walk finally stands — a trial after it may have
-/// been the remembered provider's own denial.
+/// negative that found the show, no negative replaces the unknown
+/// verdict, and one unreachable too leaves it standing. A miss that
+/// surfaces tells the attempt whose it is first, and surfaces
+/// unpersistable when the remembered provider has not denied the
+/// show; a negative answer surfaces as its provider gave it, saying
+/// whether it came past an undenied affinity as the walk finally
+/// stands — a trial after it may have been the remembered provider's
+/// own denial; the unknown verdict surfaces as a miss that is not
+/// clean, attributed to nobody.
 ///
 /// # Errors
 /// The miss that stands.
@@ -599,6 +627,9 @@ where
                     verdict = firmer_negative(verdict, Negative::Answer(answer));
                 }
                 Tried::FailedOver => {}
+                Tried::Inconclusive(by) => {
+                    verdict = firmer_negative(verdict, Negative::Unknown(Some(by)));
+                }
                 Tried::Missed(ne, by) => {
                     verdict = firmer_negative(verdict, Negative::Miss(ne, Some(by)));
                 }
@@ -621,6 +652,16 @@ where
                 attempt.missed_by(by);
             }
             Err(unpersistable_past_affinity(walk.remembered_undenied, error))
+        }
+        // Nothing about the mode was said where the show was found:
+        // not absence, and nobody's to persist.
+        Negative::Unknown(by) => {
+            tracing::debug!(provider = ?by, "walk: the show was found and nothing said about the mode");
+            Err(NativeError {
+                error: AniError::NoResults,
+                clean_miss: false,
+                failed_at: None,
+            })
         }
     }
 }
