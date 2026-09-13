@@ -2764,6 +2764,53 @@ async fn a_sidecar_the_user_already_has_is_preserved() {
     );
 }
 
+/// A link can land at the name while the scratch alias's removal
+/// fails — on Windows a scanner holding the file open without delete
+/// sharing, here a directory nothing can unlink from — and the
+/// install has still delivered the track, so it is not an error. But
+/// a claim stood down on that report leaves a `.ani-gui-….part.vtt`
+/// beside the media for good, and on Windows such a name is not
+/// hidden. The claim stands down only for a scratch that is provably
+/// gone; otherwise the guard keeps it and tries again at the end,
+/// the way the media transfer's own scratch guard does.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_sidecar_scratch_that_survived_its_removal_is_still_the_claims_to_take() {
+    let dest = tempfile::tempdir().expect("dest");
+    let pen = tempfile::tempdir_in(dest.path()).expect("pen");
+    let target = dest.path().join("Show Episode 9.en.vtt");
+    let scratch = pen.path().join(".ani-gui-9-9.part.vtt");
+    std::fs::write(&scratch, b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n").expect("scratch");
+    let mut claim = SidecarClaim {
+        target: target.clone(),
+        scratch: scratch.clone(),
+        file: None,
+        installed: false,
+        finished: false,
+    };
+    // The link needs the target's directory writable and the removal
+    // the scratch's; only the latter is refused.
+    dir_chmod(pen.path(), 0o555);
+    let got = claim.install();
+    assert!(got.is_ok(), "the track is delivered: {got:?}");
+    assert_eq!(
+        std::fs::read(&target).expect("installed"),
+        b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n",
+        "the link landed the complete track at the name"
+    );
+    assert!(
+        scratch.exists(),
+        "the removal failed inside the install, so the scratch is still here"
+    );
+    dir_chmod(pen.path(), 0o755);
+    drop(claim);
+    assert!(
+        !scratch.exists(),
+        "a scratch the install could not remove is still the claim's to take"
+    );
+    assert!(target.exists(), "and the installed track stays");
+}
+
 /// A sidecar's name carries only a complete file. The bytes go to a
 /// scratch sibling first, and the name is taken — never replaced —
 /// only once they are all there; a claim that is not finished takes
