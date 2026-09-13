@@ -2114,6 +2114,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_primarys_absence_persists_once_the_retried_row_provider_denies_the_show() {
+        // A positive row remembers the fallback for the dub and the
+        // fallback's breaker is open, so the interactive reprobe
+        // skips it, the primary finds the show without a dub, and
+        // the fallback's half-open trial then answers a clean miss:
+        // the show it once listed is gone from its catalogue. Both
+        // providers have now denied the mode. The primary's absence
+        // is the verdict, and it persists as the primary's own
+        // negative — held back, it would keep a stale positive row
+        // and a page enabled for a mode nobody carries.
+        use wiremock::matchers::{method, path};
+        let anidb = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                r#"<a href="/anime/fallback-show-74"><img alt="Fallback Show"/></a>"#,
+            ))
+            .mount(&anidb)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/frontend/anime/74/episodes"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"episodes":[{"id":741,"number":1},{"id":742,"number":2}]}"#,
+                ),
+            )
+            .mount(&anidb)
+            .await;
+        for ep in [741, 742] {
+            wiremock::Mock::given(method("GET"))
+                .and(path(format!("/api/frontend/episode/{ep}/languages")))
+                .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                    r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
+                ))
+                .mount(&anidb)
+                .await;
+        }
+        let hianime = stub_hianime_no_results().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        write_cache(
+            &state,
+            "584",
+            "dub",
+            true,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+        );
+        open_breaker(&state.hianime_gate);
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "dub",
+            "kitsu_id": "584",
+            "episode_count": 2
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+            .await
+            .expect("the primary's absence is the verdict");
+        assert!(!got.available, "nobody carries the dub: {got:?}");
+        assert_eq!(
+            got.provider,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            "the absence is the primary's own"
+        );
+        assert!(
+            hianime
+                .received_requests()
+                .await
+                .expect("recorded")
+                .iter()
+                .any(|r| r.url.path().ends_with("/search")),
+            "the skipped row provider got its trial"
+        );
+        let row = meta_cache_get(&state.cache_pool, &cache_key("584", "dub"))
+            .expect("cache read")
+            .expect("a row");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert!(
+            !row.available,
+            "the positive row gave way to the primary's negative: {row:?}"
+        );
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Anidb)
+        );
+    }
+
+    #[tokio::test]
     async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
         // The batch read already refuses to serve the fallback's
         // negative once the primary is answering again, and the lists
