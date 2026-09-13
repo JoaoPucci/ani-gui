@@ -64,8 +64,10 @@ requires it; the exception is the update check that runs on launch
   was played: the app remembers
   which catalogue carried a show for as long as its availability
   record lasts — a day from the last resolve that found the show
-  there: a play, a download, a hand-off, one served from the app's
-  own resolution cache, or the background warm a page runs — the
+  there: a play, a download, a hand-off — a play or a hand-off
+  served from the app's own resolution cache included, while a
+  download always resolves afresh and never reads that cache — or
+  the background warm a page runs — the
   detail page for the episode its Play button targets, which is the
   resume point when there is one, and the play page for the episode
   after the one playing, or, with resolution caching turned on, both
