@@ -52,6 +52,16 @@ pub trait Attempt: Send {
     fn is_negative(_output: &Self::Output) -> bool {
         false
     }
+
+    /// Whether an output is inconclusive — the probe's "found, and
+    /// no sampled row answered for the mode" — which says nothing
+    /// either way: the walk moves on from it to the next provider,
+    /// as from one unreachable, and surfaces an unknown verdict
+    /// when nobody answers. False for a walk whose outputs are all
+    /// answers.
+    fn is_inconclusive(_output: &Self::Output) -> bool {
+        false
+    }
 }
 
 /// What an attempt produced, who produced it, and the client that
@@ -155,10 +165,16 @@ pub fn fails_over(error: &AniError) -> bool {
 /// unreachable leaves it standing. Background traffic keeps the
 /// skip.
 ///
+/// An inconclusive answer ([`Attempt::is_inconclusive`]) is nobody
+/// answering: the walk moves on from it as from a provider it could
+/// not reach, and it stands in for an unreachable error when no
+/// provider answers at all.
+///
 /// # Errors
 /// The first answer that is not a failover — a miss — or, when no
 /// provider answered, the first unreachable error: the primary's
-/// when it was tried.
+/// when it was tried, or the unknown verdict an inconclusive answer
+/// leaves.
 #[allow(clippy::too_many_arguments)]
 pub async fn with_failover<'c, 'g, A, C, G>(
     order: &[ProviderId],
@@ -286,7 +302,8 @@ where
 
 /// What a walk has learned so far.
 struct Walk {
-    /// The first unreachable error, to surface when nobody answers.
+    /// The first unreachable error — or the unknown verdict standing
+    /// in for an inconclusive answer — to surface when nobody answers.
     first_unreachable: Option<NativeError>,
     /// Whether any provider so far was unreachable, refusing, broken
     /// or skipped.
@@ -297,8 +314,9 @@ struct Walk {
     /// The provider a positive availability row put first, if any.
     remembered: Option<ProviderId>,
     /// Whether the remembered provider has not denied the show: it
-    /// was skipped or failed over and has not answered since, or it
-    /// answered an episode dead end that found the show. While so, a
+    /// was skipped or failed over and has not answered since, it
+    /// answered an episode dead end that found the show, or it found
+    /// the show and said nothing about the mode. While so, a
     /// clean miss from the rest proves nothing about the row it
     /// stands behind. Cleared by its own answer or its own clean
     /// miss, which is a denial.
@@ -317,8 +335,10 @@ fn unpersistable_past_affinity(remembered_undenied: bool, mut miss: NativeError)
     miss
 }
 
-/// How one attempt ended: an answer, a failover, or a miss with the
-/// provider whose miss it is.
+/// How one attempt ended: an answer, a failover — the provider
+/// unreachable, refusing or broken, or an inconclusive answer the
+/// walk moves on from the same way — or a miss with the provider
+/// whose miss it is.
 enum Tried<'c, T> {
     Answered(Attempted<'c, T>),
     FailedOver,
@@ -475,6 +495,21 @@ where
         gate_of(provider).record(outcome, observed_at);
     }
     match result {
+        Ok(value) if A::is_inconclusive(&value) => {
+            // Found the show and said nothing about the mode: not
+            // an answer to walk home with, and not a denial — the
+            // walk moves on as from a provider it could not reach,
+            // and an unknown verdict stands in for the error when
+            // nobody answers at all.
+            walk.any_unreachable = true;
+            walk.remembered_undenied |= walk.remembered == Some(provider);
+            walk.first_unreachable.get_or_insert(NativeError {
+                error: AniError::NoResults,
+                clean_miss: false,
+                failed_at: None,
+            });
+            Tried::FailedOver
+        }
         Ok(value) => {
             // Heard from: a remembered provider that answers for
             // itself has spoken for the row, whatever the answer
