@@ -86,15 +86,62 @@ fn a_stamped_row_beats_an_unstamped_one() {
     assert_eq!(hit.id, "hianime:the-show-9");
 }
 
+/// When the stamps do not separate two rows, progress decides, as
+/// it does on the Continue Watching strip: the two surfaces must
+/// name one episode, or a play from Home would land over the row
+/// the detail page resumes.
 #[test]
-fn with_no_stamps_file_order_stands() {
+fn with_no_stamps_the_further_progress_wins() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     two_rows_for_one_show(&s, &path);
     let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    assert_eq!(hit.id, "hianime:the-show-9");
+    assert_eq!(hit.ep_no, "7");
+}
+
+#[test]
+fn with_equal_stamps_the_further_progress_wins() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    two_rows_for_one_show(&s, &path);
+    crate::commands::kitsu::watched_at_put(&s, "the-show-77", 2_000).unwrap();
+    crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
+    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    assert_eq!(hit.id, "hianime:the-show-9");
+    assert_eq!(hit.ep_no, "7");
+}
+
+/// Equal on every count — no stamps, the same episode — the row
+/// first in the file stands, as the strip keeps the row it met
+/// first.
+#[test]
+fn equal_on_every_count_file_order_stands() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "5".into(),
+                id: "the-show-77".into(),
+                title: "The Show".into(),
+            },
+            HistoryEntry {
+                ep_no: "5".into(),
+                id: "hianime:the-show-9".into(),
+                title: "The Show".into(),
+            },
+        ],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "K1").unwrap();
+    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
     assert_eq!(hit.id, "the-show-77");
-    assert_eq!(hit.ep_no, "3");
 }
 
 /// A row the guard refuses to re-map can still carry a mapping from
