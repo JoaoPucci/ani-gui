@@ -151,6 +151,10 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 
     async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
         let listing = self.servers(episode_id).await?;
+        // The listing's attempt, read before any host's fetch moves
+        // the transport's stamp: the doubt below is this attempt's
+        // finding, and the gate is told when it was observed.
+        let listing_at = self.fetch.last_attempt_at();
         // The mode's rows the client could not read are a parse
         // failure before any embed page is asked for.
         listing.mode_readable(mode)?;
@@ -158,8 +162,9 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // with a mode it does not know, stays a doubt through the
         // walk: should no server serve a stream, the verdict is the
         // mode's uncertainty, never the answered absence — that row
-        // may have been the server.
-        let uncertain = listing.uncertain_for(mode);
+        // may have been the server. The doubt rides with the listing
+        // attempt's instant, as a host's failure rides with its own.
+        let doubt_at = listing.uncertain_for(mode).then_some(listing_at);
         let servers = listing.servers;
         // The first server whose page decodes to a stream wins; every
         // other outcome is stepped over and remembered, and the
@@ -214,7 +219,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 None => (weather, at),
             });
         }
-        let (verdict, at) = final_verdict(kept, uncertain, mode);
+        let (verdict, at) = final_verdict(kept, doubt_at, mode);
         if let Some(at) = at {
             *self.kept_attempt_at.lock().expect("kept attempt lock") = Some(KeptAttempt {
                 at,
@@ -301,27 +306,29 @@ fn payload_missing_verdict(embed_url: &str) -> Option<AniError> {
 /// shape, not the episode having no stream — and the answered
 /// absence only when every page merely lacked the payload and every
 /// row was read. The lift ranks like any parse failure, so a
-/// provider block still outranks it.
-fn final_verdict(
-    kept: Option<(AniError, Option<tokio::time::Instant>)>,
-    uncertain: bool,
+/// provider block still outranks it. Whatever rides with a failure —
+/// the instant of the attempt that produced it — rides with the
+/// verdict: the kept failure's, or the listing attempt's when the
+/// doubt stands (`doubt` carries it when the mode had such a row),
+/// and nothing when the absence is the verdict.
+fn final_verdict<T: Default>(
+    kept: Option<(AniError, T)>,
+    doubt: Option<T>,
     mode: &str,
-) -> (AniError, Option<tokio::time::Instant>) {
-    // The doubt is the listing's, not a server's attempt: it rides
-    // with no instant, and the transport's latest stamp stands.
-    let doubt = uncertain.then(|| {
+) -> (AniError, T) {
+    let doubt = doubt.map(|at| {
         (
             AniError::ParseFailed {
                 detail: format!("hianime {mode} servers: a row the client could not read"),
             },
-            None,
+            at,
         )
     });
     match (kept, doubt) {
         (Some(kept), Some(doubt)) => weightier(kept, doubt),
         (Some(kept), None) => kept,
         (None, Some(doubt)) => doubt,
-        (None, None) => (AniError::NoResults, None),
+        (None, None) => (AniError::NoResults, T::default()),
     }
 }
 
