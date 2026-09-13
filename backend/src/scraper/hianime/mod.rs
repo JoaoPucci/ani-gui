@@ -147,12 +147,13 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // loudest surfaces when no server served a stream
         // ([`weightier`]): a rate limit above everything, since it
         // alone opens the breaker's advertised pause at once; then a
-        // page that carries a payload the client cannot use — the key
-        // does not open it, or its source is nothing the transport
-        // fetches — which is the site having changed and the client
-        // no longer reading it; then a host that refused or failed,
-        // which speaks for the provider; then an answered status or a
-        // dropped connection. A page without the payload says what
+        // host that refused or failed, which speaks for the provider
+        // and is what the shared walk stops on; then a page that
+        // carries a payload the client cannot use — the key does not
+        // open it, or its source is nothing the transport fetches —
+        // which is the site having changed and the client no longer
+        // reading it, transient to the shared walk; then a dropped
+        // connection; then an answered status. A page without the payload says what
         // its host does ([`payload_missing_verdict`]): from a host the
         // client reads it is the site having changed shape, a parse
         // failure like a blob the key no longer opens; from a host the
@@ -264,8 +265,8 @@ fn payload_missing_verdict(embed_url: &str) -> Option<AniError> {
 /// playable server, so the walk's end is the site having changed
 /// shape, not the episode having no stream — and the answered
 /// absence only when every page merely lacked the payload and every
-/// row was read. The lift ranks like any parse failure, so a rate
-/// limit still outranks it.
+/// row was read. The lift ranks like any parse failure, so a
+/// provider block still outranks it.
 fn final_verdict(kept: Option<AniError>, uncertain: bool, mode: &str) -> AniError {
     let doubt = uncertain.then(|| AniError::ParseFailed {
         detail: format!("hianime {mode} servers: a row the client could not read"),
@@ -278,14 +279,16 @@ fn final_verdict(kept: Option<AniError>, uncertain: bool, mode: &str) -> AniErro
     }
 }
 
-/// How loudly a host's failure speaks: a rate limit above all, a
-/// parse failure above any other block, a block above a transport
-/// failure, a transport failure above the rest.
+/// How loudly a host's failure speaks: a rate limit above all, any
+/// other provider block above a parse failure — the block is what
+/// the shared walk stops on, the parse failure is transient to it —
+/// a parse failure above a transport failure, a transport failure
+/// above the rest.
 fn weather_rank(weather: &AniError) -> u8 {
     match weather {
         AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 4,
-        AniError::ParseFailed { .. } => 3,
-        w if w.is_provider_block() => 2,
+        w if w.is_provider_block() => 3,
+        AniError::ParseFailed { .. } => 2,
         AniError::Network | AniError::Timeout => 1,
         _ => 0,
     }
