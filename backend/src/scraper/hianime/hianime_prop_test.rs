@@ -987,9 +987,10 @@ proptest::proptest! {
 
     /// Whatever the subtitle list looks like — absent, `null`, not a
     /// list, or a list mixing rows the client reads with rows missing
-    /// a field, not objects at all, or naming a source the transport
-    /// cannot fetch — the stream comes back, and exactly the readable
-    /// rows with a fetchable source come with it, in order.
+    /// a field, not objects at all, naming a source the transport
+    /// cannot fetch, or naming one longer than any a CDN signs — the
+    /// stream comes back, and exactly the readable rows with a
+    /// fetchable source of a sane length come with it, in order.
     #[test]
     fn a_payload_keeps_its_stream_and_its_readable_tracks_whatever_the_rest_of_the_list(
         src in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}\\.m3u8",
@@ -1016,6 +1017,11 @@ proptest::proptest! {
                         .prop_map(|(lang, path)| (None, serde_json::json!({"lang": lang, "label": "X", "default": false, "src": path}))),
                     ("[a-z]{2}", "(ftp|file|data)")
                         .prop_map(|(lang, scheme)| (None, serde_json::json!({"lang": lang, "label": "X", "default": false, "src": format!("{scheme}://hls.example/{lang}.vtt")}))),
+                    // Rows whose absolute source is longer than any
+                    // track URL a CDN signs, which the hand-offs would
+                    // put on the player's command line.
+                    ("[a-z]{2}", 1100usize..3000)
+                        .prop_map(|(lang, len)| (None, serde_json::json!({"lang": lang, "label": "X", "default": false, "src": format!("https://hls.example/{}/{lang}.vtt", "a".repeat(len))}))),
                 ],
                 0..6,
             )

@@ -1061,6 +1061,17 @@ fn a_payload_decodes_to_its_stream_whatever_its_subtitle_list_looks_like() {
             serde_json::json!({"src": src, "subtitles": [{"lang": "it", "label": "Italian", "src": "ftp://hls.example/v/subs/it.vtt"}, good("pt")]}),
             vec!["pt"],
         ),
+        // A row whose source is absolute and fetchable but far longer
+        // than any track URL a CDN signs: the hand-offs put every
+        // track URL on the player's command line, whose budget the
+        // packaged platforms set differently and Windows sets
+        // smallest, so one such row would fail Open External and
+        // Watch Together for the whole episode.
+        (
+            "a row whose source is overlong",
+            serde_json::json!({"src": src, "subtitles": [good("en"), {"lang": "de", "label": "German", "src": format!("https://hls.example/v/subs/{}.vtt", "a".repeat(4096))}, good("fr")]}),
+            vec!["en", "fr"],
+        ),
     ];
     for (what, json, expected) in cases {
         let payload = decode_embed(&embed_page(&json.to_string()))
