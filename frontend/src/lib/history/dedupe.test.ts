@@ -33,7 +33,7 @@ describe('dedupeHistoryByKitsuId', () => {
 			'all-2': kitsu('k-2'),
 			'all-3': kitsu('k-3')
 		};
-		expect(dedupeHistoryByKitsuId([a, b, c], matches)).toEqual([a, b, c]);
+		expect(dedupeHistoryByKitsuId([a, b, c], matches, {})).toEqual([a, b, c]);
 	});
 
 	it('keeps the highest-progress occurrence of each Kitsu id, ties broken by first', () => {
@@ -53,8 +53,8 @@ describe('dedupeHistoryByKitsuId', () => {
 		};
 		// Order in input doesn't matter; the row with the higher ep_no
 		// wins regardless of position.
-		expect(dedupeHistoryByKitsuId([lo, hi], matches)).toEqual([hi]);
-		expect(dedupeHistoryByKitsuId([hi, lo], matches)).toEqual([hi]);
+		expect(dedupeHistoryByKitsuId([lo, hi], matches, {})).toEqual([hi]);
+		expect(dedupeHistoryByKitsuId([hi, lo], matches, {})).toEqual([hi]);
 	});
 
 	it('ranks a fractional row above its integer floor', () => {
@@ -66,27 +66,59 @@ describe('dedupeHistoryByKitsuId', () => {
 			'all-int': kitsu('k-shared'),
 			'all-frac': kitsu('k-shared')
 		};
-		expect(dedupeHistoryByKitsuId([int, frac], matches)).toEqual([frac]);
-		expect(dedupeHistoryByKitsuId([frac, int], matches)).toEqual([frac]);
+		expect(dedupeHistoryByKitsuId([int, frac], matches, {})).toEqual([frac]);
+		expect(dedupeHistoryByKitsuId([frac, int], matches, {})).toEqual([frac]);
 	});
 
-	it('preserves the further-along row over an older stamped one when ep_no is higher', () => {
-		// Codex P2 #3367725631 — the regression my first cut hit. The
-		// user watched to ep 5 long ago and it was marked watched, so
-		// it sorts to the top. The catalogue drifted and they
-		// continued to ep 12, whose play never reached mark-watched,
-		// so it sorts below. Previous "first occurrence wins" dropped
-		// the further-along row and the strip would resume from the
-		// stale ep 5. The fix: ep_no comparison wins.
+	it('picks the row watched last, whatever its episode', () => {
+		// Two provider rows for one show: the user reached episode 10
+		// on the first, then rewatched episode 3 on the second. The
+		// detail page resumes from the row watched last, and the strip
+		// must offer the same episode — a card offering 11 would send
+		// a play from Home over the newer rewatch progress.
+		const earlier = entry('all-earlier', '10');
+		const later = entry('all-later', '3');
+		const matches: Record<string, KitsuAnimeRef | null> = {
+			'all-earlier': kitsu('k-shared'),
+			'all-later': kitsu('k-shared')
+		};
+		const watchedAt = { 'all-earlier': 1_000, 'all-later': 2_000 };
+		expect(dedupeHistoryByKitsuId([later, earlier], matches, watchedAt)).toEqual([later]);
+		expect(dedupeHistoryByKitsuId([earlier, later], matches, watchedAt)).toEqual([later]);
+	});
+
+	it('prefers a stamped row to an unstamped one, whatever their episodes', () => {
+		// A stamp is the record of a watch; a row without one never
+		// reached mark-watched or predates the stamps. The resume
+		// lookup behind the detail page lets a stamped row beat an
+		// unstamped one before it looks at anything else, and the strip
+		// follows the same rule so the two surfaces name one episode.
 		const stampedOld = entry('all-stamped-old', '5');
-		const cliCurrent = entry('all-unstamped-current', '12');
+		const unstamped = entry('all-unstamped', '12');
 		const matches: Record<string, KitsuAnimeRef | null> = {
 			'all-stamped-old': kitsu('k-shared'),
-			'all-unstamped-current': kitsu('k-shared')
+			'all-unstamped': kitsu('k-shared')
 		};
-		// sortByWatchedAt would land the stamped row first; the
-		// dedupe still picks the row with the actual current progress.
-		expect(dedupeHistoryByKitsuId([stampedOld, cliCurrent], matches)).toEqual([cliCurrent]);
+		const watchedAt = { 'all-stamped-old': 1_000 };
+		expect(dedupeHistoryByKitsuId([stampedOld, unstamped], matches, watchedAt)).toEqual([
+			stampedOld
+		]);
+		expect(dedupeHistoryByKitsuId([unstamped, stampedOld], matches, watchedAt)).toEqual([
+			stampedOld
+		]);
+	});
+
+	it('falls back to progress when two rows carry the same stamp', () => {
+		// Nothing separates two rows stamped at the same instant, so
+		// the progress rule decides as it does for two unstamped rows.
+		const lo = entry('all-lo', '3');
+		const hi = entry('all-hi', '12');
+		const matches: Record<string, KitsuAnimeRef | null> = {
+			'all-lo': kitsu('k-shared'),
+			'all-hi': kitsu('k-shared')
+		};
+		const watchedAt = { 'all-lo': 1_000, 'all-hi': 1_000 };
+		expect(dedupeHistoryByKitsuId([lo, hi], matches, watchedAt)).toEqual([hi]);
 	});
 
 	it('falls back to input order when ep_no values are equal', () => {
@@ -101,7 +133,7 @@ describe('dedupeHistoryByKitsuId', () => {
 			'all-first': kitsu('k-shared'),
 			'all-second': kitsu('k-shared')
 		};
-		expect(dedupeHistoryByKitsuId([first, second], matches)).toEqual([first]);
+		expect(dedupeHistoryByKitsuId([first, second], matches, {})).toEqual([first]);
 	});
 
 	it('treats malformed ep_no as the lowest possible progress', () => {
@@ -114,8 +146,8 @@ describe('dedupeHistoryByKitsuId', () => {
 			'all-broken': kitsu('k-shared'),
 			'all-good': kitsu('k-shared')
 		};
-		expect(dedupeHistoryByKitsuId([broken, good], matches)).toEqual([good]);
-		expect(dedupeHistoryByKitsuId([good, broken], matches)).toEqual([good]);
+		expect(dedupeHistoryByKitsuId([broken, good], matches, {})).toEqual([good]);
+		expect(dedupeHistoryByKitsuId([good, broken], matches, {})).toEqual([good]);
 	});
 
 	it('emits the winner at the position of its group is first encountered', () => {
@@ -134,7 +166,7 @@ describe('dedupeHistoryByKitsuId', () => {
 		// cliCurrent is the dedupe winner for k-shared; it should
 		// emit at index 0 (where stampedOld would have been) so the
 		// "other" row stays at index 1 — same overall strip order.
-		expect(dedupeHistoryByKitsuId([stampedOld, other, cliCurrent], matches)).toEqual([
+		expect(dedupeHistoryByKitsuId([stampedOld, other, cliCurrent], matches, {})).toEqual([
 			cliCurrent,
 			other
 		]);
@@ -155,7 +187,7 @@ describe('dedupeHistoryByKitsuId', () => {
 			'all-1': kitsu('k-1')
 			// all-2 is unresolved
 		};
-		expect(dedupeHistoryByKitsuId([a, b], matches)).toEqual([a, b]);
+		expect(dedupeHistoryByKitsuId([a, b], matches, {})).toEqual([a, b]);
 	});
 
 	it('keeps entries with a null match (no Kitsu match found)', () => {
@@ -170,7 +202,7 @@ describe('dedupeHistoryByKitsuId', () => {
 			'all-1': null,
 			'all-2': null
 		};
-		expect(dedupeHistoryByKitsuId([a, b], matches)).toEqual([a, b]);
+		expect(dedupeHistoryByKitsuId([a, b], matches, {})).toEqual([a, b]);
 	});
 
 	it('handles multiple groups of duplicates in one pass', () => {
@@ -189,18 +221,18 @@ describe('dedupeHistoryByKitsuId', () => {
 			// all-4 unresolved
 			'all-5': kitsu('k-B')
 		};
-		expect(dedupeHistoryByKitsuId([a, b, c, d, e], matches)).toEqual([a, b, d]);
+		expect(dedupeHistoryByKitsuId([a, b, c, d, e], matches, {})).toEqual([a, b, d]);
 	});
 
 	it('returns an empty array when history is empty', () => {
-		expect(dedupeHistoryByKitsuId([], {})).toEqual([]);
+		expect(dedupeHistoryByKitsuId([], {}, {})).toEqual([]);
 	});
 
 	it('preserves entry references (no copies)', () => {
 		// Downstream code may rely on entry reference identity for
 		// Svelte keyed-each diffing. Don't construct new objects.
 		const a = entry('all-1');
-		const result = dedupeHistoryByKitsuId([a], { 'all-1': kitsu('k-1') });
+		const result = dedupeHistoryByKitsuId([a], { 'all-1': kitsu('k-1') }, {});
 		expect(result[0]).toBe(a);
 	});
 });
