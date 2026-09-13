@@ -154,3 +154,57 @@ async fn a_stale_mapping_the_guard_refuses_does_not_outrank_a_correct_row() {
     assert_eq!(hit.id, "hianime:one-piece-100");
     assert_eq!(hit.ep_no, "7");
 }
+
+/// Make one cache row unreadable: its `fetched_at` stops being a
+/// number, so the reader's row mapping fails for that key alone and
+/// every other key still answers. One row must match, or the test
+/// would prove nothing about the read it means to break.
+fn break_cache_row(s: &AppState, key: &str) {
+    let conn = s.cache_pool.get().unwrap();
+    let changed = conn
+        .execute(
+            "UPDATE meta_cache SET fetched_at = 'unreadable' WHERE key = ?1",
+            [key],
+        )
+        .unwrap();
+    assert_eq!(changed, 1, "the row to break is at {key}");
+}
+
+/// The row watched last has a stamp the cache cannot read. That is
+/// not an unstamped row: read as one, its sibling's older stamp
+/// would win and the page would resume the stale episode. The
+/// function's contract is that cache errors propagate, so the read's
+/// failure is the caller's.
+#[test]
+fn a_failed_stamp_read_is_the_callers_error_not_an_unstamped_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    two_rows_for_one_show(&s, &path);
+    crate::commands::kitsu::watched_at_put(&s, "the-show-77", 1_000).unwrap();
+    crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
+    break_cache_row(&s, "watched-at:v1:hianime:the-show-9");
+    let got = history_by_kitsu(&s, "K1");
+    assert!(
+        got.is_err(),
+        "a stamp the cache cannot read surfaces as the error it is: {got:?}"
+    );
+}
+
+/// The same for the mapping read: a row whose mapping the cache
+/// cannot read is not a row without one, to be skipped for its
+/// sibling.
+#[test]
+fn a_failed_mapping_read_is_the_callers_error_not_a_skipped_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    two_rows_for_one_show(&s, &path);
+    crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
+    break_cache_row(&s, "allmanga2kitsu:v3:hianime:the-show-9");
+    let got = history_by_kitsu(&s, "K1");
+    assert!(
+        got.is_err(),
+        "a mapping the cache cannot read surfaces as the error it is: {got:?}"
+    );
+}
