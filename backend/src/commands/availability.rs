@@ -2370,6 +2370,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_inconclusive_primary_outranks_the_fallbacks_clean_miss() {
+        // The primary finds the show, and every episode row the mode
+        // search touches answers nothing; the fallback does not list
+        // the show at all. The fallback's clean miss says nothing
+        // about the mode where the primary found the show — a row
+        // the probe did not sample may carry it — so the verdict is
+        // unknown, and nothing is written: persisted as the
+        // fallback's negative, it would be served while the primary
+        // answers and hide a title the primary carries.
+        let anidb = stub_anidb_with_stale_rows(77).await;
+        let hianime = stub_hianime_no_results().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "sub",
+            "kitsu_id": "587",
+            "episode_count": 2
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
+        assert!(
+            matches!(got, Err(crate::error::AniError::NoResults)),
+            "the verdict is unknown, not the fallback's miss: {got:?}"
+        );
+        assert!(
+            hianime
+                .received_requests()
+                .await
+                .expect("recorded")
+                .iter()
+                .any(|r| r.url.path() == "/search"),
+            "the fallback was asked"
+        );
+        assert!(
+            meta_cache_get(&state.cache_pool, &cache_key("587", "sub"))
+                .expect("cache read")
+                .is_none(),
+            "an unknown verdict persists nothing"
+        );
+    }
+
+    #[tokio::test]
     async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
         // The batch read already refuses to serve the fallback's
         // negative once the primary is answering again, and the lists
