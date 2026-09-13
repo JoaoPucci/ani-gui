@@ -1079,7 +1079,9 @@ proptest::proptest! {
     /// failure as it stands, lifted to a parse failure when the mode
     /// had a row the client could not read — which never outranks a
     /// provider block — and the answered absence only when nothing
-    /// was kept and every row was read.
+    /// was kept and every row was read. Whatever rides with the
+    /// verdict rides with the side that won: the kept failure's
+    /// attempt, or the listing's attempt when the doubt stands.
     #[test]
     fn the_final_verdict_keeps_the_doubt_of_an_unreadable_row(
         kept in proptest::option::of(arb_weather()),
@@ -1096,11 +1098,26 @@ proptest::proptest! {
         }
         let kept_rank = kept.as_ref().map(rank);
         let kept_repr = kept.as_ref().map(|k| format!("{k:?}"));
-        let (verdict, _at) = final_verdict(kept.map(|k| (k, None)), uncertain, "sub");
+        // The kept failure rides with its attempt, the doubt with
+        // the listing's; the verdict's is the winner's.
+        let (verdict, at) = final_verdict(
+            kept.map(|k| (k, Some(1u8))),
+            uncertain.then_some(Some(2u8)),
+            "sub",
+        );
         match (kept_rank, uncertain) {
-            (None, false) => prop_assert!(matches!(verdict, AniError::NoResults), "{verdict:?}"),
-            (None, true) => prop_assert!(matches!(verdict, AniError::ParseFailed { .. }), "{verdict:?}"),
-            (Some(_), false) => prop_assert_eq!(Some(format!("{verdict:?}")), kept_repr),
+            (None, false) => {
+                prop_assert!(matches!(verdict, AniError::NoResults), "{verdict:?}");
+                prop_assert_eq!(at, None);
+            }
+            (None, true) => {
+                prop_assert!(matches!(verdict, AniError::ParseFailed { .. }), "{verdict:?}");
+                prop_assert_eq!(at, Some(2));
+            }
+            (Some(_), false) => {
+                prop_assert_eq!(Some(format!("{verdict:?}")), kept_repr);
+                prop_assert_eq!(at, Some(1));
+            }
             (Some(r), true) => {
                 // The doubt is a parse failure; a louder kept failure
                 // stands, a parse failure kept first stays, anything
@@ -1108,8 +1125,10 @@ proptest::proptest! {
                 prop_assert_eq!(rank(&verdict), r.max(2));
                 if r >= 2 {
                     prop_assert_eq!(Some(format!("{verdict:?}")), kept_repr);
+                    prop_assert_eq!(at, Some(1));
                 } else {
                     prop_assert!(matches!(verdict, AniError::ParseFailed { .. }), "{verdict:?}");
+                    prop_assert_eq!(at, Some(2));
                 }
             }
         }

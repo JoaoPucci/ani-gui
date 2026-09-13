@@ -1223,6 +1223,33 @@ impl Fetch for Site {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 Err(AniError::Timeout)
             }
+            // A listing that answers slowly, with a sub row the client
+            // reads beside one whose hash no longer decodes; the
+            // readable host then answers not-found. The doubt is the
+            // listing's, and the listing's attempt came first.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21460") => {
+                if ajax {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2xhdGUtNDA0L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"!!!\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The same slow listing with every row read: the
+            // not-found is the verdict, and it is the host's attempt.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21461") => {
+                if ajax {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2xhdGUtNDA0L3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/late-404/sub" => refused(404),
             "https://zokoanime.video/stream/mal/9/timeout/sub" => Err(AniError::Timeout),
             // A host that answers not-found, then a fetch the gate
             // refuses, then a host whose page decodes.
@@ -1996,5 +2023,51 @@ async fn a_louder_later_failure_carries_its_own_instant() {
         c.last_attempt_at(),
         Some(began + std::time::Duration::from_millis(10)),
         "the block's own attempt, which began once the slow host had answered"
+    );
+}
+
+/// The listing's doubt — a row of the mode the client could not read
+/// — is the verdict when the readable hosts end in something quieter,
+/// and it is the listing attempt's finding, not the last host's: the
+/// gate is told when the doubt was observed, so a recovery recorded
+/// between the listing and a later host's attempt does not read the
+/// doubt as evidence gathered after it.
+#[tokio::test(start_paused = true)]
+async fn the_listings_doubt_carries_the_listing_attempts_instant() {
+    let c = stamping_client();
+    let began = tokio::time::Instant::now();
+    let err = c
+        .master_playlist_url(21460, "sub")
+        .await
+        .expect_err("nobody served it");
+    assert!(
+        matches!(err, AniError::ParseFailed { .. }),
+        "the doubt outranks the host's not-found: {err:?}"
+    );
+    assert_eq!(
+        c.last_attempt_at(),
+        Some(began),
+        "the listing's own attempt, before the slow listing answered and the host was asked"
+    );
+}
+
+/// The control: with every row read, the host's not-found is the
+/// verdict and carries the host's own attempt, after the listing.
+#[tokio::test(start_paused = true)]
+async fn a_hosts_failure_after_a_slow_listing_carries_the_hosts_instant() {
+    let c = stamping_client();
+    let began = tokio::time::Instant::now();
+    let err = c
+        .master_playlist_url(21461, "sub")
+        .await
+        .expect_err("nobody served it");
+    assert!(
+        matches!(err, AniError::Upstream { status: 404 }),
+        "the host's own dead end: {err:?}"
+    );
+    assert_eq!(
+        c.last_attempt_at(),
+        Some(began + std::time::Duration::from_millis(10)),
+        "the host's attempt, which began once the slow listing had answered"
     );
 }
