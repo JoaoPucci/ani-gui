@@ -113,6 +113,59 @@ proptest! {
         prop_assert_eq!(got, expected);
     }
 
+    /// Rows of another shape beside readable ones — `null`, a
+    /// string, a number, a list, an object without a file — cost
+    /// themselves and nothing else; the readable rows survive in
+    /// order, and a tracks field that is not a list at all yields no
+    /// tracks and still the stream.
+    #[test]
+    fn unreadable_track_rows_cost_only_themselves(
+        master in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}/master\\.m3u8",
+        rows in proptest::collection::vec(
+            prop_oneof![
+                "[a-z]{3}".prop_map(|code| (Some(code), true)),
+                Just((None, false)),
+            ],
+            0..6,
+        ),
+        junk in 0u8..5,
+    ) {
+        let listed: Vec<String> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, (code, _))| match code {
+                Some(code) => serde_json::json!({
+                    "file": format!("https://c.example/subs/track_{i}_{code}.vtt"),
+                    "label": format!("Track {i}"),
+                    "kind": "captions",
+                })
+                .to_string(),
+                None => match (i + usize::from(junk)) % 5 {
+                    0 => "null".to_string(),
+                    1 => "\"junk\"".to_string(),
+                    2 => "3".to_string(),
+                    3 => "[\"https://c.example/x.vtt\"]".to_string(),
+                    _ => r#"{"label":"No file","kind":"captions"}"#.to_string(),
+                },
+            })
+            .collect();
+        let json = format!(r#"{{"sources":{{"file":"{master}"}},"tracks":[{}]}}"#, listed.join(","));
+        let payload = parse_sources(&json).expect("the stream with its readable rows");
+        prop_assert_eq!(&payload.src, &master);
+        let expected: Vec<String> = rows
+            .iter()
+            .filter_map(|(code, _)| code.clone())
+            .collect();
+        let got: Vec<String> = payload.subtitles.iter().map(|t| t.lang.clone()).collect();
+        prop_assert_eq!(got, expected);
+        for not_a_list in ["null", "\"none\"", "7", r#"{"file":"https://c.example/x.vtt"}"#] {
+            let json = format!(r#"{{"sources":{{"file":"{master}"}},"tracks":{not_a_list}}}"#);
+            let payload = parse_sources(&json).expect("the stream without tracks");
+            prop_assert_eq!(&payload.src, &master);
+            prop_assert!(payload.subtitles.is_empty(), "{not_a_list}");
+        }
+    }
+
     /// A response whose sources name nothing the transport fetches
     /// is refused, whatever else it carries.
     #[test]
