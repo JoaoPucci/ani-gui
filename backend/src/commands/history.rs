@@ -56,7 +56,8 @@ pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] when the history file
 /// exists but cannot be read; SQLite errors propagate from the
-/// reverse-cache lookup.
+/// reverse-cache lookup and from the watched-at stamp's, since a
+/// read that fails says nothing about the row it was for.
 pub fn history_by_kitsu(
     state: &crate::app::AppState,
     kitsu_id: &str,
@@ -70,15 +71,19 @@ pub fn history_by_kitsu(
     // resume from: the latest watched-at stamp wins, a stamped row
     // beats an unstamped one, and file order stands when nothing
     // separates them.
+    // A read the cache cannot serve is the caller's error, never a
+    // row without a mapping or a stamp: taken as one, the row watched
+    // last would lose to its sibling's older stamp, or be skipped for
+    // it, and the page would resume the stale episode.
     let mut best: Option<(HistoryEntry, Option<i64>)> = None;
     for entry in entries {
-        let Ok(Some(mapped)) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id) else {
+        let Some(mapped) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)? else {
             continue;
         };
         if mapped != kitsu_id {
             continue;
         }
-        let stamp = crate::commands::kitsu::watched_at_get(state, &entry.id).unwrap_or(None);
+        let stamp = crate::commands::kitsu::watched_at_get(state, &entry.id)?;
         let newer = match &best {
             None => true,
             Some((_, current)) => stamp > *current,
