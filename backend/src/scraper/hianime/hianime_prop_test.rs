@@ -1096,7 +1096,7 @@ proptest::proptest! {
         }
         let kept_rank = kept.as_ref().map(rank);
         let kept_repr = kept.as_ref().map(|k| format!("{k:?}"));
-        let verdict = final_verdict(kept, uncertain, "sub");
+        let (verdict, _at) = final_verdict(kept.map(|k| (k, None)), uncertain, "sub");
         match (kept_rank, uncertain) {
             (None, false) => prop_assert!(matches!(verdict, AniError::NoResults), "{verdict:?}"),
             (None, true) => prop_assert!(matches!(verdict, AniError::ParseFailed { .. }), "{verdict:?}"),
@@ -1122,7 +1122,8 @@ proptest::proptest! {
     /// or a timeout, and those over an answered status — a server
     /// never heard from may carry the stream, an answered status is
     /// that host's own dead end; between two of a rank the first
-    /// stays.
+    /// stays. Whatever rides with a failure — the instant of the
+    /// attempt that produced it — rides with the kept one.
     #[test]
     fn the_kept_weather_is_the_louder_of_the_two(
         first in arb_weather(),
@@ -1141,13 +1142,15 @@ proptest::proptest! {
         let second_rank = rank(&second);
         let first_repr = format!("{first:?}");
         let second_repr = format!("{second:?}");
-        let kept = weightier(first, second);
+        let (kept, kept_at) = weightier((first, 1u8), (second, 2u8));
         prop_assert_eq!(rank(&kept), first_rank.max(second_rank));
         let kept_repr = format!("{kept:?}");
         if second_rank > first_rank {
             prop_assert_eq!(kept_repr, second_repr);
+            prop_assert_eq!(kept_at, 2);
         } else {
             prop_assert_eq!(kept_repr, first_repr);
+            prop_assert_eq!(kept_at, 1);
         }
     }
 

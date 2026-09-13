@@ -1191,6 +1191,38 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A host that refuses, slowly, then a host whose
+            // connection drops at once: the block is the louder
+            // failure, and it was the earlier attempt.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21441") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3Nsb3ctNDAzL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3RpbWVvdXQvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A host whose connection drops, slowly, then a host that
+            // refuses at once: the block is the louder failure, and
+            // it was the later attempt.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21442") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3Nsb3ctdGltZW91dC9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwMy9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/slow-403/sub" => {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                refused(403)
+            }
+            "https://zokoanime.video/stream/mal/9/slow-timeout/sub" => {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                Err(AniError::Timeout)
+            }
             "https://zokoanime.video/stream/mal/9/timeout/sub" => Err(AniError::Timeout),
             // A host that answers not-found, then a fetch the gate
             // refuses, then a host whose page decodes.
@@ -1904,4 +1936,65 @@ fn chrome_with_a_generic_data_attribute_is_not_an_episode_row() {
         AniError::ParseFailed { detail } => assert!(detail.contains("row 2"), "{detail}"),
         other => panic!("expected a parse failure, got {other:?}"),
     }
+}
+
+// ── the kept failure carries the instant of its own attempt ────────
+
+/// A client over the transport that stamps each attempt, as the
+/// production one does.
+fn stamping_client() -> HianimeClient<crate::scraper::gated::GatedFetch<'static, Site>> {
+    HianimeClient::with_base(
+        crate::scraper::gated::GatedFetch::new(
+            Site::new(),
+            None,
+            crate::scraper::gate::ScrapePriority::Interactive,
+        ),
+        BASE,
+    )
+}
+
+/// The walk keeps the louder of two hosts' failures, and the gate is
+/// told when that failure was observed: an outcome stamped by the
+/// LATER attempt would be read as evidence gathered after a recovery
+/// a concurrent resolve recorded between the two, and reopen the
+/// breaker on a failure that predates it. The kept failure carries
+/// the instant of the attempt that produced it.
+#[tokio::test(start_paused = true)]
+async fn the_kept_failure_carries_the_instant_of_the_attempt_that_produced_it() {
+    let c = stamping_client();
+    let began = tokio::time::Instant::now();
+    let err = c
+        .master_playlist_url(21441, "sub")
+        .await
+        .expect_err("nobody served it");
+    assert!(
+        matches!(err, AniError::Upstream { status: 403 }),
+        "the block is kept over the later dropped connection: {err:?}"
+    );
+    assert_eq!(
+        c.last_attempt_at(),
+        Some(began),
+        "the block's own attempt, before the slow host answered, not the timeout's after it"
+    );
+}
+
+/// The control: when the later attempt produced the louder failure,
+/// the later instant is the right one.
+#[tokio::test(start_paused = true)]
+async fn a_louder_later_failure_carries_its_own_instant() {
+    let c = stamping_client();
+    let began = tokio::time::Instant::now();
+    let err = c
+        .master_playlist_url(21442, "sub")
+        .await
+        .expect_err("nobody served it");
+    assert!(
+        matches!(err, AniError::Upstream { status: 403 }),
+        "the block is kept over the earlier dropped connection: {err:?}"
+    );
+    assert_eq!(
+        c.last_attempt_at(),
+        Some(began + std::time::Duration::from_millis(10)),
+        "the block's own attempt, which began once the slow host had answered"
+    );
 }
