@@ -1710,3 +1710,53 @@ fn a_server_row_that_lost_its_marker_leaves_its_mode_uncertain() {
         "rows that keep their marker leave nothing in doubt"
     );
 }
+
+/// A server row is known by its signature — the server's name and
+/// the hash of its embed, which every captured row carries and no
+/// other tag on the page does — not by any one data attribute. A
+/// tab or control beside the rows with a generic `data-id` is
+/// chrome: it leaves nothing in doubt, so a mode with no row is
+/// absent, which the mode probe may persist. A tag carrying the
+/// signature without the marker is still a row the class left.
+#[test]
+fn chrome_with_a_generic_data_attribute_is_not_a_server_row() {
+    let chrome_beside_sub = r#"{"status":true,"html":"<div class=\"ps_-tabs\"><div class=\"ps_-tab\" data-id=\"tab-1\">Sub</div><div class=\"ps_-tab\" data-type=\"dub\">Dub</div></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#;
+    let listing = parse_server_listing(chrome_beside_sub).expect("the sub row is readable");
+    assert_eq!(listing.servers.len(), 1);
+    assert!(
+        !listing.unknown_modes,
+        "chrome with one generic attribute is not a row that lost its marker"
+    );
+    assert!(
+        !listing.mode_readable("dub").expect("dub is decided"),
+        "with no dub row and nothing in doubt, dub is absent"
+    );
+    let signed_without_marker = r#"{"status":true,"html":"<div class=\"item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(signed_without_marker).expect("the dub row is readable");
+    assert!(
+        listing.unknown_modes,
+        "a tag carrying the row's signature without the marker is a row the class left"
+    );
+}
+
+/// An episode row is an anchor carrying both its number and its id,
+/// as every captured row does; an anchor beside the rows with only
+/// a generic `data-id` — a control in the listing's chrome — is not
+/// a row that lost its marker, and the listing reads as its marked
+/// rows. An anchor with both and no marker is still refused.
+#[test]
+fn chrome_with_a_generic_data_attribute_is_not_an_episode_row() {
+    let chrome_beside_rows = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssc-btn\" data-id=\"search\" href=\"/search\">Search</a><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item ep-item\" data-number=\"2\" data-id=\"21419\"></a></div>"}"#;
+    assert_eq!(
+        parse_episode_list(chrome_beside_rows)
+            .expect("chrome beside the rows is not a lost row")
+            .len(),
+        2
+    );
+    let signed_without_marker = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item\" data-number=\"2\" data-id=\"21419\"></a></div>"}"#;
+    let err = parse_episode_list(signed_without_marker).expect_err("refused");
+    match err {
+        AniError::ParseFailed { detail } => assert!(detail.contains("row 2"), "{detail}"),
+        other => panic!("expected a parse failure, got {other:?}"),
+    }
+}
