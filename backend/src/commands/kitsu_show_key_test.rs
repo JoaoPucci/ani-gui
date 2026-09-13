@@ -295,6 +295,85 @@ async fn the_enrichment_resolve_answers_none_when_every_hit_disagrees_with_the_s
     );
 }
 
+/// Kitsu spells the same cour more than one way, and its slug for a
+/// second season is as often `2nd-season` as `season-2`; the words
+/// of a `season-2` slug agree with that hit, so it is the one
+/// answered and persisted, ahead of the parent ranked first.
+#[tokio::test]
+async fn the_enrichment_resolve_reads_the_cour_of_an_ordinal_kitsu_slug() {
+    let mock = MockServer::start().await;
+    serve_search(
+        &mock,
+        "one piece season 2",
+        search_body(&[("12", "one-piece"), ("13", "one-piece-2nd-season")]),
+    )
+    .await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let got = resolve_allmanga_show_id(&state, "hianime:one-piece-season-2-100", true)
+        .await
+        .expect("resolve ok");
+    assert_eq!(
+        got.expect("the agreeing entry resolves").id,
+        "13",
+        "the entry whose slug spells the same cour as an ordinal"
+    );
+    assert_eq!(
+        allmanga_kitsu_get(&state, "hianime:one-piece-season-2-100")
+            .expect("cache read")
+            .as_deref(),
+        Some("13")
+    );
+}
+
+/// The slug's own words can be the ordinal form too: a `2nd-season`
+/// slug carries cour 2 like `season-2` does, and the parent hit is
+/// passed over for it.
+#[tokio::test]
+async fn the_enrichment_resolve_reads_the_cour_of_an_ordinal_slug() {
+    let mock = MockServer::start().await;
+    serve_search(
+        &mock,
+        "one piece 2nd season",
+        search_body(&[("12", "one-piece"), ("13", "one-piece-season-2")]),
+    )
+    .await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let got = resolve_allmanga_show_id(&state, "hianime:one-piece-2nd-season-100", true)
+        .await
+        .expect("resolve ok");
+    assert_eq!(got.expect("the agreeing entry resolves").id, "13");
+}
+
+/// The mapping guard reads the provider's title the same way: a
+/// title ending in "2nd Season" names cour 2, and the parent's Kitsu
+/// entry under it is the cross-cour pairing the guard refuses.
+#[tokio::test]
+async fn the_cour_guard_reads_an_ordinal_provider_title() {
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(DETAIL_FIXTURE.to_vec()),
+        )
+        .mount(&mock)
+        .await;
+    let state = state_with_kitsu_at(&mock.uri());
+    try_put_allmanga_kitsu_mapping(
+        &state,
+        "hianime:one-piece-100",
+        "One Piece 2nd Season",
+        "12",
+    )
+    .await;
+    assert_eq!(
+        allmanga_kitsu_get(&state, "hianime:one-piece-100").expect("read"),
+        None,
+        "an ordinal second season under the parent's entry stays unmapped"
+    );
+}
+
 /// A slug without cour evidence has nothing to disagree with, so the
 /// first entry answers as it always has, whichever provider's the
 /// slug is.
