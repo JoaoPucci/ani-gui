@@ -455,11 +455,14 @@ proptest::proptest! {
     /// only names it: a listing in which any row lost the class while
     /// its neighbours kept it is refused whole, naming that row's
     /// position, since read as complete it would be one row short and
-    /// renumbered; a listing whose rows all keep the class round-trips.
+    /// renumbered — and a row that lost its id attribute in the same
+    /// change is still that row, known by its number, which no
+    /// control anchor in the chrome carries; a listing whose rows all
+    /// keep the class round-trips.
     #[test]
     fn a_listing_with_a_row_that_lost_its_marker_is_refused(
         rows in proptest::collection::vec(
-            (1u32..5000, 1u64..1_000_000_000, proptest::bool::weighted(0.8), proptest::option::of(0u8..3)),
+            (1u32..5000, 1u64..1_000_000_000, proptest::bool::weighted(0.8), proptest::bool::weighted(0.3), proptest::option::of(0u8..3)),
             1..8,
         )
     ) {
@@ -473,13 +476,17 @@ proptest::proptest! {
         let html: String = rows
             .iter()
             .enumerate()
-            .map(|(n, (number, id, marked, chrome_kind))| {
+            .map(|(n, (number, id, marked, id_renamed, chrome_kind))| {
                 let class = if *marked { "ssl-item ep-item" } else { "ssl-item" };
+                // Only a row that lost the class may lose its id
+                // attribute here: a marked row without one is the
+                // unreadable row of its own rule.
+                let id_attr = if !*marked && *id_renamed { "data-ep" } else { "data-id" };
                 let before = chrome_kind.map_or(String::new(), |kind| chrome(kind, n));
-                format!(r#"{before}<a class="{class}" data-number="{number}" data-id="{id}" href="/watch/x?ep={id}"><div class="ssli-order">{number}</div></a>"#)
+                format!(r#"{before}<a class="{class}" data-number="{number}" {id_attr}="{id}" href="/watch/x?ep={id}"><div class="ssli-order">{number}</div></a>"#)
             })
             .collect();
-        let lost = rows.iter().position(|(_, _, marked, _)| !*marked);
+        let lost = rows.iter().position(|(_, _, marked, _, _)| !*marked);
         match (lost, parse_episode_list(&envelope(&html))) {
             (Some(at), Err(AniError::ParseFailed { detail })) => {
                 prop_assert!(detail.contains(&format!("row {}", at + 1)), "{detail}");
@@ -489,7 +496,7 @@ proptest::proptest! {
                 let expected: Vec<EpisodeRef> = rows
                     .iter()
                     .enumerate()
-                    .map(|(i, (number, id, _, _))| episode_row(i, &number.to_string(), *id))
+                    .map(|(i, (number, id, _, _, _))| episode_row(i, &number.to_string(), *id))
                     .collect();
                 prop_assert_eq!(parsed, expected);
             }
@@ -798,16 +805,18 @@ proptest::proptest! {
 
     /// A server row that lost its marker is a row whose mode the
     /// client cannot tell, like a marked row without its mode
-    /// attribute: the marked rows come back as servers in order; the
-    /// listing carries unknown modes exactly when a row lost the
-    /// marker; a known mode with a marked readable row is present,
-    /// one with no marked row is uncertain while any row lost the
-    /// marker and absent otherwise; and a listing with no marked
-    /// readable row is refused.
+    /// attribute — and so is one that lost the marker and one of its
+    /// three attributes in the same change, since a row keeps two of
+    /// them and chrome carries at most one: the marked rows come back
+    /// as servers in order; the listing carries unknown modes exactly
+    /// when a row lost the marker; a known mode with a marked
+    /// readable row is present, one with no marked row is uncertain
+    /// while any row lost the marker and absent otherwise; and a
+    /// listing with no marked readable row is refused.
     #[test]
     fn a_server_row_that_lost_its_marker_leaves_the_listing_uncertain(
         rows in proptest::collection::vec(
-            ("(sub|dub)", "(HD-1|HD-2|HD-3)", "[a-z]{2,10}\\.(video|buzz|to)", "[a-z0-9/]{0,20}", proptest::bool::weighted(0.7), proptest::option::of(0u8..3)),
+            ("(sub|dub)", "(HD-1|HD-2|HD-3)", "[a-z]{2,10}\\.(video|buzz|to)", "[a-z0-9/]{0,20}", proptest::bool::weighted(0.7), proptest::option::of(0u8..3), proptest::option::of(0u8..3)),
             1..6,
         )
     ) {
@@ -821,23 +830,29 @@ proptest::proptest! {
         let html: String = rows
             .iter()
             .enumerate()
-            .map(|(n, (mode, name, host, path, marked, chrome_kind))| {
+            .map(|(n, (mode, name, host, path, marked, chrome_kind, renamed))| {
                 let hash = base64::engine::general_purpose::STANDARD.encode(format!("https://{host}/{path}").as_bytes());
                 let class = if *marked { "item server-item" } else { "item" };
+                // Only a row that lost the class loses an attribute
+                // here: a marked row's own rules cover its attributes.
+                let renamed = if *marked { None } else { *renamed };
+                let mode_attr = if renamed == Some(0) { "data-kind" } else { "data-type" };
+                let name_attr = if renamed == Some(1) { "data-server" } else { "data-server-name" };
+                let hash_attr = if renamed == Some(2) { "data-embed" } else { "data-hash" };
                 let before = chrome_kind.map_or(String::new(), |kind| chrome(kind, n));
-                format!(r#"{before}<div class="{class}" data-type="{mode}" data-server-name="{name}" data-hash="{hash}"><a class="btn">{name}</a></div>"#)
+                format!(r#"{before}<div class="{class}" {mode_attr}="{mode}" {name_attr}="{name}" {hash_attr}="{hash}"><a class="btn">{name}</a></div>"#)
             })
             .collect();
         let expected: Vec<ServerEmbed> = rows
             .iter()
-            .filter(|(_, _, _, _, marked, _)| *marked)
-            .map(|(mode, name, host, path, _, _)| ServerEmbed {
+            .filter(|(_, _, _, _, marked, _, _)| *marked)
+            .map(|(mode, name, host, path, _, _, _)| ServerEmbed {
                 mode: mode.clone(),
                 name: name.clone(),
                 embed_url: format!("https://{host}/{path}"),
             })
             .collect();
-        let lost = rows.iter().any(|(_, _, _, _, marked, _)| !*marked);
+        let lost = rows.iter().any(|(_, _, _, _, marked, _, _)| !*marked);
         match parse_server_listing(&envelope(&html)) {
             Err(AniError::ParseFailed { .. }) => prop_assert!(expected.is_empty(), "refused with marked rows present"),
             Err(e) => prop_assert!(false, "unexpected error {e:?}"),
@@ -1207,17 +1222,20 @@ proptest! {
 
 proptest::proptest! {
     /// The rows of a listing by their own signature: over tags that
-    /// carry both row attributes, one, or none, marked with the row
-    /// class or not, and of any element, the row-shaped tags come
-    /// back exactly — whole, in page order, whatever class they carry
-    /// — and a tag carrying only one of the attributes, or none,
-    /// never does, however it is classed: chrome beside the rows
-    /// carries a generic id or number of its own, never the whole
-    /// signature.
+    /// carry three, two, one or none of the row's attributes, marked
+    /// with the row class or not, and of any element, the row-shaped
+    /// tags at a threshold come back exactly — whole, in page order,
+    /// whatever class they carry — as the tags carrying at least that
+    /// many of the attributes, and a tag carrying fewer never does,
+    /// however it is classed: a row keeps at least two of its three
+    /// attributes through a change of shape that renames one, and the
+    /// chrome beside the rows carries a generic id or number of its
+    /// own, never two of the row's.
     #[test]
-    fn row_shaped_tags_are_exactly_the_tags_carrying_the_whole_signature(
+    fn row_shaped_tags_are_exactly_the_tags_carrying_enough_of_the_signature(
         tags in proptest::collection::vec(
             (
+                proptest::bool::ANY,
                 proptest::bool::ANY,
                 proptest::bool::ANY,
                 proptest::bool::ANY,
@@ -1226,31 +1244,39 @@ proptest::proptest! {
                 "[a-z ]{0,8}",
             ),
             0..8,
-        )
+        ),
+        at_least in 1usize..=3,
     ) {
         let written: Vec<String> = tags
             .iter()
-            .map(|(number, id, marked, element, value, text)| {
-                let class = if *marked { r#" class="ssl-item ep-item""# } else { r#" class="ssl-item""# };
-                let number = if *number { format!(r#" data-number="{value}""#) } else { String::new() };
-                let id = if *id { format!(r#" data-id="{value}""#) } else { String::new() };
-                format!("<{element}{class}{number}{id}>{text}</{element}>")
+            .map(|(mode, name, hash, marked, element, value, text)| {
+                let class = if *marked { r#" class="item server-item""# } else { r#" class="item""# };
+                let mode = if *mode { format!(r#" data-type="{value}""#) } else { String::new() };
+                let name = if *name { format!(r#" data-server-name="{value}""#) } else { String::new() };
+                let hash = if *hash { format!(r#" data-hash="{value}""#) } else { String::new() };
+                format!("<{element}{class}{mode}{name}{hash}>{text}</{element}>")
             })
             .collect();
         let html = written.concat();
         let expected: Vec<String> = tags
             .iter()
             .zip(&written)
-            .filter(|((number, id, _, _, _, _), _)| *number && *id)
+            .filter(|((mode, name, hash, _, _, _, _), _)| {
+                [*mode, *name, *hash].iter().filter(|present| **present).count() >= at_least
+            })
             .map(|(_, tag)| {
                 let (open, _) = tag.split_once('>').expect("an open tag");
                 format!("{open}>")
             })
             .collect();
-        let found: Vec<String> = super::ajax::row_shaped_tags(&html, &[r#"data-number=""#, r#"data-id=""#])
-            .into_iter()
-            .map(str::to_string)
-            .collect();
+        let found: Vec<String> = super::ajax::row_shaped_tags(
+            &html,
+            &[r#"data-type=""#, r#"data-server-name=""#, r#"data-hash=""#],
+            at_least,
+        )
+        .into_iter()
+        .map(str::to_string)
+        .collect();
         prop_assert_eq!(found, expected, "{}", html);
     }
 }
