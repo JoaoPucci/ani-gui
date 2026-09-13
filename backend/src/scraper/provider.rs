@@ -86,6 +86,19 @@ pub struct EpisodeRef {
     pub number2: Option<String>,
 }
 
+/// The most a subtitle track's URL may run to, in bytes. A track URL
+/// a CDN signs runs to a few hundred bytes — a path, a token, an
+/// expiry — and a kibibyte leaves room for a long path and a long
+/// signature both. The bound is the hand-offs': every track URL rides
+/// on the player's command line, whose budget the packaged platforms
+/// set differently and Windows sets smallest, at about thirty-two
+/// kibibytes; sixteen tracks at this bound take half of it, leaving
+/// the stream URL, the referer and the player's own flags the rest.
+/// A provider drops a row past it where it drops a row it cannot
+/// fetch, so a malformed page cannot fail a hand-off through an
+/// optional track.
+pub const SUBTITLE_URL_CAP: usize = 1024;
+
 /// A sidecar subtitle track a provider lists beside the stream —
 /// a `.vtt` outside the playlist, which nothing in the manifest
 /// would ever tell the player about.

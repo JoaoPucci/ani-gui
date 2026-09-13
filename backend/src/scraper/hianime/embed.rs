@@ -6,7 +6,7 @@ use base64::Engine as _;
 use serde::Deserialize;
 
 use crate::error::{AniError, Result};
-use crate::scraper::provider::SubtitleTrack;
+use crate::scraper::provider::{SubtitleTrack, SUBTITLE_URL_CAP};
 
 /// The XOR key the embed pages use. Versioned in the value itself.
 const EMBED_KEY: &[u8] = b"otaku-embed-v1";
@@ -107,7 +107,10 @@ pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
     // relative source against, and a source under another scheme is
     // nothing the transport fetches, so such a row would only ride
     // into the proxy, the hand-offs and the cache row as a track that
-    // never loads.
+    // never loads. A source longer than any a CDN signs is dropped
+    // the same way ([`SUBTITLE_URL_CAP`]): the hand-offs put every
+    // track URL on the player's command line, and one such row
+    // would fail the hand-off for an episode whose stream is fine.
     Ok(EmbedPayload {
         src: wire.src,
         subtitles: wire
@@ -117,8 +120,13 @@ pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
                 let fetchable = is_fetchable(&t.src);
                 if !fetchable {
                     tracing::debug!(lang = %t.lang, src = %t.src, "hianime embed: subtitle source not fetchable, row dropped");
+                    return false;
                 }
-                fetchable
+                let bounded = t.src.len() <= SUBTITLE_URL_CAP;
+                if !bounded {
+                    tracing::debug!(lang = %t.lang, len = t.src.len(), "hianime embed: subtitle source longer than any a CDN signs, row dropped");
+                }
+                bounded
             })
             .map(|t| SubtitleTrack {
                 lang: t.lang,
