@@ -77,8 +77,9 @@ requires it; the exception is the update check that runs on launch
   the strip to new episodes, or changing the audio mode or quality
   setting, resolves what is newly in view — each of which restamps
   the record with a day's life, so opening a show's page is enough
-  to renew it; a probe alone leaves a finished show's record for
-  thirty days — and asks that
+  to renew it; a probe alone — the detail page's or a list's, with
+  nothing resolved after it — leaves an ongoing show's record for a
+  day and a finished show's for thirty — and asks that
   one first for later plays, downloads and
   hand-offs of it, so those requests reach hianime after anidb.app
   recovers; once the record expires the next resolve starts from
