@@ -1806,6 +1806,29 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A lone server on a host the client never named, whose
+            // page carries the payload shape and whose master answers,
+            // slowly.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21453") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"Moved\" data-hash=\"aHR0cHM6Ly9uZXdlbWJlZC5leGFtcGxlL2UvbW92ZWQvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The same unnamed host, then a host the client never read:
+            // no host the client names is listed.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21454") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"Moved\" data-hash=\"aHR0cHM6Ly9uZXdlbWJlZC5leGFtcGxlL2UvbW92ZWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"VidTube\" data-hash=\"aHR0cHM6Ly92aWR0dWJlLnNpdGUvZW1iZWQvODI3Mi9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // Both servers' masters hold the connection: the first
             // for as long as it is waited for, the second until the
             // transport's own deadline reports it.
@@ -1859,6 +1882,20 @@ impl Fetch for Site {
                 }
             }
             "https://hls.example/v/slow/720/index.m3u8" => ok("#EXTM3U\n"),
+            // The payload shape on a host the client never named: the
+            // page reads, and its master answers after the same wait.
+            "https://newembed.example/e/moved/sub" => ok(
+                r#"<html><body><script>window.__P="FFYSGRYPX08KERBdBQtAWwkHBgMAFQMIFEETHhlbDAQDSAFCDwQXWRNDQRlSHk0PSU8REAZZH0UDERJJT3Y4EA=="</script></body></html>"#,
+            ),
+            "https://hls.example/v/moved/master.m3u8" => {
+                tokio::time::sleep(SLOW_HOST).await;
+                if header(req, "Referer") == Some("https://newembed.example/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://hls.example/v/moved/720/index.m3u8" => ok("#EXTM3U\n"),
             "https://megaplay.buzz/stream/s-2/734297/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "10"))
             }
@@ -3099,6 +3136,43 @@ async fn an_earlier_readable_server_is_still_cut_off_when_unread_hosts_trail_the
     assert!(
         started.elapsed() < std::time::Duration::from_secs(5),
         "the stalling server was cut off at its bound: {:?}",
+        started.elapsed()
+    );
+}
+
+/// A page's shape says whether the client reads it, whatever its
+/// host, so a listing with no host the client names may still hold
+/// a readable server, and which one cannot be known before its page
+/// is fetched. The remainder then belongs to the listing's last
+/// server: a lone server on an unnamed host whose page carries the
+/// payload shape is served, slow chain and all.
+#[tokio::test]
+async fn a_lone_server_on_an_unnamed_host_runs_on_the_remainder() {
+    let c = client_with_server_budget(100);
+    let stream = c.stream_for(21453, "sub", "720").await.expect("served");
+    assert_eq!(stream.url, "https://hls.example/v/moved/720/index.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://newembed.example/"));
+}
+
+/// The limit that rule accepts: with no host the client names, the
+/// remainder goes to the last listed server, and an earlier server
+/// on an unnamed host is held to the bound even when its page would
+/// have read — the walk cannot tell before the fetch, and a trailing
+/// host must not take the remainder from a named one when there is
+/// one. Here the last is a host the client never read, so the walk
+/// ends on the earlier server's cut-off.
+#[tokio::test]
+async fn an_unnamed_host_ahead_of_the_last_listed_server_keeps_the_bound() {
+    let c = client_with_server_budget(100);
+    let started = std::time::Instant::now();
+    let err = c
+        .stream_for(21454, "sub", "720")
+        .await
+        .expect_err("the readable page's chain was cut off, the last page read nothing");
+    assert!(matches!(err, AniError::Timeout), "{err:?}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the earlier server was cut off at its bound: {:?}",
         started.elapsed()
     );
 }
