@@ -2,7 +2,7 @@
 //! arguments the same way a fresh resolve does, and a cached row is
 //! live only when its tracks read as tracks.
 
-use super::{cached_launch_args, try_serve_cached, webvtt_prefix};
+use super::{cached_launch_args, try_serve_cached};
 use crate::commands::play::tests::{cached_blank, state_with_proxy_origin, track};
 use crate::commands::play_resolution_cache::CachedResolution;
 use crate::proxy::MediaKind;
@@ -125,7 +125,7 @@ async fn a_cached_track_whose_get_is_a_track_keeps_the_row_live() {
 }
 
 mod webvtt_prefix_props {
-    use super::webvtt_prefix;
+    use crate::commands::play_cache_tracks::webvtt_prefix;
     use crate::proxy::is_webvtt;
     use proptest::prelude::*;
 

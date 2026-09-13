@@ -31,6 +31,7 @@ pub mod kitsu_warm;
 pub mod play;
 pub mod play_args;
 pub mod play_cache;
+pub(crate) mod play_cache_tracks;
 pub mod play_external_command;
 pub mod play_handoff;
 #[cfg(test)]
