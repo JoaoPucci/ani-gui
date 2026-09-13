@@ -216,3 +216,35 @@ fn title_cour_passes_through_trailing_text_without_episode_count() {
     assert_eq!(cour_from_title("Foo Part 2 abc episodes)"), None); // no "("
     assert_eq!(cour_from_title("Foo Part 2 (many episodes)"), None); // non-digits inside parens
 }
+
+mod hit_cour_props {
+    use super::super::{cour_from_slug, cour_from_title, hit_cour_disagrees};
+    use proptest::prelude::*;
+
+    proptest! {
+        /// A hit disagrees with a term exactly when both carry cour
+        /// evidence and it differs: a term without a trailing cour,
+        /// or a hit without a slug, disagrees with nothing, and a
+        /// slug without a suffix is the parent cour.
+        #[test]
+        fn a_hit_disagrees_exactly_when_both_sides_speak_and_differ(
+            words in "[a-z]{2,6}( [a-z]{2,6}){0,2}",
+            term_cour in prop::option::of(1u32..5),
+            slug in prop::option::of(("[a-z]{2,6}(-[a-z]{2,6}){0,2}", prop::option::of(1u32..5))),
+        ) {
+            let term = match term_cour {
+                Some(n) => format!("{words} part {n}"),
+                None => words.clone(),
+            };
+            let kitsu_slug: Option<String> = slug.as_ref().map(|(base, cour)| match cour {
+                Some(n) => format!("{base}-part-{n}"),
+                None => base.clone(),
+            });
+            let expected = match (cour_from_title(&term), kitsu_slug.as_deref()) {
+                (Some(p), Some(s)) => p != cour_from_slug(s).unwrap_or(1),
+                _ => false,
+            };
+            prop_assert_eq!(hit_cour_disagrees(&term, kitsu_slug.as_deref()), expected);
+        }
+    }
+}
