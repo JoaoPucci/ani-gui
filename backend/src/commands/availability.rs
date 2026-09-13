@@ -2206,6 +2206,159 @@ mod tests {
         );
     }
 
+    /// An anidb.app that finds the show and lists two episodes whose
+    /// language rows the provider no longer serves — every row
+    /// answers 404 — so the mode search touches only missing rows.
+    async fn stub_anidb_with_stale_rows(id: u32) -> wiremock::MockServer {
+        use wiremock::matchers::{method, path};
+        let anidb = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/browse"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(format!(
+                    r#"<a href="/anime/fallback-show-{id}"><img alt="Fallback Show"/></a>"#
+                )),
+            )
+            .mount(&anidb)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/api/frontend/anime/{id}/episodes")))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200).set_body_string(format!(
+                    r#"{{"episodes":[{{"id":{id}1,"number":1}},{{"id":{id}2,"number":2}}]}}"#
+                )),
+            )
+            .mount(&anidb)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(404))
+            .mount(&anidb)
+            .await;
+        anidb
+    }
+
+    #[tokio::test]
+    async fn an_inconclusive_primary_moves_the_probe_on_to_a_fallback_that_carries_the_mode() {
+        // The primary finds the show, but every episode row the mode
+        // search touches answers nothing: stale ids the provider no
+        // longer serves. That is not a verdict about the mode, so it
+        // ends nothing — the walk moves on and the fallback, which
+        // carries the show with the mode, answers. Stopping at the
+        // primary would fail the check for a title the fallback
+        // plays, every time the primary's rows go stale.
+        let anidb = stub_anidb_with_stale_rows(75).await;
+        let hianime = stub_hianime_sub_only().await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "sub",
+            "kitsu_id": "585",
+            "episode_count": 2
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+            .await
+            .expect("the fallback answered");
+        assert!(got.available, "the fallback carries the show: {got:?}");
+        assert_eq!(
+            got.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the answer is the fallback's"
+        );
+        assert!(
+            anidb
+                .received_requests()
+                .await
+                .expect("recorded")
+                .iter()
+                .any(|r| r.url.path().ends_with("/languages")),
+            "the primary's rows were asked and answered nothing"
+        );
+        let row = meta_cache_get(&state.cache_pool, &cache_key("585", "sub"))
+            .expect("cache read")
+            .expect("persisted");
+        let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
+        assert!(row.available);
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime)
+        );
+    }
+
+    #[tokio::test]
+    async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
+        // Both providers find the show and neither's sampled rows
+        // answer for the mode: nobody answered, the verdict is
+        // unknown, and no row is written — a stale row costs a
+        // re-probe, not a wrong cache row for its whole life.
+        use wiremock::matchers::{method, path};
+        let anidb = stub_anidb_with_stale_rows(76).await;
+        let hianime = wiremock::MockServer::start().await;
+        let base = hianime.uri();
+        wiremock::Mock::given(method("GET"))
+            .and(path("/search"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(format!(
+                r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/fallback-show-7" title="Fallback Show" class="dynamic-name">Fallback Show</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
+            )))
+            .mount(&hianime)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .and(path("/api/theme/episode/list/7"))
+            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+                serde_json::json!({
+                    "status": true,
+                    "html": r#"<a class="ep-item" data-number="1" data-id="7001"></a><a class="ep-item" data-number="2" data-id="7002"></a>"#,
+                })
+                .to_string(),
+            ))
+            .mount(&hianime)
+            .await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(404))
+            .mount(&hianime)
+            .await;
+        let td = tempfile::tempdir().expect("td");
+        let mut state = cache_only_state(&td);
+        state.provider_order = vec![
+            crate::scraper::provider::ProviderId::Anidb,
+            crate::scraper::provider::ProviderId::Hianime,
+        ];
+        state.hianime_base = Some(hianime.uri());
+        let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+            "title": "Fallback Show",
+            "mode": "sub",
+            "kitsu_id": "586",
+            "episode_count": 2
+        }))
+        .expect("args");
+        let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
+        assert!(
+            matches!(got, Err(crate::error::AniError::NoResults)),
+            "nobody answered for the mode: {got:?}"
+        );
+        assert!(
+            hianime
+                .received_requests()
+                .await
+                .expect("recorded")
+                .iter()
+                .any(|r| r.url.path().ends_with("/servers")),
+            "the fallback was asked too"
+        );
+        assert!(
+            meta_cache_get(&state.cache_pool, &cache_key("586", "sub"))
+                .expect("cache read")
+                .is_none(),
+            "an unknown verdict persists nothing"
+        );
+    }
+
     #[tokio::test]
     async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
         // The batch read already refuses to serve the fallback's

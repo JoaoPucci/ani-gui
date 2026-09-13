@@ -75,11 +75,18 @@ impl Scripted {
 /// without the mode" — starts with this.
 const ABSENT: &str = "absent from ";
 
+/// A scripted answer that is inconclusive — the probe's "found, and
+/// no row answered for the mode" — starts with this.
+const NOTHING: &str = "nothing from ";
+
 #[async_trait::async_trait]
 impl Attempt for Scripted {
     type Output = &'static str;
     fn is_negative(output: &&'static str) -> bool {
         output.starts_with(ABSENT)
+    }
+    fn is_inconclusive(output: &&'static str) -> bool {
+        output.starts_with(NOTHING)
     }
     async fn run(&mut self, provider: &dyn Provider) -> Result<&'static str, NativeError> {
         self.asked.lock().expect("asked").push(provider.id());
@@ -1781,6 +1788,132 @@ async fn a_fallbacks_absence_past_a_retried_remembered_providers_clean_miss_is_i
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
+// ── an inconclusive answer moves the walk on ────────────────────────
+
+/// A provider that found the show but whose sampled rows all
+/// answered nothing said nothing about the mode either way: the
+/// walk moves on to the next provider, as from one unreachable,
+/// instead of returning an answer the caller can only surface as
+/// unknown while another provider carries the show.
+#[tokio::test]
+async fn an_inconclusive_answer_moves_the_walk_on_to_the_next_provider() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
+        (ProviderId::Hianime, Behavior::Answer("hianime")),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the next provider answered");
+    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.value, "hianime");
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
+/// When every provider is inconclusive, nobody answered: the walk
+/// surfaces the unknown verdict as a miss that is not clean, so the
+/// caller persists nothing.
+#[tokio::test]
+async fn inconclusive_answers_from_everyone_surface_as_an_unpersistable_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
+        (
+            ProviderId::Hianime,
+            Behavior::Answer("nothing from hianime"),
+        ),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await;
+    let ne = got.expect_err("nobody answered");
+    assert!(
+        matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
+        "the verdict is unknown, not absence: {ne:?}"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
+/// A remembered provider that is inconclusive found the show and
+/// denied nothing, so an absence from the rest says it came past an
+/// undenied affinity, exactly as past an unreachable one.
+#[tokio::test]
+async fn an_absence_past_a_remembered_providers_inconclusive_answer_says_so() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Answer("nothing from hianime"),
+        ),
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the rest's absence is an answer");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert!(
+        got.past_undenied_affinity,
+        "the remembered provider found the show and said nothing about the mode"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// A skipped provider whose trial is inconclusive leaves the verdict
+/// standing, as a trial that fails over does.
+#[tokio::test]
+async fn a_retried_skipped_providers_inconclusive_answer_leaves_the_verdict_standing() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await;
+    let ne = got.expect_err("the fallback's clean miss stands");
+    assert!(
+        ne.clean_miss,
+        "the trial said nothing that outranks it: {ne:?}"
+    );
+    assert_eq!(attempt.answered_by, Some(ProviderId::Hianime));
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
     );
 }
 
