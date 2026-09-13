@@ -504,7 +504,23 @@ pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
 /// moves the slots between hosts; a name is not a shape, and the
 /// page is read by its shape whatever the host — this list only
 /// orders the servers the client expects to read ahead of the rest.
+/// Megaplay's numbered mirrors are read too ([`readable_host`]).
 const READABLE_HOSTS: &[&str] = &["zokoanime.video", "megaplay.buzz"];
+
+/// Whether `host` is one whose page the client reads: a host in
+/// [`READABLE_HOSTS`], or one of the numbered mirrors the site
+/// serves megaplay's player from — `megaplay-` then digits then
+/// `.buzz`, nothing more on either side — whose pages the client
+/// reads by the same shape and whose sources endpoint sits on the
+/// mirror's own origin.
+#[must_use]
+pub fn readable_host(host: &str) -> bool {
+    READABLE_HOSTS.contains(&host)
+        || host
+            .strip_prefix("megaplay-")
+            .and_then(|rest| rest.strip_suffix(".buzz"))
+            .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
+}
 
 /// Whether `embed_url` is on a host whose page the client can read.
 #[must_use]
@@ -512,7 +528,7 @@ pub fn readable(embed_url: &str) -> bool {
     url::Url::parse(embed_url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))
-        .is_some_and(|h| READABLE_HOSTS.contains(&h.as_str()))
+        .is_some_and(|h| readable_host(&h))
 }
 
 /// The servers to try for `mode`, in order: every server of that
