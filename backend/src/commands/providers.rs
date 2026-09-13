@@ -521,7 +521,8 @@ where
 /// first, and surfaces unpersistable when the remembered provider
 /// has not denied the show; a negative answer surfaces as its
 /// provider gave it, saying whether it came past an undenied
-/// affinity.
+/// affinity as the walk finally stands — a trial after it may have
+/// been the remembered provider's own denial.
 ///
 /// # Errors
 /// The miss that stands.
@@ -570,7 +571,16 @@ where
         }
     }
     match verdict {
-        Negative::Answer(answer) => Ok(answer),
+        Negative::Answer(mut answer) => {
+            // The answer says what the walk finally knows, not what
+            // it knew when the answer was given: a remembered
+            // provider's trial after it may have denied the show —
+            // a clean miss — and then the absence is its provider's
+            // own, or found it and denied nothing, and then the
+            // absence still came past an undenied affinity.
+            answer.past_undenied_affinity = walk.remembered_undenied;
+            Ok(answer)
+        }
         Negative::Miss(error, by) => {
             if let Some(by) = by {
                 attempt.missed_by(by);
