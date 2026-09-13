@@ -509,6 +509,10 @@ where
         }
     };
     let started = tokio::time::Instant::now();
+    // The client's own walk of a provider's servers shares what the
+    // attempt has left among them, so it is told where the attempt
+    // ends before the attempt runs.
+    client.bound_attempt(Some(started + budget));
     let result = match tokio::time::timeout(budget, attempt.run(&*client)).await {
         Ok(result) => result,
         Err(_elapsed) => Err(NativeError {

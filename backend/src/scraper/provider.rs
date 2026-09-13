@@ -372,6 +372,16 @@ pub trait Provider: Send + Sync {
     /// attempt, when its transport tracks one. The walk stamps
     /// aggregate failure verdicts with it.
     fn last_attempt_at(&self) -> Option<tokio::time::Instant>;
+
+    /// The deadline the walk's attempt against this provider runs
+    /// under, told before the attempt runs, or `None` when the
+    /// client runs outside such an attempt. A provider that walks
+    /// several servers per episode shares what remains among them;
+    /// one that has nothing to share it among ignores it, which is
+    /// the default.
+    fn bound_attempt(&self, deadline: Option<tokio::time::Instant>) {
+        let _ = deadline;
+    }
 }
 
 #[cfg(test)]
