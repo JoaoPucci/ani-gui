@@ -1392,6 +1392,7 @@ proptest::proptest! {
                 proptest::sample::select(vec![
                     "https://zokoanime.video/stream/mal/1/1/sub",
                     "https://megaplay.buzz/stream/s-2/1/sub",
+                    "https://megaplay-1.buzz/stream/s-2/1/sub",
                     "https://vidtube.site/stream/abc/sub",
                 ]),
             )
@@ -1413,6 +1414,7 @@ proptest::proptest! {
         let readable = |s: &ServerEmbed| {
             s.embed_url.starts_with("https://zokoanime.video/")
                 || s.embed_url.starts_with("https://megaplay.buzz/")
+                || s.embed_url.starts_with("https://megaplay-1.buzz/")
         };
         let first_unreadable = picked.iter().position(|s| !readable(s));
         let last_readable = picked.iter().rposition(|s| readable(s));
@@ -1527,6 +1529,7 @@ proptest! {
             prop_oneof![
                 Just("zokoanime.video".to_string()),
                 Just("megaplay.buzz".to_string()),
+                "megaplay-[0-9]{1,3}\\.buzz",
                 "[a-z]{3,10}\\.(buzz|site|video|net)",
             ],
             0..6,
@@ -1546,5 +1549,42 @@ proptest! {
             .iter()
             .rposition(|s| ajax::readable(&s.embed_url));
         prop_assert_eq!(ajax::last_readable_index(&refs), expected);
+    }
+}
+
+// ── the hosts the client reads ───────────────────────────────────────
+
+proptest! {
+    /// The client reads zokoanime's host, megaplay's, and the numbered
+    /// mirrors the site serves megaplay's player from — `megaplay-`
+    /// then digits then `.buzz`, nothing more on either side — and no
+    /// other host: not one that only starts with a read host's name,
+    /// not a mirror with no number, not a read host under another
+    /// domain.
+    #[test]
+    fn the_hosts_the_client_reads_are_the_named_ones_and_megaplays_numbered_mirrors(
+        number in "[0-9]{1,6}",
+        other in "[a-z]{3,10}\\.(buzz|site|video|net)",
+    ) {
+        let mirror = format!("megaplay-{number}.buzz");
+        let mirror_url = format!("https://{mirror}/stream/s-2/1/sub");
+        let wrong_suffix = format!("megaplay-{number}.buzzy");
+        let wrong_prefix = format!("notmegaplay-{number}.buzz");
+        let not_a_number = format!("megaplay-{number}x.buzz");
+        let under_another = format!("megaplay-{number}.buzz.evil.example");
+        prop_assert!(ajax::readable_host("zokoanime.video"));
+        prop_assert!(ajax::readable_host("megaplay.buzz"));
+        prop_assert!(ajax::readable_host(&mirror), "{mirror}");
+        prop_assert!(ajax::readable(&mirror_url), "{mirror_url}");
+        prop_assert!(!ajax::readable_host("megaplay-.buzz"));
+        prop_assert!(!ajax::readable_host(&wrong_suffix), "{wrong_suffix}");
+        prop_assert!(!ajax::readable_host(&wrong_prefix), "{wrong_prefix}");
+        prop_assert!(!ajax::readable_host(&not_a_number), "{not_a_number}");
+        prop_assert!(!ajax::readable_host("megaplay.buzz.evil.example"));
+        prop_assert!(!ajax::readable_host(&under_another), "{under_another}");
+        prop_assert_eq!(
+            ajax::readable_host(&other),
+            other == "zokoanime.video" || other == "megaplay.buzz"
+        );
     }
 }
