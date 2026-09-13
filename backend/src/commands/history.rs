@@ -41,7 +41,11 @@ pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
 /// `kitsu_id`. Walks the on-disk TSV, resolving each entry's `id` —
 /// a provider slug on rows written since the migration — through the
 /// `(show id → kitsu_id)` reverse cache a successful play stamps.
-/// Returns the first match or `None` when:
+/// Of two rows that map to the entry, the one the user watched last
+/// is returned — the latest watched-at stamp, a stamped row over an
+/// unstamped one, then the further progress, then file order — the
+/// rule the Continue Watching strip applies to the same rows, so
+/// the two surfaces name one episode. Returns `None` when:
 ///   - The history file is missing or empty.
 ///   - No entry's show id has a cached mapping.
 ///   - None of the cached mappings equal `kitsu_id`.
@@ -68,9 +72,11 @@ pub fn history_by_kitsu(
     let entries = read_all(&state.history_path)?;
     // Two providers can leave two rows for one show, one under each
     // provider's id. The one the user watched last is the one to
-    // resume from: the latest watched-at stamp wins, a stamped row
-    // beats an unstamped one, and file order stands when nothing
-    // separates them.
+    // resume from, by the rule the Continue Watching strip applies to
+    // the same rows ([`super::history_resume::resumes_over`]): the
+    // latest watched-at stamp wins, a stamped row beats an unstamped
+    // one, the further progress decides when the stamps do not, and
+    // file order stands only when the rows are equal on every count.
     // A read the cache cannot serve is the caller's error, never a
     // row without a mapping or a stamp: taken as one, the row watched
     // last would lose to its sibling's older stamp, or be skipped for
@@ -86,7 +92,10 @@ pub fn history_by_kitsu(
         let stamp = crate::commands::kitsu::watched_at_get(state, &entry.id)?;
         let newer = match &best {
             None => true,
-            Some((_, current)) => stamp > *current,
+            Some((current, current_stamp)) => super::history_resume::resumes_over(
+                (stamp, &entry.ep_no),
+                (*current_stamp, &current.ep_no),
+            ),
         };
         if newer {
             best = Some((entry, stamp));
