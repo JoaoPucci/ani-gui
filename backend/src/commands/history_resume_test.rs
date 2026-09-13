@@ -13,6 +13,27 @@ fn a_fraction_is_more_progress_than_its_floor_and_a_malformed_row_is_below_any()
     assert!(!resumes_over((None, "5"), (None, "5")));
 }
 
+mod moment_props {
+    use super::latest_of;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The row's moment is the later of what the file and the
+        /// cache hold: either alone when the other has none, none
+        /// when neither has one, never earlier than either.
+        #[test]
+        fn the_rows_moment_is_the_later_of_the_two_stores(
+            file in proptest::option::of(0i64..1_000_000),
+            cache in proptest::option::of(0i64..1_000_000),
+        ) {
+            let got = latest_of(file, cache);
+            prop_assert_eq!(got, std::cmp::max(file, cache));
+            prop_assert_eq!(got.is_none(), file.is_none() && cache.is_none());
+            prop_assert_eq!(latest_of(cache, file), got);
+        }
+    }
+}
+
 mod resume_props {
     use super::{progress_of, resumes_over};
     use proptest::prelude::*;

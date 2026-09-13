@@ -1466,10 +1466,17 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
-        // Format: ep_no\tid\ttitle\n — same TSV the bash CLI produces.
+        // Format: ep_no\tid\ttitle\twatched_at_ms\n — the CLI's three
+        // columns, then the moment of the watch that wrote the row.
+        let line = body.strip_suffix('\n').expect("one line, newline-terminated");
+        let (columns, moment) = line.rsplit_once('\t').expect("the watch's moment");
         assert_eq!(
-            body, "150\tvDTSJHSpYnrkZnAvG\tNato: Shippuuden (500 episodes)\n",
+            columns, "150\tvDTSJHSpYnrkZnAvG\tNato: Shippuuden (500 episodes)",
             "history line should match cache metadata"
+        );
+        assert!(
+            moment.parse::<i64>().is_ok_and(|ms| ms > 1_700_000_000_000),
+            "the row carries the watch's moment: {moment}"
         );
     }
 

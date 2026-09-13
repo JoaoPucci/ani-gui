@@ -238,6 +238,117 @@ fn a_failed_stamp_read_is_the_callers_error_not_an_unstamped_row() {
     );
 }
 
+/// The cache refuses every write from here on — read-only, or held
+/// by another instance — while reads still answer and the history
+/// file stays writable, which is the shape of the failure a resume
+/// must survive.
+fn refuse_cache_writes(s: &AppState) {
+    let conn = s.cache_pool.get().unwrap();
+    conn.execute_batch("PRAGMA query_only = 1").unwrap();
+    drop(conn);
+    assert!(
+        crate::commands::kitsu::watched_at_put(s, "probe", 1).is_err(),
+        "the cache must refuse the write for the case to be the finding's"
+    );
+}
+
+/// The watch's moment is written beside its row, in the same write,
+/// so a cache that refuses the stamp cannot leave the row watched
+/// last ranked below its sibling's older stamp: the resume takes the
+/// row's own moment when the cache has none, and the strip's stamp
+/// map carries it too.
+#[tokio::test]
+async fn a_watch_the_cache_could_not_stamp_still_resumes_over_an_older_stamped_sibling() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    two_rows_for_one_show(&s, &path);
+    crate::commands::kitsu::watched_at_put(&s, "the-show-77", 1_000).unwrap();
+    refuse_cache_writes(&s);
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let watch = crate::commands::play_native_record::Watch {
+        show_id: "hianime:the-show-9".into(),
+        title: "The Show".into(),
+        ep_no: "2".into(),
+    };
+    crate::commands::play_native_record::record_watch(&s, &watch, None).await;
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&s, "hianime:the-show-9").unwrap(),
+        None,
+        "the cache refused the stamp"
+    );
+    let rows = crate::history::read_all(&path).unwrap();
+    let row = rows
+        .iter()
+        .find(|e| e.id == "hianime:the-show-9")
+        .expect("the row");
+    assert_eq!(row.ep_no, "2", "the watch reached the file");
+    assert!(
+        row.watched_at.is_some_and(|ms| ms >= before),
+        "the row carries the watch's moment: {:?}",
+        row.watched_at
+    );
+    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    assert_eq!(hit.id, "hianime:the-show-9", "the row watched last resumes");
+    assert_eq!(hit.ep_no, "2");
+    let stamps = watched_at_all(&s).unwrap();
+    assert_eq!(stamps.get("the-show-77"), Some(&1_000));
+    assert_eq!(
+        stamps.get("hianime:the-show-9"),
+        row.watched_at.as_ref(),
+        "the strip's stamps carry the file's moment"
+    );
+}
+
+/// Where both stores hold a stamp, the later one is the watch: the
+/// row's is written with the row, the cache's on mark-watched later.
+#[test]
+fn the_later_of_the_files_stamp_and_the_caches_is_the_rows_moment() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "3".into(),
+                id: "the-show-77".into(),
+                title: "The Show".into(),
+                watched_at: Some(5_000),
+            },
+            HistoryEntry {
+                ep_no: "7".into(),
+                id: "hianime:the-show-9".into(),
+                title: "The Show".into(),
+                watched_at: Some(2_000),
+            },
+        ],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "K1").unwrap();
+    crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 9_000).unwrap();
+    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    assert_eq!(
+        hit.id, "hianime:the-show-9",
+        "the cache's later mark-watched wins"
+    );
+    let stamps = watched_at_all(&s).unwrap();
+    assert_eq!(
+        stamps.get("the-show-77"),
+        Some(&5_000),
+        "the file's stamp alone"
+    );
+    assert_eq!(
+        stamps.get("hianime:the-show-9"),
+        Some(&9_000),
+        "the later of the two"
+    );
+}
+
 /// The same for the mapping read: a row whose mapping the cache
 /// cannot read is not a row without one, to be skipped for its
 /// sibling.

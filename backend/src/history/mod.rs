@@ -181,6 +181,64 @@ mod tests {
         }
     }
 
+    /// A row written by a watch carries the watch's moment beside it,
+    /// in the same line, so the recency a resume ranks by cannot be
+    /// lost to a store the row was not written to. A row written
+    /// before the column existed, or by a plain resolve, carries none
+    /// and reads and writes as it always did.
+    #[test]
+    fn a_row_carries_its_watched_at_beside_it() {
+        let body = "5\tabc\tOne Piece\t1700000000000\n";
+        let v = parse(body);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].title, "One Piece");
+        assert_eq!(v[0].watched_at, Some(1_700_000_000_000));
+        assert_eq!(serialize(&v), body, "the column round-trips");
+        let legacy = parse("5\tabc\tOne Piece\n");
+        assert_eq!(legacy[0].watched_at, None);
+        assert_eq!(
+            serialize(&legacy),
+            "5\tabc\tOne Piece\n",
+            "no column when there is no stamp"
+        );
+        let tab_in_title = parse("5\tabc\tOne\tPiece\n");
+        assert_eq!(
+            tab_in_title[0].title, "One\tPiece",
+            "a tail that is not a stamp stays in the title"
+        );
+        assert_eq!(tab_in_title[0].watched_at, None);
+    }
+
+    /// A resolve rewrites the row without a stamp of its own; the
+    /// watch that stamped it earlier is not unwritten by that. A
+    /// watch that carries a stamp replaces the earlier one.
+    #[test]
+    fn upsert_keeps_a_rows_stamp_unless_the_new_entry_carries_one() {
+        let mut entries = vec![HistoryEntry {
+            watched_at: Some(1_000),
+            ..sample_entry("abc", "3")
+        }];
+        upsert(&mut entries, sample_entry("abc", "4"));
+        assert_eq!(entries[0].ep_no, "4");
+        assert_eq!(
+            entries[0].watched_at,
+            Some(1_000),
+            "a stampless rewrite keeps the stamp"
+        );
+        upsert(
+            &mut entries,
+            HistoryEntry {
+                watched_at: Some(2_000),
+                ..sample_entry("abc", "5")
+            },
+        );
+        assert_eq!(
+            entries[0].watched_at,
+            Some(2_000),
+            "a stamped rewrite replaces it"
+        );
+    }
+
     #[test]
     fn parse_empty_yields_empty() {
         assert!(parse("").is_empty());
@@ -405,9 +463,20 @@ mod tests {
 
     fn entry_strategy() -> impl Strategy<Value = HistoryEntry> {
         // ep_no and id must be non-empty (parse() drops rows otherwise).
-        // title may be empty.
-        (tsv_field(1, 8), tsv_field(1, 32), tsv_field(0, 64))
-            .prop_map(|(ep_no, id, title)| HistoryEntry { ep_no, id, title })
+        // title may be empty. A row may carry its watch's moment, or
+        // none, as the file holds both.
+        (
+            tsv_field(1, 8),
+            tsv_field(1, 32),
+            tsv_field(0, 64),
+            proptest::option::of(0i64..2_000_000_000_000),
+        )
+            .prop_map(|(ep_no, id, title, watched_at)| HistoryEntry {
+                ep_no,
+                id,
+                title,
+                watched_at,
+            })
     }
 
     proptest! {
