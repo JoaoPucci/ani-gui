@@ -76,13 +76,35 @@ struct WireTrack {
     default: bool,
 }
 
-/// The wire shape of the sources response.
+/// The wire shape of the sources response. The tracks are a nicety
+/// beside the stream, read as the embed page's are: the field being
+/// `null`, absent, not a list, or holding rows in another shape
+/// costs those rows and nothing else, and a lone megaplay server is
+/// never skipped over its subtitle metadata having changed shape.
 #[derive(Deserialize)]
 struct WireResponse {
     #[serde(default)]
     sources: Option<WireSources>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "readable_tracks")]
     tracks: Vec<WireTrack>,
+}
+
+/// The track rows the client reads, out of whatever the response put
+/// in the field. Anything that is not a list yields no tracks; a row
+/// that is not a track in the known shape is dropped, and the rows
+/// that read keep the response's order.
+fn readable_tracks<'de, D>(deserializer: D) -> std::result::Result<Vec<WireTrack>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let listed = Option::<serde_json::Value>::deserialize(deserializer)?;
+    let Some(serde_json::Value::Array(rows)) = listed else {
+        return Ok(Vec::new());
+    };
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| serde_json::from_value(row).ok())
+        .collect())
 }
 
 /// The payload out of a sources response. A body that is not the
@@ -90,7 +112,8 @@ struct WireResponse {
 /// older endpoint's encrypted answer carries `null` in the clear —
 /// is the site having changed what it hands the client, never an
 /// episode without a stream. Tracks that are not captions, or whose
-/// file the transport cannot fetch, are left out.
+/// file the transport cannot fetch, are left out, and so are rows
+/// the reader cannot read at all ([`readable_tracks`]).
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] for a body without a fetchable source.
