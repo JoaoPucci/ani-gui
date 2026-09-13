@@ -190,3 +190,54 @@ fn the_language_is_the_files_trailing_code_or_else_the_label() {
     );
     assert_eq!(lang_of_track("https://c.example/x.vtt", "   "), "und");
 }
+
+/// The tracks are a nicety beside the stream: the field being
+/// `null`, absent or not a list, or holding rows in another shape,
+/// costs those rows and nothing else. A lone megaplay server is not
+/// skipped over its subtitle metadata having changed shape.
+#[test]
+fn a_tracks_field_the_reader_cannot_read_costs_only_those_rows() {
+    let stream = "https://cdn.example/master.m3u8";
+    for tracks in [
+        r#""tracks":null"#,
+        r#""tracks":"none""#,
+        r#""tracks":7"#,
+        r#""tracks":{"file":"https://cdn.example/subs/track_0_eng.vtt"}"#,
+    ] {
+        let json = format!(r#"{{"sources":{{"file":"{stream}"}},{tracks}}}"#);
+        let payload = parse_sources(&json).unwrap_or_else(|e| panic!("{tracks}: {e:?}"));
+        assert_eq!(payload.src, stream, "{tracks}");
+        assert!(
+            payload.subtitles.is_empty(),
+            "{tracks}: {:?}",
+            payload.subtitles
+        );
+    }
+    let absent = format!(r#"{{"sources":{{"file":"{stream}"}}}}"#);
+    let payload = parse_sources(&absent).expect("no tracks field");
+    assert!(payload.subtitles.is_empty());
+    // Readable rows survive rows of another shape beside them, in
+    // the page's order.
+    let mixed = format!(
+        r#"{{"sources":{{"file":"{stream}"}},"tracks":[{{"file":"https://cdn.example/subs/track_0_eng.vtt","label":"English","kind":"captions","default":true}},null,"junk",3,{{"label":"No file","kind":"captions"}},{{"file":["https://cdn.example/subs/track_9_x.vtt"],"label":"Wrong shape","kind":"captions"}},{{"file":"https://cdn.example/subs/track_2_ger.vtt","label":"German","kind":"subtitles"}}]}}"#
+    );
+    let payload = parse_sources(&mixed).expect("readable rows");
+    assert_eq!(
+        payload.subtitles,
+        vec![
+            SubtitleTrack {
+                lang: "eng".into(),
+                label: "English".into(),
+                default: true,
+                url: "https://cdn.example/subs/track_0_eng.vtt".into(),
+            },
+            SubtitleTrack {
+                lang: "ger".into(),
+                label: "German".into(),
+                default: false,
+                url: "https://cdn.example/subs/track_2_ger.vtt".into(),
+            },
+        ],
+        "exactly the readable captions rows, in order"
+    );
+}
