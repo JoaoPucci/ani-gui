@@ -838,7 +838,8 @@ mod negative_rank_props {
 
     /// The shape of a negative a walk can hold, in values that build
     /// it as many times as a property needs: neither the errors nor
-    /// the answers are cloneable.
+    /// the answers are cloneable. The last kind is the unknown
+    /// verdict an inconclusive answer leaves.
     #[derive(Debug, Clone)]
     struct Shape {
         kind: u8,
@@ -849,9 +850,13 @@ mod negative_rank_props {
     }
 
     impl Shape {
-        /// A negative answer is the last kind; the rest are misses.
+        /// A negative answer is kind 5, the unknown verdict kind 6;
+        /// the rest are misses.
         fn is_answer(&self) -> bool {
             self.kind == 5
+        }
+        fn is_unknown(&self) -> bool {
+            self.kind == 6
         }
         /// An answered miss, an answered status, or an unreachable
         /// provider's error standing in for a miss.
@@ -869,6 +874,9 @@ mod negative_rank_props {
             }
         }
         fn negative(&self) -> Negative<'static, &'static str> {
+            if self.is_unknown() {
+                return Negative::Unknown(self.by);
+            }
             if self.is_answer() {
                 let provider = self.by.unwrap_or(ProviderId::Anidb);
                 return Negative::Answer(Attempted {
@@ -887,18 +895,22 @@ mod negative_rank_props {
                 self.by,
             )
         }
-        /// Whether the negative found the show: an answer, or an
-        /// answered miss that is not clean.
+        /// Whether the negative found the show: an answer, the
+        /// unknown verdict, or an answered miss that is not clean.
         fn found_the_show(&self) -> bool {
-            self.is_answer() || (!fails_over(&self.error()) && !self.clean_miss)
+            self.is_answer()
+                || self.is_unknown()
+                || (!fails_over(&self.error()) && !self.clean_miss)
         }
         fn is_clean_miss(&self) -> bool {
-            !self.is_answer() && self.clean_miss
+            !self.is_answer() && !self.is_unknown() && self.clean_miss
         }
         /// What tells two shapes apart once built: the kind, the
         /// clean flag of a miss, and the author.
         fn summary(&self) -> (u8, bool, Option<ProviderId>) {
-            if self.is_answer() {
+            if self.is_unknown() {
+                (6, false, self.by)
+            } else if self.is_answer() {
                 (5, false, Some(self.by.unwrap_or(ProviderId::Anidb)))
             } else {
                 (self.kind, self.clean_miss, self.by)
@@ -908,6 +920,7 @@ mod negative_rank_props {
 
     fn summary_of(negative: &Negative<'_, &'static str>) -> (u8, bool, Option<ProviderId>) {
         match negative {
+            Negative::Unknown(by) => (6, false, *by),
             Negative::Answer(a) => (5, false, Some(a.provider)),
             Negative::Miss(ne, by) => {
                 let kind = match ne.error {
@@ -924,7 +937,7 @@ mod negative_rank_props {
 
     fn shape() -> impl Strategy<Value = Shape> {
         (
-            0u8..6,
+            0u8..7,
             100u16..600,
             "[a-z ]{0,12}",
             any::<bool>(),
@@ -944,16 +957,20 @@ mod negative_rank_props {
 
     proptest! {
         /// The earlier negative outranks the later one exactly when
-        /// the earlier found the show — a negative answer, or an
+        /// it is the unknown verdict and the later is not — an
+        /// inconclusive provider found the show and said nothing
+        /// about the mode, which no negative from elsewhere unsays —
+        /// or the earlier found the show — a negative answer, or an
         /// answered miss that is not clean and not an unreachable
         /// provider's error standing in for one — and the later is a
         /// clean catalogue miss.
         #[test]
-        fn a_negative_that_found_the_show_outranks_a_clean_miss_and_nothing_else_does(
+        fn an_unknown_verdict_or_a_negative_that_found_the_show_outranks_and_nothing_else_does(
             earlier in shape(),
             later in shape(),
         ) {
-            let expected = earlier.found_the_show() && later.is_clean_miss();
+            let expected = (earlier.is_unknown() && !later.is_unknown())
+                || (earlier.found_the_show() && later.is_clean_miss());
             prop_assert_eq!(
                 negative_outranks(&earlier.negative(), &later.negative()),
                 expected
@@ -1855,10 +1872,12 @@ async fn inconclusive_answers_from_everyone_surface_as_an_unpersistable_miss() {
 }
 
 /// A remembered provider that is inconclusive found the show and
-/// denied nothing, so an absence from the rest says it came past an
-/// undenied affinity, exactly as past an unreachable one.
+/// said nothing about the mode; an absence from the rest of the
+/// order does not outrank that, so the verdict is unknown — the
+/// remembered provider may carry the mode on a row the probe did not
+/// sample — and nothing persists.
 #[tokio::test]
-async fn an_absence_past_a_remembered_providers_inconclusive_answer_says_so() {
+async fn an_absence_past_a_remembered_providers_inconclusive_answer_is_unknown() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
@@ -1874,12 +1893,11 @@ async fn an_absence_past_a_remembered_providers_inconclusive_answer_says_so() {
         ScrapePriority::Interactive,
         &mut attempt,
     )
-    .await
-    .expect("the rest's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    .await;
+    let ne = got.expect_err("unknown outranks the rest's absence");
     assert!(
-        got.past_undenied_affinity,
-        "the remembered provider found the show and said nothing about the mode"
+        matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
+        "the verdict is unknown, not absence: {ne:?}"
     );
     assert_eq!(
         attempt.asked(),
@@ -1887,10 +1905,12 @@ async fn an_absence_past_a_remembered_providers_inconclusive_answer_says_so() {
     );
 }
 
-/// A skipped provider whose trial is inconclusive leaves the verdict
-/// standing, as a trial that fails over does.
+/// A skipped provider whose trial is inconclusive found the show and
+/// said nothing about the mode: the clean miss it was asked against
+/// does not stand over that — persisted, it would hide a show the
+/// retried provider carries — so the verdict is unknown.
 #[tokio::test]
-async fn a_retried_skipped_providers_inconclusive_answer_leaves_the_verdict_standing() {
+async fn a_retried_skipped_providers_inconclusive_answer_makes_the_verdict_unknown() {
     let gates = Gates::new();
     gates.open(ProviderId::Anidb);
     let mut attempt = Scripted::new(&[
@@ -1905,12 +1925,137 @@ async fn a_retried_skipped_providers_inconclusive_answer_leaves_the_verdict_stan
         &mut attempt,
     )
     .await;
-    let ne = got.expect_err("the fallback's clean miss stands");
+    let ne = got.expect_err("nobody answered for the mode");
     assert!(
-        ne.clean_miss,
-        "the trial said nothing that outranks it: {ne:?}"
+        matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
+        "the trial found the show, so the clean miss is not the verdict: {ne:?}"
     );
-    assert_eq!(attempt.answered_by, Some(ProviderId::Hianime));
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+// ── an inconclusive answer outranks any negative ────────────────────
+
+/// A provider that found the show and said nothing about the mode
+/// may carry it on a row the probe did not sample; a clean catalogue
+/// miss from the next provider does not unsay that, and persisted it
+/// would hide the title the first provider carries. The verdict is
+/// unknown, attributed to nobody, and nothing persists.
+#[tokio::test]
+async fn an_inconclusive_answer_outranks_a_later_clean_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await;
+    let ne = got.expect_err("nobody answered for the mode");
+    assert!(
+        matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
+        "the verdict is unknown, not the clean miss: {ne:?}"
+    );
+    assert_eq!(attempt.answered_by, None, "an unknown verdict names nobody");
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
+/// The same with the next provider answering absence: a show found
+/// without the mode there says nothing about the mode where the
+/// first provider found the show, so the absence is not the verdict
+/// either.
+#[tokio::test]
+async fn an_inconclusive_answer_outranks_a_later_absence() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await;
+    let ne = got.expect_err("unknown outranks the absence");
+    assert!(
+        matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
+        "the verdict is unknown, not absence: {ne:?}"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
+/// The order does not matter: with the fallback first and
+/// inconclusive, the primary's clean miss is outranked the same way.
+#[tokio::test]
+async fn an_inconclusive_fallback_outranks_the_primarys_later_clean_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Answer("nothing from hianime"),
+        ),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await;
+    let ne = got.expect_err("nobody answered for the mode");
+    assert!(
+        matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
+        "the verdict is unknown, not the clean miss: {ne:?}"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// A remembered provider's own clean miss is set aside so the rest
+/// can be asked; when the rest is inconclusive — found the show,
+/// said nothing about the mode — the clean miss does not stand over
+/// that either: the verdict is unknown, and the denial persists
+/// nothing.
+#[tokio::test]
+async fn a_remembered_providers_clean_miss_yields_to_a_later_inconclusive_answer() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await;
+    let ne = got.expect_err("nobody answered for the mode");
+    assert!(
+        matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
+        "the verdict is unknown, not the remembered provider's clean miss: {ne:?}"
+    );
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Hianime, ProviderId::Anidb]
