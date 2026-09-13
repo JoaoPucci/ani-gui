@@ -2849,3 +2849,80 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
         "the episode verdict stands, with its author"
     );
 }
+
+/// A client that remembers the attempt deadline the walk tells it.
+struct Deadlined {
+    id: ProviderId,
+    told: std::sync::Arc<Mutex<Option<tokio::time::Instant>>>,
+}
+
+#[async_trait::async_trait]
+impl Provider for Deadlined {
+    fn id(&self) -> ProviderId {
+        self.id
+    }
+    async fn search(&self, _q: &str) -> crate::error::Result<Vec<BrowseHit>> {
+        unreachable!()
+    }
+    async fn episodes(&self, _s: &str) -> crate::error::Result<Vec<EpisodeRef>> {
+        unreachable!()
+    }
+    async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
+        unreachable!()
+    }
+    async fn master_playlist_url(&self, _e: u64, _m: &str) -> crate::error::Result<StreamSource> {
+        unreachable!()
+    }
+    async fn playlist(&self, _u: &str, _r: Option<&str>) -> crate::error::Result<String> {
+        unreachable!()
+    }
+    async fn detail_year(&self, _s: &str) -> crate::error::Result<Option<u32>> {
+        unreachable!()
+    }
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
+    fn bound_attempt(&self, deadline: Option<tokio::time::Instant>) {
+        *self.told.lock().expect("told") = deadline;
+    }
+}
+
+/// An attempt's budget bounds the whole of it — the search, the
+/// listings, the servers — and the client's own walk of the servers
+/// has to know where that bound falls to share the remainder among
+/// them; the walk tells the client the attempt's deadline before the
+/// attempt runs.
+#[tokio::test]
+async fn the_walk_tells_the_client_the_attempts_deadline() {
+    let gates = Gates::new();
+    let told = std::sync::Arc::new(Mutex::new(None));
+    let mut attempt = Scripted::new(&[(ProviderId::Anidb, Behavior::Answer("anidb"))]);
+    let started = tokio::time::Instant::now();
+    let seen = told.clone();
+    with_failover(
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        Duration::from_secs(60),
+        Duration::from_secs(20),
+        move |p| {
+            Ok(Box::new(Deadlined {
+                id: p,
+                told: seen.clone(),
+            }) as Box<dyn Provider>)
+        },
+        |p| gates.of(p),
+        &mut attempt,
+    )
+    .await
+    .expect("answered");
+    let deadline = told
+        .lock()
+        .expect("told")
+        .expect("the walk named a deadline");
+    let budget = deadline.saturating_duration_since(started);
+    assert!(
+        budget > Duration::from_secs(19) && budget < Duration::from_secs(21),
+        "the first of two providers has the attempt budget: {budget:?}"
+    );
+}

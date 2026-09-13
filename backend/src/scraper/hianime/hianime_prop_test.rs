@@ -1555,6 +1555,45 @@ proptest! {
     }
 }
 
+// ── a bounded server's share of the attempt's remainder ─────────────
+
+proptest! {
+    /// Told the attempt's remainder, a bounded server's cap is its
+    /// share of what remains once one chain's worth — the reserve —
+    /// is held back for the last server: never more than the fixed
+    /// bound, never more than that share, the bound itself once the
+    /// remainder allows it, and nothing when the remainder is spent.
+    /// With no remainder known, the fixed bound; with no server ahead
+    /// of the last (the last already behind), the remainder itself
+    /// under the bound, nothing held back.
+    #[test]
+    fn a_bounded_servers_cap_is_its_share_of_the_remainder_after_the_reserve(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        remaining_ms in proptest::option::of(0u64..60_000),
+        ahead in 0usize..8,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let cap = ajax::server_cap(ms(bound_ms), ms(reserve_ms), remaining_ms.map(ms), ahead);
+        prop_assert!(cap <= ms(bound_ms));
+        match remaining_ms {
+            None => prop_assert_eq!(cap, ms(bound_ms)),
+            Some(r) if ahead == 0 => prop_assert_eq!(cap, ms(bound_ms).min(ms(r))),
+            Some(r) => {
+                let free = r.saturating_sub(reserve_ms);
+                let share = ms(free) / u32::try_from(ahead).unwrap();
+                prop_assert_eq!(cap, ms(bound_ms).min(share));
+                if free >= bound_ms * ahead as u64 {
+                    prop_assert_eq!(cap, ms(bound_ms));
+                }
+                if free == 0 {
+                    prop_assert_eq!(cap, ms(0));
+                }
+            }
+        }
+    }
+}
+
 // ── the hosts the client reads ───────────────────────────────────────
 
 proptest! {
