@@ -1602,3 +1602,64 @@ async fn a_payload_the_client_cannot_decode_is_stepped_over_when_a_later_server_
     let source = c.master_playlist_url(21423, "sub").await.expect("resolved");
     assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
 }
+
+// ── rows that lost the marker ───────────────────────────────────────
+
+/// A row is a row by its own attributes; the site's row class only
+/// names it. A row that lost the class while its neighbours kept it
+/// would otherwise be passed over as chrome, and the listing read as
+/// complete one row short — renumbered, since the position is the
+/// slot, with the dropped episode's link lost. Such a listing is
+/// refused, naming the row's position among the rows.
+#[test]
+fn an_episode_listing_with_a_row_that_lost_its_marker_is_refused_not_shortened() {
+    let lost = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item\" data-number=\"2\" data-id=\"21419\"></a><a class=\"ssl-item ep-item\" data-number=\"3\" data-id=\"21420\"></a></div>"}"#;
+    let err = parse_episode_list(lost).expect_err("refused");
+    match err {
+        AniError::ParseFailed { detail } => assert!(detail.contains("row 2"), "{detail}"),
+        other => panic!("expected a parse failure, got {other:?}"),
+    }
+    let kept = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item ep-item\" data-number=\"2\" data-id=\"21419\"></a></div>"}"#;
+    assert_eq!(
+        parse_episode_list(kept).expect("listing").len(),
+        2,
+        "rows that keep their marker read as before"
+    );
+}
+
+/// A server row that lost its marker beside one that kept it is a
+/// row whose mode the client cannot tell — exactly as a marked row
+/// without its mode attribute is — so a mode with no marked row is
+/// uncertain, not absent: read as absent, the lost sub row would let
+/// the mode probe persist a "no sub" over a playback the site lists.
+#[test]
+fn a_server_row_that_lost_its_marker_leaves_its_mode_uncertain() {
+    let lost_beside_dub = r#"{"status":true,"html":"<div class=\"item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(lost_beside_dub).expect("the dub row is readable");
+    assert_eq!(
+        listing.servers.len(),
+        1,
+        "the row without the marker is no server"
+    );
+    assert_eq!(listing.servers[0].mode, "dub");
+    assert!(
+        listing.unknown_modes,
+        "a row that lost its marker is a row of a mode the client cannot tell"
+    );
+    assert!(
+        matches!(
+            listing.mode_readable("sub"),
+            Err(AniError::ParseFailed { .. })
+        ),
+        "sub is uncertain, not absent"
+    );
+    assert!(listing.mode_readable("dub").expect("read"));
+    let lost_only = r#"{"status":true,"html":"<div class=\"item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#;
+    let err = parse_server_listing(lost_only).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let all_marked = parse_server_listing(SERVERS).expect("parsed");
+    assert!(
+        !all_marked.unknown_modes,
+        "rows that keep their marker leave nothing in doubt"
+    );
+}
