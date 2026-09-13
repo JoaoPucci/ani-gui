@@ -1247,6 +1247,21 @@ fn a_payload_decodes_to_its_stream_whatever_its_subtitle_list_looks_like() {
             serde_json::json!({"src": src, "subtitles": ["en", good("es"), 7]}),
             vec!["es"],
         ),
+        // A row whose source the transport cannot fetch — relative
+        // to a page the client does not carry, or under another
+        // scheme — would ride into the proxy, the handoffs and the
+        // cache row as a track that never loads, and a cached row
+        // with one is refused whole on every replay.
+        (
+            "a row whose source is relative",
+            serde_json::json!({"src": src, "subtitles": [good("en"), {"lang": "de", "label": "German", "src": "/subs/de.vtt"}, good("fr")]}),
+            vec!["en", "fr"],
+        ),
+        (
+            "a row whose source is under another scheme",
+            serde_json::json!({"src": src, "subtitles": [{"lang": "it", "label": "Italian", "src": "ftp://hls.example/v/subs/it.vtt"}, good("pt")]}),
+            vec!["pt"],
+        ),
     ];
     for (what, json, expected) in cases {
         let payload = decode_embed(&embed_page(&json.to_string()))
