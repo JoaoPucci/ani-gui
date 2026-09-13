@@ -1739,6 +1739,77 @@ fn chrome_with_a_generic_data_attribute_is_not_a_server_row() {
     );
 }
 
+/// A row can lose its marker and one attribute of its signature in
+/// the same change of shape — a sub row keeping its mode and its
+/// server's name while the hash attribute is renamed — and it is
+/// still a row, not chrome: chrome beside the rows carries at most
+/// one of the row's attributes, a row two or more. Such a row leaves
+/// its mode uncertain, as a row that lost the marker alone does;
+/// read as chrome, a readable dub row beside it would let the mode
+/// probe persist a "no sub" the site lists.
+#[test]
+fn a_server_row_that_lost_its_marker_and_one_attribute_is_still_a_row() {
+    let hash_renamed = r#"{"status":true,"html":"<div class=\"item\" data-type=\"sub\" data-server-name=\"HD-1\" data-embed=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(hash_renamed).expect("the dub row is readable");
+    assert_eq!(listing.servers.len(), 1);
+    assert_eq!(listing.servers[0].mode, "dub");
+    assert!(
+        listing.unknown_modes,
+        "a row keeping two of its three attributes is a row the class left"
+    );
+    assert!(
+        matches!(
+            listing.mode_readable("sub"),
+            Err(AniError::ParseFailed { .. })
+        ),
+        "sub is uncertain, not absent"
+    );
+    assert!(listing.mode_readable("dub").expect("read"));
+    let mode_renamed = r#"{"status":true,"html":"<div class=\"item\" data-kind=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(mode_renamed).expect("the dub row is readable");
+    assert!(
+        listing.unknown_modes,
+        "the name and the hash without the mode are still a row"
+    );
+    let one_attribute_only = r#"{"status":true,"html":"<div class=\"ps_-tab\" data-type=\"sub\">Sub</div><div class=\"item server-item\" data-type=\"dub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvZHVi\"></div>"}"#;
+    let listing = parse_server_listing(one_attribute_only).expect("the dub row is readable");
+    assert!(
+        !listing.unknown_modes,
+        "one attribute alone is chrome, as before"
+    );
+    assert!(
+        !listing.mode_readable("sub").expect("sub is decided"),
+        "with no sub row and nothing in doubt, sub is absent"
+    );
+}
+
+/// An episode row is known by its number: every captured row is an
+/// anchor carrying `data-number`, and no control anchor in the
+/// listing's chrome does — a control carries a generic `data-id`
+/// alone. So an anchor with the number and no marker is a row the
+/// class left even when its id attribute was renamed in the same
+/// change, and the listing is refused rather than read one row
+/// short; an anchor with an id alone is chrome, as before.
+#[test]
+fn an_episode_row_that_lost_its_marker_and_its_id_attribute_is_still_a_row() {
+    let id_renamed = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item\" data-number=\"2\" data-ep=\"21419\"></a><a class=\"ssl-item ep-item\" data-number=\"3\" data-id=\"21420\"></a></div>"}"#;
+    let err = parse_episode_list(id_renamed).expect_err("refused");
+    match err {
+        AniError::ParseFailed { detail } => assert!(detail.contains("row 2"), "{detail}"),
+        other => panic!("expected a parse failure, got {other:?}"),
+    }
+    let number_alone = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a><a class=\"ssl-item\" data-number=\"2\"></a></div>"}"#;
+    let err = parse_episode_list(number_alone).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let control = r#"{"status":true,"html":"<div class=\"ss-list\"><a class=\"ssc-btn\" data-id=\"search\" href=\"/search\">Search</a><a class=\"ssl-item ep-item\" data-number=\"1\" data-id=\"21418\"></a></div>"}"#;
+    assert_eq!(
+        parse_episode_list(control)
+            .expect("a control is chrome")
+            .len(),
+        1
+    );
+}
+
 /// An episode row is an anchor carrying both its number and its id,
 /// as every captured row does; an anchor beside the rows with only
 /// a generic `data-id` — a control in the listing's chrome — is not
