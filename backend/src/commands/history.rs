@@ -80,7 +80,11 @@ pub fn history_by_kitsu(
     // A read the cache cannot serve is the caller's error, never a
     // row without a mapping or a stamp: taken as one, the row watched
     // last would lose to its sibling's older stamp, or be skipped for
-    // it, and the page would resume the stale episode.
+    // it, and the page would resume the stale episode. The stamp is
+    // the later of the row's own moment and the cache's
+    // ([`super::history_resume::latest_of`]): a watch writes its
+    // moment beside the row, so a cache that refused the stamp still
+    // leaves the row ranked as the watch it was.
     let mut best: Option<(HistoryEntry, Option<i64>)> = None;
     for entry in entries {
         let Some(mapped) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)? else {
@@ -89,7 +93,10 @@ pub fn history_by_kitsu(
         if mapped != kitsu_id {
             continue;
         }
-        let stamp = crate::commands::kitsu::watched_at_get(state, &entry.id)?;
+        let stamp = super::history_resume::latest_of(
+            entry.watched_at,
+            crate::commands::kitsu::watched_at_get(state, &entry.id)?,
+        );
         let newer = match &best {
             None => true,
             Some((current, current_stamp)) => super::history_resume::resumes_over(
@@ -102,6 +109,28 @@ pub fn history_by_kitsu(
         }
     }
     Ok(best.map(|(entry, _)| to_kitsu_numbering(state, entry)))
+}
+
+/// Every show's watched-at moment, for the Continue Watching strip
+/// to sort and dedupe by: the cache's stamps, and for each history
+/// row the later of its own moment and the cache's, so a row whose
+/// stamp the cache refused still sorts as the watch it was.
+///
+/// # Errors
+/// Returns [`crate::error::AniError::Io`] when the history file
+/// exists but cannot be read; SQLite errors propagate from the
+/// cache's listing.
+pub fn watched_at_all(
+    state: &crate::app::AppState,
+) -> Result<std::collections::HashMap<String, i64>> {
+    let mut stamps = crate::commands::kitsu::watched_at_all(state)?;
+    for entry in read_all(&state.history_path)? {
+        let cached = stamps.get(&entry.id).copied();
+        if let Some(at) = super::history_resume::latest_of(entry.watched_at, cached) {
+            stamps.insert(entry.id, at);
+        }
+    }
+    Ok(stamps)
 }
 
 /// Remove the history row matching `id`. Returns `true` when a row
@@ -196,11 +225,13 @@ mod tests {
                     ep_no: "41".into(),
                     id: "the-sequel-88".into(),
                     title: "The Sequel".into(),
+                    watched_at: None,
                 },
                 HistoryEntry {
                     ep_no: "5".into(),
                     id: "plain-1".into(),
                     title: "Plain Show".into(),
+                    watched_at: None,
                 },
             ],
         )
@@ -223,6 +254,7 @@ mod tests {
                 ep_no: "42".into(),
                 id: "the-sequel-88".into(),
                 title: "The Sequel".into(),
+                watched_at: None,
             }],
         )
         .unwrap();
@@ -246,11 +278,13 @@ mod tests {
                     ep_no: "5".into(),
                     id: "amA".into(),
                     title: "Show A (10 episodes)".into(),
+                    watched_at: None,
                 },
                 HistoryEntry {
                     ep_no: "12".into(),
                     id: "amB".into(),
                     title: "Show B (24 episodes)".into(),
+                    watched_at: None,
                 },
             ],
         )
@@ -278,6 +312,7 @@ mod tests {
                 ep_no: "5".into(),
                 id: "amA".into(),
                 title: "Show A (10 episodes)".into(),
+                watched_at: None,
             }],
         )
         .unwrap();
@@ -313,16 +348,19 @@ mod tests {
                     ep_no: "5".into(),
                     id: "amA".into(),
                     title: "Show A".into(),
+                    watched_at: None,
                 },
                 HistoryEntry {
                     ep_no: "12".into(),
                     id: "amB".into(),
                     title: "Show B".into(),
+                    watched_at: None,
                 },
                 HistoryEntry {
                     ep_no: "3".into(),
                     id: "amC".into(),
                     title: "Show C".into(),
+                    watched_at: None,
                 },
             ],
         )
@@ -350,6 +388,7 @@ mod tests {
                 ep_no: "5".into(),
                 id: "amA".into(),
                 title: "Show A".into(),
+                watched_at: None,
             }],
         )
         .unwrap();
@@ -383,6 +422,7 @@ mod tests {
                 ep_no: "5".into(),
                 id: "amA".into(),
                 title: "Show A".into(),
+                watched_at: None,
             }],
         )
         .unwrap();
@@ -404,6 +444,7 @@ mod tests {
                 ep_no: "5".into(),
                 id: "abc".into(),
                 title: "T (10 episodes)".into(),
+                watched_at: None,
             }],
         )
         .unwrap();
