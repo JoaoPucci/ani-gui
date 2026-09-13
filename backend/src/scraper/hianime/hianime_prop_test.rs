@@ -351,6 +351,44 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
     }
 
+    /// The envelope's own count, when it declares one, must be the
+    /// number of rows read: an equal or absent count leaves the
+    /// listing as read, and any other count is refused — the HTML
+    /// cut short, or a row changed past recognition, is not the
+    /// show's listing.
+    #[test]
+    fn episode_rows_are_held_to_the_envelopes_declared_count(
+        rows in proptest::collection::vec((1u32..5000, 1u64..1_000_000_000), 1..8),
+        declared in proptest::option::of(0u64..12),
+    ) {
+        let html: String = rows
+            .iter()
+            .map(|(number, id)| format!(r#"<a class="ssl-item ep-item" data-number="{number}" data-id="{id}" href="/watch/x?ep={id}"></a>"#))
+            .collect();
+        let mut json = serde_json::json!({"status": true, "html": html});
+        if let Some(count) = declared {
+            json["totalItems"] = serde_json::json!(count);
+        }
+        let parsed = parse_episode_list(&json.to_string());
+        let read = u64::try_from(rows.len()).expect("fits");
+        match declared {
+            Some(count) if count != read => {
+                proptest::prop_assert!(
+                    matches!(parsed, Err(AniError::ParseFailed { .. })),
+                    "declared {count}, read {read}: {parsed:?}"
+                );
+            }
+            _ => {
+                let expected: Vec<EpisodeRef> = rows
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (number, id))| episode_row(i, &number.to_string(), *id))
+                    .collect();
+                proptest::prop_assert_eq!(parsed.expect("listing"), expected);
+            }
+        }
+    }
+
     /// A listing mixing whole numbers with the site's recap and
     /// special numbers — `7.5`, `12.25` — loses no row: each keeps
     /// its position as its slot and its number as its display tag,
