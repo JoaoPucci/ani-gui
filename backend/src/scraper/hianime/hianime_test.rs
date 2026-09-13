@@ -1192,6 +1192,18 @@ impl Fetch for Site {
                 }
             }
             "https://zokoanime.video/stream/mal/9/timeout/sub" => Err(AniError::Timeout),
+            // A host that answers not-found, then a fetch the gate
+            // refuses, then a host whose page decodes.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21439") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwNC9zdWI=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2dhdGUvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-3\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/gate/sub" => Err(AniError::GateRefused),
             // The same undecodable page first, then a host whose page
             // decodes.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21423") => {
@@ -1602,6 +1614,37 @@ async fn the_weather_kept_across_servers_is_the_transport_failure_over_an_answer
         .await
         .expect_err("no server served a stream");
     assert!(matches!(err, AniError::Timeout), "{err:?}");
+}
+
+/// A fetch the gate refuses is the gate speaking, not the host: the
+/// breaker opened, or a pause began, between two embed fetches of a
+/// background walk. Ranked with the hosts' own failures it lost to
+/// an earlier answered status, the episode became an answered dead
+/// end, and the walk went on asking hosts the gate would refuse
+/// too. The refusal ends the walk at once, as it is, and no later
+/// server is asked.
+#[tokio::test]
+async fn a_gate_refusal_ends_the_server_walk_at_once() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21439, "sub")
+        .await
+        .expect_err("the gate refused");
+    assert!(matches!(err, AniError::GateRefused), "{err:?}");
+    let asked: Vec<String> = c
+        .transport()
+        .requests()
+        .iter()
+        .map(|r| r.url.to_string())
+        .collect();
+    assert!(
+        asked.iter().any(|u| u.ends_with("/mal/9/gate/sub")),
+        "the refused fetch was made: {asked:?}"
+    );
+    assert!(
+        !asked.iter().any(|u| u.ends_with("/mal/1/1/sub")),
+        "no server is asked after the gate refused: {asked:?}"
+    );
 }
 
 #[tokio::test]
