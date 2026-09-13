@@ -541,11 +541,20 @@ pub fn servers_for<'a>(servers: &'a [ServerEmbed], mode: &str) -> Vec<&'a Server
     readable_hosts.into_iter().chain(rest).collect()
 }
 
-/// The position of the last server the walk can use — the last on a
-/// host the client reads — or none when no host is read. The walk's
-/// remaining budget is that server's: the hosts trailing it are
-/// stepped over unread, so nothing after it needs time held back.
+/// The position of the server that runs on the walk's remaining
+/// budget: the last on a host the client names as one it reads, when
+/// the listing has one — the hosts trailing it are stepped over
+/// unread, so nothing after it needs time held back — and otherwise
+/// the listing's last server, since a page is read by its shape from
+/// any host and which one reads cannot be known before the fetch.
+/// None only for an empty listing. A server on an unnamed host ahead
+/// of that position keeps the per-server bound even when its page
+/// would read: the accepted limit, so that a trailing host the
+/// client never read takes no time from a named one.
 #[must_use]
-pub fn last_readable_index(ordered: &[&ServerEmbed]) -> Option<usize> {
-    ordered.iter().rposition(|s| readable(&s.embed_url))
+pub fn remainder_index(ordered: &[&ServerEmbed]) -> Option<usize> {
+    ordered
+        .iter()
+        .rposition(|s| readable(&s.embed_url))
+        .or_else(|| ordered.len().checked_sub(1))
 }
