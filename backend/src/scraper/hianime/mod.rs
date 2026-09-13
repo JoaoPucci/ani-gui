@@ -44,6 +44,21 @@ pub const HIANIME_BASE: &str = "https://hianime.at";
 pub struct HianimeClient<F> {
     fetch: F,
     base: String,
+    /// The instant of the attempt that produced the failure the
+    /// server walk last kept, with the transport's stamp as it stood
+    /// when the walk ended: the kept failure may come from an earlier
+    /// server than the walk's last fetch, and the gate must be told
+    /// when that failure was observed, not when the walk finished. A
+    /// fetch after the walk moves the transport's stamp, and the
+    /// kept instant no longer applies.
+    kept_attempt_at: std::sync::Mutex<Option<KeptAttempt>>,
+}
+
+/// See [`HianimeClient::kept_attempt_at`].
+#[derive(Clone, Copy)]
+struct KeptAttempt {
+    at: tokio::time::Instant,
+    transport_then: Option<tokio::time::Instant>,
 }
 
 impl<F: Fetch> HianimeClient<F> {
@@ -52,6 +67,7 @@ impl<F: Fetch> HianimeClient<F> {
         Self {
             fetch,
             base: HIANIME_BASE.to_string(),
+            kept_attempt_at: std::sync::Mutex::new(None),
         }
     }
 
@@ -61,6 +77,7 @@ impl<F: Fetch> HianimeClient<F> {
         Self {
             fetch,
             base: base.to_string(),
+            kept_attempt_at: std::sync::Mutex::new(None),
         }
     }
 
@@ -166,7 +183,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // fetches of a background walk — and ends the walk as it is:
         // no later server is asked, and the shared walk stops on it
         // rather than recording a dead end.
-        let mut kept: Option<AniError> = None;
+        let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         for server in servers_for(&servers, mode) {
             // The embed host checks that the site sent the viewer.
             let embed = FetchRequest::get(server.embed_url.clone())
@@ -175,6 +192,9 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 Ok(page) => decode_embed(&page),
                 Err(e) => Err(e),
             };
+            // The attempt that produced this outcome, read before the
+            // next server's fetch moves the transport's stamp.
+            let at = self.fetch.last_attempt_at();
             let weather = match outcome {
                 Ok(payload) => {
                     return Ok(StreamSource {
@@ -190,11 +210,18 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 Err(e) => e,
             };
             kept = Some(match kept.take() {
-                Some(so_far) => weightier(so_far, weather),
-                None => weather,
+                Some(so_far) => weightier(so_far, (weather, at)),
+                None => (weather, at),
             });
         }
-        Err(final_verdict(kept, uncertain, mode))
+        let (verdict, at) = final_verdict(kept, uncertain, mode);
+        if let Some(at) = at {
+            *self.kept_attempt_at.lock().expect("kept attempt lock") = Some(KeptAttempt {
+                at,
+                transport_then: self.fetch.last_attempt_at(),
+            });
+        }
+        Err(verdict)
     }
 
     async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
@@ -219,7 +246,13 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
-        self.fetch.last_attempt_at()
+        let transport = self.fetch.last_attempt_at();
+        match *self.kept_attempt_at.lock().expect("kept attempt lock") {
+            // The walk's kept failure, while no fetch has moved the
+            // transport's stamp since the walk ended.
+            Some(kept) if kept.transport_then == transport => Some(kept.at),
+            _ => transport,
+        }
     }
 }
 
@@ -235,8 +268,8 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 /// stream and the transport failure is what moves the walk on,
 /// while an answered status is that host's own dead end; between
 /// two of a rank the one seen first stays.
-fn weightier(kept: AniError, next: AniError) -> AniError {
-    if weather_rank(&next) > weather_rank(&kept) {
+fn weightier<T>(kept: (AniError, T), next: (AniError, T)) -> (AniError, T) {
+    if weather_rank(&next.0) > weather_rank(&kept.0) {
         next
     } else {
         kept
@@ -269,15 +302,26 @@ fn payload_missing_verdict(embed_url: &str) -> Option<AniError> {
 /// absence only when every page merely lacked the payload and every
 /// row was read. The lift ranks like any parse failure, so a
 /// provider block still outranks it.
-fn final_verdict(kept: Option<AniError>, uncertain: bool, mode: &str) -> AniError {
-    let doubt = uncertain.then(|| AniError::ParseFailed {
-        detail: format!("hianime {mode} servers: a row the client could not read"),
+fn final_verdict(
+    kept: Option<(AniError, Option<tokio::time::Instant>)>,
+    uncertain: bool,
+    mode: &str,
+) -> (AniError, Option<tokio::time::Instant>) {
+    // The doubt is the listing's, not a server's attempt: it rides
+    // with no instant, and the transport's latest stamp stands.
+    let doubt = uncertain.then(|| {
+        (
+            AniError::ParseFailed {
+                detail: format!("hianime {mode} servers: a row the client could not read"),
+            },
+            None,
+        )
     });
     match (kept, doubt) {
         (Some(kept), Some(doubt)) => weightier(kept, doubt),
         (Some(kept), None) => kept,
         (None, Some(doubt)) => doubt,
-        (None, None) => AniError::NoResults,
+        (None, None) => (AniError::NoResults, None),
     }
 }
 
