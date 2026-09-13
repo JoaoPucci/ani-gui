@@ -3354,6 +3354,51 @@ mod sidecar_suffix_props {
             prop_assert_eq!(folded.len(), names.len());
         }
     }
+
+    /// A name's identity is portable: the packaged platforms fold
+    /// case by different tables — Windows' calls Greek sigma and
+    /// final sigma one name, the case fold here does not — and a
+    /// table can only be wrong one entry at a time, as this file's
+    /// target-lock rationale records. So a name is spelled in a
+    /// portable ASCII alphabet, and two tags that leave nothing of
+    /// it take their place in the listing as the name; two spellings
+    /// the folds disagree on can then never meet in one file.
+    #[test]
+    fn tags_outside_the_portable_alphabet_take_positional_names() {
+        let names = sidecar_suffixes(["σ", "ς"].into_iter());
+        assert_eq!(names, vec!["track-1", "track-2"]);
+        let names = sidecar_suffixes(["pt-BR", "pt-br"].into_iter());
+        assert_eq!(
+            names,
+            vec!["pt-BR", "pt-br-1"],
+            "an ASCII tag keeps its own spelling"
+        );
+    }
+
+    proptest! {
+        /// Whatever the tags are, every name is spelled in the
+        /// portable alphabet — ASCII letters, digits and hyphens —
+        /// and no two collide once folded by the one table every
+        /// platform agrees on, ASCII's.
+        #[test]
+        fn names_are_portable_and_never_collide_under_ascii_folding(
+            langs in proptest::collection::vec("\\PC{0,6}", 0..8)
+        ) {
+            let names = sidecar_suffixes(langs.iter().map(String::as_str));
+            prop_assert_eq!(names.len(), langs.len());
+            for name in &names {
+                prop_assert!(!name.is_empty(), "a name is never empty");
+                prop_assert!(
+                    name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
+                    "{name:?} is outside the portable alphabet"
+                );
+            }
+            let mut folded: Vec<String> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
+            folded.sort();
+            folded.dedup();
+            prop_assert_eq!(folded.len(), names.len());
+        }
+    }
 }
 
 // ── the sidecar phase is bounded in count and in flight ────────────
