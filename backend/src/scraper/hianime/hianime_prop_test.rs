@@ -1355,3 +1355,38 @@ proptest::proptest! {
         prop_assert_eq!(found, expected, "{}", html);
     }
 }
+
+// ── the last server the walk can use ────────────────────────────────
+
+proptest! {
+    /// The remainder of the walk's budget belongs to the last server
+    /// on a host the client reads, wherever unread hosts sit in the
+    /// listing: the helper names its position, and none when no host
+    /// is read.
+    #[test]
+    fn the_last_readable_server_is_the_last_one_on_a_read_host(
+        hosts in proptest::collection::vec(
+            prop_oneof![
+                Just("zokoanime.video".to_string()),
+                Just("megaplay.buzz".to_string()),
+                "[a-z]{3,10}\\.(buzz|site|video|net)",
+            ],
+            0..6,
+        ),
+    ) {
+        let servers: Vec<ServerEmbed> = hosts
+            .iter()
+            .enumerate()
+            .map(|(i, host)| ServerEmbed {
+                mode: "sub".into(),
+                name: format!("S{i}"),
+                embed_url: format!("https://{host}/stream/{i}"),
+            })
+            .collect();
+        let refs: Vec<&ServerEmbed> = servers.iter().collect();
+        let expected = refs
+            .iter()
+            .rposition(|s| ajax::readable(&s.embed_url));
+        prop_assert_eq!(ajax::last_readable_index(&refs), expected);
+    }
+}
