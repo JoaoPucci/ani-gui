@@ -11,6 +11,20 @@
 
 use crate::error::Result;
 
+/// Whether a response body is cloudflare's challenge interstitial
+/// rather than provider content. Case-insensitive, like the script's
+/// `grep -qi`: challenge pages have varied the title's spelling.
+pub fn is_cloudflare_interstitial(body: &str) -> bool {
+    body.to_ascii_lowercase().contains("just a moment")
+}
+
+/// Form-urlencode a search query: space→`+`, reserved and non-ASCII
+/// bytes percent-encoded. The script's naive space swap sent `;` and
+/// friends raw and the provider answers those with a 400.
+pub fn encode_query(query: &str) -> String {
+    url::form_urlencoded::byte_serialize(query.as_bytes()).collect()
+}
+
 /// Which provider answered. Stamped onto everything provider output
 /// reaches — progress lines, breaker outcomes, cache rows — so a
 /// failover between providers can attribute each attempt.
@@ -18,6 +32,9 @@ use crate::error::Result;
 pub enum ProviderId {
     /// anidb.app — the provider ani-cli 5.0 scrapes.
     Anidb,
+    /// hianime — the provider ani-cli moved to when anidb.app went
+    /// dark in September 2026.
+    Hianime,
 }
 
 impl ProviderId {
@@ -27,6 +44,9 @@ impl ProviderId {
     pub fn label(self) -> &'static str {
         match self {
             Self::Anidb => "anidb.app",
+            // The brand, not a domain: the site's domain churns and is
+            // filtered per ISP, and the label names who answered.
+            Self::Hianime => "hianime",
         }
     }
 }
