@@ -103,6 +103,10 @@ pub(crate) fn install_staged(staged: Vec<SidecarClaim>) -> Vec<PathBuf> {
     written
 }
 
-#[cfg(test)]
+// The transfer cases drive stub tools staged as shell scripts, which
+// only a unix runner spawns; the module is unix-only, like the
+// external-player and Syncplay cases beside it, so the other packaged
+// platform compiles neither the cases nor the helpers only they use.
+#[cfg(all(test, unix))]
 #[path = "download_transfer_test.rs"]
 mod tests;
