@@ -1018,33 +1018,42 @@ async fn stage_sidecar(path: &std::path::Path, body: &[u8]) -> std::io::Result<S
 /// in the listing alone: the first track of a language is the
 /// language, and the n-th after it is `<lang>-<n>`, so two tracks in
 /// one language keep both files and a name never depends on which
-/// tracks arrived. Two tags that differ only by case count as one
+/// tracks arrived. The language is the tag's portable spelling
+/// ([`super::download_names::portable_name`]) — ASCII letters, digits
+/// and hyphens, the tag's own where it is already that — and a tag
+/// that leaves nothing of the alphabet is named by its place in the
+/// listing, `track-<n>`; the packaged platforms fold case by
+/// different tables, and only that alphabet is folded the same by
+/// every table. Two tags that differ only by case count as one
 /// language, and a name is free only if no earlier name is the same
 /// once case is folded — a tag can itself read like `en-1` — since
-/// the packaged platforms disagree on whether `pt-BR.vtt` and
-/// `pt-br.vtt` are two files, and a name is unique on both. When the
-/// count's name is taken, the count moves on until one is free.
+/// the platforms disagree on whether `pt-BR.vtt` and `pt-br.vtt` are
+/// two files, and a name is unique on both. When the count's name is
+/// taken, the count moves on until one is free.
 pub(crate) fn sidecar_suffixes<'a>(langs: impl Iterator<Item = &'a str>) -> Vec<String> {
     let mut languages: Vec<String> = Vec::new();
     let mut names: Vec<String> = Vec::new();
     langs
-        .map(|lang| {
-            let folded = lang.to_lowercase();
+        .enumerate()
+        .map(|(position, tag)| {
+            let lang = super::download_names::portable_name(tag)
+                .unwrap_or_else(|| format!("track-{}", position + 1));
+            let folded = lang.to_ascii_lowercase();
             let earlier = languages.iter().filter(|l| **l == folded).count();
             languages.push(folded);
             let mut count = earlier;
             let name = loop {
                 let candidate = if count == 0 {
-                    lang.to_string()
+                    lang.clone()
                 } else {
                     format!("{lang}-{count}")
                 };
-                if !names.contains(&candidate.to_lowercase()) {
+                if !names.contains(&candidate.to_ascii_lowercase()) {
                     break candidate;
                 }
                 count += 1;
             };
-            names.push(name.to_lowercase());
+            names.push(name.to_ascii_lowercase());
             name
         })
         .collect()
