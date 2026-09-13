@@ -573,8 +573,11 @@ pub(crate) async fn check_availability_with_base(
             let (p, present) = attempted.value;
             let Some(present) = present else {
                 // Every row the mode search touched was missing. The
-                // provider said nothing about this mode, which is
-                // not absence — surface it and persist nothing.
+                // walk moves on from that answer and surfaces the
+                // unknown verdict itself when nobody answers; kept
+                // for the day an inconclusive answer reaches here
+                // regardless — nothing about this mode was said,
+                // which is not absence, so persist nothing.
                 return Err(crate::error::AniError::NoResults);
             };
             if present {
@@ -747,10 +750,17 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
 
     /// A show found without the requested mode is a negative verdict:
     /// the walk owes the skipped providers their trial before it
-    /// surfaces, as it does for a miss. A mode nobody answered for is
-    /// not — it says nothing either way.
+    /// surfaces, as it does for a miss.
     fn is_negative(output: &Self::Output) -> bool {
         matches!(output.1, Some(false))
+    }
+
+    /// A mode nobody answered for — every sampled row a status that
+    /// says nothing, stale ids the provider no longer serves — is
+    /// inconclusive: it says nothing either way, and the walk moves
+    /// on to the next provider.
+    fn is_inconclusive(output: &Self::Output) -> bool {
+        output.1.is_none()
     }
 }
 
