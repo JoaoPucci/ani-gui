@@ -86,9 +86,13 @@ where
 /// user's and the track is dropped with its scratch; an install that
 /// fails otherwise is logged and skipped, since the episode is
 /// delivered and that is the transfer.
-pub(crate) fn install_staged(staged: Vec<SidecarClaim>) -> Vec<PathBuf> {
+pub(crate) fn install_staged(mut staged: Vec<SidecarClaim>) -> Vec<PathBuf> {
     let mut written = Vec::with_capacity(staged.len());
-    for claim in staged {
+    // The claims outlive their installs: each stays its scratch's
+    // guard until the scratch is provably gone, and one whose alias
+    // the install could not remove gets its retry when the whole
+    // batch is dropped at the end.
+    for claim in &mut staged {
         let path = claim.target().to_path_buf();
         match claim.install() {
             Ok(()) => written.push(path),
