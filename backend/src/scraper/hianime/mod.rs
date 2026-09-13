@@ -23,8 +23,8 @@ pub mod embed;
 pub mod megaplay;
 pub mod parse;
 pub use ajax::{
-    parse_episode_list, parse_server_listing, parse_servers, remainder_index, servers_for,
-    ServerEmbed, ServerListing,
+    parse_episode_list, parse_server_listing, parse_servers, remainder_index, server_cap,
+    servers_for, ServerEmbed, ServerListing,
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
@@ -63,7 +63,12 @@ pub const HIANIME_BASE: &str = "https://hianime.at";
 /// own wait, so an unanswered last server ends the attempt on one
 /// of those two bounds rather than on this one. Holding the last
 /// server to this bound would cut off a chain that is merely slower
-/// than six seconds, with nobody left to give the time to.
+/// than six seconds, with nobody left to give the time to. And the
+/// bound is the most a bounded server gets, not the least: told the
+/// attempt's deadline, the walk gives each bounded server its share
+/// of what the attempt has left once one bound's worth is held back
+/// for the last ([`ajax::server_cap`]), so stalled servers cannot
+/// spend the remainder that last server runs on.
 pub const SERVER_ATTEMPT_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
 
 /// The hianime client: search, episode listing, and stream-URL
@@ -73,6 +78,9 @@ pub struct HianimeClient<F> {
     fetch: F,
     base: String,
     server_budget: std::time::Duration,
+    /// The deadline of the walk's attempt this client runs under,
+    /// when the walk has told it one ([`Provider::bound_attempt`]).
+    attempt_deadline: std::sync::Mutex<Option<tokio::time::Instant>>,
     /// The instant of the attempt that produced the failure the
     /// server walk last kept, with the transport's stamp as it stood
     /// when the walk ended: the kept failure may come from an earlier
@@ -97,6 +105,7 @@ impl<F: Fetch> HianimeClient<F> {
             fetch,
             base: HIANIME_BASE.to_string(),
             server_budget: SERVER_ATTEMPT_BUDGET,
+            attempt_deadline: std::sync::Mutex::new(None),
             kept_attempt_at: std::sync::Mutex::new(None),
         }
     }
@@ -108,6 +117,7 @@ impl<F: Fetch> HianimeClient<F> {
             fetch,
             base: base.to_string(),
             server_budget: SERVER_ATTEMPT_BUDGET,
+            attempt_deadline: std::sync::Mutex::new(None),
             kept_attempt_at: std::sync::Mutex::new(None),
         }
     }
@@ -320,30 +330,44 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // server is asked, and the shared walk stops on it rather
         // than recording a dead end.
         //
-        // Each server's chain but the last has its own bound
-        // ([`SERVER_ATTEMPT_BUDGET`]): a host that holds a connection
-        // open without answering would otherwise spend, on one server,
-        // the time the walk's attempt had left for the rest, and the
-        // attempt would time out with a healthy server unasked. A
-        // server cut off at its bound is stepped over like one whose
-        // connection dropped; the transport's child is killed with
-        // the future it ran under. One server has no rest to hold
-        // time back for and runs on the attempt's remainder, bounded
-        // by the walk around this client — the attempt's deadline
-        // above, the transport's per-request wait below — so a chain
-        // slower than the bound is still served when it is that one
-        // ([`remainder_index`]): the last on a host the client names
-        // as one it reads, since the hosts the listing trails behind
-        // it are stepped over unread; or, when no listed host is
-        // named, the listing's last server, since a page is read by
-        // its shape from any host and which one reads is not known
-        // before the fetch. The limit that accepts: a server on an
-        // unnamed host ahead of that position keeps the bound even
-        // when its page would read, so that a trailing host the
-        // client never read takes no time from a named one.
+        // Each server's chain but one has its own bound: a host that
+        // holds a connection open without answering would otherwise
+        // spend, on one server, the time the walk's attempt had left
+        // for the rest, and the attempt would time out with a healthy
+        // server unasked. A server cut off at its bound is stepped
+        // over like one whose connection dropped; the transport's
+        // child is killed with the future it ran under. One server has
+        // no rest to hold time back for and runs on the attempt's
+        // remainder, bounded by the walk around this client — the
+        // attempt's deadline above, the transport's per-request wait
+        // below — so a chain slower than the bound is still served
+        // when it is that one ([`remainder_index`]): the last on a
+        // host the client names as one it reads, since the hosts the
+        // listing trails behind it are stepped over unread; or, when
+        // no listed host is named, the listing's last server, since a
+        // page is read by its shape from any host and which one reads
+        // is not known before the fetch. The limit that accepts: a
+        // server on an unnamed host ahead of that position keeps the
+        // bound even when its page would read, so that a trailing host
+        // the client never read takes no time from a named one.
+        //
+        // The bound is [`SERVER_ATTEMPT_BUDGET`] at most, and less
+        // when the attempt's deadline says so ([`server_cap`]): the
+        // attempt above this client bounds the search, the candidate,
+        // the listings and the servers together, and part of it is
+        // spent before the first server is asked, so a fixed bound per
+        // server would let a few stalled servers spend what the
+        // remainder's server needed. Told the deadline
+        // ([`Provider::bound_attempt`]), the walk gives each bounded
+        // server its share of what remains once one bound's worth is
+        // held back for the remainder's server — the reserve, sized
+        // as the bound is, for one chain — and a stalled server is
+        // cut off the sooner for it. A client run outside an attempt
+        // knows no deadline and keeps the fixed bound.
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         let ordered = servers_for(&servers, mode);
         let unbounded = remainder_index(&ordered);
+        let deadline = *self.attempt_deadline.lock().expect("attempt deadline");
         for (i, server) in ordered.into_iter().enumerate() {
             let chain = async {
                 let payload = self.read_server(server).await?;
@@ -352,7 +376,11 @@ impl<F: Fetch> Provider for HianimeClient<F> {
             let outcome = if unbounded == Some(i) {
                 chain.await
             } else {
-                match tokio::time::timeout(self.server_budget, chain).await {
+                let remaining =
+                    deadline.map(|at| at.saturating_duration_since(tokio::time::Instant::now()));
+                let ahead = unbounded.map_or(0, |u| u.saturating_sub(i));
+                let cap = server_cap(self.server_budget, self.server_budget, remaining, ahead);
+                match tokio::time::timeout(cap, chain).await {
                     Ok(outcome) => outcome,
                     Err(_elapsed) => Err(AniError::Timeout),
                 }
@@ -413,6 +441,10 @@ impl<F: Fetch> Provider for HianimeClient<F> {
             Some(kept) if kept.transport_then == transport => Some(kept.at),
             _ => transport,
         }
+    }
+
+    fn bound_attempt(&self, deadline: Option<tokio::time::Instant>) {
+        *self.attempt_deadline.lock().expect("attempt deadline") = deadline;
     }
 }
 

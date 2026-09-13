@@ -543,3 +543,29 @@ pub fn remainder_index(ordered: &[&ServerEmbed]) -> Option<usize> {
         .rposition(|s| readable(&s.embed_url))
         .or_else(|| ordered.len().checked_sub(1))
 }
+
+/// A bounded server's cap, given the attempt's `remaining` time when
+/// the walk knows it: its share of what remains once `reserve` — one
+/// chain's worth, for the server that runs on the remainder — is
+/// held back, split evenly among the `ahead` bounded servers still
+/// to run before that one, this one included, and never more than
+/// `bound`. With no remainder known the cap is the bound; with no
+/// server ahead of the remainder's (that server already behind) the
+/// cap is what remains, under the bound, with nothing held back.
+#[must_use]
+pub fn server_cap(
+    bound: std::time::Duration,
+    reserve: std::time::Duration,
+    remaining: Option<std::time::Duration>,
+    ahead: usize,
+) -> std::time::Duration {
+    let Some(remaining) = remaining else {
+        return bound;
+    };
+    if ahead == 0 {
+        return bound.min(remaining);
+    }
+    let free = remaining.saturating_sub(reserve);
+    let share = free / u32::try_from(ahead).unwrap_or(u32::MAX);
+    bound.min(share)
+}
