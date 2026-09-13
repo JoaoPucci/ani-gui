@@ -114,7 +114,7 @@ impl Attempt for Scripted {
             }),
             Behavior::MissEpisode => Err(NativeError {
                 error: AniError::EpisodeUnavailable,
-                clean_miss: true,
+                clean_miss: false,
                 failed_at: None,
             }),
             Behavior::Stall => std::future::pending().await,
