@@ -1137,6 +1137,17 @@ fn name_is_taken(path: &std::path::Path) -> std::io::Result<bool> {
 /// scratch behind, never a partial file at the name that every later
 /// download would keep as the user's own. The one partial file the
 /// rename install can leave is empty, and an empty name is free.
+///
+/// The claim is a guard over the scratch until the scratch is
+/// provably gone, not until the install reports. A link lands the
+/// track at its name and leaves the scratch as a second name to
+/// remove, and that removal can fail while the install has delivered
+/// — a scanner holding the file open without delete sharing, on the
+/// platform where the scratch's name is not hidden — so the install
+/// ignores it, as the media transfer's does. Standing down on the
+/// report would then leave the alias beside the media for good, since
+/// nothing else knows to remove it; the drop tries once more instead,
+/// the way the transfer's own scratch guard does.
 #[derive(Debug)]
 pub(crate) struct SidecarClaim {
     target: std::path::PathBuf,
@@ -1145,6 +1156,10 @@ pub(crate) struct SidecarClaim {
     /// install and before any removal, since Windows will not move
     /// or remove an open file.
     file: Option<tokio::fs::File>,
+    /// The track is at its name. Says what a scratch still here is:
+    /// an alias the install could not remove, not a partial.
+    installed: bool,
+    /// The scratch is provably gone, and the drop has nothing to do.
     finished: bool,
 }
 
@@ -1174,6 +1189,7 @@ pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<Sidecar
         target: path.to_path_buf(),
         scratch,
         file: Some(file),
+        installed: false,
         finished: false,
     })
 }
@@ -1200,16 +1216,30 @@ impl SidecarClaim {
         Ok(())
     }
 
-    /// Install the filled scratch at the name.
+    /// Install the filled scratch at the name. The claim stays the
+    /// scratch's guard afterwards: it stands down for a scratch that
+    /// is provably gone, and otherwise tries the removal once more
+    /// when dropped.
     ///
     /// # Errors
     /// `AlreadyExists` when the name was taken in the meantime; the
     /// scratch is removed on every way out.
-    pub(crate) fn install(mut self) -> std::io::Result<()> {
+    pub(crate) fn install(&mut self) -> std::io::Result<()> {
         install_sidecar(&self.scratch, &self.target)?;
-        self.finished = true;
+        self.installed = true;
+        self.finished = scratch_is_gone(&self.scratch);
         Ok(())
     }
+}
+
+/// Whether nothing is at the scratch's path any more — the one
+/// answer that stands a claim down. A path that cannot be looked at
+/// is not one that is gone.
+fn scratch_is_gone(scratch: &std::path::Path) -> bool {
+    matches!(
+        std::fs::symlink_metadata(scratch),
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound
+    )
 }
 
 /// Put the complete scratch at the name without replacing a file with
@@ -1260,11 +1290,17 @@ fn install_by_rename(scratch: &std::path::Path, target: &std::path::Path) -> std
 impl Drop for SidecarClaim {
     fn drop(&mut self) {
         drop(self.file.take());
-        if !self.finished {
-            if let Err(e) = std::fs::remove_file(&self.scratch) {
-                if e.kind() != std::io::ErrorKind::NotFound {
-                    tracing::warn!(path = %self.scratch.display(), error = %e, "download: unfinished subtitle scratch not removed");
-                }
+        if self.finished {
+            return;
+        }
+        if let Err(e) = std::fs::remove_file(&self.scratch) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                let what = if self.installed {
+                    "download: installed subtitle's scratch alias not removed"
+                } else {
+                    "download: unfinished subtitle scratch not removed"
+                };
+                tracing::warn!(path = %self.scratch.display(), error = %e, what);
             }
         }
     }
