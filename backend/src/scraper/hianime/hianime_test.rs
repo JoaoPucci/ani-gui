@@ -1555,6 +1555,19 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // Two zokoanime servers whose masters hold the connection,
+            // then a megaplay server whose whole chain answers at once:
+            // the shape in which stalled servers spend an attempt's
+            // remainder before a healthy last server is reached.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21467") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // Both servers' masters hold the connection: the first
             // for as long as it is waited for, the second until the
             // transport's own deadline reports it.
@@ -2770,6 +2783,46 @@ async fn a_lone_server_on_an_unnamed_host_runs_on_the_remainder() {
     let stream = c.stream_for(21453, "sub", "720").await.expect("served");
     assert_eq!(stream.url, "https://hls.example/v/moved/720/index.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://newembed.example/"));
+}
+
+/// The attempt above the walk has one budget for the search, the
+/// candidate, the listings and the servers together, and part of it
+/// is spent before the first server is asked. A fixed bound per
+/// server then lets two stalled servers spend most of what is left,
+/// and the last server — the one that runs on the remainder — gets a
+/// remainder too small for a healthy chain. Told the attempt's
+/// deadline, the walk gives each bounded server its share of what
+/// remains after one chain's worth is held back for the last, so the
+/// stalled ones are cut short enough for the healthy one to be
+/// served inside the attempt.
+#[tokio::test]
+async fn stalled_servers_share_the_attempts_remainder_so_the_last_server_is_still_served() {
+    let c = client_with_server_budget(100);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(180);
+    c.bound_attempt(Some(deadline));
+    let stream = tokio::time::timeout_at(deadline, c.stream_for(21467, "sub", "720"))
+        .await
+        .expect("the attempt's deadline was not spent on the stalled servers")
+        .expect("served");
+    assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+}
+
+/// Without an attempt deadline — the client driven outside the walk
+/// — every bounded server keeps the fixed bound: the two stalled
+/// servers each spend it before the last is served.
+#[tokio::test]
+async fn without_an_attempt_deadline_each_stalled_server_spends_the_fixed_bound() {
+    let c = client_with_server_budget(100);
+    let started = std::time::Instant::now();
+    let stream = c.stream_for(21467, "sub", "720").await.expect("served");
+    assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed >= std::time::Duration::from_millis(190)
+            && elapsed < std::time::Duration::from_secs(5),
+        "two stalled servers, each cut off at the fixed bound: {elapsed:?}"
+    );
 }
 
 /// The limit that rule accepts: with no host the client names, the
