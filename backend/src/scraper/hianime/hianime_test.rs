@@ -1522,6 +1522,16 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A lone megaplay mirror server whose chain answers, slowly.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21452") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"MegaPlay\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS0xLmJ1enovc3RyZWFtL3MtMi83MzQyOTkvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // Both servers' masters hold the connection: the first
             // for as long as it is waited for, the second until the
             // transport's own deadline reports it.
@@ -1590,6 +1600,21 @@ impl Fetch for Site {
                 }
             }
             "https://mp.example/v/slow/index-f2.m3u8" => ok("#EXTM3U\n"),
+            "https://megaplay-1.buzz/stream/s-2/734299/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "12"))
+            }
+            "https://megaplay-1.buzz/stream/getSourcesNew?id=12" => {
+                ok(r#"{"sources":{"file":"https://mp.example/v/mirror/master.m3u8"},"tracks":[]}"#)
+            }
+            "https://mp.example/v/mirror/master.m3u8" => {
+                tokio::time::sleep(SLOW_HOST).await;
+                if header(req, "Referer") == Some("https://megaplay-1.buzz/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720,NAME=\"720p\"\nindex-f2.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://mp.example/v/mirror/index-f2.m3u8" => ok("#EXTM3U\n"),
             "https://megaplay.buzz/stream/s-2/734295/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "7"))
             }
@@ -2621,6 +2646,50 @@ async fn the_last_server_runs_on_the_remainder_after_an_earlier_one_was_cut_off(
     let stream = c.stream_for(21449, "sub", "720").await.expect("served");
     assert_eq!(stream.url, "https://mp.example/v/slow/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+}
+
+/// The site serves megaplay's player from numbered mirrors as well
+/// as its own host — `megaplay-1.buzz` beside `megaplay.buzz` — and
+/// the client reads a mirror's page by its shape like the host's.
+/// A mirror is a host the client reads, so a lone mirror server
+/// runs on the walk's remainder like any last readable server,
+/// rather than being cut off at the bound while nothing trails it.
+#[tokio::test]
+async fn a_lone_mirror_server_slower_than_the_per_server_budget_is_still_served() {
+    let c = client_with_server_budget(100);
+    let stream = c.stream_for(21452, "sub", "720").await.expect("served");
+    assert_eq!(stream.url, "https://mp.example/v/mirror/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay-1.buzz/"));
+}
+
+/// A mirror sorts with the hosts the client reads, ahead of the
+/// hosts it never read, whatever order the site listed them in.
+#[test]
+fn a_megaplay_mirror_sorts_with_the_readable_hosts() {
+    let servers = vec![
+        ServerEmbed {
+            mode: "sub".into(),
+            name: "VidTube".into(),
+            embed_url: "https://vidtube.site/embed/1/sub".into(),
+        },
+        ServerEmbed {
+            mode: "sub".into(),
+            name: "MegaPlay".into(),
+            embed_url: "https://megaplay-1.buzz/stream/s-2/1/sub".into(),
+        },
+    ];
+    let ordered: Vec<&str> = servers_for(&servers, "sub")
+        .into_iter()
+        .map(|s| s.embed_url.as_str())
+        .collect();
+    assert_eq!(
+        ordered,
+        vec![
+            "https://megaplay-1.buzz/stream/s-2/1/sub",
+            "https://vidtube.site/embed/1/sub"
+        ],
+        "the mirror is a host the client reads"
+    );
 }
 
 /// The site lists the hosts the client reads first and the rest
