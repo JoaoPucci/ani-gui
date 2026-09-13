@@ -216,12 +216,12 @@ async fn an_integer_display_tag_still_matches_through_the_offset() {
 proptest::proptest! {
     /// The chain-failure decision table over every error shape: a
     /// provider block or gate refusal stops the walk with the error
-    /// intact, answered dead ends (NoResults, non-block upstream
-    /// statuses) move to the next alias, and everything else stays
-    /// transient.
+    /// intact, answered dead ends (the episode's own verdict,
+    /// NoResults, non-block upstream statuses) move to the next
+    /// alias, and everything else stays transient.
     #[test]
     fn chain_failures_classify_by_the_decision_table(
-        kind in 0u8..6,
+        kind in 0u8..7,
         status in 100u16..600,
     ) {
         let error = match kind {
@@ -230,13 +230,17 @@ proptest::proptest! {
             2 => AniError::NoResults,
             3 => AniError::Network,
             4 => AniError::Timeout,
+            5 => AniError::EpisodeUnavailable,
             _ => AniError::RateLimited {
                 retry_after_secs: None,
             },
         };
         let stops = error.is_provider_block() || matches!(error, AniError::GateRefused);
-        let dead_end =
-            !stops && matches!(error, AniError::NoResults | AniError::Upstream { .. });
+        let dead_end = !stops
+            && matches!(
+                error,
+                AniError::EpisodeUnavailable | AniError::NoResults | AniError::Upstream { .. }
+            );
         let ne = NativeError {
             error,
             clean_miss: false,
