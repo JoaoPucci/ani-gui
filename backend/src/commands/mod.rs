@@ -17,6 +17,7 @@ mod availability_mode;
 pub mod availability_refresh;
 pub mod cour;
 pub mod download;
+mod download_names;
 
 #[cfg(test)]
 #[path = "download_lock_prop_test.rs"]
