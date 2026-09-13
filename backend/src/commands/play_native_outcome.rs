@@ -6,17 +6,21 @@ use crate::error::AniError;
 use crate::scraper::gate::{ScrapeOutcome, ScrapePriority};
 
 /// What a resolution outcome means to the scraper breaker. The
-/// provider ANSWERING is health whatever the answer was: every
-/// `NoResults` arises from an answered verdict — a rejected pool, an
-/// absent episode, a sub-only show asked for dub — while weather
-/// (transport, refusals, rate limits) is distress. A gate refusal is
-/// neither: it is the gate's OWN answer, so it produces no outcome
-/// at all — recording it as failure would let background warmups
-/// keep extending the open breaker's cooldown without a single
-/// provider request. Distinct from `clean_miss`, which additionally
-/// decides whether the verdict is persistable absence: a matched
-/// show with one episode missing is breaker-healthy but proves
-/// nothing about the show's availability.
+/// provider ANSWERING is health whatever the answer was: a
+/// `NoResults` is the catalogue's answered verdict — nothing matched,
+/// or every candidate was rejected — and an `EpisodeUnavailable` is
+/// the episode's, on a show that was found — an absent episode, a
+/// sub-only show asked for dub ([`super::play_native_episode`]'s
+/// `episode_verdict`); both are health, told apart only for the
+/// caller's copy and the availability record. Weather (transport,
+/// refusals, rate limits) is distress. A gate refusal is neither: it
+/// is the gate's OWN answer, so it produces no outcome at all —
+/// recording it as failure would let background warmups keep
+/// extending the open breaker's cooldown without a single provider
+/// request. Distinct from `clean_miss`, which additionally decides
+/// whether the verdict is persistable absence: a matched show with
+/// one episode missing is breaker-healthy but proves nothing about
+/// the show's availability.
 pub fn breaker_outcome<T>(
     priority: ScrapePriority,
     native: &std::result::Result<T, NativeError>,
