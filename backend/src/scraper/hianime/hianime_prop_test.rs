@@ -1362,11 +1362,13 @@ proptest::proptest! {
 
 proptest! {
     /// The remainder of the walk's budget belongs to the last server
-    /// on a host the client reads, wherever unread hosts sit in the
-    /// listing: the helper names its position, and none when no host
-    /// is read.
+    /// on a host the client names as one it reads, wherever unnamed
+    /// hosts sit in the listing; when no listed host is named, to the
+    /// listing's last server, since a page's shape can be read from
+    /// any host and which one cannot be known before the fetch. The
+    /// helper names that position, and none for an empty listing.
     #[test]
-    fn the_last_readable_server_is_the_last_one_on_a_read_host(
+    fn the_remainder_goes_to_the_last_named_server_else_the_last_listed(
         hosts in proptest::collection::vec(
             prop_oneof![
                 Just("zokoanime.video".to_string()),
@@ -1389,8 +1391,9 @@ proptest! {
         let refs: Vec<&ServerEmbed> = servers.iter().collect();
         let expected = refs
             .iter()
-            .rposition(|s| ajax::readable(&s.embed_url));
-        prop_assert_eq!(ajax::last_readable_index(&refs), expected);
+            .rposition(|s| ajax::readable(&s.embed_url))
+            .or_else(|| refs.len().checked_sub(1));
+        prop_assert_eq!(ajax::remainder_index(&refs), expected);
     }
 }
 
