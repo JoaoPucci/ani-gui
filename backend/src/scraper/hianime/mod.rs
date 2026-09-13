@@ -157,7 +157,12 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // client reads it is the site having changed shape, a parse
         // failure like a blob the key no longer opens; from a host the
         // client never read it says nothing and is stepped over, and
-        // an episode with only those has no stream.
+        // an episode with only those has no stream. A fetch the gate
+        // refuses is not the host's weather at all but the gate
+        // speaking — a breaker opened, or a pause began, between two
+        // fetches of a background walk — and ends the walk as it is:
+        // no later server is asked, and the shared walk stops on it
+        // rather than recording a dead end.
         let mut kept: Option<AniError> = None;
         for server in servers_for(&servers, mode) {
             // The embed host checks that the site sent the viewer.
@@ -178,6 +183,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                     Some(e) => e,
                     None => continue,
                 },
+                Err(AniError::GateRefused) => return Err(AniError::GateRefused),
                 Err(e) => e,
             };
             kept = Some(match kept.take() {
