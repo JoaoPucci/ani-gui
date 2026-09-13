@@ -1747,6 +1747,43 @@ async fn a_fallbacks_absence_past_a_retried_remembered_provider_still_down_says_
     );
 }
 
+/// The held answer says whether it came past an undenied affinity
+/// as the walk finally stands, not as it stood when the answer was
+/// given: the remembered provider was skipped when the fallback
+/// answered absence, so the answer said the remembered one had not
+/// denied the show; its trial then answered a clean miss, which is
+/// a denial. Both providers have now denied the mode, and the
+/// absence surfaces as the fallback's own, persistable — not as one
+/// the caller must hold back for a row its provider just disowned.
+#[tokio::test]
+async fn a_fallbacks_absence_past_a_retried_remembered_providers_clean_miss_is_its_own() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Hianime);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+    ]);
+    let got = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("the fallback's absence outranks the trial's clean miss");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.value, "absent from anidb");
+    assert!(
+        !got.past_undenied_affinity,
+        "the remembered provider's trial denied the show, so the absence is the fallback's own"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
 // ── an episode miss is not a catalogue miss ─────────────────────────
 
 /// A remembered provider that answers an episode dead end — a miss
