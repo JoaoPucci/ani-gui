@@ -23,7 +23,7 @@ pub mod embed;
 pub mod megaplay;
 pub mod parse;
 pub use ajax::{
-    last_readable_index, parse_episode_list, parse_server_listing, parse_servers, servers_for,
+    parse_episode_list, parse_server_listing, parse_servers, remainder_index, servers_for,
     ServerEmbed, ServerListing,
 };
 pub use detail::parse_detail_year;
@@ -327,18 +327,23 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // attempt would time out with a healthy server unasked. A
         // server cut off at its bound is stepped over like one whose
         // connection dropped; the transport's child is killed with
-        // the future it ran under. The last server the walk can use
-        // — the last on a host the client reads
-        // ([`last_readable_index`]), since the hosts the listing
-        // trails behind it are stepped over unread — has no rest to
-        // hold time back for and runs on the attempt's remainder,
-        // bounded by the walk around this client — the attempt's
-        // deadline above, the transport's per-request wait below — so
-        // a chain slower than the bound is still served when it is
-        // the last chain the walk can read.
+        // the future it ran under. One server has no rest to hold
+        // time back for and runs on the attempt's remainder, bounded
+        // by the walk around this client — the attempt's deadline
+        // above, the transport's per-request wait below — so a chain
+        // slower than the bound is still served when it is that one
+        // ([`remainder_index`]): the last on a host the client names
+        // as one it reads, since the hosts the listing trails behind
+        // it are stepped over unread; or, when no listed host is
+        // named, the listing's last server, since a page is read by
+        // its shape from any host and which one reads is not known
+        // before the fetch. The limit that accepts: a server on an
+        // unnamed host ahead of that position keeps the bound even
+        // when its page would read, so that a trailing host the
+        // client never read takes no time from a named one.
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         let ordered = servers_for(&servers, mode);
-        let unbounded = last_readable_index(&ordered);
+        let unbounded = remainder_index(&ordered);
         for (i, server) in ordered.into_iter().enumerate() {
             let chain = async {
                 let payload = self.read_server(server).await?;
