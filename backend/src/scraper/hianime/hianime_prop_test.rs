@@ -1078,8 +1078,8 @@ proptest::proptest! {
     /// The walk's verdict when no server served a stream: the kept
     /// failure as it stands, lifted to a parse failure when the mode
     /// had a row the client could not read — which never outranks a
-    /// rate limit — and the answered absence only when nothing was
-    /// kept and every row was read.
+    /// provider block — and the answered absence only when nothing
+    /// was kept and every row was read.
     #[test]
     fn the_final_verdict_keeps_the_doubt_of_an_unreadable_row(
         kept in proptest::option::of(arb_weather()),
@@ -1088,8 +1088,8 @@ proptest::proptest! {
         fn rank(w: &AniError) -> u8 {
             match w {
                 AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 4,
-                AniError::ParseFailed { .. } => 3,
-                w if w.is_provider_block() => 2,
+                w if w.is_provider_block() => 3,
+                AniError::ParseFailed { .. } => 2,
                 AniError::Network | AniError::Timeout => 1,
                 _ => 0,
             }
@@ -1105,8 +1105,8 @@ proptest::proptest! {
                 // The doubt is a parse failure; a louder kept failure
                 // stands, a parse failure kept first stays, anything
                 // quieter yields to the doubt.
-                prop_assert_eq!(rank(&verdict), r.max(3));
-                if r >= 3 {
+                prop_assert_eq!(rank(&verdict), r.max(2));
+                if r >= 2 {
                     prop_assert_eq!(Some(format!("{verdict:?}")), kept_repr);
                 } else {
                     prop_assert!(matches!(verdict, AniError::ParseFailed { .. }), "{verdict:?}");
@@ -1116,11 +1116,13 @@ proptest::proptest! {
     }
 
     /// Of two hosts' failures the kept one is the louder: a rate limit
-    /// over everything, a page the client could not read over any
-    /// other provider block, a block over a dropped connection or a
-    /// timeout, and those over an answered status — a server never
-    /// heard from may carry the stream, an answered status is that
-    /// host's own dead end; between two of a rank the first stays.
+    /// over everything, a provider block over a page the client could
+    /// not read — the block stops the shared walk, the parse failure
+    /// is transient to it — a parse failure over a dropped connection
+    /// or a timeout, and those over an answered status — a server
+    /// never heard from may carry the stream, an answered status is
+    /// that host's own dead end; between two of a rank the first
+    /// stays.
     #[test]
     fn the_kept_weather_is_the_louder_of_the_two(
         first in arb_weather(),
@@ -1129,8 +1131,8 @@ proptest::proptest! {
         fn rank(w: &AniError) -> u8 {
             match w {
                 AniError::RateLimited { .. } | AniError::Upstream { status: 429 } => 4,
-                AniError::ParseFailed { .. } => 3,
-                w if w.is_provider_block() => 2,
+                w if w.is_provider_block() => 3,
+                AniError::ParseFailed { .. } => 2,
                 AniError::Network | AniError::Timeout => 1,
                 _ => 0,
             }

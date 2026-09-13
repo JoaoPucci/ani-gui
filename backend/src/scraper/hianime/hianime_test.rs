@@ -1261,6 +1261,17 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A host whose payload the key does not open, then one
+            // that refuses outright.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21440") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85Lzkvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85LzQwMy9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // A lone host whose payload decodes to a blank source.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21427") => {
                 if ajax {
@@ -1684,6 +1695,26 @@ async fn a_rate_limit_from_a_later_server_outranks_an_earlier_parse_failure() {
         .await
         .expect_err("no server served a stream");
     assert!(matches!(err, AniError::Upstream { status: 429 }), "{err:?}");
+}
+
+#[tokio::test]
+async fn a_block_from_a_later_server_outranks_an_earlier_parse_failure() {
+    // One host's payload the key does not open; the next host
+    // refuses outright. The parse failure says the client no longer
+    // reads the site, but it is transient to the shared walk, which
+    // would go on through the show's other candidates against a
+    // provider that has just blocked it; the block is the verdict
+    // that stops the walk, so it is the one kept.
+    let c = client();
+    let err = c
+        .master_playlist_url(21440, "sub")
+        .await
+        .expect_err("no server served a stream");
+    assert!(matches!(err, AniError::Upstream { status: 403 }), "{err:?}");
+    assert!(
+        err.is_provider_block(),
+        "the verdict is the block the shared walk stops on"
+    );
 }
 
 #[tokio::test]
