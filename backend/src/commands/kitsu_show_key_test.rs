@@ -201,3 +201,121 @@ async fn a_rejected_write_keeps_a_stored_mapping_it_cannot_check() {
         "an entry that cannot be fetched is not condemned"
     );
 }
+
+// ── the enrichment path is guarded by cour too ────────────────────
+
+/// A Kitsu search answer of the given entries, each the One Piece
+/// record re-keyed: its id and slug are what tell sibling cours
+/// apart.
+fn search_body(entries: &[(&str, &str)]) -> Vec<u8> {
+    let fixture: serde_json::Value = serde_json::from_slice(SEARCH_FIXTURE).expect("fixture");
+    let template = fixture["data"][0].clone();
+    let data: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(id, slug)| {
+            let mut entry = template.clone();
+            entry["id"] = serde_json::Value::from(*id);
+            entry["attributes"]["slug"] = serde_json::Value::from(*slug);
+            entry
+        })
+        .collect();
+    serde_json::to_vec(&serde_json::json!({ "data": data })).expect("json")
+}
+
+async fn serve_search(mock: &MockServer, term: &str, body: Vec<u8>) {
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .and(query_param("filter[text]", term))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(body),
+        )
+        .mount(mock)
+        .await;
+}
+
+/// The slug's words carry the show's cour like a title does, and the
+/// enrichment resolve reads them: Kitsu ranking the parent cour first
+/// for a Part 2 slug is the poison the mapping guard refuses on the
+/// play path, so the resolve passes over it to the entry whose slug
+/// agrees, and that is what it answers and persists.
+#[tokio::test]
+async fn the_enrichment_resolve_passes_over_a_hit_whose_cour_disagrees_with_the_slug() {
+    let mock = MockServer::start().await;
+    serve_search(
+        &mock,
+        "one piece part 2",
+        search_body(&[("12", "one-piece"), ("13", "one-piece-part-2")]),
+    )
+    .await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let got = resolve_allmanga_show_id(&state, "hianime:one-piece-part-2-100", true)
+        .await
+        .expect("resolve ok");
+    assert_eq!(
+        got.expect("the agreeing entry resolves").id,
+        "13",
+        "the entry whose slug carries the same cour"
+    );
+    assert_eq!(
+        allmanga_kitsu_get(&state, "hianime:one-piece-part-2-100")
+            .expect("cache read")
+            .as_deref(),
+        Some("13"),
+        "the agreeing entry is what persists"
+    );
+}
+
+/// With no agreeing entry among the hits the resolve answers none
+/// and persists nothing, rather than binding the Part 2 slug to the
+/// parent cour: Continue Watching renders the bare title, and no row
+/// stamped under the wrong entry can resume it.
+#[tokio::test]
+async fn the_enrichment_resolve_answers_none_when_every_hit_disagrees_with_the_slug() {
+    let mock = MockServer::start().await;
+    serve_search(
+        &mock,
+        "one piece part 2",
+        search_body(&[("12", "one-piece")]),
+    )
+    .await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let got = resolve_allmanga_show_id(&state, "hianime:one-piece-part-2-100", true)
+        .await
+        .expect("resolve ok");
+    assert!(
+        got.is_none(),
+        "a disagreeing hit is not the mapping: {got:?}"
+    );
+    assert_eq!(
+        allmanga_kitsu_get(&state, "hianime:one-piece-part-2-100").expect("cache read"),
+        None,
+        "nothing persists under the slug"
+    );
+}
+
+/// A slug without cour evidence has nothing to disagree with, so the
+/// first entry answers as it always has, whichever provider's the
+/// slug is.
+#[tokio::test]
+async fn the_enrichment_resolve_takes_the_first_hit_for_a_slug_without_cour_evidence() {
+    let mock = MockServer::start().await;
+    serve_search(
+        &mock,
+        "one piece",
+        search_body(&[("12", "one-piece"), ("13", "one-piece-part-2")]),
+    )
+    .await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let got = resolve_allmanga_show_id(&state, "one-piece-69", true)
+        .await
+        .expect("resolve ok");
+    assert_eq!(got.expect("resolves").id, "12");
+    assert_eq!(
+        allmanga_kitsu_get(&state, "one-piece-69")
+            .expect("cache read")
+            .as_deref(),
+        Some("12")
+    );
+}
