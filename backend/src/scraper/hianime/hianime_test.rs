@@ -1772,6 +1772,30 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A zokoanime server whose master answers, slowly, then a
+            // host the client does not read: the readable server is
+            // the last the walk can use, whatever trails it.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21450") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3Nsb3cvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"VidTube\" data-hash=\"aHR0cHM6Ly92aWR0dWJlLnNpdGUvZW1iZWQvODI3Mi9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A zokoanime server whose master never answers, a
+            // megaplay server whose master answers slowly, then a
+            // host the client does not read.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21451") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"MegaPlay\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk3L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"VidTube\" data-hash=\"aHR0cHM6Ly92aWR0dWJlLnNpdGUvZW1iZWQvODI3Mi9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // Both servers' masters hold the connection: the first
             // for as long as it is waited for, the second until the
             // transport's own deadline reports it.
@@ -2979,6 +3003,35 @@ async fn the_last_server_runs_on_the_remainder_after_an_earlier_one_was_cut_off(
     let stream = c.stream_for(21449, "sub", "720").await.expect("served");
     assert_eq!(stream.url, "https://mp.example/v/slow/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+}
+
+/// The site lists the hosts the client reads first and the rest
+/// after them, so a listing can end with a host the client never
+/// read. The remainder belongs to the last server the walk can use,
+/// not to the last entry: a readable server whose chain is slower
+/// than the bound is still served when only unread hosts trail it,
+/// which would otherwise be cut off while the trailing page took the
+/// remainder and answered nothing.
+#[tokio::test]
+async fn the_last_readable_server_runs_on_the_remainder_when_unread_hosts_trail_it() {
+    let c = client_with_server_budget(100);
+    let stream = c.stream_for(21450, "sub", "720").await.expect("served");
+    assert_eq!(stream.url, "https://hls.example/v/slow/720/index.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://zokoanime.video/"));
+}
+
+#[tokio::test]
+async fn an_earlier_readable_server_is_still_cut_off_when_unread_hosts_trail_the_last() {
+    let c = client_with_server_budget(100);
+    let started = std::time::Instant::now();
+    let stream = c.stream_for(21451, "sub", "720").await.expect("served");
+    assert_eq!(stream.url, "https://mp.example/v/slow/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the stalling server was cut off at its bound: {:?}",
+        started.elapsed()
+    );
 }
 
 /// When every server stalls, the earlier ones are cut off at the
