@@ -2,8 +2,8 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
 /**
  * Collapse history rows that resolve to the same Kitsu entry down to
- * one per group, keeping the row whose `ep_no` is highest. The home
- * page calls this after `sortByWatchedAt`.
+ * one per group, keeping the row the user watched last. The home
+ * page calls this after `sortByWatchedAt`, with the same stamps.
  *
  * Why this exists: provider catalogue drift across resolves
  * can produce two history rows that resolve to the same Kitsu entry
@@ -14,15 +14,17 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  * ranking are the usual culprits — the user ends up with two
  * Continue Watching cards for what is logically the same show.
  *
- * The winner is the row with the most-advanced progress (highest
- * `ep_no`), not the sort-earliest row. "First wins" hid progress
- * whenever the further-along row sorted lower, which `sortByWatchedAt`
- * makes routine: it puts stamped rows above unstamped ones, and an
- * unstamped row is a play that resolved without reaching
- * `mark-watched` — no less watched for it, and often the later of the
- * two. Ties on `ep_no` fall back to input order
- * (sortByWatchedAt's most-recent-first), which preserves the
- * intuitive first-wins behaviour for the no-drift case.
+ * The winner is the row watched last, by the rule the detail page's
+ * resume lookup applies to the same two rows: the latest watched-at
+ * stamp wins, a stamped row beats an unstamped one — a stamp is the
+ * record of a watch, and a row without one never reached
+ * `mark-watched` or predates the stamps — and only when the stamps
+ * do not separate the rows (both unstamped, or stamped at the same
+ * instant) does progress decide: the higher `ep_no`, then input
+ * order (sortByWatchedAt's most-recent-first). The two surfaces
+ * must name one episode: a card offering the episode after the
+ * further-along row while the detail page resumes the rewatch
+ * would send a play from Home over the newer progress.
  *
  * Pattern stays defensive: when no two entries share a Kitsu id
  * (the common case), the output is reference-equal row-by-row to
@@ -53,10 +55,11 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
  */
 export function dedupeHistoryByKitsuId(
 	entries: HistoryEntry[],
-	matches: Record<string, KitsuAnimeRef | null | undefined>
+	matches: Record<string, KitsuAnimeRef | null | undefined>,
+	watchedAt: Record<string, number>
 ): HistoryEntry[] {
-	// Pass 1: pick the winner for each Kitsu group. Highest ep_no
-	// wins; ties go to the row encountered first in the input.
+	// Pass 1: pick the winner for each Kitsu group. The row watched
+	// last wins; ties go to the row encountered first in the input.
 	const winnerByKitsuId = new Map<string, HistoryEntry>();
 	for (const entry of entries) {
 		const match = matches[entry.id];
@@ -66,7 +69,7 @@ export function dedupeHistoryByKitsuId(
 			winnerByKitsuId.set(match.id, entry);
 			continue;
 		}
-		if (parseEpForProgress(entry.ep_no) > parseEpForProgress(existing.ep_no)) {
+		if (watchedLater(entry, existing, watchedAt)) {
 			winnerByKitsuId.set(match.id, entry);
 		}
 	}
@@ -88,6 +91,28 @@ export function dedupeHistoryByKitsuId(
 		emittedKitsuIds.add(match.id);
 	}
 	return out;
+}
+
+/**
+ * Whether `candidate` was watched later than `existing`, by the
+ * resume lookup's rule: a later stamp, or a stamp where the other
+ * has none; when the stamps do not separate the two, the further
+ * progress. Equal on every count is not later, so the first row
+ * encountered keeps its place.
+ */
+function watchedLater(
+	candidate: HistoryEntry,
+	existing: HistoryEntry,
+	watchedAt: Record<string, number>
+): boolean {
+	const candidateStamp = watchedAt[candidate.id];
+	const existingStamp = watchedAt[existing.id];
+	if (candidateStamp !== undefined && existingStamp !== undefined) {
+		if (candidateStamp !== existingStamp) return candidateStamp > existingStamp;
+	} else if (candidateStamp !== undefined || existingStamp !== undefined) {
+		return candidateStamp !== undefined;
+	}
+	return parseEpForProgress(candidate.ep_no) > parseEpForProgress(existing.ep_no);
 }
 
 /** A user-edited or otherwise malformed ep_no (`'abc'`, empty) maps
