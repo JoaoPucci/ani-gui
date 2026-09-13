@@ -769,6 +769,53 @@ fn a_listing_whose_container_holds_nothing_is_the_provider_answering_no_episodes
     );
 }
 
+/// The envelope names its own count. A listing that reads fewer
+/// rows than the count — the HTML cut short, or a row changed past
+/// everything the reader recognises as a row — is not the show's
+/// listing, and read as one it would undercount the show for the
+/// picker and lose the missing row's link.
+#[test]
+fn a_listing_reading_fewer_rows_than_its_declared_count_is_refused() {
+    let two_rows_declared_three = EPISODE_LIST.replacen("\"totalItems\":2", "\"totalItems\":3", 1);
+    assert!(
+        two_rows_declared_three.contains("\"totalItems\":3"),
+        "fixture rewritten"
+    );
+    let err = parse_episode_list(&two_rows_declared_three).expect_err("refused");
+    match err {
+        AniError::ParseFailed { detail } => {
+            assert!(
+                detail.contains('3') && detail.contains('2'),
+                "names both counts: {detail}"
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// The count agreeing, or absent, changes nothing about a readable
+/// listing; the blank listing declares none and reads none.
+#[test]
+fn a_declared_count_that_agrees_or_is_absent_leaves_the_listing_as_read() {
+    let agreeing = parse_episode_list(EPISODE_LIST).expect("listing");
+    assert_eq!(agreeing.len(), 2, "the captured envelope declares two");
+    let without_count = EPISODE_LIST.replacen("\"totalItems\":2,", "", 1);
+    assert!(!without_count.contains("totalItems"), "fixture rewritten");
+    assert_eq!(
+        parse_episode_list(&without_count).expect("listing"),
+        agreeing,
+        "no count declared: the rows as read"
+    );
+    assert!(
+        BLANK_EPISODE_LIST.contains("\"totalItems\":0"),
+        "the blank capture declares none"
+    );
+    assert_eq!(
+        parse_episode_list(BLANK_EPISODE_LIST).expect("answered"),
+        Vec::<EpisodeRef>::new()
+    );
+}
+
 /// The site's server list as captured on 2026-09-08, two days after
 /// the first capture: `HD-1` and `HD-2` are megaplay.buzz now, and
 /// the zokoanime server — the one whose page carries the payload —
