@@ -459,18 +459,27 @@ proptest::proptest! {
     #[test]
     fn a_listing_with_a_row_that_lost_its_marker_is_refused(
         rows in proptest::collection::vec(
-            (1u32..5000, 1u64..1_000_000_000, proptest::bool::weighted(0.8)),
+            (1u32..5000, 1u64..1_000_000_000, proptest::bool::weighted(0.8), proptest::option::of(0u8..3)),
             1..8,
         )
     ) {
+        // Chrome beside a row carries at most one generic attribute —
+        // a control's id, a tab's number — and is never a row.
+        let chrome = |kind: u8, n: usize| match kind {
+            0 => format!(r#"<a class="ssc-btn" data-id="ctl-{n}" href="/go">Go</a>"#),
+            1 => format!(r#"<div class="ssc-page" data-number="{n}">Page {n}</div>"#),
+            _ => format!(r#"<span data-id="badge-{n}">New</span>"#),
+        };
         let html: String = rows
             .iter()
-            .map(|(number, id, marked)| {
+            .enumerate()
+            .map(|(n, (number, id, marked, chrome_kind))| {
                 let class = if *marked { "ssl-item ep-item" } else { "ssl-item" };
-                format!(r#"<a class="{class}" data-number="{number}" data-id="{id}" href="/watch/x?ep={id}"><div class="ssli-order">{number}</div></a>"#)
+                let before = chrome_kind.map_or(String::new(), |kind| chrome(kind, n));
+                format!(r#"{before}<a class="{class}" data-number="{number}" data-id="{id}" href="/watch/x?ep={id}"><div class="ssli-order">{number}</div></a>"#)
             })
             .collect();
-        let lost = rows.iter().position(|(_, _, marked)| !*marked);
+        let lost = rows.iter().position(|(_, _, marked, _)| !*marked);
         match (lost, parse_episode_list(&envelope(&html))) {
             (Some(at), Err(AniError::ParseFailed { detail })) => {
                 prop_assert!(detail.contains(&format!("row {}", at + 1)), "{detail}");
@@ -480,7 +489,7 @@ proptest::proptest! {
                 let expected: Vec<EpisodeRef> = rows
                     .iter()
                     .enumerate()
-                    .map(|(i, (number, id, _))| episode_row(i, &number.to_string(), *id))
+                    .map(|(i, (number, id, _, _))| episode_row(i, &number.to_string(), *id))
                     .collect();
                 prop_assert_eq!(parsed, expected);
             }
@@ -798,28 +807,37 @@ proptest::proptest! {
     #[test]
     fn a_server_row_that_lost_its_marker_leaves_the_listing_uncertain(
         rows in proptest::collection::vec(
-            ("(sub|dub)", "(HD-1|HD-2|HD-3)", "[a-z]{2,10}\\.(video|buzz|to)", "[a-z0-9/]{0,20}", proptest::bool::weighted(0.7)),
+            ("(sub|dub)", "(HD-1|HD-2|HD-3)", "[a-z]{2,10}\\.(video|buzz|to)", "[a-z0-9/]{0,20}", proptest::bool::weighted(0.7), proptest::option::of(0u8..3)),
             1..6,
         )
     ) {
+        // Chrome beside a row carries at most one generic attribute —
+        // a tab's id, a tab's mode, a badge's id — and is never a row.
+        let chrome = |kind: u8, n: usize| match kind {
+            0 => format!(r#"<div class="ps_-tab" data-id="tab-{n}">Tab</div>"#),
+            1 => r#"<div class="ps_-tab" data-type="dub">Dub</div>"#.to_string(),
+            _ => format!(r#"<span data-id="badge-{n}">New</span>"#),
+        };
         let html: String = rows
             .iter()
-            .map(|(mode, name, host, path, marked)| {
+            .enumerate()
+            .map(|(n, (mode, name, host, path, marked, chrome_kind))| {
                 let hash = base64::engine::general_purpose::STANDARD.encode(format!("https://{host}/{path}").as_bytes());
                 let class = if *marked { "item server-item" } else { "item" };
-                format!(r#"<div class="{class}" data-type="{mode}" data-server-name="{name}" data-hash="{hash}"><a class="btn">{name}</a></div>"#)
+                let before = chrome_kind.map_or(String::new(), |kind| chrome(kind, n));
+                format!(r#"{before}<div class="{class}" data-type="{mode}" data-server-name="{name}" data-hash="{hash}"><a class="btn">{name}</a></div>"#)
             })
             .collect();
         let expected: Vec<ServerEmbed> = rows
             .iter()
-            .filter(|(_, _, _, _, marked)| *marked)
-            .map(|(mode, name, host, path, _)| ServerEmbed {
+            .filter(|(_, _, _, _, marked, _)| *marked)
+            .map(|(mode, name, host, path, _, _)| ServerEmbed {
                 mode: mode.clone(),
                 name: name.clone(),
                 embed_url: format!("https://{host}/{path}"),
             })
             .collect();
-        let lost = rows.iter().any(|(_, _, _, _, marked)| !*marked);
+        let lost = rows.iter().any(|(_, _, _, _, marked, _)| !*marked);
         match parse_server_listing(&envelope(&html)) {
             Err(AniError::ParseFailed { .. }) => prop_assert!(expected.is_empty(), "refused with marked rows present"),
             Err(e) => prop_assert!(false, "unexpected error {e:?}"),
@@ -1188,17 +1206,20 @@ proptest! {
 }
 
 proptest::proptest! {
-    /// The rows of a listing by their own attributes: over tags that
-    /// carry one of the row attributes or none, marked with the row
+    /// The rows of a listing by their own signature: over tags that
+    /// carry both row attributes, one, or none, marked with the row
     /// class or not, and of any element, the row-shaped tags come
     /// back exactly — whole, in page order, whatever class they carry
-    /// — and a tag carrying none of the attributes never does,
-    /// however it is classed.
+    /// — and a tag carrying only one of the attributes, or none,
+    /// never does, however it is classed: chrome beside the rows
+    /// carries a generic id or number of its own, never the whole
+    /// signature.
     #[test]
-    fn row_shaped_tags_are_exactly_the_tags_carrying_a_row_attribute(
+    fn row_shaped_tags_are_exactly_the_tags_carrying_the_whole_signature(
         tags in proptest::collection::vec(
             (
-                proptest::option::of(prop_oneof![Just("data-number"), Just("data-id")]),
+                proptest::bool::ANY,
+                proptest::bool::ANY,
                 proptest::bool::ANY,
                 "(a|div|span)",
                 "[a-z0-9]{1,6}",
@@ -1209,17 +1230,18 @@ proptest::proptest! {
     ) {
         let written: Vec<String> = tags
             .iter()
-            .map(|(attr, marked, element, value, text)| {
+            .map(|(number, id, marked, element, value, text)| {
                 let class = if *marked { r#" class="ssl-item ep-item""# } else { r#" class="ssl-item""# };
-                let data = attr.map_or(String::new(), |a| format!(r#" {a}="{value}""#));
-                format!("<{element}{class}{data}>{text}</{element}>")
+                let number = if *number { format!(r#" data-number="{value}""#) } else { String::new() };
+                let id = if *id { format!(r#" data-id="{value}""#) } else { String::new() };
+                format!("<{element}{class}{number}{id}>{text}</{element}>")
             })
             .collect();
         let html = written.concat();
         let expected: Vec<String> = tags
             .iter()
             .zip(&written)
-            .filter(|((attr, _, _, _, _), _)| attr.is_some())
+            .filter(|((number, id, _, _, _, _), _)| *number && *id)
             .map(|(_, tag)| {
                 let (open, _) = tag.split_once('>').expect("an open tag");
                 format!("{open}>")
