@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-14_
+_Last updated: 2026-09-13_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
