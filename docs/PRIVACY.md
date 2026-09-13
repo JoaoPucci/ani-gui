@@ -110,9 +110,11 @@ requires it; the exception is the update check that runs on launch
   ahead of hosts listed after it — and on megaplay's pages the host's own
   sources endpoint as well, since that is where its player gets the
   stream. The site chooses those hosts, and they can change without an app
-  update; at the time of writing the listings name
-  zokoanime.video, megaplay.buzz and vidtube.site, and the client
-  fetches from whichever the site lists for the episode.
+  update; at the time of writing the listings name zokoanime.video,
+  megaplay.buzz — and the numbered mirrors the site serves megaplay's
+  player from, `megaplay-1.buzz` and the like, which the client reads as
+  it reads the host — and vidtube.site, and the client fetches from
+  whichever the site lists for the episode.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
