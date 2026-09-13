@@ -16,6 +16,8 @@ pub mod availability;
 mod availability_mode;
 pub mod availability_refresh;
 pub mod cour;
+mod cour_keyword_form;
+mod cour_ordinal_form;
 pub mod download;
 mod download_names;
 
