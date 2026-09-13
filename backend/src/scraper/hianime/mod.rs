@@ -264,11 +264,12 @@ impl<F: Fetch> Provider for HianimeClient<F> {
 /// The failure to keep when two of an episode's hosts failed, by
 /// what the walk and the breaker make of it: a rate limit outranks
 /// everything, since it alone opens the advertised pause at once; a
-/// page the client could not read — a parse failure — outranks any
-/// other block, since it says the client no longer reads the site;
-/// a block — a refusal-shaped status or a server error — outranks a
-/// dropped connection or a timeout, since the block speaks for the
-/// provider and the breaker must hear it; and those outrank an
+/// block — a refusal-shaped status or a server error — outranks a
+/// page the client could not read, since the block speaks for the
+/// provider, the breaker must hear it, and the shared walk stops on
+/// it, while a parse failure is transient to that walk; a parse
+/// failure outranks a dropped connection or a timeout, since it says
+/// the client no longer reads the site; and those outrank an
 /// answered status, since a server never heard from may carry the
 /// stream and the transport failure is what moves the walk on,
 /// while an answered status is that host's own dead end; between
