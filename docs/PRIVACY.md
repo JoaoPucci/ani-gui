@@ -104,9 +104,11 @@ requires it; the exception is the update check that runs on launch
   source CDN the catalogue or its embed page names. For hianime that
   is, at the time of writing, a host under aniwatchtv.uk; the app
   does not restrict these fetches to a list of hosts, so the
-  provider's choice is what it reaches. The CDN sees a normal
-  `Referer` — the catalogue origin, or for hianime the embed host's
-  — so it serves the file. The CDN is also reached before any
+  provider's choice is what it reaches. For hianime the CDN sees a
+  normal `Referer`, the embed host's origin, since it checks for
+  one; for anidb.app the requests carry no `Referer` at all — its
+  CDN asks for none, and the app adds none. The CDN is also reached
+  before any
   playback, by the page warms described above: a warm that
   resolves fetches the episode's master playlist, to check that
   what the page named is a playlist, and, when the quality setting
