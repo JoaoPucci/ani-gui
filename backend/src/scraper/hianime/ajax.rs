@@ -120,13 +120,17 @@ fn marked_tags<'a>(html: &'a str, marker: &str) -> Vec<&'a str> {
     tags
 }
 
-/// Each open tag carrying any of `attrs` (each written `name="`),
-/// whole and in page order, whatever class it carries: the rows a
-/// listing has by their own attributes. A row keeps its identity in
-/// its data attributes, and the site's row class only names it, so
-/// a row the class left is still a row — passed over as chrome, it
-/// would leave a listing reading as complete one row short.
-pub(crate) fn row_shaped_tags<'a>(html: &'a str, attrs: &[&str]) -> Vec<&'a str> {
+/// Each open tag carrying every attribute of `signature` (each
+/// written `name="`), whole and in page order, whatever class it
+/// carries: the rows a listing has by their own attributes. A row
+/// keeps its identity in its data attributes, and the site's row
+/// class only names it, so a row the class left is still a row —
+/// passed over as chrome, it would leave a listing reading as
+/// complete one row short. The whole signature, not any one
+/// attribute of it: the chrome beside the rows — a tab, a control,
+/// a badge — carries a generic id or number of its own, and read as
+/// a row it would put a listing in doubt that has none.
+pub(crate) fn row_shaped_tags<'a>(html: &'a str, signature: &[&str]) -> Vec<&'a str> {
     let mut tags = Vec::new();
     let mut from = 0;
     while let Some(lt) = html[from..].find('<') {
@@ -136,7 +140,7 @@ pub(crate) fn row_shaped_tags<'a>(html: &'a str, attrs: &[&str]) -> Vec<&'a str>
         };
         let tag = &html[open..=open + gt];
         from = open + gt + 1;
-        if attrs.iter().any(|a| tag.contains(a)) {
+        if signature.iter().all(|a| tag.contains(a)) {
             tags.push(tag);
         }
     }
@@ -154,23 +158,22 @@ fn is_anchor(tag: &str) -> bool {
             .is_some_and(|b| b.is_ascii_whitespace())
 }
 
-/// The attributes that make a tag an episode row.
-const EPISODE_ROW_ATTRS: [&str; 2] = ["data-number=\"", "data-id=\""];
+/// The signature of an episode row: its number and its id, which
+/// every captured row carries together and no other tag on the
+/// page does.
+const EPISODE_ROW_SIGNATURE: [&str; 2] = ["data-number=\"", "data-id=\""];
 
-/// The attributes that make a tag a server row.
-const SERVER_ROW_ATTRS: [&str; 5] = [
-    "data-type=\"",
-    "data-server-name=\"",
-    "data-hash=\"",
-    "data-server-id=\"",
-    "data-id=\"",
-];
+/// The signature of a server row: the server's name and the hash of
+/// its embed, which every captured row carries together — the mode
+/// is not part of it, since a marked row may have lost its mode
+/// attribute and still be a row ([`read_server_row`]).
+const SERVER_ROW_SIGNATURE: [&str; 2] = ["data-server-name=\"", "data-hash=\""];
 
 /// The position, among the anchors shaped like episode rows, of the
 /// first one that does not carry the row marker — a row the class
 /// left — or nothing when every row-shaped anchor carries it.
 fn episode_row_that_lost_its_marker(html: &str) -> Option<usize> {
-    row_shaped_tags(html, &EPISODE_ROW_ATTRS)
+    row_shaped_tags(html, &EPISODE_ROW_SIGNATURE)
         .into_iter()
         .filter(|tag| is_anchor(tag))
         .position(|tag| !tag.contains("ep-item"))
@@ -180,7 +183,7 @@ fn episode_row_that_lost_its_marker(html: &str) -> Option<usize> {
 /// marker — a row the class left, whose mode the client cannot
 /// vouch for.
 fn a_server_row_lost_its_marker(html: &str) -> bool {
-    row_shaped_tags(html, &SERVER_ROW_ATTRS)
+    row_shaped_tags(html, &SERVER_ROW_SIGNATURE)
         .into_iter()
         .any(|tag| !tag.contains("server-item"))
 }
@@ -210,8 +213,8 @@ fn is_blank_listing(html: &str) -> bool {
 /// reader cannot read, and it refuses the listing whole: the
 /// listing is the show's count, and one short of it undercounts the
 /// show and loses the dropped row's link. So is an anchor shaped
-/// like a row — a number or an id on it — that does not carry the
-/// marker ([`row_shaped_tags`]): the class only names a row, and a
+/// like a row — its number and its id on it — that does not carry
+/// the marker ([`row_shaped_tags`]): the class only names a row, and a
 /// row it left would otherwise be passed over as chrome, the listing
 /// reading as complete one row short and renumbered. A listing whose
 /// container holds nothing is the entry having no episodes yet. And
@@ -394,7 +397,7 @@ fn read_server_row(item: &str) -> ServerRow {
 /// listing of such rows pass as "no sub, no dub" instead of a changed
 /// shape, and forgetting it would let a renamed mode or attribute
 /// read as absent beside the mode that kept its name. A tag shaped
-/// like a row — typed, named, hashed — that does not carry the row
+/// like a row — named and hashed — that does not carry the row
 /// marker is the same doubt ([`row_shaped_tags`]): the class only
 /// names a row, so a row it left is one whose mode the client
 /// cannot vouch for, not chrome, and the lost sub row beside a
