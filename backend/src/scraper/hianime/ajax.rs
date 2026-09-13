@@ -90,6 +90,71 @@ fn marked_tags<'a>(html: &'a str, marker: &str) -> Vec<&'a str> {
     tags
 }
 
+/// Each open tag carrying any of `attrs` (each written `name="`),
+/// whole and in page order, whatever class it carries: the rows a
+/// listing has by their own attributes. A row keeps its identity in
+/// its data attributes, and the site's row class only names it, so
+/// a row the class left is still a row — passed over as chrome, it
+/// would leave a listing reading as complete one row short.
+pub(crate) fn row_shaped_tags<'a>(html: &'a str, attrs: &[&str]) -> Vec<&'a str> {
+    let mut tags = Vec::new();
+    let mut from = 0;
+    while let Some(lt) = html[from..].find('<') {
+        let open = from + lt;
+        let Some(gt) = html[open..].find('>') else {
+            break;
+        };
+        let tag = &html[open..=open + gt];
+        from = open + gt + 1;
+        if attrs.iter().any(|a| tag.contains(a)) {
+            tags.push(tag);
+        }
+    }
+    tags
+}
+
+/// Whether `tag` opens an anchor: the episode listing's rows are
+/// anchors, and only an anchor shaped like a row is one that lost
+/// its marker rather than chrome carrying a like-named attribute.
+fn is_anchor(tag: &str) -> bool {
+    tag.starts_with("<a")
+        && tag
+            .as_bytes()
+            .get(2)
+            .is_some_and(|b| b.is_ascii_whitespace())
+}
+
+/// The attributes that make a tag an episode row.
+const EPISODE_ROW_ATTRS: [&str; 2] = ["data-number=\"", "data-id=\""];
+
+/// The attributes that make a tag a server row.
+const SERVER_ROW_ATTRS: [&str; 5] = [
+    "data-type=\"",
+    "data-server-name=\"",
+    "data-hash=\"",
+    "data-server-id=\"",
+    "data-id=\"",
+];
+
+/// The position, among the anchors shaped like episode rows, of the
+/// first one that does not carry the row marker — a row the class
+/// left — or nothing when every row-shaped anchor carries it.
+fn episode_row_that_lost_its_marker(html: &str) -> Option<usize> {
+    row_shaped_tags(html, &EPISODE_ROW_ATTRS)
+        .into_iter()
+        .filter(|tag| is_anchor(tag))
+        .position(|tag| !tag.contains("ep-item"))
+}
+
+/// Whether a tag shaped like a server row does not carry the row
+/// marker — a row the class left, whose mode the client cannot
+/// vouch for.
+fn a_server_row_lost_its_marker(html: &str) -> bool {
+    row_shaped_tags(html, &SERVER_ROW_ATTRS)
+        .into_iter()
+        .any(|tag| !tag.contains("server-item"))
+}
+
 /// Whether `html` is the episode list's container with nothing but
 /// whitespace inside — how the site renders an entry it has announced
 /// but not started serving. That is the provider answering "no
@@ -114,14 +179,24 @@ fn is_blank_listing(html: &str) -> bool {
 /// decided here. A row without a number or without an id is one the
 /// reader cannot read, and it refuses the listing whole: the
 /// listing is the show's count, and one short of it undercounts the
-/// show and loses the dropped row's link. A listing whose container
-/// holds nothing is the entry having no episodes yet.
+/// show and loses the dropped row's link. So is an anchor shaped
+/// like a row — a number or an id on it — that does not carry the
+/// marker ([`row_shaped_tags`]): the class only names a row, and a
+/// row it left would otherwise be passed over as chrome, the listing
+/// reading as complete one row short and renumbered. A listing whose
+/// container holds nothing is the entry having no episodes yet.
 ///
 /// # Errors
 /// As [`unwrap_envelope`]; [`AniError::ParseFailed`] naming the row
-/// when a marked row cannot be read.
+/// when a marked row cannot be read or a row-shaped anchor lost the
+/// marker.
 pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
     let html = unwrap_envelope(json)?;
+    if let Some(at) = episode_row_that_lost_its_marker(&html) {
+        return Err(AniError::ParseFailed {
+            detail: format!("hianime episode list: row {} lost its marker", at + 1),
+        });
+    }
     let rows = marked_tags(&html, "ep-item")
         .into_iter()
         .enumerate()
@@ -188,10 +263,11 @@ pub struct ServerListing {
     /// mode at most once, in the order first seen.
     pub unreadable_modes: Vec<String>,
     /// Whether a row was seen whose mode the client cannot tell —
-    /// typed blank, typed with a value other than `sub` and `dub`, or
-    /// not typed at all. Such a row may be a known mode under a new
-    /// name or attribute, so no known mode the listing carries no row
-    /// of is absent while one was seen.
+    /// typed blank, typed with a value other than `sub` and `dub`,
+    /// not typed at all, or shaped like a row without the row
+    /// marker. Such a row may be a known mode under a new name,
+    /// attribute or class, so no known mode the listing carries no
+    /// row of is absent while one was seen.
     pub unknown_modes: bool,
 }
 
@@ -275,9 +351,15 @@ fn read_server_row(item: &str) -> ServerRow {
 /// listing as carrying unknown modes: counting it as read would let a
 /// listing of such rows pass as "no sub, no dub" instead of a changed
 /// shape, and forgetting it would let a renamed mode or attribute
-/// read as absent beside the mode that kept its name. A row of a known mode the client cannot
-/// read marks that mode unreadable and is skipped; a nonempty listing
-/// with no readable row at all is refused.
+/// read as absent beside the mode that kept its name. A tag shaped
+/// like a row — typed, named, hashed — that does not carry the row
+/// marker is the same doubt ([`row_shaped_tags`]): the class only
+/// names a row, so a row it left is one whose mode the client
+/// cannot vouch for, not chrome, and the lost sub row beside a
+/// marked dub row would otherwise read as the listing carrying no
+/// sub. A row of a known mode the client cannot read marks that mode
+/// unreadable and is skipped; a nonempty listing with no readable
+/// row at all is refused.
 ///
 /// # Errors
 /// As [`unwrap_envelope`], and [`AniError::ParseFailed`] for a
@@ -286,7 +368,7 @@ pub fn parse_server_listing(json: &str) -> Result<ServerListing> {
     let html = unwrap_envelope(json)?;
     let mut servers = Vec::new();
     let mut unreadable_modes: Vec<String> = Vec::new();
-    let mut unknown_modes = false;
+    let mut unknown_modes = a_server_row_lost_its_marker(&html);
     for row in marked_tags(&html, "server-item")
         .into_iter()
         .map(read_server_row)
