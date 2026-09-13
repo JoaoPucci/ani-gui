@@ -987,8 +987,9 @@ proptest::proptest! {
 
     /// Whatever the subtitle list looks like — absent, `null`, not a
     /// list, or a list mixing rows the client reads with rows missing
-    /// a field or not objects at all — the stream comes back, and
-    /// exactly the readable rows come with it, in order.
+    /// a field, not objects at all, or naming a source the transport
+    /// cannot fetch — the stream comes back, and exactly the readable
+    /// rows with a fetchable source come with it, in order.
     #[test]
     fn a_payload_keeps_its_stream_and_its_readable_tracks_whatever_the_rest_of_the_list(
         src in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}\\.m3u8",
@@ -1009,6 +1010,12 @@ proptest::proptest! {
                     "[a-z]{2}".prop_map(|lang| (None, serde_json::json!({"lang": lang, "src": "https://hls.example/x.vtt"}))),
                     "[a-z]{2}".prop_map(|s| (None, serde_json::json!(s))),
                     Just((None, serde_json::json!(null))),
+                    // Rows the client reads whose source it cannot
+                    // fetch: relative, or under another scheme.
+                    ("[a-z]{2}", "/[a-z0-9/]{1,20}\\.vtt")
+                        .prop_map(|(lang, path)| (None, serde_json::json!({"lang": lang, "label": "X", "default": false, "src": path}))),
+                    ("[a-z]{2}", "(ftp|file|data)")
+                        .prop_map(|(lang, scheme)| (None, serde_json::json!({"lang": lang, "label": "X", "default": false, "src": format!("{scheme}://hls.example/{lang}.vtt")}))),
                 ],
                 0..6,
             )
