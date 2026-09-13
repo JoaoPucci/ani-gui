@@ -15,14 +15,16 @@
 //! takes the first page that decodes.
 
 pub mod ajax;
+pub mod detail;
 pub mod embed;
 pub mod parse;
 pub use ajax::{
     parse_episode_list, parse_server_listing, parse_servers, servers_for, ServerEmbed,
     ServerListing,
 };
+pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload, SubtitleTrack};
-pub use parse::{parse_detail_year, parse_search, slug_id};
+pub use parse::{parse_search, slug_id};
 
 use crate::error::{AniError, Result};
 use crate::scraper::fetch::{Fetch, FetchRequest};
