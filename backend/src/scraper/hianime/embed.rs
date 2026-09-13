@@ -102,11 +102,24 @@ pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
     if !is_fetchable(&wire.src) {
         return Err(undecodable("source is not an absolute http(s) URL"));
     }
+    // A track's source is held to the stream's rule, dropping the row
+    // rather than the page: the page carries no base to resolve a
+    // relative source against, and a source under another scheme is
+    // nothing the transport fetches, so such a row would only ride
+    // into the proxy, the hand-offs and the cache row as a track that
+    // never loads.
     Ok(EmbedPayload {
         src: wire.src,
         subtitles: wire
             .subtitles
             .into_iter()
+            .filter(|t| {
+                let fetchable = is_fetchable(&t.src);
+                if !fetchable {
+                    tracing::debug!(lang = %t.lang, src = %t.src, "hianime embed: subtitle source not fetchable, row dropped");
+                }
+                fetchable
+            })
             .map(|t| SubtitleTrack {
                 lang: t.lang,
                 label: t.label,
