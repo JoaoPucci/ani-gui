@@ -1055,6 +1055,38 @@ proptest::proptest! {
         }
     }
 
+    /// Every track the payload carries has a source within the bound
+    /// the hand-offs need, and a source at the bound is kept while
+    /// one past it is not: the bound is on the URL as the page names
+    /// it, in bytes.
+    #[test]
+    fn every_kept_track_source_is_within_the_hand_off_bound(
+        src in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}\\.m3u8",
+        lens in proptest::collection::vec(1usize..2 * crate::scraper::provider::SUBTITLE_URL_CAP, 0..6),
+    ) {
+        use crate::scraper::provider::SUBTITLE_URL_CAP;
+        let prefix = "https://hls.example/";
+        let rows: Vec<(bool, serde_json::Value)> = lens
+            .iter()
+            .map(|&len| {
+                let url = format!("{prefix}{}", "a".repeat(len.max(prefix.len() + 1) - prefix.len()));
+                (url.len() <= SUBTITLE_URL_CAP, serde_json::json!({"lang": "en", "label": "X", "default": false, "src": url}))
+            })
+            .collect();
+        let json = serde_json::json!({"src": src, "subtitles": rows.iter().map(|(_, r)| r.clone()).collect::<Vec<_>>()}).to_string();
+        let key = b"otaku-embed-v1";
+        let blob = base64::engine::general_purpose::STANDARD.encode(
+            json.bytes().enumerate().map(|(i, b)| b ^ key[i % key.len()]).collect::<Vec<u8>>(),
+        );
+        let page = format!(r#"<html><body><script>window.__P="{blob}"</script></body></html>"#);
+        let payload = decode_embed(&page).expect("the stream is usable");
+        let kept = rows.iter().filter(|(within, _)| *within).count();
+        proptest::prop_assert_eq!(payload.subtitles.len(), kept);
+        for track in &payload.subtitles {
+            proptest::prop_assert!(track.url.len() <= SUBTITLE_URL_CAP);
+        }
+    }
+
     /// A payload whose source is not an absolute http(s) URL is not a
     /// stream the client can fetch: blank, relative, or under another
     /// scheme, it is refused as a parse failure whatever else it says.
