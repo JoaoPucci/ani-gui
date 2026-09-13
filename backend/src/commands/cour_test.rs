@@ -217,6 +217,147 @@ fn title_cour_passes_through_trailing_text_without_episode_count() {
     assert_eq!(cour_from_title("Foo Part 2 (many episodes)"), None); // non-digits inside parens
 }
 
+// ── the ordinal forms Kitsu's titles and slugs use ──────────────────
+
+/// Kitsu writes a cour before the keyword as often as after it —
+/// "2nd Season", "Second Season" — and the page's own resolver reads
+/// both. A qualified row spelled `season-2` meeting a Kitsu hit
+/// spelled `2nd-season` read as cour 1 here and was passed over.
+#[test]
+fn title_cour_reads_a_numeric_ordinal_before_the_keyword() {
+    assert_eq!(cour_from_title("Foo 2nd Season"), Some(2));
+    assert_eq!(cour_from_title("Foo 3rd Part"), Some(3));
+    assert_eq!(cour_from_title("Foo 4th Cour"), Some(4));
+    assert_eq!(cour_from_title("Foo 1st season"), Some(1));
+    assert_eq!(cour_from_title("Foo 11th Season"), Some(11));
+    assert_eq!(cour_from_title("Foo: 2ND SEASON"), Some(2));
+    assert_eq!(cour_from_title("Foo 2nd Season (12 episodes)"), Some(2));
+}
+
+#[test]
+fn title_cour_reads_a_spelled_ordinal_before_the_keyword() {
+    assert_eq!(cour_from_title("Foo Second Season"), Some(2));
+    assert_eq!(cour_from_title("Foo Fourth Part"), Some(4));
+    assert_eq!(cour_from_title("Foo tenth cour"), Some(10));
+    assert_eq!(cour_from_title("Foo First Season"), Some(1));
+    assert_eq!(cour_from_title("アニメ Second Season"), Some(2));
+}
+
+#[test]
+fn title_cour_anchors_the_ordinal_like_the_keyword() {
+    // The ordinal must begin a token: a letter glued to it is a word
+    // that happens to end in an ordinal, not a cour.
+    assert_eq!(cour_from_title("Foo x2nd Season"), None);
+    assert_eq!(cour_from_title("Foo Resecond Season"), None);
+    // A keyword with nothing before it names no cour.
+    assert_eq!(cour_from_title("Foo Season"), None);
+    assert_eq!(cour_from_title("Season"), None);
+    // Only the page's ten spelled ordinals are read.
+    assert_eq!(cour_from_title("Foo Eleventh Season"), None);
+    // A bare number before the keyword is a title form the page does
+    // not read either.
+    assert_eq!(cour_from_title("Foo 2 Season"), None);
+}
+
+#[test]
+fn slug_cour_reads_an_ordinal_segment_before_the_keyword() {
+    assert_eq!(cour_from_slug("foo-2nd-season"), Some(2));
+    assert_eq!(cour_from_slug("foo-3rd-part"), Some(3));
+    assert_eq!(cour_from_slug("foo-4th-cour"), Some(4));
+    assert_eq!(cour_from_slug("foo-11th-season"), Some(11));
+    // Kitsu also writes the bare number before the keyword.
+    assert_eq!(cour_from_slug("foo-2-season"), Some(2));
+    assert_eq!(cour_from_slug("foo-second-season"), Some(2));
+    assert_eq!(cour_from_slug("foo-fourth-part"), Some(4));
+    assert_eq!(cour_from_slug("second-season"), Some(2));
+    assert_eq!(cour_from_slug("2nd-season"), Some(2));
+}
+
+#[test]
+fn slug_cour_keeps_the_ordinal_forms_trailing_and_anchored() {
+    // Trailing only, as with `-season-N`: a cour segment followed by
+    // more of the slug names the parent series.
+    assert_eq!(cour_from_slug("foo-2nd-season-extra"), None);
+    assert_eq!(cour_from_slug("foo-second-season-x"), None);
+    // The ordinal segment must be a whole segment.
+    assert_eq!(cour_from_slug("foosecond-season"), None);
+    assert_eq!(cour_from_slug("x2nd-season"), None);
+    assert_eq!(cour_from_slug("foo-eleventh-season"), None);
+    assert_eq!(cour_from_slug("foo-season"), None);
+}
+
+mod cour_form_props {
+    use super::super::{cour_from_slug, cour_from_title};
+    use proptest::prelude::*;
+
+    const WORDS: [&str; 10] = [
+        "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth",
+        "tenth",
+    ];
+    const KEYWORDS: [&str; 3] = ["part", "cour", "season"];
+    const SUFFIXES: [&str; 4] = ["st", "nd", "rd", "th"];
+
+    /// The title forms for cour `n`, over the keyword and the
+    /// ordinal suffix or spelled word, each form's index for the
+    /// failure message.
+    fn title_forms(n: u32, kw: &str, suffix: &str) -> Vec<String> {
+        let mut forms = vec![format!("{kw} {n}"), format!("{n}{suffix} {kw}")];
+        if let Some(word) = WORDS.get((n as usize).wrapping_sub(1)) {
+            forms.push(format!("{word} {kw}"));
+        }
+        forms
+    }
+
+    fn slug_forms(n: u32, kw: &str, suffix: &str) -> Vec<String> {
+        let mut forms = vec![
+            format!("{kw}-{n}"),
+            format!("{n}{suffix}-{kw}"),
+            format!("{n}-{kw}"),
+        ];
+        if let Some(word) = WORDS.get((n as usize).wrapping_sub(1)) {
+            forms.push(format!("{word}-{kw}"));
+        }
+        forms
+    }
+
+    proptest! {
+        /// Every form of cour `n` parses to `n`, on a title and on a
+        /// slug alike, whatever precedes it; so a form for `n` never
+        /// parses to another cour.
+        #[test]
+        fn every_form_of_a_cour_parses_to_it(
+            words in "[a-z]{2,6}( [a-z]{2,6}){0,2}",
+            n in 1u32..40,
+            kw in prop::sample::select(KEYWORDS.to_vec()),
+            suffix in prop::sample::select(SUFFIXES.to_vec()),
+        ) {
+            for form in title_forms(n, kw, suffix) {
+                let title = format!("{words} {form}");
+                prop_assert_eq!(cour_from_title(&title), Some(n), "title {}", title);
+            }
+            let base = words.replace(' ', "-");
+            for form in slug_forms(n, kw, suffix) {
+                let slug = format!("{base}-{form}");
+                prop_assert_eq!(cour_from_slug(&slug), Some(n), "slug {}", slug);
+            }
+        }
+
+        /// Words alone, or a keyword with nothing to number it, name
+        /// no cour on either side.
+        #[test]
+        fn words_without_a_form_name_no_cour(
+            words in "[a-z]{2,6}( [a-z]{2,6}){0,2}",
+            kw in prop::sample::select(KEYWORDS.to_vec()),
+        ) {
+            prop_assert_eq!(cour_from_title(&words), None);
+            prop_assert_eq!(cour_from_title(&format!("{words} {kw}")), None);
+            let base = words.replace(' ', "-");
+            prop_assert_eq!(cour_from_slug(&base), None);
+            prop_assert_eq!(cour_from_slug(&format!("{base}-{kw}")), None);
+        }
+    }
+}
+
 mod hit_cour_props {
     use super::super::{cour_from_slug, cour_from_title, hit_cour_disagrees};
     use proptest::prelude::*;
