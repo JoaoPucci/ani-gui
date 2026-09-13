@@ -20,6 +20,17 @@ pub(crate) fn resumes_over(candidate: (Option<i64>, &str), current: (Option<i64>
     }
 }
 
+/// The moment a row was watched, from the two stores that hold one:
+/// the file's, written beside the row by the watch itself, and the
+/// cache's, written by the same watch and by a later mark-watched.
+/// The later of the two is the watch; either alone is it when the
+/// other has none — a cache that refused the stamp, a row from before
+/// the file carried one.
+#[must_use]
+pub(crate) fn latest_of(file: Option<i64>, cache: Option<i64>) -> Option<i64> {
+    file.max(cache)
+}
+
 /// The progress an episode number stands for, read the way the
 /// strip reads it: the number the text begins with, so the `12.5`
 /// recap is more progress than `12`; text that begins with no

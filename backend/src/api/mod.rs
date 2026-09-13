@@ -710,7 +710,7 @@ async fn get_kitsu_resolve_allmanga(
 async fn get_watched_at_all(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<std::collections::HashMap<String, i64>>, AniError> {
-    Ok(Json(kitsu_inner::watched_at_all(&state)?))
+    Ok(Json(crate::commands::history::watched_at_all(&state)?))
 }
 
 /// Evict the cached play resolution for `(title, mode, quality,
@@ -1468,7 +1468,9 @@ mod tests {
         let body = std::fs::read_to_string(&history_path).expect("history file written");
         // Format: ep_no\tid\ttitle\twatched_at_ms\n — the CLI's three
         // columns, then the moment of the watch that wrote the row.
-        let line = body.strip_suffix('\n').expect("one line, newline-terminated");
+        let line = body
+            .strip_suffix('\n')
+            .expect("one line, newline-terminated");
         let (columns, moment) = line.rsplit_once('\t').expect("the watch's moment");
         assert_eq!(
             columns, "150\tvDTSJHSpYnrkZnAvG\tNato: Shippuuden (500 episodes)",
