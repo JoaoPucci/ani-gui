@@ -13,6 +13,17 @@ struct Envelope {
     status: bool,
     #[serde(default)]
     html: Option<String>,
+    /// The count the episode-list envelope declares for its own
+    /// rows; the server-list envelope carries none.
+    #[serde(default, rename = "totalItems")]
+    total_items: Option<u64>,
+}
+
+/// What an envelope wraps: its HTML, and the row count it declares
+/// when it declares one.
+struct Wrapped {
+    html: String,
+    declared: Option<u64>,
 }
 
 /// The HTML an envelope wraps. `status: false` is the provider
@@ -23,15 +34,34 @@ struct Envelope {
 /// [`AniError::Upstream`] with 404 on `status: false`,
 /// [`AniError::ParseFailed`] when the body is not the envelope.
 fn unwrap_envelope(json: &str) -> Result<String> {
+    open_envelope(json).map(|w| w.html)
+}
+
+/// [`unwrap_envelope`], keeping the count the envelope declares.
+fn open_envelope(json: &str) -> Result<Wrapped> {
     let env: Envelope = serde_json::from_str(json).map_err(|e| AniError::ParseFailed {
         detail: format!("hianime envelope: {e}"),
     })?;
     if !env.status {
         return Err(AniError::Upstream { status: 404 });
     }
-    env.html.ok_or_else(|| AniError::ParseFailed {
+    let html = env.html.ok_or_else(|| AniError::ParseFailed {
         detail: "hianime envelope without html".into(),
+    })?;
+    Ok(Wrapped {
+        html,
+        declared: env.total_items,
     })
+}
+
+/// Whether the rows read are the count the envelope declared: an
+/// absent count holds nothing against them, and any other number
+/// than the one read is a listing the reader does not have whole —
+/// the HTML cut short, or a row changed past everything that marks
+/// a row — which read as complete would undercount the show for the
+/// picker and lose the missing row's link.
+fn matches_declared_count(declared: Option<u64>, read: usize) -> bool {
+    declared.is_none_or(|count| u64::try_from(read).is_ok_and(|read| read == count))
 }
 
 /// An empty listing is the provider answering "none"; nonempty HTML
@@ -184,14 +214,17 @@ fn is_blank_listing(html: &str) -> bool {
 /// marker ([`row_shaped_tags`]): the class only names a row, and a
 /// row it left would otherwise be passed over as chrome, the listing
 /// reading as complete one row short and renumbered. A listing whose
-/// container holds nothing is the entry having no episodes yet.
+/// container holds nothing is the entry having no episodes yet. And
+/// the envelope declares its own count: rows read that are not that
+/// count are refused too ([`matches_declared_count`]).
 ///
 /// # Errors
 /// As [`unwrap_envelope`]; [`AniError::ParseFailed`] naming the row
 /// when a marked row cannot be read or a row-shaped anchor lost the
-/// marker.
+/// marker, or naming both counts when the rows read are not the
+/// count declared.
 pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
-    let html = unwrap_envelope(json)?;
+    let Wrapped { html, declared } = open_envelope(json)?;
     if let Some(at) = episode_row_that_lost_its_marker(&html) {
         return Err(AniError::ParseFailed {
             detail: format!("hianime episode list: row {} lost its marker", at + 1),
@@ -206,6 +239,15 @@ pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
             })
         })
         .collect::<Result<Vec<EpisodeRef>>>()?;
+    if !matches_declared_count(declared, rows.len()) {
+        return Err(AniError::ParseFailed {
+            detail: format!(
+                "hianime episode list: {} rows read, {} declared",
+                rows.len(),
+                declared.unwrap_or_default()
+            ),
+        });
+    }
     if rows.is_empty() && is_blank_listing(&html) {
         return Ok(rows);
     }
