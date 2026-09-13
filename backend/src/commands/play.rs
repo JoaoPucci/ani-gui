@@ -250,6 +250,11 @@ where
         args.episode_count,
         args.subtype.as_deref(),
     );
+    // Captured before any network work — the replay's liveness check
+    // and the resolving alike — not before the write: the answer a
+    // play stamps is the one it got here, and a refresh can land any
+    // time between.
+    let availability_generation = crate::commands::play_cache::generation_before_check(state, args);
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
             if let Some(resp) = try_serve_cached(state, &cached).await {
@@ -260,8 +265,13 @@ where
                     "play: cache hit (HEAD ok)",
                 );
                 write_history_on_cache_hit(state, args, &cached);
-                crate::commands::play_cache::stamp_availability_on_cache_hit(state, args, &cached)
-                    .await;
+                crate::commands::play_cache::stamp_availability_on_cache_hit(
+                    state,
+                    args,
+                    &cached,
+                    availability_generation,
+                )
+                .await;
                 return Ok(resp);
             }
             // HEAD failed — the cached URL is dead. Evict the row and
@@ -282,14 +292,6 @@ where
     // episode-to-master resolution. The subprocess never runs on the
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
-    // Captured before the resolving, not before the write: the answer
-    // a play resolution stamps is the one it got here, and a refresh
-    // can land any time between.
-    let availability_generation = crate::commands::availability_refresh::generation_at_start(
-        &state.availability_refreshes,
-        args.kitsu_id.as_deref(),
-        args.mode.as_str(),
-    );
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
