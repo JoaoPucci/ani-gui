@@ -23,8 +23,8 @@ pub mod embed;
 pub mod megaplay;
 pub mod parse;
 pub use ajax::{
-    parse_episode_list, parse_server_listing, parse_servers, servers_for, ServerEmbed,
-    ServerListing,
+    last_readable_index, parse_episode_list, parse_server_listing, parse_servers, servers_for,
+    ServerEmbed, ServerListing,
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
@@ -327,21 +327,24 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // attempt would time out with a healthy server unasked. A
         // server cut off at its bound is stepped over like one whose
         // connection dropped; the transport's child is killed with
-        // the future it ran under. The last server has no rest to
+        // the future it ran under. The last server the walk can use
+        // — the last on a host the client reads
+        // ([`last_readable_index`]), since the hosts the listing
+        // trails behind it are stepped over unread — has no rest to
         // hold time back for and runs on the attempt's remainder,
         // bounded by the walk around this client — the attempt's
         // deadline above, the transport's per-request wait below — so
         // a chain slower than the bound is still served when it is
-        // the only chain left.
+        // the last chain the walk can read.
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         let ordered = servers_for(&servers, mode);
-        let count = ordered.len();
+        let unbounded = last_readable_index(&ordered);
         for (i, server) in ordered.into_iter().enumerate() {
             let chain = async {
                 let payload = self.read_server(server).await?;
                 self.resolved(server, payload, quality).await
             };
-            let outcome = if i + 1 == count {
+            let outcome = if unbounded == Some(i) {
                 chain.await
             } else {
                 match tokio::time::timeout(self.server_budget, chain).await {
