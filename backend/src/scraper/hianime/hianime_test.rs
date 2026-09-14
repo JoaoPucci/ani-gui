@@ -1142,6 +1142,12 @@ struct Site {
 const SLOW_HOST: std::time::Duration = std::time::Duration::from_millis(250);
 /// A wait a bounded server clears inside the test's per-server budget.
 const BRIEF_HOST: std::time::Duration = std::time::Duration::from_millis(40);
+/// What each request of the stub's paced chain waits before it
+/// answers. A chain of four outlasts the per-server budget the
+/// stalled-host tests give a server, while no single request comes
+/// near it — a healthy host under load, not one that has stopped
+/// answering.
+const CHAIN_STEP: std::time::Duration = std::time::Duration::from_millis(30);
 
 impl Site {
     fn new() -> Self {
@@ -1583,6 +1589,21 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // Two zokoanime servers whose masters hold the connection,
+            // then a megaplay server whose whole chain answers, every
+            // request of it taking a slice: the healthy-but-loaded
+            // shape, whose four sequential fetches together outlast a
+            // per-server bound while each sits far inside the
+            // transport's own wait.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21469") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAxL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // Both servers' masters hold the connection: the first
             // for as long as it is waited for, the second until the
             // transport's own deadline reports it.
@@ -1679,6 +1700,32 @@ impl Fetch for Site {
                 }
             }
             "https://mp.example/v/slow/index-f2.m3u8" => ok("#EXTM3U\n"),
+            // A megaplay chain whose every request answers after a
+            // wait: the embed page, the sources answer, the master and
+            // the chosen rendition, four of them in sequence. Nothing
+            // here has stopped answering — the host is loaded, and the
+            // chain's total is what a server given only one request's
+            // worth of time never reaches.
+            "https://megaplay.buzz/stream/s-2/734301/sub" => {
+                tokio::time::sleep(CHAIN_STEP).await;
+                ok(MEGAPLAY_PAGE.replace("179411", "14"))
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=14" => {
+                tokio::time::sleep(CHAIN_STEP).await;
+                ok(r#"{"sources":{"file":"https://mp.example/v/paced/master.m3u8"},"tracks":[]}"#)
+            }
+            "https://mp.example/v/paced/master.m3u8" => {
+                tokio::time::sleep(CHAIN_STEP).await;
+                if header(req, "Referer") == Some("https://megaplay.buzz/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720,NAME=\"720p\"\nindex-f2.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://mp.example/v/paced/index-f2.m3u8" => {
+                tokio::time::sleep(CHAIN_STEP).await;
+                ok("#EXTM3U\n")
+            }
             "https://megaplay-1.buzz/stream/s-2/734299/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "12"))
             }
@@ -2674,6 +2721,23 @@ fn client_with_server_budget(ms: u64) -> HianimeClient<Site> {
     client().with_server_budget(std::time::Duration::from_millis(ms))
 }
 
+/// The reserve is sized against the attempt it is carved out of. A
+/// provider's attempt has twenty seconds for the search, the
+/// candidate, the listings and every server together; the reserve
+/// holds ten of them for the server that runs on the remainder,
+/// which is a whole chain at a pace a loaded CDN keeps and still
+/// leaves the attempt room for the work ahead of the walk and for a
+/// bounded server besides.
+#[test]
+fn the_reserve_is_one_chain_of_the_attempts_budget() {
+    let reserve = chain_reserve(SERVER_ATTEMPT_BUDGET);
+    assert_eq!(reserve, std::time::Duration::from_secs(10), "{reserve:?}");
+    assert!(
+        reserve + SERVER_ATTEMPT_BUDGET < crate::commands::providers::PRIMARY_ATTEMPT_BUDGET,
+        "the reserve left the attempt no room for a bounded server ahead of it: {reserve:?}"
+    );
+}
+
 /// A stream host can hold a connection open without answering; the
 /// transport gives such a fetch ten seconds, and the walk of one
 /// provider has twenty in all, part of them spent on the search and
@@ -2834,6 +2898,29 @@ async fn stalled_servers_share_the_attempts_remainder_so_the_last_server_is_stil
         .expect("the attempt's deadline was not spent on the stalled servers")
         .expect("served");
     assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+}
+
+/// What is held back for the server that runs on the remainder has
+/// to be a whole chain's worth, and a chain is four sequential
+/// requests: megaplay's embed page, its sources answer, the master
+/// playlist and the chosen rendition. A reserve of one per-server
+/// bound is one request's worth of patience spread over four, so a
+/// healthy chain on a loaded host — every request far inside the
+/// transport's own wait — outlasts it, and the attempt cancels the
+/// last server the walk had left. Two stalled servers ahead of it
+/// share what the attempt has left after the reserve; the chain,
+/// slower than one bound and well inside the reserve, is served.
+#[tokio::test(start_paused = true)]
+async fn the_reserve_covers_a_whole_chain_so_a_loaded_last_server_is_served() {
+    let c = client_with_server_budget(100);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(200);
+    c.bound_attempt(Some(deadline));
+    let stream = tokio::time::timeout_at(deadline, c.stream_for(21469, "sub", "720"))
+        .await
+        .expect("the stalled servers left the last one its chain's worth of the attempt")
+        .expect("served");
+    assert_eq!(stream.url, "https://mp.example/v/paced/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
 }
 

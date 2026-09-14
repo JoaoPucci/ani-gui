@@ -1431,8 +1431,53 @@ proptest! {
                 if free == 0 {
                     prop_assert_eq!(cap, ms(0));
                 }
+                // What the bounded servers can spend between them
+                // never reaches into the reserve, so the server that
+                // runs on the remainder still finds the reserve there
+                // whenever the remainder held it in the first place.
+                let spent = cap * u32::try_from(ahead).unwrap();
+                prop_assert!(spent <= ms(free), "{spent:?} of {free}ms");
+                if r >= reserve_ms {
+                    prop_assert!(
+                        ms(r) - spent >= ms(reserve_ms),
+                        "the last server was left {:?} of a {reserve_ms}ms reserve",
+                        ms(r) - spent,
+                    );
+                }
             }
         }
+    }
+}
+
+// ── the reserve a whole chain is worth ──────────────────────────────
+
+proptest! {
+    /// The reserve held back for the server that runs on the
+    /// remainder is a whole chain's worth, and a chain is several
+    /// sequential requests: whatever the per-server bound, the
+    /// reserve outlasts it, since a bound spread over the chain's
+    /// requests is what leaves a healthy loaded host cancelled. It
+    /// is derived from the bound rather than fixed, so the seam that
+    /// shortens the bound to milliseconds for the stalled-host tests
+    /// shortens the reserve with it, and a longer bound never buys
+    /// the last server less.
+    #[test]
+    fn the_reserve_outlasts_the_bound_and_is_derived_from_it(
+        bound_ms in 1u64..10_000,
+        longer_ms in 1u64..10_000,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let reserve = ajax::chain_reserve(ms(bound_ms));
+        prop_assert!(
+            reserve > ms(bound_ms),
+            "a {bound_ms}ms bound reserved only {reserve:?}"
+        );
+        prop_assert!(
+            reserve <= ms(bound_ms) * ajax::CHAIN_REQUESTS,
+            "the reserve reached past the chain measured at a whole bound a request: {reserve:?}"
+        );
+        let longer = bound_ms.max(longer_ms);
+        prop_assert!(ajax::chain_reserve(ms(longer)) >= reserve);
     }
 }
 
