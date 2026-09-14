@@ -23,8 +23,8 @@ pub mod embed;
 pub mod megaplay;
 pub mod parse;
 pub use ajax::{
-    parse_episode_list, parse_server_listing, parse_servers, remainder_index, server_cap,
-    servers_for, ServerEmbed, ServerListing,
+    chain_reserve, parse_episode_list, parse_server_listing, parse_servers, remainder_index,
+    server_cap, servers_for, ServerEmbed, ServerListing, CHAIN_REQUESTS,
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
@@ -66,9 +66,12 @@ pub const HIANIME_BASE: &str = "https://hianime.at";
 /// than six seconds, with nobody left to give the time to. And the
 /// bound is the most a bounded server gets, not the least: told the
 /// attempt's deadline, the walk gives each bounded server its share
-/// of what the attempt has left once one bound's worth is held back
-/// for the last ([`ajax::server_cap`]), so stalled servers cannot
-/// spend the remainder that last server runs on.
+/// of what the attempt has left once a whole chain's worth is held
+/// back for the last ([`ajax::server_cap`],
+/// [`ajax::chain_reserve`]), so stalled servers cannot spend the
+/// remainder that last server runs on. A chain's worth and not this
+/// bound: the chain is four requests deep, and a bound spread over
+/// four of them is less than a loaded host takes to answer.
 pub const SERVER_ATTEMPT_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
 
 /// The hianime client: search, episode listing, and stream-URL
@@ -359,15 +362,26 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // server would let a few stalled servers spend what the
         // remainder's server needed. Told the deadline
         // ([`Provider::bound_attempt`]), the walk gives each bounded
-        // server its share of what remains once one bound's worth is
-        // held back for the remainder's server — the reserve, sized
-        // as the bound is, for one chain — and a stalled server is
+        // server its share of what remains once the reserve is held
+        // back for the remainder's server, and a stalled server is
         // cut off the sooner for it. A client run outside an attempt
         // knows no deadline and keeps the fixed bound.
+        //
+        // The reserve is a whole chain's worth ([`chain_reserve`]),
+        // not one bound. A chain is four requests deep — the embed
+        // page, the sources answer, the master and the rendition —
+        // and each waits on the one before it, so a bound held back
+        // is a bound spread over four. A CDN under load answers each
+        // of them in a second or two, well inside the transport's
+        // own wait and past a quarter of the bound, and a reserve of
+        // one bound would leave that chain cancelled with the
+        // attempt on the last server the walk had, every request it
+        // made having been answered.
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         let ordered = servers_for(&servers, mode);
         let unbounded = remainder_index(&ordered);
         let deadline = *self.attempt_deadline.lock().expect("attempt deadline");
+        let reserve = chain_reserve(self.server_budget);
         for (i, server) in ordered.into_iter().enumerate() {
             let chain = async {
                 let payload = self.read_server(server).await?;
@@ -379,7 +393,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 let remaining =
                     deadline.map(|at| at.saturating_duration_since(tokio::time::Instant::now()));
                 let ahead = unbounded.map_or(0, |u| u.saturating_sub(i));
-                let cap = server_cap(self.server_budget, self.server_budget, remaining, ahead);
+                let cap = server_cap(self.server_budget, reserve, remaining, ahead);
                 match tokio::time::timeout(cap, chain).await {
                     Ok(outcome) => outcome,
                     Err(_elapsed) => Err(AniError::Timeout),

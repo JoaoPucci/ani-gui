@@ -544,14 +544,58 @@ pub fn remainder_index(ordered: &[&ServerEmbed]) -> Option<usize> {
         .or_else(|| ordered.len().checked_sub(1))
 }
 
+/// How many requests the longest of a server's chains makes: on
+/// megaplay's hosts the embed page, the sources answer, the master
+/// playlist and the chosen rendition — four, each waiting on the one
+/// before it. zokoanime's is three, its page carrying what megaplay
+/// asks the sources endpoint for. The reserve is sized for the
+/// longest, since which host a server sits on is known only from the
+/// listing and either may be the one that runs on the remainder.
+pub const CHAIN_REQUESTS: u32 = 4;
+
+/// What [`chain_reserve`] allows one request of that chain, written
+/// as a fraction of the per-server bound: five twelfths of it, two
+/// and a half seconds against the six-second bound. A CDN under load
+/// answers a playlist in a couple of seconds and the transport gives
+/// up on any one request at ten, so an allowance in that range is
+/// what separates a chain that is merely slow from a host that has
+/// stopped answering. It is a fraction of the bound rather than a
+/// figure of its own so that the seam which shortens the bound to
+/// milliseconds for the stalled-host tests shortens the reserve with
+/// it, and the reserve cannot drift away from the bound it is carved
+/// out beside.
+const REQUEST_ALLOWANCE_NUMERATOR: u32 = 5;
+const REQUEST_ALLOWANCE_DENOMINATOR: u32 = 12;
+
+/// The time held back from the bounded servers for the one that runs
+/// on the attempt's remainder, given the per-server `bound`: one
+/// whole chain of [`CHAIN_REQUESTS`] requests at the allowance above
+/// — ten seconds against the six-second bound, of a provider
+/// attempt's twenty.
+///
+/// A whole chain rather than one bound, which is what a bound is
+/// worth only while each of the chain's four requests answers inside
+/// a quarter of it: a host answering in a second and a half apiece
+/// is healthy by the transport's reckoning and slower than the bound
+/// by the walk's, and a reserve of one bound leaves that chain to be
+/// cancelled with the attempt while every request it made was
+/// answered. Reserving the chain's length is what makes the last
+/// server's time a property of the work it has to do rather than of
+/// the bound that exists to cut other servers short.
+#[must_use]
+pub fn chain_reserve(bound: std::time::Duration) -> std::time::Duration {
+    bound * CHAIN_REQUESTS * REQUEST_ALLOWANCE_NUMERATOR / REQUEST_ALLOWANCE_DENOMINATOR
+}
+
 /// A bounded server's cap, given the attempt's `remaining` time when
 /// the walk knows it: its share of what remains once `reserve` — one
-/// chain's worth, for the server that runs on the remainder — is
-/// held back, split evenly among the `ahead` bounded servers still
-/// to run before that one, this one included, and never more than
-/// `bound`. With no remainder known the cap is the bound; with no
-/// server ahead of the remainder's (that server already behind) the
-/// cap is what remains, under the bound, with nothing held back.
+/// chain's worth, for the server that runs on the remainder
+/// ([`chain_reserve`]) — is held back, split evenly among the `ahead`
+/// bounded servers still to run before that one, this one included,
+/// and never more than `bound`. With no remainder known the cap is
+/// the bound; with no server ahead of the remainder's (that server
+/// already behind) the cap is what remains, under the bound, with
+/// nothing held back.
 #[must_use]
 pub fn server_cap(
     bound: std::time::Duration,
