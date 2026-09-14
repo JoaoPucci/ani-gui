@@ -172,6 +172,30 @@ async fn an_integer_request_skips_the_recap_in_its_slot() {
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
+/// A reversed pair such as `12-1` is not a range, so the single
+/// episode path resolves it as a request in its own right: it names
+/// no integer and no fractional tag, matches no row of the picked
+/// show, and dead-ends as the episode's own verdict — the show was
+/// found and only what was asked for is missing — never as the
+/// catalogue's miss and never as something a range would download.
+#[tokio::test]
+async fn a_reversed_range_resolves_to_the_episodes_own_verdict() {
+    let picked = show(vec![ep(1, 1, None), ep(2, 2, None), ep(12, 12, None)]);
+    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(12));
+    let ne = resolve_episode(&client, &picked, "12-1", "sub", "best")
+        .await
+        .expect_err("a reversed pair names no episode");
+    assert!(
+        matches!(ne.error, AniError::EpisodeUnavailable),
+        "expected the episode's verdict, got {:?}",
+        ne.error
+    );
+    assert!(
+        !ne.clean_miss,
+        "the show was found; nothing here proves absence"
+    );
+}
+
 #[tokio::test]
 async fn a_recap_slot_without_its_true_episode_is_a_dead_end() {
     // When the listing ends on the recap, a request for the slot's
