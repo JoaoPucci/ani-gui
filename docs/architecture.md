@@ -94,7 +94,7 @@ When Kitsu's `coverImage` is null (common for shows currently airing — roughly
 | Availability probe (positive, ongoing show) | SQLite `meta_cache` | 24 hours |
 | Availability probe (positive, finished show) | SQLite `meta_cache` | 30 days |
 | Availability probe (negative — a clean miss, or the requested mode absent, from the provider that answered; served while that provider's gate has been seen answering and every gate ahead of it is refusing) — finished show | SQLite `meta_cache` | 7 days |
-| Availability probe (negative) — ongoing show, or one with no airing schedule known | SQLite `meta_cache` | 24 hours |
+| Availability probe (negative) — ongoing show, or one with no airing schedule known | SQLite `meta_cache` | 24 hours at most: with the next airing known, until 3 hours after it when that is sooner, and 1 hour when that airing time has already passed |
 | Availability probe (negative) — unreleased show with a known premiere | SQLite `meta_cache` | until 3 hours after the premiere, within 1 hour to 7 days |
 | aniskip OP/ED skip-time intervals (per MAL id + episode) | SQLite `meta_cache` | 7 days |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
