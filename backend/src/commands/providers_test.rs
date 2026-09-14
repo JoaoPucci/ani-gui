@@ -2850,10 +2850,12 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
     );
 }
 
-/// A client that remembers the attempt deadline the walk tells it.
+/// A client that remembers every attempt deadline the walk tells it,
+/// in order: the attempt's before it runs, and what it is told once
+/// the attempt is over.
 struct Deadlined {
     id: ProviderId,
-    told: std::sync::Arc<Mutex<Option<tokio::time::Instant>>>,
+    told: std::sync::Arc<Mutex<Vec<Option<tokio::time::Instant>>>>,
 }
 
 #[async_trait::async_trait]
@@ -2883,7 +2885,7 @@ impl Provider for Deadlined {
         None
     }
     fn bound_attempt(&self, deadline: Option<tokio::time::Instant>) {
-        *self.told.lock().expect("told") = deadline;
+        self.told.lock().expect("told").push(deadline);
     }
 }
 
@@ -2895,7 +2897,7 @@ impl Provider for Deadlined {
 #[tokio::test]
 async fn the_walk_tells_the_client_the_attempts_deadline() {
     let gates = Gates::new();
-    let told = std::sync::Arc::new(Mutex::new(None));
+    let told = std::sync::Arc::new(Mutex::new(Vec::new()));
     let mut attempt = Scripted::new(&[(ProviderId::Anidb, Behavior::Answer("anidb"))]);
     let started = tokio::time::Instant::now();
     let seen = told.clone();
@@ -2919,10 +2921,55 @@ async fn the_walk_tells_the_client_the_attempts_deadline() {
     let deadline = told
         .lock()
         .expect("told")
+        .first()
+        .copied()
+        .flatten()
         .expect("the walk named a deadline");
     let budget = deadline.saturating_duration_since(started);
     assert!(
         budget > Duration::from_secs(19) && budget < Duration::from_secs(21),
         "the first of two providers has the attempt budget: {budget:?}"
+    );
+}
+
+/// The client the walk hands back with its answer outlives the
+/// attempt — a range download resolves every later episode against
+/// it — and a deadline that outlived the attempt would cap every
+/// bounded server at nothing once the window had passed. A client
+/// outside an attempt carries no deadline: the walk clears it before
+/// the answer is returned, so the last thing the client was told is
+/// none.
+#[tokio::test]
+async fn the_walk_clears_the_deadline_before_handing_the_client_back() {
+    let gates = Gates::new();
+    let told = std::sync::Arc::new(Mutex::new(Vec::new()));
+    let mut attempt = Scripted::new(&[(ProviderId::Anidb, Behavior::Answer("anidb"))]);
+    let seen = told.clone();
+    with_failover(
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        Duration::from_secs(60),
+        Duration::from_secs(20),
+        move |p| {
+            Ok(Box::new(Deadlined {
+                id: p,
+                told: seen.clone(),
+            }) as Box<dyn Provider>)
+        },
+        |p| gates.of(p),
+        &mut attempt,
+    )
+    .await
+    .expect("answered");
+    let told = told.lock().expect("told");
+    assert!(
+        told.first().copied().flatten().is_some(),
+        "the attempt was told its deadline first: {told:?}"
+    );
+    assert_eq!(
+        told.last().copied(),
+        Some(None),
+        "the client is handed back with no deadline: {told:?}"
     );
 }

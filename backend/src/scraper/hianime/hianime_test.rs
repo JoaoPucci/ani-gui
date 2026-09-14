@@ -1341,6 +1341,8 @@ struct Site {
 /// past the budget the stalled-host tests give a server, well under
 /// the ceiling they allow a whole walk.
 const SLOW_HOST: std::time::Duration = std::time::Duration::from_millis(250);
+/// A wait a bounded server clears inside the test's per-server budget.
+const BRIEF_HOST: std::time::Duration = std::time::Duration::from_millis(40);
 
 impl Site {
     fn new() -> Self {
@@ -1842,6 +1844,19 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A zokoanime server whose master answers inside the bound,
+            // then one whose master never answers — the remainder's
+            // server. A stale deadline caps the first at nothing and the
+            // walk ends on the second's silence.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21468") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2JyaWVmL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // Both servers' masters hold the connection: the first
             // for as long as it is waited for, the second until the
             // transport's own deadline reports it.
@@ -1895,6 +1910,20 @@ impl Fetch for Site {
                 }
             }
             "https://hls.example/v/slow/720/index.m3u8" => ok("#EXTM3U\n"),
+            // The payload decodes to a master that answers after a
+            // wait inside the test's per-server budget.
+            "https://zokoanime.video/stream/mal/9/brief/sub" => ok(
+                r#"<html><body><script>window.__P="FFYSGRYPX08KERBdBQtAWwkHBgMAFQMIFEETHhlbAxkcSANCDwQXWRNDQRlSHk0PGA=="</script></body></html>"#,
+            ),
+            "https://hls.example/v/brief/master.m3u8" => {
+                tokio::time::sleep(BRIEF_HOST).await;
+                if header(req, "Referer") == Some("https://zokoanime.video/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://hls.example/v/brief/720/index.m3u8" => ok("#EXTM3U\n"),
             // The payload shape on a host the client never named: the
             // page reads, and its master answers after the same wait.
             "https://newembed.example/e/moved/sub" => ok(
@@ -3204,6 +3233,51 @@ async fn without_an_attempt_deadline_each_stalled_server_spends_the_fixed_bound(
         elapsed >= std::time::Duration::from_millis(190)
             && elapsed < std::time::Duration::from_secs(5),
         "two stalled servers, each cut off at the fixed bound: {elapsed:?}"
+    );
+}
+
+/// A client outside an attempt carries no deadline. The walk above
+/// tells the client the attempt's deadline and clears it before
+/// handing the client back, and a range download resolves every
+/// later episode against that client: a deadline that outlived the
+/// attempt would cap each bounded server at nothing once the window
+/// had passed, and a later episode would fail with a healthy server
+/// unasked. Told a deadline already past and then none, the client
+/// serves a bounded server that answers inside the fixed bound.
+#[tokio::test]
+async fn a_client_told_no_deadline_keeps_the_fixed_bound_for_a_later_resolve() {
+    let c = client_with_server_budget(100);
+    c.bound_attempt(Some(
+        tokio::time::Instant::now() - std::time::Duration::from_secs(1),
+    ));
+    c.bound_attempt(None);
+    let stream = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        c.stream_for(21468, "sub", "720"),
+    )
+    .await
+    .expect("the bounded server was served inside its bound")
+    .expect("served");
+    assert_eq!(stream.url, "https://hls.example/v/brief/720/index.m3u8");
+}
+
+/// The control: a deadline already past, never cleared, caps the
+/// bounded server at nothing, and the walk moves to the remainder's
+/// server, whose master never answers.
+#[tokio::test]
+async fn a_stale_deadline_caps_a_healthy_bounded_server_at_nothing() {
+    let c = client_with_server_budget(100);
+    c.bound_attempt(Some(
+        tokio::time::Instant::now() - std::time::Duration::from_secs(1),
+    ));
+    let outcome = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        c.stream_for(21468, "sub", "720"),
+    )
+    .await;
+    assert!(
+        outcome.is_err(),
+        "the bounded server was cut off at nothing and the walk waits on the stalling one: {outcome:?}"
     );
 }
 
