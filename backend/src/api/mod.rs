@@ -1482,6 +1482,116 @@ mod tests {
         );
     }
 
+    /// A cached row carries the slot its resolve landed on, and the
+    /// history file speaks that numbering: episode 4 sits at slot 5
+    /// when a recap holds slot 4. The show's single display stamp can
+    /// have moved to a later resolve's row by the time the click is
+    /// marked, and translating the display number through it then
+    /// names slot 4 — the recap — so the row's own slot is what the
+    /// route records, as the handoffs and the embedded replay already
+    /// do.
+    #[tokio::test]
+    async fn mark_watched_records_the_cached_rows_own_slot() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        let history_path = state.history_path.clone();
+        let key = cache_key("The Show", "sub", "best", "4", None, None, None);
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/720p.mp4".into(),
+                referer: String::new(),
+                media_kind: MediaKind::Mp4,
+                show_id: "the-show-77".into(),
+                show_title: "The Show".into(),
+                resolved_slot: Some(5),
+                subtitles: Vec::new(),
+            },
+        );
+        // A later resolve moved the display stamp to its own row.
+        crate::commands::anidb_offset::put_display(&state, "the-show-77", 0, 7, "6");
+        let router = build_api_router(Arc::new(state));
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"The Show","episode":"4","mode":"sub"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let body = std::fs::read_to_string(&history_path).expect("history file written");
+        let line = body.strip_suffix('\n').expect("one line");
+        let (columns, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        assert_eq!(
+            columns, "5\tthe-show-77\tThe Show",
+            "the row records the cached slot, not the display number"
+        );
+    }
+
+    /// A row from before the slot was cached carries none, and keeps
+    /// the stamp-aware translation of the display number.
+    #[tokio::test]
+    async fn mark_watched_translates_the_display_number_for_a_row_without_a_slot() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        let history_path = state.history_path.clone();
+        let key = cache_key("The Show", "sub", "best", "4", None, None, None);
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/720p.mp4".into(),
+                referer: String::new(),
+                media_kind: MediaKind::Mp4,
+                show_id: "the-show-77".into(),
+                show_title: "The Show".into(),
+                resolved_slot: None,
+                subtitles: Vec::new(),
+            },
+        );
+        // The stamp names display 4 as slot 5.
+        crate::commands::anidb_offset::put_display(&state, "the-show-77", 0, 5, "4");
+        let router = build_api_router(Arc::new(state));
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"The Show","episode":"4","mode":"sub"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let body = std::fs::read_to_string(&history_path).expect("history file written");
+        let line = body.strip_suffix('\n').expect("one line");
+        let (columns, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        assert_eq!(
+            columns, "5\tthe-show-77\tThe Show",
+            "a row without a slot translates the display number through the stamp"
+        );
+    }
+
     /// `mark-watched` is the second carrier of the reverse mapping —
     /// the click handler always fires it after `getOrFire` resolves,
     /// passing the kitsu_id from the URL it came from. The handler
