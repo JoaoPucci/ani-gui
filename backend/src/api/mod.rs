@@ -631,9 +631,6 @@ async fn post_play_mark_watched(
     );
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
-            // the history file speaks the provider's numbering; the offset
-            // was stamped by the resolve that wrote this cache row.
-            let offset = crate::commands::anidb_offset::get(&state, &cached.show_id);
             // The row, the watched-at stamp and, when the frontend
             // supplied the Kitsu id, the reverse mapping — the same
             // recording a handoff makes once its player has started,
@@ -651,16 +648,12 @@ async fn post_play_mark_watched(
             // when they disagree. It reads Kitsu detail through its
             // cache and runs after the stamp, so a slow Kitsu never
             // delays home ordering.
-            let watch = crate::commands::play_native_record::Watch {
-                show_id: cached.show_id.clone(),
-                title: cached.show_title.clone(),
-                ep_no: crate::commands::anidb_offset::write_ep_no(
-                    &state,
-                    &cached.show_id,
-                    &args.episode,
-                    offset,
-                ),
-            };
+            //
+            // The watch is the cached row's, built the way the handoffs
+            // build theirs: the row's own slot when it carries one, the
+            // display number translated through the stamp only for a
+            // row from before the slot was cached.
+            let watch = crate::commands::play_cache::cached_watch(&state, &cached, &args.episode);
             crate::commands::play_native_record::record_watch(
                 &state,
                 &watch,
