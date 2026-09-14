@@ -75,8 +75,10 @@ pub fn history_by_kitsu(
     // resume from, by the rule the Continue Watching strip applies to
     // the same rows ([`super::history_resume::resumes_over`]): the
     // latest watched-at stamp wins, a stamped row beats an unstamped
-    // one, the further progress decides when the stamps do not, and
-    // file order stands only when the rows are equal on every count.
+    // one, the further progress decides when the stamps do not — in
+    // the entry's numbering, the one the strip counts in, since two
+    // providers' rows can count from different offsets — and file
+    // order stands only when the rows are equal on every count.
     // A read the cache cannot serve is the caller's error, never a
     // row without a mapping or a stamp: taken as one, the row watched
     // last would lose to its sibling's older stamp, or be skipped for
@@ -97,6 +99,7 @@ pub fn history_by_kitsu(
             entry.watched_at,
             crate::commands::kitsu::watched_at_get(state, &entry.id)?,
         );
+        let entry = to_kitsu_numbering(state, entry);
         let newer = match &best {
             None => true,
             Some((current, current_stamp)) => super::history_resume::resumes_over(
@@ -108,7 +111,7 @@ pub fn history_by_kitsu(
             best = Some((entry, stamp));
         }
     }
-    Ok(best.map(|(entry, _)| to_kitsu_numbering(state, entry)))
+    Ok(best.map(|(entry, _)| entry))
 }
 
 /// Every show's watched-at moment, for the Continue Watching strip
