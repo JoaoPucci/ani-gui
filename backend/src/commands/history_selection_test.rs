@@ -116,6 +116,99 @@ fn with_equal_stamps_the_further_progress_wins() {
     assert_eq!(hit.ep_no, "7");
 }
 
+/// Two rows for one show on different numberings: the primary's
+/// row is a continuation entry the resolver stamped an offset for,
+/// so its on-disk `41` is the entry's episode 1; the fallback's row
+/// counts from 1, so its `2` is episode 2.
+fn two_rows_on_different_numberings(s: &AppState, path: &std::path::Path) {
+    write_atomic(
+        path,
+        &[
+            HistoryEntry {
+                ep_no: "41".into(),
+                id: "the-show-77".into(),
+                title: "The Show".into(),
+                watched_at: None,
+            },
+            HistoryEntry {
+                ep_no: "2".into(),
+                id: "hianime:the-show-9".into(),
+                title: "The Show".into(),
+                watched_at: None,
+            },
+        ],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(s, "the-show-77", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(s, "hianime:the-show-9", "K1").unwrap();
+    crate::commands::anidb_offset::put(s, "the-show-77", 40);
+}
+
+/// Progress is compared in the entry's numbering, the one the strip
+/// counts in: the primary's `41` is episode 1 once its offset is
+/// read, so the fallback's episode 2 is the further progress, and
+/// the two surfaces name the same episode.
+#[test]
+fn with_no_stamps_progress_is_compared_in_the_entrys_numbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    two_rows_on_different_numberings(&s, &path);
+    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    assert_eq!(hit.id, "hianime:the-show-9");
+    assert_eq!(hit.ep_no, "2");
+}
+
+#[test]
+fn with_equal_stamps_progress_is_compared_in_the_entrys_numbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    two_rows_on_different_numberings(&s, &path);
+    crate::commands::kitsu::watched_at_put(&s, "the-show-77", 2_000).unwrap();
+    crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
+    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    assert_eq!(hit.id, "hianime:the-show-9");
+    assert_eq!(hit.ep_no, "2");
+}
+
+/// A row with no offset stamped reads as it is written — the
+/// no-shift case — so it compares by its own number against the
+/// other row's translated one, and the winner comes back translated.
+#[test]
+fn a_row_without_an_offset_compares_by_its_own_number() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "45".into(),
+                id: "the-show-77".into(),
+                title: "The Show".into(),
+                watched_at: None,
+            },
+            HistoryEntry {
+                ep_no: "3".into(),
+                id: "hianime:the-show-9".into(),
+                title: "The Show".into(),
+                watched_at: None,
+            },
+        ],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "K1").unwrap();
+    crate::commands::anidb_offset::put(&s, "the-show-77", 40);
+    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    assert_eq!(hit.id, "the-show-77", "episode 5 is further than episode 3");
+    assert_eq!(
+        hit.ep_no, "5",
+        "the winner comes back in the entry's numbering"
+    );
+}
+
 /// Equal on every count — no stamps, the same episode — the row
 /// first in the file stands, as the strip keeps the row it met
 /// first.
