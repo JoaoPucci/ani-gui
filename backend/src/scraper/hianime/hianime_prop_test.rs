@@ -351,15 +351,15 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
     }
 
-    /// The envelope's own count, when it declares one, must be the
-    /// number of rows read: an equal or absent count leaves the
-    /// listing as read, and any other count is refused — the HTML
-    /// cut short, or a row changed past recognition, is not the
-    /// show's listing.
+    /// The envelope's own count is the number of page tabs the site
+    /// draws over the listing, at a hundred rows to the tab: a
+    /// listing of `r` rows declares `ceil(r / 100)`, and the reader
+    /// takes the listing on that count or on none declared. Any
+    /// other count is a listing short by whole pages, and refused.
     #[test]
-    fn episode_rows_are_held_to_the_envelopes_declared_count(
-        rows in proptest::collection::vec((1u32..5000, 1u64..1_000_000_000), 1..8),
-        declared in proptest::option::of(0u64..12),
+    fn episode_rows_are_held_to_the_pages_the_envelope_declares(
+        rows in proptest::collection::vec((1u32..5000, 1u64..1_000_000_000), 0..250),
+        declared in proptest::option::of(0u64..5),
     ) {
         let html: String = rows
             .iter()
@@ -371,11 +371,14 @@ proptest::proptest! {
         }
         let parsed = parse_episode_list(&json.to_string());
         let read = u64::try_from(rows.len()).expect("fits");
+        // A hundred rows to the page tab, as the live listing draws
+        // them: 366 rows under four tabs, 23 under one.
+        let pages = read.div_ceil(100);
         match declared {
-            Some(count) if count != read => {
+            Some(count) if count != pages => {
                 proptest::prop_assert!(
                     matches!(parsed, Err(AniError::ParseFailed { .. })),
-                    "declared {count}, read {read}: {parsed:?}"
+                    "declared {count}, {read} rows filling {pages} pages: {parsed:?}"
                 );
             }
             _ => {
