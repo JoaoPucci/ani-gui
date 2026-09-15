@@ -24,6 +24,22 @@ fn other_attr() -> impl Strategy<Value = String> {
         .prop_map(|(name, value)| format!("{name}=\"{value}\""))
 }
 
+/// A sources row naming no stream the transport can fetch: not an
+/// object at all, or an object whose `file` is missing, blank, not a
+/// string, or not an absolute http(s) URL.
+fn unfetchable_source_row(n: u8) -> String {
+    match n % 8 {
+        0 => "null".to_string(),
+        1 => "\"https://c.example/junk/master.m3u8\"".to_string(),
+        2 => "3".to_string(),
+        3 => "[\"https://c.example/junk/master.m3u8\"]".to_string(),
+        4 => r#"{"label":"No file"}"#.to_string(),
+        5 => r#"{"file":["https://c.example/junk/master.m3u8"]}"#.to_string(),
+        6 => r#"{"file":"/junk/master.m3u8"}"#.to_string(),
+        _ => r#"{"file":""}"#.to_string(),
+    }
+}
+
 proptest! {
     /// The media id comes back whatever surrounds the element and
     /// whatever order its attributes come in.
@@ -202,5 +218,45 @@ proptest! {
         let tail = prefix.rsplit('_').next().unwrap_or("");
         prop_assume!(!(tail.len() == 3 && tail.bytes().all(|b| b.is_ascii_lowercase())));
         prop_assert_eq!(lang_of_track(&plain, &label), expected);
+    }
+
+    /// The sources list is read row by row: the stream is the first
+    /// row naming a file the transport can fetch, and rows of another
+    /// shape around it — `null`, a string, a number, a list, an
+    /// object without a file — cost themselves and nothing else. A
+    /// list naming no such file is refused, as the encrypted answer
+    /// is.
+    #[test]
+    fn unreadable_source_rows_cost_only_themselves(
+        master in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}/master\\.m3u8",
+        before in proptest::collection::vec(0u8..8, 0..4),
+        after in proptest::collection::vec(
+            prop_oneof![(0u8..8).prop_map(Some), Just(None)],
+            0..6,
+        ),
+    ) {
+        let mut rows: Vec<String> = before.iter().map(|n| unfetchable_source_row(*n)).collect();
+        rows.push(serde_json::json!({"file": master.clone()}).to_string());
+        for (i, row) in after.iter().enumerate() {
+            rows.push(match row {
+                Some(n) => unfetchable_source_row(*n),
+                None => serde_json::json!({
+                    "file": format!("https://c.example/later/{i}/master.m3u8"),
+                })
+                .to_string(),
+            });
+        }
+        let json = format!(r#"{{"sources":[{}],"tracks":[]}}"#, rows.join(","));
+        let payload = parse_sources(&json).expect("the first fetchable row");
+        prop_assert_eq!(&payload.src, &master);
+
+        let junk: Vec<String> = before
+            .iter()
+            .chain(after.iter().filter_map(Option::as_ref))
+            .map(|n| unfetchable_source_row(*n))
+            .collect();
+        let json = format!(r#"{{"sources":[{}],"tracks":[]}}"#, junk.join(","));
+        let refused = matches!(parse_sources(&json), Err(AniError::ParseFailed { .. }));
+        prop_assert!(refused, "a list naming no fetchable file: {json}");
     }
 }
