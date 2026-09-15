@@ -1562,10 +1562,18 @@ proptest! {
     /// share of what remains once one chain's worth — the reserve —
     /// is held back for the last server: never more than the fixed
     /// bound, never more than that share, the bound itself once the
-    /// remainder allows it, and nothing when the remainder is spent.
-    /// With no remainder known, the fixed bound; with no server ahead
-    /// of the last (the last already behind), the remainder itself
-    /// under the bound, nothing held back.
+    /// remainder allows it. With no remainder known, the fixed
+    /// bound; with no server ahead of the last (the last already
+    /// behind), the remainder itself under the bound, nothing held
+    /// back.
+    ///
+    /// And never nothing while the attempt still has time. Holding
+    /// the reserve back whole is worth a share of what is left only
+    /// while there is something left over; when there is not, the
+    /// reserve gives way — what remains is split among the servers
+    /// ahead and the one that runs on the remainder alike, so every
+    /// server ahead has a window to spend and the remainder's server
+    /// is left no less than any one of them.
     #[test]
     fn a_bounded_servers_cap_is_its_share_of_the_remainder_after_the_reserve(
         bound_ms in 1u64..10_000,
@@ -1580,22 +1588,37 @@ proptest! {
             None => prop_assert_eq!(cap, ms(bound_ms)),
             Some(r) if ahead == 0 => prop_assert_eq!(cap, ms(bound_ms).min(ms(r))),
             Some(r) => {
+                let ahead32 = u32::try_from(ahead).unwrap();
                 let free = r.saturating_sub(reserve_ms);
-                let share = ms(free) / u32::try_from(ahead).unwrap();
-                prop_assert_eq!(cap, ms(bound_ms).min(share));
-                if free >= bound_ms * ahead as u64 {
-                    prop_assert_eq!(cap, ms(bound_ms));
-                }
-                if free == 0 {
-                    prop_assert_eq!(cap, ms(0));
-                }
-                // What the bounded servers can spend between them
-                // never reaches into the reserve, so the server that
-                // runs on the remainder still finds the reserve there
-                // whenever the remainder held it in the first place.
-                let spent = cap * u32::try_from(ahead).unwrap();
-                prop_assert!(spent <= ms(free), "{spent:?} of {free}ms");
-                if r >= reserve_ms {
+                let after_reserve = ms(free) / ahead32;
+                prop_assert!(cap <= ms(r), "{cap:?} of the {r}ms the attempt has");
+                if after_reserve.is_zero() {
+                    // The reserve giving way: an even split among the
+                    // servers ahead and the remainder's server.
+                    prop_assert_eq!(cap, ms(bound_ms).min(ms(r) / (ahead32 + 1)));
+                    if r > 0 {
+                        prop_assert!(
+                            !cap.is_zero(),
+                            "a server ahead of the remainder's was capped at nothing \
+                             with {r}ms of the attempt left"
+                        );
+                    }
+                    // The remainder's server keeps a share of its
+                    // own — no less than any one server ahead of it.
+                    let spent = cap * ahead32;
+                    prop_assert!(spent <= ms(r) - cap, "{spent:?} of {r}ms");
+                } else {
+                    prop_assert_eq!(cap, ms(bound_ms).min(after_reserve));
+                    if free >= bound_ms * ahead as u64 {
+                        prop_assert_eq!(cap, ms(bound_ms));
+                    }
+                    // What the bounded servers can spend between them
+                    // never reaches into the reserve, so the server
+                    // that runs on the remainder still finds the
+                    // reserve there whenever the remainder held it in
+                    // the first place.
+                    let spent = cap * ahead32;
+                    prop_assert!(spent <= ms(free), "{spent:?} of {free}ms");
                     prop_assert!(
                         ms(r) - spent >= ms(reserve_ms),
                         "the last server was left {:?} of a {reserve_ms}ms reserve",

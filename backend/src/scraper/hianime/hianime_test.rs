@@ -3120,6 +3120,45 @@ fn the_reserve_is_one_chain_of_the_attempts_budget() {
     );
 }
 
+/// A bounded server's share is carved out of what the attempt has
+/// left, and what it has left is not always more than the reserve:
+/// the search, the candidate and the listings are spent before the
+/// first server is asked, and a slow site can leave the walk the
+/// reserve and nothing over. Held back whole there, the reserve
+/// would cap every server ahead of the remainder's at nothing, and
+/// each would be stepped over without a request window while the
+/// attempt still ran — a stream the walk had and did not take,
+/// should the remainder's server be the dead one. The reserve gives
+/// way instead: what remains is split among the servers ahead and
+/// the remainder's server alike, so each of them has a window, and
+/// the remainder's server is left no less than any one of them.
+#[test]
+fn a_server_ahead_of_the_remainder_keeps_a_window_when_only_the_reserve_is_left() {
+    let bound = SERVER_ATTEMPT_BUDGET;
+    let reserve = chain_reserve(bound);
+    for ahead in 1..4usize {
+        for remaining in [std::time::Duration::from_millis(1), reserve / 2, reserve] {
+            let cap = server_cap(bound, reserve, Some(remaining), ahead);
+            assert!(
+                !cap.is_zero(),
+                "a healthy server was capped at nothing with {remaining:?} of the \
+                 attempt left and {ahead} server(s) ahead of the remainder's"
+            );
+            assert!(cap <= bound, "{cap:?} past the per-server bound");
+            assert!(
+                cap <= remaining,
+                "{cap:?} past the {remaining:?} the attempt has left"
+            );
+            let spent = cap * u32::try_from(ahead).expect("servers ahead");
+            assert!(
+                spent <= remaining - cap,
+                "the servers ahead spent {spent:?} of {remaining:?} and left the \
+                 remainder's server less than one of their shares"
+            );
+        }
+    }
+}
+
 /// A stream host can hold a connection open without answering; the
 /// transport gives such a fetch ten seconds, and the walk of one
 /// provider has twenty in all, part of them spent on the search and
@@ -3346,6 +3385,27 @@ async fn a_client_told_no_deadline_keeps_the_fixed_bound_for_a_later_resolve() {
     .expect("the bounded server was served inside its bound")
     .expect("served");
     assert_eq!(stream.url, "https://hls.example/v/brief/720/index.m3u8");
+}
+
+/// The attempt's remainder can come down to the reserve itself —
+/// the search, the candidate and the listings are spent before the
+/// first server is asked — and the servers ahead of the remainder's
+/// still have to be asked. Here the first server is healthy and
+/// answers well inside what is left, and the server that runs on the
+/// remainder is the one whose master never answers: capped at
+/// nothing, the healthy server would be stepped over unasked and the
+/// attempt spent waiting on the silent one.
+#[tokio::test]
+async fn a_healthy_server_is_still_asked_when_the_attempt_has_only_the_reserve_left() {
+    let c = client_with_server_budget(100);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(150);
+    c.bound_attempt(Some(deadline));
+    let stream = tokio::time::timeout_at(deadline, c.stream_for(21468, "sub", "720"))
+        .await
+        .expect("the healthy server was skipped and the attempt waited on the stalling one")
+        .expect("served");
+    assert_eq!(stream.url, "https://hls.example/v/brief/720/index.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://zokoanime.video/"));
 }
 
 /// The control: a deadline already past, never cleared, caps the
