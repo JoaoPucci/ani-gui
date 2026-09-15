@@ -26,8 +26,15 @@ use crate::error::Result;
 /// about what a row's number means.
 ///
 /// # Errors
-/// The walk's typed verdicts — `NoResults` for a clean miss, the
-/// transport's own errors for weather.
+/// The walk's typed verdicts, returned as the walk gave them —
+/// [`crate::error::AniError::NoResults`] for a clean miss,
+/// [`crate::error::AniError::EpisodeUnavailable`] when the show was
+/// found and the requested episode was not (absent from the listing,
+/// or carrying no stream in the requested mode), the transport's own
+/// errors for weather. Both verdicts are 404s at the route layer and
+/// both reach the external-player and Syncplay endpoints through
+/// here, so a consumer reading every non-weather miss as a catalogue
+/// miss names the wrong thing missing.
 pub async fn resolve_launch_args(
     state: &AppState,
     args: &PlayArgs,
