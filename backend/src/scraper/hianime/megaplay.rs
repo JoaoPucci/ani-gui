@@ -47,15 +47,7 @@ pub fn sources_url(embed_url: &str, id: u64) -> Option<String> {
     ))
 }
 
-/// A listed file, in the shapes the site's client reads: one object
-/// with a `file`, or a list whose first entry has one.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum WireSources {
-    One(WireFile),
-    Many(Vec<WireFile>),
-}
-
+/// A listed file: an object naming the stream in its `file`.
 #[derive(Deserialize)]
 struct WireFile {
     #[serde(default)]
@@ -76,17 +68,47 @@ struct WireTrack {
     default: bool,
 }
 
-/// The wire shape of the sources response. The tracks are a nicety
-/// beside the stream, read as the embed page's are: the field being
-/// `null`, absent, not a list, or holding rows in another shape
-/// costs those rows and nothing else, and a lone megaplay server is
-/// never skipped over its subtitle metadata having changed shape.
+/// The wire shape of the sources response. Both of its fields are
+/// read row by row, so a row in a shape the reader does not know
+/// costs that row and nothing else: a lone megaplay server is never
+/// skipped over a listed fallback, or its subtitle metadata, having
+/// changed shape.
 #[derive(Deserialize)]
 struct WireResponse {
-    #[serde(default)]
-    sources: Option<WireSources>,
+    #[serde(default, deserialize_with = "readable_sources")]
+    sources: Vec<WireFile>,
     #[serde(default, deserialize_with = "readable_tracks")]
     tracks: Vec<WireTrack>,
+}
+
+/// The source rows the client reads, out of whatever the response
+/// put in the field: the site hands either one object with a `file`
+/// or a list of them, the list being where it offers a choice — a
+/// rendition first, fallbacks behind it. A row that is not a source
+/// in the known shape is dropped, and the rows that read keep the
+/// response's order, so one such row costs its own rendition and not
+/// the stream the rows beside it name.
+///
+/// A row has to be an object, which is narrower than the derive
+/// alone: serde reads a struct from a list too, taking its fields in
+/// declaration order, so `["https://…"]` would otherwise name a
+/// stream the site never listed. This field decides what the player
+/// is pointed at, so it reads only the shape the site sends.
+fn readable_sources<'de, D>(deserializer: D) -> std::result::Result<Vec<WireFile>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let listed = Option::<serde_json::Value>::deserialize(deserializer)?;
+    let rows = match listed {
+        Some(serde_json::Value::Array(rows)) => rows,
+        Some(one) => vec![one],
+        None => Vec::new(),
+    };
+    Ok(rows
+        .into_iter()
+        .filter(serde_json::Value::is_object)
+        .filter_map(|row| serde_json::from_value(row).ok())
+        .collect())
 }
 
 /// The track rows the client reads, out of whatever the response put
@@ -107,13 +129,16 @@ where
         .collect())
 }
 
-/// The payload out of a sources response. A body that is not the
-/// response, or one whose sources name no absolute http(s) URL — the
-/// older endpoint's encrypted answer carries `null` in the clear —
-/// is the site having changed what it hands the client, never an
-/// episode without a stream. Tracks that are not captions, or whose
-/// file the transport cannot fetch, are left out, and so are rows
-/// the reader cannot read at all ([`readable_tracks`]).
+/// The payload out of a sources response. The stream is the first
+/// listed source naming an absolute http(s) URL, the rows before it
+/// naming nothing fetchable being stepped over ([`readable_sources`]).
+/// A body that is not the response, or one whose sources name no such
+/// URL at all — the older endpoint's encrypted answer carries `null`
+/// in the clear — is the site having changed what it hands the
+/// client, never an episode without a stream. Tracks that are not
+/// captions, or whose file the transport cannot fetch, are left out,
+/// and so are rows the reader cannot read at all
+/// ([`readable_tracks`]).
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] for a body without a fetchable source.
@@ -123,16 +148,14 @@ pub fn parse_sources(json: &str) -> Result<EmbedPayload> {
     };
     let wire: WireResponse =
         serde_json::from_str(json).map_err(|_| undecodable("body is not the response"))?;
-    let src = match wire.sources {
-        Some(WireSources::One(f)) => f.file,
-        Some(WireSources::Many(files)) => {
-            files.into_iter().next().map(|f| f.file).unwrap_or_default()
-        }
-        None => String::new(),
-    };
-    if !is_fetchable(&src) {
+    let Some(src) = wire
+        .sources
+        .into_iter()
+        .map(|f| f.file)
+        .find(|file| is_fetchable(file))
+    else {
         return Err(undecodable("no source the transport can fetch"));
-    }
+    };
     let subtitles = wire
         .tracks
         .into_iter()
