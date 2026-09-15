@@ -241,3 +241,63 @@ fn a_tracks_field_the_reader_cannot_read_costs_only_those_rows() {
         "exactly the readable captions rows, in order"
     );
 }
+
+/// The sources list is the one place the site hands the client a
+/// choice, and the rows it does not read are the ones it has changed:
+/// a listed fallback in a shape the reader does not know costs that
+/// row and nothing else. Reading the list as a whole would let one
+/// such row skip a server whose other rows name a playable stream.
+#[test]
+fn an_unreadable_source_row_costs_only_itself() {
+    let first = "https://cdn.example/a/master.m3u8";
+    let json = format!(
+        r#"{{"sources":[{{"file":"{first}"}},null,"junk",3,["https://cdn.example/z/master.m3u8"],{{"label":"No file"}},{{"file":["https://cdn.example/y/master.m3u8"]}}],"tracks":[]}}"#
+    );
+    assert_eq!(
+        parse_sources(&json).expect("the readable row's stream").src,
+        first,
+        "rows of another shape after the first do not cost the stream"
+    );
+}
+
+/// With the first row unreadable the stream is the first row after it
+/// the transport can fetch — the list's order stands, the rows that
+/// name nothing fetchable are stepped over.
+#[test]
+fn a_sources_list_is_read_by_its_first_fetchable_file() {
+    let wanted = "https://cdn.example/b/master.m3u8";
+    for leading in [
+        "null",
+        r#""junk""#,
+        "3",
+        r#"{"label":"No file"}"#,
+        r#"{"file":"/a/master.m3u8"}"#,
+        r#"{"file":""}"#,
+        r#"{"file":["https://cdn.example/a/master.m3u8"]}"#,
+    ] {
+        let json = format!(
+            r#"{{"sources":[{leading},{{"file":"{wanted}"}},{{"file":"https://cdn.example/c/master.m3u8"}}],"tracks":[]}}"#
+        );
+        let payload = parse_sources(&json).unwrap_or_else(|e| panic!("{leading}: {e:?}"));
+        assert_eq!(payload.src, wanted, "{leading}");
+    }
+}
+
+/// A list naming nothing the transport can fetch is the site having
+/// changed what it hands the client, exactly as the encrypted answer
+/// and the empty list are.
+#[test]
+fn a_sources_list_of_rows_the_reader_cannot_use_is_a_parse_failure() {
+    for listed in [
+        "null",
+        r#"null,"junk",3,["https://cdn.example/a/master.m3u8"]"#,
+        r#"{"label":"No file"},{"kind":"hls"}"#,
+        r#"{"file":"/a/master.m3u8"},{"file":"master.m3u8"},{"file":"ftp://x/y.m3u8"}"#,
+    ] {
+        let json = format!(r#"{{"sources":[{listed}],"tracks":[]}}"#);
+        assert!(
+            matches!(parse_sources(&json), Err(AniError::ParseFailed { .. })),
+            "{listed}"
+        );
+    }
+}
