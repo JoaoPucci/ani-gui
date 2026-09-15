@@ -13,16 +13,19 @@ struct Envelope {
     status: bool,
     #[serde(default)]
     html: Option<String>,
-    /// The count the episode-list envelope declares for its own
-    /// rows; the server-list envelope carries none.
+    /// The count the episode-list envelope declares: the page tabs
+    /// the site draws over the listing, not its rows
+    /// ([`matches_declared_count`]). The server-list envelope
+    /// carries none.
     #[serde(default, rename = "totalItems")]
     total_items: Option<u64>,
 }
 
-/// What an envelope wraps: its HTML, and the row count it declares
-/// when it declares one.
+/// What an envelope wraps: its HTML, and the count it declares when
+/// it declares one.
 struct Wrapped {
     html: String,
+    /// The listing's page tabs, as its envelope counted them.
     declared: Option<u64>,
 }
 
@@ -54,14 +57,31 @@ fn open_envelope(json: &str) -> Result<Wrapped> {
     })
 }
 
-/// Whether the rows read are the count the envelope declared: an
-/// absent count holds nothing against them, and any other number
-/// than the one read is a listing the reader does not have whole —
-/// the HTML cut short, or a row changed past everything that marks
-/// a row — which read as complete would undercount the show for the
-/// picker and lose the missing row's link.
+/// How many rows the site puts on one page tab of an episode
+/// listing. The listing's chrome draws an `ep-page-item` per page
+/// and the envelope counts those tabs, so the count is the rows
+/// over this, rounded up: on the live listing 366 rows declare four
+/// tabs, and 23 rows and 11 rows each declare one.
+const EPISODE_PAGE_ROWS: u64 = 100;
+
+/// Whether the rows read fill the pages the envelope declared. The
+/// count is the site's page tabs ([`EPISODE_PAGE_ROWS`]), so a
+/// listing's rows land on the last page it names: an absent count
+/// holds nothing against them, a declared none admits only an empty
+/// listing, and a declared `p` admits more than the `p - 1` pages
+/// before it and no more than the `p` it names.
+///
+/// That catches a listing short by a whole page or more — the HTML
+/// cut off, or a run of rows changed past everything that marks a
+/// row — which read as complete would undercount the show for the
+/// picker and lose the missing rows' links. It cannot catch a
+/// listing cut short inside its own last page: the site declares
+/// four tabs for 301 rows as for 400, so the tail of the last page
+/// can go missing under a count that still fits.
 fn matches_declared_count(declared: Option<u64>, read: usize) -> bool {
-    declared.is_none_or(|count| u64::try_from(read).is_ok_and(|read| read == count))
+    declared.is_none_or(|pages| {
+        u64::try_from(read).is_ok_and(|rows| rows.div_ceil(EPISODE_PAGE_ROWS) == pages)
+    })
 }
 
 /// An empty listing is the provider answering "none"; nonempty HTML
@@ -232,14 +252,17 @@ fn is_blank_listing(html: &str) -> bool {
 /// row it left would otherwise be passed over as chrome, the listing
 /// reading as complete one row short and renumbered. A listing whose
 /// container holds nothing is the entry having no episodes yet. And
-/// the envelope declares its own count: rows read that are not that
-/// count are refused too ([`matches_declared_count`]).
+/// the envelope declares the listing's page tabs, a hundred rows to
+/// the tab: rows that do not fill the last page it names are refused
+/// too — a listing missing a whole page of rows, though not one
+/// missing the tail of its last page, which declares the same tab
+/// count as the whole listing ([`matches_declared_count`]).
 ///
 /// # Errors
 /// As [`unwrap_envelope`]; [`AniError::ParseFailed`] naming the row
 /// when a marked row cannot be read or a row-shaped anchor lost the
-/// marker, or naming both counts when the rows read are not the
-/// count declared.
+/// marker, or naming the rows read and the pages declared when the
+/// rows do not fill the last page the envelope names.
 pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
     let Wrapped { html, declared } = open_envelope(json)?;
     if let Some(at) = episode_row_that_lost_its_marker(&html) {
@@ -259,7 +282,7 @@ pub fn parse_episode_list(json: &str) -> Result<Vec<EpisodeRef>> {
     if !matches_declared_count(declared, rows.len()) {
         return Err(AniError::ParseFailed {
             detail: format!(
-                "hianime episode list: {} rows read, {} declared",
+                "hianime episode list: {} rows read, {} pages declared",
                 rows.len(),
                 declared.unwrap_or_default()
             ),
