@@ -172,6 +172,30 @@ async fn an_integer_request_skips_the_recap_in_its_slot() {
     assert_eq!(url, "https://cdn.example/x/master.m3u8");
 }
 
+/// A reversed pair such as `12-1` is not a range, so the single
+/// episode path resolves it as a request in its own right: it names
+/// no integer and no fractional tag, matches no row of the picked
+/// show, and dead-ends as the episode's own verdict — the show was
+/// found and only what was asked for is missing — never as the
+/// catalogue's miss and never as something a range would download.
+#[tokio::test]
+async fn a_reversed_range_resolves_to_the_episodes_own_verdict() {
+    let picked = show(vec![ep(1, 1, None), ep(2, 2, None), ep(12, 12, None)]);
+    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(12));
+    let ne = resolve_episode(&client, &picked, "12-1", "sub", "best")
+        .await
+        .expect_err("a reversed pair names no episode");
+    assert!(
+        matches!(ne.error, AniError::EpisodeUnavailable),
+        "expected the episode's verdict, got {:?}",
+        ne.error
+    );
+    assert!(
+        !ne.clean_miss,
+        "the show was found; nothing here proves absence"
+    );
+}
+
 #[tokio::test]
 async fn a_recap_slot_without_its_true_episode_is_a_dead_end() {
     // When the listing ends on the recap, a request for the slot's
@@ -188,8 +212,8 @@ async fn a_recap_slot_without_its_true_episode_is_a_dead_end() {
         .await
         .expect_err("the recap must not answer for episode 4");
     assert!(
-        matches!(ne.error, AniError::NoResults),
-        "expected the dead end, got {:?}",
+        matches!(ne.error, AniError::EpisodeUnavailable),
+        "expected the episode's verdict, got {:?}",
         ne.error
     );
     assert!(!ne.clean_miss);
@@ -212,12 +236,12 @@ async fn an_integer_display_tag_still_matches_through_the_offset() {
 proptest::proptest! {
     /// The chain-failure decision table over every error shape: a
     /// provider block or gate refusal stops the walk with the error
-    /// intact, answered dead ends (NoResults, non-block upstream
-    /// statuses) move to the next alias, and everything else stays
-    /// transient.
+    /// intact, answered dead ends (the episode's own verdict,
+    /// NoResults, non-block upstream statuses) move to the next
+    /// alias, and everything else stays transient.
     #[test]
     fn chain_failures_classify_by_the_decision_table(
-        kind in 0u8..6,
+        kind in 0u8..7,
         status in 100u16..600,
     ) {
         let error = match kind {
@@ -226,13 +250,17 @@ proptest::proptest! {
             2 => AniError::NoResults,
             3 => AniError::Network,
             4 => AniError::Timeout,
+            5 => AniError::EpisodeUnavailable,
             _ => AniError::RateLimited {
                 retry_after_secs: None,
             },
         };
         let stops = error.is_provider_block() || matches!(error, AniError::GateRefused);
-        let dead_end =
-            !stops && matches!(error, AniError::NoResults | AniError::Upstream { .. });
+        let dead_end = !stops
+            && matches!(
+                error,
+                AniError::EpisodeUnavailable | AniError::NoResults | AniError::Upstream { .. }
+            );
         let ne = NativeError {
             error,
             clean_miss: false,
@@ -340,4 +368,48 @@ async fn the_episode_step_bounds_the_listing_and_keeps_its_default() {
         resolved.subtitles.last().is_some_and(|t| t.default),
         "the provider's default is kept past the cap"
     );
+}
+
+mod verdict_props {
+    use super::episode_verdict;
+    use crate::error::AniError;
+    use proptest::prelude::*;
+
+    fn error() -> impl Strategy<Value = AniError> {
+        prop_oneof![
+            (0u8..5).prop_map(|k| match k {
+                0 => AniError::Network,
+                1 => AniError::Timeout,
+                2 => AniError::NoResults,
+                3 => AniError::EpisodeUnavailable,
+                _ => AniError::GateRefused,
+            }),
+            (0u16..1000).prop_map(|status| AniError::Upstream { status }),
+            proptest::option::of(0u64..100_000)
+                .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+        ]
+    }
+
+    proptest! {
+        /// An answered dead end — a title miss or a not-found-shaped
+        /// status — becomes the episode's verdict; a block, a gate
+        /// refusal and transport weather pass through as they came.
+        #[test]
+        fn an_answered_dead_end_is_the_episodes_verdict_and_nothing_else_changes(
+            error in error(),
+        ) {
+            let passes_through = error.is_provider_block()
+                || matches!(error, AniError::GateRefused | AniError::Network | AniError::Timeout);
+            let before = format!("{error:?}");
+            let after = episode_verdict(error);
+            if passes_through {
+                prop_assert_eq!(format!("{after:?}"), before);
+            } else {
+                prop_assert!(
+                    matches!(after, AniError::EpisodeUnavailable),
+                    "{before} -> {after:?}"
+                );
+            }
+        }
+    }
 }

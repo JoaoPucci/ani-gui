@@ -29,10 +29,30 @@ pub(super) enum ChainOutcome {
 pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
     if ne.error.is_provider_block() || matches!(ne.error, AniError::GateRefused) {
         ChainOutcome::Stop(ne)
-    } else if matches!(ne.error, AniError::NoResults | AniError::Upstream { .. }) {
+    } else if matches!(
+        ne.error,
+        AniError::EpisodeUnavailable | AniError::NoResults | AniError::Upstream { .. }
+    ) {
         ChainOutcome::DeadEnd
     } else {
         ChainOutcome::Transient
+    }
+}
+
+/// The episode step's verdict for a failure it met: an answered dead
+/// end — the listing without the episode, the embed step without a
+/// stream, a page the host answered with a not-found-shaped status —
+/// is the episode's own verdict, since the show was picked and only
+/// this episode is missing. A provider block, a gate refusal and
+/// transport weather pass through as they are; they say nothing
+/// about the episode.
+pub(super) fn episode_verdict(error: AniError) -> AniError {
+    if error.is_provider_block() || matches!(error, AniError::GateRefused) {
+        error
+    } else if matches!(error, AniError::NoResults | AniError::Upstream { .. }) {
+        AniError::EpisodeUnavailable
+    } else {
+        error
     }
 }
 
@@ -44,7 +64,9 @@ pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
 ///
 /// # Errors
 /// `NativeError` (never `clean_miss`): the show matched, so nothing
-/// here is evidence of absence.
+/// here is evidence of absence. An answered dead end is the
+/// episode's own verdict, [`AniError::EpisodeUnavailable`]
+/// ([`episode_verdict`]), for every caller alike.
 pub async fn resolve_episode<P: Provider + ?Sized>(
     client: &P,
     picked: &PickedShow,
@@ -53,7 +75,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
     quality: &str,
 ) -> std::result::Result<ResolvedEpisode, NativeError> {
     let dead_end = |error: AniError| NativeError {
-        error,
+        error: episode_verdict(error),
         clean_miss: false,
         failed_at: None,
     };
