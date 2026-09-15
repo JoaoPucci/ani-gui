@@ -596,6 +596,23 @@ pub fn chain_reserve(bound: std::time::Duration) -> std::time::Duration {
 /// the bound; with no server ahead of the remainder's (that server
 /// already behind) the cap is what remains, under the bound, with
 /// nothing held back.
+///
+/// The reserve gives way before a share does. What the walk has left
+/// is the attempt less the search, the candidate and the listings,
+/// and a slow site can leave it the reserve and nothing over; held
+/// back whole there, the reserve is the whole remainder, and every
+/// server ahead of the remainder's is capped at nothing — stepped
+/// over without a request window while the attempt still has time to
+/// spend. That is a stream the walk had and did not take, since the
+/// server it saved the time for may be the dead one. So when what
+/// remains cannot fund the reserve and a share apiece, it is split
+/// among the servers ahead and the remainder's server alike, each
+/// taking the same share: the reserve shrinks to one share rather
+/// than the shares to nothing, and the remainder's server is still
+/// left the largest single window the walk can give it. Wherever the
+/// remainder covers the reserve with anything over, the share is
+/// that over, as before — the reserve is not spent to buy an earlier
+/// server a wider window, only to keep it from having none.
 #[must_use]
 pub fn server_cap(
     bound: std::time::Duration,
@@ -606,10 +623,15 @@ pub fn server_cap(
     let Some(remaining) = remaining else {
         return bound;
     };
+    let ahead = u32::try_from(ahead).unwrap_or(u32::MAX);
     if ahead == 0 {
         return bound.min(remaining);
     }
-    let free = remaining.saturating_sub(reserve);
-    let share = free / u32::try_from(ahead).unwrap_or(u32::MAX);
+    let after_reserve = remaining.saturating_sub(reserve) / ahead;
+    let share = if after_reserve.is_zero() {
+        remaining / ahead.saturating_add(1)
+    } else {
+        after_reserve
+    };
     bound.min(share)
 }

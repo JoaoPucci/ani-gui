@@ -71,7 +71,12 @@ pub const HIANIME_BASE: &str = "https://hianime.at";
 /// [`ajax::chain_reserve`]), so stalled servers cannot spend the
 /// remainder that last server runs on. A chain's worth and not this
 /// bound: the chain is four requests deep, and a bound spread over
-/// four of them is less than a loaded host takes to answer.
+/// four of them is less than a loaded host takes to answer. What is
+/// held back is a share of the attempt and never the whole of what
+/// is left of it: when the attempt cannot fund the chain's worth and
+/// a share for each server ahead, what is left is split among them
+/// and the last together, so no bounded server is skipped for want
+/// of a window while the attempt still runs.
 pub const SERVER_ATTEMPT_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
 
 /// The hianime client: search, episode listing, and stream-URL
@@ -377,6 +382,19 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // one bound would leave that chain cancelled with the
         // attempt on the last server the walk had, every request it
         // made having been answered.
+        //
+        // The reserve gives way before a share does. What the walk
+        // has left is the attempt less the search, the candidate and
+        // the listings, and a slow site can leave it the reserve and
+        // nothing over; the reserve held back whole there is the
+        // whole remainder, and every server ahead of the remainder's
+        // is capped at nothing and stepped over unasked while the
+        // attempt still has time to spend — a healthy server not
+        // tried, and the episode lost when the remainder's server is
+        // the dead one. So when what remains cannot fund the reserve
+        // and a share apiece, it is split among the servers ahead
+        // and the remainder's server alike, each taking the same
+        // share ([`server_cap`]).
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         let ordered = servers_for(&servers, mode);
         let unbounded = remainder_index(&ordered);
