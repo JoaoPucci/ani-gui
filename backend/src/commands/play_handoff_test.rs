@@ -138,3 +138,31 @@ async fn a_handoff_miss_surfaces_the_walks_verdict() {
         .expect_err("nothing matches");
     assert!(matches!(err, crate::error::AniError::NoResults));
 }
+
+/// The handoff describes the launch from the resolve, referer
+/// included — the external player and Syncplay both take one, and a
+/// stream whose CDN checks it plays nowhere without it.
+#[test]
+fn launch_args_carry_the_resolves_referer() {
+    let cfg = crate::config::Config::default();
+    let native = |referer: Option<&str>| crate::commands::play_native_resolve::NativeResolved {
+        slug: "the-show-77".into(),
+        title: "The Show".into(),
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        episode_cap: Some(3),
+        numbering_offset: 0,
+        extra_tags: Vec::new(),
+        resolved_slot: 1,
+        resolved_tag: None,
+        referer: referer.map(str::to_string),
+    };
+    let with = super::play_handoff::launch_args_for(
+        native(Some("https://embed.example/")),
+        &args_for(),
+        &cfg,
+    );
+    assert_eq!(with.stream_url, "https://cdn.example/x/master.m3u8");
+    assert_eq!(with.referer.as_deref(), Some("https://embed.example/"));
+    let without = super::play_handoff::launch_args_for(native(None), &args_for(), &cfg);
+    assert_eq!(without.referer, None);
+}

@@ -1,7 +1,7 @@
 //! The picker's format disproof — split from `play_native` so each
 //! file stays inside the complexity ratchet's per-file bar.
 
-use crate::scraper::anidb::BrowseHit;
+use crate::scraper::provider::BrowseHit;
 
 /// The layer the provider picker carried as its type filter, applied
 /// in BOTH directions: a card badged `Movie` cannot be the

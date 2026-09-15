@@ -1,5 +1,5 @@
 use super::*;
-use crate::scraper::anidb::EpisodeRef;
+use crate::scraper::provider::EpisodeRef;
 
 fn refs(numbers: &[u32]) -> Vec<EpisodeRef> {
     numbers

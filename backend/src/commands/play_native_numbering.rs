@@ -9,7 +9,7 @@
 /// number the UI can send) restarts each entry at 1. An entry whose
 /// first listed number is above 1 is such a continuation; entries
 /// starting at 0 or 1 already number per-entry and shift nothing.
-pub fn numbering_offset(episodes: &[crate::scraper::anidb::EpisodeRef]) -> u32 {
+pub fn numbering_offset(episodes: &[crate::scraper::provider::EpisodeRef]) -> u32 {
     match episodes.iter().filter_map(integer_display).min() {
         Some(first) if first > 1 => first - 1,
         _ => 0,
@@ -21,7 +21,7 @@ pub fn numbering_offset(episodes: &[crate::scraper::anidb::EpisodeRef]) -> u32 {
 /// fractional extra. The continuation numbering can live in either
 /// place — TYBW's fourth part lists slots 41..42 bare, while other
 /// continuations restart slots at 1 and put 41..42 in the tags.
-fn integer_display(e: &crate::scraper::anidb::EpisodeRef) -> Option<u32> {
+fn integer_display(e: &crate::scraper::provider::EpisodeRef) -> Option<u32> {
     match e.number2.as_deref() {
         Some(tag) => integer_tag_value(tag),
         None => Some(e.number),
@@ -44,7 +44,7 @@ fn integer_tag_value(tag: &str) -> Option<u32> {
 /// — what availability caps and the play response's `episode_cap`
 /// must report, or a continuation cour's raw provider numbers unlock
 /// episodes that don't exist.
-pub fn kitsu_episode_cap(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Option<u32> {
+pub fn kitsu_episode_cap(episodes: &[crate::scraper::provider::EpisodeRef]) -> Option<u32> {
     let offset = numbering_offset(episodes);
     // The display tag is the row's identity: integer tags count
     // toward the cap, fractional ones are extras and must not let a
@@ -59,7 +59,7 @@ pub fn kitsu_episode_cap(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Opti
 /// The number of regular episodes a listing carries — rows whose
 /// display identity is an integer. Kitsu's episode_count excludes
 /// recaps, so candidate scoring must too.
-pub fn regular_episode_count(episodes: &[crate::scraper::anidb::EpisodeRef]) -> u32 {
+pub fn regular_episode_count(episodes: &[crate::scraper::provider::EpisodeRef]) -> u32 {
     let regular = episodes
         .iter()
         .filter(|e| match e.number2.as_deref() {
@@ -76,7 +76,7 @@ pub fn regular_episode_count(episodes: &[crate::scraper::anidb::EpisodeRef]) -> 
 /// non-integer tag is playable verbatim through the resolve's
 /// `number2` match, which is exactly why the listing outranks any
 /// cached row as a source for them.
-pub fn extra_episode_tags(episodes: &[crate::scraper::anidb::EpisodeRef]) -> Vec<String> {
+pub fn extra_episode_tags(episodes: &[crate::scraper::provider::EpisodeRef]) -> Vec<String> {
     let offset = numbering_offset(episodes);
     episodes
         .iter()

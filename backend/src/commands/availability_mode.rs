@@ -32,7 +32,7 @@
 //! refinement and what a real fix would need.
 
 use crate::error::{AniError, Result};
-use crate::scraper::anidb::{AnidbClient, AnidbFetch, EpisodeRef};
+use crate::scraper::provider::{EpisodeRef, Provider};
 
 /// How many missing rows the search steps over before giving up.
 /// Bounded deliberately: a listing that answers not-found everywhere
@@ -57,8 +57,8 @@ const SCAN_BUDGET: usize = 8;
 /// The transport's own failures, as in [`AnidbClient::has_mode`].
 /// An answered-not-found row is NOT an error — it is the unknown
 /// verdict above.
-pub(crate) async fn mode_present<F: AnidbFetch>(
-    client: &AnidbClient<F>,
+pub(crate) async fn mode_present<P: Provider + ?Sized>(
+    client: &P,
     episodes: &[EpisodeRef],
     mode: &str,
 ) -> Result<Option<bool>> {
@@ -78,8 +78,8 @@ pub(crate) async fn mode_present<F: AnidbFetch>(
 /// episode id the provider no longer serves — and says nothing about
 /// the mode in either direction. Weather propagates: the caller
 /// feeds it to the breaker and persists nothing.
-async fn row_mode<F: AnidbFetch>(
-    client: &AnidbClient<F>,
+async fn row_mode<P: Provider + ?Sized>(
+    client: &P,
     episode_id: u64,
     mode: &str,
 ) -> Result<Option<bool>> {
