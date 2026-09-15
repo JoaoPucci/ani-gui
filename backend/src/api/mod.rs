@@ -328,6 +328,9 @@ async fn get_kitsu_episodes(
 struct TitleMatchQuery {
     title: String,
     cour: u32,
+    /// The provider whose title this is; anidb when absent.
+    #[serde(default)]
+    provider: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -343,8 +346,10 @@ async fn get_title_match(
     State(state): State<Arc<AppState>>,
     Query(q): Query<TitleMatchQuery>,
 ) -> Result<Json<Option<String>>, AniError> {
+    let provider =
+        crate::scraper::provider::ProviderId::from_label(q.provider.as_deref().unwrap_or(""));
     Ok(Json(kitsu_inner::title_match_get(
-        &state, &q.title, q.cour,
+        &state, provider, &q.title, q.cour,
     )?))
 }
 
@@ -353,13 +358,18 @@ struct TitleMatchBody {
     title: String,
     cour: u32,
     kitsu_id: String,
+    /// The provider whose title this is; anidb when absent.
+    #[serde(default)]
+    provider: Option<String>,
 }
 
 async fn put_title_match(
     State(state): State<Arc<AppState>>,
     Json(body): Json<TitleMatchBody>,
 ) -> Result<StatusCode, AniError> {
-    kitsu_inner::title_match_put(&state, &body.title, body.cour, &body.kitsu_id)?;
+    let provider =
+        crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
+    kitsu_inner::title_match_put(&state, provider, &body.title, body.cour, &body.kitsu_id)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -621,72 +631,35 @@ async fn post_play_mark_watched(
     );
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
-            // the history file speaks the provider's numbering; the offset
-            // was stamped by the resolve that wrote this cache row.
-            let offset = crate::commands::anidb_offset::get(&state, &cached.show_id);
-            let entry = crate::history::HistoryEntry {
-                ep_no: crate::commands::anidb_offset::write_ep_no(
-                    &state,
-                    &cached.show_id,
-                    &args.episode,
-                    offset,
-                ),
-                id: cached.show_id.clone(),
-                title: cached.show_title.clone(),
-            };
-            if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
-                tracing::warn!(
-                    title = %args.title,
-                    episode = %args.episode,
-                    error = ?e,
-                    "play: history write failed in mark-watched",
-                );
-            }
-            // Watched-at stamp drives Continue Watching ordering.
-            // Runs BEFORE the cross-cour guard below because that
-            // guard fetches Kitsu detail on cache miss — letting it
-            // gate this write would stall home ordering whenever
-            // Kitsu is slow, even though the play itself succeeded.
-            // Only fires on click-side mark-watched (prefetches don't
-            // reach this handler). Failure is non-fatal.
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as i64)
-                .unwrap_or(0);
-            if let Err(e) = kitsu_inner::watched_at_put(&state, &cached.show_id, now_ms) {
-                tracing::warn!(
-                    show_id = %cached.show_id,
-                    error = ?e,
-                    "play: watched-at stamp write failed",
-                );
-            }
-            // Reverse mapping — store (provider show_id → kitsu_id)
-            // when the frontend supplied kitsu_id. Errors are
-            // swallowed (logged) because the play already succeeded;
-            // the mapping is opportunistic.
+            // The row, the watched-at stamp and, when the frontend
+            // supplied the Kitsu id, the reverse mapping — the same
+            // recording a handoff makes once its player has started,
+            // through the same helper, so the two paths cannot drift.
+            // The row leads and the rest follow: a history write that
+            // fails ends the recording, since a stamp advanced for a
+            // watch that never reached the file would make this
+            // provider's stale row the show's latest.
             //
-            // Cross-cour integrity guard: the play picker
-            // (`pick_by_ep_count_v2`) can land on a sibling cour's
-            // provider show_id when ep-count and year tie (e.g.
-            // Stone Ocean Parts 1/2/3 all 12 eps, 2021–2022). The
-            // frontend supplies kitsu_id from the URL or Continue
-            // Watching context, which then doesn't match the chosen
-            // show_id. Detect that by comparing the cour suffix on
-            // cached.show_title against the cour suffix on the Kitsu
-            // detail's slug. On disagreement, skip the write. The
-            // guard reads kitsu_anime_detail through its 7-day cache;
-            // mismatch when the detail can't be fetched is treated as
-            // "agree" so a network hiccup doesn't suppress legitimate
-            // writes.
-            if let Some(kid) = args.kitsu_id.as_deref().filter(|k| !k.is_empty()) {
-                kitsu_inner::try_put_allmanga_kitsu_mapping(
-                    &state,
-                    &cached.show_id,
-                    &cached.show_title,
-                    kid,
-                )
-                .await;
-            }
+            // The mapping carries the cross-cour integrity guard: the
+            // play picker can land on a sibling cour's provider
+            // show_id when episode count and year tie, while the
+            // frontend supplies the Kitsu id from the URL it came from;
+            // the guard compares the cour suffixes and skips the write
+            // when they disagree. It reads Kitsu detail through its
+            // cache and runs after the stamp, so a slow Kitsu never
+            // delays home ordering.
+            //
+            // The watch is the cached row's, built the way the handoffs
+            // build theirs: the row's own slot when it carries one, the
+            // display number translated through the stamp only for a
+            // row from before the slot was cached.
+            let watch = crate::commands::play_cache::cached_watch(&state, &cached, &args.episode);
+            crate::commands::play_native_record::record_watch(
+                &state,
+                &watch,
+                args.kitsu_id.as_deref(),
+            )
+            .await;
         }
     }
     StatusCode::NO_CONTENT
@@ -730,7 +703,7 @@ async fn get_kitsu_resolve_allmanga(
 async fn get_watched_at_all(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<std::collections::HashMap<String, i64>>, AniError> {
-    Ok(Json(kitsu_inner::watched_at_all(&state)?))
+    Ok(Json(crate::commands::history::watched_at_all(&state)?))
 }
 
 /// Evict the cached play resolution for `(title, mode, quality,
@@ -1486,10 +1459,129 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
-        // Format: ep_no\tid\ttitle\n — same TSV the bash CLI produces.
+        // Format: ep_no\tid\ttitle\twatched_at_ms\n — the CLI's three
+        // columns, then the moment of the watch that wrote the row.
+        let line = body
+            .strip_suffix('\n')
+            .expect("one line, newline-terminated");
+        let (columns, moment) = line.rsplit_once('\t').expect("the watch's moment");
         assert_eq!(
-            body, "150\tvDTSJHSpYnrkZnAvG\tNato: Shippuuden (500 episodes)\n",
+            columns, "150\tvDTSJHSpYnrkZnAvG\tNato: Shippuuden (500 episodes)",
             "history line should match cache metadata"
+        );
+        assert!(
+            moment.parse::<i64>().is_ok_and(|ms| ms > 1_700_000_000_000),
+            "the row carries the watch's moment: {moment}"
+        );
+    }
+
+    /// A cached row carries the slot its resolve landed on, and the
+    /// history file speaks that numbering: episode 4 sits at slot 5
+    /// when a recap holds slot 4. The show's single display stamp can
+    /// have moved to a later resolve's row by the time the click is
+    /// marked, and translating the display number through it then
+    /// names slot 4 — the recap — so the row's own slot is what the
+    /// route records, as the handoffs and the embedded replay already
+    /// do.
+    #[tokio::test]
+    async fn mark_watched_records_the_cached_rows_own_slot() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        let history_path = state.history_path.clone();
+        let key = cache_key("The Show", "sub", "best", "4", None, None, None);
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/720p.mp4".into(),
+                referer: String::new(),
+                media_kind: MediaKind::Mp4,
+                show_id: "the-show-77".into(),
+                show_title: "The Show".into(),
+                resolved_slot: Some(5),
+                subtitles: Vec::new(),
+            },
+        );
+        // A later resolve moved the display stamp to its own row.
+        crate::commands::anidb_offset::put_display(&state, "the-show-77", 0, 7, "6");
+        let router = build_api_router(Arc::new(state));
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"The Show","episode":"4","mode":"sub"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let body = std::fs::read_to_string(&history_path).expect("history file written");
+        let line = body.strip_suffix('\n').expect("one line");
+        let (columns, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        assert_eq!(
+            columns, "5\tthe-show-77\tThe Show",
+            "the row records the cached slot, not the display number"
+        );
+    }
+
+    /// A row from before the slot was cached carries none, and keeps
+    /// the stamp-aware translation of the display number.
+    #[tokio::test]
+    async fn mark_watched_translates_the_display_number_for_a_row_without_a_slot() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        let history_path = state.history_path.clone();
+        let key = cache_key("The Show", "sub", "best", "4", None, None, None);
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/720p.mp4".into(),
+                referer: String::new(),
+                media_kind: MediaKind::Mp4,
+                show_id: "the-show-77".into(),
+                show_title: "The Show".into(),
+                resolved_slot: None,
+                subtitles: Vec::new(),
+            },
+        );
+        // The stamp names display 4 as slot 5.
+        crate::commands::anidb_offset::put_display(&state, "the-show-77", 0, 5, "4");
+        let router = build_api_router(Arc::new(state));
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"The Show","episode":"4","mode":"sub"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let body = std::fs::read_to_string(&history_path).expect("history file written");
+        let line = body.strip_suffix('\n').expect("one line");
+        let (columns, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        assert_eq!(
+            columns, "5\tthe-show-77\tThe Show",
+            "a row without a slot translates the display number through the stamp"
         );
     }
 
@@ -1944,6 +2036,66 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.contains("\"show-a\":1700000000000"), "body: {body}");
         assert!(body.contains("\"show-b\":1800000000000"), "body: {body}");
+    }
+
+    /// The stamp follows the row, on the embedded path as on a
+    /// handoff's: when the history file cannot be written — a
+    /// directory where it should be, the state directory full — the
+    /// watch is not on disk, and a stamp advanced anyway would make
+    /// this provider's stale row the show's latest and hand the
+    /// resume its episode over another provider's persisted one.
+    #[tokio::test]
+    async fn mark_watched_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        std::fs::create_dir_all(&state.history_path)
+            .expect("a directory where the history file should be");
+        let key = cache_key("Naruto: Shippuuden", "sub", "best", "150", None, None, None);
+        put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: "https://video.example/720p.mp4".into(),
+                referer: String::new(),
+                media_kind: MediaKind::Mp4,
+                show_id: "vDTSJHSpYnrkZnAvG".into(),
+                show_title: "Nato: Shippuuden (500 episodes)".into(),
+                resolved_slot: None,
+                subtitles: Vec::new(),
+            },
+        );
+        let pool = state.cache_pool.clone();
+        let router = build_api_router(Arc::new(state));
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/play/mark-watched")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Naruto: Shippuuden","episode":"150","mode":"sub","kitsu_id":"1555"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            crate::cache::meta_cache_get(&pool, "watched-at:v1:vDTSJHSpYnrkZnAvG").expect("get"),
+            None,
+            "a watch that never reached the file must not be stamped"
+        );
+        assert_eq!(
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v3:vDTSJHSpYnrkZnAvG")
+                .expect("get"),
+            None,
+            "nor mapped"
+        );
     }
 
     #[tokio::test]

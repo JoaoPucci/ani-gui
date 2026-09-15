@@ -1,13 +1,19 @@
 //! Reader and writer for the app's watch-history file.
 //!
 //! Format (TSV, one record per line):
-//!     <ep_no>\t<id>\t<title>
+//!     <ep_no>\t<id>\t<title>[\t<watched_at_ms>]
 //!
-//! The line format is the one the CLI's `update_history` used, and so
-//! are the atomic semantics: write to `path.new`, then rename. The
-//! tests below and the samples under `tests/fixtures/history/` pin
-//! that contract — including byte-identity against a fixture the
-//! script's writer produced.
+//! The first three columns are the ones the CLI's `update_history`
+//! used, and so are the atomic semantics: write to `path.new`, then
+//! rename. The tests below and the samples under
+//! `tests/fixtures/history/` pin that contract — including
+//! byte-identity against a fixture the script's writer produced. The
+//! fourth column is the app's own: the moment of the watch that
+//! wrote the row, kept beside the row so the recency a resume ranks
+//! by is written in the same line as the row it ranks, whatever
+//! becomes of the cache's copy of the stamp. A row without a watch
+//! behind it — a plain resolve, a row from before the column —
+//! carries none and reads and writes as before.
 //!
 //! The two never shared a file after the 5.0 CLI re-keyed its history
 //! onto provider slugs; the app keeps its own under its state dir.
@@ -43,6 +49,14 @@ pub struct HistoryEntry {
     /// the writer of the day appended; nothing appends one now, and
     /// the frontend strips it where it finds it.
     pub title: String,
+    /// The moment of the watch that wrote the row, in milliseconds
+    /// since the epoch — written by the watch itself, beside the row,
+    /// so a cache that refuses the same stamp cannot leave the row
+    /// ranked below a sibling's older one. A row a resolve rewrote
+    /// keeps the moment of the watch before it; a row no watch ever
+    /// wrote, or one from before the column existed, carries none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub watched_at: Option<i64>,
 }
 
 /// Parse the entire history file into a `Vec<HistoryEntry>`.
@@ -69,11 +83,27 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
             let mut parts = line.splitn(3, '\t');
             let ep_no = parts.next()?.to_string();
             let id = parts.next()?.to_string();
-            let title = parts.next()?.to_string();
+            let rest = parts.next()?;
             if ep_no.is_empty() || id.is_empty() {
                 return None;
             }
-            Some(HistoryEntry { ep_no, id, title })
+            // The title took the rest of the line before the column
+            // existed, tabs included; a tail that is not a whole
+            // number is still the title's.
+            let (title, watched_at) = match rest.rsplit_once('\t') {
+                Some((title, tail))
+                    if !tail.is_empty() && tail.bytes().all(|b| b.is_ascii_digit()) =>
+                {
+                    (title.to_string(), tail.parse::<i64>().ok())
+                }
+                _ => (rest.to_string(), None),
+            };
+            Some(HistoryEntry {
+                ep_no,
+                id,
+                title,
+                watched_at,
+            })
         })
         .collect()
 }
@@ -90,19 +120,28 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
         out.push_str(&e.id);
         out.push('\t');
         out.push_str(&e.title);
+        if let Some(at) = e.watched_at {
+            out.push('\t');
+            out.push_str(&at.to_string());
+        }
         out.push('\n');
     }
     out
 }
 
 /// Insert or update an entry, matching by `id`. If `id` is already in the
-/// vector, that entry's `ep_no` and `title` are replaced; otherwise the
-/// new entry is appended. The vector is mutated in place. Mirrors
-/// `update_history`'s semantics from the script.
+/// vector, that entry's `ep_no` and `title` are replaced, and its
+/// watched-at moment when the new entry carries one — a plain
+/// resolve rewrites a row without unwriting the watch before it;
+/// otherwise the new entry is appended. The vector is mutated in
+/// place. Mirrors `update_history`'s semantics from the script.
 pub fn upsert(entries: &mut Vec<HistoryEntry>, new: HistoryEntry) {
     if let Some(existing) = entries.iter_mut().find(|e| e.id == new.id) {
         existing.ep_no = new.ep_no;
         existing.title = new.title;
+        if new.watched_at.is_some() {
+            existing.watched_at = new.watched_at;
+        }
     } else {
         entries.push(new);
     }
@@ -178,7 +217,66 @@ mod tests {
             ep_no: ep.into(),
             id: id.into(),
             title: format!("Test ({id})"),
+            watched_at: None,
         }
+    }
+
+    /// A row written by a watch carries the watch's moment beside it,
+    /// in the same line, so the recency a resume ranks by cannot be
+    /// lost to a store the row was not written to. A row written
+    /// before the column existed, or by a plain resolve, carries none
+    /// and reads and writes as it always did.
+    #[test]
+    fn a_row_carries_its_watched_at_beside_it() {
+        let body = "5\tabc\tOne Piece\t1700000000000\n";
+        let v = parse(body);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].title, "One Piece");
+        assert_eq!(v[0].watched_at, Some(1_700_000_000_000));
+        assert_eq!(serialize(&v), body, "the column round-trips");
+        let legacy = parse("5\tabc\tOne Piece\n");
+        assert_eq!(legacy[0].watched_at, None);
+        assert_eq!(
+            serialize(&legacy),
+            "5\tabc\tOne Piece\n",
+            "no column when there is no stamp"
+        );
+        let tab_in_title = parse("5\tabc\tOne\tPiece\n");
+        assert_eq!(
+            tab_in_title[0].title, "One\tPiece",
+            "a tail that is not a stamp stays in the title"
+        );
+        assert_eq!(tab_in_title[0].watched_at, None);
+    }
+
+    /// A resolve rewrites the row without a stamp of its own; the
+    /// watch that stamped it earlier is not unwritten by that. A
+    /// watch that carries a stamp replaces the earlier one.
+    #[test]
+    fn upsert_keeps_a_rows_stamp_unless_the_new_entry_carries_one() {
+        let mut entries = vec![HistoryEntry {
+            watched_at: Some(1_000),
+            ..sample_entry("abc", "3")
+        }];
+        upsert(&mut entries, sample_entry("abc", "4"));
+        assert_eq!(entries[0].ep_no, "4");
+        assert_eq!(
+            entries[0].watched_at,
+            Some(1_000),
+            "a stampless rewrite keeps the stamp"
+        );
+        upsert(
+            &mut entries,
+            HistoryEntry {
+                watched_at: Some(2_000),
+                ..sample_entry("abc", "5")
+            },
+        );
+        assert_eq!(
+            entries[0].watched_at,
+            Some(2_000),
+            "a stamped rewrite replaces it"
+        );
     }
 
     #[test]
@@ -256,6 +354,7 @@ mod tests {
             ep_no: "99".into(),
             id: "b".into(),
             title: "New Title".into(),
+            watched_at: None,
         };
         upsert(&mut v, updated);
         assert_eq!(v.len(), 3);
@@ -310,16 +409,19 @@ mod tests {
                 ep_no: "12".into(),
                 id: "abc123".into(),
                 title: "Attack on Titan (25 episodes)".into(),
+                watched_at: None,
             },
             HistoryEntry {
                 ep_no: "3".into(),
                 id: "def456".into(),
                 title: "Demon Slayer (26 episodes)".into(),
+                watched_at: None,
             },
             HistoryEntry {
                 ep_no: "1".into(),
                 id: "ghi789".into(),
                 title: "Spy x Family (12 episodes)".into(),
+                watched_at: None,
             },
         ];
         let our_bytes = serialize(&entries);
@@ -365,6 +467,7 @@ mod tests {
                 ep_no: "99".into(),
                 id: "a".into(),
                 title: "Test (a)".into(),
+                watched_at: None,
             },
         )
         .unwrap();
@@ -405,9 +508,20 @@ mod tests {
 
     fn entry_strategy() -> impl Strategy<Value = HistoryEntry> {
         // ep_no and id must be non-empty (parse() drops rows otherwise).
-        // title may be empty.
-        (tsv_field(1, 8), tsv_field(1, 32), tsv_field(0, 64))
-            .prop_map(|(ep_no, id, title)| HistoryEntry { ep_no, id, title })
+        // title may be empty. A row may carry its watch's moment, or
+        // none, as the file holds both.
+        (
+            tsv_field(1, 8),
+            tsv_field(1, 32),
+            tsv_field(0, 64),
+            proptest::option::of(0i64..2_000_000_000_000),
+        )
+            .prop_map(|(ep_no, id, title, watched_at)| HistoryEntry {
+                ep_no,
+                id,
+                title,
+                watched_at,
+            })
     }
 
     proptest! {

@@ -24,11 +24,12 @@
 pub mod parse;
 pub mod parse_api;
 use crate::scraper::fetch::Fetch;
+pub use crate::scraper::provider::slug_search_term;
 use crate::scraper::provider::{
     encode_query, is_cloudflare_interstitial, BrowseHit, EpisodeRef, Provider, ProviderId,
     StreamSource,
 };
-pub use parse::{parse_browse, parse_detail_year, slug_search_term};
+pub use parse::{parse_browse, parse_detail_year};
 pub use parse_api::{extract_master_url, parse_episodes, parse_languages, preferred_embed};
 
 use crate::error::{AniError, Result};
@@ -121,8 +122,10 @@ impl<F: Fetch> Provider for AnidbClient<F> {
     /// [`AniError::ParseFailed`] on a malformed slug or body, plus
     /// upstream/transport errors as in [`Self::search`].
     async fn episodes(&self, slug: &str) -> Result<Vec<EpisodeRef>> {
-        let id = parse::slug_numeric_id(slug).ok_or_else(|| AniError::ParseFailed {
-            detail: format!("anidb slug without numeric tail: {slug}"),
+        let id = crate::scraper::provider::slug_numeric_id(slug).ok_or_else(|| {
+            AniError::ParseFailed {
+                detail: format!("anidb slug without numeric tail: {slug}"),
+            }
         })?;
         let url = format!("{}/api/frontend/anime/{id}/episodes", self.base);
         let body = self.content(&url).await?;

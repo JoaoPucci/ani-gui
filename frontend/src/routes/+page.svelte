@@ -116,6 +116,10 @@
 	let trending = $state<KitsuAnimeRef[] | null>(null);
 	let topRated = $state<KitsuAnimeRef[] | null>(null);
 	let history = $state<HistoryEntry[] | null>(null);
+	// The watched-at stamps the strip is sorted by, kept for the
+	// dedupe: the card for a show is the row watched last, as the
+	// detail page resumes it.
+	let historyWatchedAt = $state<Record<string, number>>({});
 	// Plan §6.6: Watch Later rail. `null` = not loaded yet (during
 	// boot before accountStore.hydrate completes, or no provider
 	// connected at all). `[]` = loaded, but no Planning rows to
@@ -214,7 +218,9 @@
 	// (the common case) this is reference-equal row-by-row to
 	// `history`. See $lib/history/dedupe for the policy and the
 	// catalog-drift scenario that motivates it (#116).
-	const dedupedHistory = $derived(history ? dedupeHistoryByKitsuId(history, historyMatches) : []);
+	const dedupedHistory = $derived(
+		history ? dedupeHistoryByKitsuId(history, historyMatches, historyWatchedAt) : []
+	);
 
 	// Delete confirmation: holds the entry pending user confirm. Null
 	// means no modal open. The modal pops over the rail; cancelling
@@ -349,6 +355,7 @@
 				// watched-at endpoint never throws — its catch above
 				// degrades to "treat everything as unstamped," which
 				// just preserves file order for everyone.
+				historyWatchedAt = watchedAt;
 				history = sortByWatchedAt(h, watchedAt);
 				// Per-row load, render-then-refine: each card flips to
 				// its resumable state the moment ITS Kitsu match lands —

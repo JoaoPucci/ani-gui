@@ -16,6 +16,8 @@ pub mod availability;
 mod availability_mode;
 pub mod availability_refresh;
 pub mod cour;
+mod cour_keyword_form;
+mod cour_ordinal_form;
 pub mod download;
 mod download_names;
 
@@ -27,6 +29,7 @@ pub(crate) mod download_tool;
 mod download_transfer;
 pub mod external_player;
 pub mod history;
+mod history_resume;
 pub mod kitsu;
 pub mod kitsu_warm;
 pub mod play;
@@ -47,7 +50,7 @@ pub mod play_native_episode;
 pub mod play_native_format;
 pub mod play_native_numbering;
 pub mod play_native_outcome;
-mod play_native_record;
+pub(crate) mod play_native_record;
 pub mod play_native_resolve;
 #[cfg(test)]
 pub(crate) mod play_native_test_provider;

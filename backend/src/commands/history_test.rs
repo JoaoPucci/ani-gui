@@ -1,0 +1,291 @@
+//! The history commands: listing, removal, clearing, and the
+//! numbering a row is shown in.
+
+use super::*;
+use crate::app::AppState;
+use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+fn make_state(history_path: PathBuf) -> AppState {
+    AppState {
+        anidb_base: None,
+        secret: AppSecret::random(),
+        sessions: SessionTable::new(),
+        proxy_http: reqwest::Client::new(),
+        meta_http: reqwest::Client::new(),
+        proxy_origin: ProxyOrigin::new("127.0.0.1", 0),
+        bundled_bin: None,
+        legacy_sweep: crate::legacy_script::SweepReport::default(),
+        history_path,
+        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
+        cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
+        kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
+        config_path: PathBuf::from("/tmp/ani-gui-config.toml"),
+        state_dir: PathBuf::from("/tmp/ani-gui-state"),
+        internal_secret: crate::account::InternalSecret::random(),
+        mal_refresh: crate::meta::mal_user::MalRefreshState::new(),
+        account_write_locks: crate::commands::account::AccountWriteLocks::new(),
+        availability_refreshes: crate::commands::availability_refresh::AvailabilityRefreshes::new(),
+    }
+}
+
+#[test]
+fn list_empty_when_file_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let s = make_state(tmp.path().join("nope"));
+    let v = history_list(&s).unwrap();
+    assert!(v.is_empty());
+}
+
+#[test]
+fn list_translates_provider_numbering_back_to_kitsu() {
+    // The history file speaks the provider's numbering (a reader greps the
+    // stored ep_no in the provider's episode list), while every
+    // GUI surface counts per-entry like Kitsu. The read boundary
+    // subtracts the offset stamped at resolve time; rows without
+    // a stamp pass through unchanged — that's today's behavior
+    // for shows the GUI has never resolved.
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "41".into(),
+                id: "the-sequel-88".into(),
+                title: "The Sequel".into(),
+                watched_at: None,
+            },
+            HistoryEntry {
+                ep_no: "5".into(),
+                id: "plain-1".into(),
+                title: "Plain Show".into(),
+                watched_at: None,
+            },
+        ],
+    )
+    .unwrap();
+    crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
+
+    let listed = history_list(&s).unwrap();
+    assert_eq!(listed[0].ep_no, "1", "provider 41 minus offset 40");
+    assert_eq!(listed[1].ep_no, "5", "no stamp: served raw");
+}
+
+#[test]
+fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[HistoryEntry {
+            ep_no: "42".into(),
+            id: "the-sequel-88".into(),
+            title: "The Sequel".into(),
+            watched_at: None,
+        }],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-sequel-88", "K9").unwrap();
+    crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
+
+    let hit = history_by_kitsu(&s, "K9").unwrap().expect("match");
+    assert_eq!(hit.ep_no, "2");
+}
+
+#[test]
+fn by_kitsu_returns_the_matching_entry() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "5".into(),
+                id: "amA".into(),
+                title: "Show A (10 episodes)".into(),
+                watched_at: None,
+            },
+            HistoryEntry {
+                ep_no: "12".into(),
+                id: "amB".into(),
+                title: "Show B (24 episodes)".into(),
+                watched_at: None,
+            },
+        ],
+    )
+    .unwrap();
+
+    // Prime the (provider show_id → kitsu_id) reverse mapping
+    // the play path stamps after a successful play.
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "amA", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "amB", "K2").unwrap();
+
+    let hit = history_by_kitsu(&s, "K2").unwrap().expect("match");
+    assert_eq!(hit.id, "amB");
+    assert_eq!(hit.ep_no, "12");
+}
+
+#[test]
+fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+
+    write_atomic(
+        &path,
+        &[HistoryEntry {
+            ep_no: "5".into(),
+            id: "amA".into(),
+            title: "Show A (10 episodes)".into(),
+            watched_at: None,
+        }],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "amA", "K1").unwrap();
+
+    // No history entry maps to K-other.
+    assert!(history_by_kitsu(&s, "K-other").unwrap().is_none());
+}
+
+#[test]
+fn by_kitsu_returns_none_when_history_is_empty() {
+    let tmp = tempfile::tempdir().unwrap();
+    let s = make_state(tmp.path().join("nope"));
+    assert!(history_by_kitsu(&s, "K1").unwrap().is_none());
+}
+
+// — history_delete ————————————————————————————————————————————
+//
+// Per-row delete operates on the app's own TSV file.
+// Pins: removes the matching id, preserves others byte-identically,
+// is idempotent (no-op delete of an unknown id returns false), and
+// handles a missing file as "nothing to delete" rather than erroring.
+
+#[test]
+fn delete_removes_matching_row_and_preserves_others() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "5".into(),
+                id: "amA".into(),
+                title: "Show A".into(),
+                watched_at: None,
+            },
+            HistoryEntry {
+                ep_no: "12".into(),
+                id: "amB".into(),
+                title: "Show B".into(),
+                watched_at: None,
+            },
+            HistoryEntry {
+                ep_no: "3".into(),
+                id: "amC".into(),
+                title: "Show C".into(),
+                watched_at: None,
+            },
+        ],
+    )
+    .unwrap();
+
+    let removed = history_delete(&s, "amB").unwrap();
+    assert!(removed, "delete reports true when a row is removed");
+
+    let after = history_list(&s).unwrap();
+    assert_eq!(after.len(), 2);
+    assert_eq!(after[0].id, "amA");
+    assert_eq!(after[1].id, "amC");
+}
+
+#[test]
+fn delete_unknown_id_is_idempotent_no_op() {
+    // Per-card double-clicks and bad client retries must be safe.
+    // No-op delete returns false; the file stays byte-identical.
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[HistoryEntry {
+            ep_no: "5".into(),
+            id: "amA".into(),
+            title: "Show A".into(),
+            watched_at: None,
+        }],
+    )
+    .unwrap();
+    let body_before = std::fs::read_to_string(&path).unwrap();
+
+    let removed = history_delete(&s, "does-not-exist").unwrap();
+    assert!(!removed);
+    let body_after = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(body_before, body_after);
+}
+
+#[test]
+fn delete_against_missing_file_returns_false() {
+    let tmp = tempfile::tempdir().unwrap();
+    let s = make_state(tmp.path().join("nope"));
+    let removed = history_delete(&s, "amA").unwrap();
+    assert!(!removed);
+}
+
+#[test]
+fn delete_with_empty_id_returns_false() {
+    // Defensive: a malformed client call with empty id mustn't
+    // accidentally wipe rows with id="" (parser already drops
+    // those at read, but pin the contract anyway).
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[HistoryEntry {
+            ep_no: "5".into(),
+            id: "amA".into(),
+            title: "Show A".into(),
+            watched_at: None,
+        }],
+    )
+    .unwrap();
+
+    let removed = history_delete(&s, "").unwrap();
+    assert!(!removed);
+    assert_eq!(history_list(&s).unwrap().len(), 1);
+}
+
+#[test]
+fn list_then_clear_round_trip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    // Pre-populate with a known fixture.
+    write_atomic(
+        &path,
+        &[HistoryEntry {
+            ep_no: "5".into(),
+            id: "abc".into(),
+            title: "T (10 episodes)".into(),
+            watched_at: None,
+        }],
+    )
+    .unwrap();
+
+    let listed = history_list(&s).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, "abc");
+
+    history_clear(&s).unwrap();
+    let after = history_list(&s).unwrap();
+    assert!(after.is_empty());
+}

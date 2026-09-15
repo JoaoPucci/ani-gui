@@ -142,6 +142,7 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
         ),
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
+        watched_at: None,
     };
     if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
         tracing::warn!(
@@ -1570,7 +1571,7 @@ pub(crate) mod tests {
         seed_play_cache(&state, &args, &format!("{}/v.mp4", server.uri()), "");
         let cfg = external_cfg();
 
-        let launch = try_launch_args_from_cache(&state, &args, &cfg)
+        let (launch, _watch) = try_launch_args_from_cache(&state, &args, &cfg)
             .await
             .expect("hit");
 
@@ -1657,7 +1658,7 @@ pub(crate) mod tests {
         );
         let cfg = external_cfg();
 
-        let launch = try_launch_args_from_cache(&state, &args, &cfg)
+        let (launch, _watch) = try_launch_args_from_cache(&state, &args, &cfg)
             .await
             .expect("hit");
         assert_eq!(launch.referer.as_deref(), Some("https://allmanga.to"));
@@ -1744,7 +1745,7 @@ pub(crate) mod tests {
             vec![track("en", true, &sub)],
         );
         let cfg = external_cfg();
-        let launch = try_launch_args_from_cache(&state, &args, &cfg)
+        let (launch, _watch) = try_launch_args_from_cache(&state, &args, &cfg)
             .await
             .expect("hit");
         assert_eq!(launch.subtitle_urls, vec![sub]);
