@@ -981,14 +981,16 @@ proptest::proptest! {
             proptest::prop_assert_eq!(&got.lang, lang);
             proptest::prop_assert_eq!(&got.label, label);
             proptest::prop_assert_eq!(got.default, *default);
-            proptest::prop_assert_eq!(&got.src, url);
+            proptest::prop_assert_eq!(&got.url, url);
         }
     }
 
     /// Whatever the subtitle list looks like — absent, `null`, not a
     /// list, or a list mixing rows the client reads with rows missing
-    /// a field or not objects at all — the stream comes back, and
-    /// exactly the readable rows come with it, in order.
+    /// a field, not objects at all, naming a source the transport
+    /// cannot fetch, or naming one longer than any a CDN signs — the
+    /// stream comes back, and exactly the readable rows with a
+    /// fetchable source of a sane length come with it, in order.
     #[test]
     fn a_payload_keeps_its_stream_and_its_readable_tracks_whatever_the_rest_of_the_list(
         src in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}\\.m3u8",
@@ -1009,6 +1011,17 @@ proptest::proptest! {
                     "[a-z]{2}".prop_map(|lang| (None, serde_json::json!({"lang": lang, "src": "https://hls.example/x.vtt"}))),
                     "[a-z]{2}".prop_map(|s| (None, serde_json::json!(s))),
                     Just((None, serde_json::json!(null))),
+                    // Rows the client reads whose source it cannot
+                    // fetch: relative, or under another scheme.
+                    ("[a-z]{2}", "/[a-z0-9/]{1,20}\\.vtt")
+                        .prop_map(|(lang, path)| (None, serde_json::json!({"lang": lang, "label": "X", "default": false, "src": path}))),
+                    ("[a-z]{2}", "(ftp|file|data)")
+                        .prop_map(|(lang, scheme)| (None, serde_json::json!({"lang": lang, "label": "X", "default": false, "src": format!("{scheme}://hls.example/{lang}.vtt")}))),
+                    // Rows whose absolute source is longer than any
+                    // track URL a CDN signs, which the hand-offs would
+                    // put on the player's command line.
+                    ("[a-z]{2}", 1100usize..3000)
+                        .prop_map(|(lang, len)| (None, serde_json::json!({"lang": lang, "label": "X", "default": false, "src": format!("https://hls.example/{}/{lang}.vtt", "a".repeat(len))}))),
                 ],
                 0..6,
             )
@@ -1038,7 +1051,39 @@ proptest::proptest! {
             proptest::prop_assert_eq!(&got.lang, lang);
             proptest::prop_assert_eq!(&got.label, label);
             proptest::prop_assert_eq!(got.default, *default);
-            proptest::prop_assert_eq!(&got.src, url);
+            proptest::prop_assert_eq!(&got.url, url);
+        }
+    }
+
+    /// Every track the payload carries has a source within the bound
+    /// the hand-offs need, and a source at the bound is kept while
+    /// one past it is not: the bound is on the URL as the page names
+    /// it, in bytes.
+    #[test]
+    fn every_kept_track_source_is_within_the_hand_off_bound(
+        src in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}\\.m3u8",
+        lens in proptest::collection::vec(1usize..2 * crate::scraper::provider::SUBTITLE_URL_CAP, 0..6),
+    ) {
+        use crate::scraper::provider::SUBTITLE_URL_CAP;
+        let prefix = "https://hls.example/";
+        let rows: Vec<(bool, serde_json::Value)> = lens
+            .iter()
+            .map(|&len| {
+                let url = format!("{prefix}{}", "a".repeat(len.max(prefix.len() + 1) - prefix.len()));
+                (url.len() <= SUBTITLE_URL_CAP, serde_json::json!({"lang": "en", "label": "X", "default": false, "src": url}))
+            })
+            .collect();
+        let json = serde_json::json!({"src": src, "subtitles": rows.iter().map(|(_, r)| r.clone()).collect::<Vec<_>>()}).to_string();
+        let key = b"otaku-embed-v1";
+        let blob = base64::engine::general_purpose::STANDARD.encode(
+            json.bytes().enumerate().map(|(i, b)| b ^ key[i % key.len()]).collect::<Vec<u8>>(),
+        );
+        let page = format!(r#"<html><body><script>window.__P="{blob}"</script></body></html>"#);
+        let payload = decode_embed(&page).expect("the stream is usable");
+        let kept = rows.iter().filter(|(within, _)| *within).count();
+        proptest::prop_assert_eq!(payload.subtitles.len(), kept);
+        for track in &payload.subtitles {
+            proptest::prop_assert!(track.url.len() <= SUBTITLE_URL_CAP);
         }
     }
 

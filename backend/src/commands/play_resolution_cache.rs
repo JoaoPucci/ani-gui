@@ -114,7 +114,10 @@ use crate::proxy::MediaKind;
 // resolved by the old picker can hold a different show's stream
 // (the Tai-Ari-for-Ninjaboy mispick) and a HEAD-passing hit would
 // keep serving it instantly; bumping re-resolves.
-const SCHEMA: &str = "v12";
+// v13: rows carry the resolve's sidecar subtitle tracks. A v12 row
+// has none, and replaying it would play a provider's sub stream as
+// raw video; bumping re-resolves.
+const SCHEMA: &str = "v13";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -147,6 +150,10 @@ pub struct CachedResolution {
     /// stamp-aware translation.
     #[serde(default)]
     pub resolved_slot: Option<u32>,
+    /// The sidecar subtitle tracks the resolve listed, so a replay
+    /// offers the same tracks a fresh resolve did.
+    #[serde(default)]
+    pub subtitles: Vec<crate::scraper::provider::SubtitleTrack>,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the
@@ -223,6 +230,10 @@ pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
 pub fn evict(pool: &SqlitePool, key: &str) {
     let _ = meta_cache_delete(pool, key);
 }
+
+#[cfg(test)]
+#[path = "play_resolution_cache_subtitles_test.rs"]
+mod subtitle_tests;
 
 #[cfg(test)]
 mod tests {
@@ -308,6 +319,7 @@ mod tests {
             show_id: "vDTSJHSpYnrkZnAvG".into(),
             show_title: "Naruto: Shippuuden (500 episodes)".into(),
             resolved_slot: None,
+            subtitles: Vec::new(),
         }
     }
 
@@ -423,7 +435,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None, None);
-        assert!(k.starts_with("play:v12:"), "got {k}");
+        assert!(k.starts_with("play:v13:"), "got {k}");
     }
 
     #[test]

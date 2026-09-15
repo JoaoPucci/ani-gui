@@ -76,6 +76,11 @@ pub struct SyncplayLaunchArgs {
     /// config, same back-compat behavior pre-PR).
     #[serde(default)]
     pub player_binary: String,
+    /// Sidecar subtitle tracks' upstream URLs, forwarded to the
+    /// wrapped player past `--` in its own flag. The referer flag
+    /// beside them covers those fetches too.
+    #[serde(default)]
+    pub subtitle_urls: Vec<String>,
 }
 
 /// Build the argv that would be passed to `Command::new(binary).args(...)`.
@@ -110,18 +115,28 @@ pub fn build_argv(args: &SyncplayLaunchArgs) -> Vec<String> {
         // complaint from a player whose flag shape we don't know.
         return argv;
     }
-    let referrer_flag = match args.player_kind {
-        ExternalPlayerKind::Mpv => "--referrer=",
-        ExternalPlayerKind::Vlc => "--http-referrer=",
-        ExternalPlayerKind::Iina => "--mpv-referrer=",
-        // Custom is short-circuited above; this arm is unreachable
-        // but the compiler can't see that without the explicit
-        // matches!() above, so keep the explicit arm.
-        ExternalPlayerKind::Custom => "--referrer=",
+    // Custom is short-circuited above; its arms here are unreachable,
+    // but the compiler can't see that without the explicit matches!()
+    // above, so they stay explicit.
+    let (referrer_flag, sub_flag, every_track) = match args.player_kind {
+        ExternalPlayerKind::Mpv => ("--referrer=", "--sub-file=", true),
+        ExternalPlayerKind::Vlc => ("--http-referrer=", "--sub-file=", false),
+        ExternalPlayerKind::Iina => ("--mpv-referrer=", "--mpv-sub-file=", true),
+        ExternalPlayerKind::Custom => ("--referrer=", "--sub-file=", false),
     };
+    let mut player_opts = Vec::new();
     if let Some(r) = args.referer.as_deref().filter(|s| !s.is_empty()) {
+        player_opts.push(format!("{referrer_flag}{r}"));
+    }
+    let tracks: &[String] = if every_track {
+        &args.subtitle_urls
+    } else {
+        &args.subtitle_urls[..args.subtitle_urls.len().min(1)]
+    };
+    player_opts.extend(tracks.iter().map(|u| format!("{sub_flag}{u}")));
+    if !player_opts.is_empty() {
         argv.push("--".to_string());
-        argv.push(format!("{referrer_flag}{r}"));
+        argv.extend(player_opts);
     }
     argv
 }

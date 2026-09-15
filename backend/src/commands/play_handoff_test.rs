@@ -142,6 +142,36 @@ async fn a_handoff_miss_surfaces_the_walks_verdict() {
 /// The handoff describes the launch from the resolve, referer
 /// included — the external player and Syncplay both take one, and a
 /// stream whose CDN checks it plays nowhere without it.
+/// The players fetch their subtitles themselves, so the handoff hands
+/// them the tracks' upstream URLs — the referer flag they already get
+/// covers those fetches too.
+#[test]
+fn launch_args_carry_the_resolves_sidecar_tracks() {
+    let cfg = crate::config::Config::default();
+    let native = crate::commands::play_native_resolve::NativeResolved {
+        slug: "the-show-77".into(),
+        title: "The Show".into(),
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        episode_cap: Some(3),
+        numbering_offset: 0,
+        extra_tags: Vec::new(),
+        resolved_slot: 1,
+        resolved_tag: None,
+        referer: Some("https://embed.example/".into()),
+        subtitles: vec![crate::scraper::provider::SubtitleTrack {
+            lang: "en".into(),
+            label: "English".into(),
+            default: true,
+            url: "https://cdn.example/x/subs/en.vtt".into(),
+        }],
+    };
+    let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
+    assert_eq!(
+        launch.subtitle_urls,
+        vec!["https://cdn.example/x/subs/en.vtt".to_string()]
+    );
+}
+
 #[test]
 fn launch_args_carry_the_resolves_referer() {
     let cfg = crate::config::Config::default();
@@ -155,6 +185,7 @@ fn launch_args_carry_the_resolves_referer() {
         resolved_slot: 1,
         resolved_tag: None,
         referer: referer.map(str::to_string),
+        subtitles: Vec::new(),
     };
     let with = super::play_handoff::launch_args_for(
         native(Some("https://embed.example/")),
@@ -165,4 +196,91 @@ fn launch_args_carry_the_resolves_referer() {
     assert_eq!(with.referer.as_deref(), Some("https://embed.example/"));
     let without = super::play_handoff::launch_args_for(native(None), &args_for(), &cfg);
     assert_eq!(without.referer, None);
+}
+
+/// A player that takes one subtitle file takes the first listed, so
+/// the track the provider flagged default leads the list; the
+/// provider's order stands otherwise.
+#[test]
+fn launch_args_lead_with_the_providers_default_track() {
+    use crate::scraper::provider::SubtitleTrack;
+    let track = |lang: &str, default: bool| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default,
+        url: format!("https://cdn.example/x/subs/{lang}.vtt"),
+    };
+    let cfg = crate::config::Config::default();
+    let native = crate::commands::play_native_resolve::NativeResolved {
+        slug: "show-1".into(),
+        title: "Show".into(),
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        episode_cap: None,
+        numbering_offset: 0,
+        extra_tags: vec![],
+        resolved_slot: 1,
+        resolved_tag: None,
+        referer: None,
+        subtitles: vec![track("ar", false), track("en", true), track("es", false)],
+    };
+    let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
+    assert_eq!(
+        launch.subtitle_urls,
+        vec![
+            "https://cdn.example/x/subs/en.vtt".to_string(),
+            "https://cdn.example/x/subs/ar.vtt".to_string(),
+            "https://cdn.example/x/subs/es.vtt".to_string(),
+        ]
+    );
+}
+
+mod default_first_props {
+    use super::super::play_handoff::subtitle_urls_default_first;
+    use crate::scraper::provider::SubtitleTrack;
+    use proptest::prelude::*;
+
+    /// Languages and default flags vary freely; URLs are distinct by
+    /// position, as a listing never names one file twice and the
+    /// order properties below tell tracks apart by URL.
+    fn tracks() -> impl Strategy<Value = Vec<SubtitleTrack>> {
+        prop::collection::vec(("[a-z]{2}", any::<bool>()), 0..6).prop_map(|rows| {
+            rows.into_iter()
+                .enumerate()
+                .map(|(i, (lang, default))| SubtitleTrack {
+                    label: lang.clone(),
+                    url: format!("https://cdn.example/{i}.vtt"),
+                    lang,
+                    default,
+                })
+                .collect()
+        })
+    }
+
+    proptest! {
+        /// Every URL survives, exactly once, and a default track — when
+        /// there is one — comes first.
+        #[test]
+        fn the_urls_are_a_permutation_led_by_a_default(tracks in tracks()) {
+            let urls = subtitle_urls_default_first(&tracks);
+            let mut expected: Vec<String> = tracks.iter().map(|t| t.url.clone()).collect();
+            let mut got = urls.clone();
+            expected.sort();
+            got.sort();
+            prop_assert_eq!(got, expected);
+            if let Some(first) = urls.first() {
+                let first_is_default = tracks.iter().any(|t| t.default && &t.url == first);
+                let any_default = tracks.iter().any(|t| t.default);
+                prop_assert!(first_is_default || !any_default);
+            }
+        }
+
+        /// Relative order among the rest is the provider's.
+        #[test]
+        fn the_non_default_order_is_the_providers(tracks in tracks()) {
+            let urls = subtitle_urls_default_first(&tracks);
+            let rest: Vec<&String> = tracks.iter().filter(|t| !t.default).map(|t| &t.url).collect();
+            let kept: Vec<&String> = urls.iter().filter(|u| rest.contains(u)).collect();
+            prop_assert_eq!(kept, rest);
+        }
+    }
 }

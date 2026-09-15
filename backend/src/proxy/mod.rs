@@ -32,7 +32,8 @@ use crate::error::AniError;
 
 pub use m3u8::{rewrite_master, rewrite_media, ProxyOrigin};
 pub use token::{
-    sign_segment, verify_segment, AppSecret, MediaKind, SessionId, SessionTable, StreamSession,
+    sign_segment, verify_segment, AppSecret, MediaKind, SessionId, SessionSubtitle, SessionTable,
+    StreamSession,
 };
 
 /// Shared state every proxy route reads.
@@ -57,6 +58,8 @@ pub fn build_router(state: ProxyState) -> Router {
         .route("/s/:session/master.m3u8", get(handle_master))
         .route("/s/:session/file.mp4", get(handle_mp4))
         .route("/s/:session/seg", get(handle_seg))
+        .route("/s/:session/subtitles", get(handle_subtitle_list))
+        .route("/s/:session/sub/:track", get(handle_subtitle))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -159,6 +162,104 @@ async fn handle_master(
         HeaderValue::from_static("no-store"),
     );
     (StatusCode::OK, headers, rewritten).into_response()
+}
+
+/// The session's sidecar tracks in their proxied shape — what the
+/// play page asks for by the session id it keeps.
+async fn handle_subtitle_list(
+    State(state): State<Arc<ProxyState>>,
+    Path(session_str): Path<String>,
+) -> Response {
+    let session = match SessionId::parse(&session_str) {
+        Ok(s) => s,
+        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid session id"),
+    };
+    let Some(sess) = state.sessions.get(&session) else {
+        return error_response(StatusCode::NOT_FOUND, "session not found or expired");
+    };
+    let listed: Vec<SessionSubtitle> = sess
+        .subtitles
+        .iter()
+        .enumerate()
+        .map(|(i, t)| SessionSubtitle::proxied(&state.origin.base, &session_str, i, t))
+        .collect();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("cache-control"),
+        HeaderValue::from_static("no-store"),
+    );
+    (StatusCode::OK, headers, axum::Json(listed)).into_response()
+}
+
+/// One sidecar subtitle track: `sub/<n>.vtt` names the nth track the
+/// session stores, fetched upstream with the session's referer and
+/// served as WebVTT. An index the session does not hold is 404 — the
+/// renderer only ever asks for what the session response listed.
+async fn handle_subtitle(
+    State(state): State<Arc<ProxyState>>,
+    Path((session_str, track)): Path<(String, String)>,
+) -> Response {
+    let session = match SessionId::parse(&session_str) {
+        Ok(s) => s,
+        Err(_) => return error_response(StatusCode::BAD_REQUEST, "invalid session id"),
+    };
+    let Some(sess) = state.sessions.get(&session) else {
+        return error_response(StatusCode::NOT_FOUND, "session not found or expired");
+    };
+    let index: Option<usize> = track.strip_suffix(".vtt").and_then(|n| n.parse().ok());
+    let Some(sub) = index.and_then(|i| sess.subtitles.get(i)) else {
+        return error_response(StatusCode::NOT_FOUND, "no such subtitle track");
+    };
+    let Ok(upstream_url) = Url::parse(&sub.url) else {
+        return error_response(StatusCode::BAD_GATEWAY, "subtitle url unparseable");
+    };
+    // Read only up to the subtitle cap: a track URL can point at
+    // something far larger than a subtitle file, and the player asks
+    // for every attached track on its own.
+    let body = match upstream::fetch_subtitle(&state.client, &upstream_url, &sess.referer).await {
+        Ok(upstream::CappedBody::Whole(bytes)) => bytes,
+        Ok(upstream::CappedBody::Oversized) => {
+            return error_response(
+                StatusCode::BAD_GATEWAY,
+                "upstream body is larger than a subtitle track",
+            );
+        }
+        Err(AniError::Upstream { status }) => {
+            return error_response(
+                StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                "upstream error",
+            );
+        }
+        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+    };
+    // Relayed only when it is a subtitle track, the way the manifest
+    // route relays only a playlist: a track URL must not become a
+    // read into whatever else the machine can reach.
+    if !is_webvtt(&body) {
+        return error_response(
+            StatusCode::BAD_GATEWAY,
+            "upstream body is not a subtitle track",
+        );
+    }
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("content-type"),
+        HeaderValue::from_static("text/vtt"),
+    );
+    headers.insert(
+        HeaderName::from_static("cache-control"),
+        HeaderValue::from_static("no-store"),
+    );
+    (StatusCode::OK, headers, body).into_response()
+}
+
+/// Whether a body carries the WebVTT signature — the file's first
+/// bytes, behind a UTF-8 byte-order mark when a CDN serves one. The
+/// relay and the download's sidecar writer both refuse anything else.
+#[must_use]
+pub fn is_webvtt(body: &[u8]) -> bool {
+    let body = body.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(body);
+    body.starts_with(b"WEBVTT")
 }
 
 /// Streaming pass-through for direct-MP4 upstreams (wixmp/sharepoint
@@ -370,6 +471,10 @@ fn clone_passthrough_headers(src: &reqwest::header::HeaderMap) -> HeaderMap {
     }
     out
 }
+
+#[cfg(test)]
+#[path = "subtitle_test.rs"]
+mod subtitle_tests;
 
 #[cfg(test)]
 #[path = "seg_referer_test.rs"]

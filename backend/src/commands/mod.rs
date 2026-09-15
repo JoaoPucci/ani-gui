@@ -17,12 +17,14 @@ mod availability_mode;
 pub mod availability_refresh;
 pub mod cour;
 pub mod download;
+mod download_names;
 
 #[cfg(test)]
 #[path = "download_lock_prop_test.rs"]
 mod download_lock_prop_tests;
 mod download_range;
 pub(crate) mod download_tool;
+mod download_transfer;
 pub mod external_player;
 pub mod history;
 pub mod kitsu;
@@ -30,6 +32,7 @@ pub mod kitsu_warm;
 pub mod play;
 pub mod play_args;
 pub mod play_cache;
+pub(crate) mod play_cache_tracks;
 pub mod play_external_command;
 pub mod play_handoff;
 #[cfg(test)]
