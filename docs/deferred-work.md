@@ -282,6 +282,38 @@ starting it, and delete it when you find it done.
   candidate survey, the integration shape, and a recommendation. The
   survey's liveness claims rot; re-verify them before building.
 
+## Validating the hianime fallback on the packaged Windows flows
+
+- **Run the Windows package through the fallback, on a Windows
+  machine, against the live site**, with anidb.app unreachable or
+  made to look so: a resolve, an embedded play, a download and an
+  external-player hand-off, each consuming a playlist and its
+  segments through the packaged tools. The production provider order
+  puts hianime behind anidb.app on both packaged platforms, so a
+  release that ships before that run has happened says in its notes
+  that the Windows side of the fallback is unvalidated.
+
+  Why it waited: nobody in the loop runs Windows. The evidence so
+  far is the Linux run against the live site, and it carries further
+  than a single-platform pass usually does — both packages stage the
+  same impersonating transport
+  (`electron/scripts/fetch-windows-deps.mjs` fetches the Windows
+  copy), and turning the fallback on spawns, stages and probes
+  nothing new on either platform. It is still not the run:
+  resolution, embedded playback, downloads and hand-offs ride
+  different transports, and the NSIS build's own executables and
+  path handling can fail where Linux's do not.
+  `docs/proposals/additional-providers.md` states the bar a provider
+  owes on both platforms.
+
+  What is worth knowing before scheduling it: the fallback engages
+  only while anidb.app is unreachable, refusing or broken. A Windows
+  user reaches it at the moment the only other provider is giving
+  them nothing, so an unvalidated path there is measured against a
+  certain failure rather than against a working play — which is why
+  the run is owed by a release and was not a condition of enabling
+  the provider.
+
 ## Retiring the legacy-script sweep — the v1.0 marker
 
 - **Remove the boot sweep that cleans the retired script from old

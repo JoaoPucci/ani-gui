@@ -184,6 +184,9 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
         anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        hianime_base: None,
+        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -227,4 +230,268 @@ fn a_cached_watch_prefers_the_rows_own_slot() {
         legacy.ep_no, "4",
         "a row without a slot translates the display number"
     );
+}
+
+/// The handoff's cache hit stands on the same row the embedded
+/// player's does, and refreshes it the same way: the provider the
+/// cached show key names is remembered again after the launch.
+#[tokio::test]
+async fn a_cached_handoff_refreshes_the_providers_positive_row() {
+    let mock = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state_in(&td);
+    let args: crate::commands::play::PlayArgs = serde_json::from_value(
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+    )
+    .expect("args");
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: "hianime:show-1".into(),
+            show_title: "Show".into(),
+            resolved_slot: Some(1),
+            subtitles: Vec::new(),
+        },
+    );
+    let cfg = crate::config::Config {
+        cache_resolutions: true,
+        ..Default::default()
+    };
+    let launched = super::try_launch_args_from_cache(&state, &args, &cfg).await;
+    assert!(launched.is_some(), "the row is live and is served");
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "K12", "sub"),
+        Some(crate::scraper::provider::ProviderId::Hianime)
+    );
+}
+
+// ── the replay's stamp is ordered against a concurrent refresh ─────
+
+/// A cache-bypassing availability refresh that lands while the
+/// replay's liveness check is in flight: on the stream's HEAD it
+/// bumps the row's refresh generation and writes its exact verdict,
+/// the way a refresh does, then answers 200 so the check passes.
+struct RefreshDuringCheck {
+    state: crate::app::AppState,
+}
+
+impl wiremock::Respond for RefreshDuringCheck {
+    fn respond(&self, _req: &wiremock::Request) -> wiremock::ResponseTemplate {
+        let key = crate::commands::availability::cache_key("K12", "sub");
+        self.state.availability_refreshes.bump(&key);
+        crate::commands::availability::write_cache_full(
+            &self.state,
+            "K12",
+            "sub",
+            None,
+            &refresh_verdict(),
+        );
+        wiremock::ResponseTemplate::new(200)
+    }
+}
+
+/// The refresh's verdict: the primary carries the show, with an
+/// exact count the probe paid for.
+fn refresh_verdict() -> crate::commands::availability::AvailabilityResponse {
+    crate::commands::availability::AvailabilityResponse {
+        available: true,
+        episode_count: Some(24),
+        extra_episodes: Vec::new(),
+        episode_count_approximate: false,
+        gate_refused: false,
+        provider: Some(crate::scraper::provider::ProviderId::Anidb),
+    }
+}
+
+/// A live cached row for `K12` whose stream is served by `mock`.
+fn seed_cached_row(
+    state: &crate::app::AppState,
+    args: &crate::commands::play::PlayArgs,
+    mock: &wiremock::MockServer,
+) {
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: "hianime:show-1".into(),
+            show_title: "Show".into(),
+            resolved_slot: Some(1),
+            subtitles: Vec::new(),
+        },
+    );
+}
+
+fn refresh_verdict_stands(state: &crate::app::AppState, what: &str) {
+    assert_eq!(
+        crate::commands::availability::cached_provider(state, "K12", "sub"),
+        Some(crate::scraper::provider::ProviderId::Anidb),
+        "{what}: the refresh's provider stands"
+    );
+    let cached = crate::commands::availability::batch_cached(
+        state,
+        &crate::commands::availability::AvailabilityBatchArgs {
+            kitsu_ids: vec!["K12".into()],
+            mode: "sub".into(),
+        },
+    );
+    assert_eq!(
+        cached.playable_episode_counts.get("K12"),
+        Some(&24),
+        "{what}: the refresh's exact count stands"
+    );
+}
+
+/// The replay's stamp holds an answer from before its liveness check
+/// went out, like a fresh resolve's: a refresh that lands while the
+/// check is in flight owns the row, and the replay's count-less
+/// positive does not overwrite the exact verdict it just wrote.
+#[tokio::test]
+async fn a_handoff_replay_does_not_overwrite_a_refresh_that_landed_during_its_check() {
+    let mock = wiremock::MockServer::start().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state_in(&td);
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(RefreshDuringCheck {
+            state: state.clone(),
+        })
+        .mount(&mock)
+        .await;
+    let args: crate::commands::play::PlayArgs = serde_json::from_value(
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+    )
+    .expect("args");
+    seed_cached_row(&state, &args, &mock);
+    let cfg = crate::config::Config {
+        cache_resolutions: true,
+        ..Default::default()
+    };
+    let launched = super::try_launch_args_from_cache(&state, &args, &cfg).await;
+    assert!(launched.is_some(), "the row is live and is served");
+    refresh_verdict_stands(&state, "handoff replay");
+}
+
+/// The embedded player's replay is ordered the same way.
+#[tokio::test]
+async fn an_embedded_replay_does_not_overwrite_a_refresh_that_landed_during_its_check() {
+    let mock = wiremock::MockServer::start().await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state_in(&td);
+    let cfg = td.path().join("config.toml");
+    std::fs::write(&cfg, "cache_resolutions = true\n").expect("config write");
+    state.config_path = cfg;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(RefreshDuringCheck {
+            state: state.clone(),
+        })
+        .mount(&mock)
+        .await;
+    let args: crate::commands::play::PlayArgs = serde_json::from_value(
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+    )
+    .expect("args");
+    seed_cached_row(&state, &args, &mock);
+    let resp = crate::commands::play::play_with_progress(&state, &args, |_| {})
+        .await
+        .expect("served from the cache");
+    assert!(resp.cache_hit, "the row is live and is served");
+    refresh_verdict_stands(&state, "embedded replay");
+}
+
+/// Without a refresh in flight the replay refreshes the row it stands
+/// on as before: nothing else wrote it, so the replay's answer is
+/// current.
+#[tokio::test]
+async fn a_replay_with_no_refresh_in_flight_still_refreshes_the_row() {
+    let mock = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state_in(&td);
+    let args: crate::commands::play::PlayArgs = serde_json::from_value(
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+    )
+    .expect("args");
+    seed_cached_row(&state, &args, &mock);
+    let cfg = crate::config::Config {
+        cache_resolutions: true,
+        ..Default::default()
+    };
+    assert!(super::try_launch_args_from_cache(&state, &args, &cfg)
+        .await
+        .is_some());
+    assert_eq!(
+        crate::commands::availability::cached_provider(&state, "K12", "sub"),
+        Some(crate::scraper::provider::ProviderId::Hianime),
+        "the replay remembers the provider the cached show key names"
+    );
+}
+
+mod row_provider_props {
+    use super::super::cached_row_provider;
+    use crate::commands::play_resolution_cache::CachedResolution;
+    use crate::proxy::MediaKind;
+    use crate::scraper::provider::{ProviderId, ShowKey};
+    use proptest::prelude::*;
+
+    fn row(show_id: &str) -> CachedResolution {
+        CachedResolution {
+            upstream_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: show_id.into(),
+            show_title: "Show".into(),
+            resolved_slot: None,
+            subtitles: Vec::new(),
+        }
+    }
+
+    proptest! {
+        /// A row's provider is the one its show key names — the
+        /// qualified prefix, or anidb for a bare key — and a row from
+        /// before the field, with an empty key, names none.
+        #[test]
+        fn the_rows_provider_is_the_one_its_show_key_names(
+            prefix in proptest::option::of(Just("hianime:")),
+            slug in "[a-z0-9-]{1,20}",
+        ) {
+            let id = format!("{}{slug}", prefix.unwrap_or(""));
+            prop_assert_eq!(cached_row_provider(&row(&id)), Some(ShowKey::parse(&id).provider));
+            prop_assert_eq!(
+                cached_row_provider(&row(&id)),
+                Some(if prefix.is_some() { ProviderId::Hianime } else { ProviderId::Anidb })
+            );
+            prop_assert_eq!(cached_row_provider(&row("")), None);
+        }
+    }
 }

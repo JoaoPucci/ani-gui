@@ -16,7 +16,6 @@
 use serde::Deserialize;
 
 use crate::app::AppState;
-use crate::commands::availability_refresh::with_row_if_ours;
 use crate::commands::play_native_resolve::{NativeResolveRequest, NativeResolved};
 use crate::commands::play_resolution_cache::{self, CachedResolution};
 use crate::commands::progress::ProgressLine;
@@ -154,121 +153,31 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
     }
 }
 
-/// Stamp the availability cache with a native resolution's verdict,
-/// guarded against a refresh that answered while the resolution was
-/// in flight — the generation was captured before the resolve, and a
-/// write over a newer answer would disable (or falsely enable) a show
-/// the user was just told about.
+/// Stamp the availability cache with a native resolution's verdict —
+/// the shared [`crate::commands::availability::stamp_after_native`],
+/// keyed by the play's own show and mode.
 pub(super) async fn stamp_availability_after_native(
     state: &AppState,
     args: &PlayArgs,
     available: bool,
+    provider: Option<crate::scraper::provider::ProviderId>,
     generation_at_start: u64,
     episode_cap: Option<u32>,
     extra_tags: &[String],
 ) {
-    let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
-        return;
-    };
-    let row = crate::commands::availability::cache_key(id, args.mode.as_str());
-    with_row_if_ours(
-        &state.availability_refreshes,
-        &row,
+    crate::commands::availability::stamp_after_native(
+        state,
+        args.kitsu_id.as_deref(),
+        args.mode.as_str(),
         generation_at_start,
-        false,
-        || match episode_cap {
-            // The resolve already paid for the provider's episode
-            // list — the cap is exact FOR SUB, and dropping it would
-            // evict an exact row into episode_count: null for the
-            // whole TTL. A dub resolve only proves the requested
-            // episode has an English embed, so the provider-wide
-            // list must not become an exact (kitsu_id, dub) count —
-            // the dub row stays boolean and self-heals via the next
-            // mode-aware probe. Status is unknown at this call site,
-            // so the row takes the ongoing TTL like the boolean
-            // write.
-            Some(cap) if available && args.mode != "dub" => {
-                crate::commands::availability::write_cache_full(
-                    state,
-                    id,
-                    &args.mode,
-                    None,
-                    &crate::commands::availability::AvailabilityResponse {
-                        available: true,
-                        episode_count: Some(cap),
-                        // Derived from the listing the resolve paid
-                        // for — the same tags a fractional play
-                        // matches against number2, so they outrank
-                        // whatever an older probe stored.
-                        extra_episodes: extra_tags.to_vec(),
-                        episode_count_approximate: false,
-                        gate_refused: false,
-                    },
-                );
-            }
-            _ => crate::commands::availability::write_cache(state, id, &args.mode, available),
+        crate::commands::availability::ResolveVerdict {
+            available,
+            provider,
+            episode_cap,
+            extra_tags,
         },
     )
     .await;
-}
-
-/// The production anidb client: the curl-impersonate transport
-/// resolved through the bundled directory then PATH, pointed at the
-/// provider (or the test override), with every request admitted
-/// through the scraper gate at `priority` — the walk fans out into
-/// candidate probes and the episode chain, and each of those is a
-/// provider request the pacing contract covers, not just the search.
-///
-/// # Errors
-/// [`AniError::Network`] when no curl binary resolves at all — the
-/// host cannot reach the provider by any transport.
-pub(crate) fn anidb_client_for<'a>(
-    state: &'a AppState,
-    priority: crate::scraper::gate::ScrapePriority,
-) -> Result<
-    crate::scraper::anidb::AnidbClient<
-        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
-    >,
-> {
-    anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
-}
-
-fn anidb_client<'a>(
-    state: &'a AppState,
-    priority: crate::scraper::gate::ScrapePriority,
-) -> Result<
-    crate::scraper::anidb::AnidbClient<
-        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
-    >,
-> {
-    anidb_client_with_base(state, state.anidb_base.as_deref(), priority)
-}
-
-/// [`anidb_client`] with an explicit origin override, shared with the
-/// availability and download paths (and their test seams).
-pub(super) fn anidb_client_with_base<'a>(
-    state: &'a AppState,
-    base: Option<&str>,
-    priority: crate::scraper::gate::ScrapePriority,
-) -> Result<
-    crate::scraper::anidb::AnidbClient<
-        crate::scraper::gated::GatedFetch<'a, crate::scraper::fetch::CurlImpersonateFetch>,
-    >,
-> {
-    let path_env = std::env::var("PATH").unwrap_or_default();
-    let fetch = crate::scraper::fetch::CurlImpersonateFetch::resolve(
-        state.bundled_bin.as_deref(),
-        &path_env,
-    )
-    .ok_or_else(|| {
-        tracing::error!("no curl binary found for the anidb transport");
-        AniError::Network
-    })?;
-    let fetch = crate::scraper::gated::GatedFetch::new(fetch, Some(&state.anidb_gate), priority);
-    Ok(match base {
-        Some(base) => crate::scraper::anidb::AnidbClient::with_base(fetch, base),
-        None => crate::scraper::anidb::AnidbClient::new(fetch),
-    })
 }
 
 /// Scraper-gate priority for a play-shaped request: prefetches (and
@@ -342,6 +251,11 @@ where
         args.episode_count,
         args.subtype.as_deref(),
     );
+    // Captured before any network work — the replay's liveness check
+    // and the resolving alike — not before the write: the answer a
+    // play stamps is the one it got here, and a refresh can land any
+    // time between.
+    let availability_generation = crate::commands::play_cache::generation_before_check(state, args);
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
             if let Some(resp) = try_serve_cached(state, &cached).await {
@@ -352,6 +266,13 @@ where
                     "play: cache hit (HEAD ok)",
                 );
                 write_history_on_cache_hit(state, args, &cached);
+                crate::commands::play_cache::stamp_availability_on_cache_hit(
+                    state,
+                    args,
+                    &cached,
+                    availability_generation,
+                )
+                .await;
                 return Ok(resp);
             }
             // HEAD failed — the cached URL is dead. Evict the row and
@@ -372,15 +293,6 @@ where
     // episode-to-master resolution. The subprocess never runs on the
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
-    // Captured before the resolving, not before the write: the answer
-    // a play resolution stamps is the one it got here, and a refresh
-    // can land any time between.
-    let availability_generation = crate::commands::availability_refresh::generation_at_start(
-        &state.availability_refreshes,
-        args.kitsu_id.as_deref(),
-        args.mode.as_str(),
-    );
-    let client = anidb_client(state, scrape_priority(args))?;
     let request = NativeResolveRequest {
         title: &args.title,
         alt_titles: &args.alt_titles,
@@ -391,43 +303,32 @@ where
         year: args.year,
         subtype: args.subtype.as_deref(),
     };
-    let resolve_started_at = tokio::time::Instant::now();
-    // Bounded: a provider that accepts connections but stalls every
-    // request must not keep the play pending past the gate's
-    // half-open trial window (see RESOLVE_DEADLINE).
-    let native = crate::commands::play_native_resolve::resolve_native_bounded(
-        &client,
+    // Against the providers in order — starting from the one a
+    // positive availability row remembers — and bounded: a provider
+    // that accepts connections but stalls every request must not
+    // keep the play pending past the gate's half-open trial window,
+    // and the next provider is asked when the one before it was
+    // unreachable. Each attempt's outcome lands on its own provider's
+    // breaker so background traffic backs off after provider-shaped
+    // failures — and only those; the mapping is play_native_outcome's.
+    let remembered = args
+        .kitsu_id
+        .as_deref()
+        .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
+    let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
-        &mut on_progress,
+        on_progress: &mut on_progress,
+        answered_by: None,
+    };
+    let native = crate::commands::providers::run_from(
+        state,
+        remembered,
+        scrape_priority(args),
+        &mut attempt,
     )
     .await;
-    // Feed the breaker the resolution's outcome so background traffic
-    // backs off after provider-shaped failures — and only those. The
-    // mapping lives in play_native_resolve::breaker_outcome: answered
-    // verdicts (clean misses, absent episodes or audio) are health,
-    // weather is distress.
-    // None = the gate refused before any provider contact; the
-    // breaker only hears about requests that got past it.
-    if let Some(outcome) =
-        crate::commands::play_native_outcome::breaker_outcome(scrape_priority(args), &native)
-    {
-        // Timestamped with the attempt that OBSERVED the outcome,
-        // not the chain's start: the gate's stale filters discard
-        // evidence predating the last recovery, and a long resolve
-        // would otherwise have its fresh 429 thrown away whenever a
-        // concurrent resolve recorded recovery mid-chain. The chain
-        // start remains the fallback for a resolve refused before
-        // any fetch ran.
-        let observed_at = native
-            .as_ref()
-            .err()
-            .and_then(|ne| ne.failed_at)
-            .or_else(|| crate::scraper::provider::Provider::last_attempt_at(&client))
-            .unwrap_or(resolve_started_at);
-        state.anidb_gate.record(outcome, observed_at);
-    }
     let native = match native {
-        Ok(n) => n,
+        Ok(attempted) => attempted.value,
         Err(ne) => {
             if ne.clean_miss {
                 // The one verdict that proves absence — persist it,
@@ -436,6 +337,7 @@ where
                     state,
                     args,
                     false,
+                    attempt.answered_by,
                     availability_generation,
                     None,
                     &[],
@@ -459,6 +361,7 @@ where
         state,
         args,
         true,
+        Some(native.provider),
         availability_generation,
         native.episode_cap,
         &native.extra_tags,
@@ -606,6 +509,9 @@ pub(crate) mod tests {
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            hianime_base: None,
+            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -649,6 +555,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             generation,
             Some(1061),
             &["1061.5".to_string()],
@@ -687,6 +594,7 @@ pub(crate) mod tests {
                 extra_episodes: vec!["999.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
+                provider: None,
             },
         );
         let args = PlayArgs {
@@ -710,6 +618,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             generation,
             Some(1061),
             &["1061.5".to_string()],
@@ -1359,6 +1268,34 @@ pub(crate) mod tests {
         seed_play_cache_with_tracks(state, args, upstream, referer, Vec::new());
     }
 
+    /// A cached row whose show key names the provider it was
+    /// resolved through — a qualified key for any provider but
+    /// anidb, whose keys are bare.
+    fn seed_play_cache_from(state: &AppState, args: &PlayArgs, upstream: &str, show_id: &str) {
+        let key = play_resolution_cache::cache_key(
+            &args.title,
+            &args.mode,
+            args.quality.as_deref().unwrap_or("best"),
+            &args.episode,
+            args.year,
+            args.episode_count,
+            args.subtype.as_deref(),
+        );
+        play_resolution_cache::put(
+            &state.cache_pool,
+            &key,
+            &CachedResolution {
+                upstream_url: upstream.into(),
+                referer: String::new(),
+                media_kind: MediaKind::Hls,
+                show_id: show_id.into(),
+                show_title: "Test (12 episodes)".into(),
+                resolved_slot: Some(1),
+                subtitles: Vec::new(),
+            },
+        );
+    }
+
     /// A sidecar track as a resolve lists it.
     pub(crate) fn track(
         lang: &str,
@@ -1505,6 +1442,128 @@ pub(crate) mod tests {
             body.contains("abc"),
             "history must contain seeded show_id; got: {body:?}"
         );
+    }
+
+    /// A cached row was resolved through some provider, and the row's
+    /// show key names it. The resolution cache outlives the
+    /// availability row — seven days against a day for an airing
+    /// show — so a served replay refreshes the provider's positive
+    /// row, or the next probe starts from the primary and its clean
+    /// miss hides a stream the cache just served.
+    #[tokio::test]
+    async fn a_served_cache_hit_refreshes_the_providers_positive_row() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let (_cfg_dir, state) = state_with_caching_on();
+        let args = PlayArgs {
+            kitsu_id: Some("K9".into()),
+            ..external_args("Remembered Show", "3")
+        };
+        seed_play_cache_from(
+            &state,
+            &args,
+            &format!("{}/cached.m3u8", server.uri()),
+            "hianime:remembered-show-77",
+        );
+        assert_eq!(
+            crate::commands::availability::cached_provider(&state, "K9", "sub"),
+            None,
+            "nothing is remembered before the replay"
+        );
+        let _ = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("served from the cache");
+        assert_eq!(
+            crate::commands::availability::cached_provider(&state, "K9", "sub"),
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the replay refreshes the row with the provider the cached show key names"
+        );
+    }
+
+    /// A replay learns nothing new about the listing, so a full row
+    /// the provider's probe wrote — cap and extras — keeps its cap
+    /// through the refresh instead of collapsing to a boolean row.
+    #[tokio::test]
+    async fn a_served_cache_hit_keeps_the_full_row_it_stands_on() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let (_cfg_dir, state) = state_with_caching_on();
+        let args = PlayArgs {
+            kitsu_id: Some("K10".into()),
+            ..external_args("Capped Show", "2")
+        };
+        crate::commands::availability::write_cache_full(
+            &state,
+            "K10",
+            "sub",
+            None,
+            &crate::commands::availability::AvailabilityResponse {
+                available: true,
+                episode_count: Some(12),
+                extra_episodes: vec!["3.5".into()],
+                episode_count_approximate: false,
+                gate_refused: false,
+                provider: Some(crate::scraper::provider::ProviderId::Hianime),
+            },
+        );
+        seed_play_cache_from(
+            &state,
+            &args,
+            &format!("{}/cached.m3u8", server.uri()),
+            "hianime:capped-show-78",
+        );
+        let _ = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("served from the cache");
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["K10".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert_eq!(cached.cached.get("K10"), Some(&true));
+        assert_eq!(
+            cached.playable_episode_counts.get("K10"),
+            Some(&12),
+            "the cap the probe wrote survives the replay"
+        );
+    }
+
+    /// A replay for a request that carries no Kitsu id has no row to
+    /// refresh, and writes none.
+    #[tokio::test]
+    async fn a_served_cache_hit_without_a_kitsu_id_stamps_nothing() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+            .respond_with(wiremock::ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+        let (_cfg_dir, state) = state_with_caching_on();
+        let args = external_args("Anonymous Show", "1");
+        seed_play_cache_from(
+            &state,
+            &args,
+            &format!("{}/cached.m3u8", server.uri()),
+            "hianime:anonymous-show-79",
+        );
+        let _ = play_with_progress(&state, &args, |_| {})
+            .await
+            .expect("served from the cache");
+        let cached = crate::commands::availability::batch_cached(
+            &state,
+            &crate::commands::availability::AvailabilityBatchArgs {
+                kitsu_ids: vec!["".into(), "K11".into()],
+                mode: "sub".into(),
+            },
+        );
+        assert!(cached.cached.is_empty(), "no row was written: {cached:?}");
     }
 
     /// HEAD failure → cache row evicted, function falls through to
@@ -1924,10 +1983,10 @@ pub(crate) mod tests {
 
         // The refresh answers first: bump + a positive write.
         state.availability_refreshes.bump(&row);
-        crate::commands::availability::write_cache(&state, "race-1", "sub", true);
+        crate::commands::availability::write_cache(&state, "race-1", "sub", true, None);
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, generation, None, &[]).await;
+        stamp_availability_after_native(&state, &args, false, None, generation, None, &[]).await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
@@ -1968,7 +2027,16 @@ pub(crate) mod tests {
             Some("cap-1"),
             "sub",
         );
-        stamp_availability_after_native(&state, &args, true, generation, Some(2), &[]).await;
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            generation,
+            Some(2),
+            &[],
+        )
+        .await;
         let cached = crate::commands::availability::batch_cached(
             &state,
             &crate::commands::availability::AvailabilityBatchArgs {
@@ -1981,6 +2049,60 @@ pub(crate) mod tests {
             cached.playable_episode_counts.get("cap-1"),
             Some(&2),
             "the resolved cap must survive the stamp"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dub_success_stamp_keeps_the_provider() {
+        // The dub stamp is boolean — no cap — but it still names the
+        // provider that played the episode: the row is the affinity
+        // the next play starts from, and a dub play through the
+        // fallback that wrote it away would send the next episode
+        // back to the primary's clean miss.
+        let state = std::sync::Arc::new(state_with_proxy_origin());
+        let args = PlayArgs {
+            title: "Dub Show".into(),
+            episode: "1".into(),
+            mode: "dub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: Some("dub-2".into()),
+        };
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            Some("dub-2"),
+            "dub",
+        );
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            generation,
+            Some(12),
+            &[],
+        )
+        .await;
+        let key = crate::commands::availability::cache_key("dub-2", "dub");
+        let body = crate::cache::meta_cache_get(&state.cache_pool, &key)
+            .expect("cache read")
+            .expect("row present");
+        let row: crate::commands::availability::AvailabilityResponse =
+            serde_json::from_str(&body).expect("row parses");
+        assert_eq!(
+            row.provider,
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "the boolean stamp keeps the provider"
+        );
+        assert_eq!(row.episode_count, None, "and still no dub cap");
+        assert_eq!(
+            crate::commands::availability::cached_provider(&state, "dub-2", "dub"),
+            Some(crate::scraper::provider::ProviderId::Hianime),
+            "so the next play starts there"
         );
     }
 
@@ -2010,7 +2132,16 @@ pub(crate) mod tests {
             Some("dub-1"),
             "dub",
         );
-        stamp_availability_after_native(&state, &args, true, generation, Some(12), &[]).await;
+        stamp_availability_after_native(
+            &state,
+            &args,
+            true,
+            Some(crate::scraper::provider::ProviderId::Anidb),
+            generation,
+            Some(12),
+            &[],
+        )
+        .await;
         let cached = crate::commands::availability::batch_cached(
             &state,
             &crate::commands::availability::AvailabilityBatchArgs {
@@ -2026,6 +2157,9 @@ pub(crate) mod tests {
     }
 }
 
+#[cfg(test)]
+#[path = "play_affinity_test.rs"]
+mod affinity_tests;
 #[cfg(test)]
 #[path = "play_referer_prop_test.rs"]
 mod referer_prop_tests;
