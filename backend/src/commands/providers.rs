@@ -509,6 +509,14 @@ where
         }
     };
     let started = tokio::time::Instant::now();
+    // The client's own walk of a provider's servers shares what the
+    // attempt has left among them, so it is told where the attempt
+    // ends before the attempt runs — and told none once it is over:
+    // the client an answer comes with outlives the attempt (a range
+    // download resolves its later episodes against it), and a
+    // deadline that outlived the attempt would cap every bounded
+    // server at nothing once the window had passed.
+    client.bound_attempt(Some(started + budget));
     let result = match tokio::time::timeout(budget, attempt.run(&*client)).await {
         Ok(result) => result,
         Err(_elapsed) => Err(NativeError {
@@ -517,6 +525,7 @@ where
             failed_at: None,
         }),
     };
+    client.bound_attempt(None);
     if let Some(outcome) = breaker_outcome(priority, &result) {
         let observed_at = result
             .as_ref()

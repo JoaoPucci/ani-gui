@@ -1234,6 +1234,7 @@ proptest::proptest! {
                 proptest::sample::select(vec![
                     "https://zokoanime.video/stream/mal/1/1/sub",
                     "https://megaplay.buzz/stream/s-2/1/sub",
+                    "https://megaplay-1.buzz/stream/s-2/1/sub",
                     "https://vidtube.site/stream/abc/sub",
                 ]),
             )
@@ -1252,7 +1253,11 @@ proptest::proptest! {
         for s in &expected {
             prop_assert!(picked.iter().any(|p| std::ptr::eq(*p, *s)));
         }
-        let readable = |s: &ServerEmbed| s.embed_url.starts_with("https://zokoanime.video/");
+        let readable = |s: &ServerEmbed| {
+            s.embed_url.starts_with("https://zokoanime.video/")
+                || s.embed_url.starts_with("https://megaplay.buzz/")
+                || s.embed_url.starts_with("https://megaplay-1.buzz/")
+        };
         let first_unreadable = picked.iter().position(|s| !readable(s));
         let last_readable = picked.iter().rposition(|s| readable(s));
         if let (Some(u), Some(r)) = (first_unreadable, last_readable) {
@@ -1350,5 +1355,188 @@ proptest::proptest! {
         .map(str::to_string)
         .collect();
         prop_assert_eq!(found, expected, "{}", html);
+    }
+}
+
+// ── the last server the walk can use ────────────────────────────────
+
+proptest! {
+    /// The remainder of the walk's budget belongs to the last server
+    /// on a host the client names as one it reads, wherever unnamed
+    /// hosts sit in the listing; when no listed host is named, to the
+    /// listing's last server, since a page's shape can be read from
+    /// any host and which one cannot be known before the fetch. The
+    /// helper names that position, and none for an empty listing.
+    #[test]
+    fn the_remainder_goes_to_the_last_named_server_else_the_last_listed(
+        hosts in proptest::collection::vec(
+            prop_oneof![
+                Just("zokoanime.video".to_string()),
+                Just("megaplay.buzz".to_string()),
+                "megaplay-[0-9]{1,3}\\.buzz",
+                "[a-z]{3,10}\\.(buzz|site|video|net)",
+            ],
+            0..6,
+        ),
+    ) {
+        let servers: Vec<ServerEmbed> = hosts
+            .iter()
+            .enumerate()
+            .map(|(i, host)| ServerEmbed {
+                mode: "sub".into(),
+                name: format!("S{i}"),
+                embed_url: format!("https://{host}/stream/{i}"),
+            })
+            .collect();
+        let refs: Vec<&ServerEmbed> = servers.iter().collect();
+        let expected = refs
+            .iter()
+            .rposition(|s| ajax::readable(&s.embed_url))
+            .or_else(|| refs.len().checked_sub(1));
+        prop_assert_eq!(ajax::remainder_index(&refs), expected);
+    }
+}
+
+// ── a bounded server's share of the attempt's remainder ─────────────
+
+proptest! {
+    /// Told the attempt's remainder, a bounded server's cap is its
+    /// share of what remains once one chain's worth — the reserve —
+    /// is held back for the last server: never more than the fixed
+    /// bound, never more than that share, the bound itself once the
+    /// remainder allows it. With no remainder known, the fixed
+    /// bound; with no server ahead of the last (the last already
+    /// behind), the remainder itself under the bound, nothing held
+    /// back.
+    ///
+    /// And never nothing while the attempt still has time. Holding
+    /// the reserve back whole is worth a share of what is left only
+    /// while there is something left over; when there is not, the
+    /// reserve gives way — what remains is split among the servers
+    /// ahead and the one that runs on the remainder alike, so every
+    /// server ahead has a window to spend and the remainder's server
+    /// is left no less than any one of them.
+    #[test]
+    fn a_bounded_servers_cap_is_its_share_of_the_remainder_after_the_reserve(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        remaining_ms in proptest::option::of(0u64..60_000),
+        ahead in 0usize..8,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let cap = ajax::server_cap(ms(bound_ms), ms(reserve_ms), remaining_ms.map(ms), ahead);
+        prop_assert!(cap <= ms(bound_ms));
+        match remaining_ms {
+            None => prop_assert_eq!(cap, ms(bound_ms)),
+            Some(r) if ahead == 0 => prop_assert_eq!(cap, ms(bound_ms).min(ms(r))),
+            Some(r) => {
+                let ahead32 = u32::try_from(ahead).unwrap();
+                let free = r.saturating_sub(reserve_ms);
+                let after_reserve = ms(free) / ahead32;
+                prop_assert!(cap <= ms(r), "{cap:?} of the {r}ms the attempt has");
+                if after_reserve.is_zero() {
+                    // The reserve giving way: an even split among the
+                    // servers ahead and the remainder's server.
+                    prop_assert_eq!(cap, ms(bound_ms).min(ms(r) / (ahead32 + 1)));
+                    if r > 0 {
+                        prop_assert!(
+                            !cap.is_zero(),
+                            "a server ahead of the remainder's was capped at nothing \
+                             with {r}ms of the attempt left"
+                        );
+                    }
+                    // The remainder's server keeps a share of its
+                    // own — no less than any one server ahead of it.
+                    let spent = cap * ahead32;
+                    prop_assert!(spent <= ms(r) - cap, "{spent:?} of {r}ms");
+                } else {
+                    prop_assert_eq!(cap, ms(bound_ms).min(after_reserve));
+                    if free >= bound_ms * ahead as u64 {
+                        prop_assert_eq!(cap, ms(bound_ms));
+                    }
+                    // What the bounded servers can spend between them
+                    // never reaches into the reserve, so the server
+                    // that runs on the remainder still finds the
+                    // reserve there whenever the remainder held it in
+                    // the first place.
+                    let spent = cap * ahead32;
+                    prop_assert!(spent <= ms(free), "{spent:?} of {free}ms");
+                    prop_assert!(
+                        ms(r) - spent >= ms(reserve_ms),
+                        "the last server was left {:?} of a {reserve_ms}ms reserve",
+                        ms(r) - spent,
+                    );
+                }
+            }
+        }
+    }
+}
+
+// ── the reserve a whole chain is worth ──────────────────────────────
+
+proptest! {
+    /// The reserve held back for the server that runs on the
+    /// remainder is a whole chain's worth, and a chain is several
+    /// sequential requests: whatever the per-server bound, the
+    /// reserve outlasts it, since a bound spread over the chain's
+    /// requests is what leaves a healthy loaded host cancelled. It
+    /// is derived from the bound rather than fixed, so the seam that
+    /// shortens the bound to milliseconds for the stalled-host tests
+    /// shortens the reserve with it, and a longer bound never buys
+    /// the last server less.
+    #[test]
+    fn the_reserve_outlasts_the_bound_and_is_derived_from_it(
+        bound_ms in 1u64..10_000,
+        longer_ms in 1u64..10_000,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let reserve = ajax::chain_reserve(ms(bound_ms));
+        prop_assert!(
+            reserve > ms(bound_ms),
+            "a {bound_ms}ms bound reserved only {reserve:?}"
+        );
+        prop_assert!(
+            reserve <= ms(bound_ms) * ajax::CHAIN_REQUESTS,
+            "the reserve reached past the chain measured at a whole bound a request: {reserve:?}"
+        );
+        let longer = bound_ms.max(longer_ms);
+        prop_assert!(ajax::chain_reserve(ms(longer)) >= reserve);
+    }
+}
+
+// ── the hosts the client reads ───────────────────────────────────────
+
+proptest! {
+    /// The client reads zokoanime's host, megaplay's, and the numbered
+    /// mirrors the site serves megaplay's player from — `megaplay-`
+    /// then digits then `.buzz`, nothing more on either side — and no
+    /// other host: not one that only starts with a read host's name,
+    /// not a mirror with no number, not a read host under another
+    /// domain.
+    #[test]
+    fn the_hosts_the_client_reads_are_the_named_ones_and_megaplays_numbered_mirrors(
+        number in "[0-9]{1,6}",
+        other in "[a-z]{3,10}\\.(buzz|site|video|net)",
+    ) {
+        let mirror = format!("megaplay-{number}.buzz");
+        let mirror_url = format!("https://{mirror}/stream/s-2/1/sub");
+        let wrong_suffix = format!("megaplay-{number}.buzzy");
+        let wrong_prefix = format!("notmegaplay-{number}.buzz");
+        let not_a_number = format!("megaplay-{number}x.buzz");
+        let under_another = format!("megaplay-{number}.buzz.evil.example");
+        prop_assert!(ajax::readable_host("zokoanime.video"));
+        prop_assert!(ajax::readable_host("megaplay.buzz"));
+        prop_assert!(ajax::readable_host(&mirror), "{mirror}");
+        prop_assert!(ajax::readable(&mirror_url), "{mirror_url}");
+        prop_assert!(!ajax::readable_host("megaplay-.buzz"));
+        prop_assert!(!ajax::readable_host(&wrong_suffix), "{wrong_suffix}");
+        prop_assert!(!ajax::readable_host(&wrong_prefix), "{wrong_prefix}");
+        prop_assert!(!ajax::readable_host(&not_a_number), "{not_a_number}");
+        prop_assert!(!ajax::readable_host("megaplay.buzz.evil.example"));
+        prop_assert!(!ajax::readable_host(&under_another), "{under_another}");
+        prop_assert_eq!(
+            ajax::readable_host(&other),
+            other == "zokoanime.video" || other == "megaplay.buzz"
+        );
     }
 }
