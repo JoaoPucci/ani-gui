@@ -289,7 +289,7 @@ fn a_year_is_never_read_from_outside_the_aired_row() {
 
 // ── episode listing ─────────────────────────────────────────────────
 
-const EPISODE_LIST: &str = r#"{"status":true,"totalItems":2,"html":"<div class=\"ss-list\">\n<a title=\"Episode 1\"\n   class=\"ssl-item ep-item\"\n   data-number=\"1\"\n   data-id=\"21418\"\n   href=\"https://hianime.at/watch/cowboy-bebop-1281?ep=21418\"><div class=\"ssli-order\">1</div></a>\n<a title=\"Episode 2\" class=\"ssl-item ep-item\" data-number=\"2\" data-id=\"21419\" href=\"https://hianime.at/watch/cowboy-bebop-1281?ep=21419\"></a>\n</div>"}"#;
+const EPISODE_LIST: &str = r#"{"status":true,"totalItems":1,"html":"<div class=\"ss-list\">\n<a title=\"Episode 1\"\n   class=\"ssl-item ep-item\"\n   data-number=\"1\"\n   data-id=\"21418\"\n   href=\"https://hianime.at/watch/cowboy-bebop-1281?ep=21418\"><div class=\"ssli-order\">1</div></a>\n<a title=\"Episode 2\" class=\"ssl-item ep-item\" data-number=\"2\" data-id=\"21419\" href=\"https://hianime.at/watch/cowboy-bebop-1281?ep=21419\"></a>\n</div>"}"#;
 
 #[test]
 fn an_episode_listing_reads_number_and_id_off_each_ep_item() {
@@ -769,14 +769,63 @@ fn a_listing_whose_container_holds_nothing_is_the_provider_answering_no_episodes
     );
 }
 
-/// The envelope names its own count. A listing that reads fewer
-/// rows than the count — the HTML cut short, or a row changed past
-/// everything the reader recognises as a row — is not the show's
-/// listing, and read as one it would undercount the show for the
-/// picker and lose the missing row's link.
+/// A listing of `rows` episode rows under an envelope declaring
+/// `pages` page tabs, each row written the way the site writes one.
+/// Generated rather than captured: the counts that matter here run
+/// into the hundreds, and a capture of them would be megabytes of
+/// fixture for one number.
+fn listing_of(rows: usize, pages: u64) -> String {
+    let html: String = (1..=rows)
+        .map(|n| {
+            let id = 21_000 + n;
+            format!(
+                r#"<a class="ssl-item ep-item" data-number="{n}" data-id="{id}" href="/watch/x?ep={id}"></a>"#
+            )
+        })
+        .collect();
+    serde_json::json!({ "status": true, "totalItems": pages, "html": html }).to_string()
+}
+
+/// The envelope's count is the number of page tabs the site draws
+/// over the listing, one per hundred rows — the live listing of 366
+/// episodes declares four, one of 23 declares one — so rows that
+/// fill the last page the count names are the listing whole.
 #[test]
-fn a_listing_reading_fewer_rows_than_its_declared_count_is_refused() {
-    let two_rows_declared_three = EPISODE_LIST.replacen("\"totalItems\":2", "\"totalItems\":3", 1);
+fn rows_filling_the_last_page_the_envelope_declares_are_read_as_the_listing() {
+    for (rows, pages) in [(23_usize, 1_u64), (100, 1), (101, 2), (366, 4)] {
+        match parse_episode_list(&listing_of(rows, pages)) {
+            Ok(listing) => assert_eq!(listing.len(), rows, "{rows} rows, {pages} declared"),
+            Err(e) => panic!("{rows} rows, {pages} declared: {e:?}"),
+        }
+    }
+}
+
+/// Rows that stop short of the page declared, or spill past it, are
+/// not the show's listing: the HTML cut off a page or more early, or
+/// a row changed past everything the reader recognises as a row.
+/// Read as complete it would undercount the show for the picker and
+/// lose the missing rows' links. What the count cannot catch is a
+/// listing cut short inside its own last page — the site declares
+/// the same four tabs for 301 rows as for 400.
+#[test]
+fn rows_that_do_not_fill_the_page_the_envelope_declares_are_refused() {
+    for (rows, pages) in [(101_usize, 1_u64), (99, 2), (0, 1)] {
+        assert!(
+            matches!(
+                parse_episode_list(&listing_of(rows, pages)),
+                Err(AniError::ParseFailed { .. })
+            ),
+            "{rows} rows, {pages} declared"
+        );
+    }
+}
+
+/// The refusal names what each number is: the rows the reader read,
+/// and the pages the envelope declared. The captured envelope's two
+/// rows are one page; three declared is two pages of rows gone.
+#[test]
+fn a_listing_declaring_pages_its_rows_do_not_reach_is_refused_naming_both() {
+    let two_rows_declared_three = EPISODE_LIST.replacen("\"totalItems\":1", "\"totalItems\":3", 1);
     assert!(
         two_rows_declared_three.contains("\"totalItems\":3"),
         "fixture rewritten"
@@ -785,21 +834,27 @@ fn a_listing_reading_fewer_rows_than_its_declared_count_is_refused() {
     match err {
         AniError::ParseFailed { detail } => {
             assert!(
-                detail.contains('3') && detail.contains('2'),
-                "names both counts: {detail}"
+                detail.contains('3') && detail.contains('2') && detail.contains("pages"),
+                "names the rows read and the pages declared: {detail}"
             );
         }
         other => panic!("{other:?}"),
     }
 }
 
-/// The count agreeing, or absent, changes nothing about a readable
-/// listing; the blank listing declares none and reads none.
+/// A count the rows fill, or no count at all, changes nothing about
+/// a readable listing. The blank listing declares no page and reads
+/// no row; the same blank container under a declared page is refused,
+/// since a page of rows is then missing rather than absent.
 #[test]
-fn a_declared_count_that_agrees_or_is_absent_leaves_the_listing_as_read() {
+fn a_declared_count_the_rows_fill_or_that_is_absent_leaves_the_listing_as_read() {
     let agreeing = parse_episode_list(EPISODE_LIST).expect("listing");
-    assert_eq!(agreeing.len(), 2, "the captured envelope declares two");
-    let without_count = EPISODE_LIST.replacen("\"totalItems\":2,", "", 1);
+    assert_eq!(
+        agreeing.len(),
+        2,
+        "the captured envelope's rows are its one declared page"
+    );
+    let without_count = EPISODE_LIST.replacen("\"totalItems\":1,", "", 1);
     assert!(!without_count.contains("totalItems"), "fixture rewritten");
     assert_eq!(
         parse_episode_list(&without_count).expect("listing"),
@@ -813,6 +868,15 @@ fn a_declared_count_that_agrees_or_is_absent_leaves_the_listing_as_read() {
     assert_eq!(
         parse_episode_list(BLANK_EPISODE_LIST).expect("answered"),
         Vec::<EpisodeRef>::new()
+    );
+    let blank_declaring_a_page =
+        BLANK_EPISODE_LIST.replacen("\"totalItems\":0", "\"totalItems\":1", 1);
+    assert!(
+        matches!(
+            parse_episode_list(&blank_declaring_a_page),
+            Err(AniError::ParseFailed { .. })
+        ),
+        "an empty container under a page of rows declared"
     );
 }
 
