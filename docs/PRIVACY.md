@@ -26,7 +26,8 @@ ani-gui keeps the following on your computer only:
   similar information fetched from public APIs. Stored in a local
   SQLite database under your OS's cache directory.
 - **Watch history** — a plain-text file in the app's own state
-  directory. Lists what you've watched and where you left off.
+  directory. Lists what you've watched, where you left off and
+  when.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
