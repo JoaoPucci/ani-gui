@@ -11,19 +11,29 @@ use crate::scraper::provider::BrowseHit;
 /// `film-detail` markup and are not the answer. Cards are split at
 /// their own boundary (`flw-item`) and only a card's detail block is
 /// read: the poster link that leads a card carries an href and title
-/// of its own, and a card whose detail block has no anchor is skipped
-/// rather than read from its neighbour. A page that says "No animes
-/// found." is the provider answering absence — that notice, with no
-/// list, is how the site renders an empty search — and a page
-/// without either shape is a parse failure, never absence. So is a
-/// list with no card boundary inside and no notice: that is what
-/// the list looks like once the boundary is renamed, whether or not
-/// the cards are still there.
+/// of its own, and a card is never read from its neighbour.
+///
+/// The listing is all of its cards or none of it: a card the reader
+/// cannot read refuses the page, naming that card's place in the
+/// list. Dropped instead, it would leave a shorter list that still
+/// reads as an answer while the entry the user searched for is
+/// missing from it, and the pick — with no episode count or year to
+/// weigh — would take the first card that survived, resolving and
+/// playing an unrelated entry rather than surfacing the drift. Which
+/// fragments of the split are held to that is [`card_shaped`].
+///
+/// A page that says "No animes found." is the provider answering
+/// absence — that notice, with no list, is how the site renders an
+/// empty search — and a page without either shape is a parse
+/// failure, never absence. So is a list with no card boundary inside
+/// and no notice: that is what the list looks like once the boundary
+/// is renamed, whether or not the cards are still there.
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] when the page shows neither the result
-/// list nor the no-results notice, or a list with no card boundary
-/// and no notice.
+/// list nor the no-results notice, when a list has no card boundary
+/// and no notice, when a card-shaped fragment cannot be read, and
+/// when the list holds no card-shaped fragment at all.
 pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
     let Some(start) = html.find("film_list-wrap") else {
         return none_or_refused(html, "hianime search page without its result list");
@@ -31,26 +41,84 @@ pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
     let end = html[start..]
         .find("main-sidebar")
         .map_or(html.len(), |i| start + i);
-    let cards: Vec<&str> = html[start..end].split("flw-item").skip(1).collect();
-    if cards.is_empty() {
+    let fragments: Vec<&str> = html[start..end].split("flw-item").skip(1).collect();
+    if fragments.is_empty() {
         return none_or_refused(html, "hianime search result list without card boundaries");
     }
-    let hits: Vec<BrowseHit> = cards
-        .iter()
-        .filter_map(|card| {
-            let (_, detail) = card.split_once("film-detail")?;
-            parse_card(detail)
+    let hits: Vec<BrowseHit> = fragments
+        .into_iter()
+        .filter(|fragment| card_shaped(fragment))
+        .enumerate()
+        .map(|(index, card)| {
+            read_card(card).ok_or_else(|| AniError::ParseFailed {
+                detail: format!("hianime search: card {} cannot be read", index + 1),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<BrowseHit>>>()?;
     if hits.is_empty() {
-        // Cards the parser cannot read are the site having changed
-        // shape; read as "no results" they would be persisted as
-        // absence for every title searched.
+        // The boundary is there and nothing behind it carries a
+        // card's marks: the site has changed shape. Read as "no
+        // results" that would be persisted as absence for every
+        // title searched.
         return Err(AniError::ParseFailed {
             detail: "hianime search page without readable cards".into(),
         });
     }
     Ok(hits)
+}
+
+/// The marks a result card carries of its own: the poster block that
+/// leads it, the detail block beside it, and the film name inside
+/// that block.
+const CARD_MARKS: [&str; 3] = ["film-poster", "film-detail", "film-name"];
+
+/// How many of [`CARD_MARKS`] make a fragment one of the list's
+/// cards.
+const CARD_AT_LEAST: usize = 2;
+
+/// Whether a fragment of the split is one of the list's cards, and
+/// so a fragment whose unreadability refuses the page. The boundary
+/// is a class name rather than a tag, so the split catches more than
+/// cards: a card whose class list names the boundary twice leaves a
+/// fragment between the two mentions that is part of one tag, and
+/// whatever the site writes between the last card and the sidebar
+/// rides along on the last card's fragment. A fragment carrying at
+/// least two of a card's own marks is a card; the rest is the list's
+/// furniture and is passed over.
+///
+/// The threshold sits between the two things that can go wrong. The
+/// change of shape that costs a card its heading anchor can rename
+/// one of the marks in the same stroke, so a card is not held to
+/// carrying all three — held to that, the drift this rule exists to
+/// catch would slip past as furniture. And the furniture carries
+/// none of the three, so two is as low as the rule can go without
+/// refusing pages over the list's own chrome.
+///
+/// Its limits are worth stating. Chrome that does carry two of the
+/// marks — a script between the list and the sidebar naming the
+/// site's own class names — would be held to being a card and refuse
+/// the page; and a card whose own markup mentions the boundary again
+/// is split in two, of which the first half may carry two marks and
+/// no anchor. Neither shape appears on the pages the reader was
+/// written against, and both are visible as a page that refuses
+/// rather than a page that answers wrongly. What nothing here can
+/// see is a card the site did not render at all: a list one card
+/// short still reads as complete, exactly as the episode listing's
+/// rows do.
+fn card_shaped(fragment: &str) -> bool {
+    CARD_MARKS
+        .iter()
+        .filter(|mark| fragment.contains(*mark))
+        .count()
+        >= CARD_AT_LEAST
+}
+
+/// One card of the list, read from its detail block
+/// ([`parse_card`]) — or nothing when the fragment carries no detail
+/// block, which is a card the reader cannot read like any other.
+fn read_card(fragment: &str) -> Option<BrowseHit> {
+    let (_, detail) = fragment.split_once("film-detail")?;
+    parse_card(detail)
 }
 
 /// The empty answer when the page carries the no-results notice,
@@ -73,7 +141,8 @@ fn none_or_refused(html: &str, detail: &str) -> Result<Vec<BrowseHit>> {
 /// later link and come back as a hit carrying another entry's slug
 /// under this card's title. A slug without the decimal tail the
 /// episode listing is keyed on ([`slug_id`]) is not a card the
-/// client can resolve, and is skipped like an unreadable one.
+/// client can resolve, and is a card the reader cannot read like
+/// any other.
 fn parse_card(card: &str) -> Option<BrowseHit> {
     let anchor = heading_anchor(card)?;
     let href = attr(anchor, "href=\"")?;
