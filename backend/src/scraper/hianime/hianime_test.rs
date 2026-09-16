@@ -3159,6 +3159,62 @@ fn a_server_ahead_of_the_remainder_keeps_a_window_when_only_the_reserve_is_left(
     }
 }
 
+/// What remains does not stop at the reserve and then jump. A slow
+/// site can leave the walk the reserve and a millisecond, and the
+/// reserve held back whole from the first millisecond over it caps
+/// every server ahead of the remainder's at that millisecond — a
+/// narrower window than the same server had with *less* of the
+/// attempt left, and far too narrow for a chain of four sequential
+/// requests. A healthy server cut off there is a stream the walk
+/// had and did not take, the more so when the server that runs on
+/// the remainder is the dead one. The share is monotone in what
+/// remains instead: from the reserve upward a server ahead keeps no
+/// less than the share it had at the reserve itself.
+#[test]
+fn a_bounded_servers_share_does_not_collapse_just_above_the_reserve() {
+    let bound = SERVER_ATTEMPT_BUDGET;
+    let reserve = chain_reserve(bound);
+    let at_reserve = server_cap(bound, reserve, Some(reserve), 1);
+    assert_eq!(
+        at_reserve,
+        reserve / 2,
+        "with only the reserve left, the server ahead and the remainder's split it evenly"
+    );
+    let sliver = std::time::Duration::from_millis(1);
+    let just_over = server_cap(bound, reserve, Some(reserve + sliver), 1);
+    assert!(
+        just_over >= at_reserve,
+        "a millisecond more of the attempt cut the server ahead from {at_reserve:?} \
+         down to {just_over:?}"
+    );
+}
+
+/// Above the band the reserve is whole again. The share of what is
+/// over the reserve grows with what remains, and once it reaches
+/// the window the server had at the reserve boundary — from
+/// reserve·(2·ahead+1)/(ahead+1) upward — it governs alone: the
+/// servers ahead take their shares of what is over, and the server
+/// that runs on the remainder finds the reserve untouched. The
+/// reserve is what gives way in the band, and only there.
+#[test]
+fn the_reserve_is_whole_again_once_the_share_after_it_reaches_the_boundary_share() {
+    let bound = SERVER_ATTEMPT_BUDGET;
+    let reserve = chain_reserve(bound);
+    let ahead = 1u32;
+    let whole_from = reserve * (2 * ahead + 1) / (ahead + 1);
+    let cap = server_cap(bound, reserve, Some(whole_from), ahead as usize);
+    assert_eq!(
+        cap,
+        (whole_from - reserve) / ahead,
+        "the share is what is over the reserve, split among the servers ahead"
+    );
+    let left = whole_from - cap * ahead;
+    assert!(
+        left >= reserve,
+        "the servers ahead reached into the reserve: {left:?} left of {reserve:?}"
+    );
+}
+
 /// A stream host can hold a connection open without answering; the
 /// transport gives such a fetch ten seconds, and the walk of one
 /// provider has twenty in all, part of them spent on the search and
@@ -3329,13 +3385,20 @@ async fn stalled_servers_share_the_attempts_remainder_so_the_last_server_is_stil
 /// bound is one request's worth of patience spread over four, so a
 /// healthy chain on a loaded host — every request far inside the
 /// transport's own wait — outlasts it, and the attempt cancels the
-/// last server the walk had left. Two stalled servers ahead of it
-/// share what the attempt has left after the reserve; the chain,
-/// slower than one bound and well inside the reserve, is served.
+/// last server the walk had left. The reserve is held back whole
+/// once the attempt can fund it and the window each server ahead
+/// keeps besides, and the walk reads what is left afresh before
+/// each of them, so for the two stalled servers here that is twice
+/// the reserve. Given it, the stalled pair spend their shares of
+/// what is over and the chain — slower than one bound and well
+/// inside the reserve — is served. Below that the reserve is what
+/// gives way, and the two ahead keep their windows out of it.
 #[tokio::test(start_paused = true)]
 async fn the_reserve_covers_a_whole_chain_so_a_loaded_last_server_is_served() {
-    let c = client_with_server_budget(100);
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(200);
+    const BUDGET_MS: u64 = 100;
+    let c = client_with_server_budget(BUDGET_MS);
+    let reserve = chain_reserve(std::time::Duration::from_millis(BUDGET_MS));
+    let deadline = tokio::time::Instant::now() + reserve * 2;
     c.bound_attempt(Some(deadline));
     let stream = tokio::time::timeout_at(deadline, c.stream_for(21469, "sub", "720"))
         .await
@@ -3403,6 +3466,35 @@ async fn a_healthy_server_is_still_asked_when_the_attempt_has_only_the_reserve_l
     let stream = tokio::time::timeout_at(deadline, c.stream_for(21468, "sub", "720"))
         .await
         .expect("the healthy server was skipped and the attempt waited on the stalling one")
+        .expect("served");
+    assert_eq!(stream.url, "https://hls.example/v/brief/720/index.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://zokoanime.video/"));
+}
+
+/// The same walk with a few milliseconds more of the attempt left.
+/// What the search, the candidate and the listings leave behind
+/// does not come to rest on the reserve exactly; it can as easily
+/// be the reserve and a sliver. Held to its share of that sliver, a
+/// healthy server ahead of the remainder's is cut off a few
+/// milliseconds into a chain it would have finished — cut off
+/// sooner, on a better attempt, than the same server is when only
+/// the reserve is left — and the silent server behind it takes
+/// everything over. The window the server had at the reserve
+/// boundary is the floor, and the reserve is what gives way to keep
+/// it.
+#[tokio::test(start_paused = true)]
+async fn a_healthy_server_is_still_asked_when_the_attempt_has_the_reserve_and_a_sliver() {
+    const BUDGET_MS: u64 = 100;
+    let c = client_with_server_budget(BUDGET_MS);
+    let reserve = chain_reserve(std::time::Duration::from_millis(BUDGET_MS));
+    let sliver = std::time::Duration::from_millis(5);
+    let deadline = tokio::time::Instant::now() + reserve + sliver;
+    c.bound_attempt(Some(deadline));
+    let stream = tokio::time::timeout_at(deadline, c.stream_for(21468, "sub", "720"))
+        .await
+        .expect(
+            "the healthy server was cut off at the sliver and the attempt spent on the silent one",
+        )
         .expect("served");
     assert_eq!(stream.url, "https://hls.example/v/brief/720/index.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://zokoanime.video/"));
