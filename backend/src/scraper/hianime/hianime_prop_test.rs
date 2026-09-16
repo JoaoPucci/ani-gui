@@ -1558,22 +1558,28 @@ proptest! {
 // ── a bounded server's share of the attempt's remainder ─────────────
 
 proptest! {
-    /// Told the attempt's remainder, a bounded server's cap is its
-    /// share of what remains once one chain's worth — the reserve —
-    /// is held back for the last server: never more than the fixed
-    /// bound, never more than that share, the bound itself once the
-    /// remainder allows it. With no remainder known, the fixed
-    /// bound; with no server ahead of the last (the last already
-    /// behind), the remainder itself under the bound, nothing held
-    /// back.
+    /// Told the attempt's remainder, a bounded server's cap is the
+    /// larger of two shares, and never more than the fixed bound:
+    /// its share of what remains once one chain's worth — the
+    /// reserve — is held back for the last server, and the share it
+    /// would have at the reserve itself, where what is held back is
+    /// split evenly among the servers ahead and the last alike.
+    /// With no remainder known, the fixed bound; with no server
+    /// ahead of the last (the last already behind), the remainder
+    /// itself under the bound, nothing held back.
     ///
-    /// And never nothing while the attempt still has time. Holding
-    /// the reserve back whole is worth a share of what is left only
-    /// while there is something left over; when there is not, the
-    /// reserve gives way — what remains is split among the servers
-    /// ahead and the one that runs on the remainder alike, so every
-    /// server ahead has a window to spend and the remainder's server
-    /// is left no less than any one of them.
+    /// The reserve gives way before a share does, and by as much as
+    /// it has to. Below the reserve there is nothing left over to
+    /// hold back and the even split is the whole rule, so every
+    /// server ahead has a window to spend. Just above it the split
+    /// still governs: the share of what is over is a sliver there,
+    /// and a server capped at a sliver is a healthy chain cut off
+    /// mid-request while the last server — which may be the dead one
+    /// — takes the rest. So the reserve shrinks in that band rather
+    /// than the share. From reserve·(2·ahead+1)/(ahead+1) upward the
+    /// share of what is over has grown to that same window and
+    /// governs alone, and the reserve is whole again: what the
+    /// bounded servers spend between them never reaches into it.
     #[test]
     fn a_bounded_servers_cap_is_its_share_of_the_remainder_after_the_reserve(
         bound_ms in 1u64..10_000,
@@ -1591,42 +1597,78 @@ proptest! {
                 let ahead32 = u32::try_from(ahead).unwrap();
                 let free = r.saturating_sub(reserve_ms);
                 let after_reserve = ms(free) / ahead32;
+                let at_boundary = ms(r.min(reserve_ms)) / (ahead32 + 1);
+                prop_assert_eq!(cap, ms(bound_ms).min(after_reserve.max(at_boundary)));
                 prop_assert!(cap <= ms(r), "{cap:?} of the {r}ms the attempt has");
-                if after_reserve.is_zero() {
-                    // The reserve giving way: an even split among the
-                    // servers ahead and the remainder's server.
-                    prop_assert_eq!(cap, ms(bound_ms).min(ms(r) / (ahead32 + 1)));
-                    if r > 0 {
-                        prop_assert!(
-                            !cap.is_zero(),
-                            "a server ahead of the remainder's was capped at nothing \
-                             with {r}ms of the attempt left"
-                        );
-                    }
-                    // The remainder's server keeps a share of its
-                    // own — no less than any one server ahead of it.
-                    let spent = cap * ahead32;
-                    prop_assert!(spent <= ms(r) - cap, "{spent:?} of {r}ms");
-                } else {
-                    prop_assert_eq!(cap, ms(bound_ms).min(after_reserve));
-                    if free >= bound_ms * ahead as u64 {
-                        prop_assert_eq!(cap, ms(bound_ms));
-                    }
-                    // What the bounded servers can spend between them
-                    // never reaches into the reserve, so the server
-                    // that runs on the remainder still finds the
-                    // reserve there whenever the remainder held it in
-                    // the first place.
-                    let spent = cap * ahead32;
+                if r > 0 {
+                    prop_assert!(
+                        !cap.is_zero(),
+                        "a server ahead of the remainder's was capped at nothing \
+                         with {r}ms of the attempt left"
+                    );
+                }
+                // Never narrower than the window the same server had
+                // at the reserve boundary, whatever is over it.
+                prop_assert!(
+                    cap >= ms(bound_ms).min(at_boundary),
+                    "{cap:?} is narrower than the {at_boundary:?} the same server \
+                     had with only the reserve left"
+                );
+                if free >= bound_ms * ahead as u64 {
+                    prop_assert_eq!(cap, ms(bound_ms));
+                }
+                let spent = cap * ahead32;
+                if after_reserve >= at_boundary {
+                    // Above the band: what the bounded servers can
+                    // spend between them never reaches into the
+                    // reserve, so the server that runs on the
+                    // remainder still finds the reserve there
+                    // whenever the remainder held it in the first
+                    // place.
                     prop_assert!(spent <= ms(free), "{spent:?} of {free}ms");
                     prop_assert!(
                         ms(r) - spent >= ms(reserve_ms),
                         "the last server was left {:?} of a {reserve_ms}ms reserve",
                         ms(r) - spent,
                     );
+                } else {
+                    // In the band, and below it: the reserve is what
+                    // gives way, and the remainder's server is still
+                    // left no less than any one server ahead of it.
+                    prop_assert!(spent <= ms(r) - cap, "{spent:?} of {r}ms");
                 }
             }
         }
+    }
+}
+
+proptest! {
+    /// And a cap only ever widens as the attempt gains time. The
+    /// walk reads what is left afresh before each bounded server,
+    /// and a remainder that is larger must never buy a server a
+    /// narrower window: a rule with a step down in it cuts a healthy
+    /// chain short on the attempts that were going better, which is
+    /// the failure nobody thinks to look for. Holding the reserve
+    /// back whole from the first moment over it had exactly that
+    /// step — a server ahead capped at half the reserve with the
+    /// reserve left, and at a millisecond with the reserve and a
+    /// millisecond.
+    #[test]
+    fn a_bounded_servers_cap_never_narrows_as_the_attempt_gains_time(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        remaining_ms in 0u64..60_000,
+        gained_ms in 0u64..60_000,
+        ahead in 0usize..8,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let cap = |r: u64| ajax::server_cap(ms(bound_ms), ms(reserve_ms), Some(ms(r)), ahead);
+        let less = cap(remaining_ms);
+        let more = cap(remaining_ms + gained_ms);
+        prop_assert!(
+            more >= less,
+            "{gained_ms}ms more of the attempt cut a server's cap from {less:?} to {more:?}"
+        );
     }
 }
 
