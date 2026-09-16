@@ -3,7 +3,7 @@
 
 use super::megaplay::{lang_of_track, media_id, parse_sources, sources_url};
 use crate::error::AniError;
-use crate::scraper::provider::SubtitleTrack;
+use crate::scraper::provider::{SubtitleTrack, SUBTITLE_URL_CAP};
 
 /// megaplay's embed page as captured on 2026-09-12: no payload in the
 /// markup, a player element whose `data-id` is the media id the
@@ -156,6 +156,40 @@ fn a_track_the_transport_cannot_fetch_is_left_out() {
     assert_eq!(payload.subtitles.len(), 1);
     assert_eq!(payload.subtitles[0].lang, "ger");
     assert_eq!(payload.subtitles[0].label, "German");
+}
+
+/// A track's file is held to the length the hand-offs can carry as
+/// well as to the scheme the transport can fetch. Every track URL
+/// rides on the external player's and Syncplay's command lines, and
+/// the boundary the episode is held to afterwards counts tracks, not
+/// their length: one file longer than any a CDN signs would fail the
+/// hand-off for an episode whose stream is perfectly good. A file at
+/// the bound is kept and one a byte past it is dropped, the row and
+/// not the response, as the payload reader on the other host does.
+#[test]
+fn a_track_whose_file_runs_past_the_hand_off_bound_is_left_out() {
+    let prefix = "https://cdn.example/subs/";
+    let suffix = "_eng.vtt";
+    let file = |len: usize| {
+        format!(
+            "{prefix}{}{suffix}",
+            "a".repeat(len - prefix.len() - suffix.len())
+        )
+    };
+    let at_cap = file(SUBTITLE_URL_CAP);
+    let past_cap = file(SUBTITLE_URL_CAP + 1);
+    assert_eq!(at_cap.len(), SUBTITLE_URL_CAP);
+    assert_eq!(past_cap.len(), SUBTITLE_URL_CAP + 1);
+    let json = format!(
+        r#"{{"sources":{{"file":"https://cdn.example/master.m3u8"}},"tracks":[{{"file":"{at_cap}","label":"English","kind":"captions"}},{{"file":"{past_cap}","label":"German","kind":"subtitles"}}]}}"#
+    );
+    let payload = parse_sources(&json).expect("sources");
+    let kept: Vec<&str> = payload.subtitles.iter().map(|t| t.url.as_str()).collect();
+    assert_eq!(
+        kept,
+        vec![at_cap.as_str()],
+        "the file a byte past the bound rode into the hand-offs"
+    );
 }
 
 #[test]
