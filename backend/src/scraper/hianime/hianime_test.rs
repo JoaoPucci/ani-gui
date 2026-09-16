@@ -55,7 +55,9 @@ fn search_cards_inside_the_result_list_become_hits() {
 }
 
 /// Each result card leads with its poster link — `href` and `title`
-/// of its own — ahead of the detail block the parser reads.
+/// of its own — ahead of the detail block the parser reads. The
+/// middle card's heading is not an anchor at all: a card the reader
+/// cannot read.
 const SEARCH_PAGE_WITH_POSTER_LINKS: &str = r##"<html><body>
 <div class="film_list-wrap">
   <div class="flw-item">
@@ -83,35 +85,106 @@ const SEARCH_PAGE_WITH_POSTER_LINKS: &str = r##"<html><body>
 </body></html>"##;
 
 #[test]
-fn a_card_the_parser_cannot_read_is_skipped_and_its_neighbour_is_read_once() {
-    // A card whose detail block has no anchor must not borrow the
-    // next card's poster link as its identity, and the next card must
-    // not come back twice: the hits are exactly the readable cards,
-    // each with its own slug and title.
-    let hits = parse_search(SEARCH_PAGE_WITH_POSTER_LINKS).expect("parsed");
-    assert_eq!(
-        hits,
-        vec![
-            BrowseHit {
-                slug: "cowboy-bebop-1281".into(),
-                title: "Cowboy Bebop".into(),
-                kind: Some("TV".into()),
-            },
-            BrowseHit {
-                slug: "cowboy-bebop-the-movie-1282".into(),
-                title: "Cowboy Bebop: The Movie".into(),
-                kind: Some("Movie".into()),
-            },
-        ]
+fn a_card_the_parser_cannot_read_refuses_the_listing_naming_it() {
+    // A card whose detail block has no anchor is the list having
+    // changed shape under that card, and the readable cards around
+    // it do not make the page an answer: read as one, the entry the
+    // user searched for is missing from a list that still looks
+    // complete, and the pick takes a neighbour.
+    match parse_search(SEARCH_PAGE_WITH_POSTER_LINKS).expect_err("refused") {
+        AniError::ParseFailed { detail } => assert!(detail.contains("card 2"), "{detail}"),
+        other => panic!("{other:?}"),
+    }
+    // With that card's heading anchor restored, each card is read
+    // once and from its own detail block: a card never borrows the
+    // next card's poster link as its identity, and none comes back
+    // twice.
+    let intact = SEARCH_PAGE_WITH_POSTER_LINKS.replace(
+        r#"<span data-slug="unreadable-7">Unreadable</span>"#,
+        r#"<a href="https://hianime.at/unreadable-7" title="Unreadable" class="dynamic-name">Unreadable</a>"#,
     );
+    let hits = parse_search(&intact).expect("parsed");
+    assert_eq!(
+        hits.iter()
+            .map(|h| (h.slug.as_str(), h.title.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("cowboy-bebop-1281", "Cowboy Bebop"),
+            ("unreadable-7", "Unreadable"),
+            ("cowboy-bebop-the-movie-1282", "Cowboy Bebop: The Movie"),
+        ],
+        "{hits:?}"
+    );
+}
+
+/// The card the user searched for lost its heading anchor's `href`
+/// while a later card stayed readable. The listing is refused naming
+/// that card: dropped, it would leave a list that still reads as an
+/// answer, and a pick with no episode count or year to go on takes
+/// the first card that survived — the app resolving and playing
+/// another show instead of surfacing the drift.
+#[test]
+fn a_card_that_lost_its_href_refuses_the_listing_though_a_later_card_is_readable() {
+    let card = |heading: &str| {
+        format!(
+            r#"<div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster" class="film-poster-ahref" title="Poster"></a></div><div class="film-detail"><h3 class="film-name">{heading}</h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div>"#
+        )
+    };
+    let page = |cards: String| {
+        format!(
+            r#"<html><body><div class="film_list-wrap">{cards}</div><div id="main-sidebar"></div></body></html>"#
+        )
+    };
+    let refused_at_card_1 = |page: &str| match parse_search(page).expect_err("refused") {
+        AniError::ParseFailed { detail } => assert!(detail.contains("card 1"), "{detail}"),
+        other => panic!("{other:?}"),
+    };
+    let lost_href = r#"<a title="Cowboy Bebop" class="dynamic-name">Cowboy Bebop</a>"#;
+    let readable = r#"<a href="https://hianime.at/cowboy-bebop-the-movie-1282" title="Cowboy Bebop: The Movie" class="dynamic-name">x</a>"#;
+    refused_at_card_1(&page(format!("{}{}", card(lost_href), card(readable))));
+    refused_at_card_1(&page(card(lost_href)));
+}
+
+/// Not everything the boundary splits at is a card. The boundary is
+/// a class name, and a card whose class list names it twice leaves a
+/// fragment between the two mentions carrying none of a card's own
+/// marks. That fragment is the list's furniture and is passed over —
+/// held to being readable, it would refuse every page the site
+/// renders that way — and the cards are numbered as cards, not as
+/// fragments.
+#[test]
+fn a_fragment_between_two_mentions_of_the_boundary_is_not_a_card() {
+    let page = |heading: &str| {
+        format!(
+            r#"<html><body><div class="film_list-wrap"><div class="flw-item flw-item-big"><div class="film-poster"><a href="https://hianime.at/watch/poster" class="film-poster-ahref" title="Poster"></a></div><div class="film-detail"><h3 class="film-name">{heading}</h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div></body></html>"#
+        )
+    };
+    let hits = parse_search(&page(
+        r#"<a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop" class="dynamic-name">x</a>"#,
+    ))
+    .expect("parsed");
+    assert_eq!(hits.len(), 1, "{hits:?}");
+    assert_eq!(hits[0].slug, "cowboy-bebop-1281");
+    match parse_search(&page(
+        r#"<a title="Cowboy Bebop" class="dynamic-name">x</a>"#,
+    ))
+    .expect_err("refused")
+    {
+        AniError::ParseFailed { detail } => assert!(
+            detail.contains("card 1"),
+            "the fragment before the card is not counted as one: {detail}"
+        ),
+        other => panic!("{other:?}"),
+    }
 }
 
 /// A card whose title is blank names nothing: picked, it would put
 /// an empty title on the resolve, the download's file name and the
-/// progress copy, and match no title the user typed. Skipped like an
-/// unreadable card; a listing of only such cards is refused.
+/// progress copy, and match no title the user typed. It is a card
+/// the reader cannot read, and it refuses the listing naming it —
+/// whether or not a readable card follows it.
 #[test]
-fn a_card_whose_title_is_blank_is_skipped_and_a_listing_of_such_cards_is_refused() {
+fn a_card_whose_title_is_blank_refuses_the_listing_naming_it() {
     let card = |slug: &str, title: &str| {
         format!(
             r#"<div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/{slug}" title="{title}" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div>"#
@@ -125,9 +198,10 @@ fn a_card_whose_title_is_blank_is_skipped_and_a_listing_of_such_cards_is_refused
         card("nameless-1", "   "),
         card("cowboy-bebop-1281", "Cowboy Bebop")
     ));
-    let hits = parse_search(&mixed).expect("the readable card");
-    assert_eq!(hits.len(), 1, "{hits:?}");
-    assert_eq!(hits[0].slug, "cowboy-bebop-1281");
+    match parse_search(&mixed).expect_err("refused") {
+        AniError::ParseFailed { detail } => assert!(detail.contains("card 1"), "{detail}"),
+        other => panic!("{other:?}"),
+    }
     let all_blank = page(format!(
         "{}{}",
         card("nameless-1", ""),
@@ -141,45 +215,41 @@ fn a_card_whose_title_is_blank_is_skipped_and_a_listing_of_such_cards_is_refused
 /// a link that carries only an href, is not a card the parser can
 /// read: read as one, the title would be paired with a slug that is
 /// not its own, and an apparent exact-title match would send the
-/// picker to the wrong entry. The same the other way round.
+/// picker to the wrong entry. The same the other way round. Either
+/// shape refuses the listing naming that card, rather than leaving
+/// the readable cards around it to stand as the answer.
 #[test]
-fn a_card_whose_title_and_slug_sit_on_different_anchors_is_skipped() {
+fn a_card_whose_title_and_slug_sit_on_different_anchors_refuses_the_listing() {
     let page = |detail: &str| {
         format!(
             r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail">{detail}</div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/naruto-5" title="Naruto" class="dynamic-name">Naruto</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div></body></html>"#
         )
     };
-    let title_then_href = page(
+    let refused_at_card_1 = |page: &str| match parse_search(page).expect_err("refused") {
+        AniError::ParseFailed { detail } => assert!(detail.contains("card 1"), "{detail}"),
+        other => panic!("{other:?}"),
+    };
+    refused_at_card_1(&page(
         r#"<h3 class="film-name"><a title="Cowboy Bebop" class="dynamic-name">Cowboy Bebop</a></h3><div class="fd-infor"><a href="https://hianime.at/wrong-123">more</a><span class="fdi-item">TV</span></div>"#,
-    );
-    let hits = parse_search(&title_then_href).expect("the readable card");
-    assert_eq!(
-        hits.iter().map(|h| h.slug.as_str()).collect::<Vec<_>>(),
-        vec!["naruto-5"],
-        "{hits:?}"
-    );
-    let href_then_title = page(
+    ));
+    refused_at_card_1(&page(
         r#"<h3 class="film-name"><a href="https://hianime.at/wrong-123" class="dynamic-name">x</a></h3><div class="fd-infor"><a title="Cowboy Bebop">more</a><span class="fdi-item">TV</span></div>"#,
-    );
-    let hits = parse_search(&href_then_title).expect("the readable card");
-    assert_eq!(
-        hits.iter().map(|h| h.slug.as_str()).collect::<Vec<_>>(),
-        vec!["naruto-5"],
-        "{hits:?}"
-    );
+    ));
 }
 
 #[test]
-fn a_card_whose_slug_carries_no_id_is_skipped_and_a_listing_of_such_cards_is_refused() {
+fn a_card_whose_slug_carries_no_id_refuses_the_listing_naming_it() {
     // The episode listing is keyed on the decimal tail of a slug; a
-    // card without one cannot be resolved, and picked — as the
-    // count-less pick would — it fails the walk where a later card
-    // would have played. It is skipped like an unreadable card, and a
-    // listing of nothing else is a changed shape.
+    // card without one cannot be resolved, and every entry the site
+    // lists has one. It is a card the reader cannot read, and it
+    // refuses the listing naming it: dropped, the card the user
+    // searched for would be gone and the count-less pick would take
+    // the card after it.
     let mixed = r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
-    let hits = parse_search(mixed).expect("parsed");
-    assert_eq!(hits.len(), 1, "{hits:?}");
-    assert_eq!(hits[0].slug, "cowboy-bebop-1281");
+    match parse_search(mixed).expect_err("refused") {
+        AniError::ParseFailed { detail } => assert!(detail.contains("card 1"), "{detail}"),
+        other => panic!("{other:?}"),
+    }
     let unresolvable_only = r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
     let err = parse_search(unresolvable_only).expect_err("refused");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
@@ -210,16 +280,24 @@ fn a_result_list_whose_cards_all_fail_to_parse_is_a_parse_failure() {
     let err = parse_search(page).expect_err("refused");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
     let some_readable = r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><span data-slug="x">X</span></h3></div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop">Cowboy Bebop</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
-    assert_eq!(
-        parse_search(some_readable).expect("parsed").len(),
-        1,
-        "a readable card beside an unreadable one is kept"
-    );
+    match parse_search(some_readable).expect_err("refused") {
+        AniError::ParseFailed { detail } => assert!(
+            detail.contains("card 1"),
+            "a readable card does not stand in for the one before it: {detail}"
+        ),
+        other => panic!("{other:?}"),
+    }
     let no_cards = r#"<html><body><div class="film_list-wrap"></div><div id="main-sidebar"></div></body></html>"#;
     let err = parse_search(no_cards).expect_err("refused");
     assert!(
         matches!(err, AniError::ParseFailed { .. }),
         "a result region with no card boundary and no notice is not an answer: {err:?}"
+    );
+    let boundary_only = r#"<html><body><div class="film_list-wrap"><div class="flw-item"></div></div><div id="main-sidebar"></div></body></html>"#;
+    let err = parse_search(boundary_only).expect_err("refused");
+    assert!(
+        matches!(err, AniError::ParseFailed { .. }),
+        "a boundary with nothing of a card behind it is not an answer: {err:?}"
     );
 }
 

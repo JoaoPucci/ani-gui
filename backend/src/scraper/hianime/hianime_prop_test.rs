@@ -114,12 +114,13 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_search(&page).expect("search page"), expected);
     }
 
-    /// A card whose slug carries no decimal tail cannot be resolved
-    /// and never comes back: the resolvable cards come back in order,
-    /// and a list of only unresolvable cards is refused rather than
-    /// read as results.
+    /// A card whose slug carries no decimal tail cannot be resolved,
+    /// and the listing is refused naming that card: the cards around
+    /// it do not stand in for it, since the entry the user searched
+    /// for may be the one that cannot be resolved. A list whose slugs
+    /// all carry a tail comes back in order.
     #[test]
-    fn cards_whose_slug_carries_no_id_never_come_back(
+    fn a_card_whose_slug_carries_no_id_refuses_the_listing_naming_it(
         cards in proptest::collection::vec(
             (
                 "[a-z]{1,6}(-[a-z]{1,6}){0,3}",
@@ -148,11 +149,14 @@ proptest::proptest! {
                 })
             })
             .collect();
-        if expected.is_empty() {
-            let refused = matches!(parse_search(&page), Err(AniError::ParseFailed { .. }));
-            proptest::prop_assert!(refused, "a list of only unresolvable cards is a changed shape");
-        } else {
-            proptest::prop_assert_eq!(parse_search(&page).expect("search page"), expected);
+        let unresolvable = cards.iter().position(|(_, id, _, _)| id.is_none());
+        match (unresolvable, parse_search(&page)) {
+            (Some(at), Err(AniError::ParseFailed { detail })) => {
+                prop_assert!(detail.contains(&format!("card {}", at + 1)), "{detail}");
+            }
+            (Some(_), other) => prop_assert!(false, "a list with an unresolvable card read as {other:?}"),
+            (None, Ok(hits)) => prop_assert_eq!(hits, expected),
+            (None, Err(e)) => prop_assert!(false, "a list of resolvable cards refused: {e:?}"),
         }
     }
 
@@ -244,10 +248,11 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_detail_year(&page), expected);
     }
 
-    /// A card whose title is blank never comes back, whatever its
-    /// slug; the cards with a title do, in order.
+    /// A card whose title is blank names nothing and refuses the
+    /// listing naming that card, whatever its slug; a list whose
+    /// cards all carry a title comes back in order.
     #[test]
-    fn cards_with_a_blank_title_never_come_back(
+    fn a_card_with_a_blank_title_refuses_the_listing_naming_it(
         cards in proptest::collection::vec(
             (
                 "[a-z]{1,6}(-[a-z]{1,6}){0,3}",
@@ -269,25 +274,28 @@ proptest::proptest! {
         let page = search_page_with_slugs(&with_slugs);
         let expected: Vec<String> = cards
             .iter()
-            .filter(|(_, _, title, _, _)| title.is_some())
             .map(|(words, id, _, _, _)| format!("{words}-{id}"))
             .collect();
-        match parse_search(&page) {
-            Ok(hits) => {
-                let slugs: Vec<String> = hits.iter().map(|h| h.slug.clone()).collect();
-                proptest::prop_assert_eq!(slugs, expected);
+        let blank = cards.iter().position(|(_, _, title, _, _)| title.is_none());
+        match (blank, parse_search(&page)) {
+            (Some(at), Err(AniError::ParseFailed { detail })) => {
+                prop_assert!(detail.contains(&format!("card {}", at + 1)), "{detail}");
             }
-            Err(AniError::ParseFailed { .. }) => proptest::prop_assert!(expected.is_empty(), "refused with readable cards present"),
-            Err(e) => proptest::prop_assert!(false, "unexpected error {e:?}"),
+            (Some(_), other) => prop_assert!(false, "a list with a blank-titled card read as {other:?}"),
+            (None, Ok(hits)) => {
+                let slugs: Vec<String> = hits.iter().map(|h| h.slug.clone()).collect();
+                prop_assert_eq!(slugs, expected);
+            }
+            (None, Err(e)) => prop_assert!(false, "a list of titled cards refused: {e:?}"),
         }
     }
 
     /// A card's identity is one anchor's href and title together,
     /// in whichever order the site writes them; a card whose detail
     /// block spreads the two over different anchors is unreadable
-    /// and never comes back as a hit stitched from both. The
-    /// readable cards come back in order, and a list of only
-    /// unreadable ones is refused.
+    /// and never comes back as a hit stitched from both. It refuses
+    /// the listing naming that card instead, and a list whose cards
+    /// each keep both on one anchor comes back in order.
     #[test]
     fn a_hit_is_never_stitched_from_two_anchors(
         cards in proptest::collection::vec(
@@ -318,17 +326,80 @@ proptest::proptest! {
         page.push_str("</div></body></html>");
         let expected: Vec<BrowseHit> = cards
             .iter()
-            .filter(|(_, _, _, _, shape)| matches!(*shape, "href-title" | "title-href"))
             .map(|(words, id, title, kind, _)| BrowseHit {
                 slug: format!("{words}-{id}"),
                 title: title.clone(),
                 kind: Some(kind.clone()),
             })
             .collect();
-        match parse_search(&page) {
-            Ok(hits) => proptest::prop_assert_eq!(hits, expected),
-            Err(AniError::ParseFailed { .. }) => proptest::prop_assert!(expected.is_empty(), "refused with readable cards present"),
-            Err(e) => proptest::prop_assert!(false, "unexpected error {e:?}"),
+        let spread = cards
+            .iter()
+            .position(|(_, _, _, _, shape)| !matches!(*shape, "href-title" | "title-href"));
+        match (spread, parse_search(&page)) {
+            (Some(at), Err(AniError::ParseFailed { detail })) => {
+                prop_assert!(detail.contains(&format!("card {}", at + 1)), "{detail}");
+            }
+            (Some(_), other) => prop_assert!(false, "a list with a card spread over two anchors read as {other:?}"),
+            (None, Ok(hits)) => prop_assert_eq!(hits, expected),
+            (None, Err(e)) => prop_assert!(false, "a list of whole cards refused: {e:?}"),
+        }
+    }
+
+    /// The listing is all of its cards or none of it. One card the
+    /// reader cannot read — its heading anchor's href gone, or its
+    /// title — refuses the whole listing, naming that card's place in
+    /// it, however many readable cards surround it: a shorter list
+    /// still reads as an answer, and the pick, with no episode count
+    /// or year to weigh, takes the first card that survived. With no
+    /// card corrupted every card is read, in the site's order.
+    #[test]
+    fn one_unreadable_card_refuses_the_listing_naming_its_place(
+        cards in proptest::collection::vec(
+            (
+                "[a-z0-9]{1,6}(-[a-z0-9]{1,6}){0,3}",
+                1u64..1_000_000,
+                "[A-Za-z0-9,:!&'\"<>-][A-Za-z0-9 ,:!&'\"<>-]{0,29}",
+                "(TV|Movie|OVA|ONA|Special)",
+            ),
+            1..6,
+        ),
+        corrupted in proptest::option::of((any::<proptest::sample::Index>(), proptest::bool::ANY)),
+    ) {
+        prop_assume!(!cards.iter().any(|(words, _, title, _)| words.contains("flw-item") || title.contains("flw-item")));
+        let (at, drops_href) = corrupted.map_or((None, false), |(index, drops_href)| {
+            (Some(index.index(cards.len())), drops_href)
+        });
+        let mut page = String::from(r#"<html><body><div class="film_list-wrap">"#);
+        for (position, (words, id, title, kind)) in cards.iter().enumerate() {
+            let slug = format!("{words}-{id}");
+            let title = encode_title(title);
+            let heading = match (at == Some(position), drops_href) {
+                (true, true) => format!(r#"<a title="{title}" class="dynamic-name">x</a>"#),
+                (true, false) => format!(r#"<a href="https://hianime.at/{slug}" class="dynamic-name">x</a>"#),
+                (false, _) => format!(r#"<a href="https://hianime.at/{slug}" title="{title}" class="dynamic-name">x</a>"#),
+            };
+            page.push_str(&format!(
+                r#"<div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster-{position}" class="film-poster-ahref" title="Poster"></a></div><div class="film-detail"><h3 class="film-name">{heading}</h3><div class="fd-infor"><span class="fdi-item">{kind}</span></div></div></div>"#
+            ));
+        }
+        page.push_str(r#"</div><div id="main-sidebar"></div></body></html>"#);
+        match (at, parse_search(&page)) {
+            (Some(at), Err(AniError::ParseFailed { detail })) => {
+                prop_assert!(detail.contains(&format!("card {}", at + 1)), "{detail}");
+            }
+            (Some(_), other) => prop_assert!(false, "a list with an unreadable card read as {other:?}"),
+            (None, Ok(hits)) => {
+                let expected: Vec<BrowseHit> = cards
+                    .iter()
+                    .map(|(words, id, title, kind)| BrowseHit {
+                        slug: format!("{words}-{id}"),
+                        title: title.clone(),
+                        kind: Some(kind.clone()),
+                    })
+                    .collect();
+                prop_assert_eq!(hits, expected);
+            }
+            (None, Err(e)) => prop_assert!(false, "a list of readable cards refused: {e:?}"),
         }
     }
 
