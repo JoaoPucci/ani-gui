@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use super::embed::EmbedPayload;
 use crate::error::{AniError, Result};
-use crate::scraper::provider::SubtitleTrack;
+use crate::scraper::provider::{SubtitleTrack, SUBTITLE_URL_CAP};
 
 /// The element whose `data-id` is the media id.
 const PLAYER_ELEMENT: &str = "id=\"megaplay-player\"";
@@ -138,7 +138,10 @@ where
 /// client, never an episode without a stream. Tracks that are not
 /// captions, or whose file the transport cannot fetch, are left out,
 /// and so are rows the reader cannot read at all
-/// ([`readable_tracks`]).
+/// ([`readable_tracks`]) and rows whose file runs longer than any a
+/// CDN signs ([`SUBTITLE_URL_CAP`]): the hand-offs put every track
+/// URL on the player's command line, and one such row would fail
+/// the hand-off for an episode whose stream is fine.
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] for a body without a fetchable source.
@@ -159,7 +162,20 @@ pub fn parse_sources(json: &str) -> Result<EmbedPayload> {
     let subtitles = wire
         .tracks
         .into_iter()
-        .filter(|t| is_captions(&t.kind) && is_fetchable(&t.file))
+        .filter(|t| {
+            if !is_captions(&t.kind) || !is_fetchable(&t.file) {
+                return false;
+            }
+            let bounded = t.file.len() <= SUBTITLE_URL_CAP;
+            if !bounded {
+                tracing::debug!(
+                    label = %t.label,
+                    len = t.file.len(),
+                    "megaplay sources: subtitle file longer than any a CDN signs, row dropped"
+                );
+            }
+            bounded
+        })
         .map(|t| SubtitleTrack {
             lang: lang_of_track(&t.file, &t.label),
             label: t.label,
