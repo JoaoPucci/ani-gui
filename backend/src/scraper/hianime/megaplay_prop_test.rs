@@ -2,6 +2,7 @@
 
 use super::megaplay::{lang_of_track, media_id, parse_sources, sources_url};
 use crate::error::AniError;
+use crate::scraper::provider::SUBTITLE_URL_CAP;
 use proptest::prelude::*;
 
 /// The player element with its attributes in any order, the media id
@@ -127,6 +128,41 @@ proptest! {
             .map(|t| (t.lang.clone(), t.label.clone(), t.default))
             .collect();
         prop_assert_eq!(got, expected);
+    }
+
+    /// Every track the response yields has a file within the bound
+    /// the hand-offs need, and a file at the bound is kept while one
+    /// a byte past it is not: the bound is on the URL as the
+    /// response names it, in bytes, and the rows that survive keep
+    /// their order.
+    #[test]
+    fn every_kept_track_file_is_within_the_hand_off_bound(
+        master in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}/master\\.m3u8",
+        lens in proptest::collection::vec(1usize..2 * SUBTITLE_URL_CAP, 0..6),
+    ) {
+        let prefix = "https://c.example/subs/";
+        let files: Vec<String> = lens
+            .iter()
+            .map(|&len| format!("{prefix}{}", "a".repeat(len.max(prefix.len() + 1) - prefix.len())))
+            .collect();
+        let listed: Vec<String> = files
+            .iter()
+            .map(|file| {
+                serde_json::json!({"file": file, "label": "X", "kind": "captions", "default": false})
+                    .to_string()
+            })
+            .collect();
+        let json = format!(
+            r#"{{"sources":{{"file":"{master}"}},"tracks":[{}]}}"#,
+            listed.join(",")
+        );
+        let payload = parse_sources(&json).expect("the response");
+        let kept: Vec<&String> = files.iter().filter(|f| f.len() <= SUBTITLE_URL_CAP).collect();
+        prop_assert_eq!(payload.subtitles.len(), kept.len());
+        for (got, want) in payload.subtitles.iter().zip(kept) {
+            prop_assert!(got.url.len() <= SUBTITLE_URL_CAP, "{} bytes rode into the hand-offs", got.url.len());
+            prop_assert_eq!(&got.url, want);
+        }
     }
 
     /// Rows of another shape beside readable ones — `null`, a
