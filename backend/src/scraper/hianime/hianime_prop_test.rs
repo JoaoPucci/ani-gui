@@ -1558,15 +1558,18 @@ proptest! {
 // ── a bounded server's share of the attempt's remainder ─────────────
 
 proptest! {
-    /// Told the attempt's remainder, a bounded server's cap is the
-    /// larger of two shares, and never more than the fixed bound:
-    /// its share of what remains once one chain's worth — the
-    /// reserve — is held back for the last server, and the share it
-    /// would have at the reserve itself, where what is held back is
-    /// split evenly among the servers ahead and the last alike.
-    /// With no remainder known, the fixed bound; with no server
-    /// ahead of the last (the last already behind), the remainder
-    /// itself under the bound, nothing held back.
+    /// Told what the attempt had left where the walk began and how
+    /// many servers ran ahead of the remainder's there, a walk caps
+    /// a bounded server at the larger of two windows, and never at
+    /// more than the fixed bound or than what the attempt has left
+    /// when it asks: the server's share of what remains once one
+    /// chain's worth — the reserve — is held back for the last
+    /// server, and the floor the walk set out with, which is the
+    /// window a server ahead has where what remains is the reserve
+    /// exactly, that reserve split evenly among the servers ahead
+    /// and the last alike. With no remainder known, the fixed bound;
+    /// with no server ahead of the last (the last already behind),
+    /// the remainder itself under the bound, nothing held back.
     ///
     /// The reserve gives way before a share does, and by as much as
     /// it has to. Below the reserve there is nothing left over to
@@ -1580,25 +1583,48 @@ proptest! {
     /// share of what is over has grown to that same window and
     /// governs alone, and the reserve is whole again: what the
     /// bounded servers spend between them never reaches into it.
+    ///
+    /// The floor is the walk's for the whole walk. Worked out again
+    /// against what a later server finds — less of the attempt, and
+    /// fewer servers to split the reserve with — it climbs, and a
+    /// server that runs later is handed a wider window than the one
+    /// before it had out of more. The share is what is read afresh,
+    /// so a server that finished early leaves what it did not spend
+    /// to the servers after it.
     #[test]
     fn a_bounded_servers_cap_is_its_share_of_the_remainder_after_the_reserve(
         bound_ms in 1u64..10_000,
         reserve_ms in 0u64..10_000,
-        remaining_ms in proptest::option::of(0u64..60_000),
-        ahead in 0usize..8,
+        start_ms in proptest::option::of(0u64..60_000),
+        ahead_at_start in 0usize..8,
+        spent_ms in 0u64..60_000,
+        run_down in 0usize..8,
     ) {
         let ms = std::time::Duration::from_millis;
-        let cap = ajax::server_cap(ms(bound_ms), ms(reserve_ms), remaining_ms.map(ms), ahead);
+        let caps = ajax::ServerCaps::for_walk(
+            ms(bound_ms),
+            ms(reserve_ms),
+            start_ms.map(ms),
+            ahead_at_start,
+        );
+        // Where the walk stands at one of its servers: never more of
+        // the attempt left than it set out with, never more servers
+        // ahead of the remainder's than it counted there.
+        let ahead = ahead_at_start.saturating_sub(run_down);
+        let remaining_ms = start_ms.map(|s| s.saturating_sub(spent_ms));
+        let cap = caps.cap(remaining_ms.map(ms), ahead);
         prop_assert!(cap <= ms(bound_ms));
         match remaining_ms {
             None => prop_assert_eq!(cap, ms(bound_ms)),
             Some(r) if ahead == 0 => prop_assert_eq!(cap, ms(bound_ms).min(ms(r))),
             Some(r) => {
                 let ahead32 = u32::try_from(ahead).unwrap();
+                let counted = u32::try_from(ahead_at_start).unwrap();
+                let started_with = ms(start_ms.expect("a walk told a remainder began with one"));
+                let floor = started_with.min(ms(reserve_ms)) / (counted + 1);
                 let free = r.saturating_sub(reserve_ms);
                 let after_reserve = ms(free) / ahead32;
-                let at_boundary = ms(r.min(reserve_ms)) / (ahead32 + 1);
-                prop_assert_eq!(cap, ms(bound_ms).min(after_reserve.max(at_boundary)));
+                prop_assert_eq!(cap, ms(bound_ms).min(ms(r)).min(after_reserve.max(floor)));
                 prop_assert!(cap <= ms(r), "{cap:?} of the {r}ms the attempt has");
                 if r > 0 {
                     prop_assert!(
@@ -1607,18 +1633,17 @@ proptest! {
                          with {r}ms of the attempt left"
                     );
                 }
-                // Never narrower than the window the same server had
-                // at the reserve boundary, whatever is over it.
+                // Never narrower than the walk's floor, whatever is
+                // over the reserve when this server is asked.
                 prop_assert!(
-                    cap >= ms(bound_ms).min(at_boundary),
-                    "{cap:?} is narrower than the {at_boundary:?} the same server \
-                     had with only the reserve left"
+                    cap >= ms(bound_ms).min(ms(r)).min(floor),
+                    "{cap:?} is narrower than the {floor:?} the walk set out with"
                 );
                 if free >= bound_ms * ahead as u64 {
                     prop_assert_eq!(cap, ms(bound_ms));
                 }
                 let spent = cap * ahead32;
-                if after_reserve >= at_boundary {
+                if after_reserve >= floor {
                     // Above the band: what the bounded servers can
                     // spend between them never reaches into the
                     // reserve, so the server that runs on the
@@ -1631,10 +1656,17 @@ proptest! {
                         "the last server was left {:?} of a {reserve_ms}ms reserve",
                         ms(r) - spent,
                     );
-                } else {
+                } else if ms(r) >= floor * (ahead32 + 1) {
                     // In the band, and below it: the reserve is what
                     // gives way, and the remainder's server is still
-                    // left no less than any one server ahead of it.
+                    // left no less than any one server ahead of it —
+                    // which the floor affords for as long as the
+                    // attempt still holds a window for each server
+                    // ahead and one for the remainder's. A walk
+                    // never asks below that: it funded the floor out
+                    // of what it had at its first server, and the
+                    // windows it hands out cannot spend past it (the
+                    // walk-long property below).
                     prop_assert!(spent <= ms(r) - cap, "{spent:?} of {r}ms");
                 }
             }
@@ -1657,18 +1689,81 @@ proptest! {
     fn a_bounded_servers_cap_never_narrows_as_the_attempt_gains_time(
         bound_ms in 1u64..10_000,
         reserve_ms in 0u64..10_000,
+        start_ms in 0u64..60_000,
         remaining_ms in 0u64..60_000,
         gained_ms in 0u64..60_000,
         ahead in 0usize..8,
     ) {
         let ms = std::time::Duration::from_millis;
-        let cap = |r: u64| ajax::server_cap(ms(bound_ms), ms(reserve_ms), Some(ms(r)), ahead);
+        let caps = ajax::ServerCaps::for_walk(ms(bound_ms), ms(reserve_ms), Some(ms(start_ms)), ahead);
+        let cap = |r: u64| caps.cap(Some(ms(r)), ahead);
         let less = cap(remaining_ms);
         let more = cap(remaining_ms + gained_ms);
         prop_assert!(
             more >= less,
             "{gained_ms}ms more of the attempt cut a server's cap from {less:?} to {more:?}"
         );
+    }
+}
+
+proptest! {
+    /// And the floor, being the walk's, is one the walk can afford
+    /// all the way down its servers. Every window it hands out
+    /// leaves the server that runs on the remainder either the
+    /// reserve entire or a window as wide as the one just spent, so
+    /// no server ahead is funded by cutting the last one short; and
+    /// where the attempt set out able to fund the reserve and a
+    /// share for each server ahead — where what was over the reserve
+    /// at the first server, split among them, already reached the
+    /// floor — the servers ahead never touch the reserve at all,
+    /// however each of them spends what it was given.
+    ///
+    /// That is the guarantee a floor read afresh for each server
+    /// loses. Two servers ahead and a walk holding the reserve and
+    /// two shares of it: the first takes its share, and the second,
+    /// asked against the reserve split two ways rather than three,
+    /// takes more than its own — so the chain behind them is
+    /// cancelled on an attempt that had funded it.
+    #[test]
+    fn a_walk_leaves_the_remainders_server_the_reserve_it_set_out_able_to_fund(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        start_ms in 0u64..60_000,
+        ahead_at_start in 1usize..8,
+        stalls in proptest::collection::vec(0u64..60_000, 8),
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let reserve = ms(reserve_ms);
+        let start = ms(start_ms);
+        let counted = u32::try_from(ahead_at_start).unwrap();
+        let caps = ajax::ServerCaps::for_walk(ms(bound_ms), reserve, Some(start), ahead_at_start);
+        let floor = start.min(reserve) / (counted + 1);
+        // An attempt that can fund the reserve and a window apiece:
+        // what is over the reserve, split among the servers ahead,
+        // reaches the floor under those windows.
+        let funded = start.saturating_sub(reserve) / counted >= floor;
+        let mut remaining = start;
+        for (i, stall) in stalls.iter().take(ahead_at_start).enumerate() {
+            let ahead = ahead_at_start - i;
+            let ahead32 = u32::try_from(ahead).unwrap();
+            let cap = caps.cap(Some(remaining), ahead);
+            prop_assert!(cap <= remaining, "{cap:?} of the {remaining:?} left");
+            prop_assert!(
+                remaining.saturating_sub(cap * ahead32) >= reserve
+                    || cap * (ahead32 + 1) <= remaining,
+                "with {remaining:?} left and {ahead} ahead, a window of {cap:?} leaves the \
+                 remainder's server neither the {reserve:?} reserve nor a window of its own"
+            );
+            // A server spends its window or answers inside it.
+            remaining -= cap.min(ms(*stall));
+        }
+        if funded {
+            prop_assert!(
+                remaining >= reserve,
+                "the servers ahead left {remaining:?} of a {reserve:?} reserve the attempt \
+                 had funded at its first server"
+            );
+        }
     }
 }
 
