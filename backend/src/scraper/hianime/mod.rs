@@ -75,10 +75,13 @@ pub const HIANIME_BASE: &str = "https://hianime.at";
 /// bound: the chain is four requests deep, and a bound spread over
 /// four of them is less than a loaded host takes to answer. What is
 /// held back is a share of the attempt and never the whole of what
-/// is left of it: when the attempt cannot fund the chain's worth and
-/// a share for each server ahead, what is left is split among them
-/// and the last together, so no bounded server is skipped for want
-/// of a window while the attempt still runs.
+/// is left of it: a bounded server keeps at least the share it would
+/// have if what remained were the chain's worth exactly, that worth
+/// split among the servers ahead and the last together. When the
+/// attempt cannot fund both that share and the chain's worth behind
+/// it, the chain's worth is what gives way, so no bounded server is
+/// skipped — or cut off a moment into its chain — for want of a
+/// window while the attempt still runs.
 pub const SERVER_ATTEMPT_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
 
 /// The hianime client: search, episode listing, and stream-URL
@@ -426,18 +429,30 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // attempt on the last server the walk had, every request it
         // made having been answered.
         //
-        // The reserve gives way before a share does. What the walk
-        // has left is the attempt less the search, the candidate and
-        // the listings, and a slow site can leave it the reserve and
-        // nothing over; the reserve held back whole there is the
-        // whole remainder, and every server ahead of the remainder's
-        // is capped at nothing and stepped over unasked while the
-        // attempt still has time to spend — a healthy server not
+        // The reserve gives way before a share does, and by as much
+        // as it has to. What the walk has left is the attempt less
+        // the search, the candidate and the listings, and a slow
+        // site can leave it the reserve and nothing over — or the
+        // reserve and a millisecond. Held back whole in either case,
+        // the reserve is the whole remainder, or all but that
+        // millisecond of it, and a server ahead of the remainder's
+        // is capped at nothing or at the millisecond: stepped over
+        // unasked, or cut off a request into a chain of four, while
+        // the attempt still has time to spend — a healthy server not
         // tried, and the episode lost when the remainder's server is
-        // the dead one. So when what remains cannot fund the reserve
-        // and a share apiece, it is split among the servers ahead
-        // and the remainder's server alike, each taking the same
-        // share ([`server_cap`]).
+        // the dead one. The second is the worse of the two for being
+        // the narrower window: more of the attempt left, and less of
+        // it given to the same healthy server.
+        //
+        // So a bounded server keeps at least the share it would have
+        // if what remained were the reserve exactly — the reserve
+        // split evenly among the servers ahead and the remainder's
+        // server alike. Below the reserve that split is the whole
+        // rule. Just above it the split still governs and the
+        // reserve shrinks by what the servers ahead are owed, no
+        // more. Once what is over the reserve has grown back to that
+        // share, the reserve is held back whole again and the share
+        // is what is over, as it was ([`server_cap`]).
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         let ordered = servers_for(&servers, mode);
         let unbounded = remainder_index(&ordered);
