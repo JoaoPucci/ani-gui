@@ -1347,8 +1347,12 @@ const BRIEF_HOST: std::time::Duration = std::time::Duration::from_millis(40);
 /// answers. A chain of four outlasts the per-server budget the
 /// stalled-host tests give a server, while no single request comes
 /// near it — a healthy host under load, not one that has stopped
-/// answering.
-const CHAIN_STEP: std::time::Duration = std::time::Duration::from_millis(30);
+/// answering. Four of them come to most of a reserve: more than two
+/// stalled servers leave behind when the floor under their windows
+/// is worked out afresh for each of them, and less than the reserve
+/// the attempt held back, so a chain of this pace is what tells the
+/// two rules apart.
+const CHAIN_STEP: std::time::Duration = std::time::Duration::from_millis(40);
 
 impl Site {
     fn new() -> Self {
@@ -3138,7 +3142,8 @@ fn a_server_ahead_of_the_remainder_keeps_a_window_when_only_the_reserve_is_left(
     let reserve = chain_reserve(bound);
     for ahead in 1..4usize {
         for remaining in [std::time::Duration::from_millis(1), reserve / 2, reserve] {
-            let cap = server_cap(bound, reserve, Some(remaining), ahead);
+            let cap = ServerCaps::for_walk(bound, reserve, Some(remaining), ahead)
+                .cap(Some(remaining), ahead);
             assert!(
                 !cap.is_zero(),
                 "a healthy server was capped at nothing with {remaining:?} of the \
@@ -3169,19 +3174,22 @@ fn a_server_ahead_of_the_remainder_keeps_a_window_when_only_the_reserve_is_left(
 /// had and did not take, the more so when the server that runs on
 /// the remainder is the dead one. The share is monotone in what
 /// remains instead: from the reserve upward a server ahead keeps no
-/// less than the share it had at the reserve itself.
+/// less than the share it had at the reserve itself. Each of these
+/// is a walk of its own, asked at its first server, where what the
+/// attempt has left is what it set out with.
 #[test]
 fn a_bounded_servers_share_does_not_collapse_just_above_the_reserve() {
     let bound = SERVER_ATTEMPT_BUDGET;
     let reserve = chain_reserve(bound);
-    let at_reserve = server_cap(bound, reserve, Some(reserve), 1);
+    let at_reserve = ServerCaps::for_walk(bound, reserve, Some(reserve), 1).cap(Some(reserve), 1);
     assert_eq!(
         at_reserve,
         reserve / 2,
         "with only the reserve left, the server ahead and the remainder's split it evenly"
     );
     let sliver = std::time::Duration::from_millis(1);
-    let just_over = server_cap(bound, reserve, Some(reserve + sliver), 1);
+    let just_over = ServerCaps::for_walk(bound, reserve, Some(reserve + sliver), 1)
+        .cap(Some(reserve + sliver), 1);
     assert!(
         just_over >= at_reserve,
         "a millisecond more of the attempt cut the server ahead from {at_reserve:?} \
@@ -3202,7 +3210,8 @@ fn the_reserve_is_whole_again_once_the_share_after_it_reaches_the_boundary_share
     let reserve = chain_reserve(bound);
     let ahead = 1u32;
     let whole_from = reserve * (2 * ahead + 1) / (ahead + 1);
-    let cap = server_cap(bound, reserve, Some(whole_from), ahead as usize);
+    let cap = ServerCaps::for_walk(bound, reserve, Some(whole_from), ahead as usize)
+        .cap(Some(whole_from), ahead as usize);
     assert_eq!(
         cap,
         (whole_from - reserve) / ahead,
@@ -3212,6 +3221,55 @@ fn the_reserve_is_whole_again_once_the_share_after_it_reaches_the_boundary_share
     assert!(
         left >= reserve,
         "the servers ahead reached into the reserve: {left:?} left of {reserve:?}"
+    );
+}
+
+/// The floor under those windows belongs to the walk, not to the
+/// server being asked. It is the window a server ahead has where
+/// what remains is the reserve exactly — the reserve split among
+/// the servers ahead and the remainder's server alike — and the
+/// walk works it out once, before it asks anything, out of what the
+/// attempt had left and how many servers ran ahead of the
+/// remainder's there.
+///
+/// Worked out again for each server it climbs as the servers ahead
+/// run out: the same reserve over one server and the remainder's is
+/// half of it where over two and the remainder's it was a third. A
+/// second stalled server is then handed a wider window than the
+/// first had, out of an attempt with less left in it, and the pair
+/// spend between them the reserve the attempt had set aside and
+/// could afford. Held to the walk's floor, the second server keeps
+/// what its own remainder affords — no wider than the first — and
+/// the chain behind them finds the reserve whole.
+#[test]
+fn the_floor_under_a_bounded_servers_share_is_the_one_the_walk_set_out_with() {
+    let bound = SERVER_ATTEMPT_BUDGET;
+    let reserve = chain_reserve(bound);
+    // The attempt has the reserve and a share for each of the two
+    // servers ahead: wider than the walk's floor, the reserve over
+    // three; narrower than the reserve over two, which is the floor
+    // the second server meets when the floor is worked out again.
+    let share = reserve * 2 / 5;
+    let start = reserve + share * 2;
+    let caps = ServerCaps::for_walk(bound, reserve, Some(start), 2);
+    let first = caps.cap(Some(start), 2);
+    assert_eq!(
+        first, share,
+        "the first server's share of what the attempt has over the reserve"
+    );
+    // The first server stalls out its whole window; the walk reads
+    // what is left afresh for the second, one fewer server ahead.
+    let left = start - first;
+    let second = caps.cap(Some(left), 1);
+    assert!(
+        second <= first,
+        "the second server was handed {second:?} where the first had {first:?}, \
+         out of an attempt with less left in it"
+    );
+    assert!(
+        left - second >= reserve,
+        "the two servers ahead reached {:?} into the {reserve:?} the attempt had funded",
+        reserve.saturating_sub(left - second)
     );
 }
 
@@ -3387,12 +3445,12 @@ async fn stalled_servers_share_the_attempts_remainder_so_the_last_server_is_stil
 /// transport's own wait — outlasts it, and the attempt cancels the
 /// last server the walk had left. The reserve is held back whole
 /// once the attempt can fund it and the window each server ahead
-/// keeps besides, and the walk reads what is left afresh before
-/// each of them, so for the two stalled servers here that is twice
-/// the reserve. Given it, the stalled pair spend their shares of
-/// what is over and the chain — slower than one bound and well
-/// inside the reserve — is served. Below that the reserve is what
-/// gives way, and the two ahead keep their windows out of it.
+/// keeps besides — with the two stalled servers here, the reserve
+/// and two thirds of it — and the deadline is twice the reserve,
+/// comfortably past that. Given it, the stalled pair spend their
+/// shares of what is over and the chain — slower than one bound and
+/// well inside the reserve — is served. Below it the reserve is
+/// what gives way, and the two ahead keep their windows out of it.
 #[tokio::test(start_paused = true)]
 async fn the_reserve_covers_a_whole_chain_so_a_loaded_last_server_is_served() {
     const BUDGET_MS: u64 = 100;
@@ -3403,6 +3461,42 @@ async fn the_reserve_covers_a_whole_chain_so_a_loaded_last_server_is_served() {
     let stream = tokio::time::timeout_at(deadline, c.stream_for(21469, "sub", "720"))
         .await
         .expect("the stalled servers left the last one its chain's worth of the attempt")
+        .expect("served");
+    assert_eq!(stream.url, "https://mp.example/v/paced/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+}
+
+/// The same listing under an attempt that can fund the reserve and
+/// a window for each of the two servers ahead of it. The walk works
+/// out the floor under those windows where it begins — the reserve
+/// split among the two servers ahead and the remainder's server
+/// alike — and reads what the attempt has left afresh before each
+/// server, so the first spends its share of what is over the
+/// reserve and the second, with less left and one fewer server
+/// ahead, spends the same again. The loaded chain behind them wants
+/// the whole reserve and finds it.
+///
+/// Worked out again for the second server, that floor is the
+/// reserve split two ways where it was split three: a wider window
+/// than the first server had, out of an attempt with less left in
+/// it, and the pair between them spend enough of the reserve to
+/// cancel a chain with nothing wrong with it. What is held back is
+/// held back for the walk, not re-promised to every server that
+/// asks.
+#[tokio::test(start_paused = true)]
+async fn a_second_stalled_server_keeps_the_reserve_the_attempt_had_funded() {
+    const BUDGET_MS: u64 = 100;
+    let c = client_with_server_budget(BUDGET_MS);
+    let reserve = chain_reserve(std::time::Duration::from_millis(BUDGET_MS));
+    // A share wider than the floor the walk sets out with (the
+    // reserve over three) and narrower than the one a second server
+    // is handed when it is worked out again (the reserve over two).
+    let share = reserve * 2 / 5;
+    let deadline = tokio::time::Instant::now() + reserve + share * 2;
+    c.bound_attempt(Some(deadline));
+    let stream = tokio::time::timeout_at(deadline, c.stream_for(21469, "sub", "720"))
+        .await
+        .expect("the second stalled server spent what was held back for the chain behind it")
         .expect("served");
     assert_eq!(stream.url, "https://mp.example/v/paced/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
