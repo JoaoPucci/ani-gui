@@ -26,7 +26,7 @@ pub mod megaplay;
 pub mod parse;
 pub use ajax::{
     chain_reserve, parse_episode_list, parse_server_listing, parse_servers, remainder_index,
-    server_cap, servers_for, ServerEmbed, ServerListing, CHAIN_REQUESTS,
+    servers_for, ServerCaps, ServerEmbed, ServerListing, CHAIN_REQUESTS,
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
@@ -69,7 +69,7 @@ pub const HIANIME_BASE: &str = "https://hianime.at";
 /// bound is the most a bounded server gets, not the least: told the
 /// attempt's deadline, the walk gives each bounded server its share
 /// of what the attempt has left once a whole chain's worth is held
-/// back for the last ([`ajax::server_cap`],
+/// back for the last ([`ajax::ServerCaps`],
 /// [`ajax::chain_reserve`]), so stalled servers cannot spend the
 /// remainder that last server runs on. A chain's worth and not this
 /// bound: the chain is four requests deep, and a bound spread over
@@ -81,7 +81,11 @@ pub const HIANIME_BASE: &str = "https://hianime.at";
 /// attempt cannot fund both that share and the chain's worth behind
 /// it, the chain's worth is what gives way, so no bounded server is
 /// skipped — or cut off a moment into its chain — for want of a
-/// window while the attempt still runs.
+/// window while the attempt still runs. That floor under the shares
+/// is settled at the walk's first server and holds for the walk: a
+/// floor worked out again for each server climbs as the servers
+/// ahead run out, and the last of them would then be handed a wider
+/// window than the first had out of less.
 pub const SERVER_ATTEMPT_BUDGET: std::time::Duration = std::time::Duration::from_secs(6);
 
 /// The hianime client: search, episode listing, and stream-URL
@@ -406,7 +410,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // the client never read takes no time from a named one.
         //
         // The bound is [`SERVER_ATTEMPT_BUDGET`] at most, and less
-        // when the attempt's deadline says so ([`server_cap`]): the
+        // when the attempt's deadline says so ([`ServerCaps`]): the
         // attempt above this client bounds the search, the candidate,
         // the listings and the servers together, and part of it is
         // spent before the first server is asked, so a fixed bound per
@@ -452,12 +456,35 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // reserve shrinks by what the servers ahead are owed, no
         // more. Once what is over the reserve has grown back to that
         // share, the reserve is held back whole again and the share
-        // is what is over, as it was ([`server_cap`]).
+        // is what is over, as it was ([`ServerCaps`]).
+        //
+        // That floor is worked out once, here, out of what the
+        // attempt has left before the first server is asked and how
+        // many servers run ahead of the remainder's. What remains
+        // and what is still ahead are read afresh for each server,
+        // so a server that answered early leaves what it did not
+        // spend to the ones behind it; the floor under those shares
+        // is not, because it climbs when it is. The reserve split
+        // with one server ahead and the remainder's is half of it
+        // where, with two ahead and the remainder's, it was a third,
+        // so the second of two stalled servers would be handed a
+        // wider window than the first had out of an attempt with
+        // less left in it — and the pair would spend between them a
+        // reserve this walk had set aside and could afford, leaving
+        // a chain that was answering to be cancelled with the
+        // attempt.
         let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
         let ordered = servers_for(&servers, mode);
         let unbounded = remainder_index(&ordered);
         let deadline = *self.attempt_deadline.lock().expect("attempt deadline");
-        let reserve = chain_reserve(self.server_budget);
+        let remaining =
+            || deadline.map(|at| at.saturating_duration_since(tokio::time::Instant::now()));
+        let caps = ServerCaps::for_walk(
+            self.server_budget,
+            chain_reserve(self.server_budget),
+            remaining(),
+            unbounded.unwrap_or(0),
+        );
         for (i, server) in ordered.into_iter().enumerate() {
             // A page is judged by the host that served it, which is
             // not always the host the listing named: the transport
@@ -480,10 +507,8 @@ impl<F: Fetch> Provider for HianimeClient<F> {
             let (outcome, served_by) = if unbounded == Some(i) {
                 chain.await
             } else {
-                let remaining =
-                    deadline.map(|at| at.saturating_duration_since(tokio::time::Instant::now()));
                 let ahead = unbounded.map_or(0, |u| u.saturating_sub(i));
-                let cap = server_cap(self.server_budget, reserve, remaining, ahead);
+                let cap = caps.cap(remaining(), ahead);
                 match tokio::time::timeout(cap, chain).await {
                     Ok(outcome) => outcome,
                     // Cut off before any page answered for it, so the

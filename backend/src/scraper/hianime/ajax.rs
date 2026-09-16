@@ -602,17 +602,20 @@ pub fn chain_reserve(bound: std::time::Duration) -> std::time::Duration {
     bound * CHAIN_REQUESTS * REQUEST_ALLOWANCE_NUMERATOR / REQUEST_ALLOWANCE_DENOMINATOR
 }
 
-/// A bounded server's cap, given the attempt's `remaining` time
-/// when the walk knows it: the wider of two windows, and never
-/// wider than `bound`. One is its share of what remains once
-/// `reserve` — one chain's worth, for the server that runs on the
+/// The windows a walk gives the servers it bounds, worked out where
+/// the walk begins.
+///
+/// A bounded server's cap is the wider of two windows, and never
+/// wider than the per-server bound nor than what the attempt has
+/// left when the walk asks. One is its share of what remains once
+/// the reserve — one chain's worth, for the server that runs on the
 /// remainder ([`chain_reserve`]) — is held back, split evenly among
-/// the `ahead` bounded servers still to run before that one, this
-/// one included. The other is the window that share has where the
-/// remainder is the reserve exactly: what remains split evenly
-/// among those servers and the remainder's alike. With no remainder
-/// known the cap is the bound; with no server ahead of the
-/// remainder's (that server already behind) the cap is what
+/// the bounded servers still to run before that one, this one
+/// included. The other is the floor: the window such a share has
+/// where what remains is the reserve exactly, that reserve split
+/// evenly among the servers ahead and the remainder's alike. With
+/// no remainder known the cap is the bound; with no server ahead of
+/// the remainder's (that server already behind) the cap is what
 /// remains, under the bound, with nothing held back.
 ///
 /// The reserve gives way before a share does, and by as much as it
@@ -630,30 +633,75 @@ pub fn chain_reserve(bound: std::time::Duration) -> std::time::Duration {
 /// less — and a rule with a step down in it fails on the runs that
 /// were going well, which is the failure nobody thinks to look for.
 ///
-/// So the share a server ahead keeps never falls below the window
-/// it has at the reserve itself. Below the reserve that even split
-/// is the whole rule. In the band above it the split still governs
-/// and the reserve shrinks to fund it, by the little the servers
-/// ahead are owed and no more. From `reserve · (2·ahead + 1) /
-/// (ahead + 1)` upward the share of what is over has grown back to
-/// that window and governs alone: the reserve is held back whole
-/// again, and nothing of it is ever spent to widen a share past
-/// what the remainder itself affords.
-#[must_use]
-pub fn server_cap(
+/// So the share a server ahead keeps never falls below the floor.
+/// Below the reserve that even split is the whole rule. In the band
+/// above it the split still governs and the reserve shrinks to fund
+/// it, by the little the servers ahead are owed and no more. From
+/// `reserve · (2·ahead + 1) / (ahead + 1)` upward the share of what
+/// is over has grown back to that window and governs alone: the
+/// reserve is held back whole again, and nothing of it is ever
+/// spent to widen a share past what the remainder itself affords.
+///
+/// The floor is the walk's, and is settled once: what the attempt
+/// has left and how many servers are still ahead are read afresh
+/// before each server — so a server that answered early leaves what
+/// it did not spend to the ones after it — but what those shares
+/// may not fall below is not. Read afresh it would climb, since the
+/// reserve is split with one fewer server each time: the same
+/// reserve over one server and the remainder's is half of it where
+/// over two and the remainder's it was a third. The second of two
+/// stalled servers would then be handed a wider window than the
+/// first had out of an attempt with less left in it, and the pair
+/// would spend between them a reserve the attempt had set aside and
+/// could afford, cancelling a chain that was answering. Settled at
+/// the first server, the floor is one the walk funded there, and
+/// what the servers ahead take between them leaves the remainder's
+/// server the reserve whole wherever the attempt could fund both.
+#[derive(Clone, Copy, Debug)]
+pub struct ServerCaps {
     bound: std::time::Duration,
     reserve: std::time::Duration,
-    remaining: Option<std::time::Duration>,
-    ahead: usize,
-) -> std::time::Duration {
-    let Some(remaining) = remaining else {
-        return bound;
-    };
-    let ahead = u32::try_from(ahead).unwrap_or(u32::MAX);
-    if ahead == 0 {
-        return bound.min(remaining);
+    floor: std::time::Duration,
+}
+
+impl ServerCaps {
+    /// The windows for a walk about to ask its first server: the
+    /// per-server `bound`, the `reserve` held back for the server
+    /// that runs on the attempt's remainder, what the attempt has
+    /// left where the walk begins (`None` for a client running
+    /// outside an attempt, which keeps the bound) and how many
+    /// bounded servers run `ahead` of the remainder's there.
+    #[must_use]
+    pub fn for_walk(
+        bound: std::time::Duration,
+        reserve: std::time::Duration,
+        remaining: Option<std::time::Duration>,
+        ahead: usize,
+    ) -> Self {
+        let ahead = u32::try_from(ahead).unwrap_or(u32::MAX);
+        let floor = remaining.map_or(std::time::Duration::ZERO, |remaining| {
+            remaining.min(reserve) / ahead.saturating_add(1)
+        });
+        Self {
+            bound,
+            reserve,
+            floor,
+        }
     }
-    let after_reserve = remaining.saturating_sub(reserve) / ahead;
-    let at_reserve = remaining.min(reserve) / ahead.saturating_add(1);
-    bound.min(after_reserve.max(at_reserve))
+
+    /// One bounded server's cap, given what the attempt has left
+    /// where the walk asks for it and how many bounded servers are
+    /// still to run before the remainder's, this one included.
+    #[must_use]
+    pub fn cap(&self, remaining: Option<std::time::Duration>, ahead: usize) -> std::time::Duration {
+        let Some(remaining) = remaining else {
+            return self.bound;
+        };
+        let ahead = u32::try_from(ahead).unwrap_or(u32::MAX);
+        if ahead == 0 {
+            return self.bound.min(remaining);
+        }
+        let after_reserve = remaining.saturating_sub(self.reserve) / ahead;
+        self.bound.min(remaining).min(after_reserve.max(self.floor))
+    }
 }
