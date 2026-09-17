@@ -11,9 +11,10 @@ struct Counting {
 
 #[async_trait::async_trait]
 impl Fetch for Counting {
-    async fn fetch(&self, _req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 200,
             body: "ok".into(),
         })
@@ -147,4 +148,34 @@ async fn the_stamp_is_the_post_admission_attempt_start() {
         second >= before_second + crate::scraper::gate::BACKGROUND_INTERVAL,
         "the stamp postdates the paced admission wait, not the call"
     );
+}
+
+/// An inner transport whose responses come from somewhere other than
+/// the URL asked for — a redirect the transport followed.
+struct Landed;
+
+#[async_trait::async_trait]
+impl Fetch for Landed {
+    async fn fetch(&self, _req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        Ok(FetchResponse {
+            status: 200,
+            body: "ok".into(),
+            url: "https://landed.test/e/1".into(),
+        })
+    }
+}
+
+/// The gate decides whether a request runs, never what it found. A
+/// wrapper that rebuilt the response from the request would hand the
+/// client back the URL it asked for, and every host-keyed decision
+/// downstream — the referer a CDN checks, which hosts the client
+/// reads — would be made against a host that served nothing.
+#[tokio::test]
+async fn the_wrapper_passes_the_url_the_transfer_ended_on_through() {
+    let gated = GatedFetch::new(Landed, None, ScrapePriority::Interactive);
+    let resp = gated
+        .fetch(&FetchRequest::get("https://asked.test/e/1"))
+        .await
+        .expect("passthrough");
+    assert_eq!(resp.url, "https://landed.test/e/1");
 }

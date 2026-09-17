@@ -145,12 +145,14 @@ impl Fetch for DetailRefusingProvider {
             self.browses
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: browse_page(&[("the-show-77", "The Show")]),
             });
         }
         if url.contains("/api/frontend/anime/77/episodes") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2},{"id":703,"number":3}]}"#
                     .into(),
@@ -158,6 +160,7 @@ impl Fetch for DetailRefusingProvider {
         }
         if url.contains("/api/frontend/episode/702/languages") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/x"}]}"#
                     .into(),
@@ -165,6 +168,7 @@ impl Fetch for DetailRefusingProvider {
         }
         if url.contains("embed.example") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: "player.setup({ file: 'https://cdn.example/x/master.m3u8' });".into(),
             });
@@ -172,6 +176,7 @@ impl Fetch for DetailRefusingProvider {
         // Detail pages: the interstitial — the provider refusing this
         // client, not a page without a season link.
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 403,
             body: "Just a moment".into(),
         })
@@ -468,17 +473,20 @@ impl Fetch for ChainFate {
         if url.contains("browse?q=") {
             if url.contains("the+show") {
                 return Ok(FetchResponse {
+                    url: req.url.clone(),
                     status: 200,
                     body: browse_page(&[("the-show-77", "The Show")]),
                 });
             }
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"<div class="grid"><p>No results.</p></div>"#.to_string(),
             });
         }
         if url.contains("/api/frontend/anime/77/episodes") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2}]}"#.into(),
             });
@@ -486,6 +494,7 @@ impl Fetch for ChainFate {
         if url.contains("/api/frontend/episode/702/languages") {
             return match self.chain {
                 Some(status) => Ok(FetchResponse {
+                    url: req.url.clone(),
                     status,
                     body: String::new(),
                 }),
@@ -493,6 +502,7 @@ impl Fetch for ChainFate {
             };
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -545,11 +555,13 @@ impl Fetch for FirstAliasDies {
             }
             *self.second_search_at.lock().expect("stamp") = Some(tokio::time::Instant::now());
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"<div class="grid"><p>No results.</p></div>"#.to_string(),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -639,6 +651,7 @@ impl Fetch for DeadProbes {
         let url = req.url.as_str();
         if url.contains("browse?q=") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: browse_page(&[("dead-66", "Dead Pool")]),
             });

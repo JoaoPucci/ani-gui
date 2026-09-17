@@ -13,6 +13,7 @@ impl crate::scraper::fetch::Fetch for OnlyEpisode {
         let url = req.url.as_str();
         if url.contains(&format!("/api/frontend/episode/{}/languages", self.0)) {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"languages":[{"code":"jpn","embed_url":"https://cdn.example/e/x"}]}"#
                     .into(),
@@ -20,17 +21,20 @@ impl crate::scraper::fetch::Fetch for OnlyEpisode {
         }
         if url.contains("/e/x") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: "player.setup({ file: 'https://cdn.example/x/master.m3u8' });".into(),
             });
         }
         if url.contains("/x/master.m3u8") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: "#EXTM3U\n".into(),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })

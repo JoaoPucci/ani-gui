@@ -3,7 +3,7 @@
 //! Its own file rather than an append to `anidb_test.rs`, matching
 //! the other property modules on this branch.
 
-use super::{candidate_names, fetch_args, redacted_url, scrub_stderr, FetchRequest};
+use super::{candidate_names, fetch_args, redacted_url, scrub_stderr, split_trailer, FetchRequest};
 
 proptest::proptest! {
     /// Expansion is exactly the suffix table applied in order: one
@@ -215,5 +215,39 @@ proptest::proptest! {
             stripped.drain(*i..*i + 2);
         }
         proptest::prop_assert_eq!(stripped, fetch_args(&FetchRequest::get(url.as_str()), target.as_deref()));
+    }
+}
+
+proptest::proptest! {
+    /// Whatever the body holds — newlines, spaces, a line of its own
+    /// that reads like a trailer — the split hands it back byte for
+    /// byte, with the status and the effective URL beside it. The
+    /// trailer is the text after the LAST newline, and one space
+    /// inside it separates a status (digits) from a URL (never a
+    /// space), so neither field can swallow the other.
+    #[test]
+    fn the_trailer_split_returns_the_body_the_status_and_the_url(
+        body in "(?s).{0,120}",
+        status in "[0-9]{3}",
+        url in r"https://[a-z]{1,10}\.[a-z]{2,4}/[a-zA-Z0-9/?=&_-]{0,30}",
+    ) {
+        let text = format!("{body}\n{status} {url}");
+        proptest::prop_assert_eq!(
+            split_trailer(&text),
+            (body.as_str(), status.as_str(), url.as_str())
+        );
+    }
+
+    /// A trailer without a URL field — a transport that reports only
+    /// the status — still yields the body and the status, with no URL
+    /// rather than a lost status. This is the shape the split read
+    /// before the URL joined the trailer.
+    #[test]
+    fn a_status_only_trailer_still_yields_the_body_and_the_status(
+        body in "(?s).{0,120}",
+        status in "[0-9]{3}",
+    ) {
+        let text = format!("{body}\n{status}");
+        proptest::prop_assert_eq!(split_trailer(&text), (body.as_str(), status.as_str(), ""));
     }
 }

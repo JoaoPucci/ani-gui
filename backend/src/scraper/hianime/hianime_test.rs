@@ -1261,6 +1261,9 @@ fn ok(body: impl Into<String>) -> crate::error::Result<FetchResponse> {
     Ok(FetchResponse {
         status: 200,
         body: body.into(),
+        // Filled in by `Site::fetch`, the only place that knows
+        // where the transfer ended.
+        url: String::new(),
     })
 }
 
@@ -1268,16 +1271,45 @@ fn refused(status: u16) -> crate::error::Result<FetchResponse> {
     Ok(FetchResponse {
         status,
         body: "<html>Forbidden</html>".into(),
+        url: String::new(),
     })
+}
+
+/// Embed URLs the site answers with a redirect, and where each one
+/// lands. The transport follows redirects, so what reaches the client
+/// is the page at the destination and the destination's own URL; the
+/// listing's URL never serves a page of its own.
+const REDIRECTS: &[(&str, &str)] = &[
+    // A host the client never reads, moved onto one it does.
+    (
+        "https://megaplay.buzz/stream/s-2/8272/sub?s=moved",
+        "https://zokoanime.video/stream/mal/9/nopayload/sub",
+    ),
+    // A readable host that hands its page to another origin.
+    (
+        "https://zokoanime.video/stream/mal/9/moved/sub",
+        "https://cdn2.zokoanime.video/stream/mal/9/landed/sub",
+    ),
+];
+
+/// Where a request for `url` actually ends.
+fn lands_on(url: &str) -> &str {
+    REDIRECTS
+        .iter()
+        .find(|(from, _)| *from == url)
+        .map_or(url, |(_, to)| *to)
 }
 
 #[async_trait::async_trait]
 impl Fetch for Site {
     async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         self.log.lock().expect("log").push(req.clone());
-        let url = req.url.as_str();
+        // The routes below are pages, keyed by the URL that serves
+        // each; a redirected request is answered by its destination,
+        // and the response reports that URL as where it ended.
+        let url = lands_on(req.url.as_str());
         let ajax = header(req, "X-Requested-With") == Some("XMLHttpRequest");
-        match url {
+        let mut resp = match url {
             u if u == format!("{BASE}/search?keyword=cowboy+bebop") => ok(SEARCH_PAGE),
             u if u == format!("{BASE}/search?keyword=zqxjvwkpltmb") => ok(
                 r#"<html><body><div class="film_list film_list-grid"><p>No animes found.</p></div><div id="main-sidebar"></div></body></html>"#,
@@ -1328,6 +1360,30 @@ impl Fetch for Site {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz10Y2Ru\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"!!!\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A lone sub row on a host the client never reads, whose
+            // embed URL the site has moved onto a host it does — the
+            // page that arrives carries no payload.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21443") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz1tb3ZlZA==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A lone sub row on a readable host whose embed URL the
+            // site has moved to another origin; the page that arrives
+            // decodes.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21444") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L21vdmVkL3N1Yg==\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1598,6 +1654,17 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // Where a moved embed URL lands: another origin, serving
+            // the payload the origin it was asked for used to.
+            "https://cdn2.zokoanime.video/stream/mal/9/landed/sub" => {
+                if header(req, "Referer") == Some(&format!("{BASE}/")) {
+                    ok(format!(
+                        r#"<html><body><script>window.__P="{EMBED_BLOB}"</script></body></html>"#
+                    ))
+                } else {
+                    refused(403)
+                }
+            }
             "https://zokoanime.video/stream/mal/1/1/sub" => {
                 if header(req, "Referer") == Some(&format!("{BASE}/")) {
                     ok(format!(
@@ -1627,9 +1694,12 @@ impl Fetch for Site {
             u if u == format!("{BASE}/search?keyword=blocked") => Ok(FetchResponse {
                 status: 403,
                 body: "<title>Just a moment...</title>".into(),
+                url: String::new(),
             }),
             _ => refused(404),
-        }
+        }?;
+        resp.url = url.to_string();
+        Ok(resp)
     }
 }
 
@@ -1834,6 +1904,44 @@ async fn a_readable_host_without_the_payload_beside_an_unreadable_host_is_a_pars
         .await
         .expect_err("no page decoded");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+/// A page is judged by the host that served it. An embed URL on a
+/// host the client never reads, redirected onto a host it does,
+/// arrives from the readable host: a page without the payload marker
+/// is then that host having changed shape — a parse failure — and not
+/// the silence of an unread host the walk steps over. Keying the
+/// verdict on the listing's URL would read the redirect as an
+/// episode with no stream, which the resolver persists and the
+/// breaker counts as health.
+#[tokio::test]
+async fn a_redirected_embed_is_judged_by_the_host_that_served_the_page() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21443, "sub")
+        .await
+        .expect_err("the page that arrived carries no payload");
+    assert!(
+        matches!(&err, AniError::ParseFailed { detail } if detail.contains("zokoanime.video")),
+        "{err:?}"
+    );
+}
+
+/// The CDN checks the origin of the page the payload came from, so
+/// the referer is that page's origin — where the embed URL landed,
+/// not where the listing pointed. Sending the origin the listing
+/// named is what the CDN answers 403 to, for a playlist the client
+/// decoded perfectly well.
+#[tokio::test]
+async fn the_referer_is_the_origin_the_embed_page_came_from() {
+    let c = client();
+    let source = c.master_playlist_url(21444, "sub").await.expect("resolved");
+    assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
+    assert_eq!(
+        source.referer.as_deref(),
+        Some("https://cdn2.zokoanime.video/"),
+        "the origin that served the page, not the one the listing named"
+    );
 }
 
 #[tokio::test]

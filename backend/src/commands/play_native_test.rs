@@ -18,12 +18,14 @@ impl Fetch for EpisodesTable {
                     .map(|n| format!("{{\"id\":{},\"number\":{}}}", id * 1000 + u64::from(n), n))
                     .collect();
                 return Ok(FetchResponse {
+                    url: req.url.clone(),
                     status: 200,
                     body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
                 });
             }
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -148,11 +150,13 @@ impl Fetch for TaggedEpisodes {
                 ));
             }
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -189,11 +193,13 @@ impl Fetch for OneDeadOneAlive {
                 .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
                 .collect();
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -238,11 +244,13 @@ impl Fetch for FirstTwinDead {
                 .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
                 .collect();
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -302,11 +310,13 @@ impl Fetch for FirstSlugStale {
                 .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
                 .collect();
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -463,6 +473,7 @@ impl Fetch for TransportDeadEpisodes {
             return Err(AniError::Network);
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -498,11 +509,13 @@ impl Fetch for MixedEpisodes {
                 .map(|n| format!("{{\"id\":{},\"number\":{}}}", 22_000 + n, n))
                 .collect();
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -551,6 +564,7 @@ impl Fetch for YearTable {
                     .map(|n| format!("{{\"id\":{},\"number\":{}}}", id * 1000 + u64::from(n), n))
                     .collect();
                 return Ok(FetchResponse {
+                    url: req.url.clone(),
                     status: 200,
                     body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
                 });
@@ -558,10 +572,12 @@ impl Fetch for YearTable {
             if !url.contains("/api/") && url.ends_with(&format!("-{id}")) {
                 return match year {
                     Some(y) => Ok(FetchResponse {
+                        url: req.url.clone(),
                         status: 200,
                         body: format!("<a href=\"/browse?season=fall&year={y}\">Fall {y}</a>"),
                     }),
                     None => Ok(FetchResponse {
+                        url: req.url.clone(),
                         status: 404,
                         body: String::new(),
                     }),
@@ -569,6 +585,7 @@ impl Fetch for YearTable {
             }
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -1004,6 +1021,7 @@ impl Fetch for RefusingEpisodes {
             return Err(AniError::Upstream { status: 403 });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -1025,6 +1043,7 @@ impl Fetch for RefusingDetails {
                 .map(|n| format!("{{\"id\":{},\"number\":{}}}", 1000 + n, n))
                 .collect();
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
             });

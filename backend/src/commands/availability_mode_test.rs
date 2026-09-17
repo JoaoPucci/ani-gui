@@ -42,6 +42,7 @@ impl Fetch for &Dubbed {
         self.asked.lock().expect("asked").push(id);
         if self.dead.contains(&id) {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 404,
                 body: String::new(),
             });
@@ -52,6 +53,7 @@ impl Fetch for &Dubbed {
             r#"[{"code":"jpn","embed_url":"https://e/s"}]"#
         };
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 200,
             body: format!(r#"{{"languages":{langs}}}"#),
         })

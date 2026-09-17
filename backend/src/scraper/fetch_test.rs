@@ -518,6 +518,74 @@ fn the_child_decodes_the_content_encoding_it_advertises() {
     }
 }
 
+/// The child is asked for the URL it ended on as well as the status.
+/// curl follows redirects (`-L`), so the URL the operand named is not
+/// always the URL the response came from, and a caller that keys a
+/// referer or a per-host rule on the request is keying it on a host
+/// that never served the page.
+#[test]
+fn the_child_reports_the_url_the_transfer_ended_on() {
+    for target in [Some("chrome136"), None] {
+        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let at = args
+            .iter()
+            .position(|a| a == "-w")
+            .expect("the trailer is what carries both fields back");
+        let format = args.get(at + 1).map(String::as_str).expect("a format");
+        assert!(
+            format.contains("%{url_effective}"),
+            "the trailer must carry the effective URL: {format}"
+        );
+        assert!(
+            format.contains("%{http_code}"),
+            "the trailer must still carry the status: {format}"
+        );
+    }
+}
+
+#[test]
+fn the_trailer_splits_into_the_body_the_status_and_the_url() {
+    // The trailer is the last line and the status is its first
+    // field. A body that ends without a newline, or whose own last
+    // line reads like a trailer, still comes back whole.
+    assert_eq!(
+        split_trailer("hello body\n200 https://landed.test/x"),
+        ("hello body", "200", "https://landed.test/x")
+    );
+    assert_eq!(
+        split_trailer("200 https://decoy.test/\n404 https://real.test/"),
+        ("200 https://decoy.test/", "404", "https://real.test/")
+    );
+    // A transport that reports no URL still reports its status.
+    assert_eq!(split_trailer("body\n200"), ("body", "200", ""));
+    assert_eq!(split_trailer("200"), ("", "200", ""));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_response_carries_the_url_the_transfer_ended_on() {
+    // What a followed redirect looks like from here: the operand
+    // named one host, the body came from another, and the response
+    // says which.
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(
+        dir.path(),
+        "printf 'moved body\n200 https://landed.test/e/1'",
+    );
+    let resp = fetch.get("https://asked.test/e/1").await.expect("get");
+    assert_eq!(resp.body, "moved body");
+    assert_eq!(resp.url, "https://landed.test/e/1");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_unredirected_response_carries_the_url_that_was_asked_for() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let fetch = stage_curl_stub(dir.path(), "printf 'body\n200 https://asked.test/e/1'");
+    let resp = fetch.get("https://asked.test/e/1").await.expect("get");
+    assert_eq!(resp.url, "https://asked.test/e/1");
+}
+
 #[test]
 fn the_url_stays_last_whether_or_not_a_target_is_passed() {
     for target in [Some("chrome136"), None] {
@@ -606,6 +674,7 @@ async fn get_is_a_headerless_fetch() {
         async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
             self.0.lock().expect("log").push(req.clone());
             Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: String::new(),
             })

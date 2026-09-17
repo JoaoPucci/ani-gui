@@ -45,11 +45,13 @@ impl Fetch for ScriptedTransport {
                 if q.contains(needle) {
                     if *body == "!" {
                         return Ok(FetchResponse {
+                            url: req.url.clone(),
                             status: 403,
                             body: "Just a moment".into(),
                         });
                     }
                     return Ok(FetchResponse {
+                        url: req.url.clone(),
                         status: 200,
                         body: (*body).to_string(),
                     });
@@ -60,12 +62,14 @@ impl Fetch for ScriptedTransport {
             // contract only reads absence off a page that shows the
             // browse shape.
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"<div class="grid"><p>No results.</p></div>"#.to_string(),
             });
         }
         if url.contains("/api/frontend/anime/77/episodes") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2},{"id":725,"number":3,"number2":2.5}]}"#
                     .into(),
@@ -78,6 +82,7 @@ impl Fetch for ScriptedTransport {
             // failing its probe. The walk-keeps-going test exercises
             // the rejection arm through this route.
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"episodes":[{"id":9901,"number":1},{"id":9902,"number":2},{"id":9903,"number":3},{"id":9904,"number":4},{"id":9905,"number":5},{"id":9906,"number":6},{"id":9907,"number":7}]}"#
                     .into(),
@@ -88,12 +93,14 @@ impl Fetch for ScriptedTransport {
             // cumulative numbering, so this two-episode cour lists 41
             // and 42 (the TYBW fourth-cour shape, captured live).
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"episodes":[{"id":8841,"number":41},{"id":8842,"number":42}]}"#.into(),
             });
         }
         if url.contains("/api/frontend/episode/8841/languages") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#
                     .into(),
@@ -101,6 +108,7 @@ impl Fetch for ScriptedTransport {
         }
         if url.contains("/api/frontend/episode/725/languages") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/x"}]}"#
                     .into(),
@@ -108,6 +116,7 @@ impl Fetch for ScriptedTransport {
         }
         if url.contains("/api/frontend/episode/702/languages") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/x"}]}"#
                     .into(),
@@ -115,6 +124,7 @@ impl Fetch for ScriptedTransport {
         }
         if url.contains("embed.example") {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: "player.setup({ file: 'https://cdn.example/x/master.m3u8' });".into(),
             });
@@ -123,11 +133,13 @@ impl Fetch for ScriptedTransport {
             // The quality step validates the master on every path
             // now, best included — the stub serves it like the CDN.
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: "#EXTM3U\n".into(),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
