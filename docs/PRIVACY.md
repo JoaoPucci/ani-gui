@@ -117,23 +117,23 @@ requires it; the exception is the update check that runs on launch
   numbered mirrors the site serves megaplay's player from,
   `megaplay-1.buzz` and the like, which the client reads as it reads the
   host — and vidtube.site, and the client fetches from whichever the site
-  lists for the episode. The site lists more than one megaplay server for
-  an episode, one per content delivery network it can stream the episode
-  from, and the app reads only the one whose segments it can play: that
-  server's page is fetched and its sources asked for, and the others are
-  left where they are — the app never asks the site what they stream, so
-  nothing behind them is reached.
+  lists for the episode. The site can stream an episode from more than one
+  content delivery network, and the sources request says which one it is
+  answered for; the app asks every megaplay server for the one network
+  whose streams it can play, whichever network the site's listing named
+  that server for. So the hosts a megaplay page leads to are that
+  network's, and no other's.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
   time of writing, a host under aniwatchtv.uk behind the zokoanime
-  pages, and behind the megaplay pages the hosts its sources endpoint
-  names for the server the app reads — ncdn.imgnex.top for playlists,
-  bb.akirax.buzz for segments, xdw5v.qeltrix.top for subtitle files.
-  The megaplay servers the app does not read name hosts of their own,
-  megap.norami.top and fetch.nexabloom.top among them, and none of
-  those is fetched from, because the app does not ask the site what
-  those servers stream. The app does not restrict these fetches to a
+  pages, and behind the megaplay pages the hosts the sources endpoint
+  names for the network the app asks for — ncdn.imgnex.top for
+  playlists, bb.akirax.buzz for segments, xdw5v.qeltrix.top for
+  subtitle files. The site's other networks stream from hosts of their
+  own, megap.norami.top and fetch.nexabloom.top among them, and none of
+  those is contacted, because the app never asks for a network other
+  than the one it plays. The app does not restrict these fetches to a
   list of hosts, so the provider's choice is what it reaches. For hianime the CDN sees a normal `Referer` naming the origin
   of the embed page the stream was read from — the host that actually
   served that page, which is not always the host the catalogue's listing

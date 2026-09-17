@@ -372,34 +372,34 @@ starting it, and delete it when you find it done.
   while every listing seen so far carries a zokoanime or a megaplay
   server.
 
-- **Read the megaplay server whose segments arrive wrapped in
-  images**, so an episode can play from either of the megaplay
-  servers hianime lists rather than only one of them. The site lists
-  one megaplay server per content delivery network and they do not
-  stream alike: one serves ordinary transport-stream segments, which
-  the proxy passes through untouched, and the other serves each
-  segment as a real PNG with the transport stream behind a fixed
-  252-byte prefix that the site's own player strips before decoding.
-  The proxy strips nothing, so that server is treated as one this
-  client gets no stream from and is stepped over.
+- **Read hianime's other delivery networks too**, so an episode is
+  not lost when the one the client asks for goes bad. The site can
+  stream an episode from several content delivery networks and the
+  sources request names which one it is answered for; the client asks
+  every megaplay page for `bcdn`, and only for `bcdn`. The other two
+  are not readable as they stand. The default network — the one a
+  request names by carrying no selector at all — answers a master on a
+  host that refuses a playlist fetch which did not come from the
+  site's own player. `tcdn` answers renditions whose segments are real
+  PNG files with the transport stream behind a fixed 252-byte prefix
+  that the site's player strips before decoding and the proxy does
+  not.
 
-  What makes it worth a note rather than obvious: everything ahead of
-  the segment works. The page reads, the sources answer opens, the
-  master and the chosen rendition are valid playlists — only the
-  first segment fails, inside the player. So the server looks healthy
-  for the whole of the walk that decides to take it. And the file
-  name is no help either way: the network that does work names its
-  segments `.png` too, and serves them under an image content type,
-  while the bytes are a transport stream from the first byte.
+  What makes `tcdn` worth a note rather than obvious: everything ahead
+  of the segment works. The page reads, the sources answer opens, the
+  master and the chosen rendition are valid playlists — only the first
+  segment fails, inside the player. And the file name is no help
+  either way: `bcdn` names its segments `.png` too, and serves them
+  under an image content type, while the bytes are a transport stream
+  from the first byte.
 
-  Beside it, unrelated in mechanism and related in purpose: the site
+  Beside it, and the reason this is worth having at all: the site
   publishes a health list at `lib/check_domain.json`, naming the
-  delivery hosts it currently considers failed and a host to fall
-  back to, and its own player consults it before it streams. Nothing
-  in this client does. The network it reads has been healthy, so the
-  list has not been missed; when that host goes bad, the site's
-  player will move and this client will have no way to know it
-  should.
+  delivery hosts it currently considers failed and a host to fall back
+  to, and its own player consults it before it streams. Nothing in
+  this client does. `bcdn` has been healthy, so neither the list nor a
+  second network has been missed; when that host goes bad, the site's
+  player will move and this client will have no way to know it should.
 
 ## Reading hianime.ms and vidnest.fun as providers
 
