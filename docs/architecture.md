@@ -82,11 +82,11 @@ When Kitsu's `coverImage` is null (common for shows currently airing — roughly
 | Availability probe (negative — show isn't on anidb.app) | SQLite `meta_cache` | 7 days |
 | aniskip OP/ED skip-time intervals (per MAL id + episode) | SQLite `meta_cache` | 7 days |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
-| Long-term play resolution (resolved stream URLs) | SQLite play-resolution table | until upstream rotates |
+| Long-term play resolution (resolved stream URLs) | SQLite play-resolution table | 7 days, or until upstream rotates |
 | In-flight play-resolution coalescer (`play-cache.getOrFire`) | Renderer-side `Map` | 4 hours (also dedupes concurrent calls) |
 | Poster + banner image bytes | Filesystem `images/<shard>/<hash>.<ext>` | LRU, capped at 500 MB |
 
-Image bytes never live in SQLite; they're filesystem-keyed by `sha256(url)[..16]`, sharded two-deep to avoid huge flat directories. The play-resolution cache is separate from `meta_cache` — it stores fully-resolved stream URLs keyed by the request tuple `(title, mode, quality, episode, year, episode count)` so a repeat visit to an episode skips the whole provider walk. Entries are invalidated only when a cached URL fails on use; upstream URLs rotate, so the layer self-heals via the silent retry path rather than a wall-clock TTL.
+Image bytes never live in SQLite; they're filesystem-keyed by `sha256(url)[..16]`, sharded two-deep to avoid huge flat directories. The play-resolution cache is separate from `meta_cache` — it stores fully-resolved stream URLs keyed by the request tuple `(title, mode, quality, episode, year, episode count, subtype)` so a repeat visit to an episode skips the whole provider walk. Three things retire a row. A cached URL that fails on use is dropped there and then — upstream URLs rotate, so the layer self-heals through a HEAD check before every hit and through the player's own error feedback. A seven-day absolute bound sits on top, which reads do not renew. And the key carries a schema version: when what a row holds changes meaning — a new field its readers depend on, or an existing one that no longer says what it used to — the version moves, no request builds the old keys any more, and those shows resolve afresh.
 
 The **availability TTL branches on Kitsu's `status` field**: shows airing weekly need a 24-hour window so a new episode surfaces within a day, but finished shows can hold for 30 days. Unknown / missing status falls back to the short (24h) window — a stale "no episode 1161 yet" is much worse than re-probing too eagerly.
 
