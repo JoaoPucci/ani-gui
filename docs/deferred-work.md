@@ -343,6 +343,35 @@ starting it, and delete it when you find it done.
   while every listing seen so far carries a zokoanime or a megaplay
   server.
 
+- **Read the megaplay server whose segments arrive wrapped in
+  images**, so an episode can play from either of the megaplay
+  servers hianime lists rather than only one of them. The site lists
+  one megaplay server per content delivery network and they do not
+  stream alike: one serves ordinary transport-stream segments, which
+  the proxy passes through untouched, and the other serves each
+  segment as a real PNG with the transport stream behind a fixed
+  252-byte prefix that the site's own player strips before decoding.
+  The proxy strips nothing, so that server is treated as one this
+  client gets no stream from and is stepped over.
+
+  What makes it worth a note rather than obvious: everything ahead of
+  the segment works. The page reads, the sources answer opens, the
+  master and the chosen rendition are valid playlists — only the
+  first segment fails, inside the player. So the server looks healthy
+  for the whole of the walk that decides to take it. And the file
+  name is no help either way: the network that does work names its
+  segments `.png` too, and serves them under an image content type,
+  while the bytes are a transport stream from the first byte.
+
+  Beside it, unrelated in mechanism and related in purpose: the site
+  publishes a health list at `lib/check_domain.json`, naming the
+  delivery hosts it currently considers failed and a host to fall
+  back to, and its own player consults it before it streams. Nothing
+  in this client does. The network it reads has been healthy, so the
+  list has not been missed; when that host goes bad, the site's
+  player will move and this client will have no way to know it
+  should.
+
 ## Reading hianime.ms and vidnest.fun as providers
 
 - **Read hianime.ms, and the vidnest.fun embed it lists**, so an
