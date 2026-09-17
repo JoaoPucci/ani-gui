@@ -2117,7 +2117,7 @@ impl Fetch for Site {
             "https://megaplay.buzz/stream/s-2/734294/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "6"))
             }
-            "https://megaplay.buzz/stream/getSourcesNew?id=179411" => {
+            "https://megaplay.buzz/stream/getSourcesNew?id=179411&s=bcdn" => {
                 if header(req, "Referer") == Some("https://megaplay.buzz/")
                     && header(req, "X-Requested-With") == Some("XMLHttpRequest")
                 {
@@ -3080,6 +3080,17 @@ async fn a_megaplay_server_is_read_through_the_sites_sources_endpoint() {
             ],
         },
         "the referer is the embed host's origin, which the CDN and the sources endpoint both check"
+    );
+    let requests = c.transport().requests();
+    let sources: Vec<&str> = requests
+        .iter()
+        .map(|r| r.url.as_str())
+        .filter(|u| u.contains("getSourcesNew"))
+        .collect();
+    assert_eq!(
+        sources,
+        vec!["https://megaplay.buzz/stream/getSourcesNew?id=179411&s=bcdn"],
+        "the family the site served the page for is the family the sources are asked of"
     );
 }
 
