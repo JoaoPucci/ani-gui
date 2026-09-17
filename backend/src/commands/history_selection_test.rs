@@ -416,20 +416,20 @@ fn the_later_of_the_files_stamp_and_the_caches_is_the_rows_moment() {
                 ep_no: "3".into(),
                 id: "the-show-77".into(),
                 title: "The Show".into(),
-                watched_at: Some(5_000),
+                watched_at: Some(1_700_000_005_000),
             },
             HistoryEntry {
                 ep_no: "7".into(),
                 id: "hianime:the-show-9".into(),
                 title: "The Show".into(),
-                watched_at: Some(2_000),
+                watched_at: Some(1_700_000_002_000),
             },
         ],
     )
     .unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "K1").unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "K1").unwrap();
-    crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 9_000).unwrap();
+    crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 1_700_000_009_000).unwrap();
     let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
     assert_eq!(
         hit.id, "hianime:the-show-9",
@@ -438,12 +438,12 @@ fn the_later_of_the_files_stamp_and_the_caches_is_the_rows_moment() {
     let stamps = watched_at_all(&s).unwrap();
     assert_eq!(
         stamps.get("the-show-77"),
-        Some(&5_000),
+        Some(&1_700_000_005_000),
         "the file's stamp alone"
     );
     assert_eq!(
         stamps.get("hianime:the-show-9"),
-        Some(&9_000),
+        Some(&1_700_000_009_000),
         "the later of the two"
     );
 }

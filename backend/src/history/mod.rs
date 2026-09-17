@@ -249,6 +249,70 @@ mod tests {
         assert_eq!(tab_in_title[0].watched_at, None);
     }
 
+    /// The window in which a trailing number reads as a watch,
+    /// pinned here as literals rather than read from the parser:
+    /// 2020-01-01T00:00:00Z and 2100-01-01T00:00:00Z in
+    /// milliseconds. A test that borrowed the parser's own bounds
+    /// would follow them wherever they moved and assert nothing
+    /// about where they are.
+    const WINDOW_START_MS: i64 = 1_577_836_800_000;
+    const WINDOW_END_MS: i64 = 4_102_444_800_000;
+
+    /// Whether a title's own last tab-separated segment would be
+    /// taken for a watch — the one shape the format cannot tell
+    /// apart from a stamped row, and so the one the round-trip
+    /// property has to step around.
+    fn tail_reads_as_a_watch(title: &str) -> bool {
+        title.rsplit_once('\t').is_some_and(|(_, tail)| {
+            tail.parse::<i64>().is_ok_and(|ms| {
+                ms.to_string() == tail && (WINDOW_START_MS..WINDOW_END_MS).contains(&ms)
+            })
+        })
+    }
+
+    /// Everything after the second tab was the title before the
+    /// fourth column existed, embedded tabs included, and titles
+    /// end in numbers: a mecha series' year, a season count, a
+    /// four-digit tail a scraper left behind. Reading any trailing
+    /// number as the watch's moment takes such a title apart and
+    /// the next rewrite of the file makes that permanent. Only a
+    /// number that could be a moment the app itself wrote — inside
+    /// the window, in the exact decimal the writer emits — is one.
+    #[test]
+    fn a_number_a_title_ends_with_is_not_a_watch() {
+        let legacy = "5\tabc\tMobile Suit\t0080\n";
+        let v = parse(legacy);
+        assert_eq!(v[0].title, "Mobile Suit\t0080", "the title keeps its tail");
+        assert_eq!(v[0].watched_at, None);
+        assert_eq!(serialize(&v), legacy, "and the row is rewritten unchanged");
+
+        for tail in ["42", "2024", "0", "1577836799999", "9999999999999999"] {
+            let row = format!("5\tabc\tA Title\t{tail}\n");
+            let v = parse(&row);
+            assert_eq!(
+                v[0].title,
+                format!("A Title\t{tail}"),
+                "{tail} is outside the window a watch could have been written in"
+            );
+            assert_eq!(v[0].watched_at, None);
+            assert_eq!(serialize(&v), row);
+        }
+
+        // In the window but not in the decimal the writer emits: a
+        // padded number is a title's, since nothing here writes one.
+        let padded = parse("5\tabc\tA Title\t01700000000000\n");
+        assert_eq!(padded[0].title, "A Title\t01700000000000");
+        assert_eq!(padded[0].watched_at, None);
+
+        // The moments the app does write still read as moments,
+        // at the edges of the window as much as in the middle.
+        for ms in [WINDOW_START_MS, 1_700_000_000_000, WINDOW_END_MS - 1] {
+            let v = parse(&format!("5\tabc\tA Title\t{ms}\n"));
+            assert_eq!(v[0].title, "A Title");
+            assert_eq!(v[0].watched_at, Some(ms), "{ms} is a moment a watch wrote");
+        }
+    }
+
     /// A resolve rewrites the row without a stamp of its own; the
     /// watch that stamped it earlier is not unwritten by that. A
     /// watch that carries a stamp replaces the earlier one.
@@ -509,12 +573,15 @@ mod tests {
     fn entry_strategy() -> impl Strategy<Value = HistoryEntry> {
         // ep_no and id must be non-empty (parse() drops rows otherwise).
         // title may be empty. A row may carry its watch's moment, or
-        // none, as the file holds both.
+        // none, as the file holds both. The moment is drawn from the
+        // window the column is read in: a number outside it is a
+        // title's tail by the format's own rule, so a row carrying
+        // one is not a row the writer could have produced.
         (
             tsv_field(1, 8),
             tsv_field(1, 32),
             tsv_field(0, 64),
-            proptest::option::of(0i64..2_000_000_000_000),
+            proptest::option::of(WINDOW_START_MS..WINDOW_END_MS),
         )
             .prop_map(|(ep_no, id, title, watched_at)| HistoryEntry {
                 ep_no,
@@ -536,6 +603,46 @@ mod tests {
             let body = serialize(&entries);
             let parsed = parse(&body);
             prop_assert_eq!(entries, parsed);
+        }
+
+        /// A legacy title carries tabs of its own, and the format
+        /// has no escape for them: what protects such a row is that
+        /// a trailing number only reads as a watch inside the
+        /// window. For any row whose title's tail is not itself a
+        /// moment, title and moment both survive a write and a read
+        /// whole — however many tabs the title holds.
+        #[test]
+        fn a_tabbed_title_survives_the_round_trip(
+            ep_no in tsv_field(1, 8),
+            id in tsv_field(1, 32),
+            segments in proptest::collection::vec(tsv_field(0, 12), 1..4),
+            watched_at in proptest::option::of(WINDOW_START_MS..WINDOW_END_MS),
+        ) {
+            let title = segments.join("\t");
+            // A stampless row whose title already ends in something
+            // the format reads as a moment is the ambiguity the
+            // window narrows but cannot close; it is not a claim
+            // this property makes.
+            prop_assume!(watched_at.is_some() || !tail_reads_as_a_watch(&title));
+            let entry = HistoryEntry { ep_no, id, title, watched_at };
+            let parsed = parse(&serialize(std::slice::from_ref(&entry)));
+            prop_assert_eq!(parsed, vec![entry]);
+        }
+
+        /// The other side of the same rule: a title ending in a
+        /// number that no watch could have written keeps it, tab
+        /// included, and the row reads as the stampless row it is.
+        #[test]
+        fn a_number_outside_the_window_stays_in_the_title(
+            head in tsv_field(0, 16),
+            tail in prop_oneof![0i64..WINDOW_START_MS, WINDOW_END_MS..i64::MAX],
+        ) {
+            let title = format!("{head}\t{tail}");
+            let row = format!("5\tabc\t{title}\n");
+            let parsed = parse(&row);
+            prop_assert_eq!(&parsed[0].title, &title);
+            prop_assert_eq!(parsed[0].watched_at, None);
+            prop_assert_eq!(serialize(&parsed), row);
         }
 
         /// `upsert` is idempotent on the same entry: applying it twice
