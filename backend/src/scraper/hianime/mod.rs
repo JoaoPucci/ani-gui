@@ -201,9 +201,10 @@ impl<F: Fetch> HianimeClient<F> {
     /// A server's stream, read from its embed page by the page's
     /// shape ([`Self::read_page`]), beside the URL the page came
     /// from: the transport follows redirects, so the host that served
-    /// the page is what the walk judges the outcome by, and it is not
-    /// always the host the listing named. When nothing was served the
-    /// listing's URL is all the failure has to name.
+    /// the page is what the walk judges the outcome by, what the
+    /// reading of the page is keyed on, and it is not always the host
+    /// the listing named. When nothing was served the listing's URL
+    /// is all the failure has to name.
     ///
     /// The outcome's errors are [`Self::read_page`]'s and the embed
     /// fetch's own refusals and transport failures.
@@ -215,7 +216,7 @@ impl<F: Fetch> HianimeClient<F> {
             Ok(page) => page,
             Err(e) => return (Err(e), server.embed_url.clone()),
         };
-        (self.read_page(server, &page.body).await, page.url)
+        (self.read_page(&page.url, &page.body).await, page.url)
     }
 
     /// The stream a fetched embed page yields, by the page's shape: a
@@ -225,12 +226,25 @@ impl<F: Fetch> HianimeClient<F> {
     /// header its player sends; a page with neither shape is a host
     /// the client does not read, an answered "nothing here".
     ///
+    /// `served_by` is the URL the page came from, which is where the
+    /// sources are asked for: megaplay's endpoint sits under the
+    /// origin of the page whose player asks it, the site serves that
+    /// player from its own host and from numbered mirrors, and a
+    /// redirect between them leaves the listing's URL naming a host
+    /// that served no page and answers for no media of it. It is the
+    /// URL the walk judges the page by ([`Self::read_server`]) and
+    /// the one the stream's referer is taken from
+    /// ([`Self::resolved`]), so the whole of what a page yields keys
+    /// on the host that served it; the listing's URL keys what is
+    /// decided before the page exists — which servers are tried, in
+    /// what order, and what is asked for.
+    ///
     /// # Errors
     /// [`AniError::NoResults`] for a page of neither shape; the
     /// sources fetch's own refusals and transport failures; a parse
     /// failure for a payload or a sources answer the client cannot
     /// use.
-    async fn read_page(&self, server: &ServerEmbed, page: &str) -> Result<EmbedPayload> {
+    async fn read_page(&self, served_by: &str, page: &str) -> Result<EmbedPayload> {
         match decode_embed(page) {
             Err(AniError::NoResults) => {}
             decoded => return decoded,
@@ -238,14 +252,11 @@ impl<F: Fetch> HianimeClient<F> {
         let Some(id) = media_id(page) else {
             return Err(AniError::NoResults);
         };
-        let url = sources_url(&server.embed_url, id).ok_or_else(|| AniError::ParseFailed {
-            detail: "megaplay embed URL without an origin".into(),
+        let url = sources_url(served_by, id).ok_or_else(|| AniError::ParseFailed {
+            detail: "megaplay embed page from a URL without an origin".into(),
         })?;
         let sources = FetchRequest::get(url)
-            .header(
-                "Referer",
-                embed_origin(&server.embed_url).unwrap_or_default(),
-            )
+            .header("Referer", embed_origin(served_by).unwrap_or_default())
             .header("X-Requested-With", "XMLHttpRequest");
         parse_sources(&self.content(&sources).await?)
     }
