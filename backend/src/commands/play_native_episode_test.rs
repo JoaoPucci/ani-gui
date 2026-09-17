@@ -376,44 +376,74 @@ async fn the_episode_step_bounds_the_listing_and_keeps_its_default() {
 
 mod verdict_props {
     use super::episode_verdict;
+    use crate::commands::providers::fails_over;
     use crate::error::AniError;
     use proptest::prelude::*;
 
-    fn error() -> impl Strategy<Value = AniError> {
+    /// A failure the episode chain can hand the verdict, paired with
+    /// whether the verdict leaves it as it came. The set is what the
+    /// step can actually meet: the seven kinds the provider layer
+    /// constructs — transport failure, timeout, gate refusal, rate
+    /// limit, parse failure, upstream status, empty answer — plus the
+    /// verdict itself, which the step raises on a listing without the
+    /// row and which a second classification must leave alone.
+    ///
+    /// The expectation is stated by the rule rather than asked of the
+    /// production helpers: an answered dead end — a title miss or a
+    /// not-found-shaped status — becomes the verdict, and every other
+    /// kind stays as it came. A parse failure is one of those: the
+    /// provider having changed shape is not an answer about this
+    /// episode, and the walk reads it ([`fails_over`]) as grounds to
+    /// try the next provider.
+    fn error_and_whether_the_verdict_keeps_it() -> impl Strategy<Value = (AniError, bool)> {
         prop_oneof![
-            (0u8..5).prop_map(|k| match k {
-                0 => AniError::Network,
-                1 => AniError::Timeout,
-                2 => AniError::NoResults,
-                3 => AniError::EpisodeUnavailable,
-                _ => AniError::GateRefused,
+            any::<()>().prop_map(|()| (AniError::Network, true)),
+            any::<()>().prop_map(|()| (AniError::Timeout, true)),
+            any::<()>().prop_map(|()| (AniError::GateRefused, true)),
+            prop::option::of(0u64..100_000)
+                .prop_map(|retry_after_secs| (AniError::RateLimited { retry_after_secs }, true)),
+            "[a-z ]{0,24}".prop_map(|detail| (AniError::ParseFailed { detail }, true)),
+            (0u16..1000).prop_map(|status| {
+                let block = status == 403 || status == 429 || status >= 500;
+                (AniError::Upstream { status }, block)
             }),
-            (0u16..1000).prop_map(|status| AniError::Upstream { status }),
-            proptest::option::of(0u64..100_000)
-                .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+            any::<()>().prop_map(|()| (AniError::NoResults, false)),
+            any::<()>().prop_map(|()| (AniError::EpisodeUnavailable, true)),
         ]
     }
 
     proptest! {
         /// An answered dead end — a title miss or a not-found-shaped
         /// status — becomes the episode's verdict; a block, a gate
-        /// refusal and transport weather pass through as they came.
+        /// refusal, transport weather and a page the parser no longer
+        /// reads pass through as they came. And whichever of the two
+        /// it is, the walk's reading of the failure survives it: one
+        /// the walk would have moved on from still moves it on, so no
+        /// classification here can strand a caller on a provider that
+        /// has stopped working.
         #[test]
         fn an_answered_dead_end_is_the_episodes_verdict_and_nothing_else_changes(
-            error in error(),
+            (error, kept) in error_and_whether_the_verdict_keeps_it(),
         ) {
-            let passes_through = error.is_provider_block()
-                || matches!(error, AniError::GateRefused | AniError::Network | AniError::Timeout);
             let before = format!("{error:?}");
+            let moved_on = fails_over(&error);
             let after = episode_verdict(error);
-            if passes_through {
-                prop_assert_eq!(format!("{after:?}"), before);
+            let after_dbg = format!("{after:?}");
+            if kept {
+                prop_assert_eq!(&after_dbg, &before);
             } else {
                 prop_assert!(
                     matches!(after, AniError::EpisodeUnavailable),
-                    "{before} -> {after:?}"
+                    "{before} -> {after_dbg}"
                 );
             }
+            prop_assert_eq!(
+                fails_over(&after),
+                moved_on,
+                "the verdict may not change whether the walk moves on: {} -> {}",
+                before,
+                after_dbg
+            );
         }
     }
 }
