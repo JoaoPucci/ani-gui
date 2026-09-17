@@ -15,6 +15,15 @@
 //! behind it — a plain resolve, a row from before the column —
 //! carries none and reads and writes as before.
 //!
+//! Nothing marks that column. The title ran to the end of the line
+//! before it existed, tabs of its own included, so what tells a
+//! moment apart from a number a title ends with is plausibility: a
+//! trailing number is the moment only when it is a millisecond
+//! stamp inside the window a watch could have been written in, in
+//! the exact decimal the writer emits. `Mobile Suit\t0080` stays
+//! one title; `\t1700000000000` is a moment. The limit of that is
+//! written out at [`split_moment`], which holds the rule.
+//!
 //! The two never shared a file after the 5.0 CLI re-keyed its history
 //! onto provider slugs; the app keeps its own under its state dir.
 //! The format is inherited, not shared.
@@ -87,25 +96,60 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
             if ep_no.is_empty() || id.is_empty() {
                 return None;
             }
-            // The title took the rest of the line before the column
-            // existed, tabs included; a tail that is not a whole
-            // number is still the title's.
-            let (title, watched_at) = match rest.rsplit_once('\t') {
-                Some((title, tail))
-                    if !tail.is_empty() && tail.bytes().all(|b| b.is_ascii_digit()) =>
-                {
-                    (title.to_string(), tail.parse::<i64>().ok())
-                }
-                _ => (rest.to_string(), None),
-            };
+            let (title, watched_at) = split_moment(rest);
             Some(HistoryEntry {
                 ep_no,
                 id,
-                title,
+                title: title.to_string(),
                 watched_at,
             })
         })
         .collect()
+}
+
+/// The earliest moment the fourth column is read as a watch:
+/// 2020-01-01T00:00:00Z in milliseconds. Nothing wrote the column
+/// before the app existed, so a smaller number at the end of a row
+/// is one the title ends with — a year, a season, a count a scraper
+/// left on — and belongs to the title.
+const WATCHED_AT_FLOOR_MS: i64 = 1_577_836_800_000;
+
+/// The far end of the same window: 2100-01-01T00:00:00Z in
+/// milliseconds. Nothing this app writes reaches it either.
+const WATCHED_AT_CEILING_MS: i64 = 4_102_444_800_000;
+
+/// Split what follows the id into the title and, when the row
+/// carries one, the watch's moment.
+///
+/// The two are not marked apart. The fourth column was added to a
+/// file whose rows the title already ran to the end of, tabs
+/// included, and a marker would have to be written into every
+/// existing row before it could be read out of one. Plausibility
+/// stands in for it: the tail is the moment only when it is the
+/// exact decimal [`serialize`] emits for a millisecond stamp inside
+/// [`WATCHED_AT_FLOOR_MS`]`..`[`WATCHED_AT_CEILING_MS`]. A padded
+/// or signed number is a title's, since nothing here writes one.
+///
+/// The rule is narrow, not exact. A title that itself ends in a tab
+/// and a thirteen-digit number landing inside that window is still
+/// read as a stamped row, and the next write of the file makes the
+/// split permanent. That shape is accepted because it is a
+/// thirteen-digit number in a hundred-year window, while the shape
+/// the window protects — `Mobile Suit\t0080` — is what titles
+/// actually end in.
+fn split_moment(rest: &str) -> (&str, Option<i64>) {
+    let Some((title, tail)) = rest.rsplit_once('\t') else {
+        return (rest, None);
+    };
+    match tail.parse::<i64>() {
+        Ok(ms)
+            if tail == ms.to_string()
+                && (WATCHED_AT_FLOOR_MS..WATCHED_AT_CEILING_MS).contains(&ms) =>
+        {
+            (title, Some(ms))
+        }
+        _ => (rest, None),
+    }
 }
 
 /// Serialize entries back to the TSV body. Each line ends with `\n`,
