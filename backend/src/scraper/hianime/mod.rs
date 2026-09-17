@@ -30,7 +30,7 @@ pub use ajax::{
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
-pub use megaplay::{lang_of_track, media_id, parse_sources, sources_url};
+pub use megaplay::{lang_of_track, media_id, parse_sources, served_cdn, sources_url};
 pub use parse::{parse_search, slug_id};
 
 use crate::error::{AniError, Result};
@@ -227,7 +227,9 @@ impl<F: Fetch> HianimeClient<F> {
     /// the client does not read, an answered "nothing here".
     ///
     /// `served_by` is the URL the page came from, which is where the
-    /// sources are asked for: megaplay's endpoint sits under the
+    /// sources are asked for, and whose CDN family decides whether
+    /// they are asked for at all ([`ajax::readable`]): megaplay's
+    /// endpoint sits under the
     /// origin of the page whose player asks it, the site serves that
     /// player from its own host and from numbered mirrors, and a
     /// redirect between them leaves the listing's URL naming a host
@@ -252,6 +254,17 @@ impl<F: Fetch> HianimeClient<F> {
         let Some(id) = media_id(page) else {
             return Err(AniError::NoResults);
         };
+        // A page served for a CDN family whose segments the proxy
+        // cannot pass through is a server this client gets no stream
+        // from, so the site is never asked what that family streams:
+        // the answer would name playlists that validate and segments
+        // the player cannot decode, and taking it would end the walk
+        // on a stream that plays nothing. Answered like a host the
+        // client does not read, which the walk steps over
+        // ([`ajax::readable`], [`payload_missing_verdict`]).
+        if !served_cdn(served_by) {
+            return Err(AniError::NoResults);
+        }
         let url = sources_url(served_by, id).ok_or_else(|| AniError::ParseFailed {
             detail: "megaplay embed page from a URL without an origin".into(),
         })?;

@@ -38,6 +38,16 @@ const SOURCES_KEY: &[u8; 16] = b"i?LMTAx0Q6,:}50U";
 /// ciphertext is enough to hold the pair to account.
 const SOURCES_IV: &[u8; 16] = b"W0;27ToaUpl_P%\'c";
 
+/// The CDN families whose streams the client cannot serve, by the
+/// name the site selects them with ([`CDN_FAMILY`]). `tcdn`'s
+/// renditions list their segments as real image files, the transport
+/// stream hidden behind a fixed prefix the site's own player strips
+/// before it feeds them to the decoder. The proxy hands a segment to
+/// the player as it fetched it, so a stream of that family plays
+/// nothing — and everything ahead of the segment works, so nothing
+/// earlier in the chain says so.
+const UNSERVED_FAMILIES: &[&str] = &["tcdn"];
+
 /// The cipher the answer is under.
 type SourcesCipher = cbc::Decryptor<aes::Aes256>;
 
@@ -84,6 +94,23 @@ pub fn sources_url(embed_url: &str, id: u64) -> Option<String> {
         asked.query_pairs_mut().append_pair(CDN_FAMILY, &family);
     }
     Some(asked.into())
+}
+
+/// Whether the client can serve what the family an embed URL names
+/// streams ([`UNSERVED_FAMILIES`]). True for a URL that names none,
+/// and for one that is not a URL at all: the question is what the
+/// family the page was served for streams, and a URL naming no
+/// family names the site's default, whose segments are bytes the
+/// proxy passes through.
+///
+/// The key is megaplay's; no other embed host the client reads
+/// selects anything with it.
+#[must_use]
+pub fn served_cdn(embed_url: &str) -> bool {
+    url::Url::parse(embed_url)
+        .ok()
+        .and_then(|embed| cdn_family(&embed))
+        .is_none_or(|family| !UNSERVED_FAMILIES.contains(&family.as_str()))
 }
 
 /// The CDN family an embed URL names: the [`CDN_FAMILY`] key of its
