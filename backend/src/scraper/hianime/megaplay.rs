@@ -1,8 +1,9 @@
 //! The megaplay embed host: its page carries no payload, and its
 //! player asks the site for the sources by the media id the page's
-//! player element carries. The answer names the master playlist and
-//! the captions tracks in the clear; the CDN checks the embed host's
-//! origin as `Referer` on every fetch of them, like zokoanime's.
+//! player element carries, for the CDN family the page's own URL
+//! names. The answer names the master playlist and the captions
+//! tracks; the CDN checks the embed host's origin as `Referer` on
+//! every fetch of them, like zokoanime's.
 
 use serde::Deserialize;
 
@@ -14,9 +15,15 @@ use crate::scraper::provider::{SubtitleTrack, SUBTITLE_URL_CAP};
 const PLAYER_ELEMENT: &str = "id=\"megaplay-player\"";
 
 /// The endpoint the player asks for the sources, under the page's
-/// own origin. The site's older `getSources` answers the sources
-/// encrypted; this one answers them in the clear.
-const SOURCES_PATH: &str = "/stream/getSourcesNew?id=";
+/// own origin.
+const SOURCES_PATH: &str = "/stream/getSourcesNew";
+
+/// The query key naming the CDN family a page was served for. The
+/// site lists one megaplay server per family — `tcdn`, `bcdn`, and
+/// the default a URL names by carrying no `s` at all — and the
+/// page's player appends its page's own family to every sources
+/// request, which is what makes the answer name that family's hosts.
+const CDN_FAMILY: &str = "s";
 
 /// The media id off an embed page: the `data-id` of the page's
 /// player element, whatever the attribute order. `None` when the
@@ -33,18 +40,35 @@ pub fn media_id(html: &str) -> Option<u64> {
 }
 
 /// The sources endpoint for `embed_url`'s origin — the site serves
-/// its player from mirrors, and each answers for its own pages.
-/// `None` for an embed URL that is not an absolute http(s) URL.
+/// its player from mirrors, and each answers for its own pages —
+/// asked for the media `id` and for the CDN family the embed URL
+/// names ([`CDN_FAMILY`]), as the page's own player asks it. The
+/// rest of the page's query is the page's business and is left
+/// behind. `None` for an embed URL that is not an absolute http(s)
+/// URL.
 #[must_use]
 pub fn sources_url(embed_url: &str, id: u64) -> Option<String> {
     let parsed = url::Url::parse(embed_url).ok()?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return None;
     }
-    Some(format!(
-        "{}{SOURCES_PATH}{id}",
-        parsed.origin().ascii_serialization()
-    ))
+    let origin = parsed.origin().ascii_serialization();
+    let mut asked = url::Url::parse(&format!("{origin}{SOURCES_PATH}")).ok()?;
+    asked.query_pairs_mut().append_pair("id", &id.to_string());
+    if let Some(family) = cdn_family(&parsed) {
+        asked.query_pairs_mut().append_pair(CDN_FAMILY, &family);
+    }
+    Some(asked.into())
+}
+
+/// The CDN family an embed URL names: the [`CDN_FAMILY`] key of its
+/// query. `None` for a URL that names none — the site's default
+/// family, which its player asks for by leaving the key off.
+fn cdn_family(embed: &url::Url) -> Option<String> {
+    embed
+        .query_pairs()
+        .find(|(key, _)| key.as_ref() == CDN_FAMILY)
+        .map(|(_, family)| family.into_owned())
 }
 
 /// A listed file: an object naming the stream in its `file`.
