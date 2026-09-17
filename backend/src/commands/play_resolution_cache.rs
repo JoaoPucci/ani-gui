@@ -435,7 +435,44 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None, None);
-        assert!(k.starts_with("play:v13:"), "got {k}");
+        assert!(k.starts_with("play:v14:"), "got {k}");
+    }
+
+    #[test]
+    fn a_row_under_the_schema_before_this_one_is_not_served() {
+        // A row's `show_id` is a show key now — printed bare for
+        // anidb and `<provider>:<slug>` for anyone else — and every
+        // reader of a served row parses it that way, taking a bare
+        // id for anidb's. The schema before this one wrote the slug
+        // alone, whichever provider it came from, so a bare id in
+        // one of those rows says nothing about whose it is; served
+        // under the new reading it would write history, stamps,
+        // mappings and title matches into anidb's namespace and
+        // alias a real anidb row. The schema segment is what
+        // retires them: the same request now builds a key those
+        // rows do not sit under, so the walk runs again and writes
+        // the qualified identity.
+        let pool = pool();
+        let current = cache_key(
+            "Cowboy Bebop",
+            "sub",
+            "best",
+            "1",
+            Some(1998),
+            Some(26),
+            Some("TV"),
+        );
+        let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v13:", 1);
+        assert_ne!(
+            previous, current,
+            "the schema segment must have moved past the one that wrote bare show ids"
+        );
+        let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+        meta_cache_put(&pool, &previous, &body, 60).unwrap();
+        assert!(
+            get(&pool, &current).expect("ok").is_none(),
+            "a row keyed under the previous schema must not answer the current key"
+        );
     }
 
     #[test]
