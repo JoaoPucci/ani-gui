@@ -1,10 +1,12 @@
 //! The megaplay embed host: its page carries no payload, and its
 //! player asks the site for the sources by the media id the page's
 //! player element carries, for the CDN family the page's own URL
-//! names. The answer names the master playlist and the captions
-//! tracks; the CDN checks the embed host's origin as `Referer` on
-//! every fetch of them, like zokoanime's.
+//! names. The answer names the captions tracks in the clear and the
+//! master playlist as ciphertext; the CDN checks the embed host's
+//! origin as `Referer` on every fetch of them, like zokoanime's.
 
+use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut as _, KeyIvInit as _};
+use base64::Engine as _;
 use serde::Deserialize;
 
 use super::embed::EmbedPayload;
@@ -24,6 +26,29 @@ const SOURCES_PATH: &str = "/stream/getSourcesNew";
 /// page's player appends its page's own family to every sources
 /// request, which is what makes the answer name that family's hosts.
 const CDN_FAMILY: &str = "s";
+
+/// The key the site's player opens its sources answer with, as its
+/// script carries it: sixteen ASCII bytes, zero-padded to the
+/// cipher's width. The site's own constant, used there for its
+/// segment tokens as well, so a rotation shows up in both at once.
+const SOURCES_KEY: &[u8; 16] = b"i?LMTAx0Q6,:}50U";
+
+/// The initialisation vector beside it, likewise the site's own
+/// constant: fixed for every answer, which is why one captured
+/// ciphertext is enough to hold the pair to account.
+const SOURCES_IV: &[u8; 16] = b"W0;27ToaUpl_P%\'c";
+
+/// The cipher the answer is under.
+type SourcesCipher = cbc::Decryptor<aes::Aes256>;
+
+/// How the site writes the ciphertext out: base64 over the URL
+/// alphabet, padding optional — the answers seen carry none, and one
+/// that carried it would be the same bytes.
+const SOURCES_B64: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::URL_SAFE,
+    base64::engine::general_purpose::NO_PAD
+        .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
+);
 
 /// The media id off an embed page: the `data-id` of the page's
 /// player element, whatever the attribute order. `None` when the
@@ -101,6 +126,12 @@ struct WireTrack {
 struct WireResponse {
     #[serde(default, deserialize_with = "readable_sources")]
     sources: Vec<WireFile>,
+    /// The stream, as the site writes it now: the `sources` object
+    /// encrypted under the site's own constants ([`decrypted_file`]).
+    /// Read only when nothing in the clear names a stream, so an
+    /// answer of either shape reads.
+    #[serde(default)]
+    enc: Option<String>,
     #[serde(default, deserialize_with = "readable_tracks")]
     tracks: Vec<WireTrack>,
 }
@@ -123,16 +154,21 @@ where
     D: serde::Deserializer<'de>,
 {
     let listed = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(listed.map(file_rows).unwrap_or_default())
+}
+
+/// The source rows a value carries, by the rule
+/// [`readable_sources`] describes. The plaintext of an encrypted
+/// answer is that same value, so the two shapes are read by one rule.
+fn file_rows(listed: serde_json::Value) -> Vec<WireFile> {
     let rows = match listed {
-        Some(serde_json::Value::Array(rows)) => rows,
-        Some(one) => vec![one],
-        None => Vec::new(),
+        serde_json::Value::Array(rows) => rows,
+        one => vec![one],
     };
-    Ok(rows
-        .into_iter()
+    rows.into_iter()
         .filter(serde_json::Value::is_object)
         .filter_map(|row| serde_json::from_value(row).ok())
-        .collect())
+        .collect()
 }
 
 /// The track rows the client reads, out of whatever the response put
@@ -155,11 +191,13 @@ where
 
 /// The payload out of a sources response. The stream is the first
 /// listed source naming an absolute http(s) URL, the rows before it
-/// naming nothing fetchable being stepped over ([`readable_sources`]).
-/// A body that is not the response, or one whose sources name no such
-/// URL at all — the older endpoint's encrypted answer carries `null`
-/// in the clear — is the site having changed what it hands the
-/// client, never an episode without a stream. Tracks that are not
+/// naming nothing fetchable being stepped over ([`readable_sources`]);
+/// and, where the clear rows name no such URL, the first the site's
+/// ciphertext names ([`decrypted_file`]), which is where the site
+/// puts the stream now. A body that is not the response, or one whose
+/// sources name no such URL in either place, is the site having
+/// changed what it hands the client, never an episode without a
+/// stream. Tracks that are not
 /// captions, or whose file the transport cannot fetch, are left out,
 /// and so are rows the reader cannot read at all
 /// ([`readable_tracks`]) and rows whose file runs longer than any a
@@ -175,13 +213,15 @@ pub fn parse_sources(json: &str) -> Result<EmbedPayload> {
     };
     let wire: WireResponse =
         serde_json::from_str(json).map_err(|_| undecodable("body is not the response"))?;
-    let Some(src) = wire
+    let clear = wire
         .sources
         .into_iter()
         .map(|f| f.file)
-        .find(|file| is_fetchable(file))
-    else {
-        return Err(undecodable("no source the transport can fetch"));
+        .find(|file| is_fetchable(file));
+    let src = match (clear, wire.enc.as_deref()) {
+        (Some(src), _) => src,
+        (None, Some(enc)) => decrypted_file(enc, &undecodable)?,
+        (None, None) => return Err(undecodable("no source the transport can fetch")),
     };
     let subtitles = wire
         .tracks
@@ -208,6 +248,46 @@ pub fn parse_sources(json: &str) -> Result<EmbedPayload> {
         })
         .collect();
     Ok(EmbedPayload { src, subtitles })
+}
+
+/// The stream out of the ciphertext the site answers with: base64
+/// over the URL alphabet, AES-256-CBC under the site's own constants
+/// ([`SOURCES_KEY`], [`SOURCES_IV`]), opening to what the clear
+/// `sources` field used to carry — one object naming the file, or a
+/// list of them read by its first fetchable row ([`file_rows`]).
+///
+/// Every way this fails is the site having changed something, and
+/// each says which: the encoding, the cipher, the constants, the
+/// shape behind them, or where the file points. None of them is an
+/// episode without a stream, so all of them are parse failures.
+///
+/// # Errors
+/// [`AniError::ParseFailed`], by way of `undecodable`, for a blob
+/// that does not open to a file the transport can fetch.
+fn decrypted_file(enc: &str, undecodable: &impl Fn(&str) -> AniError) -> Result<String> {
+    let mut bytes = SOURCES_B64
+        .decode(enc)
+        .map_err(|_| undecodable("the encrypted sources are not base64"))?;
+    // Checked before the cipher so that a blob of the wrong length
+    // and one the constants do not open are told apart: the unpadding
+    // refuses both with the one error.
+    if bytes.is_empty() || bytes.len() % SOURCES_IV.len() != 0 {
+        return Err(undecodable(
+            "the encrypted sources are not whole cipher blocks",
+        ));
+    }
+    let mut key = [0u8; 32];
+    key[..SOURCES_KEY.len()].copy_from_slice(SOURCES_KEY);
+    let plain = SourcesCipher::new(&key.into(), SOURCES_IV.into())
+        .decrypt_padded_mut::<Pkcs7>(&mut bytes)
+        .map_err(|_| undecodable("the encrypted sources do not open under the site's key"))?;
+    let listed: serde_json::Value = serde_json::from_slice(plain)
+        .map_err(|_| undecodable("the decrypted sources are not the sources"))?;
+    file_rows(listed)
+        .into_iter()
+        .map(|f| f.file)
+        .find(|file| is_fetchable(file))
+        .ok_or_else(|| undecodable("the decrypted sources name no source the transport can fetch"))
 }
 
 /// The language a track carries: the three-letter code its file name
