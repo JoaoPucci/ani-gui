@@ -107,14 +107,17 @@ requires it; the exception is the update check that runs on launch
   read is reached only after every one it can has failed — as the listing
   names them: a listed page that redirects is followed wherever it goes,
   so a host the listing did not name can be reached through one it did,
-  ahead of hosts listed after it — and on megaplay's pages the host's own
-  sources endpoint as well, since that is where its player gets the
-  stream. The site chooses those hosts, and they can change without an app
-  update; at the time of writing the listings name zokoanime.video,
-  megaplay.buzz — and the numbered mirrors the site serves megaplay's
-  player from, `megaplay-1.buzz` and the like, which the client reads as
-  it reads the host — and vidtube.site, and the client fetches from
-  whichever the site lists for the episode.
+  ahead of hosts listed after it — and on megaplay's pages the sources
+  endpoint of the host that served the page as well, since that is where
+  its player gets the stream, and the host that served a page is not
+  always the one the site's listing named, because the site moves those
+  pages between hosts and the request follows the move. The site chooses
+  those hosts, and they can change without an app update; at the time of
+  writing the listings name zokoanime.video, megaplay.buzz — and the
+  numbered mirrors the site serves megaplay's player from,
+  `megaplay-1.buzz` and the like, which the client reads as it reads the
+  host — and vidtube.site, and the client fetches from whichever the site
+  lists for the episode.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
