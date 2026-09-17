@@ -1835,3 +1835,82 @@ proptest! {
         );
     }
 }
+
+proptest! {
+    /// A megaplay embed URL is one the client reads a stream from
+    /// exactly when the CDN family it names is one the proxy can
+    /// serve. The host decides whether the page's shape is one the
+    /// client reads; the family decides whether the segments behind
+    /// it are bytes the proxy can hand to the player, and one family
+    /// wraps them in images the site's own player unwraps. Every
+    /// other family reads, including the one a URL names by naming
+    /// none.
+    #[test]
+    fn a_megaplay_embed_reads_exactly_when_its_cdn_family_is_one_the_client_serves(
+        host in "(megaplay\\.buzz|megaplay-[0-9]{1,3}\\.buzz)",
+        path in "/stream/s-2/[0-9]{1,6}/(sub|dub)",
+        // The families the site names, and the ones it does not:
+        // a generator of bare letters would name `tcdn` about never.
+        family in proptest::option::of(prop_oneof![
+            Just("tcdn".to_string()),
+            Just("bcdn".to_string()),
+            "[a-z]{1,6}",
+        ]),
+        trailing in "(&autoplay=1|&t=[0-9]{1,3}|)",
+    ) {
+        let query = family
+            .as_ref()
+            .map_or_else(String::new, |family| format!("?s={family}{trailing}"));
+        let embed = format!("https://{host}{path}{query}");
+        prop_assert!(ajax::readable_host(&host), "{host}");
+        prop_assert_eq!(
+            ajax::readable(&embed),
+            family.as_deref() != Some("tcdn"),
+            "{}",
+            embed
+        );
+    }
+
+    /// A server the client gets no stream from sorts behind every one
+    /// it does, whatever order the site listed them in — the same
+    /// rule that puts a host the client never read last, applied to
+    /// the family a host serves.
+    #[test]
+    fn a_server_on_an_unserved_cdn_family_sorts_behind_the_ones_that_serve(
+        ahead in 0usize..3,
+        behind in 0usize..3,
+    ) {
+        let server = |name: &str, embed_url: String| ServerEmbed {
+            mode: "sub".into(),
+            name: name.into(),
+            embed_url,
+        };
+        let mut listed = vec![server(
+            "HD-1",
+            "https://megaplay.buzz/stream/s-2/1/sub?s=tcdn".into(),
+        )];
+        for i in 0..ahead {
+            listed.push(server(
+                "ZokoAnime",
+                format!("https://zokoanime.video/stream/mal/1/{i}/sub"),
+            ));
+        }
+        for i in 0..behind {
+            listed.push(server(
+                "HD-2",
+                format!("https://megaplay.buzz/stream/s-2/{i}/sub?s=bcdn"),
+            ));
+        }
+        let ordered: Vec<&str> = ajax::servers_for(&listed, "sub")
+            .into_iter()
+            .map(|s| s.embed_url.as_str())
+            .collect();
+        prop_assert_eq!(ordered.len(), listed.len());
+        prop_assert_eq!(
+            ordered.last().copied(),
+            Some("https://megaplay.buzz/stream/s-2/1/sub?s=tcdn"),
+            "{:?}",
+            ordered
+        );
+    }
+}

@@ -1127,8 +1127,10 @@ fn the_servers_the_client_can_read_come_first_then_the_sites_order() {
             .iter()
             .map(|s| s.name.as_str())
             .collect::<Vec<_>>(),
-        vec!["HD-1", "HD-2", "ZokoAnime"],
-        "megaplay's pages are read too, so the site's order stands"
+        vec!["HD-2", "ZokoAnime", "HD-1"],
+        "megaplay's pages are read too, so the site's order stands among them \
+         — but HD-1 is the family whose segments the client cannot serve, and \
+         a server it gets no stream from sorts behind the ones it can"
     );
     assert_eq!(
         servers_for(&renamed, "dub")
@@ -1722,6 +1724,28 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // The site's own pairing: one megaplay server per CDN
+            // family, the one whose segments the proxy cannot serve
+            // listed first.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21471") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA0L3N1Yj9zPXRjZG4=\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // That family alone: the mode's only server.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21472") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA0L3N1Yj9zPXRjZG4=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // A megaplay server whose sources answer carries the
             // stream as the site's own ciphertext.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21470") => {
@@ -2131,6 +2155,14 @@ impl Fetch for Site {
             "https://megaplay.buzz/stream/s-2/734303/sub?s=bcdn" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "179412"))
             }
+            // A page of the family the proxy cannot serve. It reads
+            // like any other megaplay page and its sources answer
+            // names a stream that would resolve, so nothing but the
+            // family stops the walk taking it.
+            "https://megaplay.buzz/stream/s-2/734304/sub?s=tcdn" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "179413"))
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=179413&s=tcdn" => ok(MEGAPLAY_SOURCES),
             "https://megaplay.buzz/stream/s-2/734293/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "5"))
             }
@@ -3157,6 +3189,62 @@ async fn a_megaplay_server_whose_ciphertext_does_not_open_is_a_parse_failure() {
         .await
         .expect_err("no usable source");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+}
+
+/// The site lists one megaplay server per CDN family, and the
+/// families do not stream alike: one serves its segments as ordinary
+/// transport-stream bytes, which the proxy hands to the player
+/// unchanged, and another serves them as image files with the stream
+/// behind a fixed prefix its own player strips. The proxy strips
+/// nothing, so a server of that family plays nothing — while its page
+/// reads, its sources answer, and its playlists validate, which is
+/// far enough for the walk to take it and stop.
+///
+/// So it is a server this client gets no stream from, listed first or
+/// not: the walk sorts it behind the ones it does, and never asks the
+/// site what that family streams.
+#[tokio::test]
+async fn a_megaplay_server_on_a_cdn_the_proxy_cannot_serve_is_stepped_over() {
+    let c = client();
+    let source = c.master_playlist_url(21471, "sub").await.expect("resolved");
+    assert_eq!(
+        source.master_url, "https://mp.example/v/master.m3u8",
+        "the stream comes from the family behind it in the listing"
+    );
+    let urls: Vec<String> = c
+        .transport()
+        .requests()
+        .iter()
+        .map(|r| r.url.clone())
+        .collect();
+    assert!(
+        !urls.iter().any(|u| u.contains("s=tcdn")),
+        "neither the page nor its sources were asked for: {urls:?}"
+    );
+}
+
+/// The mode's only server on that family: nothing plays, and the site
+/// is never asked what it streams. An answered absence, as an episode
+/// listed only on a host the client does not read is — the site named
+/// a server, and this client is not one that can play it.
+#[tokio::test]
+async fn a_lone_megaplay_server_on_that_cdn_leaves_the_episode_without_a_stream() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21472, "sub")
+        .await
+        .expect_err("no server this client reads");
+    assert!(matches!(err, AniError::NoResults), "{err:?}");
+    let urls: Vec<String> = c
+        .transport()
+        .requests()
+        .iter()
+        .map(|r| r.url.clone())
+        .collect();
+    assert!(
+        !urls.iter().any(|u| u.contains("getSourcesNew")),
+        "the sources endpoint was never asked: {urls:?}"
+    );
 }
 
 /// A server's page can decode to a stream on a host that is down.
