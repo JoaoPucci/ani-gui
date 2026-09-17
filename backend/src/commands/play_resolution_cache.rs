@@ -117,7 +117,16 @@ use crate::proxy::MediaKind;
 // v13: rows carry the resolve's sidecar subtitle tracks. A v12 row
 // has none, and replaying it would play a provider's sub stream as
 // raw video; bumping re-resolves.
-const SCHEMA: &str = "v13";
+// v14: the show id a row carries gained its provider — a show key,
+// printed bare for anidb and `<provider>:<slug>` for anyone else.
+// A v13 row holds the slug alone whichever provider produced it, so
+// nothing in it says whose id it is, while every reader of a served
+// row now takes a bare id for anidb's: the cache hit, the hand-off
+// and the mark-watched would write that row's history, watched-at
+// stamp, reverse mapping and title match into anidb's namespace and
+// could alias a real anidb row. Bumping re-resolves, and the fresh
+// row stamps the qualified identity.
+const SCHEMA: &str = "v14";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
