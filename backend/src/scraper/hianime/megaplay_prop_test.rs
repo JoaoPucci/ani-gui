@@ -89,36 +89,39 @@ proptest! {
     }
 
     /// The endpoint is the embed page's origin, scheme and host,
-    /// with the path and query left behind. Every query key but the
-    /// CDN family's, which the endpoint carries through
-    /// ([`the_sources_endpoint_carries_the_id_and_the_pages_cdn_family`]).
+    /// with the path and query left behind.
     #[test]
     fn the_sources_endpoint_is_the_pages_origin(
         scheme in "(http|https)",
         host in "[a-z]{2,10}(-[0-9]{1,2})?\\.(buzz|site|to)",
         path in "/[a-z0-9/_-]{0,30}",
-        query in "(\\?[a-rt-z]=[a-z0-9]{1,6})?",
+        query in "(\\?[a-z]=[a-z0-9]{1,6})?",
         id in 1u64..1_000_000_000,
     ) {
         let embed = format!("{scheme}://{host}{path}{query}");
         prop_assert_eq!(
             sources_url(&embed, id),
-            Some(format!("{scheme}://{host}/stream/getSourcesNew?id={id}"))
+            Some(format!("{scheme}://{host}/stream/getSourcesNew?id={id}&s=bcdn"))
         );
     }
 
-    /// The endpoint's query is the media id and the CDN family the
-    /// embed page names, and nothing else: the site serves one
-    /// megaplay server per family and its player appends the page's
-    /// own family to every sources request, while the rest of the
-    /// page's query is the page's business. A family passed through
-    /// unchanged is what makes the answer name that family's hosts.
+    /// The endpoint's query is the media id and the one delivery
+    /// network the client can play a stream from, whatever network
+    /// the page named and whatever else its query held. The endpoint
+    /// honours the selector for any id, so the page's own choice is
+    /// the site player's business and not this client's.
     #[test]
-    fn the_sources_endpoint_carries_the_id_and_the_pages_cdn_family(
+    fn the_sources_endpoint_asks_for_the_played_family_whatever_the_page_named(
         scheme in "(http|https)",
         host in "[a-z]{2,10}(-[0-9]{1,2})?\\.(buzz|site|to)",
         path in "/[a-z0-9/_-]{0,30}",
-        family in proptest::option::of("[a-z0-9_-]{1,8}"),
+        // The networks the site names, and the ones it does not: a
+        // generator of bare letters would name `tcdn` about never.
+        family in proptest::option::of(prop_oneof![
+            Just("tcdn".to_string()),
+            Just("bcdn".to_string()),
+            "[a-z0-9_-]{1,8}",
+        ]),
         others in proptest::collection::vec(("[a-rt-z]{1,4}", "[a-z0-9]{0,6}"), 0..3),
         id in 1u64..1_000_000_000,
     ) {
@@ -144,11 +147,12 @@ proptest! {
             .query_pairs()
             .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect();
-        let mut want = vec![("id".to_string(), id.to_string())];
-        if let Some(family) = &family {
-            want.push(("s".to_string(), family.clone()));
-        }
-        prop_assert_eq!(got, want, "the query of {}", built);
+        prop_assert_eq!(
+            got,
+            vec![("id".to_string(), id.to_string()), ("s".to_string(), "bcdn".to_string())],
+            "the query of {}",
+            built
+        );
     }
 
     /// The response round-trips: the master as given, and exactly
