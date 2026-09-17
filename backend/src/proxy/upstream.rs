@@ -238,6 +238,10 @@ pub async fn fetch_streaming(
 }
 
 #[cfg(test)]
+#[path = "upstream_referer_prop_test.rs"]
+mod prop_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::proxy::token::MediaKind;
