@@ -1092,6 +1092,12 @@ const SERVERS_RENAMED: &str = r#"{"status":true,"html":"<div class=\"item server
 /// markup, the player element naming the media.
 const MEGAPLAY_PAGE: &str = r#"<!DOCTYPE html><html><head><title>File 179411 - MegaPlay</title></head><body><div class="mg3-player"><div class="fix-area" id="megaplay-player" data-id="179411" data-realid="734292" data-mediaid="8879" data-fileversion="0"><div class="content-center"></div></div></div></body></html>"#;
 
+/// megaplay's sources response in the shape the site answers now:
+/// the tracks in the clear, the stream as ciphertext under the
+/// constants the site's player script carries. Encrypted here for a
+/// stub host, so the walk reads a real answer's shape.
+const MEGAPLAY_ENCRYPTED_SOURCES: &str = r#"{"tracks":[{"file":"https://mp.example/v/subs/track_0_eng.vtt","label":"English","kind":"captions","default":true}],"t":1,"intro":{"start":0,"end":0},"outro":{"start":0,"end":0},"server":4,"enc":"wdeBruh3qqn_i5wUNnyaPWrcRay_7M0FpHUIQh86p3DvI3iXrN-0pvCfjftR5L8q"}"#;
+
 /// megaplay's sources response as captured on 2026-09-12, the master
 /// and the tracks pointed at stub hosts.
 const MEGAPLAY_SOURCES: &str = r#"{"sources":{"file":"https://mp.example/v/master.m3u8"},"tracks":[{"file":"https://mp.example/v/subs/track_0_eng.vtt","label":"English","kind":"captions","default":true},{"file":"https://mp.example/v/subs/track_2_Latin_American_spa.vtt","label":"Spanish (Latin American)","kind":"captions"}],"t":1,"intro":{"start":0,"end":0},"outro":{"start":0,"end":0},"server":4}"#;
@@ -1716,8 +1722,19 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // A megaplay server whose sources come back encrypted,
-            // null in the clear.
+            // A megaplay server whose sources answer carries the
+            // stream as the site's own ciphertext.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21470") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAzL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A megaplay server whose ciphertext does not open under
+            // the site's constants.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21431") => {
                 if ajax {
                     ok(
@@ -2111,6 +2128,9 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            "https://megaplay.buzz/stream/s-2/734303/sub?s=bcdn" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "179412"))
+            }
             "https://megaplay.buzz/stream/s-2/734293/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "5"))
             }
@@ -2122,6 +2142,17 @@ impl Fetch for Site {
                     && header(req, "X-Requested-With") == Some("XMLHttpRequest")
                 {
                     ok(MEGAPLAY_SOURCES)
+                } else {
+                    refused(403)
+                }
+            }
+            // The answer as the site gives it now: the tracks in the
+            // clear, the stream behind the site's own cipher.
+            "https://megaplay.buzz/stream/getSourcesNew?id=179412&s=bcdn" => {
+                if header(req, "Referer") == Some("https://megaplay.buzz/")
+                    && header(req, "X-Requested-With") == Some("XMLHttpRequest")
+                {
+                    ok(MEGAPLAY_ENCRYPTED_SOURCES)
                 } else {
                     refused(403)
                 }
@@ -3094,10 +3125,31 @@ async fn a_megaplay_server_is_read_through_the_sites_sources_endpoint() {
     );
 }
 
+/// The site hands the stream back as ciphertext, under two constants
+/// its own player script carries, with only the tracks left in the
+/// clear. The walk opens it and takes the stream, so an episode plays
+/// from a megaplay server in the shape the site answers now.
 #[tokio::test]
-async fn a_megaplay_server_whose_sources_are_encrypted_is_a_parse_failure() {
-    // The older endpoint's shape: the sources encrypted, null in the
-    // clear. The site changed what it hands the client; that is
+async fn a_megaplay_servers_encrypted_sources_carry_the_stream_the_walk_takes() {
+    let c = client();
+    let source = c.master_playlist_url(21470, "sub").await.expect("resolved");
+    assert_eq!(source.master_url, "https://mp.example/v/master.m3u8");
+    assert_eq!(
+        source.referer.as_deref(),
+        Some("https://megaplay.buzz/"),
+        "the referer is the embed host's origin, as it is for an answer in the clear"
+    );
+    assert_eq!(
+        source.subtitles.len(),
+        1,
+        "the tracks ride in the clear beside the ciphertext"
+    );
+}
+
+#[tokio::test]
+async fn a_megaplay_server_whose_ciphertext_does_not_open_is_a_parse_failure() {
+    // Nothing in the clear and a blob the site's constants do not
+    // open: the site changed what it hands the client, which is
     // never an episode without a stream.
     let c = client();
     let err = c

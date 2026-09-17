@@ -57,6 +57,12 @@ base64 = "0.22"
 rand = "0.8"
 subtle = "2"
 
+# AES-CBC for hianime's megaplay sources answer, which the site hands
+# back as ciphertext under constants its own player script carries.
+# Pure Rust: the packages carry no OpenSSL, on either platform.
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc", "block-padding"] }
+
 # ANSI escape stripping for spawned tools' output
 strip-ansi-escapes = "0.2"
 
