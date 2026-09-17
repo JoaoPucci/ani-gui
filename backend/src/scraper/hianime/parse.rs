@@ -72,45 +72,43 @@ pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
 /// that block.
 const CARD_MARKS: [&str; 3] = ["film-poster", "film-detail", "film-name"];
 
-/// How many of [`CARD_MARKS`] make a fragment one of the list's
-/// cards.
-const CARD_AT_LEAST: usize = 2;
-
 /// Whether a fragment of the split is one of the list's cards, and
 /// so a fragment whose unreadability refuses the page. The boundary
 /// is a class name rather than a tag, so the split catches more than
-/// cards: a card whose class list names the boundary twice leaves a
-/// fragment between the two mentions that is part of one tag, and
-/// whatever the site writes between the last card and the sidebar
-/// rides along on the last card's fragment. A fragment carrying at
-/// least two of a card's own marks is a card; the rest is the list's
-/// furniture and is passed over.
+/// cards: a card whose class list names the boundary twice —
+/// `class="flw-item flw-item-big"` — leaves the `" "` between the
+/// two mentions as a fragment of its own, part of one tag and no
+/// card at all, and whatever the site writes between the last card
+/// and the sidebar rides along on the last card's fragment. A
+/// fragment carrying any one of a card's own marks is a card; the
+/// mark-less slivers are the list's furniture and are passed over.
 ///
-/// The threshold sits between the two things that can go wrong. The
-/// change of shape that costs a card its heading anchor can rename
-/// one of the marks in the same stroke, so a card is not held to
-/// carrying all three — held to that, the drift this rule exists to
-/// catch would slip past as furniture. And the furniture carries
-/// none of the three, so two is as low as the rule can go without
-/// refusing pages over the list's own chrome.
+/// One mark is where the line sits because a card the site rendered
+/// broken still carries one. The change of shape that costs a card
+/// its heading anchor can take a mark with it in the same stroke,
+/// and the search shape already renders cards with no `film-poster`
+/// block, so a card left with nothing but its `film-name` heading is
+/// a shape the site can reach. Held to two marks that card is
+/// furniture: dropped without a word, leaving a listing one card
+/// short that still reads as an answer, and a pick with no episode
+/// count or year to weigh takes the card after it and plays an
+/// unrelated entry. A refusal costs the search; a drop costs the
+/// right answer.
 ///
-/// Its limits are worth stating. Chrome that does carry two of the
-/// marks — a script between the list and the sidebar naming the
-/// site's own class names — would be held to being a card and refuse
-/// the page; and a card whose own markup mentions the boundary again
-/// is split in two, of which the first half may carry two marks and
-/// no anchor. Neither shape appears on the pages the reader was
-/// written against, and both are visible as a page that refuses
-/// rather than a page that answers wrongly. What nothing here can
-/// see is a card the site did not render at all: a list one card
-/// short still reads as complete, exactly as the episode listing's
-/// rows do.
+/// What the line newly refuses is chrome inside the list's own
+/// bounds that names one of the three classes — a script between the
+/// last card and the sidebar mentioning `film-name`, a "load more"
+/// block carrying a `film-poster`. Those bounds are narrow: the
+/// parse reads between `film_list-wrap` and `main-sidebar`, and the
+/// two places this markup appears away from the results — the top-10
+/// widget and the sidebar — are both outside them, leaving the
+/// mark-less sliver as the only furniture the captured shapes put
+/// inside. Such chrome would show as a page that refuses rather than
+/// a page that answers wrongly. What nothing here can see is a card
+/// the site did not render at all: a list one card short still reads
+/// as complete, exactly as the episode listing's rows do.
 fn card_shaped(fragment: &str) -> bool {
-    CARD_MARKS
-        .iter()
-        .filter(|mark| fragment.contains(*mark))
-        .count()
-        >= CARD_AT_LEAST
+    CARD_MARKS.iter().any(|mark| fragment.contains(*mark))
 }
 
 /// One card of the list, read from its detail block
