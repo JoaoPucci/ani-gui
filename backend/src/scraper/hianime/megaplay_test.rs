@@ -1,7 +1,8 @@
 //! The megaplay reader's pure halves: the media id off the embed page,
 //! the sources response, and the language a track file names.
 
-use super::megaplay::{lang_of_track, media_id, parse_sources, sources_url};
+use super::megaplay::{media_id, sources_url};
+use super::megaplay_sources::{lang_of_track, parse_sources};
 use crate::error::AniError;
 use crate::scraper::provider::{SubtitleTrack, SUBTITLE_URL_CAP};
 

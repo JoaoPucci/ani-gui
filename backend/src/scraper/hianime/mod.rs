@@ -23,6 +23,8 @@ pub mod ajax;
 pub mod detail;
 pub mod embed;
 pub mod megaplay;
+pub mod megaplay_cipher;
+pub mod megaplay_sources;
 pub mod parse;
 pub use ajax::{
     chain_reserve, parse_episode_list, parse_server_listing, parse_servers, remainder_index,
@@ -30,7 +32,8 @@ pub use ajax::{
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
-pub use megaplay::{lang_of_track, media_id, parse_sources, served_cdn, sources_url};
+pub use megaplay::{media_id, served_cdn, sources_url};
+pub use megaplay_sources::{lang_of_track, parse_sources};
 pub use parse::{parse_search, slug_id};
 
 use crate::error::{AniError, Result};
