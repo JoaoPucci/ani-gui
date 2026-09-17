@@ -66,7 +66,7 @@ fn the_sources_endpoint_is_on_the_embed_pages_origin() {
             179_411
         )
         .as_deref(),
-        Some("https://megaplay.buzz/stream/getSourcesNew?id=179411")
+        Some("https://megaplay.buzz/stream/getSourcesNew?id=179411&s=bcdn")
     );
     assert_eq!(
         sources_url("https://megaplay-1.buzz/stream/s-2/734292/sub", 7).as_deref(),
@@ -75,6 +75,34 @@ fn the_sources_endpoint_is_on_the_embed_pages_origin() {
     );
     assert_eq!(sources_url("not a url", 1), None);
     assert_eq!(sources_url("ftp://megaplay.buzz/x", 1), None);
+}
+
+/// The site lists one megaplay server per CDN family and names the
+/// family in the embed URL's query — `tcdn`, `bcdn`, or none at all
+/// for the default. The page's player appends the family its page was
+/// served for to every sources request, so the request carries it
+/// too: asked without it, the endpoint answers for the default
+/// family, whose CDN refuses every playlist the answer names.
+#[test]
+fn the_sources_request_carries_the_pages_cdn_family() {
+    assert_eq!(
+        sources_url("https://megaplay.buzz/stream/s-2/146233/sub?s=tcdn", 1).as_deref(),
+        Some("https://megaplay.buzz/stream/getSourcesNew?id=1&s=tcdn")
+    );
+    assert_eq!(
+        sources_url("https://megaplay.buzz/stream/s-2/146233/sub", 1).as_deref(),
+        Some("https://megaplay.buzz/stream/getSourcesNew?id=1"),
+        "a page that names no family asks for none"
+    );
+    assert_eq!(
+        sources_url(
+            "https://megaplay.buzz/stream/s-2/146233/sub?autoplay=1&s=bcdn&t=5",
+            9
+        )
+        .as_deref(),
+        Some("https://megaplay.buzz/stream/getSourcesNew?id=9&s=bcdn"),
+        "the page's other query keys are the page's own, not the endpoint's"
+    );
 }
 
 #[test]

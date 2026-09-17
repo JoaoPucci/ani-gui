@@ -68,13 +68,15 @@ proptest! {
     }
 
     /// The endpoint is the embed page's origin, scheme and host,
-    /// with the path and query left behind.
+    /// with the path and query left behind. Every query key but the
+    /// CDN family's, which the endpoint carries through
+    /// ([`the_sources_endpoint_carries_the_id_and_the_pages_cdn_family`]).
     #[test]
     fn the_sources_endpoint_is_the_pages_origin(
         scheme in "(http|https)",
         host in "[a-z]{2,10}(-[0-9]{1,2})?\\.(buzz|site|to)",
         path in "/[a-z0-9/_-]{0,30}",
-        query in "(\\?[a-z]=[a-z0-9]{1,6})?",
+        query in "(\\?[a-rt-z]=[a-z0-9]{1,6})?",
         id in 1u64..1_000_000_000,
     ) {
         let embed = format!("{scheme}://{host}{path}{query}");
@@ -82,6 +84,50 @@ proptest! {
             sources_url(&embed, id),
             Some(format!("{scheme}://{host}/stream/getSourcesNew?id={id}"))
         );
+    }
+
+    /// The endpoint's query is the media id and the CDN family the
+    /// embed page names, and nothing else: the site serves one
+    /// megaplay server per family and its player appends the page's
+    /// own family to every sources request, while the rest of the
+    /// page's query is the page's business. A family passed through
+    /// unchanged is what makes the answer name that family's hosts.
+    #[test]
+    fn the_sources_endpoint_carries_the_id_and_the_pages_cdn_family(
+        scheme in "(http|https)",
+        host in "[a-z]{2,10}(-[0-9]{1,2})?\\.(buzz|site|to)",
+        path in "/[a-z0-9/_-]{0,30}",
+        family in proptest::option::of("[a-z0-9_-]{1,8}"),
+        others in proptest::collection::vec(("[a-rt-z]{1,4}", "[a-z0-9]{0,6}"), 0..3),
+        id in 1u64..1_000_000_000,
+    ) {
+        let mut pairs: Vec<String> = others.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        if let Some(family) = &family {
+            pairs.push(format!("s={family}"));
+        }
+        let query = if pairs.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", pairs.join("&"))
+        };
+        let embed = format!("{scheme}://{host}{path}{query}");
+        let built = sources_url(&embed, id).expect("an http(s) embed URL");
+        let asked = url::Url::parse(&built).expect("the endpoint is a URL");
+        prop_assert_eq!(
+            asked.origin().ascii_serialization(),
+            format!("{scheme}://{host}"),
+            "the endpoint is the page's origin: {}",
+            built
+        );
+        let got: Vec<(String, String)> = asked
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect();
+        let mut want = vec![("id".to_string(), id.to_string())];
+        if let Some(family) = &family {
+            want.push(("s".to_string(), family.clone()));
+        }
+        prop_assert_eq!(got, want, "the query of {}", built);
     }
 
     /// The response round-trips: the master as given, and exactly
