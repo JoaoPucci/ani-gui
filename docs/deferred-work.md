@@ -380,6 +380,33 @@ starting it, and delete it when you find it done.
   host, and each is a maintenance cost of its own. Not urgent while
   zokoanime keeps appearing on every listing seen so far.
 
+## Reading hianime.ms and vidnest.fun as providers
+
+- **Read hianime.ms, and the vidnest.fun embed it lists**, so an
+  episode has somewhere left to play from when the hianime the app
+  reads runs out of working embed hosts. hianime.ms is a second
+  front under the hianime name and a different application from
+  hianime.at: its watch page takes its own shape
+  (`https://hianime.ms/watch-<slug>-episode-1-f3808`) and is served
+  from its own templates, it exposes a `/api/player/check` endpoint
+  rather than hianime.at's `/api/theme/...` listing endpoints, and
+  its server list is drawn as buttons — "Ryu", which is its own
+  built-in backup player (`data-server="backup"`), and an embed on
+  vidnest.fun (`https://vidnest.fun/anime/<id>/...`).
+
+  Why it matters: on 2026-09-17 both embed hosts hianime.at lists
+  for an episode failed for the app at once — zokoanime's CDN origin
+  timed out with a 522, and megaplay changed its sources answer to
+  an encrypted field with a CDN selector on the embed URL — while
+  anidb.app was under maintenance, and hianime.ms kept playing the
+  same episodes through Ryu. A third catalogue front, or a third
+  embed host, is what a fallback of one site cannot give.
+
+  Why it waited: the second provider itself is still landing, and
+  reading either site is its own reverse-engineering — hianime.ms's
+  player and catalogue API, vidnest's embed page — each a
+  maintenance cost of its own, like every host the client reads.
+
 ## A provider order and switch in settings
 
 - **Let the user order the providers and switch one off.** The
