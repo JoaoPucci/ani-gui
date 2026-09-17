@@ -1372,6 +1372,18 @@ fn header<'a>(req: &'a FetchRequest, name: &str) -> Option<&'a str> {
         .map(|(_, v)| v.as_str())
 }
 
+/// Whether the CDN answers this request for the payload's master or
+/// its renditions: it checks the origin of the page the payload came
+/// from, and the stub serves that page either from the host the
+/// listing names or, for an embed URL the site has moved, from the
+/// origin the request lands on.
+fn from_an_origin_that_served_the_page(req: &FetchRequest) -> bool {
+    matches!(
+        header(req, "Referer"),
+        Some("https://zokoanime.video/" | "https://cdn2.zokoanime.video/")
+    )
+}
+
 fn ok(body: impl Into<String>) -> crate::error::Result<FetchResponse> {
     Ok(FetchResponse {
         status: 200,
@@ -2207,7 +2219,7 @@ impl Fetch for Site {
                 }
             }
             "https://hls.example/v/master.m3u8" => {
-                if header(req, "Referer") == Some("https://zokoanime.video/") {
+                if from_an_origin_that_served_the_page(req) {
                     ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n")
                 } else {
                     refused(403)
@@ -2228,7 +2240,7 @@ impl Fetch for Site {
             }
             "https://hls.example/v/new/720/index.m3u8" => ok("#EXTM3U\n"),
             "https://hls.example/v/720/index.m3u8" => {
-                if header(req, "Referer") == Some("https://zokoanime.video/") {
+                if from_an_origin_that_served_the_page(req) {
                     ok("#EXTM3U\n")
                 } else {
                     refused(403)
