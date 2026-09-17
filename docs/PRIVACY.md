@@ -92,8 +92,11 @@ requires it; the exception is the update check that runs on launch
   stream its page names does not answer as a playlist, so one resolve
   can reach more than one of them, and a host the client cannot read is
   reached only after every one it can has failed — and on megaplay's
-  pages the host's own sources endpoint as well, since that is where its
-  player gets the stream. The site chooses those hosts, and they can
+  pages the sources endpoint of the host that served the page as well,
+  since that is where its player gets the stream, and the host that
+  served a page is not always the one the site's listing named, because
+  the site moves those pages between hosts and the request follows the
+  move. The site chooses those hosts, and they can
   change without an app update; at the time of writing the listings name
   zokoanime.video, megaplay.buzz — and the numbered mirrors the site
   serves megaplay's player from, `megaplay-1.buzz` and the like, which
