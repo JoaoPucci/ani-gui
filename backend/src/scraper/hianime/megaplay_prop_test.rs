@@ -1,6 +1,7 @@
 //! Property coverage for the megaplay reader's pure halves.
 
-use super::megaplay::{lang_of_track, media_id, parse_sources, sources_url};
+use super::megaplay::{media_id, sources_url};
+use super::megaplay_sources::{lang_of_track, parse_sources};
 use crate::error::AniError;
 use crate::scraper::provider::SUBTITLE_URL_CAP;
 use base64::Engine as _;
