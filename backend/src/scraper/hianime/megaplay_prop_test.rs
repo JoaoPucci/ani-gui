@@ -3,7 +3,27 @@
 use super::megaplay::{lang_of_track, media_id, parse_sources, sources_url};
 use crate::error::AniError;
 use crate::scraper::provider::SUBTITLE_URL_CAP;
+use base64::Engine as _;
 use proptest::prelude::*;
+
+/// The constants the site's player script opens its sources answer
+/// with, written out here rather than read from the reader: the
+/// property drives the site's own cipher from the outside, so a
+/// reader that opened its answers under some other key would fail it.
+const SOURCES_KEY: &[u8; 16] = b"i?LMTAx0Q6,:}50U";
+const SOURCES_IV: &[u8; 16] = b"W0;27ToaUpl_P%'c";
+
+/// `plain` as the site hands it back: AES-256-CBC under the site's
+/// constants, the key zero-padded to the cipher's width, base64url
+/// with the padding left off.
+fn encrypted(plain: &str) -> String {
+    use aes::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
+    let mut key = [0u8; 32];
+    key[..SOURCES_KEY.len()].copy_from_slice(SOURCES_KEY);
+    let cipher = cbc::Encryptor::<aes::Aes256>::new(&key.into(), SOURCES_IV.into());
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(cipher.encrypt_padded_vec_mut::<Pkcs7>(plain.as_bytes()))
+}
 
 /// The player element with its attributes in any order, the media id
 /// among them.
@@ -340,5 +360,38 @@ proptest! {
         let json = format!(r#"{{"sources":[{}],"tracks":[]}}"#, junk.join(","));
         let refused = matches!(parse_sources(&json), Err(AniError::ParseFailed { .. }));
         prop_assert!(refused, "a list naming no fetchable file: {json}");
+    }
+
+    /// Whatever stream the site names, the answer it encrypts comes
+    /// back naming exactly that: the response carries nothing in the
+    /// clear but its tracks, and the file is read out of the
+    /// ciphertext.
+    #[test]
+    fn an_encrypted_answer_round_trips_the_stream_it_names(
+        host in "[a-z]{2,10}\\.[a-z]{2,5}",
+        path in "(/[a-z0-9]{1,8}){1,4}",
+        tracks in 0usize..3,
+    ) {
+        let master = format!("https://{host}{path}/master.m3u8");
+        let enc = encrypted(&serde_json::json!({"file": master}).to_string());
+        let listed = vec![
+            r#"{"file":"https://c.example/subs/track_0_eng.vtt","label":"English","kind":"captions"}"#;
+            tracks
+        ]
+        .join(",");
+        let json = format!(r#"{{"tracks":[{listed}],"t":1,"enc":"{enc}"}}"#);
+        let payload = parse_sources(&json).expect("the encrypted answer");
+        prop_assert_eq!(&payload.src, &master);
+        prop_assert_eq!(payload.subtitles.len(), tracks);
+    }
+
+    /// A blob that is not the site's ciphertext names no stream and
+    /// is refused, whatever it is made of — the client reads the
+    /// site's answer, and anything else is the site having changed.
+    #[test]
+    fn a_blob_that_is_not_the_sites_ciphertext_is_refused(enc in "[A-Za-z0-9_=-]{0,200}") {
+        let json = format!(r#"{{"tracks":[],"t":1,"enc":"{enc}"}}"#);
+        let refused = matches!(parse_sources(&json), Err(AniError::ParseFailed { .. }));
+        prop_assert!(refused, "read as a stream: {}", json);
     }
 }
