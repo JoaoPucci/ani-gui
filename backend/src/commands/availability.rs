@@ -320,6 +320,15 @@ pub async fn stamp_after_native(
 /// kept, with a fresh lifetime; any other row becomes the boolean
 /// positive row a served resolve without a cap writes. Under the
 /// same refresh guard as a resolve's stamp.
+///
+/// The row is read inside the lock, not on the way to it. A native
+/// resolve stamping the same row is not a cache-bypassing refresh
+/// and leaves the generation where it was, so a replay behind it
+/// still passes the guard and writes last — carrying forward a row
+/// read earlier would put the resolve's exact cap, or the provider
+/// it failed over to, back to what they were before it ran, for a
+/// fresh lifetime. Read under the lock, the row a replay carries
+/// forward is the one that stands when it writes.
 pub async fn stamp_after_cache_hit(
     state: &AppState,
     kitsu_id: Option<&str>,
@@ -331,24 +340,33 @@ pub async fn stamp_after_cache_hit(
         return;
     };
     let row = cache_key(id, mode);
-    let standing: Option<AvailabilityResponse> = meta_cache_get(&state.cache_pool, &row)
-        .ok()
-        .flatten()
-        .and_then(|body| serde_json::from_str(&body).ok())
-        .filter(|parsed: &AvailabilityResponse| {
-            parsed.available && parsed.provider == Some(provider)
-        });
     crate::commands::availability_refresh::with_row_if_ours(
         &state.availability_refreshes,
         &row,
         generation_at_start,
         false,
-        || match &standing {
-            Some(parsed) => write_cache_full(state, id, mode, None, parsed),
+        || match standing_row_of(state, &row, provider) {
+            Some(parsed) => write_cache_full(state, id, mode, None, &parsed),
             None => write_cache(state, id, mode, true, Some(provider)),
         },
     )
     .await;
+}
+
+/// The row as it stands, when it is a positive one `provider` proved
+/// — the row a replay through that provider writes back untouched.
+/// Anything else (no row, a negative, another provider's) is none:
+/// the replay has nothing to carry forward from it.
+fn standing_row_of(
+    state: &AppState,
+    row: &str,
+    provider: crate::scraper::provider::ProviderId,
+) -> Option<AvailabilityResponse> {
+    meta_cache_get(&state.cache_pool, row)
+        .ok()
+        .flatten()
+        .and_then(|body| serde_json::from_str::<AvailabilityResponse>(&body).ok())
+        .filter(|parsed| parsed.available && parsed.provider == Some(provider))
 }
 
 /// Inputs for the batch `availability_cached` lookup — a list of
