@@ -1085,6 +1085,10 @@ pub struct AvailabilityWarmArgs {
 mod backed_tests;
 
 #[cfg(test)]
+#[path = "availability_stamp_race_test.rs"]
+mod stamp_race_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
