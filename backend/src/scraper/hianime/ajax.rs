@@ -5,7 +5,6 @@
 use base64::Engine as _;
 use serde::Deserialize;
 
-use super::megaplay;
 use crate::error::{AniError, Result};
 use crate::scraper::provider::EpisodeRef;
 
@@ -523,27 +522,17 @@ pub fn readable_host(host: &str) -> bool {
             .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// Whether `embed_url` is one the client gets a stream from: on a
-/// host whose page it reads ([`readable_host`]), and naming a CDN
-/// family whose segments the proxy can serve
-/// ([`megaplay::served_cdn`]).
-///
-/// The family belongs here beside the host because it decides the
-/// same thing. A page of a family the proxy cannot serve reads
-/// perfectly, answers its sources and fronts playlists that
-/// validate, and the walk would take it and stop on a stream that
-/// plays nothing; a host the client does not read fails earlier and
-/// more visibly. Both are servers this client gets no stream from,
-/// so both sort behind the ones it does ([`servers_for`]), neither
-/// holds back time for the others ([`remainder_index`]), and a page
-/// from either says nothing about the site having changed shape.
+/// Whether `embed_url` is on a host whose page the client can read.
+/// The rest of the URL says nothing about that: megaplay's names the
+/// content delivery network the site's own player would ask for, and
+/// the client asks for the one it plays whatever the listing named
+/// ([`megaplay::sources_url`]).
 #[must_use]
 pub fn readable(embed_url: &str) -> bool {
     url::Url::parse(embed_url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))
         .is_some_and(|h| readable_host(&h))
-        && megaplay::served_cdn(embed_url)
 }
 
 /// The servers to try for `mode`, in order: every server of that
