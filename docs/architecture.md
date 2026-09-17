@@ -12,7 +12,7 @@ The app talks to three things a browser tab cannot reach on its own:
 
 1. The streaming providers — each sits behind TLS-fingerprinting protection that rejects browser and plain-HTTP clients, so requests go out through a `curl-impersonate` subprocess.
 2. The watch-history file — needs filesystem access.
-3. Anime stream CDNs — some require a `Referer:` header that browser fetch APIs cannot set, and they serve segments without permissive CORS.
+3. Anime stream CDNs — hianime's serve a playlist only to a request naming the embed page's own origin as `Referer:`, a header browser fetch APIs cannot set; anidb.app's ask for no referer at all. Neither serves segments with permissive CORS, and the proxy sends only what the resolved stream named — the embed origin for a hianime stream, no origin for an anidb.app one — never a referer of its own.
 
 So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port, that orchestrates these pieces. It runs as a sidecar process the desktop shell launches at startup — a localhost daemon, not a server anyone else can reach.
 
@@ -55,8 +55,8 @@ Three layers, in lockstep:
 4. The user clicks an episode. The renderer calls `POST /api/sessions` with the chosen anime + episode. The backend resolves the stream natively against the providers in order. [anidb.app](https://anidb.app) first: it searches the browse page for the title (falling back through every alias), probes candidates' episode lists to pick the right show, fetches the episode's language embeds, and reads the master-playlist URL off the chosen embed page. When the walk moves on from anidb.app — unreachable, refusing or rate-limiting the request, answering a page the parser does not recognise, or its gate turning a background request away — or when the show's availability record remembers hianime, [hianime](https://hianime.at) through the same walk over its own pages: its search page, its per-entry episode list and per-episode server list, and the embed page whose payload carries the master-playlist URL and any sidecar subtitle tracks. Requests go through a `curl-impersonate` subprocess — both providers sit behind TLS-fingerprinting protection that rejects plain HTTP clients. See [Providers and failover](#providers-and-failover).
 5. The backend creates a `StreamSession` (UUID, upstream URL, referer, expiry), stores it in memory, and returns a token to the renderer.
 6. The renderer mounts `<video>` and points hls.js at `http://127.0.0.1:<port>/s/<token>/master.m3u8`.
-7. The streaming proxy fetches the upstream master playlist with the `Referer:` header the session stores (none at all, when the source's CDN asks for none), parses it with `m3u8-rs`, and rewrites every variant + segment URI to flow back through itself with HMAC-signed sub-tokens. CORS headers are added so hls.js inside the webview can consume the rewritten manifest without preflight blocks.
-8. Subsequent segment requests follow the same path: hls.js asks the proxy, the proxy asks the upstream with the same header treatment, bytes stream back.
+7. The streaming proxy fetches the upstream master playlist with the referer the session stores — the embed page's origin for a hianime stream, no origin for an anidb.app one, whose CDN checks for none — parses it with `m3u8-rs`, and rewrites every variant + segment URI to flow back through itself with HMAC-signed sub-tokens. CORS headers are added so hls.js inside the webview can consume the rewritten manifest without preflight blocks.
+8. Subsequent segment requests follow the same path: hls.js asks the proxy, the proxy asks the upstream with the same referer, bytes stream back.
 
 ## Providers and failover
 
