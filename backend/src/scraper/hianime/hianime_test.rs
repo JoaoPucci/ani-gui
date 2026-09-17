@@ -1417,6 +1417,13 @@ const REDIRECTS: &[(&str, &str)] = &[
         "https://zokoanime.video/stream/mal/9/moved/sub",
         "https://cdn2.zokoanime.video/stream/mal/9/landed/sub",
     ),
+    // megaplay's player, served from one of the site's numbered
+    // mirrors: the page arrives from the mirror, and so does the
+    // sources endpoint its player asks.
+    (
+        "https://megaplay.buzz/stream/s-2/734302/sub",
+        "https://megaplay-2.buzz/stream/s-2/734302/sub",
+    ),
     // A master playlist the CDN has moved to another directory: the
     // manifest that answers names its rendition beside the new one.
     (
@@ -1830,6 +1837,17 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A lone megaplay server whose embed URL the site has
+            // moved onto one of its numbered mirrors.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21456") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"MegaPlay\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAyL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // A lone server on a host the client never named, whose
             // page carries the payload shape and whose master answers,
             // slowly.
@@ -2031,6 +2049,39 @@ impl Fetch for Site {
                 }
             }
             "https://mp.example/v/mirror/index-f2.m3u8" => ok("#EXTM3U\n"),
+            // Where a moved megaplay embed URL lands: the mirror
+            // serves the player page, and its sources endpoint
+            // answers for the pages it served — the referer its own
+            // player sends, and no other.
+            "https://megaplay-2.buzz/stream/s-2/734302/sub" => {
+                if header(req, "Referer") == Some(&format!("{BASE}/")) {
+                    ok(MEGAPLAY_PAGE.replace("179411", "15"))
+                } else {
+                    refused(403)
+                }
+            }
+            "https://megaplay-2.buzz/stream/getSourcesNew?id=15" => {
+                if header(req, "Referer") == Some("https://megaplay-2.buzz/")
+                    && header(req, "X-Requested-With") == Some("XMLHttpRequest")
+                {
+                    ok(
+                        r#"{"sources":{"file":"https://mp.example/v/moved/master.m3u8"},"tracks":[]}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The host the listing named knows nothing of a media it
+            // never served a page for.
+            "https://megaplay.buzz/stream/getSourcesNew?id=15" => refused(404),
+            "https://mp.example/v/moved/master.m3u8" => {
+                if header(req, "Referer") == Some("https://megaplay-2.buzz/") {
+                    ok("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720,NAME=\"720p\"\nindex-f2.m3u8\n")
+                } else {
+                    refused(403)
+                }
+            }
+            "https://mp.example/v/moved/index-f2.m3u8" => ok("#EXTM3U\n"),
             "https://megaplay.buzz/stream/s-2/734295/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "7"))
             }
@@ -3350,6 +3401,38 @@ async fn a_lone_mirror_server_slower_than_the_per_server_budget_is_still_served(
     let stream = c.stream_for(21452, "sub", "720").await.expect("served");
     assert_eq!(stream.url, "https://mp.example/v/mirror/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay-1.buzz/"));
+}
+
+/// megaplay's player asks the site for the sources under the origin
+/// of the page it runs in, and the site moves its player between its
+/// host and its numbered mirrors with a redirect. So the endpoint
+/// asked, and the referer sent with the ask, are the served page's
+/// own — the URL the walk judges the page by — and a moved embed URL
+/// is read where it landed. Keyed on the listing's URL instead, the
+/// sources are asked of a host that served no such page, which
+/// answers nothing, and a server whose page the client read perfectly
+/// well is stepped over for want of its stream.
+#[tokio::test]
+async fn a_moved_megaplay_embed_asks_the_sources_of_the_host_that_served_it() {
+    let c = client();
+    let stream = c.stream_for(21456, "sub", "720").await.expect("served");
+    assert_eq!(stream.url, "https://mp.example/v/moved/index-f2.m3u8");
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay-2.buzz/"));
+    let requests = c.transport().requests();
+    let sources: Vec<&FetchRequest> = requests
+        .iter()
+        .filter(|r| r.url.contains("getSourcesNew"))
+        .collect();
+    assert_eq!(
+        sources.iter().map(|r| r.url.as_str()).collect::<Vec<_>>(),
+        vec!["https://megaplay-2.buzz/stream/getSourcesNew?id=15"],
+        "the sources endpoint is the one on the host that served the page"
+    );
+    assert_eq!(
+        header(sources[0], "Referer"),
+        Some("https://megaplay-2.buzz/"),
+        "the referer is the origin that served the page"
+    );
 }
 
 /// A mirror sorts with the hosts the client reads, ahead of the
