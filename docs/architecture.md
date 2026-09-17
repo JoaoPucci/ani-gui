@@ -12,7 +12,7 @@ The app talks to three things a browser tab cannot reach on its own:
 
 1. The streaming provider — sits behind TLS-fingerprinting protection that rejects browser and plain-HTTP clients, so requests go out through a `curl-impersonate` subprocess.
 2. The watch-history file — needs filesystem access.
-3. Anime stream CDNs — require a `Referer:` header that browser fetch APIs cannot set, and serve segments without permissive CORS.
+3. Anime stream CDNs — some require a `Referer:` header that browser fetch APIs cannot set, and they serve segments without permissive CORS.
 
 So the app embeds a Rust backend, bound to `127.0.0.1` on a kernel-assigned port, that orchestrates these pieces. It runs as a sidecar process the desktop shell launches at startup — a localhost daemon, not a server anyone else can reach.
 
@@ -55,8 +55,8 @@ Three layers, in lockstep:
 4. The user clicks an episode. The renderer calls `POST /api/sessions` with the chosen anime + episode. The backend resolves the stream natively against [anidb.app](https://anidb.app): it searches the browse page for the title (falling back through every alias), probes candidates' episode lists to pick the right show, fetches the episode's language embeds, and reads the master-playlist URL off the chosen embed page. Requests go through a `curl-impersonate` subprocess — the provider sits behind TLS-fingerprinting protection that rejects plain HTTP clients.
 5. The backend creates a `StreamSession` (UUID, upstream URL, referer, expiry), stores it in memory, and returns a token to the renderer.
 6. The renderer mounts `<video>` and points hls.js at `http://127.0.0.1:<port>/s/<token>/master.m3u8`.
-7. The streaming proxy fetches the upstream master playlist with the correct `Referer:` header, parses it with `m3u8-rs`, and rewrites every variant + segment URI to flow back through itself with HMAC-signed sub-tokens. CORS headers are added so hls.js inside the webview can consume the rewritten manifest without preflight blocks.
-8. Subsequent segment requests follow the same path: hls.js asks the proxy, the proxy asks the upstream with the `Referer:`, bytes stream back.
+7. The streaming proxy fetches the upstream master playlist with the `Referer:` header the session stores (none at all, when the source's CDN asks for none), parses it with `m3u8-rs`, and rewrites every variant + segment URI to flow back through itself with HMAC-signed sub-tokens. CORS headers are added so hls.js inside the webview can consume the rewritten manifest without preflight blocks.
+8. Subsequent segment requests follow the same path: hls.js asks the proxy, the proxy asks the upstream with the same header treatment, bytes stream back.
 
 ## Discovery (landing page)
 

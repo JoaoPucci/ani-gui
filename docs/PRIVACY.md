@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-06-10_
+_Last updated: 2026-09-17_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -58,8 +58,10 @@ requires it; the exception is the update check that runs on launch
   or the anime IDs you're browsing; they do not carry any account
   identifier unless you've connected one.
 - **Video playback** — the chosen episode URL is fetched directly
-  from its source CDN. The CDN sees a normal `Referer` matching the
-  catalogue origin so it serves the file.
+  from its source CDN. Where that CDN requires a `Referer` naming the
+  catalogue origin, the app sends one so the file is served; where it
+  requires none, as the anidb.app CDN does, the app adds no `Referer`
+  of its own.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
