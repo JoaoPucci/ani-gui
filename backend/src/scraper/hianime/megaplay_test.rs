@@ -88,39 +88,37 @@ fn the_sources_endpoint_is_on_the_embed_pages_origin() {
     );
     assert_eq!(
         sources_url("https://megaplay-1.buzz/stream/s-2/734292/sub", 7).as_deref(),
-        Some("https://megaplay-1.buzz/stream/getSourcesNew?id=7"),
+        Some("https://megaplay-1.buzz/stream/getSourcesNew?id=7&s=bcdn"),
         "a mirror's page asks the mirror"
     );
     assert_eq!(sources_url("not a url", 1), None);
     assert_eq!(sources_url("ftp://megaplay.buzz/x", 1), None);
 }
 
-/// The site lists one megaplay server per CDN family and names the
-/// family in the embed URL's query — `tcdn`, `bcdn`, or none at all
-/// for the default. The page's player appends the family its page was
-/// served for to every sources request, so the request carries it
-/// too: asked without it, the endpoint answers for the default
-/// family, whose CDN refuses every playlist the answer names.
+/// The site streams an episode from more than one content delivery
+/// network and picks between them with the `s` of the request, which
+/// the endpoint honours for any media id: the id names the episode,
+/// the selector names where it streams from. The listing hands out a
+/// server per network and its player asks for the one its own page
+/// was made for, but the client is not that player, and only one of
+/// the networks serves it a stream it can play. So every request
+/// asks for that one, whatever the page said — a page with no
+/// selector, the selector for the network whose segments arrive
+/// wrapped as images, or the right one already.
 #[test]
-fn the_sources_request_carries_the_pages_cdn_family() {
-    assert_eq!(
-        sources_url("https://megaplay.buzz/stream/s-2/146233/sub?s=tcdn", 1).as_deref(),
-        Some("https://megaplay.buzz/stream/getSourcesNew?id=1&s=tcdn")
-    );
-    assert_eq!(
-        sources_url("https://megaplay.buzz/stream/s-2/146233/sub", 1).as_deref(),
-        Some("https://megaplay.buzz/stream/getSourcesNew?id=1"),
-        "a page that names no family asks for none"
-    );
-    assert_eq!(
-        sources_url(
-            "https://megaplay.buzz/stream/s-2/146233/sub?autoplay=1&s=bcdn&t=5",
-            9
-        )
-        .as_deref(),
-        Some("https://megaplay.buzz/stream/getSourcesNew?id=9&s=bcdn"),
-        "the page's other query keys are the page's own, not the endpoint's"
-    );
+fn every_sources_request_asks_for_the_one_family_the_client_can_play() {
+    for page in [
+        "https://megaplay.buzz/stream/s-2/474448/sub",
+        "https://megaplay.buzz/stream/s-2/474448/sub?s=tcdn",
+        "https://megaplay.buzz/stream/s-2/474448/sub?s=bcdn",
+        "https://megaplay.buzz/stream/s-2/474448/sub?autoplay=1&s=tcdn&t=5",
+    ] {
+        assert_eq!(
+            sources_url(page, 179_572).as_deref(),
+            Some("https://megaplay.buzz/stream/getSourcesNew?id=179572&s=bcdn"),
+            "{page}"
+        );
+    }
 }
 
 #[test]
