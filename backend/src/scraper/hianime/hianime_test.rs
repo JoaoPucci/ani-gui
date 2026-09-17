@@ -176,6 +176,77 @@ fn a_fragment_between_two_mentions_of_the_boundary_is_not_a_card() {
         ),
         other => panic!("{other:?}"),
     }
+    // The same sliver ahead of a list of several cards leaves both
+    // the reading and the numbering alone: every card comes back in
+    // the site's order, and a card the reader cannot read is named
+    // by its place among the cards, not among the fragments.
+    let two_cards = |second: &str| {
+        format!(
+            r#"<html><body><div class="film_list-wrap"><div class="flw-item flw-item-big"><div class="film-poster"><a href="https://hianime.at/watch/poster" class="film-poster-ahref" title="Poster"></a></div><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop" class="dynamic-name">x</a></h3></div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name">{second}</h3></div></div></div><div id="main-sidebar"></div></body></html>"#
+        )
+    };
+    let hits = parse_search(&two_cards(
+        r#"<a href="https://hianime.at/naruto-5" title="Naruto" class="dynamic-name">x</a>"#,
+    ))
+    .expect("parsed");
+    assert_eq!(
+        hits.iter().map(|h| h.slug.as_str()).collect::<Vec<_>>(),
+        vec!["cowboy-bebop-1281", "naruto-5"],
+        "{hits:?}"
+    );
+    match parse_search(&two_cards(
+        r#"<a title="Naruto" class="dynamic-name">x</a>"#,
+    ))
+    .expect_err("refused")
+    {
+        AniError::ParseFailed { detail } => assert!(
+            detail.contains("card 2"),
+            "the sliver does not shift the cards' numbering: {detail}"
+        ),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A card the site rendered broken still carries a mark of its own;
+/// the slivers the split leaves behind carry none. So a fragment
+/// carrying even one mark is a card — whole or broken — and refuses
+/// the listing when it cannot be read. This one has no poster block,
+/// which the search shape permits, and the class naming its detail
+/// block has gone, leaving the heading that names the entry the user
+/// searched for. Held to carrying two marks it would have been
+/// furniture: passed over in silence, the card after it left to
+/// stand as the answer, and a pick with no episode count or year to
+/// weigh resolving and playing that unrelated entry instead of
+/// surfacing the drift.
+#[test]
+fn a_card_left_with_only_its_heading_refuses_the_listing_naming_it() {
+    let page = |cards: String| {
+        format!(
+            r#"<html><body><div class="film_list-wrap">{cards}</div><div id="main-sidebar"></div></body></html>"#
+        )
+    };
+    let lost_its_detail_class = r#"<div class="flw-item"><div class="fd-block"><h3 class="film-name"><a href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div>"#;
+    let readable = r#"<div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/naruto-5" title="Naruto" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div>"#;
+    match parse_search(&page(format!("{lost_its_detail_class}{readable}"))).expect_err("refused") {
+        AniError::ParseFailed { detail } => assert!(
+            detail.contains("card 1"),
+            "the readable card does not stand in for the broken one: {detail}"
+        ),
+        other => panic!("{other:?}"),
+    }
+    // Alone it is still a card, and still one the reader cannot
+    // read: the page refuses rather than answering none.
+    let err = parse_search(&page(lost_its_detail_class.to_string())).expect_err("refused");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    // With the detail block's class back, the same card reads, and
+    // the list is the answer it looks like.
+    let whole = lost_its_detail_class.replace("fd-block", "film-detail");
+    let hits = parse_search(&page(format!("{whole}{readable}"))).expect("parsed");
+    assert_eq!(
+        hits.iter().map(|h| h.slug.as_str()).collect::<Vec<_>>(),
+        vec!["cowboy-bebop-1281", "naruto-5"],
+        "{hits:?}"
+    );
 }
 
 /// A card whose title is blank names nothing: picked, it would put

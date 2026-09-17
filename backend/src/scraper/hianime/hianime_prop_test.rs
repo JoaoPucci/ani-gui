@@ -346,12 +346,18 @@ proptest::proptest! {
     }
 
     /// The listing is all of its cards or none of it. One card the
-    /// reader cannot read — its heading anchor's href gone, or its
-    /// title — refuses the whole listing, naming that card's place in
-    /// it, however many readable cards surround it: a shorter list
-    /// still reads as an answer, and the pick, with no episode count
-    /// or year to weigh, takes the first card that survived. With no
-    /// card corrupted every card is read, in the site's order.
+    /// reader cannot read — its heading anchor's href gone, its
+    /// title gone, or the class naming its detail block gone —
+    /// refuses the whole listing, naming that card's place in it,
+    /// however many readable cards surround it: a shorter list still
+    /// reads as an answer, and the pick, with no episode count or
+    /// year to weigh, takes the first card that survived. The poster
+    /// block comes and goes per card, as the site's own does, so the
+    /// card left with nothing but its heading — no poster, no detail
+    /// class — is among the shapes generated: it carries one mark of
+    /// a card and is a card the site rendered broken, not furniture.
+    /// With no card corrupted every card is read, in the site's
+    /// order.
     #[test]
     fn one_unreadable_card_refuses_the_listing_naming_its_place(
         cards in proptest::collection::vec(
@@ -360,26 +366,37 @@ proptest::proptest! {
                 1u64..1_000_000,
                 "[A-Za-z0-9,:!&'\"<>-][A-Za-z0-9 ,:!&'\"<>-]{0,29}",
                 "(TV|Movie|OVA|ONA|Special)",
+                proptest::bool::ANY,
             ),
             1..6,
         ),
-        corrupted in proptest::option::of((any::<proptest::sample::Index>(), proptest::bool::ANY)),
+        corrupted in proptest::option::of((
+            any::<proptest::sample::Index>(),
+            proptest::sample::select(vec!["href", "title", "detail-class"]),
+        )),
     ) {
-        prop_assume!(!cards.iter().any(|(words, _, title, _)| words.contains("flw-item") || title.contains("flw-item")));
-        let (at, drops_href) = corrupted.map_or((None, false), |(index, drops_href)| {
-            (Some(index.index(cards.len())), drops_href)
+        prop_assume!(!cards.iter().any(|(words, _, title, _, _)| words.contains("flw-item") || title.contains("flw-item")));
+        let (at, loses) = corrupted.map_or((None, ""), |(index, loses)| {
+            (Some(index.index(cards.len())), loses)
         });
         let mut page = String::from(r#"<html><body><div class="film_list-wrap">"#);
-        for (position, (words, id, title, kind)) in cards.iter().enumerate() {
+        for (position, (words, id, title, kind, has_poster)) in cards.iter().enumerate() {
             let slug = format!("{words}-{id}");
             let title = encode_title(title);
-            let heading = match (at == Some(position), drops_href) {
-                (true, true) => format!(r#"<a title="{title}" class="dynamic-name">x</a>"#),
-                (true, false) => format!(r#"<a href="https://hianime.at/{slug}" class="dynamic-name">x</a>"#),
-                (false, _) => format!(r#"<a href="https://hianime.at/{slug}" title="{title}" class="dynamic-name">x</a>"#),
+            let here = at == Some(position);
+            let heading = match (here, loses) {
+                (true, "href") => format!(r#"<a title="{title}" class="dynamic-name">x</a>"#),
+                (true, "title") => format!(r#"<a href="https://hianime.at/{slug}" class="dynamic-name">x</a>"#),
+                _ => format!(r#"<a href="https://hianime.at/{slug}" title="{title}" class="dynamic-name">x</a>"#),
+            };
+            let detail_class = if here && loses == "detail-class" { "fd-block" } else { "film-detail" };
+            let poster = if *has_poster {
+                format!(r#"<div class="film-poster"><a href="https://hianime.at/watch/poster-{position}" class="film-poster-ahref" title="Poster"></a></div>"#)
+            } else {
+                String::new()
             };
             page.push_str(&format!(
-                r#"<div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster-{position}" class="film-poster-ahref" title="Poster"></a></div><div class="film-detail"><h3 class="film-name">{heading}</h3><div class="fd-infor"><span class="fdi-item">{kind}</span></div></div></div>"#
+                r#"<div class="flw-item">{poster}<div class="{detail_class}"><h3 class="film-name">{heading}</h3><div class="fd-infor"><span class="fdi-item">{kind}</span></div></div></div>"#
             ));
         }
         page.push_str(r#"</div><div id="main-sidebar"></div></body></html>"#);
@@ -391,7 +408,7 @@ proptest::proptest! {
             (None, Ok(hits)) => {
                 let expected: Vec<BrowseHit> = cards
                     .iter()
-                    .map(|(words, id, title, kind)| BrowseHit {
+                    .map(|(words, id, title, kind, _)| BrowseHit {
                         slug: format!("{words}-{id}"),
                         title: title.clone(),
                         kind: Some(kind.clone()),
