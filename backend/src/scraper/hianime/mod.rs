@@ -7,7 +7,9 @@
 //! embed URL on a separate host → the embed page carries a blob that
 //! XOR-decodes to the player's JSON, whose `src` is the master
 //! playlist and whose `subtitles` are sidecar tracks. The CDN checks
-//! the embed host's origin as `Referer` on every playlist fetch.
+//! the origin of the page the payload came from as `Referer` on every
+//! playlist fetch — the host that served it, which a redirect can
+//! make something other than the host the listing named.
 //!
 //! An episode lists several servers, named by slot, and the site
 //! moves the slots between embed hosts; only some hosts' pages carry
@@ -61,6 +63,18 @@ struct KeptAttempt {
     transport_then: Option<tokio::time::Instant>,
 }
 
+/// A page the client fetched and the URL it came from. The two
+/// travel together because a redirect makes them differ: the embed
+/// URLs the listing hands out move hosts, and the page that arrives
+/// is the one whose host answers for it.
+struct Page {
+    /// The page's content.
+    body: String,
+    /// The URL the transport ended on, the request's own when
+    /// nothing redirected.
+    url: String,
+}
+
 impl<F: Fetch> HianimeClient<F> {
     /// A client against the production origin.
     pub fn new(fetch: F) -> Self {
@@ -93,9 +107,10 @@ impl<F: Fetch> HianimeClient<F> {
             .header("X-Requested-With", "XMLHttpRequest")
     }
 
-    /// Perform `req` and hand back content, refusing challenge pages
-    /// and non-success statuses as typed upstream errors.
-    async fn content(&self, req: &FetchRequest) -> Result<String> {
+    /// Perform `req` and hand back the page with the URL it came
+    /// from, refusing challenge pages and non-success statuses as
+    /// typed upstream errors.
+    async fn page(&self, req: &FetchRequest) -> Result<Page> {
         let resp = self.fetch.fetch(req).await?;
         if is_cloudflare_interstitial(&resp.body) {
             let status = if resp.status >= 400 { resp.status } else { 403 };
@@ -106,7 +121,17 @@ impl<F: Fetch> HianimeClient<F> {
                 status: resp.status,
             });
         }
-        Ok(resp.body)
+        Ok(Page {
+            body: resp.body,
+            url: resp.url,
+        })
+    }
+
+    /// [`Self::page`]'s body alone — the site's own endpoints, whose
+    /// every caller parses the content and cares about no host but
+    /// the one it asked.
+    async fn content(&self, req: &FetchRequest) -> Result<String> {
+        self.page(req).await.map(|page| page.body)
     }
 
     /// An episode's servers, as the site lists them, with the
@@ -193,9 +218,21 @@ impl<F: Fetch> Provider for HianimeClient<F> {
             // The embed host checks that the site sent the viewer.
             let embed = FetchRequest::get(server.embed_url.clone())
                 .header("Referer", format!("{}/", self.base));
-            let outcome = match self.content(&embed).await {
-                Ok(page) => decode_embed(&page),
-                Err(e) => Err(e),
+            // A page is judged by the host that served it, which is
+            // not always the host the listing named: the transport
+            // follows redirects, and an embed URL that moves hosts
+            // ends on a page whose own origin is the one the CDN
+            // checks and whose own host decides whether this client
+            // reads pages of that shape at all. The listing's URL
+            // keys what is decided before the page exists — which
+            // servers are tried and in what order ([`servers_for`]),
+            // and what the request asks for.
+            let (outcome, served_by) = match self.page(&embed).await {
+                Ok(page) => (decode_embed(&page.body), page.url),
+                // Nothing was served, so no host answers for a page;
+                // the listing's URL is all the failure has to name,
+                // and no arm below reads it.
+                Err(e) => (Err(e), server.embed_url.clone()),
             };
             // The attempt that produced this outcome, read before the
             // next server's fetch moves the transport's stamp.
@@ -204,10 +241,10 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 Ok(payload) => {
                     return Ok(StreamSource {
                         master_url: payload.src,
-                        referer: embed_origin(&server.embed_url),
+                        referer: embed_origin(&served_by),
                     })
                 }
-                Err(AniError::NoResults) => match payload_missing_verdict(&server.embed_url) {
+                Err(AniError::NoResults) => match payload_missing_verdict(&served_by) {
                     Some(e) => e,
                     None => continue,
                 },
@@ -287,14 +324,19 @@ fn weightier<T>(kept: (AniError, T), next: (AniError, T)) -> (AniError, T) {
 /// the client, which is a parse failure naming the host, ranked like
 /// any other; a host the client never read says nothing, and the
 /// walk steps over it.
-fn payload_missing_verdict(embed_url: &str) -> Option<AniError> {
-    if !ajax::readable(embed_url) {
+///
+/// `served_by` is the URL the page came from, not the one the listing
+/// named: a listing URL that redirects lands on another host, and it
+/// is the host that answered — the one whose markup is in hand — the
+/// client either reads or does not.
+fn payload_missing_verdict(served_by: &str) -> Option<AniError> {
+    if !ajax::readable(served_by) {
         return None;
     }
-    let host = url::Url::parse(embed_url)
+    let host = url::Url::parse(served_by)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))
-        .unwrap_or_else(|| embed_url.to_string());
+        .unwrap_or_else(|| served_by.to_string());
     Some(AniError::ParseFailed {
         detail: format!("hianime embed page on {host}: the payload marker is missing"),
     })

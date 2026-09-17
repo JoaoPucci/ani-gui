@@ -75,6 +75,15 @@ pub struct FetchResponse {
     pub status: u16,
     /// Response body, lossily decoded.
     pub body: String,
+    /// The URL the response came from: the last one fetched after
+    /// every redirect the transport followed, and the request's own
+    /// when nothing redirected. The production transport follows
+    /// redirects (`-L`), so a page can arrive from a host other than
+    /// the one asked for, and anything a caller keys on the serving
+    /// host — the origin a CDN checks as `Referer`, a rule about
+    /// which hosts it can read — belongs on this rather than on the
+    /// request.
+    pub url: String,
 }
 
 /// One request to the transport: the URL plus the headers the
@@ -314,12 +323,33 @@ pub(crate) fn scrub_stderr(stderr: &str, url: &str) -> String {
     stderr.replace(url, &redacted_url(url))
 }
 
+/// The `-w` trailer split back off the child's stdout: the body, the
+/// status field and the effective-URL field, in that order.
+///
+/// The trailer is the last line and only the last line: `-w` opens it
+/// with a newline, so whatever the body ended with — a newline of its
+/// own, none at all, a line that itself looks like a trailer — the
+/// text after the final newline is the trailer. Within it the status
+/// comes first and one space separates the two fields, which is
+/// unambiguous because an effective URL never carries a space.
+///
+/// Total by construction: stdout without a newline is read as a
+/// trailer and an empty body, exactly as the status-only trailer was
+/// read before the URL joined it, and a trailer without a space
+/// yields no URL rather than losing the status.
+pub(crate) fn split_trailer(text: &str) -> (&str, &str, &str) {
+    let (body, trailer) = text.rsplit_once('\n').unwrap_or(("", text));
+    let (status, url) = trailer.split_once(' ').unwrap_or((trailer, ""));
+    (body, status.trim(), url.trim())
+}
+
 /// The child's argv, without the executable. Pure so the flag set is
 /// assertable without spawning anything.
 ///
-/// `-w` appends the status after the body; the last line is split
-/// back off. Mirrors the script's anidb_curl flags, plus the
-/// impersonation target when the resolved binary needs one.
+/// `-w` appends the status and the effective URL after the body; the
+/// last line is split back off ([`split_trailer`]). Mirrors the
+/// script's anidb_curl flags, plus the impersonation target when the
+/// resolved binary needs one.
 pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<String> {
     let url = req.url.as_str();
     let mut args: Vec<String> = Vec::with_capacity(12 + 2 * req.headers.len());
@@ -359,7 +389,11 @@ pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<S
     args.extend(CIPHER_ARGS.iter().map(|s| (*s).to_string()));
     args.extend(CA_ARGS.iter().map(|s| (*s).to_string()));
     args.push("-w".into());
-    args.push("\n%{http_code}".into());
+    // The status and the URL the transfer ended on, the URL last: a
+    // status is digits and an effective URL carries no space, so the
+    // one space between them splits the trailer back apart whatever
+    // either turns out to be.
+    args.push("\n%{http_code} %{url_effective}".into());
     // The URL stays last: curl reads it as the operand, and a flag
     // appended after it would be parsed for the next transfer.
     args.push(url.into());
@@ -424,9 +458,9 @@ impl Fetch for CurlImpersonateFetch {
             return Err(AniError::Network);
         }
         let text = String::from_utf8_lossy(&output.stdout);
-        let (body, status_line) = text.rsplit_once('\n').unwrap_or(("", &text));
-        let status: u16 = status_line.trim().parse().map_err(|_| {
-            tracing::debug!(url = %redacted_url(url), status_line = %status_line.trim(), "transport trailer unparseable");
+        let (body, status_field, url_field) = split_trailer(&text);
+        let status: u16 = status_field.parse().map_err(|_| {
+            tracing::debug!(url = %redacted_url(url), status_line = %status_field, "transport trailer unparseable");
             AniError::Network
         })?;
         if status == 0 {
@@ -444,6 +478,14 @@ impl Fetch for CurlImpersonateFetch {
         Ok(FetchResponse {
             status,
             body: body.to_string(),
+            // A transport that reported no effective URL ended on the
+            // one it was given; nothing redirected that this code can
+            // see, and the request's URL is the honest answer.
+            url: if url_field.is_empty() {
+                url.to_string()
+            } else {
+                url_field.to_string()
+            },
         })
     }
 }
