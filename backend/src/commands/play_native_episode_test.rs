@@ -259,9 +259,14 @@ impl crate::scraper::fetch::Fetch for HianimeChain {
             return Ok(FetchResponse {
                 status: 404,
                 body: String::new(),
+                url,
             });
         };
-        Ok(FetchResponse { status: 200, body })
+        Ok(FetchResponse {
+            status: 200,
+            body,
+            url,
+        })
     }
 }
 
