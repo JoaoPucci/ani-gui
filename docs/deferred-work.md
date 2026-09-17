@@ -356,13 +356,10 @@ starting it, and delete it when you find it done.
   It waited on a measurement. A miss costs a full walk — every alias
   searched, up to five candidates probed per alias — and the union
   makes every genuinely absent show cost one such walk per provider,
-  on the page's probe and on the background warm alike. hianime's
-  rate-limit temperament has never been measured: in September 2026,
-  with anidb.app down, it carried every request without visible
-  pushback, and a breaker learns after the block, not before. Measure
-  what the site tolerates for search and listings at the background
-  pace, and whether excess gets the challenge page or a 429, before
-  building.
+  on the page's probe and on the background warm alike. What hianime
+  tolerates at that rate is unmeasured: in September 2026, with
+  anidb.app down, it carried every request without visible pushback,
+  and a breaker learns after the block, not before.
 
   Two things a grep will not surface: only the zokoanime embed pages
   carry the MyAnimeList id in their path, so a cross-check against
