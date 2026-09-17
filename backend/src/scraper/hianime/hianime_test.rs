@@ -1733,7 +1733,7 @@ impl Fetch for Site {
             // A zokoanime server whose master answers but whose 720
             // rendition refuses, then a megaplay server whose whole
             // chain answers.
-            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21444") => {
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21455") => {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsZWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
@@ -3076,7 +3076,7 @@ async fn every_servers_stream_host_dead_surfaces_the_loudest_failure() {
 #[tokio::test]
 async fn a_server_whose_rendition_refuses_is_stepped_over_for_one_whose_chain_answers() {
     let c = client();
-    let stream = c.stream_for(21444, "sub", "720").await.expect("resolved");
+    let stream = c.stream_for(21455, "sub", "720").await.expect("resolved");
     assert_eq!(stream.url, "https://mp.example/v/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
     let urls: Vec<String> = c
