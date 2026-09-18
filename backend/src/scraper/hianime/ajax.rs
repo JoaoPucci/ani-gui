@@ -591,30 +591,14 @@ pub fn remainder_index(ordered: &[&ServerEmbed]) -> Option<usize> {
 /// megaplay's hosts the embed page, the sources answer, the master
 /// playlist and the chosen rendition — four, each waiting on the one
 /// before it. zokoanime's is three, its page carrying what megaplay
-/// asks the sources endpoint for ([`chain_requests`]). A host the
-/// client does not read is given this, the longest: its page is
-/// read by its shape, and either shape is possible.
+/// asks the sources endpoint for. Every server's window is sized for
+/// the longest, and so is the reserve: a window is decided from the
+/// listing's URL before the page is fetched, and the listing's URL
+/// does not say which chain will run — the site moves its pages
+/// between hosts with a redirect, and a zokoanime URL can land on a
+/// megaplay page. Sized by the listed host, that chain would be a
+/// request short.
 pub const CHAIN_REQUESTS: u32 = 4;
-
-/// How many requests the chain of the server at `embed_url` makes,
-/// by its host: three on zokoanime's, whose page carries the
-/// payload; [`CHAIN_REQUESTS`] on megaplay's host and its numbered
-/// mirrors ([`megaplay_host`]), whose page names a media the sources
-/// endpoint answers for; and [`CHAIN_REQUESTS`] on any other host,
-/// or a URL without one, since which shape such a page has is known
-/// only once it is fetched.
-#[must_use]
-pub fn chain_requests(embed_url: &str) -> u32 {
-    let zokoanime = url::Url::parse(embed_url)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_string))
-        .is_some_and(|h| h == "zokoanime.video");
-    if zokoanime {
-        3
-    } else {
-        CHAIN_REQUESTS
-    }
-}
 
 /// What [`chain_reserve`] allows one request of that chain, written
 /// as a fraction of the per-server bound: five twelfths of it, two
@@ -631,22 +615,20 @@ const REQUEST_ALLOWANCE_NUMERATOR: u32 = 5;
 const REQUEST_ALLOWANCE_DENOMINATOR: u32 = 12;
 
 /// What a chain of `requests` requests is worth at the allowance
-/// above, carved from the base `bound`: the window a server whose
-/// chain is that long is given ([`chain_requests`]), and the reserve
-/// held back for the server that runs on the remainder, sized by
-/// that server's own chain. Against the six-second base, ten seconds
-/// for megaplay's four requests and seven and a half for zokoanime's
-/// three, of a provider attempt's twenty.
+/// above, carved from the base `bound`. Every bounded server's window
+/// and the reserve alike are the longest chain's worth
+/// ([`chain_reserve`]) — ten seconds against the six-second base, of
+/// a provider attempt's twenty.
 #[must_use]
 pub fn chain_worth(bound: std::time::Duration, requests: u32) -> std::time::Duration {
     bound * requests * REQUEST_ALLOWANCE_NUMERATOR / REQUEST_ALLOWANCE_DENOMINATOR
 }
 
-/// The time held back from the bounded servers for the one that runs
-/// on the attempt's remainder when that server's chain is the
-/// longest: one whole chain of [`CHAIN_REQUESTS`] requests at the
+/// The longest chain's worth: [`CHAIN_REQUESTS`] requests at the
 /// allowance above ([`chain_worth`]) — ten seconds against the
-/// six-second base, of a provider attempt's twenty.
+/// six-second base, of a provider attempt's twenty. The window every
+/// bounded server is given, and the time held back from them for
+/// the one that runs on the attempt's remainder.
 ///
 /// A whole chain rather than one bound, which is what a bound is
 /// worth only while each of the chain's four requests answers inside
@@ -666,8 +648,8 @@ pub fn chain_reserve(bound: std::time::Duration) -> std::time::Duration {
 /// the walk begins.
 ///
 /// A bounded server's cap is the wider of two windows, and never
-/// wider than the server's own bound — its chain's worth
-/// ([`chain_worth`]) — nor than what the attempt has left when the
+/// wider than the per-server bound — the longest chain's worth
+/// ([`chain_reserve`]) — nor than what the attempt has left when the
 /// walk asks. One is its share of what remains once
 /// the reserve — one chain's worth, for the server that runs on the
 /// remainder ([`chain_reserve`]) — is held back, split evenly among
@@ -744,10 +726,10 @@ impl ServerCaps {
         Self { reserve, floor }
     }
 
-    /// One bounded server's cap, given the server's own `bound` — its
-    /// chain's worth — what the attempt has left where the walk asks
-    /// for it and how many bounded servers are still to run before
-    /// the remainder's, this one included.
+    /// One bounded server's cap, given the per-server `bound`, what
+    /// the attempt has left where the walk asks for it and how many
+    /// bounded servers are still to run before the remainder's, this
+    /// one included.
     #[must_use]
     pub fn cap(
         &self,
