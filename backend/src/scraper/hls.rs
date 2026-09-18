@@ -100,7 +100,13 @@ pub async fn stream_url<P: Provider + ?Sized>(
     // and an unvalidated claim rides into breaker success,
     // availability, history, and a cached session the proxy
     // cannot load.
-    let body = provider.playlist(master_url, referer).await?;
+    // The manifest, beside the URL it was served from: the transport
+    // follows redirects, and a master the CDN has moved answers from
+    // where it landed, naming its renditions relative to that place.
+    // Every URL handed back below is that one, so the session begins
+    // where the stream is rather than one redirect behind it.
+    let (body, served_from) = provider.playlist_at(master_url, referer).await?;
+    let master_url = served_from.as_str();
     if !is_hls_playlist(&body) {
         // 200 with an HTML page passes the status and interstitial
         // checks; success here would ride into the breaker,

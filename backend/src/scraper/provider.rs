@@ -149,6 +149,22 @@ pub trait Provider: Send + Sync {
     /// Upstream refusals and transport errors.
     async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String>;
 
+    /// [`Self::playlist`] together with the URL the body was served
+    /// from. The transport follows redirects, and a manifest's
+    /// relative URIs are relative to where it landed, so the quality
+    /// step joins a rendition to this URL rather than the one asked
+    /// for. A provider whose transport does not report where a body
+    /// came from answers with the URL asked for, which is what this
+    /// default does.
+    ///
+    /// # Errors
+    /// As [`Self::playlist`].
+    async fn playlist_at(&self, url: &str, referer: Option<&str>) -> Result<(String, String)> {
+        self.playlist(url, referer)
+            .await
+            .map(|body| (body, url.to_string()))
+    }
+
     /// The stream URL a quality setting selects from a master
     /// playlist — shared across providers, see
     /// [`crate::scraper::hls::stream_url`].

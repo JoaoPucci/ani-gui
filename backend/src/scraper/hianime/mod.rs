@@ -267,11 +267,18 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
+        self.playlist_at(url, referer).await.map(|(body, _)| body)
+    }
+
+    /// The playlist beside the URL that served it: the transport
+    /// follows redirects and reports where it ended, so a master the
+    /// CDN has moved is read from where it landed.
+    async fn playlist_at(&self, url: &str, referer: Option<&str>) -> Result<(String, String)> {
         let mut req = FetchRequest::get(url);
         if let Some(r) = referer {
             req = req.header("Referer", r);
         }
-        self.content(&req).await
+        self.page(&req).await.map(|page| (page.body, page.url))
     }
 
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
