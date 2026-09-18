@@ -1946,6 +1946,7 @@ async fn a_quality_is_picked_beside_the_master_that_answered_after_a_redirect() 
     let moved = StreamSource {
         master_url: "https://hls.example/v/old/master.m3u8".into(),
         referer: Some("https://zokoanime.video/".into()),
+        subtitles: Vec::new(),
     };
     assert_eq!(
         c.quality_stream_url(&moved, "720").await.expect("selected"),
