@@ -1960,6 +1960,18 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // A megaplay server whose whole chain answers, every
+            // request of it taking a slice — the loaded shape — ahead
+            // of a zokoanime server whose chain answers at once.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21473") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAxL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // Two megaplay servers whose masters hold the connection,
             // then a megaplay server whose whole chain answers, every
             // request of it taking a slice: the healthy-but-loaded
@@ -3392,8 +3404,11 @@ fn a_server_ahead_of_the_remainder_keeps_a_window_when_only_the_reserve_is_left(
     let reserve = chain_reserve(bound);
     for ahead in 1..4usize {
         for remaining in [std::time::Duration::from_millis(1), reserve / 2, reserve] {
-            let cap = ServerCaps::for_walk(bound, reserve, Some(remaining), ahead)
-                .cap(Some(remaining), ahead);
+            let cap = ServerCaps::for_walk(reserve, Some(remaining), ahead).cap(
+                bound,
+                Some(remaining),
+                ahead,
+            );
             assert!(
                 !cap.is_zero(),
                 "a healthy server was capped at nothing with {remaining:?} of the \
@@ -3431,15 +3446,18 @@ fn a_server_ahead_of_the_remainder_keeps_a_window_when_only_the_reserve_is_left(
 fn a_bounded_servers_share_does_not_collapse_just_above_the_reserve() {
     let bound = SERVER_ATTEMPT_BUDGET;
     let reserve = chain_reserve(bound);
-    let at_reserve = ServerCaps::for_walk(bound, reserve, Some(reserve), 1).cap(Some(reserve), 1);
+    let at_reserve = ServerCaps::for_walk(reserve, Some(reserve), 1).cap(bound, Some(reserve), 1);
     assert_eq!(
         at_reserve,
         reserve / 2,
         "with only the reserve left, the server ahead and the remainder's split it evenly"
     );
     let sliver = std::time::Duration::from_millis(1);
-    let just_over = ServerCaps::for_walk(bound, reserve, Some(reserve + sliver), 1)
-        .cap(Some(reserve + sliver), 1);
+    let just_over = ServerCaps::for_walk(reserve, Some(reserve + sliver), 1).cap(
+        bound,
+        Some(reserve + sliver),
+        1,
+    );
     assert!(
         just_over >= at_reserve,
         "a millisecond more of the attempt cut the server ahead from {at_reserve:?} \
@@ -3460,8 +3478,11 @@ fn the_reserve_is_whole_again_once_the_share_after_it_reaches_the_boundary_share
     let reserve = chain_reserve(bound);
     let ahead = 1u32;
     let whole_from = reserve * (2 * ahead + 1) / (ahead + 1);
-    let cap = ServerCaps::for_walk(bound, reserve, Some(whole_from), ahead as usize)
-        .cap(Some(whole_from), ahead as usize);
+    let cap = ServerCaps::for_walk(reserve, Some(whole_from), ahead as usize).cap(
+        bound,
+        Some(whole_from),
+        ahead as usize,
+    );
     assert_eq!(
         cap,
         (whole_from - reserve) / ahead,
@@ -3501,8 +3522,8 @@ fn the_floor_under_a_bounded_servers_share_is_the_one_the_walk_set_out_with() {
     // the second server meets when the floor is worked out again.
     let share = reserve * 2 / 5;
     let start = reserve + share * 2;
-    let caps = ServerCaps::for_walk(bound, reserve, Some(start), 2);
-    let first = caps.cap(Some(start), 2);
+    let caps = ServerCaps::for_walk(reserve, Some(start), 2);
+    let first = caps.cap(bound, Some(start), 2);
     assert_eq!(
         first, share,
         "the first server's share of what the attempt has over the reserve"
@@ -3510,7 +3531,7 @@ fn the_floor_under_a_bounded_servers_share_is_the_one_the_walk_set_out_with() {
     // The first server stalls out its whole window; the walk reads
     // what is left afresh for the second, one fewer server ahead.
     let left = start - first;
-    let second = caps.cap(Some(left), 1);
+    let second = caps.cap(bound, Some(left), 1);
     assert!(
         second <= first,
         "the second server was handed {second:?} where the first had {first:?}, \
@@ -3746,6 +3767,78 @@ async fn the_reserve_covers_a_whole_chain_so_a_loaded_last_server_is_served() {
         .expect("served");
     assert_eq!(stream.url, "https://mp.example/v/paced/index-f2.m3u8");
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+}
+
+/// The server the walk prefers runs first, and first is bounded:
+/// the remainder goes to the last server the walk can read. A
+/// bounded server's window has to be its own chain's worth, then,
+/// not one bound for every host — megaplay's chain is four requests
+/// where zokoanime's is three, and a loaded megaplay host answering
+/// each of the four inside the allowance outlasts a flat bound while
+/// the attempt could have funded it. And the reserve held back for
+/// the last server is that server's chain's worth, three requests
+/// for zokoanime, so what the preferred server is left is what the
+/// attempt can spare and not less. Here the attempt has exactly the
+/// two chains' worth when the walk begins, and the loaded megaplay
+/// chain — four slices, inside its own worth and past one bound — is
+/// served rather than cut off for a healthy zokoanime server.
+#[tokio::test(start_paused = true)]
+async fn a_preferred_servers_chain_is_given_its_own_chains_worth_ahead_of_the_last() {
+    const BUDGET_MS: u64 = 100;
+    let c = client_with_server_budget(BUDGET_MS);
+    let budget = std::time::Duration::from_millis(BUDGET_MS);
+    // Four requests' worth for the megaplay server ahead, three for
+    // the zokoanime server that runs on the remainder.
+    let two_chains = chain_reserve(budget) + chain_reserve(budget) * 3 / 4;
+    let deadline = tokio::time::Instant::now() + two_chains;
+    c.bound_attempt(Some(deadline));
+    let stream = tokio::time::timeout_at(deadline, c.stream_for(21473, "sub", "720"))
+        .await
+        .expect("the attempt funded both chains")
+        .expect("served");
+    assert_eq!(
+        stream.url, "https://mp.example/v/paced/index-f2.m3u8",
+        "the preferred server's loaded chain was served within its own chain's worth"
+    );
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
+}
+
+/// A server's chain is as long as its host makes it: megaplay's
+/// pages name a media the sources endpoint answers for, so its chain
+/// is the embed page, the sources answer, the master and the
+/// rendition; zokoanime's page carries the payload, so its chain is
+/// three. A host the client does not read is given the longest, its
+/// page being read by its shape and either shape possible.
+#[test]
+fn a_servers_chain_is_as_long_as_its_host_makes_it() {
+    use super::ajax::{chain_requests, chain_reserve, chain_worth, CHAIN_REQUESTS};
+    assert_eq!(
+        chain_requests("https://zokoanime.video/stream/mal/1/1/sub"),
+        3
+    );
+    assert_eq!(
+        chain_requests("https://megaplay.buzz/stream/s-2/1/sub?s=bcdn"),
+        4
+    );
+    assert_eq!(
+        chain_requests("https://megaplay-2.buzz/stream/s-2/1/sub"),
+        4
+    );
+    assert_eq!(
+        chain_requests("https://vidtube.site/embed/1/sub"),
+        CHAIN_REQUESTS
+    );
+    assert_eq!(chain_requests("not a url"), CHAIN_REQUESTS);
+    let budget = std::time::Duration::from_millis(1200);
+    assert_eq!(chain_worth(budget, 4), chain_reserve(budget));
+    assert_eq!(
+        chain_worth(budget, 3),
+        std::time::Duration::from_millis(1500)
+    );
+    assert_eq!(
+        chain_worth(budget, 4),
+        std::time::Duration::from_millis(2000)
+    );
 }
 
 /// The same listing under an attempt that can fund the reserve and
