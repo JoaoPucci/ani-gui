@@ -1380,13 +1380,15 @@ proptest::proptest! {
     }
 
     /// Whatever the site names its servers, the ones to try for a mode
-    /// are that mode's servers, one attempt per page — a later row
-    /// naming the page an earlier row named, whatever its query, is
-    /// the same request and is dropped — with the hosts the client
-    /// can read ahead of the rest, megaplay's ahead of zokoanime's
-    /// among those, and the site's order kept within each group.
+    /// are that mode's servers, one attempt per request — on
+    /// megaplay's hosts a later row naming the page an earlier row
+    /// named, whatever its query, is the same request and is dropped,
+    /// and on every other host only a later row with the whole URL
+    /// of an earlier one is — with the hosts the client can read
+    /// ahead of the rest, megaplay's ahead of zokoanime's among
+    /// those, and the site's order kept within each group.
     #[test]
-    fn servers_for_a_mode_are_its_pages_once_megaplay_then_zokoanime_then_the_rest(
+    fn servers_for_a_mode_are_its_requests_once_megaplay_then_zokoanime_then_the_rest(
         servers in proptest::collection::vec(
             (
                 proptest::sample::select(vec!["sub", "dub"]),
@@ -1409,22 +1411,30 @@ proptest::proptest! {
         mode in proptest::sample::select(vec!["sub", "dub"]),
     ) {
         let picked = servers_for(&servers, mode);
-        let page = |s: &ServerEmbed| s.embed_url.split('?').next().unwrap_or_default().to_string();
+        let request = |s: &ServerEmbed| {
+            let megaplay = s.embed_url.starts_with("https://megaplay.buzz/")
+                || s.embed_url.starts_with("https://megaplay-1.buzz/");
+            if megaplay {
+                s.embed_url.split('?').next().unwrap_or_default().to_string()
+            } else {
+                s.embed_url.clone()
+            }
+        };
         let mut seen: Vec<String> = Vec::new();
         let expected: Vec<&ServerEmbed> = servers
             .iter()
             .filter(|s| s.mode == mode)
             .filter(|s| {
-                let p = page(s);
-                if seen.contains(&p) {
+                let r = request(s);
+                if seen.contains(&r) {
                     false
                 } else {
-                    seen.push(p);
+                    seen.push(r);
                     true
                 }
             })
             .collect();
-        prop_assert_eq!(picked.len(), expected.len(), "one attempt per page: {:?}", picked);
+        prop_assert_eq!(picked.len(), expected.len(), "one attempt per request: {:?}", picked);
         for s in &expected {
             prop_assert!(picked.iter().any(|p| std::ptr::eq(*p, *s)));
         }
