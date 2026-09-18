@@ -315,11 +315,14 @@ pub async fn stamp_after_native(
 /// replays for days after an airing show's positive row has expired
 /// — so without this the next probe would start from the primary,
 /// whose clean miss could hide a stream the cache just served. A
-/// replay learns nothing new about the listing: a positive row that
-/// already names `provider` is written back as it is, cap and extras
-/// kept, with a fresh lifetime; any other row becomes the boolean
-/// positive row a served resolve without a cap writes. Under the
-/// same refresh guard as a resolve's stamp.
+/// replay learns nothing new about the listing, and nothing about
+/// the provider it came through either — the CDN answered for a URL
+/// resolved when that provider last served — so a standing positive
+/// row is written back as it is, whichever provider proved it, cap,
+/// extras and affinity kept, with a fresh lifetime; only where no
+/// positive row stands does the replay write the boolean positive
+/// row a served resolve without a cap writes, naming `provider`.
+/// Under the same refresh guard as a resolve's stamp.
 ///
 /// The row is read inside the lock, not on the way to it. A native
 /// resolve stamping the same row is not a cache-bypassing refresh
@@ -345,7 +348,7 @@ pub async fn stamp_after_cache_hit(
         &row,
         generation_at_start,
         false,
-        || match standing_row_of(state, &row, provider) {
+        || match standing_row_of(state, &row) {
             Some(parsed) => write_cache_full(state, id, mode, None, &parsed),
             None => write_cache(state, id, mode, true, Some(provider)),
         },
@@ -353,20 +356,16 @@ pub async fn stamp_after_cache_hit(
     .await;
 }
 
-/// The row as it stands, when it is a positive one `provider` proved
-/// — the row a replay through that provider writes back untouched.
-/// Anything else (no row, a negative, another provider's) is none:
-/// the replay has nothing to carry forward from it.
-fn standing_row_of(
-    state: &AppState,
-    row: &str,
-    provider: crate::scraper::provider::ProviderId,
-) -> Option<AvailabilityResponse> {
+/// The row as it stands, when it is a positive one — the row a
+/// replay writes back untouched, whichever provider proved it.
+/// Anything else (no row, a negative) is none: the replay has
+/// nothing to carry forward from it.
+fn standing_row_of(state: &AppState, row: &str) -> Option<AvailabilityResponse> {
     meta_cache_get(&state.cache_pool, row)
         .ok()
         .flatten()
         .and_then(|body| serde_json::from_str::<AvailabilityResponse>(&body).ok())
-        .filter(|parsed| parsed.available && parsed.provider == Some(provider))
+        .filter(|parsed| parsed.available)
 }
 
 /// Inputs for the batch `availability_cached` lookup — a list of
