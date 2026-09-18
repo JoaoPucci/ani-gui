@@ -1568,7 +1568,7 @@ impl Fetch for Site {
             }
             // A lone zokoanime server whose payload names a master the
             // CDN has moved.
-            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21470") => {
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21476") => {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L21vdmVkLW1hc3Rlci9zdWI=\"></div>"}"#,
@@ -2641,16 +2641,17 @@ async fn quality_selection_fetches_playlists_with_the_embed_referer() {
 /// the one the payload named — so the rendition validated and
 /// handed to the player is the one that exists. The adaptive pick
 /// hands back the served master too, so the session starts where
-/// the stream is rather than one redirect behind it; the walk
-/// itself hands back the master as the payload named it, since the
-/// redirect is met only when the master is fetched.
+/// the stream is rather than one redirect behind it; and the walk,
+/// which validates the master inside its chain, carries the served
+/// master in the source it hands back.
 #[tokio::test]
 async fn a_quality_is_picked_beside_the_master_that_answered_after_a_redirect() {
     let c = client();
-    let source = c.master_playlist_url(21470, "sub").await.expect("resolved");
+    let source = c.master_playlist_url(21476, "sub").await.expect("resolved");
     assert_eq!(
-        source.master_url, "https://hls.example/v/old/master.m3u8",
-        "the walk hands back the master as the payload named it; the redirect is met on the fetch"
+        source.master_url,
+        "https://hls.example/v/new/master.m3u8",
+        "the walk validates the master inside its chain, so the source carries the master that answered"
     );
     let chosen = c
         .quality_stream_url(&source, "720")
