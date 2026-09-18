@@ -1106,8 +1106,12 @@ const MEGAPLAY_SOURCES: &str = r#"{"sources":{"file":"https://mp.example/v/maste
 /// embed page the client can read first — megaplay's ahead of
 /// zokoanime's, since megaplay's network has delivered the top
 /// rendition at real time where zokoanime's has crawled or been
-/// down — then the site's own order within each group. A name is
-/// not a shape — `HD-1` moved hosts between two captures.
+/// down — then the site's own order within each group; and one
+/// attempt per page, since the site lists a megaplay row per
+/// delivery network while the client asks every megaplay page for
+/// the one network it plays, so rows that differ only in their
+/// query are the same request twice. A name is not a shape —
+/// `HD-1` moved hosts between two captures.
 #[test]
 fn megaplays_servers_come_first_then_zokoanimes_then_the_sites_order() {
     let servers = parse_servers(SERVERS).expect("parsed");
@@ -1148,10 +1152,13 @@ fn megaplays_servers_come_first_then_zokoanimes_then_the_sites_order() {
     assert_eq!(
         servers_for(&renamed, "sub")
             .iter()
-            .map(|s| s.name.as_str())
+            .map(|s| s.embed_url.as_str())
             .collect::<Vec<_>>(),
-        vec!["HD-1", "HD-2", "ZokoAnime"],
-        "megaplay's two servers in the site's order, then zokoanime's"
+        vec![
+            "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn",
+            "https://zokoanime.video/stream/mal/1735/391/sub",
+        ],
+        "the site's two megaplay rows are one attempt: the same page asked for the same network"
     );
     assert_eq!(
         servers_for(&renamed, "dub")
@@ -1174,6 +1181,49 @@ fn megaplays_servers_come_first_then_zokoanimes_then_the_sites_order() {
         "a host the client reads comes before one it does not, though the site lists it after"
     );
     assert!(servers_for(&renamed, "raw").is_empty());
+}
+
+/// Two rows are one attempt when they name the same page: the same
+/// origin and path, whatever their query, since the client asks a
+/// megaplay page for one network whatever the listing named it for.
+/// The first in the site's order is kept. Rows on different pages,
+/// mirrors included, are distinct attempts, and so are rows for
+/// different modes.
+#[test]
+fn rows_that_name_the_same_page_are_one_attempt() {
+    let row = |mode: &str, url: &str| ServerEmbed {
+        mode: mode.into(),
+        name: "HD".into(),
+        embed_url: url.into(),
+    };
+    let servers = vec![
+        row("sub", "https://megaplay.buzz/stream/s-2/1/sub?s=tcdn"),
+        row("sub", "https://megaplay.buzz/stream/s-2/1/sub?s=bcdn"),
+        row("sub", "https://megaplay.buzz/stream/s-2/1/sub"),
+        row("sub", "https://megaplay-1.buzz/stream/s-2/1/sub?s=bcdn"),
+        row("sub", "https://zokoanime.video/stream/mal/1/1/sub"),
+        row("sub", "https://zokoanime.video/stream/mal/1/1/sub"),
+        row("dub", "https://megaplay.buzz/stream/s-2/1/dub?s=tcdn"),
+        row("dub", "https://megaplay.buzz/stream/s-2/1/dub?s=bcdn"),
+    ];
+    assert_eq!(
+        servers_for(&servers, "sub")
+            .iter()
+            .map(|s| s.embed_url.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "https://megaplay.buzz/stream/s-2/1/sub?s=tcdn",
+            "https://megaplay-1.buzz/stream/s-2/1/sub?s=bcdn",
+            "https://zokoanime.video/stream/mal/1/1/sub",
+        ]
+    );
+    assert_eq!(
+        servers_for(&servers, "dub")
+            .iter()
+            .map(|s| s.embed_url.as_str())
+            .collect::<Vec<_>>(),
+        vec!["https://megaplay.buzz/stream/s-2/1/dub?s=tcdn"]
+    );
 }
 
 // ── embed page ──────────────────────────────────────────────────────
@@ -1948,7 +1998,7 @@ impl Fetch for Site {
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21467") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA3L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -2000,7 +2050,7 @@ impl Fetch for Site {
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21469") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAxL3N1Yg==\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA3L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAxL3N1Yg==\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -2038,6 +2088,15 @@ impl Fetch for Site {
                 ok(MEGAPLAY_PAGE.replace("179411", "16"))
             }
             "https://megaplay.buzz/stream/getSourcesNew?id=16&s=bcdn" => ok(
+                r#"{"sources":{"file":"https://hls.example/v/stalling/master.m3u8"},"tracks":[]}"#,
+            ),
+            // A second such server, its own page: two listed rows that
+            // name one page are one attempt, so a pair of stalled
+            // servers needs two pages.
+            "https://megaplay.buzz/stream/s-2/734307/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "17"))
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=17&s=bcdn" => ok(
                 r#"{"sources":{"file":"https://hls.example/v/stalling/master.m3u8"},"tracks":[]}"#,
             ),
             // The payload decodes to a master that answers but whose
