@@ -1,15 +1,20 @@
 # Proposal: additional stream providers
 
-**Status**: implemented. This is the proposal as it was written on
-2026-09-05, before the work, kept for its survey and its reasoning;
-what shipped is described in `docs/architecture.md` under
-"Providers and failover", and differs from the design below in its
-details. Read the tense here as historical: the single-provider
-resolution the opening describes, and the seam, the per-provider
-gates and the orchestrator the integration section says are
-missing, are all built. The candidate survey describes a landscape
-that rots quickly — re-verify every claim in it before building on
-one.
+**Status**: implemented on Linux; the Windows run is still owed.
+This is the proposal as it was written on 2026-09-05, before the
+work, kept for its survey and its reasoning; what shipped is
+described in `docs/architecture.md` under "Providers and failover",
+and differs from the design below in its details. Read the tense
+here as historical: the single-provider resolution the opening
+describes, and the seam, the per-provider gates and the orchestrator
+the integration section says are missing, are all built. One thing
+the proposal asks for is not done: it counts a provider as reachable
+only once both packaged platforms have pulled a stream through it,
+and the packaged Windows build has not been run through the fallback
+— `docs/deferred-work.md` records that run, under "Validating the
+hianime fallback on the packaged Windows flows", as owed by a
+release. The candidate survey describes a landscape that rots
+quickly — re-verify every claim in it before building on one.
 
 ## Why this matters
 
