@@ -258,6 +258,35 @@ fn a_sources_field_that_names_a_stream_is_read_over_the_ciphertext() {
     );
 }
 
+/// The ciphertext field is read row by row like the rest of the
+/// response: one of a shape the reader does not know — a number, an
+/// object, a list — costs the ciphertext and nothing else. An answer
+/// naming a stream in the clear beside it is still read by its
+/// `sources`, and one naming no stream anywhere is refused for the
+/// stream it lacks.
+#[test]
+fn a_ciphertext_field_of_another_shape_costs_only_itself() {
+    for enc in ["123", "true", r#"{"file":"x"}"#, r#"["abc"]"#] {
+        let json = format!(
+            r#"{{"sources":{{"file":"https://cdn.example/clear/master.m3u8"}},"tracks":[],"enc":{enc}}}"#
+        );
+        assert_eq!(
+            parse_sources(&json)
+                .unwrap_or_else(|e| panic!("the clear shape beside enc={enc}: {e}"))
+                .src,
+            "https://cdn.example/clear/master.m3u8"
+        );
+        let json = format!(r#"{{"tracks":[],"t":1,"enc":{enc}}}"#);
+        let err = parse_sources(&json)
+            .expect_err("no stream anywhere")
+            .to_string();
+        assert!(
+            err.contains("no source the transport can fetch"),
+            "enc={enc} refused for: {err}"
+        );
+    }
+}
+
 #[test]
 fn a_sources_list_is_read_by_its_first_file() {
     let json = r#"{"sources":[{"file":"https://cdn.example/a/master.m3u8"},{"file":"https://cdn.example/b/master.m3u8"}],"tracks":[]}"#;

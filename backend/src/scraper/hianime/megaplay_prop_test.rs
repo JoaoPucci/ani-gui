@@ -390,6 +390,34 @@ proptest! {
         prop_assert_eq!(payload.subtitles.len(), tracks);
     }
 
+    /// A ciphertext field of a shape the reader does not know costs
+    /// itself and nothing else, whatever that shape is: the stream a
+    /// clear row names beside it is read as it would be with no
+    /// ciphertext at all, and an answer naming no stream in the clear
+    /// is refused for the stream it lacks, not for the field's shape.
+    #[test]
+    fn a_ciphertext_field_of_another_shape_costs_only_itself(
+        master in "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}/master\\.m3u8",
+        enc in prop_oneof![
+            any::<i64>().prop_map(|n| n.to_string()),
+            any::<bool>().prop_map(|b| b.to_string()),
+            "[a-z0-9_-]{0,40}".prop_map(|s| format!("[\"{s}\"]")),
+            "[a-z0-9_-]{0,40}".prop_map(|s| format!("{{\"file\":\"{s}\"}}")),
+        ],
+    ) {
+        let json = format!(r#"{{"sources":{{"file":"{master}"}},"tracks":[],"enc":{enc}}}"#);
+        let payload = parse_sources(&json).expect("the clear row beside the field");
+        prop_assert_eq!(&payload.src, &master);
+
+        let json = format!(r#"{{"tracks":[],"t":1,"enc":{enc}}}"#);
+        match parse_sources(&json) {
+            Err(AniError::ParseFailed { detail }) => {
+                prop_assert!(detail.contains("no source the transport can fetch"), "refused for: {detail}");
+            }
+            other => prop_assert!(false, "read as a stream: {other:?}"),
+        }
+    }
+
     /// A blob that is not the site's ciphertext names no stream and
     /// is refused, whatever it is made of — the client reads the
     /// site's answer, and anything else is the site having changed.
