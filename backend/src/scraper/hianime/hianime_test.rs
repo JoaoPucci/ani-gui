@@ -1107,10 +1107,10 @@ const MEGAPLAY_SOURCES: &str = r#"{"sources":{"file":"https://mp.example/v/maste
 /// zokoanime's, since megaplay's network has delivered the top
 /// rendition at real time where zokoanime's has crawled or been
 /// down — then the site's own order within each group; and one
-/// attempt per page, since the site lists a megaplay row per
+/// attempt per request, since the site lists a megaplay row per
 /// delivery network while the client asks every megaplay page for
-/// the one network it plays, so rows that differ only in their
-/// query are the same request twice. A name is not a shape —
+/// the one network it plays, so megaplay rows that differ only in
+/// their query are the same request twice. A name is not a shape —
 /// `HD-1` moved hosts between two captures.
 #[test]
 fn megaplays_servers_come_first_then_zokoanimes_then_the_sites_order() {
@@ -1183,14 +1183,18 @@ fn megaplays_servers_come_first_then_zokoanimes_then_the_sites_order() {
     assert!(servers_for(&renamed, "raw").is_empty());
 }
 
-/// Two rows are one attempt when they name the same page: the same
-/// origin and path, whatever their query, since the client asks a
-/// megaplay page for one network whatever the listing named it for.
-/// The first in the site's order is kept. Rows on different pages,
-/// mirrors included, are distinct attempts, and so are rows for
-/// different modes.
+/// Two rows are one attempt when they make the same request. On
+/// megaplay's hosts that is the same page — origin and path,
+/// whatever the query — since the client asks a megaplay page for
+/// one network whatever the listing named it for, and the query
+/// goes nowhere. On every other host the embed request carries the
+/// query as listed, and a query can name a different server, so
+/// there two rows are one attempt only when the whole URL is the
+/// same. The first in the site's order is kept. Rows on different
+/// pages, mirrors included, are distinct attempts, and so are rows
+/// for different modes.
 #[test]
-fn rows_that_name_the_same_page_are_one_attempt() {
+fn rows_that_make_the_same_request_are_one_attempt() {
     let row = |mode: &str, url: &str| ServerEmbed {
         mode: mode.into(),
         name: "HD".into(),
@@ -1203,6 +1207,10 @@ fn rows_that_name_the_same_page_are_one_attempt() {
         row("sub", "https://megaplay-1.buzz/stream/s-2/1/sub?s=bcdn"),
         row("sub", "https://zokoanime.video/stream/mal/1/1/sub"),
         row("sub", "https://zokoanime.video/stream/mal/1/1/sub"),
+        row("sub", "https://zokoanime.video/stream/mal/1/1/sub?k=second"),
+        row("sub", "https://vidtube.site/embed/1/sub?t=one"),
+        row("sub", "https://vidtube.site/embed/1/sub?t=two"),
+        row("sub", "https://vidtube.site/embed/1/sub?t=one"),
         row("dub", "https://megaplay.buzz/stream/s-2/1/dub?s=tcdn"),
         row("dub", "https://megaplay.buzz/stream/s-2/1/dub?s=bcdn"),
     ];
@@ -1215,7 +1223,11 @@ fn rows_that_name_the_same_page_are_one_attempt() {
             "https://megaplay.buzz/stream/s-2/1/sub?s=tcdn",
             "https://megaplay-1.buzz/stream/s-2/1/sub?s=bcdn",
             "https://zokoanime.video/stream/mal/1/1/sub",
-        ]
+            "https://zokoanime.video/stream/mal/1/1/sub?k=second",
+            "https://vidtube.site/embed/1/sub?t=one",
+            "https://vidtube.site/embed/1/sub?t=two",
+        ],
+        "megaplay's rows by page; every other host's by the whole URL"
     );
     assert_eq!(
         servers_for(&servers, "dub")
