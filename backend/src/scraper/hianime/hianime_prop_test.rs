@@ -1381,10 +1381,11 @@ proptest::proptest! {
 
     /// Whatever the site names its servers, the ones to try for a mode
     /// are exactly that mode's servers — every one of them, once — with
-    /// the hosts the client can read ahead of the rest and the site's
-    /// order kept within each half.
+    /// the hosts the client can read ahead of the rest, megaplay's
+    /// ahead of zokoanime's among those, and the site's order kept
+    /// within each group.
     #[test]
-    fn servers_for_a_mode_are_its_servers_readable_hosts_first(
+    fn servers_for_a_mode_are_its_servers_megaplay_then_zokoanime_then_the_rest(
         servers in proptest::collection::vec(
             (
                 proptest::sample::select(vec!["sub", "dub"]),
@@ -1421,9 +1422,22 @@ proptest::proptest! {
         if let (Some(u), Some(r)) = (first_unreadable, last_readable) {
             prop_assert!(r < u, "readable hosts lead: {picked:?}");
         }
+        let megaplay = |s: &ServerEmbed| {
+            s.embed_url.starts_with("https://megaplay.buzz/")
+                || s.embed_url.starts_with("https://megaplay-1.buzz/")
+        };
         let readable_order: Vec<&ServerEmbed> = picked.iter().copied().filter(|s| readable(s)).collect();
-        let readable_site_order: Vec<&ServerEmbed> = expected.iter().copied().filter(|s| readable(s)).collect();
-        prop_assert!(readable_order.iter().zip(&readable_site_order).all(|(a, b)| std::ptr::eq(*a, *b)));
+        let readable_expected: Vec<&ServerEmbed> = expected
+            .iter()
+            .copied()
+            .filter(|s| megaplay(s))
+            .chain(expected.iter().copied().filter(|s| readable(s) && !megaplay(s)))
+            .collect();
+        prop_assert_eq!(readable_order.len(), readable_expected.len());
+        prop_assert!(
+            readable_order.iter().zip(&readable_expected).all(|(a, b)| std::ptr::eq(*a, *b)),
+            "megaplay's servers in site order, then zokoanime's in site order: {picked:?}"
+        );
     }
 }
 

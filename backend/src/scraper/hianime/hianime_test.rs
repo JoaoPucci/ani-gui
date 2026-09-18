@@ -1103,18 +1103,41 @@ const MEGAPLAY_ENCRYPTED_SOURCES: &str = r#"{"tracks":[{"file":"https://mp.examp
 const MEGAPLAY_SOURCES: &str = r#"{"sources":{"file":"https://mp.example/v/master.m3u8"},"tracks":[{"file":"https://mp.example/v/subs/track_0_eng.vtt","label":"English","kind":"captions","default":true},{"file":"https://mp.example/v/subs/track_2_Latin_American_spa.vtt","label":"Spanish (Latin American)","kind":"captions"}],"t":1,"intro":{"start":0,"end":0},"outro":{"start":0,"end":0},"server":4}"#;
 
 /// The servers to try for a mode, in order: the ones on a host whose
-/// embed page the client can read first, then the site's own order.
-/// A name is not a shape — `HD-1` moved hosts between two captures.
+/// embed page the client can read first — megaplay's ahead of
+/// zokoanime's, since megaplay's network has delivered the top
+/// rendition at real time where zokoanime's has crawled or been
+/// down — then the site's own order within each group. A name is
+/// not a shape — `HD-1` moved hosts between two captures.
 #[test]
-fn the_servers_the_client_can_read_come_first_then_the_sites_order() {
+fn megaplays_servers_come_first_then_zokoanimes_then_the_sites_order() {
     let servers = parse_servers(SERVERS).expect("parsed");
     assert_eq!(
         servers_for(&servers, "sub")
             .iter()
             .map(|s| s.name.as_str())
             .collect::<Vec<_>>(),
-        vec!["HD-1", "HD-2"],
-        "zokoanime first, as the site lists it"
+        vec!["HD-2", "HD-1"],
+        "megaplay first, though the site lists zokoanime ahead of it"
+    );
+    let mirror_after_zoko = vec![
+        ServerEmbed {
+            mode: "sub".into(),
+            name: "ZokoAnime".into(),
+            embed_url: "https://zokoanime.video/stream/mal/1/1/sub".into(),
+        },
+        ServerEmbed {
+            mode: "sub".into(),
+            name: "MegaPlay".into(),
+            embed_url: "https://megaplay-1.buzz/stream/s-2/1/sub".into(),
+        },
+    ];
+    assert_eq!(
+        servers_for(&mirror_after_zoko, "sub")
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["MegaPlay", "ZokoAnime"],
+        "a megaplay mirror is megaplay's too"
     );
     let renamed = parse_servers(SERVERS_RENAMED).expect("parsed");
     assert_eq!(
@@ -1128,7 +1151,7 @@ fn the_servers_the_client_can_read_come_first_then_the_sites_order() {
             .map(|s| s.name.as_str())
             .collect::<Vec<_>>(),
         vec!["HD-1", "HD-2", "ZokoAnime"],
-        "megaplay's pages are read too, so the site's order stands"
+        "megaplay's two servers in the site's order, then zokoanime's"
     );
     assert_eq!(
         servers_for(&renamed, "dub")
@@ -1767,12 +1790,12 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // A zokoanime server whose page decodes to a master on a
-            // dead host, then a megaplay server that serves.
+            // A megaplay server whose sources name a master on a dead
+            // host, then a megaplay server that serves.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21432") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2RlYWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk0L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1789,13 +1812,13 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // A zokoanime server whose master answers but whose 720
+            // A megaplay server whose master answers but whose 720
             // rendition refuses, then a megaplay server whose whole
             // chain answers.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21455") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsZWQvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk1L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1811,12 +1834,12 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // A zokoanime server whose master never answers, then a
+            // A megaplay server whose master never answers, then a
             // megaplay server whose chain answers.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21446") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1832,12 +1855,12 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // A zokoanime server whose master never answers, then a
+            // A megaplay server whose master never answers, then a
             // megaplay server whose master answers, slowly.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21449") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk3L3N1Yg==\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk3L3N1Yg==\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1855,13 +1878,13 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // A zokoanime server whose master never answers, a
+            // A megaplay server whose master never answers, a
             // megaplay server whose master answers slowly, then a
             // host the client does not read.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21451") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"MegaPlay\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk3L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"VidTube\" data-hash=\"aHR0cHM6Ly92aWR0dWJlLnNpdGUvZW1iZWQvODI3Mi9zdWI=\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"MegaPlay\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk3L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"VidTube\" data-hash=\"aHR0cHM6Ly92aWR0dWJlLnNpdGUvZW1iZWQvODI3Mi9zdWI=\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1911,14 +1934,14 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // Two zokoanime servers whose masters hold the connection,
+            // Two megaplay servers whose masters hold the connection,
             // then a megaplay server whose whole chain answers at once:
             // the shape in which stalled servers spend an attempt's
             // remainder before a healthy last server is reached.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21467") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MjkyL3N1Yj9zPWJjZG4=\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1937,7 +1960,7 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
-            // Two zokoanime servers whose masters hold the connection,
+            // Two megaplay servers whose masters hold the connection,
             // then a megaplay server whose whole chain answers, every
             // request of it taking a slice: the healthy-but-loaded
             // shape, whose four sequential fetches together outlast a
@@ -1946,7 +1969,7 @@ impl Fetch for Site {
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21469") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAxL3N1Yg==\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAxL3N1Yg==\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1958,7 +1981,7 @@ impl Fetch for Site {
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21447") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk2L3N1Yg==\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzA2L3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0Mjk2L3N1Yg==\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -1978,6 +2001,14 @@ impl Fetch for Site {
                 r#"{"sources":{"file":"https://mp.example/v/stalling/master.m3u8"},"tracks":[]}"#,
             ),
             "https://mp.example/v/stalling/master.m3u8" => Err(AniError::Network),
+            // A megaplay server whose master holds the connection: its
+            // sources name the stalling host above.
+            "https://megaplay.buzz/stream/s-2/734306/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "16"))
+            }
+            "https://megaplay.buzz/stream/getSourcesNew?id=16&s=bcdn" => ok(
+                r#"{"sources":{"file":"https://hls.example/v/stalling/master.m3u8"},"tracks":[]}"#,
+            ),
             // The payload decodes to a master that answers but whose
             // 720 rendition the host refuses.
             "https://zokoanime.video/stream/mal/9/stalled/sub" => ok(
@@ -3305,7 +3336,7 @@ async fn a_server_whose_rendition_refuses_is_stepped_over_for_one_whose_chain_an
         .map(|r| r.url.clone())
         .collect();
     assert!(
-        urls.contains(&"https://hls.example/v/stalled/720/index.m3u8".to_string()),
+        urls.contains(&"https://mp.example/v/stalled/720/index.m3u8".to_string()),
         "the first server's rendition was asked before the next server: {urls:?}"
     );
 }
