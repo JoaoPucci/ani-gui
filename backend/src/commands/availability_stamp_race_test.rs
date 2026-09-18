@@ -195,3 +195,71 @@ async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_i
         "and its exact cap is carried forward"
     );
 }
+
+/// A probe that set out with no positive row to remember runs the
+/// primary alone, and the primary answers a clean miss. While it
+/// was out, a resolve reached the show through the fallback and
+/// stamped hianime's positive row with its exact cap. The probe's
+/// miss is older than that row and proves nothing against it —
+/// anidb.app never had the show — so the row it finds standing when
+/// it takes the lock is the one that stands: the miss is the
+/// verdict the caller sees, and nothing is persisted over the row.
+/// Written as the primary's negative, the row would hide a stream
+/// just proven playable for the negative's whole lifetime.
+#[tokio::test]
+async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
+    use wiremock::matchers::{method, path};
+    let anidb = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#)
+                .set_delay(std::time::Duration::from_millis(300)),
+        )
+        .mount(&anidb)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = cache_only_state(&td);
+    state.provider_order = vec![ProviderId::Anidb];
+    let state = std::sync::Arc::new(state);
+
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Fallback Show",
+        "mode": MODE,
+        "kitsu_id": ID
+    }))
+    .expect("args");
+    let key = cache_key(ID, MODE);
+    let generation = state.availability_refreshes.generation(&key);
+
+    let probe = tokio::spawn({
+        let state = state.clone();
+        let base = anidb.uri();
+        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+    });
+    // The resolve lands while the probe waits on the primary.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        generation,
+        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+    )
+    .await;
+    let got = probe.await.expect("the probe finishes");
+
+    assert!(
+        matches!(got, Err(crate::error::AniError::NoResults)),
+        "the primary's miss is the verdict the caller sees: {got:?}"
+    );
+    let row = row_now(&state);
+    assert!(row.available, "the fallback's positive row stands");
+    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(
+        row.episode_count,
+        Some(24),
+        "with the cap the resolve wrote"
+    );
+}
