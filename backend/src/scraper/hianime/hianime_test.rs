@@ -2029,6 +2029,18 @@ impl Fetch for Site {
                     refused(403)
                 }
             }
+            // Two distinct megaplay servers — the loaded chain on the
+            // site's own host, then a healthy mirror — ahead of a
+            // zokoanime server whose chain answers at once.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21475") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzAxL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS0xLmJ1enovc3RyZWFtL3MtMi83MzQyOTkvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
             // A zokoanime URL that lands on megaplay's loaded page —
             // four requests, each a slice — ahead of a zokoanime
             // server whose chain answers at once.
@@ -3916,6 +3928,41 @@ async fn a_redirected_servers_chain_is_given_the_longest_chains_worth() {
         Some("https://megaplay.buzz/"),
         "judged by the host that served the page"
     );
+}
+
+/// The first server the walk tries is the one it prefers, and its
+/// window is not a share split evenly with the servers after it.
+/// Two distinct megaplay servers ahead of the remainder's — the
+/// site's own host and a mirror are two pages, so two attempts —
+/// split what the attempt holds over the reserve between them, and
+/// a loaded chain on the first was cut off at half a window while
+/// the attempt could fund it whole; only later would the mirror,
+/// and then zokoanime, be asked. The first bounded server is now
+/// given what is over the reserve less the floor owed to each
+/// server after it, up to its bound — the floors stay funded, so
+/// the reserve is never touched for them — and the servers after
+/// it share what it leaves. Here the attempt holds the reserve, a
+/// chain's worth for the first server and a floor for the mirror,
+/// and the loaded chain on the preferred server is served.
+#[tokio::test(start_paused = true)]
+async fn the_first_bounded_servers_window_is_not_a_share_split_with_the_servers_after_it() {
+    const BUDGET_MS: u64 = 100;
+    let c = client_with_server_budget(BUDGET_MS);
+    let reserve = chain_reserve(std::time::Duration::from_millis(BUDGET_MS));
+    // Two servers ahead of the remainder's: the floor the walk sets
+    // out with is the reserve over three.
+    let floor = reserve / 3;
+    let deadline = tokio::time::Instant::now() + reserve + reserve + floor;
+    c.bound_attempt(Some(deadline));
+    let stream = tokio::time::timeout_at(deadline, c.stream_for(21475, "sub", "720"))
+        .await
+        .expect("the attempt funded the first chain, the mirror's floor and the reserve")
+        .expect("served");
+    assert_eq!(
+        stream.url, "https://mp.example/v/paced/index-f2.m3u8",
+        "the preferred server's loaded chain was served within a whole window"
+    );
+    assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
 }
 
 /// A bounded server's window is a whole chain's worth — the longest
