@@ -27,9 +27,8 @@ pub mod megaplay_cipher;
 pub mod megaplay_sources;
 pub mod parse;
 pub use ajax::{
-    chain_requests, chain_reserve, chain_worth, parse_episode_list, parse_server_listing,
-    parse_servers, remainder_index, servers_for, ServerCaps, ServerEmbed, ServerListing,
-    CHAIN_REQUESTS,
+    chain_reserve, chain_worth, parse_episode_list, parse_server_listing, parse_servers,
+    remainder_index, servers_for, ServerCaps, ServerEmbed, ServerListing, CHAIN_REQUESTS,
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
@@ -50,11 +49,11 @@ use crate::scraper::provider::{
 pub const HIANIME_BASE: &str = "https://hianime.at";
 
 /// The base a server's window is carved from: one request's worth
-/// of patience is five twelfths of this, and a server's chain — its
-/// page, its sources answer where its host has one, its master and
-/// the chosen rendition — is given that many requests' worth
-/// ([`ajax::chain_worth`]) before the walk steps to the next server.
-/// Sized against the walk's own budget: a
+/// of patience is five twelfths of this, and every bounded server is
+/// given the longest chain's worth — its page, its sources answer,
+/// its master and the chosen rendition, four requests
+/// ([`ajax::chain_reserve`]) — before the walk steps to the next
+/// server. Sized against the walk's own budget: a
 /// provider's whole attempt has twenty seconds, of which the search,
 /// the entry and the listings take about a second and a half when
 /// the site is healthy, and a host that holds a connection open
@@ -497,18 +496,16 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         let deadline = *self.attempt_deadline.lock().expect("attempt deadline");
         let remaining =
             || deadline.map(|at| at.saturating_duration_since(tokio::time::Instant::now()));
-        // The reserve is the chain's worth of the server that runs on
-        // the remainder — three requests on zokoanime's host, four on
-        // megaplay's — and each bounded server's window is its own
-        // chain's worth ([`chain_requests`], [`chain_worth`]): the
-        // walk tries megaplay's four-request chain first, and a
-        // loaded host answering each request inside the allowance
-        // would outlast one bound sized for three.
-        let reserve = chain_worth(
-            self.server_budget,
-            unbounded.map_or(CHAIN_REQUESTS, |u| chain_requests(&ordered[u].embed_url)),
-        );
-        let caps = ServerCaps::for_walk(reserve, remaining(), unbounded.unwrap_or(0));
+        // Each bounded server's window, and the reserve held back for
+        // the remainder's server, is the longest chain's worth
+        // ([`chain_reserve`]): the walk tries megaplay's four-request
+        // chain first, and a loaded host answering each request inside
+        // the allowance would outlast one bound spread over four. The
+        // longest for every server, whatever host the listing names —
+        // the window is decided before the page is fetched, and a
+        // listed URL can redirect onto a host whose chain is longer.
+        let bound = chain_reserve(self.server_budget);
+        let caps = ServerCaps::for_walk(bound, remaining(), unbounded.unwrap_or(0));
         for (i, server) in ordered.into_iter().enumerate() {
             // A page is judged by the host that served it, which is
             // not always the host the listing named: the transport
@@ -532,7 +529,6 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 chain.await
             } else {
                 let ahead = unbounded.map_or(0, |u| u.saturating_sub(i));
-                let bound = chain_worth(self.server_budget, chain_requests(&server.embed_url));
                 let cap = caps.cap(bound, remaining(), ahead);
                 match tokio::time::timeout(cap, chain).await {
                     Ok(outcome) => outcome,
