@@ -110,6 +110,13 @@ pub(super) struct GateState {
     /// breaker, the mirror of the stale-success filter against
     /// `opened_at`.
     last_recovery_at: Option<Instant>,
+    /// Whether the provider has answered through this gate at all —
+    /// a success or a rate limit, the provider naming a moment to
+    /// come back; a failure proves nothing. The gate is the
+    /// process's while the verdicts it stands behind outlive the
+    /// process, so a gate nothing has answered through has recovered
+    /// nothing, whatever its breaker reads.
+    answered: bool,
 }
 
 /// See the module docs. One instance lives in `AppState`; every
@@ -134,6 +141,7 @@ impl ScraperGate {
                 opened_at: None,
                 half_open_trial_at: None,
                 last_recovery_at: None,
+                answered: false,
             }),
         }
     }
@@ -284,15 +292,17 @@ impl ScraperGate {
     /// breaker refuses nobody, but it is half-open — one trial is let
     /// through, and only a success closes it — so a provider whose
     /// outage merely outlasted the cooldown has recovered nothing. A
-    /// breaker counts as recovered when a success closed it, or it
-    /// never opened; an advertised pause counts as over at its
-    /// window's end, since the upstream itself named that moment and
-    /// admission clears the pause on the clock. A read, never a state
-    /// change.
+    /// breaker counts as recovered when a success closed it, and a
+    /// gate nothing has answered through has recovered nothing
+    /// either, since the gate is the process's and the verdicts it
+    /// stands behind outlive the process; an advertised pause counts
+    /// as over at its window's end, since the upstream itself named
+    /// that moment and admission clears the pause on the clock. A
+    /// read, never a state change.
     #[must_use]
     pub fn is_recovered(&self) -> bool {
         let s = self.inner.lock().expect("gate lock");
-        recovered_at(s.open_until, s.paused_until, Instant::now())
+        recovered_at(s.answered, s.open_until, s.paused_until, Instant::now())
     }
 
     /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
@@ -317,6 +327,8 @@ impl ScraperGate {
                     // failure path.
                     return;
                 }
+                // A rate limit is the provider answering.
+                s.answered = true;
                 let now = Instant::now();
                 // The hint is untrusted input: clamp before the
                 // Instant addition so a hostile value can neither
@@ -363,13 +375,22 @@ fn refusing_at(open_until: Option<Instant>, paused_until: Option<Instant>, now: 
     open_until.is_some_and(|until| now < until) || paused_until.is_some_and(|paused| now < paused)
 }
 
-/// Whether the provider has recovered at `now`: the breaker closed —
-/// never opened, or closed by a success, never merely cooled down —
-/// and no advertised pause still running. Pure, the mirror of
-/// [`refusing_at`]: recovered implies not refusing, and a breaker past
-/// its cooldown without a success is neither.
-fn recovered_at(open_until: Option<Instant>, paused_until: Option<Instant>, now: Instant) -> bool {
-    open_until.is_none() && paused_until.is_none_or(|paused| now >= paused)
+/// Whether the provider has recovered at `now`: the provider has
+/// `answered` through the gate, the breaker is closed — by a
+/// success, never merely cooled down — and no advertised pause is
+/// still running. Pure, the mirror of [`refusing_at`]: recovered
+/// implies not refusing, and a breaker past its cooldown without a
+/// success is neither, as is a fresh gate nothing has answered
+/// through. The gate lives in the process while the verdicts it
+/// stands behind live on disk, so "never opened" alone would count a
+/// provider recovered on an app started during its outage.
+fn recovered_at(
+    answered: bool,
+    open_until: Option<Instant>,
+    paused_until: Option<Instant>,
+    now: Instant,
+) -> bool {
+    answered && open_until.is_none() && paused_until.is_none_or(|paused| now >= paused)
 }
 
 /// Breaker check under the gate lock: refuses while the breaker is
