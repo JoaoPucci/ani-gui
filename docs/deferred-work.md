@@ -343,12 +343,18 @@ starting it, and delete it when you find it done.
   owes on both platforms.
 
   What is worth knowing before scheduling it: the fallback engages
-  only while anidb.app is unreachable, refusing or broken. A Windows
-  user reaches it at the moment the only other provider is giving
-  them nothing, so an unvalidated path there is measured against a
-  certain failure rather than against a working play — which is why
-  the run is owed by a release and was not a condition of enabling
-  the provider.
+  only while anidb.app is unreachable, refusing or broken, so the
+  first play a Windows user makes through it comes at the moment the
+  only other provider is giving them nothing — an unvalidated path
+  measured against a certain failure rather than against a working
+  play. It does not end there. A show the fallback served has its
+  positive availability row name hianime, and every later play,
+  download and hand-off of that show starts from hianime while that
+  row lives — a replay refreshes it — whether or not anidb.app has
+  recovered. A Windows user who reached the fallback once keeps
+  using it for that show afterwards, with anidb.app healthy, which
+  is why the run is owed by a release and not merely worth having;
+  it was not a condition of enabling the provider.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
