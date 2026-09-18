@@ -44,8 +44,11 @@ struct WireResponse {
     /// The stream, as the site writes it now: the `sources` object
     /// encrypted under the site's own constants ([`decrypted_file`]).
     /// Read only when nothing in the clear names a stream, so an
-    /// answer of either shape reads.
-    #[serde(default)]
+    /// answer of either shape reads; and read by the row rule like
+    /// the fields beside it ([`readable_enc`]), so a field of a shape
+    /// the reader does not know costs the ciphertext and not the
+    /// stream a clear row names.
+    #[serde(default, deserialize_with = "readable_enc")]
     enc: Option<String>,
     #[serde(default, deserialize_with = "readable_tracks")]
     tracks: Vec<WireTrack>,
@@ -84,6 +87,24 @@ fn file_rows(listed: serde_json::Value) -> Vec<WireFile> {
         .filter(serde_json::Value::is_object)
         .filter_map(|row| serde_json::from_value(row).ok())
         .collect()
+}
+
+/// The ciphertext the client opens, out of whatever the response put
+/// in the field: the string the site writes there, and nothing of any
+/// other shape. A number, a list or an object where the ciphertext
+/// belongs is read as no ciphertext at all, so the answer is judged
+/// by its clear rows — and refused for the stream it lacks when they
+/// name none — rather than failed whole for a field it never opens
+/// while a clear row names the stream.
+fn readable_enc<'de, D>(deserializer: D) -> std::result::Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let listed = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(match listed {
+        Some(serde_json::Value::String(enc)) => Some(enc),
+        _ => None,
+    })
 }
 
 /// The track rows the client reads, out of whatever the response put
