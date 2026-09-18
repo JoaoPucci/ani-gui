@@ -1712,6 +1712,9 @@ mod tests {
             crate::scraper::provider::ProviderId::Anidb,
             crate::scraper::provider::ProviderId::Hianime,
         ];
+        // Both seen answering, so either can stand behind a row.
+        close_breaker(&state.anidb_gate);
+        close_breaker(&state.hianime_gate);
         write_cache(
             &state,
             "570",
@@ -2746,6 +2749,10 @@ mod tests {
     fn a_negative_row_is_served_while_its_provider_is_reachable() {
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
+        // Reachable means seen answering: a fresh gate has answered
+        // nothing, and a row served on it would stand on a provider
+        // that may be down since before the process started.
+        close_breaker(&state.anidb_gate);
         write_cache(
             &state,
             "562",
@@ -3401,6 +3408,8 @@ mod tests {
     fn write_cache_round_trips_for_negative_results() {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
+        // A negative row is usable only on a provider seen answering.
+        close_breaker(&state.anidb_gate);
         write_cache(&state, "kid-2", "dub", false, None);
         let resp = batch_cached(
             &state,
@@ -3501,6 +3510,8 @@ mod tests {
     fn batch_cached_returns_playable_episode_counts() {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
+        // The negative row below stands on a provider seen answering.
+        close_breaker(&state.anidb_gate);
         write_cache_full(
             &state,
             "ongoing-show",
@@ -3871,6 +3882,8 @@ mod tests {
     fn usable_hit_rules_for_legacy_and_negative_rows() {
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
+        // A negative row is usable only on a provider seen answering.
+        close_breaker(&state.anidb_gate);
         let legacy = AvailabilityResponse {
             available: true,
             episode_count: None,
@@ -3914,6 +3927,8 @@ mod tests {
     fn usability_is_negative_or_a_confirmed_count() {
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
+        // A negative row is usable only on a provider seen answering.
+        close_breaker(&state.anidb_gate);
         let cases = (
             proptest::bool::ANY,
             proptest::option::of(0u32..2000),

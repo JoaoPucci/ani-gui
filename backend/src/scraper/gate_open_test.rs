@@ -88,14 +88,22 @@ async fn a_fresh_success_ends_the_pause_and_an_open_breaker_refuses_too() {
 /// Refusing and recovered are two different questions, and a verdict
 /// that has to be stood behind asks the second: a provider whose
 /// outage merely outlasted the cooldown has recovered nothing until a
-/// success closes the breaker.
+/// success closes the breaker. A fresh gate is in the same position:
+/// the gate lives in the process and the verdicts it stands behind
+/// live on disk, so an app started during an outage holds a fresh
+/// gate for a provider that is down, and a verdict served on "never
+/// opened" alone would hide, for the rest of the row's life, a show
+/// only the fallback carries. Recovered means seen answering.
 #[tokio::test(start_paused = true)]
 async fn a_cooled_breaker_refuses_nobody_but_is_recovered_only_by_a_success() {
     let gate = ScraperGate::new();
+    assert!(!gate.is_refusing(), "a fresh gate refuses nobody");
     assert!(
-        gate.is_recovered(),
-        "a fresh gate has nothing to recover from"
+        !gate.is_recovered(),
+        "and has recovered nothing: nothing has answered through it yet"
     );
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    assert!(gate.is_recovered(), "a success is what recovery is");
     for _ in 0..FAILURE_THRESHOLD {
         gate.record(ScrapeOutcome::Failure, Instant::now());
     }
@@ -158,9 +166,10 @@ mod recovery_props {
 
     proptest! {
         /// Recovered implies not refusing; refusing implies not
-        /// recovered; and a breaker whose cooldown has elapsed without
-        /// a success is neither — the half-open state that tells the
-        /// two questions apart.
+        /// recovered; a breaker whose cooldown has elapsed without a
+        /// success is neither — the half-open state that tells the
+        /// two questions apart — and so is a breaker that never
+        /// opened while nothing has answered through it.
         #[test]
         fn recovered_never_refuses_and_a_cooled_breaker_is_neither(
             open in deadline(),
@@ -169,20 +178,26 @@ mod recovery_props {
             let base = Instant::now() + Duration::from_secs(200);
             let open_until = at(base, open);
             let paused_until = at(base, paused);
-            let recovered = recovered_at(open_until, paused_until, base);
-            let refusing = refusing_at(open_until, paused_until, base);
-            prop_assert!(!(recovered && refusing));
-            if let Some(until) = open_until {
-                if base >= until {
-                    let pause_running = paused_until.is_some_and(|p| base < p);
-                    prop_assert!(!recovered, "a cooled breaker has recovered nothing");
-                    prop_assert_eq!(refusing, pause_running, "and refuses only through a pause");
+            for answered in [false, true] {
+                let recovered = recovered_at(answered, open_until, paused_until, base);
+                let refusing = refusing_at(open_until, paused_until, base);
+                prop_assert!(!(recovered && refusing));
+                if let Some(until) = open_until {
+                    if base >= until {
+                        let pause_running = paused_until.is_some_and(|p| base < p);
+                        prop_assert!(!recovered, "a cooled breaker has recovered nothing");
+                        prop_assert_eq!(refusing, pause_running, "and refuses only through a pause");
+                    }
                 }
-            }
-            if open_until.is_none() {
-                let pause_running = paused_until.is_some_and(|p| base < p);
-                prop_assert_eq!(recovered, !pause_running);
-                prop_assert_eq!(refusing, pause_running);
+                if open_until.is_none() {
+                    let pause_running = paused_until.is_some_and(|p| base < p);
+                    prop_assert_eq!(
+                        recovered,
+                        answered && !pause_running,
+                        "a breaker that never opened has recovered only once something answered"
+                    );
+                    prop_assert_eq!(refusing, pause_running);
+                }
             }
         }
     }
