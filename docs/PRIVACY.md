@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-17_
+_Last updated: 2026-09-18_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -112,13 +112,18 @@ requires it; the exception is the update check that runs on launch
   request follows the move; for anidb.app the requests carry no
   `Referer` at all — its CDN asks for none, and the app adds none.
   Nothing identifying you is sent with it. The CDN is also reached
-  before any playback, by the page warms described above: a warm that
-  resolves fetches the episode's master playlist, to check that what the
-  page named is a playlist, and, when the quality setting is not "best",
-  the playlist of the rendition that setting selects as well — a second
-  fetch, at whatever host the master names for it; and a warm served
-  from the resolution cache checks the cached stream and each of its
-  subtitle tracks at the CDN before the row is trusted. Segments and
+  before any playback, whenever an episode is resolved or a cached
+  resolution is reused: a resolve — a page warm, or a play or hand-off
+  that finds nothing cached — fetches the episode's master playlist, to
+  check that what the page named is a playlist, and, when the quality
+  setting is not "best", the playlist of the rendition that setting
+  selects as well — a second fetch, at whatever host the master names
+  for it; and any play served from the resolution cache — a page warm,
+  a play in the app, or a hand-off to an external player or Syncplay —
+  checks the cached stream and each of its subtitle tracks at the CDN
+  before the row is trusted, so a cached replay reaches every listed
+  subtitle host whether or not the player goes on to use that track.
+  Segments and
   subtitle files are fetched when playback starts — in the app, or in an
   external player or Syncplay the app hands the stream to — and by a
   download, which fetches the segments through the bundled tool and the
