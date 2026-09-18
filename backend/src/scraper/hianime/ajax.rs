@@ -553,30 +553,33 @@ pub fn readable(embed_url: &str) -> bool {
 }
 
 /// The servers to try for `mode`, in order: that mode's servers, one
-/// attempt per page, the ones on a host the client can read first —
-/// megaplay's ahead of zokoanime's, since megaplay's delivery
-/// network has carried the top rendition at real time where
+/// attempt per request, the ones on a host the client can read
+/// first — megaplay's ahead of zokoanime's, since megaplay's
+/// delivery network has carried the top rendition at real time where
 /// zokoanime's has crawled or been down — the site's own order kept
 /// within each group, then the rest in the site's order. Empty when
 /// the mode has none.
 ///
-/// One attempt per page: the site lists a megaplay row per delivery
-/// network, the rows differing only in their query, and the client
-/// asks every megaplay page for the one network it plays
-/// ([`super::megaplay::sources_url`]), so a later row naming the
-/// page an earlier row named is the same request twice — and, tried
-/// twice ahead of the remainder's server, it would split the window
-/// between two attempts that can only give one answer. The first
-/// row in the site's order is kept ([`page_of`]).
+/// One attempt per request: the site lists a megaplay row per
+/// delivery network, the rows differing only in their query, and the
+/// client asks every megaplay page for the one network it plays
+/// ([`super::megaplay::sources_url`]), so a later megaplay row naming
+/// the page an earlier row named is the same request twice — and,
+/// tried twice ahead of the remainder's server, it would split the
+/// window between two attempts that can only give one answer. On
+/// every other host the embed request carries the query as listed
+/// and a query can name a different server, so there only a row
+/// with the whole URL of an earlier one is the same request. The
+/// first row in the site's order is kept ([`request_of`]).
 #[must_use]
 pub fn servers_for<'a>(servers: &'a [ServerEmbed], mode: &str) -> Vec<&'a ServerEmbed> {
-    let mut pages: Vec<&str> = Vec::new();
+    let mut asked: Vec<&str> = Vec::new();
     let of_mode = servers.iter().filter(|s| s.mode == mode).filter(|s| {
-        let page = page_of(&s.embed_url);
-        if pages.contains(&page) {
+        let request = request_of(&s.embed_url);
+        if asked.contains(&request) {
             false
         } else {
-            pages.push(page);
+            asked.push(request);
             true
         }
     });
@@ -587,10 +590,16 @@ pub fn servers_for<'a>(servers: &'a [ServerEmbed], mode: &str) -> Vec<&'a Server
     readable_hosts.into_iter().chain(rest).collect()
 }
 
-/// The page an embed URL names: everything before its query and
-/// fragment. Two listed rows that agree on this are one attempt.
-fn page_of(embed_url: &str) -> &str {
-    embed_url.split(['?', '#']).next().unwrap_or(embed_url)
+/// What a listed row asks for, as far as two rows can ask the same:
+/// on megaplay's hosts the page alone — origin and path — since the
+/// query names a network the client does not ask for; on any other
+/// host the whole URL, query included, since it is sent as listed.
+fn request_of(embed_url: &str) -> &str {
+    if megaplay_embed(embed_url) {
+        embed_url.split(['?', '#']).next().unwrap_or(embed_url)
+    } else {
+        embed_url
+    }
 }
 
 /// The position of the server that runs on the walk's remaining
