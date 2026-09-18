@@ -402,10 +402,10 @@ starting it, and delete it when you find it done.
   same episodes through Ryu. A third catalogue front, or a third
   embed host, is what a fallback of one site cannot give.
 
-  Why it waited: the second provider itself is still landing, and
-  reading either site is its own reverse-engineering — hianime.ms's
-  player and catalogue API, vidnest's embed page — each a
-  maintenance cost of its own, like every host the client reads.
+  Why it waited: reading either site is its own reverse-engineering
+  — hianime.ms's player and catalogue API, vidnest's embed page —
+  each a maintenance cost of its own, like every host the client
+  reads.
 
 ## A provider order and switch in settings
 
