@@ -552,21 +552,45 @@ pub fn readable(embed_url: &str) -> bool {
         .is_some_and(|h| readable_host(&h))
 }
 
-/// The servers to try for `mode`, in order: every server of that
-/// mode, the ones on a host the client can read first — megaplay's
-/// ahead of zokoanime's, since megaplay's delivery network has
-/// carried the top rendition at real time where zokoanime's has
-/// crawled or been down — the site's own order kept within each
-/// group, then the rest in the site's order. Empty when the mode
-/// has none.
+/// The servers to try for `mode`, in order: that mode's servers, one
+/// attempt per page, the ones on a host the client can read first —
+/// megaplay's ahead of zokoanime's, since megaplay's delivery
+/// network has carried the top rendition at real time where
+/// zokoanime's has crawled or been down — the site's own order kept
+/// within each group, then the rest in the site's order. Empty when
+/// the mode has none.
+///
+/// One attempt per page: the site lists a megaplay row per delivery
+/// network, the rows differing only in their query, and the client
+/// asks every megaplay page for the one network it plays
+/// ([`super::megaplay::sources_url`]), so a later row naming the
+/// page an earlier row named is the same request twice — and, tried
+/// twice ahead of the remainder's server, it would split the window
+/// between two attempts that can only give one answer. The first
+/// row in the site's order is kept ([`page_of`]).
 #[must_use]
 pub fn servers_for<'a>(servers: &'a [ServerEmbed], mode: &str) -> Vec<&'a ServerEmbed> {
-    let of_mode = servers.iter().filter(|s| s.mode == mode);
+    let mut pages: Vec<&str> = Vec::new();
+    let of_mode = servers.iter().filter(|s| s.mode == mode).filter(|s| {
+        let page = page_of(&s.embed_url);
+        if pages.contains(&page) {
+            false
+        } else {
+            pages.push(page);
+            true
+        }
+    });
     let (mut readable_hosts, rest): (Vec<_>, Vec<_>) =
         of_mode.partition(|s| readable(&s.embed_url));
     // Stable, so the site's order stands within each group.
     readable_hosts.sort_by_key(|s| !megaplay_embed(&s.embed_url));
     readable_hosts.into_iter().chain(rest).collect()
+}
+
+/// The page an embed URL names: everything before its query and
+/// fragment. Two listed rows that agree on this are one attempt.
+fn page_of(embed_url: &str) -> &str {
+    embed_url.split(['?', '#']).next().unwrap_or(embed_url)
 }
 
 /// The position of the server that runs on the walk's remaining
