@@ -100,11 +100,8 @@ fn readable_enc<'de, D>(deserializer: D) -> std::result::Result<Option<String>, 
 where
     D: serde::Deserializer<'de>,
 {
-    let listed = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(match listed {
-        Some(serde_json::Value::String(enc)) => Some(enc),
-        _ => None,
-    })
+    Option::<serde_json::Value>::deserialize(deserializer)
+        .map(|listed| listed.and_then(|value| value.as_str().map(str::to_owned)))
 }
 
 /// The track rows the client reads, out of whatever the response put
