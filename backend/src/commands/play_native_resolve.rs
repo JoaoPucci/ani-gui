@@ -1,5 +1,5 @@
-//! Native play resolution — the walk half. Searches the provider
-//! across the canonical title and its fallbacks, picks a candidate,
+//! Native play resolution — the walk half, over any provider.
+//! Searches the provider across the canonical title and its fallbacks, picks a candidate,
 //! and resolves the requested episode down to a master-playlist URL,
 //! emitting the same [`ProgressLine`] shapes the SSE overlay already
 //! renders.
@@ -15,7 +15,7 @@
 
 use crate::commands::progress::ProgressLine;
 use crate::error::AniError;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch};
+use crate::scraper::provider::Provider;
 
 use super::play_native::pick_candidate;
 pub use super::play_native_episode::resolve_episode;
@@ -32,6 +32,11 @@ pub struct NativeResolved {
     pub title: String,
     /// The master-playlist URL the embed page carried.
     pub master_url: String,
+    /// The referer the provider's CDN wants on every fetch of the
+    /// master and what it lists — `None` when it wants none. Every
+    /// consumer of the resolve sends it: the proxy session, the cache
+    /// row, the download tool, the external player.
+    pub referer: Option<String>,
     /// Highest episode number the provider lists, for the
     /// availability cap stamp. Free — the picker already fetched the
     /// list.
@@ -118,14 +123,14 @@ pub const RESOLVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs
 ///
 /// # Errors
 /// As [`resolve_native`], plus `Timeout` at the deadline.
-pub async fn resolve_native_bounded<F, P>(
-    client: &AnidbClient<F>,
+pub async fn resolve_native_bounded<P, F>(
+    client: &P,
     req: NativeResolveRequest<'_>,
-    on_progress: &mut P,
+    on_progress: &mut F,
 ) -> std::result::Result<NativeResolved, NativeError>
 where
-    F: AnidbFetch,
-    P: FnMut(ProgressLine) + Send,
+    P: Provider + ?Sized,
+    F: FnMut(ProgressLine) + Send,
 {
     match tokio::time::timeout(RESOLVE_DEADLINE, resolve_native(client, req, on_progress)).await {
         Ok(resolved) => resolved,
@@ -141,7 +146,7 @@ where
 /// resolve the episode for the mode to a master-playlist URL.
 ///
 /// - Gate admission is the transport's job: the production client
-///   wraps its fetch in [`crate::scraper::anidb::GatedFetch`], which
+///   wraps its fetch in [`crate::scraper::gated::GatedFetch`], which
 ///   admits every provider request and carries the half-open trial
 ///   sanction across the chain. A second admission here would consume
 ///   that trial before the fetch's own admit runs — the fetch would
@@ -156,17 +161,17 @@ where
 /// # Errors
 /// [`NativeError`] with `clean_miss` set only for the
 /// all-clean-no-match verdict.
-pub async fn resolve_native<F, P>(
-    client: &AnidbClient<F>,
+pub async fn resolve_native<P, F>(
+    client: &P,
     req: NativeResolveRequest<'_>,
-    on_progress: &mut P,
+    on_progress: &mut F,
 ) -> std::result::Result<NativeResolved, NativeError>
 where
-    F: AnidbFetch,
-    P: FnMut(ProgressLine) + Send,
+    P: Provider + ?Sized,
+    F: FnMut(ProgressLine) + Send,
 {
     on_progress(ProgressLine::Searching {
-        provider: "anidb.app".into(),
+        provider: client.label().into(),
     });
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
@@ -206,7 +211,6 @@ where
                                     any_search_errored = true;
                                     last_failure_at = Some(
                                         client
-                                            .transport()
                                             .last_attempt_at()
                                             .unwrap_or_else(tokio::time::Instant::now),
                                     );
@@ -215,7 +219,7 @@ where
                             },
                         };
                         on_progress(ProgressLine::LinksFetched {
-                            provider: "anidb.app".into(),
+                            provider: client.label().into(),
                         });
                         let episode_cap = kitsu_episode_cap(&picked.episodes);
                         let offset = numbering_offset(&picked.episodes);
@@ -224,6 +228,7 @@ where
                             slug: picked.hit.slug,
                             title: picked.hit.title,
                             master_url: resolved.master_url,
+                            referer: resolved.referer,
                             episode_cap,
                             numbering_offset: offset,
                             extra_tags,
@@ -253,11 +258,10 @@ where
                         any_answered_dead_end = true;
                     }
                     Err(e) => {
-                        tracing::debug!(error = ?e, "anidb walk: pick failed transiently");
+                        tracing::debug!(error = ?e, "walk: pick failed transiently");
                         any_search_errored = true;
                         last_failure_at = Some(
                             client
-                                .transport()
                                 .last_attempt_at()
                                 .unwrap_or_else(tokio::time::Instant::now),
                         );
@@ -283,11 +287,10 @@ where
                 });
             }
             Err(e) => {
-                tracing::debug!(error = ?e, "anidb walk: search failed transiently");
+                tracing::debug!(error = ?e, "walk: search failed transiently");
                 any_search_errored = true;
                 last_failure_at = Some(
                     client
-                        .transport()
                         .last_attempt_at()
                         .unwrap_or_else(tokio::time::Instant::now),
                 );

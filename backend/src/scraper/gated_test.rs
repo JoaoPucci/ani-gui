@@ -10,8 +10,8 @@ struct Counting {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for Counting {
-    async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
+impl Fetch for Counting {
+    async fn fetch(&self, _req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(FetchResponse {
             status: 200,

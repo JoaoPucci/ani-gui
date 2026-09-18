@@ -1,9 +1,10 @@
 use super::super::play_native_test_provider::{
-    browse_page, the_show_browse, Provider, ProviderRef,
+    browse_page, the_show_browse, ScriptedTransport, ScriptedTransportRef,
 };
 use super::*;
 use crate::commands::progress::ProgressLine;
-use crate::scraper::anidb::{AnidbClient, AnidbFetch, FetchResponse};
+use crate::scraper::anidb::AnidbClient;
+use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
 use std::sync::Mutex;
 
 // The show catalogue every happy-path test shares: slug the-show-77,
@@ -11,7 +12,7 @@ use std::sync::Mutex;
 const THE_SHOW: &str = "the-show-77\" alt-marker";
 
 async fn run(
-    provider: &Provider,
+    provider: &ScriptedTransport,
     title: &str,
     alts: &[String],
     episode: &str,
@@ -20,7 +21,7 @@ async fn run(
     std::result::Result<NativeResolved, NativeError>,
     Vec<ProgressLine>,
 ) {
-    let client = AnidbClient::new(ProviderRef(provider));
+    let client = AnidbClient::new(ScriptedTransportRef(provider));
     let mut events = Vec::new();
     let got = resolve_native(
         &client,
@@ -43,7 +44,7 @@ async fn run(
 #[tokio::test]
 async fn canonical_title_resolves_to_the_master_url() {
     let _ = THE_SHOW;
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let (got, events) = run(&provider, "the show", &[], "2", Some(3)).await;
     let resolved = got.expect("resolved");
     assert_eq!(resolved.slug, "the-show-77");
@@ -72,7 +73,7 @@ async fn canonical_title_resolves_to_the_master_url() {
 
 #[tokio::test]
 async fn alt_title_recovers_when_canonical_finds_nothing() {
-    let provider = Provider::new(Box::leak(Box::new([("romanized", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("romanized", the_show_browse())])));
     let alts = vec!["romanized name".to_string()];
     let (got, _) = run(&provider, "english name", &alts, "2", Some(3)).await;
     assert_eq!(got.expect("resolved").slug, "the-show-77");
@@ -83,7 +84,7 @@ async fn a_rejected_pool_keeps_the_walk_going() {
     // Canonical returns only a far-off-count sibling; the alt carries
     // the real show. The picker's rejection must not end the walk.
     let wrong = Box::leak(browse_page(&[("wrong-99", "Wrong")]).into_boxed_str());
-    let provider = Provider::new(Box::leak(Box::new([
+    let provider = ScriptedTransport::new(Box::leak(Box::new([
         ("english", &*wrong),
         ("romanized", the_show_browse()),
     ])));
@@ -100,7 +101,7 @@ async fn a_transient_pick_failure_keeps_the_walk_going() {
     // must not end the walk — and the final verdict stays transient
     // if nothing recovers.
     let broken = Box::leak(browse_page(&[("broken-55", "Broken")]).into_boxed_str());
-    let provider = Provider::new(Box::leak(Box::new([
+    let provider = ScriptedTransport::new(Box::leak(Box::new([
         ("english", &*broken),
         ("romanized", the_show_browse()),
     ])));
@@ -111,7 +112,7 @@ async fn a_transient_pick_failure_keeps_the_walk_going() {
 
 #[tokio::test]
 async fn an_upstream_block_stops_the_walk_as_transient() {
-    let provider = Provider::new(Box::leak(Box::new([("english", "!"), ("alt", "!")])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("english", "!"), ("alt", "!")])));
     let alts = vec!["alt".to_string()];
     let (got, _) = run(&provider, "english", &alts, "2", Some(3)).await;
     let err = got.expect_err("blocked");
@@ -137,8 +138,9 @@ struct DetailRefusingProvider {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for DetailRefusingProvider {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+impl Fetch for DetailRefusingProvider {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("browse?q=") {
             self.browses
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -227,7 +229,7 @@ async fn a_stale_slug_pool_records_health_not_distress() {
     // healthy provider. And it stays non-persistable: dead candidates
     // prove nothing about the show.
     let stale = Box::leak(browse_page(&[("stale-44", "Stale")]).into_boxed_str());
-    let provider = Provider::new(Box::leak(Box::new([("english", &*stale)])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("english", &*stale)])));
     let (got, _) = run(&provider, "english", &[], "2", Some(3)).await;
     let err = got.expect_err("dead pool");
     assert!(
@@ -250,7 +252,7 @@ async fn a_stale_slug_pool_records_health_not_distress() {
 
 #[tokio::test]
 async fn a_clean_all_empty_walk_is_the_only_persistable_miss() {
-    let provider = Provider::new(Box::leak(Box::new([])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([])));
     let alts = vec!["other".to_string()];
     let (got, _) = run(&provider, "nothing", &alts, "2", Some(3)).await;
     let err = got.expect_err("no match");
@@ -267,7 +269,7 @@ async fn a_recovered_breaker_resolves_through_the_fetch_admission() {
     // background resolution out of recovery entirely. Admission
     // belongs to the fetch alone; a recovered background chain must
     // reach the provider end to end.
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let gate = crate::scraper::gate::ScraperGate::new();
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
         gate.record(
@@ -277,8 +279,8 @@ async fn a_recovered_breaker_resolves_through_the_fetch_admission() {
     }
     tokio::time::sleep(crate::scraper::gate::BREAKER_COOLDOWN + std::time::Duration::from_secs(1))
         .await;
-    let client = AnidbClient::new(crate::scraper::anidb::GatedFetch::new(
-        ProviderRef(&provider),
+    let client = AnidbClient::new(crate::scraper::gated::GatedFetch::new(
+        ScriptedTransportRef(&provider),
         Some(&gate),
         crate::scraper::gate::ScrapePriority::Background,
     ));
@@ -310,7 +312,7 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
     // Background priority against an open breaker: every per-fetch
     // admission refuses before the transport, so the walk ends in
     // the transient Network verdict with zero provider requests.
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let gate = crate::scraper::gate::ScraperGate::new();
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
         gate.record(
@@ -318,8 +320,8 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
             tokio::time::Instant::now(),
         );
     }
-    let client = AnidbClient::new(crate::scraper::anidb::GatedFetch::new(
-        ProviderRef(&provider),
+    let client = AnidbClient::new(crate::scraper::gated::GatedFetch::new(
+        ScriptedTransportRef(&provider),
         Some(&gate),
         crate::scraper::gate::ScrapePriority::Background,
     ));
@@ -357,7 +359,7 @@ async fn a_refused_gate_keeps_every_provider_request_from_running() {
 
 #[tokio::test]
 async fn an_unlisted_episode_is_a_dead_end_not_absence() {
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let (got, _) = run(&provider, "the show", &[], "9", Some(3)).await;
     let err = got.expect_err("unlisted episode");
     assert!(!err.clean_miss);
@@ -366,8 +368,8 @@ async fn an_unlisted_episode_is_a_dead_end_not_absence() {
 
 #[tokio::test]
 async fn a_mode_without_embed_is_a_dead_end_not_absence() {
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
-    let client = AnidbClient::new(ProviderRef(&provider));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let client = AnidbClient::new(ScriptedTransportRef(&provider));
     let mut sink = |_p: ProgressLine| {};
     let got = resolve_native(
         &client,
@@ -397,7 +399,7 @@ async fn a_continuation_entry_maps_kitsu_numbers_onto_its_own() {
     // back in the request's numbering — 2 aired — not the provider's
     // raw 42, or the strip unlocks eleven episodes that don't exist.
     let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
-    let provider = Provider::new(Box::leak(Box::new([("sequel", &*sequel)])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("sequel", &*sequel)])));
     let (got, _) = run(&provider, "the sequel", &[], "1", None).await;
     let resolved = got.expect("episode 1 resolves through the offset");
     assert_eq!(resolved.slug, "the-sequel-88");
@@ -413,11 +415,11 @@ async fn a_continuation_resolve_reports_its_numbering_offset() {
     // resolver already computed, or a GUI-written continuation row
     // (Kitsu "1" for provider 41) vanishes from its resume list.
     let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
-    let provider = Provider::new(Box::leak(Box::new([("sequel", &*sequel)])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("sequel", &*sequel)])));
     let (got, _) = run(&provider, "the sequel", &[], "1", None).await;
     assert_eq!(got.expect("resolved").numbering_offset, 40);
 
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let (got, _) = run(&provider, "the show", &[], "2", Some(3)).await;
     assert_eq!(got.expect("resolved").numbering_offset, 0);
 }
@@ -427,7 +429,7 @@ async fn a_continuation_entry_still_rejects_numbers_past_its_tail() {
     // Kitsu episode 3 would map to provider 43 — not aired, not
     // listed. The dead-end classification must survive the offset.
     let sequel = Box::leak(browse_page(&[("the-sequel-88", "The Sequel")]).into_boxed_str());
-    let provider = Provider::new(Box::leak(Box::new([("sequel", &*sequel)])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("sequel", &*sequel)])));
     let (got, _) = run(&provider, "the sequel", &[], "3", None).await;
     let err = got.expect_err("episode 3 has not aired");
     assert!(!err.clean_miss);
@@ -442,7 +444,7 @@ async fn a_decimal_episode_tag_resolves_through_number2() {
     // moving play native made all surfaced decimal episodes
     // unplayable. A request that is not an integer must match the
     // listing's number2 tag instead.
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let (got, _) = run(&provider, "the show", &[], "2.5", Some(3)).await;
     let resolved = got.expect("the decimal tag resolves via number2");
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
@@ -459,8 +461,9 @@ struct ChainFate {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for ChainFate {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+impl Fetch for ChainFate {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         self.log.lock().expect("log").push(url.to_string());
         if url.contains("browse?q=") {
             if url.contains("the+show") {
@@ -518,9 +521,9 @@ async fn run_chain(fate: &ChainFate) -> std::result::Result<NativeResolved, Nati
 struct ChainRef<'a>(&'a ChainFate);
 
 #[async_trait::async_trait]
-impl AnidbFetch for ChainRef<'_> {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
-        self.0.get(url).await
+impl Fetch for ChainRef<'_> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        self.0.fetch(req).await
     }
 }
 
@@ -533,8 +536,9 @@ struct FirstAliasDies {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for FirstAliasDies {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+impl Fetch for FirstAliasDies {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("browse?q=") {
             if url.contains("dead+alias") {
                 return Err(crate::error::AniError::Network);
@@ -614,9 +618,9 @@ fn second_stamp(fetch: &FirstAliasDies) -> tokio::time::Instant {
 }
 
 #[async_trait::async_trait]
-impl AnidbFetch for &FirstAliasDies {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
-        (*self).get(url).await
+impl Fetch for &FirstAliasDies {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        (*self).fetch(req).await
     }
 
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
@@ -630,8 +634,9 @@ impl AnidbFetch for &FirstAliasDies {
 struct DeadProbes;
 
 #[async_trait::async_trait]
-impl AnidbFetch for DeadProbes {
-    async fn get(&self, url: &str) -> crate::error::Result<FetchResponse> {
+impl Fetch for DeadProbes {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str();
         if url.contains("browse?q=") {
             return Ok(FetchResponse {
                 status: 200,
@@ -726,7 +731,7 @@ async fn the_resolve_names_the_matched_rows_slot_and_tag() {
     // the provider's episode list is built from — so the history
     // writer needs the matched row's slot, and the sidecar stamp
     // needs its display tag.
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let (got, _) = run(&provider, "the show", &[], "2.5", Some(3)).await;
     let resolved = got.expect("resolved");
     assert_eq!(resolved.resolved_slot, 3);
@@ -744,7 +749,7 @@ async fn the_resolve_carries_the_listings_fractional_tags() {
     // display tags are the extras that stamp must advertise — and
     // they are the very tags a later fractional play will match
     // against number2, so no other source can be more authoritative.
-    let provider = Provider::new(Box::leak(Box::new([("the+show", the_show_browse())])));
+    let provider = ScriptedTransport::new(Box::leak(Box::new([("the+show", the_show_browse())])));
     let (got, _) = run(&provider, "the show", &[], "2", Some(3)).await;
     let resolved = got.expect("resolved");
     assert_eq!(resolved.extra_tags, vec!["2.5".to_string()]);
@@ -759,7 +764,7 @@ async fn an_answered_episode_dead_end_keeps_the_alias_walk_going() {
     // although the surrounding loop exists precisely to walk those
     // aliases. Blocks and refusals still stop the walk; transport
     // failures stay transient.
-    let provider = Provider::new(Box::leak(Box::new([
+    let provider = ScriptedTransport::new(Box::leak(Box::new([
         ("first", the_show_browse()),
         (
             "second",
@@ -779,8 +784,8 @@ async fn an_answered_episode_dead_end_keeps_the_alias_walk_going() {
 struct StallingProvider;
 
 #[async_trait::async_trait]
-impl AnidbFetch for StallingProvider {
-    async fn get(&self, _url: &str) -> crate::error::Result<FetchResponse> {
+impl Fetch for StallingProvider {
+    async fn fetch(&self, _req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         std::future::pending().await
     }
 }
@@ -821,4 +826,80 @@ fn the_resolve_deadline_stays_inside_the_half_open_trial_window() {
     // trial can start behind a live first one, which is exactly the
     // overlap the sanction chain forbids.
     assert!(RESOLVE_DEADLINE < crate::scraper::gate::HALF_OPEN_TRIAL_STALE);
+}
+
+// ── the source's referer survives the walk ──────────────────────────
+
+/// A provider whose CDN wants the embed origin as Referer: the walk
+/// must carry it out with the master URL, or every consumer of the
+/// resolve — session, cache row, downloader, handoff — sends none and
+/// the stream that just validated fails to play.
+struct RefererProvider;
+
+#[async_trait::async_trait]
+impl crate::scraper::provider::Provider for RefererProvider {
+    fn id(&self) -> crate::scraper::provider::ProviderId {
+        crate::scraper::provider::ProviderId::Anidb
+    }
+    async fn search(
+        &self,
+        _q: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::BrowseHit>> {
+        Ok(vec![crate::scraper::provider::BrowseHit {
+            slug: "the-show-77".into(),
+            title: "The Show".into(),
+            kind: None,
+        }])
+    }
+    async fn episodes(
+        &self,
+        _s: &str,
+    ) -> crate::error::Result<Vec<crate::scraper::provider::EpisodeRef>> {
+        Ok(vec![crate::scraper::provider::EpisodeRef {
+            id: 1,
+            number: 1,
+            number2: None,
+        }])
+    }
+    async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
+        Ok(true)
+    }
+    async fn master_playlist_url(
+        &self,
+        _e: u64,
+        _m: &str,
+    ) -> crate::error::Result<crate::scraper::provider::StreamSource> {
+        Ok(crate::scraper::provider::StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+        })
+    }
+    async fn playlist(&self, _u: &str, _r: Option<&str>) -> crate::error::Result<String> {
+        Ok("#EXTM3U\n".into())
+    }
+    async fn detail_year(&self, _s: &str) -> crate::error::Result<Option<u32>> {
+        Ok(None)
+    }
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        None
+    }
+}
+
+#[tokio::test]
+async fn a_resolved_play_carries_the_sources_referer() {
+    let req = NativeResolveRequest {
+        title: "The Show",
+        alt_titles: &[],
+        episode: "1",
+        mode: "sub",
+        quality: "best",
+        expected_count: Some(1),
+        year: None,
+        subtype: None,
+    };
+    let native = resolve_native(&RefererProvider, req, &mut |_| {})
+        .await
+        .expect("resolved");
+    assert_eq!(native.master_url, "https://cdn.example/x/master.m3u8");
+    assert_eq!(native.referer.as_deref(), Some("https://embed.example/"));
 }

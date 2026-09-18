@@ -7,6 +7,8 @@
 //! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>` — proxy a segment.
 //!
 //! Every fetch upstream uses the [`StreamSession`]'s stored `Referer:`
+//! header, when the session stores one — an empty stored referer is a
+//! stream whose CDN asks for none, and the fetch then carries no such
 //! header. Segment URLs in rewritten manifests carry an HMAC signature
 //! the proxy verifies before issuing the upstream fetch.
 
@@ -308,14 +310,13 @@ async fn handle_seg(
     // Raw segment: stream bytes through. Pass any Range header from the
     // player so the upstream's seekable mp4 keeps working.
     //
-    // The session's own referer is what the CDN checks, and it is sent
-    // only when it parses as a header value — the same rule the three
-    // `upstream::` fetches follow. A stored referer that cannot become
-    // a header is a resolution the app should not have produced, and
-    // the answer to it is to say nothing rather than to name some
-    // other origin.
+    // The session's own referer is what the CDN checks, and this
+    // request reads it through the same `referer_header` the
+    // `upstream::` fetches use: a stored referer that is empty, or
+    // that cannot become a header value, sends no header at all
+    // rather than an empty one or some other origin's name.
     let mut req = state.client.get(upstream_url.as_str());
-    if let Ok(referer) = HeaderValue::from_str(&sess.referer) {
+    if let Some(referer) = upstream::referer_header(&sess.referer) {
         req = req.header(reqwest::header::REFERER, referer);
     }
     if let Some(range) = headers_in.get("range") {
@@ -370,6 +371,10 @@ fn clone_passthrough_headers(src: &reqwest::header::HeaderMap) -> HeaderMap {
     }
     out
 }
+
+#[cfg(test)]
+#[path = "empty_referer_test.rs"]
+mod empty_referer_tests;
 
 #[cfg(test)]
 #[path = "seg_referer_test.rs"]

@@ -55,6 +55,26 @@ pub fn build_meta_client() -> reqwest::Client {
         .unwrap_or_default()
 }
 
+/// The `Referer:` header value a session's stored referer becomes, or
+/// `None` when the proxy must send no such header.
+///
+/// The referer is stored as a plain `String`, and the empty string is
+/// how every other reader of it — the cache's HEAD revalidation, the
+/// external player's launch arguments, the yt-dlp and ffmpeg argument
+/// builders — spells "this stream's CDN asks for none". Parsing alone
+/// loses that: `HeaderValue::from_str("")` succeeds, and an empty
+/// `referer:` names nobody while still being a header the app said it
+/// would not send. A referer no header value can carry (a control
+/// character in it, say) is `None` too — announcing some substitute
+/// origin is a worse answer than announcing nothing.
+#[must_use]
+pub fn referer_header(referer: &str) -> Option<HeaderValue> {
+    if referer.is_empty() {
+        return None;
+    }
+    HeaderValue::from_str(referer).ok()
+}
+
 /// Fetch a manifest (HTTP body) from upstream with the right `Referer:`.
 /// Used for master.m3u8 + media .m3u8 + .vtt.
 ///
@@ -70,7 +90,7 @@ pub async fn fetch_text(
     referer: &str,
 ) -> Result<(Bytes, Option<String>)> {
     let mut headers = HeaderMap::new();
-    if let Ok(v) = HeaderValue::from_str(referer) {
+    if let Some(v) = referer_header(referer) {
         headers.insert(REFERER, v);
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
@@ -118,7 +138,7 @@ pub async fn classify_via_head(
     use crate::proxy::token::MediaKind;
 
     let mut headers = HeaderMap::new();
-    if let Ok(v) = HeaderValue::from_str(referer) {
+    if let Some(v) = referer_header(referer) {
         headers.insert(REFERER, v);
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
@@ -178,7 +198,7 @@ pub async fn fetch_streaming(
     range: Option<&str>,
 ) -> Result<reqwest::Response> {
     let mut headers = HeaderMap::new();
-    if let Ok(v) = HeaderValue::from_str(referer) {
+    if let Some(v) = referer_header(referer) {
         headers.insert(REFERER, v);
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
@@ -236,6 +256,10 @@ pub async fn fetch_streaming(
     );
     Ok(resp)
 }
+
+#[cfg(test)]
+#[path = "upstream_referer_prop_test.rs"]
+mod prop_tests;
 
 #[cfg(test)]
 mod tests {
