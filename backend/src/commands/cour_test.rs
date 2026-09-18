@@ -178,6 +178,18 @@ fn slug_cour_short_slug_before_dash_cant_fit_keyword() {
     assert_eq!(cour_from_slug("xy-2"), None);
 }
 
+/// A slug Kitsu writes with non-ASCII segments — a Japanese title
+/// romanised by nobody — ending in a number that is not a cour: the
+/// keyword's byte length walked back from the end lands inside a
+/// code point, and the reader must answer no cour rather than panic.
+#[test]
+fn slug_cour_reads_a_non_ascii_slug_without_panicking() {
+    assert_eq!(cour_from_slug("日本-2"), None);
+    assert_eq!(cour_from_slug("アニメ-part-2"), Some(2));
+    assert_eq!(cour_from_slug("é-2"), None);
+    assert_eq!(cour_from_slug("ñandú-season-3"), Some(3));
+}
+
 /// `cour_from_title` walked back from `kw_end = after_kw.len()` by
 /// `kw.len()` bytes and then sliced `after_kw[kw_start..]` directly.
 /// On non-ASCII titles ending in digits with no `Part/Cour/Season`
@@ -340,6 +352,23 @@ mod cour_form_props {
                 let slug = format!("{base}-{form}");
                 prop_assert_eq!(cour_from_slug(&slug), Some(n), "slug {}", slug);
             }
+        }
+
+        /// Whatever a slug is made of, reading it never panics: a
+        /// non-ASCII head with a numeric tail lands the keyword's
+        /// byte length inside a code point, and the reader answers
+        /// no cour there — and still the cour where the keyword is
+        /// a whole segment before the number.
+        #[test]
+        fn a_slug_of_any_bytes_is_read_without_panicking(
+            head in "[\\p{L}\\p{N}-]{0,12}",
+            n in 1u32..40,
+            kw in prop::sample::select(KEYWORDS.to_vec()),
+        ) {
+            let bare = format!("{head}-{n}");
+            let _ = cour_from_slug(&bare);
+            let keyed = format!("{head}-{kw}-{n}");
+            prop_assert_eq!(cour_from_slug(&keyed), Some(n), "slug {}", keyed);
         }
 
         /// Words alone, or a keyword with nothing to number it, name
