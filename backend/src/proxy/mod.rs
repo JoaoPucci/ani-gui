@@ -377,6 +377,10 @@ fn clone_passthrough_headers(src: &reqwest::header::HeaderMap) -> HeaderMap {
 mod empty_referer_tests;
 
 #[cfg(test)]
+#[path = "redirected_playlist_test.rs"]
+mod redirected_playlist_tests;
+
+#[cfg(test)]
 #[path = "seg_referer_test.rs"]
 mod seg_referer_tests;
 
