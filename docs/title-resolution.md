@@ -68,7 +68,7 @@ The picker probes at most the first few browse hits via the episodes endpoint an
 
 When Kitsu's episode count is unknown (rare, but happens for upcoming shows), an exact title match wins, else the provider's own first hit stands. The frontend treats this as a soft signal and still renders the card; the lazy click path will surface a real error if the bridge picked wrong.
 
-Only a walk in which every search completed and nothing matched counts as evidence of absence — that is the one verdict the availability cache may persist as a negative row. Transport failures, upstream refusals, and failed probes are transient and write nothing, so a real show can't hide behind the negative TTL.
+Two verdicts of absence are the ones the availability cache may persist as a negative row: a walk in which every search completed and nothing matched, and the probe's answer that a show it found is listed without the requested mode — a listing with no rows, or a sampled row that lacks the mode. Transport failures, upstream refusals, failed probes, and a mode nobody answered for — every sampled row saying nothing either way — are transient and write nothing, so a real show can't hide behind the negative TTL.
 
 ## Episode caps
 
