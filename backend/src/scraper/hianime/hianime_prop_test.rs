@@ -1615,18 +1615,13 @@ proptest! {
         run_down in 0usize..8,
     ) {
         let ms = std::time::Duration::from_millis;
-        let caps = ajax::ServerCaps::for_walk(
-            ms(bound_ms),
-            ms(reserve_ms),
-            start_ms.map(ms),
-            ahead_at_start,
-        );
+        let caps = ajax::ServerCaps::for_walk(ms(reserve_ms), start_ms.map(ms), ahead_at_start);
         // Where the walk stands at one of its servers: never more of
         // the attempt left than it set out with, never more servers
         // ahead of the remainder's than it counted there.
         let ahead = ahead_at_start.saturating_sub(run_down);
         let remaining_ms = start_ms.map(|s| s.saturating_sub(spent_ms));
-        let cap = caps.cap(remaining_ms.map(ms), ahead);
+        let cap = caps.cap(ms(bound_ms), remaining_ms.map(ms), ahead);
         prop_assert!(cap <= ms(bound_ms));
         match remaining_ms {
             None => prop_assert_eq!(cap, ms(bound_ms)),
@@ -1711,8 +1706,8 @@ proptest! {
         ahead in 0usize..8,
     ) {
         let ms = std::time::Duration::from_millis;
-        let caps = ajax::ServerCaps::for_walk(ms(bound_ms), ms(reserve_ms), Some(ms(start_ms)), ahead);
-        let cap = |r: u64| caps.cap(Some(ms(r)), ahead);
+        let caps = ajax::ServerCaps::for_walk(ms(reserve_ms), Some(ms(start_ms)), ahead);
+        let cap = |r: u64| caps.cap(ms(bound_ms), Some(ms(r)), ahead);
         let less = cap(remaining_ms);
         let more = cap(remaining_ms + gained_ms);
         prop_assert!(
@@ -1752,7 +1747,7 @@ proptest! {
         let reserve = ms(reserve_ms);
         let start = ms(start_ms);
         let counted = u32::try_from(ahead_at_start).unwrap();
-        let caps = ajax::ServerCaps::for_walk(ms(bound_ms), reserve, Some(start), ahead_at_start);
+        let caps = ajax::ServerCaps::for_walk(reserve, Some(start), ahead_at_start);
         let floor = start.min(reserve) / (counted + 1);
         // An attempt that can fund the reserve and a window apiece:
         // what is over the reserve, split among the servers ahead,
@@ -1762,7 +1757,7 @@ proptest! {
         for (i, stall) in stalls.iter().take(ahead_at_start).enumerate() {
             let ahead = ahead_at_start - i;
             let ahead32 = u32::try_from(ahead).unwrap();
-            let cap = caps.cap(Some(remaining), ahead);
+            let cap = caps.cap(ms(bound_ms), Some(remaining), ahead);
             prop_assert!(cap <= remaining, "{cap:?} of the {remaining:?} left");
             prop_assert!(
                 remaining.saturating_sub(cap * ahead32) >= reserve
@@ -1795,6 +1790,40 @@ proptest! {
     /// shortens the bound to milliseconds for the stalled-host tests
     /// shortens the reserve with it, and a longer bound never buys
     /// the last server less.
+    /// A server's bound is its own chain's worth: its host's requests
+    /// at the allowance — zokoanime's three, megaplay's four on its
+    /// own host and on any numbered mirror, and the longest for a
+    /// host the client does not read. The worth grows with the
+    /// requests and with the base it is carved from, and the whole
+    /// chain's worth is what the reserve has always been.
+    #[test]
+    fn a_servers_bound_is_its_own_chains_worth(
+        bound_ms in 1u64..10_000,
+        longer_ms in 0u64..10_000,
+        host in prop_oneof![
+            Just("zokoanime.video".to_string()),
+            Just("megaplay.buzz".to_string()),
+            "megaplay-[0-9]{1,3}\\.buzz",
+            "[a-z]{2,10}\\.(site|to|example)",
+        ],
+        path in "/[a-z0-9/]{1,20}",
+        query in "(\\?s=[a-z]{1,4})?",
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let url = format!("https://{host}{path}{query}");
+        let requests = ajax::chain_requests(&url);
+        let expected = if host == "zokoanime.video" { 3 } else { ajax::CHAIN_REQUESTS };
+        prop_assert_eq!(requests, expected, "{}", url);
+        let worth = ajax::chain_worth(ms(bound_ms), requests);
+        prop_assert!(worth > std::time::Duration::ZERO);
+        prop_assert!(worth <= ajax::chain_worth(ms(bound_ms), requests + 1));
+        prop_assert!(worth <= ajax::chain_worth(ms(bound_ms.max(longer_ms)), requests));
+        prop_assert_eq!(
+            ajax::chain_worth(ms(bound_ms), ajax::CHAIN_REQUESTS),
+            ajax::chain_reserve(ms(bound_ms))
+        );
+    }
+
     #[test]
     fn the_reserve_outlasts_the_bound_and_is_derived_from_it(
         bound_ms in 1u64..10_000,
