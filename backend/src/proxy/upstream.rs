@@ -78,8 +78,10 @@ pub fn referer_header(referer: &str) -> Option<HeaderValue> {
 /// Fetch a manifest (HTTP body) from upstream with the right `Referer:`.
 /// Used for master.m3u8 + media .m3u8 + .vtt.
 ///
-/// Returns the raw bytes plus the response's `Content-Type` so the proxy
-/// can echo it back to the player.
+/// Returns the raw bytes, the response's `Content-Type` so the proxy
+/// can echo it back to the player, and the URL the body was served
+/// from: the client follows redirects, and a manifest's relative URIs
+/// are relative to where it landed, not to the URL asked for.
 ///
 /// # Errors
 /// - [`AniError::Network`] for connection or DNS failures
@@ -88,7 +90,7 @@ pub async fn fetch_text(
     client: &reqwest::Client,
     url: &Url,
     referer: &str,
-) -> Result<(Bytes, Option<String>)> {
+) -> Result<(Bytes, Option<String>, Url)> {
     let mut headers = HeaderMap::new();
     if let Some(v) = referer_header(referer) {
         headers.insert(REFERER, v);
@@ -112,8 +114,12 @@ pub async fn fetch_text(
         .get(HeaderName::from_static("content-type"))
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    // Where the body came from: the client follows redirects, and a
+    // manifest's relative URIs are relative to the URL that served
+    // it, not the one asked for.
+    let served_from = resp.url().clone();
     let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
-    Ok((bytes, content_type))
+    Ok((bytes, content_type, served_from))
 }
 
 /// HEAD an upstream URL and decide whether the body it would return is
@@ -380,7 +386,7 @@ mod tests {
 
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/master.m3u8", server.uri())).unwrap();
-        let (body, _ct) = fetch_text(&client, &url, "https://allmanga.to")
+        let (body, _ct, _from) = fetch_text(&client, &url, "https://allmanga.to")
             .await
             .unwrap();
         assert_eq!(&body[..], b"#EXTM3U\n");
