@@ -368,6 +368,18 @@ fn standing_row_of(state: &AppState, row: &str) -> Option<AvailabilityResponse> 
         .filter(|parsed| parsed.available)
 }
 
+/// The positive row as the cache holds it, byte for byte, or none
+/// when no positive row stands: two readings compare equal exactly
+/// when nothing wrote the row between them.
+fn positive_row_body(state: &AppState, row: &str) -> Option<String> {
+    meta_cache_get(&state.cache_pool, row)
+        .ok()
+        .flatten()
+        .filter(|body| {
+            serde_json::from_str::<AvailabilityResponse>(body).is_ok_and(|parsed| parsed.available)
+        })
+}
+
 /// Inputs for the batch `availability_cached` lookup — a list of
 /// Kitsu ids and the mode to read cached results for. Skips the
 /// network entirely; only returns entries that already have a value
@@ -551,6 +563,13 @@ pub(crate) async fn check_availability_with_base(
         .as_deref()
         .filter(|s| !s.is_empty())
         .and_then(|id| cached_provider(state, id, mode));
+    // The positive row as the walk sets out, if one stands: what a
+    // negative is measured against when it comes to be written.
+    let positive_row_at_start = args
+        .kitsu_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .and_then(|id| positive_row_body(state, &cache_key(id, mode)));
     let order = crate::commands::providers::order_with_affinity(&state.provider_order, remembered);
     let remembered = remembered.filter(|r| order.first() == Some(r));
 
@@ -667,6 +686,24 @@ pub(crate) async fn check_availability_with_base(
                 provider,
             });
         };
+        // A negative is measured against the row as it stands now,
+        // under the lock, not the row the probe set out from. The walk
+        // saw the row that stood when it began — the provider to start
+        // from was read from it, and the affinity rules above decided
+        // what its provider's denial or silence made of the verdict.
+        // A positive row that appeared or changed while the walk was
+        // out it never saw: a resolve or a replay stamped it, which is
+        // not a cache-bypassing refresh and leaves the generation
+        // where it was, so the guard above lets this write through.
+        // Such a row proved the show playable on evidence the walk did
+        // not weigh, so it stands, and the negative is the verdict the
+        // caller sees and nothing more.
+        if !available {
+            let standing_now = positive_row_body(state, &row);
+            if standing_now.is_some() && standing_now != positive_row_at_start {
+                return Err(crate::error::AniError::NoResults);
+            }
+        }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(
             state,
