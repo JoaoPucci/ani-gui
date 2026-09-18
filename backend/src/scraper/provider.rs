@@ -111,12 +111,22 @@ pub fn slug_numeric_id(slug: &str) -> Option<u64> {
 /// to their own resolve path.
 #[must_use]
 pub fn slug_search_term(slug: &str) -> Option<String> {
+    Some(slug_words(slug)?.replace('-', " "))
+}
+
+/// The slug without its numeric tail — `words-id` less the id — when
+/// it is slug-shaped: the hyphenated words that name the show, which
+/// the search term is made from and the cour is read off, since the
+/// tail is the provider's id and would otherwise read as a trailing
+/// number.
+#[must_use]
+pub fn slug_words(slug: &str) -> Option<&str> {
     slug_numeric_id(slug)?;
     let (words, _id) = slug.rsplit_once('-')?;
     if words.is_empty() {
         return None;
     }
-    Some(words.replace('-', " "))
+    Some(words)
 }
 
 /// A show id that says whose id it is. Every store stamped by a

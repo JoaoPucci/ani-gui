@@ -691,8 +691,16 @@ pub async fn resolve_allmanga_show_id(
     //    the hyphenated words are the show's title, whichever provider
     //    the key names. Search Kitsu with them directly; a miss stays
     //    a soft None.
-    if let Some(term) = crate::scraper::provider::ShowKey::parse(show_id).search_term() {
-        return Ok(first_kitsu_match(state, show_id, std::iter::once(term)).await);
+    let key = crate::scraper::provider::ShowKey::parse(show_id);
+    if let Some(term) = key.search_term() {
+        // The cour is read off the slug's words — the slug less the
+        // provider's numeric tail, which would otherwise read as a
+        // trailing number — since a slug's cour forms include a bare
+        // number before the keyword that the term's words do not
+        // carry.
+        let cour = crate::scraper::provider::slug_words(&key.slug)
+            .and_then(crate::commands::cour::cour_from_slug);
+        return Ok(first_kitsu_match(state, show_id, cour, std::iter::once(term)).await);
     }
 
     // 3) Anything else is a legacy allanime row. Its only alias
@@ -715,16 +723,19 @@ pub async fn resolve_allmanga_show_id(
 /// write failure is non-fatal — the resolution still succeeds for
 /// this request, the next call just searches again. Music-video hits
 /// are skipped so a "music" alias (the YOASOBI "Idol" MV) is never
-/// returned or persisted. So is a hit whose slug disagrees with the
-/// cour the term carries ([`cour::hit_cour_disagrees`]): the words
-/// of a Part 2 slug say Part 2 like a title would, and Kitsu ranking
-/// the parent cour first is the poison the mapping guard refuses on
-/// the play path, so the resolve passes over it to the entry that
-/// agrees and answers none when there is none, rather than binding
-/// the slug to the wrong cour for the page to accept as given.
+/// returned or persisted. So is a hit whose slug disagrees with
+/// `source_cour`, the cour the source carries
+/// ([`cour::hit_cour_disagrees`]) — read off the stored slug by the
+/// caller, since a slug's cour forms include a bare number the
+/// term's words would not carry: Kitsu ranking the parent cour first
+/// is the poison the mapping guard refuses on the play path, so the
+/// resolve passes over it to the entry that agrees and answers none
+/// when there is none, rather than binding the slug to the wrong
+/// cour for the page to accept as given.
 async fn first_kitsu_match(
     state: &AppState,
     show_id: &str,
+    source_cour: Option<u32>,
     terms: impl IntoIterator<Item = String>,
 ) -> Option<KitsuAnimeRef> {
     for term in terms {
@@ -734,7 +745,7 @@ async fn first_kitsu_match(
         };
         if let Some(first) = hits.into_iter().find(|h| {
             !is_music_subtype(h.subtype.as_deref())
-                && !crate::commands::cour::hit_cour_disagrees(&term, h.slug.as_deref())
+                && !crate::commands::cour::hit_cour_disagrees(source_cour, h.slug.as_deref())
         }) {
             if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
                 tracing::warn!(
