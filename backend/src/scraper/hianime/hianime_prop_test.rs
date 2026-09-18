@@ -1712,6 +1712,40 @@ proptest! {
 }
 
 proptest! {
+    /// The first bounded server's window is what the attempt holds
+    /// over the reserve less the floor owed to each server after it,
+    /// up to its bound and to what the attempt has: never narrower
+    /// than its share would be, never so wide that a server after it
+    /// is left less than its floor over the reserve, and the bound
+    /// itself outside an attempt.
+    #[test]
+    fn the_first_bounded_servers_window_leaves_the_others_their_floors(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        start_ms in 0u64..60_000,
+        ahead in 1usize..8,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let caps = ajax::ServerCaps::for_walk(ms(reserve_ms), Some(ms(start_ms)), ahead);
+        let first = caps.first_cap(ms(bound_ms), Some(ms(start_ms)), ahead);
+        let share = caps.cap(ms(bound_ms), Some(ms(start_ms)), ahead);
+        let ahead32 = u32::try_from(ahead).unwrap();
+        let floor = ms(start_ms).min(ms(reserve_ms)) / (ahead32 + 1);
+        prop_assert!(first <= ms(bound_ms));
+        prop_assert!(first <= ms(start_ms));
+        prop_assert!(first >= share, "{:?} narrower than the share {:?}", first, share);
+        let over = ms(start_ms).saturating_sub(ms(reserve_ms));
+        let owed = floor * (ahead32 - 1);
+        if over >= owed + floor {
+            prop_assert!(
+                over - first >= owed,
+                "{:?} of {:?} over the reserve leaves the {} servers after it less than their {:?} floors",
+                first, over, ahead - 1, floor
+            );
+        }
+        prop_assert_eq!(caps.first_cap(ms(bound_ms), None, ahead), ms(bound_ms));
+    }
+
     /// And a cap only ever widens as the attempt gains time. The
     /// walk reads what is left afresh before each bounded server,
     /// and a remainder that is larger must never buy a server a
@@ -1753,7 +1787,10 @@ proptest! {
     /// share for each server ahead — where what was over the reserve
     /// at the first server, split among them, already reached the
     /// floor — the servers ahead never touch the reserve at all,
-    /// however each of them spends what it was given.
+    /// however each of them spends what it was given. The first
+    /// bounded server is asked as the only one ahead, as the walk
+    /// asks it — its window is the whole of what is over the
+    /// reserve, up to the bound — and the rest share what it leaves.
     ///
     /// That is the guarantee a floor read afresh for each server
     /// loses. Two servers ahead and a walk holding the reserve and
@@ -1783,10 +1820,26 @@ proptest! {
         for (i, stall) in stalls.iter().take(ahead_at_start).enumerate() {
             let ahead = ahead_at_start - i;
             let ahead32 = u32::try_from(ahead).unwrap();
-            let cap = caps.cap(ms(bound_ms), Some(remaining), ahead);
+            // The first bounded server is asked for its own window —
+            // what is over the reserve less the floors owed to the
+            // servers after it — as the walk asks it; the rest for
+            // their share.
+            let cap = if i == 0 {
+                caps.first_cap(ms(bound_ms), Some(remaining), ahead)
+            } else {
+                caps.cap(ms(bound_ms), Some(remaining), ahead)
+            };
             prop_assert!(cap <= remaining, "{cap:?} of the {remaining:?} left");
+            // What the servers ahead are set to spend between them:
+            // the first its own window and each server after it its
+            // floor, or every one of them this same share.
+            let spent_ahead = if i == 0 {
+                cap + floor * (ahead32 - 1)
+            } else {
+                cap * ahead32
+            };
             prop_assert!(
-                remaining.saturating_sub(cap * ahead32) >= reserve
+                remaining.saturating_sub(spent_ahead) >= reserve
                     || cap * (ahead32 + 1) <= remaining,
                 "with {remaining:?} left and {ahead} ahead, a window of {cap:?} leaves the \
                  remainder's server neither the {reserve:?} reserve nor a window of its own"
