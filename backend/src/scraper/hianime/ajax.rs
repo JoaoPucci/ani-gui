@@ -509,17 +509,34 @@ const READABLE_HOSTS: &[&str] = &["zokoanime.video", "megaplay.buzz"];
 
 /// Whether `host` is one whose page the client reads: a host in
 /// [`READABLE_HOSTS`], or one of the numbered mirrors the site
-/// serves megaplay's player from — `megaplay-` then digits then
-/// `.buzz`, nothing more on either side — whose pages the client
-/// reads by the same shape and whose sources endpoint sits on the
-/// mirror's own origin.
+/// serves megaplay's player from ([`megaplay_host`]).
 #[must_use]
 pub fn readable_host(host: &str) -> bool {
-    READABLE_HOSTS.contains(&host)
+    READABLE_HOSTS.contains(&host) || megaplay_host(host)
+}
+
+/// Whether `host` serves megaplay's player: its own host, or one of
+/// the numbered mirrors — `megaplay-` then digits then `.buzz`,
+/// nothing more on either side — whose pages the client reads by the
+/// same shape and whose sources endpoint sits on the mirror's own
+/// origin.
+#[must_use]
+pub fn megaplay_host(host: &str) -> bool {
+    host == "megaplay.buzz"
         || host
             .strip_prefix("megaplay-")
             .and_then(|rest| rest.strip_suffix(".buzz"))
             .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Whether `embed_url` is on a host that serves megaplay's player
+/// ([`megaplay_host`]) — the servers the walk tries first.
+#[must_use]
+pub fn megaplay_embed(embed_url: &str) -> bool {
+    url::Url::parse(embed_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .is_some_and(|h| megaplay_host(&h))
 }
 
 /// Whether `embed_url` is on a host whose page the client can read.
@@ -536,12 +553,19 @@ pub fn readable(embed_url: &str) -> bool {
 }
 
 /// The servers to try for `mode`, in order: every server of that
-/// mode, the ones on a host the client can read first, the site's
-/// own order kept within each half. Empty when the mode has none.
+/// mode, the ones on a host the client can read first — megaplay's
+/// ahead of zokoanime's, since megaplay's delivery network has
+/// carried the top rendition at real time where zokoanime's has
+/// crawled or been down — the site's own order kept within each
+/// group, then the rest in the site's order. Empty when the mode
+/// has none.
 #[must_use]
 pub fn servers_for<'a>(servers: &'a [ServerEmbed], mode: &str) -> Vec<&'a ServerEmbed> {
     let of_mode = servers.iter().filter(|s| s.mode == mode);
-    let (readable_hosts, rest): (Vec<_>, Vec<_>) = of_mode.partition(|s| readable(&s.embed_url));
+    let (mut readable_hosts, rest): (Vec<_>, Vec<_>) =
+        of_mode.partition(|s| readable(&s.embed_url));
+    // Stable, so the site's order stands within each group.
+    readable_hosts.sort_by_key(|s| !megaplay_embed(&s.embed_url));
     readable_hosts.into_iter().chain(rest).collect()
 }
 
