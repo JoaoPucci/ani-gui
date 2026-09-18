@@ -161,3 +161,37 @@ async fn a_replay_keeps_the_row_a_failed_over_resolve_wrote_while_it_waited() {
         "with the cap the fallback's listing paid for"
     );
 }
+
+/// No race at all, only a replay through a provider other than the
+/// one the standing row names: the show failed over to hianime, its
+/// positive row carries hianime's exact cap, and the user replays an
+/// episode the resolution cache still holds from anidb.app's days.
+/// A served replay proves nothing about anidb.app's listing or its
+/// health now — the CDN answered for a URL resolved long ago — so
+/// the row it refreshes is the one that stands, hianime's, cap and
+/// affinity kept. Writing a cap-less anidb.app row over it would
+/// send the next uncached episode back to the provider that failed
+/// over and lose the cap the fallback's listing paid for.
+#[tokio::test]
+async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_it_is() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    seed_standing_row(&state, ProviderId::Hianime, 24);
+    let generation = state
+        .availability_refreshes
+        .generation(&cache_key(ID, MODE));
+
+    stamp_after_cache_hit(&state, Some(ID), MODE, generation, ProviderId::Anidb).await;
+
+    let row = row_now(&state);
+    assert_eq!(
+        row.provider,
+        Some(ProviderId::Hianime),
+        "the standing row's affinity is not moved by a replay through another provider"
+    );
+    assert_eq!(
+        row.episode_count,
+        Some(24),
+        "and its exact cap is carried forward"
+    );
+}
