@@ -61,8 +61,11 @@ pub(crate) fn in_slug(slug: &str) -> Option<u32> {
         if before_dash.len() < want {
             return None;
         }
+        // A byte offset, as in `in_title`: a non-ASCII slug can land
+        // it mid-codepoint, so read through `str::get`, which answers
+        // `None` off a char boundary, rather than slice.
         let kw_start = before_dash.len() - want;
-        if !before_dash[kw_start..].eq_ignore_ascii_case(kw) {
+        if !before_dash.get(kw_start..)?.eq_ignore_ascii_case(kw) {
             return None;
         }
         // The keyword must be preceded by start-of-string or `-`,
