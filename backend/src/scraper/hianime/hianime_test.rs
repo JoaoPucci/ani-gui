@@ -1453,6 +1453,13 @@ const REDIRECTS: &[(&str, &str)] = &[
         "https://megaplay.buzz/stream/s-2/734302/sub",
         "https://megaplay-2.buzz/stream/s-2/734302/sub",
     ),
+    // A zokoanime URL the site has moved onto megaplay's loaded
+    // host: the listing names a three-request host and the page
+    // that arrives runs the four-request chain.
+    (
+        "https://zokoanime.video/stream/mal/9/onto-megaplay/sub",
+        "https://megaplay.buzz/stream/s-2/734301/sub",
+    ),
     // A master playlist the CDN has moved to another directory: the
     // manifest that answers names its rendition beside the new one.
     (
@@ -1955,6 +1962,18 @@ impl Fetch for Site {
                 if ajax {
                     ok(
                         r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2JyaWVmL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"ZokoAnime\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3N0YWxsaW5nL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // A zokoanime URL that lands on megaplay's loaded page —
+            // four requests, each a slice — ahead of a zokoanime
+            // server whose chain answers at once.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21474") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L29udG8tbWVnYXBsYXkvc3Vi\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -3771,26 +3790,20 @@ async fn the_reserve_covers_a_whole_chain_so_a_loaded_last_server_is_served() {
 
 /// The server the walk prefers runs first, and first is bounded:
 /// the remainder goes to the last server the walk can read. A
-/// bounded server's window has to be its own chain's worth, then,
-/// not one bound for every host — megaplay's chain is four requests
-/// where zokoanime's is three, and a loaded megaplay host answering
-/// each of the four inside the allowance outlasts a flat bound while
-/// the attempt could have funded it. And the reserve held back for
-/// the last server is that server's chain's worth, three requests
-/// for zokoanime, so what the preferred server is left is what the
-/// attempt can spare and not less. Here the attempt has exactly the
-/// two chains' worth when the walk begins, and the loaded megaplay
-/// chain — four slices, inside its own worth and past one bound — is
-/// served rather than cut off for a healthy zokoanime server.
+/// bounded server's window has to be a whole chain's worth, then,
+/// not one request's spread over four — a loaded megaplay host
+/// answering each of its four requests inside the allowance outlasts
+/// a flat bound while the attempt could have funded it. Here the
+/// attempt has exactly two chains' worth when the walk begins, and
+/// the loaded megaplay chain — four slices, inside a chain's worth
+/// and past one bound — is served rather than cut off for a healthy
+/// zokoanime server behind it.
 #[tokio::test(start_paused = true)]
-async fn a_preferred_servers_chain_is_given_its_own_chains_worth_ahead_of_the_last() {
+async fn a_preferred_servers_chain_is_given_a_chains_worth_ahead_of_the_last() {
     const BUDGET_MS: u64 = 100;
     let c = client_with_server_budget(BUDGET_MS);
-    let budget = std::time::Duration::from_millis(BUDGET_MS);
-    // Four requests' worth for the megaplay server ahead, three for
-    // the zokoanime server that runs on the remainder.
-    let two_chains = chain_reserve(budget) + chain_reserve(budget) * 3 / 4;
-    let deadline = tokio::time::Instant::now() + two_chains;
+    let reserve = chain_reserve(std::time::Duration::from_millis(BUDGET_MS));
+    let deadline = tokio::time::Instant::now() + reserve * 2;
     c.bound_attempt(Some(deadline));
     let stream = tokio::time::timeout_at(deadline, c.stream_for(21473, "sub", "720"))
         .await
@@ -3798,46 +3811,59 @@ async fn a_preferred_servers_chain_is_given_its_own_chains_worth_ahead_of_the_la
         .expect("served");
     assert_eq!(
         stream.url, "https://mp.example/v/paced/index-f2.m3u8",
-        "the preferred server's loaded chain was served within its own chain's worth"
+        "the preferred server's loaded chain was served within a chain's worth"
     );
     assert_eq!(stream.referer.as_deref(), Some("https://megaplay.buzz/"));
 }
 
-/// A server's chain is as long as its host makes it: megaplay's
-/// pages name a media the sources endpoint answers for, so its chain
-/// is the embed page, the sources answer, the master and the
-/// rendition; zokoanime's page carries the payload, so its chain is
-/// three. A host the client does not read is given the longest, its
-/// page being read by its shape and either shape possible.
+/// The window is decided before the page is fetched, from the
+/// listing's URL, and the listing's URL does not say which chain
+/// will run: the site moves its pages between hosts with a
+/// redirect, and a zokoanime URL can land on a megaplay page whose
+/// chain is four requests, not three. A window sized by the listed
+/// host's chain would cut that redirected chain off a request short
+/// while the attempt could fund it. So every bounded server is
+/// given the longest chain's worth, whatever host the listing names,
+/// and the same loaded chain is served behind a zokoanime URL.
+#[tokio::test(start_paused = true)]
+async fn a_redirected_servers_chain_is_given_the_longest_chains_worth() {
+    const BUDGET_MS: u64 = 100;
+    let c = client_with_server_budget(BUDGET_MS);
+    let reserve = chain_reserve(std::time::Duration::from_millis(BUDGET_MS));
+    let deadline = tokio::time::Instant::now() + reserve * 2;
+    c.bound_attempt(Some(deadline));
+    let stream = tokio::time::timeout_at(deadline, c.stream_for(21474, "sub", "720"))
+        .await
+        .expect("the attempt funded both chains")
+        .expect("served");
+    assert_eq!(
+        stream.url, "https://mp.example/v/paced/index-f2.m3u8",
+        "the redirected chain was served within the longest chain's worth"
+    );
+    assert_eq!(
+        stream.referer.as_deref(),
+        Some("https://megaplay.buzz/"),
+        "judged by the host that served the page"
+    );
+}
+
+/// A bounded server's window is a whole chain's worth — the longest
+/// chain, four requests, at the allowance — whatever host the
+/// listing names, since the page's shape, and so its chain, is known
+/// only once fetched. The reserve is that same worth.
 #[test]
-fn a_servers_chain_is_as_long_as_its_host_makes_it() {
-    use super::ajax::{chain_requests, chain_reserve, chain_worth, CHAIN_REQUESTS};
-    assert_eq!(
-        chain_requests("https://zokoanime.video/stream/mal/1/1/sub"),
-        3
-    );
-    assert_eq!(
-        chain_requests("https://megaplay.buzz/stream/s-2/1/sub?s=bcdn"),
-        4
-    );
-    assert_eq!(
-        chain_requests("https://megaplay-2.buzz/stream/s-2/1/sub"),
-        4
-    );
-    assert_eq!(
-        chain_requests("https://vidtube.site/embed/1/sub"),
-        CHAIN_REQUESTS
-    );
-    assert_eq!(chain_requests("not a url"), CHAIN_REQUESTS);
+fn every_bounded_servers_window_is_the_longest_chains_worth() {
+    use super::ajax::{chain_reserve, chain_worth, CHAIN_REQUESTS};
     let budget = std::time::Duration::from_millis(1200);
-    assert_eq!(chain_worth(budget, 4), chain_reserve(budget));
-    assert_eq!(
-        chain_worth(budget, 3),
-        std::time::Duration::from_millis(1500)
-    );
+    assert_eq!(CHAIN_REQUESTS, 4);
+    assert_eq!(chain_worth(budget, CHAIN_REQUESTS), chain_reserve(budget));
     assert_eq!(
         chain_worth(budget, 4),
         std::time::Duration::from_millis(2000)
+    );
+    assert_eq!(
+        chain_worth(budget, 3),
+        std::time::Duration::from_millis(1500)
     );
 }
 

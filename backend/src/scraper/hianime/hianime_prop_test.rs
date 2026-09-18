@@ -1790,34 +1790,23 @@ proptest! {
     /// shortens the bound to milliseconds for the stalled-host tests
     /// shortens the reserve with it, and a longer bound never buys
     /// the last server less.
-    /// A server's bound is its own chain's worth: its host's requests
-    /// at the allowance — zokoanime's three, megaplay's four on its
-    /// own host and on any numbered mirror, and the longest for a
-    /// host the client does not read. The worth grows with the
-    /// requests and with the base it is carved from, and the whole
-    /// chain's worth is what the reserve has always been.
+    /// A chain's worth grows with the requests it is sized for and
+    /// with the base it is carved from, and the longest chain's worth
+    /// is the reserve: the window every bounded server is given,
+    /// whatever host the listing names, since which chain a page runs
+    /// is known only once it is fetched.
     #[test]
-    fn a_servers_bound_is_its_own_chains_worth(
+    fn a_chains_worth_grows_with_its_requests_and_the_longest_is_the_reserve(
         bound_ms in 1u64..10_000,
         longer_ms in 0u64..10_000,
-        host in prop_oneof![
-            Just("zokoanime.video".to_string()),
-            Just("megaplay.buzz".to_string()),
-            "megaplay-[0-9]{1,3}\\.buzz",
-            "[a-z]{2,10}\\.(site|to|example)",
-        ],
-        path in "/[a-z0-9/]{1,20}",
-        query in "(\\?s=[a-z]{1,4})?",
+        requests in 1u32..ajax::CHAIN_REQUESTS,
     ) {
         let ms = std::time::Duration::from_millis;
-        let url = format!("https://{host}{path}{query}");
-        let requests = ajax::chain_requests(&url);
-        let expected = if host == "zokoanime.video" { 3 } else { ajax::CHAIN_REQUESTS };
-        prop_assert_eq!(requests, expected, "{}", url);
         let worth = ajax::chain_worth(ms(bound_ms), requests);
         prop_assert!(worth > std::time::Duration::ZERO);
         prop_assert!(worth <= ajax::chain_worth(ms(bound_ms), requests + 1));
         prop_assert!(worth <= ajax::chain_worth(ms(bound_ms.max(longer_ms)), requests));
+        prop_assert!(worth < ajax::chain_reserve(ms(bound_ms)));
         prop_assert_eq!(
             ajax::chain_worth(ms(bound_ms), ajax::CHAIN_REQUESTS),
             ajax::chain_reserve(ms(bound_ms))
