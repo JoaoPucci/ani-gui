@@ -1505,6 +1505,70 @@ mod tests {
         );
     }
 
+    /// A stored slug names its cour in the slug's own form — a bare
+    /// number before the keyword, `foo-2-season-123` — and the words
+    /// the search term is made of do not carry it: the title form
+    /// reads `Part 2` and not a bare `2 season`, since a bare number
+    /// mid-title is a number and nothing more. Read off the term, the
+    /// filter sees no cour and accepts Kitsu's parent entry when it
+    /// ranks first, persisting the wrong mapping. The cour is read off
+    /// the slug the key holds, before it becomes a term, and the hit
+    /// that agrees with it is the one bound.
+    #[tokio::test]
+    async fn a_slug_rows_bare_numeric_cour_is_read_off_the_slug_before_it_becomes_a_term() {
+        let hit = |id: &str, slug: &str, title: &str| {
+            serde_json::json!({
+                "id": id,
+                "type": "anime",
+                "attributes": {
+                    "canonicalTitle": title,
+                    "titles": {"en": title},
+                    "slug": slug,
+                    "subtype": "TV",
+                    "status": "finished",
+                    "episodeCount": 12,
+                    "posterImage": null,
+                    "coverImage": null
+                }
+            })
+        };
+        let body = serde_json::json!({
+            "data": [
+                hit("40", "foo", "Foo"),
+                hit("41", "foo-2nd-season", "Foo 2nd Season")
+            ]
+        })
+        .to_string();
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/anime"))
+            .and(query_param("filter[text]", "foo 2 season"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_string(body),
+            )
+            .mount(&mock)
+            .await;
+        let state = state_with_kitsu_at(&mock.uri());
+
+        let got = resolve_allmanga_show_id(&state, "hianime:foo-2-season-123", false)
+            .await
+            .expect("resolve ok");
+        assert_eq!(
+            got.expect("the second cour resolves").id,
+            "41",
+            "the hit that agrees with the slug's cour, not the parent Kitsu ranks first"
+        );
+        assert_eq!(
+            allmanga_kitsu_get(&state, "hianime:foo-2-season-123")
+                .expect("cache read")
+                .as_deref(),
+            Some("41"),
+            "and that is the mapping persisted"
+        );
+    }
+
     #[test]
     fn is_music_subtype_matches_case_insensitively() {
         // The reverse resolve's Kitsu search must skip music-video hits

@@ -388,33 +388,32 @@ mod cour_form_props {
 }
 
 mod hit_cour_props {
-    use super::super::{cour_from_slug, cour_from_title, hit_cour_disagrees};
+    use super::super::{cour_from_slug, hit_cour_disagrees};
     use proptest::prelude::*;
 
     proptest! {
-        /// A hit disagrees with a term exactly when both carry cour
-        /// evidence and it differs: a term without a trailing cour,
-        /// or a hit without a slug, disagrees with nothing, and a
-        /// slug without a suffix is the parent cour.
+        /// A hit disagrees with the cour the source carries exactly
+        /// when both sides speak and differ: a source without cour
+        /// evidence, or a hit without a slug, disagrees with nothing,
+        /// and a slug without a suffix is the parent cour. The
+        /// source's cour is read off its own slug by the caller —
+        /// the slug's forms include a bare number the search term's
+        /// words would not carry — so the filter takes the cour, not
+        /// the term.
         #[test]
         fn a_hit_disagrees_exactly_when_both_sides_speak_and_differ(
-            words in "[a-z]{2,6}( [a-z]{2,6}){0,2}",
-            term_cour in prop::option::of(1u32..5),
+            source_cour in prop::option::of(1u32..5),
             slug in prop::option::of(("[a-z]{2,6}(-[a-z]{2,6}){0,2}", prop::option::of(1u32..5))),
         ) {
-            let term = match term_cour {
-                Some(n) => format!("{words} part {n}"),
-                None => words.clone(),
-            };
             let kitsu_slug: Option<String> = slug.as_ref().map(|(base, cour)| match cour {
                 Some(n) => format!("{base}-part-{n}"),
                 None => base.clone(),
             });
-            let expected = match (cour_from_title(&term), kitsu_slug.as_deref()) {
+            let expected = match (source_cour, kitsu_slug.as_deref()) {
                 (Some(p), Some(s)) => p != cour_from_slug(s).unwrap_or(1),
                 _ => false,
             };
-            prop_assert_eq!(hit_cour_disagrees(&term, kitsu_slug.as_deref()), expected);
+            prop_assert_eq!(hit_cour_disagrees(source_cour, kitsu_slug.as_deref()), expected);
         }
     }
 }
