@@ -780,4 +780,37 @@ impl ServerCaps {
         let after_reserve = remaining.saturating_sub(self.reserve) / ahead;
         bound.min(remaining).min(after_reserve.max(self.floor))
     }
+
+    /// The first bounded server's cap — the server the walk prefers,
+    /// asked before any other: what the attempt holds over the
+    /// reserve less the floor owed to each of the `ahead - 1` servers
+    /// after it, up to its `bound` and to what the attempt has, and
+    /// never narrower than its share ([`Self::cap`]) would be. The
+    /// floors stay funded out of the surplus, so the reserve is not
+    /// spent for them; the servers after it share what it leaves.
+    ///
+    /// The share splits the surplus evenly among the servers ahead,
+    /// so two distinct megaplay pages ahead of a zokoanime server
+    /// would halve the preferred server's window and cut off a
+    /// loaded chain the attempt could fund whole, with the servers
+    /// behind it asked in its place.
+    #[must_use]
+    pub fn first_cap(
+        &self,
+        bound: std::time::Duration,
+        remaining: Option<std::time::Duration>,
+        ahead: usize,
+    ) -> std::time::Duration {
+        let share = self.cap(bound, remaining, ahead);
+        let Some(remaining) = remaining else {
+            return share;
+        };
+        let ahead = u32::try_from(ahead).unwrap_or(u32::MAX);
+        if ahead <= 1 {
+            return share;
+        }
+        let owed = self.floor * (ahead - 1);
+        let own = remaining.saturating_sub(self.reserve).saturating_sub(owed);
+        bound.min(remaining).min(own).max(share)
+    }
 }
