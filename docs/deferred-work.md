@@ -328,10 +328,11 @@ starting it, and delete it when you find it done.
   release that ships before that run has happened says in its notes
   that the Windows side of the fallback is unvalidated.
 
-  Why it waited: nobody in the loop runs Windows. The evidence so
-  far is the Linux run against the live site, and it carries further
-  than a single-platform pass usually does — both packages stage the
-  same impersonating transport
+  Why it waited: the run has not been made yet — it needs the
+  packaged build on a Windows machine with anidb.app unreachable or
+  made to look so. The evidence so far is the Linux run against the
+  live site, and it carries further than a single-platform pass
+  usually does — both packages stage the same impersonating transport
   (`electron/scripts/fetch-windows-deps.mjs` fetches the Windows
   copy), and turning the fallback on spawns, stages and probes
   nothing new on either platform. It is still not the run:
