@@ -529,7 +529,14 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 chain.await
             } else {
                 let ahead = unbounded.map_or(0, |u| u.saturating_sub(i));
-                let cap = caps.cap(bound, remaining(), ahead);
+                // The first bounded server — the one the walk prefers
+                // — is given its own window rather than an even share
+                // with the servers after it ([`ServerCaps::first_cap`]).
+                let cap = if i == 0 {
+                    caps.first_cap(bound, remaining(), ahead)
+                } else {
+                    caps.cap(bound, remaining(), ahead)
+                };
                 match tokio::time::timeout(cap, chain).await {
                     Ok(outcome) => outcome,
                     // Cut off before any page answered for it, so the
