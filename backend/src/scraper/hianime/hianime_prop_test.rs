@@ -1665,11 +1665,13 @@ proptest! {
                     // whenever the remainder held it in the first
                     // place.
                     prop_assert!(spent <= ms(free), "{spent:?} of {free}ms");
-                    prop_assert!(
-                        ms(r) - spent >= ms(reserve_ms),
-                        "the last server was left {:?} of a {reserve_ms}ms reserve",
-                        ms(r) - spent,
-                    );
+                    if r >= reserve_ms {
+                        prop_assert!(
+                            ms(r) - spent >= ms(reserve_ms),
+                            "the last server was left {:?} of a {reserve_ms}ms reserve",
+                            ms(r) - spent,
+                        );
+                    }
                 } else if ms(r) >= floor * (ahead32 + 1) {
                     // In the band, and below it: the reserve is what
                     // gives way, and the remainder's server is still
