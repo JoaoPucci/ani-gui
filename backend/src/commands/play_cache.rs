@@ -57,16 +57,16 @@ pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderI
 /// the affinity a fresh resolve would have written survives the
 /// resolution cache outliving the row.
 ///
-/// `generation_at_start` is the row's refresh generation as the
-/// caller read it BEFORE the liveness check went out — the same
-/// ordering a fresh resolve keeps — so a refresh that lands while
-/// the check is in flight owns the row and the replay's count-less
-/// positive does not overwrite the exact verdict it just wrote.
+/// `at_start` is the row as the caller read it BEFORE the liveness
+/// check went out — the same ordering a fresh resolve keeps — so a
+/// refresh that lands while the check is in flight owns the row and
+/// the replay's count-less positive does not overwrite the exact
+/// verdict it just wrote.
 pub(crate) async fn stamp_availability_on_cache_hit(
     state: &AppState,
     args: &super::play::PlayArgs,
     cached: &CachedResolution,
-    generation_at_start: u64,
+    at_start: &crate::commands::availability::RowAtStart,
 ) {
     let Some(provider) = cached_row_provider(cached) else {
         return;
@@ -75,17 +75,21 @@ pub(crate) async fn stamp_availability_on_cache_hit(
         state,
         args.kitsu_id.as_deref(),
         args.mode.as_str(),
-        generation_at_start,
+        at_start,
         provider,
     )
     .await;
 }
 
-/// The refresh generation a replay's stamp is ordered against: read
-/// before the liveness check, never after it.
-pub(crate) fn generation_before_check(state: &AppState, args: &super::play::PlayArgs) -> u64 {
-    crate::commands::availability_refresh::generation_at_start(
-        &state.availability_refreshes,
+/// The row a play's stamp is ordered against — its refresh
+/// generation and the positive row standing — read before the
+/// liveness check, never after it.
+pub(crate) fn row_before_check(
+    state: &AppState,
+    args: &super::play::PlayArgs,
+) -> crate::commands::availability::RowAtStart {
+    crate::commands::availability::RowAtStart::read(
+        state,
         args.kitsu_id.as_deref(),
         args.mode.as_str(),
     )
@@ -201,7 +205,7 @@ pub(crate) async fn try_launch_args_from_cache(
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
     // Captured before the check goes out, like a fresh resolve's
     // answer: a refresh landing during the check owns the row.
-    let generation = generation_before_check(state, args);
+    let at_start = row_before_check(state, args);
     if !cached_row_is_live(state, &cached).await {
         play_resolution_cache::evict(&state.cache_pool, &cache_key);
         tracing::info!(
@@ -217,7 +221,7 @@ pub(crate) async fn try_launch_args_from_cache(
         upstream = cached.upstream_url.as_str(),
         "play_external: cache hit (stream and tracks live), launching mpv from cached URL",
     );
-    stamp_availability_on_cache_hit(state, args, &cached, generation).await;
+    stamp_availability_on_cache_hit(state, args, &cached, &at_start).await;
     let watch = cached_watch(state, &cached, &args.episode);
     Some((cached_launch_args(cached, args, cfg), watch))
 }

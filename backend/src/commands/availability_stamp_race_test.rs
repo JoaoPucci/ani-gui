@@ -93,7 +93,7 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
     replayed_from: ProviderId,
 ) {
     let key = cache_key(ID, MODE);
-    let generation = state.availability_refreshes.generation(&key);
+    let at_start = RowAtStart::read(state, Some(ID), MODE);
     let held = state
         .availability_refreshes
         .for_row(&key)
@@ -102,12 +102,13 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
 
     let resolve = tokio::spawn({
         let state = state.clone();
+        let at_start = at_start.clone();
         async move {
             stamp_after_native(
                 &state,
                 Some(ID),
                 MODE,
-                generation,
+                &at_start,
                 ResolveVerdict::served(resolved_by, Some(resolved_cap), &[]),
             )
             .await;
@@ -117,8 +118,9 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
 
     let replay = tokio::spawn({
         let state = state.clone();
+        let at_start = at_start.clone();
         async move {
-            stamp_after_cache_hit(&state, Some(ID), MODE, generation, replayed_from).await;
+            stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, replayed_from).await;
         }
     });
     tokio::task::yield_now().await;
@@ -209,11 +211,9 @@ async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_i
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     seed_standing_row(&state, ProviderId::Hianime, 24);
-    let generation = state
-        .availability_refreshes
-        .generation(&cache_key(ID, MODE));
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, generation, ProviderId::Anidb).await;
+    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Anidb).await;
 
     let row = row_now(&state);
     assert_eq!(
@@ -262,8 +262,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
         "kitsu_id": ID
     }))
     .expect("args");
-    let key = cache_key(ID, MODE);
-    let generation = state.availability_refreshes.generation(&key);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
 
     let probe = tokio::spawn({
         let state = state.clone();
@@ -276,7 +275,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
         &state,
         Some(ID),
         MODE,
-        generation,
+        &at_start,
         ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
     )
     .await;
@@ -310,11 +309,9 @@ async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
     seed_standing_row(&state, ProviderId::Hianime, 24);
     age_row(&state, 3600);
     let stamped_at = written_at(&state);
-    let generation = state
-        .availability_refreshes
-        .generation(&cache_key(ID, MODE));
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, generation, ProviderId::Hianime).await;
+    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Hianime).await;
 
     assert_eq!(
         written_at(&state),
@@ -341,15 +338,13 @@ async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
 async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_out() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    let generation = state
-        .availability_refreshes
-        .generation(&cache_key(ID, MODE));
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
 
     stamp_after_native(
         &state,
         Some(ID),
         MODE,
-        generation,
+        &at_start,
         ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
     )
     .await;
@@ -357,7 +352,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_ou
         &state,
         Some(ID),
         MODE,
-        generation,
+        &at_start,
         ResolveVerdict::missed(Some(ProviderId::Anidb)),
     )
     .await;
@@ -383,15 +378,13 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     seed_standing_row(&state, ProviderId::Anidb, 12);
-    let generation = state
-        .availability_refreshes
-        .generation(&cache_key(ID, MODE));
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
 
     stamp_after_native(
         &state,
         Some(ID),
         MODE,
-        generation,
+        &at_start,
         ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
     )
     .await;
@@ -399,7 +392,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set
         &state,
         Some(ID),
         MODE,
-        generation,
+        &at_start,
         ResolveVerdict::missed(Some(ProviderId::Anidb)),
     )
     .await;
