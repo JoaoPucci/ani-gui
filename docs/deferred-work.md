@@ -319,42 +319,30 @@ starting it, and delete it when you find it done.
 
 ## Validating the hianime fallback on the packaged Windows flows
 
-- **Run the Windows package through the fallback, on a Windows
-  machine, against the live site**, with anidb.app unreachable or
-  made to look so: a resolve, an embedded play, a download and an
-  external-player hand-off, each consuming a playlist and its
-  segments through the packaged tools. The production provider order
-  puts hianime behind anidb.app on both packaged platforms, so a
-  release that ships before that run has happened says in its notes
-  that the Windows side of the fallback is unvalidated.
+- **Run the packaged Windows build through the hianime fallback**,
+  which has only ever been run on Linux. The production provider
+  order puts hianime behind anidb.app on both packaged platforms, so
+  a release that ships before that run has happened says in its
+  notes that the Windows side of the fallback is unvalidated.
 
-  Why it waited: the run has not been made yet — it needs the
-  packaged build on a Windows machine with anidb.app unreachable or
-  made to look so. The evidence so far is the Linux run against the
-  live site, and it carries further than a single-platform pass
-  usually does — both packages stage the same impersonating transport
-  (`electron/scripts/fetch-windows-deps.mjs` fetches the Windows
-  copy), and turning the fallback on spawns, stages and probes
-  nothing new on either platform. It is still not the run:
-  resolution, embedded playback, downloads and hand-offs ride
-  different transports, and the NSIS build's own executables and
-  path handling can fail where Linux's do not.
+  Why it waited: the run has not been made yet. The Linux run
+  against the live site carries further than a single-platform pass
+  usually does — both packages stage the same impersonating
+  transport, and turning the fallback on spawns, stages and probes
+  nothing new on either platform — but it is still not the run.
   `docs/proposals/additional-providers.md` states the bar a provider
   owes on both platforms.
 
-  What is worth knowing before scheduling it: the fallback engages
-  only while anidb.app is unreachable, refusing or broken, so the
-  first play a Windows user makes through it comes at the moment the
-  only other provider is giving them nothing — an unvalidated path
-  measured against a certain failure rather than against a working
-  play. It does not end there. A show the fallback served has its
-  positive availability row name hianime, and every later play,
-  download and hand-off of that show starts from hianime while that
-  row lives — a replay refreshes it — whether or not anidb.app has
-  recovered. A Windows user who reached the fallback once keeps
-  using it for that show afterwards, with anidb.app healthy, which
-  is why the run is owed by a release and not merely worth having;
-  it was not a condition of enabling the provider.
+  What is worth knowing: the fallback engages only while anidb.app
+  is unreachable, refusing or broken, so the first play a Windows
+  user makes through it comes when the only other provider is giving
+  them nothing. It does not end there. A show the fallback served
+  has its positive availability row name hianime, and every later
+  play, download and hand-off of that show starts from hianime while
+  that row lives, whether or not anidb.app has recovered — so a
+  Windows user who reached the fallback once keeps using it for that
+  show afterwards, with anidb.app healthy. That is why the run is
+  owed by a release and not merely worth having.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
