@@ -210,6 +210,17 @@ impl AniError {
         }
     }
 
+    /// Whether this error is the upstream answering that the resource
+    /// asked for is absent — a 404 or 410 — as opposed to refusing
+    /// this client ([`Self::is_provider_block`]) or rejecting this
+    /// request, which a 400 or 401 does. Only absence is an answer
+    /// about the one thing asked for; the episode step reads it as
+    /// the episode's own verdict, and nothing else as one.
+    #[must_use]
+    pub fn is_not_found_shaped(&self) -> bool {
+        matches!(self, Self::Upstream { status } if *status == 404 || *status == 410)
+    }
+
     /// HTTP status code the route layer surfaces for this variant.
     /// Lives here (next to the variant declarations) instead of on the
     /// `IntoResponse` impl in `api/mod.rs` because that file is already
