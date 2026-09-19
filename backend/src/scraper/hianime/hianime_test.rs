@@ -1,6 +1,6 @@
 use super::*;
 use crate::error::AniError;
-use crate::scraper::provider::{BrowseHit, EpisodeRef};
+use crate::scraper::provider::{BrowseHit, EpisodeRef, SubtitleTrack};
 
 // ── search page ─────────────────────────────────────────────────────
 
@@ -1149,7 +1149,7 @@ fn the_embed_payload_decodes_from_the_page_blob() {
             lang: "en".into(),
             label: "English".into(),
             default: true,
-            src: "https://hls.example/v/subs/en.vtt".into(),
+            url: "https://hls.example/v/subs/en.vtt".into(),
         }]
     );
 }
@@ -1246,6 +1246,32 @@ fn a_payload_decodes_to_its_stream_whatever_its_subtitle_list_looks_like() {
             "a row that is not an object",
             serde_json::json!({"src": src, "subtitles": ["en", good("es"), 7]}),
             vec!["es"],
+        ),
+        // A row whose source the transport cannot fetch — relative
+        // to a page the client does not carry, or under another
+        // scheme — would ride into the proxy, the handoffs and the
+        // cache row as a track that never loads, and a cached row
+        // with one is refused whole on every replay.
+        (
+            "a row whose source is relative",
+            serde_json::json!({"src": src, "subtitles": [good("en"), {"lang": "de", "label": "German", "src": "/subs/de.vtt"}, good("fr")]}),
+            vec!["en", "fr"],
+        ),
+        (
+            "a row whose source is under another scheme",
+            serde_json::json!({"src": src, "subtitles": [{"lang": "it", "label": "Italian", "src": "ftp://hls.example/v/subs/it.vtt"}, good("pt")]}),
+            vec!["pt"],
+        ),
+        // A row whose source is absolute and fetchable but far longer
+        // than any track URL a CDN signs: the hand-offs put every
+        // track URL on the player's command line, whose budget the
+        // packaged platforms set differently and Windows sets
+        // smallest, so one such row would fail Open External and
+        // Watch Together for the whole episode.
+        (
+            "a row whose source is overlong",
+            serde_json::json!({"src": src, "subtitles": [good("en"), {"lang": "de", "label": "German", "src": format!("https://hls.example/v/subs/{}.vtt", "a".repeat(4096))}, good("fr")]}),
+            vec!["en", "fr"],
         ),
     ];
     for (what, json, expected) in cases {
@@ -1867,7 +1893,14 @@ async fn the_master_is_the_decoded_embed_src_with_the_embed_origin_as_referer() 
         StreamSource {
             master_url: "https://hls.example/v/master.m3u8".into(),
             referer: Some("https://zokoanime.video/".into()),
-        }
+            subtitles: vec![SubtitleTrack {
+                lang: "en".into(),
+                label: "English".into(),
+                default: true,
+                url: "https://hls.example/v/subs/en.vtt".into(),
+            }],
+        },
+        "the embed's sidecar tracks ride out with the master — a sub stream is raw video without them"
     );
     let err = c
         .master_playlist_url(21419, "sub")
@@ -1913,6 +1946,7 @@ async fn a_quality_is_picked_beside_the_master_that_answered_after_a_redirect() 
     let moved = StreamSource {
         master_url: "https://hls.example/v/old/master.m3u8".into(),
         referer: Some("https://zokoanime.video/".into()),
+        subtitles: Vec::new(),
     };
     assert_eq!(
         c.quality_stream_url(&moved, "720").await.expect("selected"),

@@ -6,7 +6,7 @@
 use crate::app::AppState;
 use crate::error::Result;
 
-use super::download::{spawn_download_tool, DownloadArgs, DownloadProgress};
+use super::download::{DownloadArgs, DownloadProgress};
 use super::play::anidb_client_with_base;
 use super::play_native_episode::resolve_episode;
 use super::play_native_walk::pick_native_walk;
@@ -30,7 +30,7 @@ pub(crate) fn episode_range(episode: &str) -> Option<(u32, u32)> {
 ///
 /// # Errors
 /// The walk's or the failing episode's typed error; the tool's own
-/// failures as in [`spawn_download_tool`].
+/// failures as in [`super::download::spawn_download_tool`].
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn download_range<F>(
     state: &AppState,
@@ -120,11 +120,16 @@ where
             dest = %dest.display(),
             "download: spawning tool on natively resolved stream",
         );
-        spawn_download_tool(
-            &crate::scraper::provider::StreamSource {
-                master_url: resolved.master_url,
-                referer: resolved.referer,
-            },
+        let source = crate::scraper::provider::StreamSource {
+            master_url: resolved.master_url,
+            referer: resolved.referer,
+            subtitles: resolved.subtitles,
+        };
+        // The sidecars are fetched beside the transfer, while their
+        // signed URLs are as fresh as the stream's.
+        super::download_transfer::transfer_with_sidecars(
+            &state.proxy_http,
+            &source,
             dest,
             &file_stem,
             Some(quality),

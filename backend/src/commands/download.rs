@@ -241,11 +241,16 @@ where
         "download: spawning tool on natively resolved stream",
     );
     let file_stem = format!("{} Episode {}", resolved.title, args.episode);
-    spawn_download_tool(
-        &StreamSource {
-            master_url: resolved.master_url,
-            referer: resolved.referer,
-        },
+    let source = StreamSource {
+        master_url: resolved.master_url,
+        referer: resolved.referer,
+        subtitles: resolved.subtitles,
+    };
+    // The sidecars are fetched beside the transfer, while their
+    // signed URLs are as fresh as the stream's.
+    super::download_transfer::transfer_with_sidecars(
+        &state.proxy_http,
+        &source,
         &dest,
         &file_stem,
         Some(quality),
@@ -909,6 +914,407 @@ pub(crate) async fn publish_without_links(
     }
 }
 
+/// How long the sidecar phase may take as a whole. A subtitle file is
+/// kilobytes and the tracks are fetched together, so a minute is
+/// generous for all of them at once; the proxy client would otherwise
+/// let each one stall for its own two minutes, one after another,
+/// after the media tool had already finished under its hour. A CDN
+/// that has not answered in a minute is stalling, and the deadline
+/// turns that into a skipped track rather than a download that never
+/// reports done.
+pub(crate) const SIDECAR_PHASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// How many sidecar tracks are fetched at once. Enough that a
+/// listing's few languages overlap under the phase deadline, few
+/// enough that a listing at the track cap never opens more than a
+/// handful of connections or holds more than a handful of bodies.
+pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
+
+/// The sidecar phase up to the names. The resolve bounds its listing
+/// where it is built, so a download's tracks arrive within the cap;
+/// the writer applies it again for a caller that hands it a listing
+/// of its own. Only the first
+/// [`SUBTITLE_TRACK_CAP`](crate::proxy::upstream::SUBTITLE_TRACK_CAP)
+/// tracks of the listing are fetched, `concurrency` at a time, each
+/// given until the deadline, and each body goes to its scratch the
+/// moment it arrives rather than being held until the rest have; so
+/// a track that answers in time is staged beside one that stalls,
+/// and a listing at the cap never holds more than a few bodies at
+/// once. The names follow the listing's order, whatever order the
+/// bodies arrive in, and each is claimed as the body arrives — a
+/// name taken by then is the user's and the track is skipped — but
+/// filled only by the caller's install, so a track fetched beside a
+/// transfer that then fails is dropped with its scratch and never
+/// sits at a name beside no media. Returned in listing order.
+pub(crate) async fn stage_sidecar_subtitles_with(
+    client: &reqwest::Client,
+    tracks: &[crate::scraper::provider::SubtitleTrack],
+    referer: Option<&str>,
+    dest: &std::path::Path,
+    file_stem: &str,
+    deadline: std::time::Duration,
+    concurrency: usize,
+) -> Vec<SidecarClaim> {
+    use futures_util::stream::{self, StreamExt as _};
+    let (tracks, dropped) = crate::proxy::upstream::within_track_cap(tracks);
+    if dropped > 0 {
+        tracing::warn!(
+            dropped,
+            "download: subtitle listing longer than the track cap, the rest skipped"
+        );
+    }
+    let until = tokio::time::Instant::now() + deadline;
+    // Names follow the listing, not what arrived: a track that fails
+    // today keeps its name free for a retry, and the next one in its
+    // language keeps the suffix its place gives it.
+    let suffixes = sidecar_suffixes(tracks.iter().map(|t| t.lang.as_str()));
+    let fetches: Vec<_> = tracks
+        .iter()
+        .enumerate()
+        .map(|(i, track)| fetch_sidecar_track_by(client, track, referer, until, i))
+        .collect();
+    let mut arrivals = stream::iter(fetches).buffer_unordered(concurrency.max(1));
+    let mut staged: Vec<(usize, SidecarClaim)> = Vec::new();
+    while let Some((i, body)) = arrivals.next().await {
+        let Some(body) = body else {
+            continue;
+        };
+        let track = &tracks[i];
+        // Only a subtitle track claims a name: a CDN can answer a
+        // challenge page with 200, and written it would sit at the
+        // track's name for good, since later downloads keep what
+        // they find there.
+        if !crate::proxy::is_webvtt(&body) {
+            tracing::warn!(lang = %track.lang, "download: subtitle body is not a track, skipped");
+            continue;
+        }
+        let path = dest.join(format!("{file_stem}.{}.vtt", suffixes[i]));
+        // Created new, never replaced: a file with bytes at the name
+        // is the user's — a corrected subtitle from an earlier
+        // download — and stays as found.
+        match stage_sidecar(&path, &body).await {
+            Ok(claim) => staged.push((i, claim)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                tracing::info!(path = %path.display(), "download: subtitle already present, kept");
+            }
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "download: subtitle write failed")
+            }
+        }
+    }
+    staged.sort_by_key(|(i, _)| *i);
+    staged.into_iter().map(|(_, claim)| claim).collect()
+}
+
+/// Claim `path` and fill its scratch with `body`, leaving the name
+/// for the install (see [`SidecarClaim`]).
+async fn stage_sidecar(path: &std::path::Path, body: &[u8]) -> std::io::Result<SidecarClaim> {
+    let mut claim = claim_new(path).await?;
+    claim.fill(body).await?;
+    Ok(claim)
+}
+
+/// The name part each track takes beside the media, from its place
+/// in the listing alone: the first track of a language is the
+/// language, and the n-th after it is `<lang>-<n>`, so two tracks in
+/// one language keep both files and a name never depends on which
+/// tracks arrived. The language is the tag's portable spelling
+/// ([`super::download_names::portable_name`]) — ASCII letters, digits
+/// and hyphens, the tag's own where it is already that — and a tag
+/// that leaves nothing of the alphabet is named by its place in the
+/// listing, `track-<n>`; the packaged platforms fold case by
+/// different tables, and only that alphabet is folded the same by
+/// every table. Two tags that differ only by case count as one
+/// language, and a name is free only if no earlier name is the same
+/// once case is folded — a tag can itself read like `en-1` — since
+/// the platforms disagree on whether `pt-BR.vtt` and `pt-br.vtt` are
+/// two files, and a name is unique on both. When the count's name is
+/// taken, the count moves on until one is free.
+pub(crate) fn sidecar_suffixes<'a>(langs: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut languages: Vec<String> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    langs
+        .enumerate()
+        .map(|(position, tag)| {
+            let lang = super::download_names::portable_name(tag)
+                .unwrap_or_else(|| format!("track-{}", position + 1));
+            let folded = lang.to_ascii_lowercase();
+            let earlier = languages.iter().filter(|l| **l == folded).count();
+            languages.push(folded);
+            let mut count = earlier;
+            let name = loop {
+                let candidate = if count == 0 {
+                    lang.clone()
+                } else {
+                    format!("{lang}-{count}")
+                };
+                if !names.contains(&candidate.to_ascii_lowercase()) {
+                    break candidate;
+                }
+                count += 1;
+            };
+            names.push(name.to_ascii_lowercase());
+            name
+        })
+        .collect()
+}
+
+/// [`fetch_sidecar_track`] under the phase's deadline, tagged with
+/// the track's place in the listing so the arrival can be named.
+async fn fetch_sidecar_track_by<'a>(
+    client: &'a reqwest::Client,
+    track: &'a crate::scraper::provider::SubtitleTrack,
+    referer: Option<&'a str>,
+    until: tokio::time::Instant,
+    index: usize,
+) -> (usize, Option<bytes::Bytes>) {
+    let body = match tokio::time::timeout_at(until, fetch_sidecar_track(client, track, referer))
+        .await
+    {
+        Ok(body) => body,
+        Err(_elapsed) => {
+            tracing::warn!(lang = %track.lang, "download: subtitle not served by the phase's deadline, skipped");
+            None
+        }
+    };
+    (index, body)
+}
+
+/// One track's body, when the CDN serves it: a refusal, a transport
+/// failure, a body that does not arrive or one larger than a
+/// subtitle file can be (read only up to the cap, never held whole)
+/// is logged and `None`.
+async fn fetch_sidecar_track(
+    client: &reqwest::Client,
+    track: &crate::scraper::provider::SubtitleTrack,
+    referer: Option<&str>,
+) -> Option<bytes::Bytes> {
+    use crate::proxy::upstream::{read_body_capped, CappedBody, SUBTITLE_BODY_CAP};
+    let mut req = client.get(&track.url);
+    if let Some(r) = referer {
+        req = req.header(reqwest::header::REFERER, r);
+    }
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => {
+            match read_body_capped(resp, SUBTITLE_BODY_CAP).await {
+                Ok(CappedBody::Whole(b)) => Some(b),
+                Ok(CappedBody::Oversized) => {
+                    tracing::warn!(lang = %track.lang, "download: subtitle body larger than a track, skipped");
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(lang = %track.lang, error = %e, "download: subtitle body failed");
+                    None
+                }
+            }
+        }
+        Ok(resp) => {
+            tracing::warn!(lang = %track.lang, status = %resp.status(), "download: subtitle refused");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(lang = %track.lang, error = %e, "download: subtitle fetch failed");
+            None
+        }
+    }
+}
+
+/// Whether a sidecar's name is taken: anything at it is the user's —
+/// a file with bytes, a symlink whether or not it resolves, a
+/// directory, any other entry — except a zero-length regular file. A
+/// WebVTT file is never empty, so that one is a claim abandoned by
+/// an install that stopped between creating the name and filling it
+/// (the rename install, where the filesystem offers no hard links),
+/// and the name is free. The entry itself is examined, never what a
+/// link points at: following it would read a dangling link as an
+/// absent file and a link to an empty file as a claim, and the
+/// install would then rename over the user's link.
+fn name_is_taken(path: &std::path::Path) -> std::io::Result<bool> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) => Ok(!(meta.is_file() && meta.len() == 0)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// A sidecar's name, taken only for a complete file. The bytes go to
+/// a hidden scratch sibling; finishing installs the scratch at the
+/// name — a link, or a create-new and a rename where links are not
+/// offered — refusing a name already taken, which is the user's. A
+/// claim dropped unfinished removes its scratch and the name stays
+/// free, and a kill or a power loss between the two leaves the
+/// scratch behind, never a partial file at the name that every later
+/// download would keep as the user's own. The one partial file the
+/// rename install can leave is empty, and an empty name is free.
+///
+/// The claim is a guard over the scratch until the scratch is
+/// provably gone, not until the install reports. A link lands the
+/// track at its name and leaves the scratch as a second name to
+/// remove, and that removal can fail while the install has delivered
+/// — a scanner holding the file open without delete sharing, on the
+/// platform where the scratch's name is not hidden — so the install
+/// ignores it, as the media transfer's does. Standing down on the
+/// report would then leave the alias beside the media for good, since
+/// nothing else knows to remove it; the drop tries once more instead,
+/// the way the transfer's own scratch guard does.
+#[derive(Debug)]
+pub(crate) struct SidecarClaim {
+    target: std::path::PathBuf,
+    scratch: std::path::PathBuf,
+    /// Open while the bytes are being written; closed before the
+    /// install and before any removal, since Windows will not move
+    /// or remove an open file.
+    file: Option<tokio::fs::File>,
+    /// The track is at its name. Says what a scratch still here is:
+    /// an alias the install could not remove, not a partial.
+    installed: bool,
+    /// The scratch is provably gone, and the drop has nothing to do.
+    finished: bool,
+}
+
+/// Claim `path` for a new sidecar.
+///
+/// # Errors
+/// `AlreadyExists` when the name is taken; the scratch's own open
+/// errors otherwise.
+pub(crate) async fn claim_new(path: &std::path::Path) -> std::io::Result<SidecarClaim> {
+    if name_is_taken(path)? {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "a sidecar is already at the name",
+        ));
+    }
+    let scratch = path.with_file_name(format!(
+        ".ani-gui-{}-{}.part.vtt",
+        std::process::id(),
+        uuid::Uuid::new_v4().simple()
+    ));
+    let file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&scratch)
+        .await?;
+    Ok(SidecarClaim {
+        target: path.to_path_buf(),
+        scratch,
+        file: Some(file),
+        installed: false,
+        finished: false,
+    })
+}
+
+impl SidecarClaim {
+    /// The name the claim is for.
+    pub(crate) fn target(&self) -> &std::path::Path {
+        &self.target
+    }
+
+    /// Write the whole body to the scratch, synced and closed, and
+    /// keep the claim: the name stays free until [`Self::install`],
+    /// and a claim dropped before that removes the scratch.
+    ///
+    /// # Errors
+    /// The write's own.
+    pub(crate) async fn fill(&mut self, body: &[u8]) -> std::io::Result<()> {
+        use tokio::io::AsyncWriteExt as _;
+        let mut file = self.file.take().expect("a live claim holds its file");
+        file.write_all(body).await?;
+        file.flush().await?;
+        file.sync_all().await?;
+        drop(file);
+        Ok(())
+    }
+
+    /// Install the filled scratch at the name. The claim stays the
+    /// scratch's guard afterwards: it stands down for a scratch that
+    /// is provably gone, and otherwise tries the removal once more
+    /// when dropped.
+    ///
+    /// # Errors
+    /// `AlreadyExists` when the name was taken in the meantime; the
+    /// scratch is removed on every way out.
+    pub(crate) fn install(&mut self) -> std::io::Result<()> {
+        install_sidecar(&self.scratch, &self.target)?;
+        self.installed = true;
+        self.finished = scratch_is_gone(&self.scratch);
+        Ok(())
+    }
+}
+
+/// Whether nothing is at the scratch's path any more — the one
+/// answer that stands a claim down. A path that cannot be looked at
+/// is not one that is gone.
+fn scratch_is_gone(scratch: &std::path::Path) -> bool {
+    matches!(
+        std::fs::symlink_metadata(scratch),
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound
+    )
+}
+
+/// Put the complete scratch at the name without replacing a file with
+/// bytes: a hard link refuses a taken name atomically and leaves the
+/// scratch as a second name to remove; where links are not offered,
+/// [`install_by_rename`]. An empty file at the name is an abandoned
+/// claim ([`name_is_taken`]) and is replaced by the rename, which is
+/// atomic: two installs that both found it empty each land a complete
+/// file, and the one that lands last stays — never a partial one.
+fn install_sidecar(scratch: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::hard_link(scratch, target) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(scratch);
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            if name_is_taken(target)? {
+                return Err(e);
+            }
+            std::fs::rename(scratch, target)
+        }
+        Err(_) => install_by_rename(scratch, target),
+    }
+}
+
+/// The install where the filesystem offers no hard links: a
+/// create-new claims the name — or finds an abandoned empty claim
+/// there, which is as good — and a rename fills it. A stop between
+/// the two leaves the empty claim for the next install to take.
+fn install_by_rename(scratch: &std::path::Path, target: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && !name_is_taken(target)? => {}
+        Err(e) => return Err(e),
+    }
+    std::fs::rename(scratch, target).inspect_err(|_| {
+        // The claim, not a file another install has since completed.
+        if name_is_taken(target).is_ok_and(|taken| !taken) {
+            let _ = std::fs::remove_file(target);
+        }
+    })
+}
+
+impl Drop for SidecarClaim {
+    fn drop(&mut self) {
+        drop(self.file.take());
+        if self.finished {
+            return;
+        }
+        if let Err(e) = std::fs::remove_file(&self.scratch) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                let what = if self.installed {
+                    "download: installed subtitle's scratch alias not removed"
+                } else {
+                    "download: unfinished subtitle scratch not removed"
+                };
+                tracing::warn!(path = %self.scratch.display(), error = %e, what);
+            }
+        }
+    }
+}
+
 /// yt-dlp's own flag for the referer, or nothing when the stream
 /// needs none.
 pub(crate) fn ytdlp_referer_args(referer: Option<&str>) -> Vec<String> {
@@ -923,6 +1329,22 @@ pub(crate) fn ffmpeg_referer_args(referer: Option<&str>) -> Vec<String> {
     })
 }
 
+/// What a transfer that did not fail left at the episode's name.
+/// A tool can exit cleanly having written nothing, and that has
+/// always ended as a success with no file published; the caller
+/// that puts sidecars beside the episode needs to know which
+/// success it was, since a sidecar beside no media is one the next
+/// attempt keeps as the user's own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Transferred {
+    /// The episode is at its name: this transfer put it there, or
+    /// found it there — before spawning a tool, or when publishing.
+    Episode,
+    /// The tool exited cleanly having written nothing, and nothing
+    /// is at the name.
+    Nothing,
+}
+
 pub(crate) async fn spawn_download_tool<F>(
     source: &StreamSource,
     dest: &std::path::Path,
@@ -931,7 +1353,7 @@ pub(crate) async fn spawn_download_tool<F>(
     path_env: &str,
     timeout: std::time::Duration,
     on_line: &mut F,
-) -> Result<()>
+) -> Result<Transferred>
 where
     F: FnMut(&str) + Send,
 {
@@ -996,7 +1418,7 @@ where
         // the answer is given before one is spent.
         AtTarget::Episode => {
             on_line(ALREADY_HERE);
-            return Ok(());
+            return Ok(Transferred::Episode);
         }
         // A claim that outlasted the wait. Its owner is not coming
         // back, and nothing here may take it, so a transfer would end
@@ -1125,14 +1547,19 @@ where
 /// user asked for it — by not being the one to write it — so it ends
 /// as a success with a line explaining why nothing changed, rather
 /// than an error about a file that is present and complete.
-async fn finish<F>(scratch: &Scratch, target: &std::path::Path, on_line: &mut F) -> Result<()>
+async fn finish<F>(
+    scratch: &Scratch,
+    target: &std::path::Path,
+    on_line: &mut F,
+) -> Result<Transferred>
 where
     F: FnMut(&str) + Send,
 {
     // A tool that exits cleanly having written nothing leaves nothing
     // to install. That has always ended as a success here, and
     // changing it is a separate argument from where the file gets
-    // written.
+    // written; the answer says so, for whoever would put something
+    // beside the episode.
     //
     // An empty file is the same event with one more syscall in it, and
     // publishing one would put a name in the user's folder that reads
@@ -1148,7 +1575,7 @@ where
         // as the tool having written nothing there. Reported as the
         // latter, it ends the download happily with no file published.
         AtTarget::Unreadable => return Err(AniError::Io),
-        _ => return Ok(()),
+        _ => return Ok(Transferred::Nothing),
     }
     // Publication decides the file's fate from here: installed under
     // the episode's name, or removed because someone else got there.
@@ -1193,10 +1620,10 @@ where
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
     match published {
-        Published::Installed => Ok(()),
+        Published::Installed => Ok(Transferred::Episode),
         Published::AlreadyThere => {
             on_line(ALREADY_HERE);
-            Ok(())
+            Ok(Transferred::Episode)
         }
     }
 }
