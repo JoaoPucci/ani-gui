@@ -241,8 +241,10 @@ proptest::proptest! {
     /// The chain-failure decision table over every error shape: a
     /// provider block or gate refusal stops the walk with the error
     /// intact, answered dead ends (the episode's own verdict,
-    /// NoResults, non-block upstream statuses) move to the next
-    /// alias, and everything else stays transient.
+    /// NoResults, not-found-shaped upstream statuses) move to the
+    /// next alias, and everything else — transport weather and an
+    /// upstream status that is neither a block nor absence — stays
+    /// transient.
     #[test]
     fn chain_failures_classify_by_the_decision_table(
         kind in 0u8..7,
@@ -261,10 +263,8 @@ proptest::proptest! {
         };
         let stops = error.is_provider_block() || matches!(error, AniError::GateRefused);
         let dead_end = !stops
-            && matches!(
-                error,
-                AniError::EpisodeUnavailable | AniError::NoResults | AniError::Upstream { .. }
-            );
+            && (matches!(error, AniError::EpisodeUnavailable | AniError::NoResults)
+                || matches!(error, AniError::Upstream { status } if status == 404 || status == 410));
         let ne = NativeError {
             error,
             clean_miss: false,
@@ -390,11 +390,13 @@ mod verdict_props {
     ///
     /// The expectation is stated by the rule rather than asked of the
     /// production helpers: an answered dead end — a title miss or a
-    /// not-found-shaped status — becomes the verdict, and every other
-    /// kind stays as it came. A parse failure is one of those: the
-    /// provider having changed shape is not an answer about this
-    /// episode, and the walk reads it ([`fails_over`]) as grounds to
-    /// try the next provider.
+    /// not-found-shaped status, 404 or 410 — becomes the verdict, and
+    /// every other kind stays as it came. A parse failure is one of
+    /// those: the provider having changed shape is not an answer
+    /// about this episode, and the walk reads it ([`fails_over`]) as
+    /// grounds to try the next provider. So is any other upstream
+    /// status: a 400 or 401 is the provider rejecting this request,
+    /// and told to try another episode the user would be misled.
     fn error_and_whether_the_verdict_keeps_it() -> impl Strategy<Value = (AniError, bool)> {
         prop_oneof![
             any::<()>().prop_map(|()| (AniError::Network, true)),
@@ -404,8 +406,11 @@ mod verdict_props {
                 .prop_map(|retry_after_secs| (AniError::RateLimited { retry_after_secs }, true)),
             "[a-z ]{0,24}".prop_map(|detail| (AniError::ParseFailed { detail }, true)),
             (0u16..1000).prop_map(|status| {
-                let block = status == 403 || status == 429 || status >= 500;
-                (AniError::Upstream { status }, block)
+                // Only a not-found-shaped status is an answer about
+                // the episode; a block, and a 400 or 401 rejecting
+                // this request, say nothing about it and pass through.
+                let absent = status == 404 || status == 410;
+                (AniError::Upstream { status }, !absent)
             }),
             any::<()>().prop_map(|()| (AniError::NoResults, false)),
             any::<()>().prop_map(|()| (AniError::EpisodeUnavailable, true)),
