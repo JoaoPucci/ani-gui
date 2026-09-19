@@ -251,10 +251,63 @@ impl<'a> ResolveVerdict<'a> {
     }
 }
 
+/// What a writer of an availability row reads before its network
+/// work, to measure its answer against when it comes to write: the
+/// row's refresh generation, which says whether the writer still
+/// owns the row at all ([`crate::commands::availability_refresh`]),
+/// and the positive row that stood, byte for byte, which a negative
+/// is measured against.
+///
+/// A negative is measured against the row as it stands when it is
+/// written, under the lock, not the row the walk set out from. The
+/// walk saw the row that stood when it began — the provider to
+/// start from was read from it, and the affinity rules decided what
+/// that provider's denial or silence made of the verdict. A positive
+/// row that appeared or changed while the walk was out it never saw:
+/// a resolve, a probe or a replay stamped it, none of which is a
+/// cache-bypassing refresh, so the generation guard lets the write
+/// through. Such a row proved the show playable on evidence the walk
+/// did not weigh, so it stands, and the negative is the verdict the
+/// caller sees and nothing more. Written, it would hide the stream
+/// for its whole lifetime and take the affinity with it — every walk
+/// after it starting from the primary and ending on the same miss.
+#[derive(Debug, Clone)]
+pub struct RowAtStart {
+    generation: u64,
+    positive_row: Option<String>,
+}
+
+impl RowAtStart {
+    /// The row as it stands, read before any network work. With no
+    /// Kitsu id there is no row: generation zero, nothing standing.
+    #[must_use]
+    pub fn read(state: &AppState, kitsu_id: Option<&str>, mode: &str) -> Self {
+        let generation = crate::commands::availability_refresh::generation_at_start(
+            &state.availability_refreshes,
+            kitsu_id,
+            mode,
+        );
+        let positive_row = kitsu_id
+            .filter(|s| !s.is_empty())
+            .and_then(|id| positive_row_body(state, &cache_key(id, mode)));
+        Self {
+            generation,
+            positive_row,
+        }
+    }
+
+    /// Whether a positive row stands now that is not the one read at
+    /// the start — one that appeared or changed since — so that a
+    /// negative is not written over it. Asked under the row lock.
+    fn positive_row_appeared_since(&self, state: &AppState, row: &str) -> bool {
+        let standing_now = positive_row_body(state, row);
+        standing_now.is_some() && standing_now != self.positive_row
+    }
+}
+
 /// Stamp the availability row with a native resolve's verdict,
 /// guarded against a refresh that answered while the resolve was in
-/// flight: `generation_at_start` was captured before the resolve
-/// ([`crate::commands::availability_refresh::generation_at_start`]),
+/// flight: `at_start` was read before the resolve ([`RowAtStart`]),
 /// and a write over a newer answer would disable (or falsely enable)
 /// a show the user was just told about. Every path that resolves
 /// natively — the embedded player, a download, a range, a handoff —
@@ -267,11 +320,18 @@ impl<'a> ResolveVerdict<'a> {
 /// requested episode has an English embed, so the dub row stays
 /// boolean and self-heals via the next mode-aware probe. The row
 /// takes the ongoing TTL either way, status being unknown here.
+///
+/// A clean miss is measured against the row that stands when it is
+/// written, as the probe's is: two resolves for the same show can be
+/// out at once with the same generation, and when one has failed
+/// over and stamped the fallback's success while the other was
+/// still waiting on the primary, the late miss is not written over
+/// it ([`RowAtStart`]).
 pub async fn stamp_after_native(
     state: &AppState,
     kitsu_id: Option<&str>,
     mode: &str,
-    generation_at_start: u64,
+    at_start: &RowAtStart,
     verdict: ResolveVerdict<'_>,
 ) {
     let Some(id) = kitsu_id.filter(|s| !s.is_empty()) else {
@@ -281,30 +341,35 @@ pub async fn stamp_after_native(
     crate::commands::availability_refresh::with_row_if_ours(
         &state.availability_refreshes,
         &row,
-        generation_at_start,
+        at_start.generation,
         false,
-        || match verdict.episode_cap {
-            Some(cap) if verdict.available && mode != "dub" => {
-                write_cache_full(
-                    state,
-                    id,
-                    mode,
-                    None,
-                    &AvailabilityResponse {
-                        available: true,
-                        episode_count: Some(cap),
-                        // Derived from the listing the resolve paid
-                        // for — the same tags a fractional play
-                        // matches against number2, so they outrank
-                        // whatever an older probe stored.
-                        extra_episodes: verdict.extra_tags.to_vec(),
-                        episode_count_approximate: false,
-                        gate_refused: false,
-                        provider: verdict.provider,
-                    },
-                );
+        || {
+            if !verdict.available && at_start.positive_row_appeared_since(state, &row) {
+                return;
             }
-            _ => write_cache(state, id, mode, verdict.available, verdict.provider),
+            match verdict.episode_cap {
+                Some(cap) if verdict.available && mode != "dub" => {
+                    write_cache_full(
+                        state,
+                        id,
+                        mode,
+                        None,
+                        &AvailabilityResponse {
+                            available: true,
+                            episode_count: Some(cap),
+                            // Derived from the listing the resolve paid
+                            // for — the same tags a fractional play
+                            // matches against number2, so they outrank
+                            // whatever an older probe stored.
+                            extra_episodes: verdict.extra_tags.to_vec(),
+                            episode_count_approximate: false,
+                            gate_refused: false,
+                            provider: verdict.provider,
+                        },
+                    );
+                }
+                _ => write_cache(state, id, mode, verdict.available, verdict.provider),
+            }
         },
     )
     .await;
@@ -339,7 +404,7 @@ pub async fn stamp_after_cache_hit(
     state: &AppState,
     kitsu_id: Option<&str>,
     mode: &str,
-    generation_at_start: u64,
+    at_start: &RowAtStart,
     provider: crate::scraper::provider::ProviderId,
 ) {
     let Some(id) = kitsu_id.filter(|s| !s.is_empty()) else {
@@ -349,7 +414,7 @@ pub async fn stamp_after_cache_hit(
     crate::commands::availability_refresh::with_row_if_ours(
         &state.availability_refreshes,
         &row,
-        generation_at_start,
+        at_start.generation,
         false,
         || {
             if positive_row_body(state, &row).is_none() {
@@ -516,14 +581,11 @@ pub(crate) async fn check_availability_with_base(
     anidb_base: Option<&str>,
 ) -> Result<AvailabilityResponse> {
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
-    // Captured before any network work, compared again before the
-    // write: a refresh answering in between means this lookup's row is
-    // the stale one. See `AvailabilityRefreshes`.
-    let refresh_generation_at_start = crate::commands::availability_refresh::generation_at_start(
-        &state.availability_refreshes,
-        args.kitsu_id.as_deref(),
-        mode,
-    );
+    // Read before any network work, compared again before the write:
+    // a refresh answering in between means this lookup's row is the
+    // stale one (see `AvailabilityRefreshes`), and a positive row
+    // appearing in between is one a negative is not written over.
+    let at_start = RowAtStart::read(state, args.kitsu_id.as_deref(), mode);
 
     // Cache short-circuit. Skipped when no kitsu_id is supplied.
     // Which rows may be served is [`cache_hit_is_usable`]'s call —
@@ -555,13 +617,6 @@ pub(crate) async fn check_availability_with_base(
         .as_deref()
         .filter(|s| !s.is_empty())
         .and_then(|id| cached_provider(state, id, mode));
-    // The positive row as the walk sets out, if one stands: what a
-    // negative is measured against when it comes to be written.
-    let positive_row_at_start = args
-        .kitsu_id
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|id| positive_row_body(state, &cache_key(id, mode)));
     let order = crate::commands::providers::order_with_affinity(&state.provider_order, remembered);
     let remembered = remembered.filter(|r| order.first() == Some(r));
 
@@ -664,7 +719,7 @@ pub(crate) async fn check_availability_with_base(
         let Some(_writing) = hold_if_still_ours(
             &state.availability_refreshes,
             &row,
-            refresh_generation_at_start,
+            at_start.generation,
             args.bypass_cache,
         )
         .await
@@ -679,22 +734,12 @@ pub(crate) async fn check_availability_with_base(
             });
         };
         // A negative is measured against the row as it stands now,
-        // under the lock, not the row the probe set out from. The walk
-        // saw the row that stood when it began — the provider to start
-        // from was read from it, and the affinity rules above decided
-        // what its provider's denial or silence made of the verdict.
-        // A positive row that appeared or changed while the walk was
-        // out it never saw: a resolve or a replay stamped it, which is
-        // not a cache-bypassing refresh and leaves the generation
-        // where it was, so the guard above lets this write through.
-        // Such a row proved the show playable on evidence the walk did
-        // not weigh, so it stands, and the negative is the verdict the
-        // caller sees and nothing more.
-        if !available {
-            let standing_now = positive_row_body(state, &row);
-            if standing_now.is_some() && standing_now != positive_row_at_start {
-                return Err(crate::error::AniError::NoResults);
-            }
+        // under the lock, not the row the probe set out from: a
+        // positive row that appeared or changed while the walk was
+        // out stands, and the negative is the verdict the caller sees
+        // and nothing more (see `RowAtStart`).
+        if !available && at_start.positive_row_appeared_since(state, &row) {
+            return Err(crate::error::AniError::NoResults);
         }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(

@@ -161,7 +161,7 @@ pub(super) async fn stamp_availability_after_native(
     args: &PlayArgs,
     available: bool,
     provider: Option<crate::scraper::provider::ProviderId>,
-    generation_at_start: u64,
+    at_start: &crate::commands::availability::RowAtStart,
     episode_cap: Option<u32>,
     extra_tags: &[String],
 ) {
@@ -169,7 +169,7 @@ pub(super) async fn stamp_availability_after_native(
         state,
         args.kitsu_id.as_deref(),
         args.mode.as_str(),
-        generation_at_start,
+        at_start,
         crate::commands::availability::ResolveVerdict {
             available,
             provider,
@@ -251,11 +251,11 @@ where
         args.episode_count,
         args.subtype.as_deref(),
     );
-    // Captured before any network work — the replay's liveness check
+    // Read before any network work — the replay's liveness check
     // and the resolving alike — not before the write: the answer a
     // play stamps is the one it got here, and a refresh can land any
     // time between.
-    let availability_generation = crate::commands::play_cache::generation_before_check(state, args);
+    let availability_at_start = crate::commands::play_cache::row_before_check(state, args);
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
             if let Some(resp) = try_serve_cached(state, &cached).await {
@@ -270,7 +270,7 @@ where
                     state,
                     args,
                     &cached,
-                    availability_generation,
+                    &availability_at_start,
                 )
                 .await;
                 return Ok(resp);
@@ -338,7 +338,7 @@ where
                     args,
                     false,
                     attempt.answered_by,
-                    availability_generation,
+                    &availability_at_start,
                     None,
                     &[],
                 )
@@ -362,7 +362,7 @@ where
         args,
         true,
         Some(native.provider),
-        availability_generation,
+        &availability_at_start,
         native.episode_cap,
         &native.extra_tags,
     )
@@ -546,8 +546,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("42".into()),
         };
-        let generation = crate::commands::availability_refresh::generation_at_start(
-            &state.availability_refreshes,
+        let at_start = crate::commands::availability::RowAtStart::read(
+            &state,
             args.kitsu_id.as_deref(),
             args.mode.as_str(),
         );
@@ -556,7 +556,7 @@ pub(crate) mod tests {
             &args,
             true,
             Some(crate::scraper::provider::ProviderId::Anidb),
-            generation,
+            &at_start,
             Some(1061),
             &["1061.5".to_string()],
         )
@@ -609,8 +609,8 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("42".into()),
         };
-        let generation = crate::commands::availability_refresh::generation_at_start(
-            &state.availability_refreshes,
+        let at_start = crate::commands::availability::RowAtStart::read(
+            &state,
             args.kitsu_id.as_deref(),
             args.mode.as_str(),
         );
@@ -619,7 +619,7 @@ pub(crate) mod tests {
             &args,
             true,
             Some(crate::scraper::provider::ProviderId::Anidb),
-            generation,
+            &at_start,
             Some(1061),
             &["1061.5".to_string()],
         )
@@ -1975,18 +1975,15 @@ pub(crate) mod tests {
             kitsu_id: Some("race-1".into()),
         };
         let row = crate::commands::availability::cache_key("race-1", "sub");
-        let generation = crate::commands::availability_refresh::generation_at_start(
-            &state.availability_refreshes,
-            Some("race-1"),
-            "sub",
-        );
+        let at_start =
+            crate::commands::availability::RowAtStart::read(&state, Some("race-1"), "sub");
 
         // The refresh answers first: bump + a positive write.
         state.availability_refreshes.bump(&row);
         crate::commands::availability::write_cache(&state, "race-1", "sub", true, None);
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, None, generation, None, &[]).await;
+        stamp_availability_after_native(&state, &args, false, None, &at_start, None, &[]).await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
@@ -2022,17 +2019,14 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("cap-1".into()),
         };
-        let generation = crate::commands::availability_refresh::generation_at_start(
-            &state.availability_refreshes,
-            Some("cap-1"),
-            "sub",
-        );
+        let at_start =
+            crate::commands::availability::RowAtStart::read(&state, Some("cap-1"), "sub");
         stamp_availability_after_native(
             &state,
             &args,
             true,
             Some(crate::scraper::provider::ProviderId::Anidb),
-            generation,
+            &at_start,
             Some(2),
             &[],
         )
@@ -2072,17 +2066,14 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("dub-2".into()),
         };
-        let generation = crate::commands::availability_refresh::generation_at_start(
-            &state.availability_refreshes,
-            Some("dub-2"),
-            "dub",
-        );
+        let at_start =
+            crate::commands::availability::RowAtStart::read(&state, Some("dub-2"), "dub");
         stamp_availability_after_native(
             &state,
             &args,
             true,
             Some(crate::scraper::provider::ProviderId::Hianime),
-            generation,
+            &at_start,
             Some(12),
             &[],
         )
@@ -2127,17 +2118,14 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: Some("dub-1".into()),
         };
-        let generation = crate::commands::availability_refresh::generation_at_start(
-            &state.availability_refreshes,
-            Some("dub-1"),
-            "dub",
-        );
+        let at_start =
+            crate::commands::availability::RowAtStart::read(&state, Some("dub-1"), "dub");
         stamp_availability_after_native(
             &state,
             &args,
             true,
             Some(crate::scraper::provider::ProviderId::Anidb),
-            generation,
+            &at_start,
             Some(12),
             &[],
         )

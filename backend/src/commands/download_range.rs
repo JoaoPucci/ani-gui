@@ -109,11 +109,8 @@ where
         .kitsu_id
         .as_deref()
         .and_then(|id| super::availability::cached_provider(state, id, &args.mode));
-    let generation = super::availability_refresh::generation_at_start(
-        &state.availability_refreshes,
-        args.kitsu_id.as_deref(),
-        &args.mode,
-    );
+    let at_start =
+        super::availability::RowAtStart::read(state, args.kitsu_id.as_deref(), &args.mode);
     let mut attempt = RangeStartAttempt {
         args,
         first,
@@ -128,7 +125,7 @@ where
                     state,
                     args.kitsu_id.as_deref(),
                     &args.mode,
-                    generation,
+                    &at_start,
                     super::availability::ResolveVerdict::missed(attempt.answered_by),
                 )
                 .await;
@@ -145,7 +142,7 @@ where
         state,
         args.kitsu_id.as_deref(),
         &args.mode,
-        generation,
+        &at_start,
         super::availability::ResolveVerdict::served(
             attempted.provider,
             super::play_native_numbering::kitsu_episode_cap(&picked.episodes),

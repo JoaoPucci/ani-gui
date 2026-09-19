@@ -222,11 +222,11 @@ where
         .kitsu_id
         .as_deref()
         .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
-    // Captured before the resolve, as the play path does: the verdict
+    // Read before the resolve, as the play path does: the verdict
     // stamped is the one this resolve got, and a refresh can land any
     // time between.
-    let generation = crate::commands::availability_refresh::generation_at_start(
-        &state.availability_refreshes,
+    let at_start = crate::commands::availability::RowAtStart::read(
+        state,
         args.kitsu_id.as_deref(),
         &args.mode,
     );
@@ -246,7 +246,7 @@ where
                     state,
                     args.kitsu_id.as_deref(),
                     &args.mode,
-                    generation,
+                    &at_start,
                     crate::commands::availability::ResolveVerdict::served(
                         attempted.provider,
                         attempted.value.episode_cap,
@@ -262,7 +262,7 @@ where
                         state,
                         args.kitsu_id.as_deref(),
                         &args.mode,
-                        generation,
+                        &at_start,
                         crate::commands::availability::ResolveVerdict::missed(attempt.answered_by),
                     )
                     .await;
