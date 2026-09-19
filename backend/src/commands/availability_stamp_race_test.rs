@@ -402,3 +402,67 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set
     assert_eq!(row.provider, Some(ProviderId::Hianime));
     assert_eq!(row.episode_count, Some(24));
 }
+
+/// The other half of the replay's rule: a positive row that has run
+/// out is not a standing one. The resolution cache outlives the
+/// availability row, and a replay served after the row's lifetime
+/// writes the count-less positive row a served resolve without a
+/// cap writes — the affinity the next walk starts from, and a row
+/// the next look at the show reprobes for its cap.
+#[tokio::test]
+async fn a_replay_past_the_rows_lifetime_writes_the_providers_positive_row_again() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    seed_standing_row(&state, ProviderId::Hianime, 24);
+    age_row(
+        &state,
+        i64::try_from(AVAILABILITY_TTL_ONGOING_SECS).expect("fits") + 1,
+    );
+    assert!(
+        meta_cache_get(&state.cache_pool, &cache_key(ID, MODE))
+            .expect("the cache reads")
+            .is_none(),
+        "the seeded row has run out"
+    );
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+
+    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Hianime).await;
+
+    let row = row_now(&state);
+    assert!(row.available);
+    assert_eq!(
+        row.provider,
+        Some(ProviderId::Hianime),
+        "the affinity is written again"
+    );
+    assert_eq!(
+        row.episode_count, None,
+        "count-less: the replay learned nothing about the listing"
+    );
+}
+
+/// The other half of the miss's rule: measured against the very row
+/// it set out from, a clean miss writes. The walk read that row's
+/// provider and asked it first, set its miss aside and asked the
+/// rest, so the negative weighed everything the row said; nothing
+/// newer stands in its way.
+#[tokio::test]
+async fn a_native_miss_over_the_row_it_set_out_from_writes_the_negative() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    seed_standing_row(&state, ProviderId::Hianime, 24);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::missed(Some(ProviderId::Hianime)),
+    )
+    .await;
+
+    let row = row_now(&state);
+    assert!(!row.available, "the miss is written: {row:?}");
+    assert_eq!(row.provider, Some(ProviderId::Hianime));
+}
