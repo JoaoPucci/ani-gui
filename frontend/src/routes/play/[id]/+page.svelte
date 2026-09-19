@@ -72,6 +72,7 @@
 	import { accentFor } from '$lib/design/accent';
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
+	import { handoffArgs } from '$lib/play/handoff-args';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
@@ -2185,20 +2186,9 @@
 		// regardless; if the external player fails to start the user
 		// can press space (or click the embedded player) to resume.
 		videoEl?.pause();
-		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config.quality ?? 'best';
 		externalBusy = true;
 		try {
-			await playExternal({
-				title,
-				episode: String(episodeNum),
-				mode,
-				quality,
-				episode_count: detail?.episode_count ?? null,
-				year: yearFromKitsuRef(detail),
-				subtype: detail?.subtype ?? null,
-				alt_titles: altTitlesFromKitsu(detail)
-			});
+			await playExternal(handoffArgs({ title, episode: episodeNum, kitsuId: id, config, detail }));
 			// Success surfaces as a bottom-right toast (4s auto-
 			// dismiss owned by the toast store). The shape comes
 			// from externalLaunchSuccessToast so the message text
@@ -2241,20 +2231,9 @@
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
 		videoEl?.pause();
-		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config.quality ?? 'best';
 		syncplayBusy = true;
 		try {
-			await playSyncplay({
-				title,
-				episode: String(episodeNum),
-				mode,
-				quality,
-				episode_count: detail?.episode_count ?? null,
-				year: yearFromKitsuRef(detail),
-				subtype: detail?.subtype ?? null,
-				alt_titles: altTitlesFromKitsu(detail)
-			});
+			await playSyncplay(handoffArgs({ title, episode: episodeNum, kitsuId: id, config, detail }));
 			toastStore.push(
 				syncplayLaunchSuccessToast({ episode: episodeNum, isSingleVideo: singleVideo })
 			);

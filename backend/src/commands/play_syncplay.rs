@@ -46,22 +46,29 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
     // quality, episode) tuple. The cached referer rides along so
     // Syncplay's wrapped player gets the same flags it would have
     // under play_external.
-    if let Some(launch) = try_launch_args_from_cache(state, args, &cfg).await {
-        return open_syncplay(&syncplay_launch_for(
+    if let Some((launch, watch)) = try_launch_args_from_cache(state, args, &cfg).await {
+        open_syncplay(&syncplay_launch_for(
             launch,
             cfg.syncplay_binary,
             player_kind,
             cfg.external_player,
-        ));
+        ))?;
+        crate::commands::play_native_record::record_watch(state, &watch, args.kitsu_id.as_deref())
+            .await;
+        return Ok(());
     }
 
-    let launch = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
+    let (launch, watch) = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
     open_syncplay(&syncplay_launch_for(
         launch,
         cfg.syncplay_binary,
         player_kind,
         cfg.external_player,
-    ))
+    ))?;
+    // The spawn is the watch: recorded once Syncplay has started.
+    crate::commands::play_native_record::record_watch(state, &watch, args.kitsu_id.as_deref())
+        .await;
+    Ok(())
 }
 
 /// A launch projected onto Syncplay's arguments: the stream, the
