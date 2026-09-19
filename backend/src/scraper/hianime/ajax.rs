@@ -498,26 +498,319 @@ pub fn parse_servers(json: &str) -> Result<Vec<ServerEmbed>> {
     parse_server_listing(json).map(|listing| listing.servers)
 }
 
-/// The embed hosts whose pages carry the payload the client reads —
-/// the `window.__P` blob. The site names its servers by slot and
-/// moves the slots between hosts; a name is not a shape.
-const READABLE_HOSTS: &[&str] = &["zokoanime.video"];
+/// The embed hosts whose pages the client reads — zokoanime's carry
+/// the `window.__P` blob, megaplay's the media id the site's sources
+/// endpoint is keyed on. The site names its servers by slot and
+/// moves the slots between hosts; a name is not a shape, and the
+/// page is read by its shape whatever the host — this list only
+/// orders the servers the client expects to read ahead of the rest.
+/// Megaplay's numbered mirrors are read too ([`readable_host`]).
+const READABLE_HOSTS: &[&str] = &["zokoanime.video", "megaplay.buzz"];
+
+/// Whether `host` is one whose page the client reads: a host in
+/// [`READABLE_HOSTS`], or one of the numbered mirrors the site
+/// serves megaplay's player from ([`megaplay_host`]).
+#[must_use]
+pub fn readable_host(host: &str) -> bool {
+    READABLE_HOSTS.contains(&host) || megaplay_host(host)
+}
+
+/// Whether `host` serves megaplay's player: its own host, or one of
+/// the numbered mirrors — `megaplay-` then digits then `.buzz`,
+/// nothing more on either side — whose pages the client reads by the
+/// same shape and whose sources endpoint sits on the mirror's own
+/// origin.
+#[must_use]
+pub fn megaplay_host(host: &str) -> bool {
+    host == "megaplay.buzz"
+        || host
+            .strip_prefix("megaplay-")
+            .and_then(|rest| rest.strip_suffix(".buzz"))
+            .is_some_and(|number| !number.is_empty() && number.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// Whether `embed_url` is on a host that serves megaplay's player
+/// ([`megaplay_host`]) — the servers the walk tries first.
+#[must_use]
+pub fn megaplay_embed(embed_url: &str) -> bool {
+    url::Url::parse(embed_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .is_some_and(|h| megaplay_host(&h))
+}
 
 /// Whether `embed_url` is on a host whose page the client can read.
+/// The rest of the URL says nothing about that: megaplay's names the
+/// content delivery network the site's own player would ask for, and
+/// the client asks for the one it plays whatever the listing named
+/// ([`megaplay::sources_url`]).
 #[must_use]
 pub fn readable(embed_url: &str) -> bool {
     url::Url::parse(embed_url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))
-        .is_some_and(|h| READABLE_HOSTS.contains(&h.as_str()))
+        .is_some_and(|h| readable_host(&h))
 }
 
-/// The servers to try for `mode`, in order: every server of that
-/// mode, the ones on a host the client can read first, the site's
-/// own order kept within each half. Empty when the mode has none.
+/// The servers to try for `mode`, in order: that mode's servers, one
+/// attempt per request, the ones on a host the client can read
+/// first — megaplay's ahead of zokoanime's, since megaplay's
+/// delivery network has carried the top rendition at real time where
+/// zokoanime's has crawled or been down — the site's own order kept
+/// within each group, then the rest in the site's order. Empty when
+/// the mode has none.
+///
+/// One attempt per request: the site lists a megaplay row per
+/// delivery network, the rows differing only in their query, and the
+/// client asks every megaplay page for the one network it plays
+/// ([`super::megaplay::sources_url`]), so a later megaplay row naming
+/// the page an earlier row named is the same request twice — and,
+/// tried twice ahead of the remainder's server, it would split the
+/// window between two attempts that can only give one answer. On
+/// every other host the embed request carries the query as listed
+/// and a query can name a different server, so there only a row
+/// with the whole URL of an earlier one is the same request. The
+/// first row in the site's order is kept ([`request_of`]).
 #[must_use]
 pub fn servers_for<'a>(servers: &'a [ServerEmbed], mode: &str) -> Vec<&'a ServerEmbed> {
-    let of_mode = servers.iter().filter(|s| s.mode == mode);
-    let (readable_hosts, rest): (Vec<_>, Vec<_>) = of_mode.partition(|s| readable(&s.embed_url));
+    let mut asked: Vec<&str> = Vec::new();
+    let of_mode = servers.iter().filter(|s| s.mode == mode).filter(|s| {
+        let request = request_of(&s.embed_url);
+        if asked.contains(&request) {
+            false
+        } else {
+            asked.push(request);
+            true
+        }
+    });
+    let (mut readable_hosts, rest): (Vec<_>, Vec<_>) =
+        of_mode.partition(|s| readable(&s.embed_url));
+    // Stable, so the site's order stands within each group.
+    readable_hosts.sort_by_key(|s| !megaplay_embed(&s.embed_url));
     readable_hosts.into_iter().chain(rest).collect()
+}
+
+/// What a listed row asks for, as far as two rows can ask the same:
+/// on megaplay's hosts the page alone — origin and path — since the
+/// query names a network the client does not ask for; on any other
+/// host the whole URL, query included, since it is sent as listed.
+fn request_of(embed_url: &str) -> &str {
+    if megaplay_embed(embed_url) {
+        embed_url.split(['?', '#']).next().unwrap_or(embed_url)
+    } else {
+        embed_url
+    }
+}
+
+/// The position of the server that runs on the walk's remaining
+/// budget: the last on a host the client names as one it reads, when
+/// the listing has one — the hosts trailing it are stepped over
+/// unread, so nothing after it needs time held back — and otherwise
+/// the listing's last server, since a page is read by its shape from
+/// any host and which one reads cannot be known before the fetch.
+/// None only for an empty listing. A server on an unnamed host ahead
+/// of that position keeps the per-server bound even when its page
+/// would read: the accepted limit, so that a trailing host the
+/// client never read takes no time from a named one.
+#[must_use]
+pub fn remainder_index(ordered: &[&ServerEmbed]) -> Option<usize> {
+    ordered
+        .iter()
+        .rposition(|s| readable(&s.embed_url))
+        .or_else(|| ordered.len().checked_sub(1))
+}
+
+/// How many requests the longest of a server's chains makes: on
+/// megaplay's hosts the embed page, the sources answer, the master
+/// playlist and the chosen rendition — four, each waiting on the one
+/// before it. zokoanime's is three, its page carrying what megaplay
+/// asks the sources endpoint for. Every server's window is sized for
+/// the longest, and so is the reserve: a window is decided from the
+/// listing's URL before the page is fetched, and the listing's URL
+/// does not say which chain will run — the site moves its pages
+/// between hosts with a redirect, and a zokoanime URL can land on a
+/// megaplay page. Sized by the listed host, that chain would be a
+/// request short.
+pub const CHAIN_REQUESTS: u32 = 4;
+
+/// What [`chain_reserve`] allows one request of that chain, written
+/// as a fraction of the per-server bound: five twelfths of it, two
+/// and a half seconds against the six-second bound. A CDN under load
+/// answers a playlist in a couple of seconds and the transport gives
+/// up on any one request at ten, so an allowance in that range is
+/// what separates a chain that is merely slow from a host that has
+/// stopped answering. It is a fraction of the bound rather than a
+/// figure of its own so that the seam which shortens the bound to
+/// milliseconds for the stalled-host tests shortens the reserve with
+/// it, and the reserve cannot drift away from the bound it is carved
+/// out beside.
+const REQUEST_ALLOWANCE_NUMERATOR: u32 = 5;
+const REQUEST_ALLOWANCE_DENOMINATOR: u32 = 12;
+
+/// What a chain of `requests` requests is worth at the allowance
+/// above, carved from the base `bound`. Every bounded server's window
+/// and the reserve alike are the longest chain's worth
+/// ([`chain_reserve`]) — ten seconds against the six-second base, of
+/// a provider attempt's twenty.
+#[must_use]
+pub fn chain_worth(bound: std::time::Duration, requests: u32) -> std::time::Duration {
+    bound * requests * REQUEST_ALLOWANCE_NUMERATOR / REQUEST_ALLOWANCE_DENOMINATOR
+}
+
+/// The longest chain's worth: [`CHAIN_REQUESTS`] requests at the
+/// allowance above ([`chain_worth`]) — ten seconds against the
+/// six-second base, of a provider attempt's twenty. The window every
+/// bounded server is given, and the time held back from them for
+/// the one that runs on the attempt's remainder.
+///
+/// A whole chain rather than one bound, which is what a bound is
+/// worth only while each of the chain's four requests answers inside
+/// a quarter of it: a host answering in a second and a half apiece
+/// is healthy by the transport's reckoning and slower than the bound
+/// by the walk's, and a reserve of one bound leaves that chain to be
+/// cancelled with the attempt while every request it made was
+/// answered. Reserving the chain's length is what makes the last
+/// server's time a property of the work it has to do rather than of
+/// the bound that exists to cut other servers short.
+#[must_use]
+pub fn chain_reserve(bound: std::time::Duration) -> std::time::Duration {
+    chain_worth(bound, CHAIN_REQUESTS)
+}
+
+/// The windows a walk gives the servers it bounds, worked out where
+/// the walk begins.
+///
+/// A bounded server's cap is the wider of two windows, and never
+/// wider than the per-server bound — the longest chain's worth
+/// ([`chain_reserve`]) — nor than what the attempt has left when the
+/// walk asks. One is its share of what remains once
+/// the reserve — one chain's worth, for the server that runs on the
+/// remainder ([`chain_reserve`]) — is held back, split evenly among
+/// the bounded servers still to run before that one, this one
+/// included. The other is the floor: the window such a share has
+/// where what remains is the reserve exactly, that reserve split
+/// evenly among the servers ahead and the remainder's alike. With
+/// no remainder known the cap is the bound; with no server ahead of
+/// the remainder's (that server already behind) the cap is what
+/// remains, under the bound, with nothing held back.
+///
+/// The reserve gives way before a share does, and by as much as it
+/// has to. What the walk has left is the attempt less the search,
+/// the candidate and the listings, and a slow site can leave it the
+/// reserve and nothing over — or the reserve and a millisecond.
+/// Held back whole wherever there is anything at all over it, the
+/// reserve is the whole remainder in the first case and all but a
+/// millisecond of it in the second, and a server ahead is capped at
+/// nothing or at the millisecond: a chain of four sequential
+/// requests, stepped over or cut off a millisecond in, while the
+/// attempt still has time to spend and the server the time was
+/// saved for may be the dead one. Worse, the second window is the
+/// narrower of the two — a better attempt buying a healthy server
+/// less — and a rule with a step down in it fails on the runs that
+/// were going well, which is the failure nobody thinks to look for.
+///
+/// So the share a server ahead keeps never falls below the floor.
+/// Below the reserve that even split is the whole rule. In the band
+/// above it the split still governs and the reserve shrinks to fund
+/// it, by the little the servers ahead are owed and no more. From
+/// `reserve · (2·ahead + 1) / (ahead + 1)` upward the share of what
+/// is over has grown back to that window and governs alone: the
+/// reserve is held back whole again, and nothing of it is ever
+/// spent to widen a share past what the remainder itself affords.
+///
+/// The floor is the walk's, and is settled once: what the attempt
+/// has left and how many servers are still ahead are read afresh
+/// before each server — so a server that answered early leaves what
+/// it did not spend to the ones after it — but what those shares
+/// may not fall below is not. Read afresh it would climb, since the
+/// reserve is split with one fewer server each time: the same
+/// reserve over one server and the remainder's is half of it where
+/// over two and the remainder's it was a third. The second of two
+/// stalled servers would then be handed a wider window than the
+/// first had out of an attempt with less left in it, and the pair
+/// would spend between them a reserve the attempt had set aside and
+/// could afford, cancelling a chain that was answering. Settled at
+/// the first server, the floor is one the walk funded there, and
+/// what the servers ahead take between them leaves the remainder's
+/// server the reserve whole wherever the attempt could fund both.
+#[derive(Clone, Copy, Debug)]
+pub struct ServerCaps {
+    reserve: std::time::Duration,
+    floor: std::time::Duration,
+}
+
+impl ServerCaps {
+    /// The windows for a walk about to ask its first server: the
+    /// `reserve` held back for the server that runs on the attempt's
+    /// remainder — that server's chain's worth — what the attempt has
+    /// left where the walk begins (`None` for a client running
+    /// outside an attempt, which keeps each server's bound) and how
+    /// many bounded servers run `ahead` of the remainder's there.
+    #[must_use]
+    pub fn for_walk(
+        reserve: std::time::Duration,
+        remaining: Option<std::time::Duration>,
+        ahead: usize,
+    ) -> Self {
+        let ahead = u32::try_from(ahead).unwrap_or(u32::MAX);
+        let floor = remaining.map_or(std::time::Duration::ZERO, |remaining| {
+            remaining.min(reserve) / ahead.saturating_add(1)
+        });
+        Self { reserve, floor }
+    }
+
+    /// One bounded server's cap, given the per-server `bound`, what
+    /// the attempt has left where the walk asks for it and how many
+    /// bounded servers are still to run before the remainder's, this
+    /// one included.
+    #[must_use]
+    pub fn cap(
+        &self,
+        bound: std::time::Duration,
+        remaining: Option<std::time::Duration>,
+        ahead: usize,
+    ) -> std::time::Duration {
+        let Some(remaining) = remaining else {
+            return bound;
+        };
+        let ahead = u32::try_from(ahead).unwrap_or(u32::MAX);
+        if ahead == 0 {
+            return bound.min(remaining);
+        }
+        let after_reserve = remaining.saturating_sub(self.reserve) / ahead;
+        bound.min(remaining).min(after_reserve.max(self.floor))
+    }
+
+    /// The first bounded server's cap — the server the walk prefers,
+    /// asked before any other: what the attempt holds over the
+    /// reserve less the floor owed to each of the `ahead - 1` servers
+    /// after it, up to its `bound` and to what the attempt has, and
+    /// never narrower than its share ([`Self::cap`]) would be. The
+    /// floors stay funded out of the surplus, so the reserve is not
+    /// spent for them; the servers after it share what it leaves.
+    ///
+    /// The share splits the surplus evenly among the servers ahead,
+    /// so two distinct megaplay pages ahead of a zokoanime server
+    /// would halve the preferred server's window and cut off a
+    /// loaded chain the attempt could fund whole, with the servers
+    /// behind it asked in its place.
+    #[must_use]
+    pub fn first_cap(
+        &self,
+        bound: std::time::Duration,
+        remaining: Option<std::time::Duration>,
+        ahead: usize,
+    ) -> std::time::Duration {
+        let share = self.cap(bound, remaining, ahead);
+        let Some(remaining) = remaining else {
+            return share;
+        };
+        let ahead = u32::try_from(ahead).unwrap_or(u32::MAX);
+        if ahead <= 1 {
+            return share;
+        }
+        let owed = self.floor * (ahead - 1);
+        let own = remaining.saturating_sub(self.reserve).saturating_sub(owed);
+        bound.min(remaining).min(own).max(share)
+    }
 }

@@ -1380,11 +1380,15 @@ proptest::proptest! {
     }
 
     /// Whatever the site names its servers, the ones to try for a mode
-    /// are exactly that mode's servers — every one of them, once — with
-    /// the hosts the client can read ahead of the rest and the site's
-    /// order kept within each half.
+    /// are that mode's servers, one attempt per request — on
+    /// megaplay's hosts a later row naming the page an earlier row
+    /// named, whatever its query, is the same request and is dropped,
+    /// and on every other host only a later row with the whole URL
+    /// of an earlier one is — with the hosts the client can read
+    /// ahead of the rest, megaplay's ahead of zokoanime's among
+    /// those, and the site's order kept within each group.
     #[test]
-    fn servers_for_a_mode_are_its_servers_readable_hosts_first(
+    fn servers_for_a_mode_are_its_requests_once_megaplay_then_zokoanime_then_the_rest(
         servers in proptest::collection::vec(
             (
                 proptest::sample::select(vec!["sub", "dub"]),
@@ -1392,33 +1396,74 @@ proptest::proptest! {
                 proptest::sample::select(vec![
                     "https://zokoanime.video/stream/mal/1/1/sub",
                     "https://megaplay.buzz/stream/s-2/1/sub",
+                    "https://megaplay-1.buzz/stream/s-2/1/sub",
                     "https://vidtube.site/stream/abc/sub",
                 ]),
+                proptest::sample::select(vec!["", "?s=tcdn", "?s=bcdn"]),
             )
-                .prop_map(|(mode, name, url)| ServerEmbed {
+                .prop_map(|(mode, name, url, query)| ServerEmbed {
                     mode: mode.to_string(),
                     name,
-                    embed_url: url.to_string(),
+                    embed_url: format!("{url}{query}"),
                 }),
             0..8,
         ),
         mode in proptest::sample::select(vec!["sub", "dub"]),
     ) {
         let picked = servers_for(&servers, mode);
-        let expected: Vec<&ServerEmbed> = servers.iter().filter(|s| s.mode == mode).collect();
-        prop_assert_eq!(picked.len(), expected.len());
+        let request = |s: &ServerEmbed| {
+            let megaplay = s.embed_url.starts_with("https://megaplay.buzz/")
+                || s.embed_url.starts_with("https://megaplay-1.buzz/");
+            if megaplay {
+                s.embed_url.split('?').next().unwrap_or_default().to_string()
+            } else {
+                s.embed_url.clone()
+            }
+        };
+        let mut seen: Vec<String> = Vec::new();
+        let expected: Vec<&ServerEmbed> = servers
+            .iter()
+            .filter(|s| s.mode == mode)
+            .filter(|s| {
+                let r = request(s);
+                if seen.contains(&r) {
+                    false
+                } else {
+                    seen.push(r);
+                    true
+                }
+            })
+            .collect();
+        prop_assert_eq!(picked.len(), expected.len(), "one attempt per request: {:?}", picked);
         for s in &expected {
             prop_assert!(picked.iter().any(|p| std::ptr::eq(*p, *s)));
         }
-        let readable = |s: &ServerEmbed| s.embed_url.starts_with("https://zokoanime.video/");
+        let readable = |s: &ServerEmbed| {
+            s.embed_url.starts_with("https://zokoanime.video/")
+                || s.embed_url.starts_with("https://megaplay.buzz/")
+                || s.embed_url.starts_with("https://megaplay-1.buzz/")
+        };
         let first_unreadable = picked.iter().position(|s| !readable(s));
         let last_readable = picked.iter().rposition(|s| readable(s));
         if let (Some(u), Some(r)) = (first_unreadable, last_readable) {
             prop_assert!(r < u, "readable hosts lead: {picked:?}");
         }
+        let megaplay = |s: &ServerEmbed| {
+            s.embed_url.starts_with("https://megaplay.buzz/")
+                || s.embed_url.starts_with("https://megaplay-1.buzz/")
+        };
         let readable_order: Vec<&ServerEmbed> = picked.iter().copied().filter(|s| readable(s)).collect();
-        let readable_site_order: Vec<&ServerEmbed> = expected.iter().copied().filter(|s| readable(s)).collect();
-        prop_assert!(readable_order.iter().zip(&readable_site_order).all(|(a, b)| std::ptr::eq(*a, *b)));
+        let readable_expected: Vec<&ServerEmbed> = expected
+            .iter()
+            .copied()
+            .filter(|s| megaplay(s))
+            .chain(expected.iter().copied().filter(|s| readable(s) && !megaplay(s)))
+            .collect();
+        prop_assert_eq!(readable_order.len(), readable_expected.len());
+        prop_assert!(
+            readable_order.iter().zip(&readable_expected).all(|(a, b)| std::ptr::eq(*a, *b)),
+            "megaplay's servers in site order, then zokoanime's in site order: {picked:?}"
+        );
     }
 }
 
@@ -1508,5 +1553,428 @@ proptest::proptest! {
         .map(str::to_string)
         .collect();
         prop_assert_eq!(found, expected, "{}", html);
+    }
+}
+
+// ── the last server the walk can use ────────────────────────────────
+
+proptest! {
+    /// The remainder of the walk's budget belongs to the last server
+    /// on a host the client names as one it reads, wherever unnamed
+    /// hosts sit in the listing; when no listed host is named, to the
+    /// listing's last server, since a page's shape can be read from
+    /// any host and which one cannot be known before the fetch. The
+    /// helper names that position, and none for an empty listing.
+    #[test]
+    fn the_remainder_goes_to_the_last_named_server_else_the_last_listed(
+        hosts in proptest::collection::vec(
+            prop_oneof![
+                Just("zokoanime.video".to_string()),
+                Just("megaplay.buzz".to_string()),
+                "megaplay-[0-9]{1,3}\\.buzz",
+                "[a-z]{3,10}\\.(buzz|site|video|net)",
+            ],
+            0..6,
+        ),
+    ) {
+        let servers: Vec<ServerEmbed> = hosts
+            .iter()
+            .enumerate()
+            .map(|(i, host)| ServerEmbed {
+                mode: "sub".into(),
+                name: format!("S{i}"),
+                embed_url: format!("https://{host}/stream/{i}"),
+            })
+            .collect();
+        let refs: Vec<&ServerEmbed> = servers.iter().collect();
+        let expected = refs
+            .iter()
+            .rposition(|s| ajax::readable(&s.embed_url))
+            .or_else(|| refs.len().checked_sub(1));
+        prop_assert_eq!(ajax::remainder_index(&refs), expected);
+    }
+}
+
+// ── a bounded server's share of the attempt's remainder ─────────────
+
+proptest! {
+    /// Told what the attempt had left where the walk began and how
+    /// many servers ran ahead of the remainder's there, a walk caps
+    /// a bounded server at the larger of two windows, and never at
+    /// more than the fixed bound or than what the attempt has left
+    /// when it asks: the server's share of what remains once one
+    /// chain's worth — the reserve — is held back for the last
+    /// server, and the floor the walk set out with, which is the
+    /// window a server ahead has where what remains is the reserve
+    /// exactly, that reserve split evenly among the servers ahead
+    /// and the last alike. With no remainder known, the fixed bound;
+    /// with no server ahead of the last (the last already behind),
+    /// the remainder itself under the bound, nothing held back.
+    ///
+    /// The reserve gives way before a share does, and by as much as
+    /// it has to. Below the reserve there is nothing left over to
+    /// hold back and the even split is the whole rule, so every
+    /// server ahead has a window to spend. Just above it the split
+    /// still governs: the share of what is over is a sliver there,
+    /// and a server capped at a sliver is a healthy chain cut off
+    /// mid-request while the last server — which may be the dead one
+    /// — takes the rest. So the reserve shrinks in that band rather
+    /// than the share. From reserve·(2·ahead+1)/(ahead+1) upward the
+    /// share of what is over has grown to that same window and
+    /// governs alone, and the reserve is whole again: what the
+    /// bounded servers spend between them never reaches into it.
+    ///
+    /// The floor is the walk's for the whole walk. Worked out again
+    /// against what a later server finds — less of the attempt, and
+    /// fewer servers to split the reserve with — it climbs, and a
+    /// server that runs later is handed a wider window than the one
+    /// before it had out of more. The share is what is read afresh,
+    /// so a server that finished early leaves what it did not spend
+    /// to the servers after it.
+    #[test]
+    fn a_bounded_servers_cap_is_its_share_of_the_remainder_after_the_reserve(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        start_ms in proptest::option::of(0u64..60_000),
+        ahead_at_start in 0usize..8,
+        spent_ms in 0u64..60_000,
+        run_down in 0usize..8,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let caps = ajax::ServerCaps::for_walk(ms(reserve_ms), start_ms.map(ms), ahead_at_start);
+        // Where the walk stands at one of its servers: never more of
+        // the attempt left than it set out with, never more servers
+        // ahead of the remainder's than it counted there.
+        let ahead = ahead_at_start.saturating_sub(run_down);
+        let remaining_ms = start_ms.map(|s| s.saturating_sub(spent_ms));
+        let cap = caps.cap(ms(bound_ms), remaining_ms.map(ms), ahead);
+        prop_assert!(cap <= ms(bound_ms));
+        match remaining_ms {
+            None => prop_assert_eq!(cap, ms(bound_ms)),
+            Some(r) if ahead == 0 => prop_assert_eq!(cap, ms(bound_ms).min(ms(r))),
+            Some(r) => {
+                let ahead32 = u32::try_from(ahead).unwrap();
+                let counted = u32::try_from(ahead_at_start).unwrap();
+                let started_with = ms(start_ms.expect("a walk told a remainder began with one"));
+                let floor = started_with.min(ms(reserve_ms)) / (counted + 1);
+                let free = r.saturating_sub(reserve_ms);
+                let after_reserve = ms(free) / ahead32;
+                prop_assert_eq!(cap, ms(bound_ms).min(ms(r)).min(after_reserve.max(floor)));
+                prop_assert!(cap <= ms(r), "{cap:?} of the {r}ms the attempt has");
+                if r > 0 {
+                    prop_assert!(
+                        !cap.is_zero(),
+                        "a server ahead of the remainder's was capped at nothing \
+                         with {r}ms of the attempt left"
+                    );
+                }
+                // Never narrower than the walk's floor, whatever is
+                // over the reserve when this server is asked.
+                prop_assert!(
+                    cap >= ms(bound_ms).min(ms(r)).min(floor),
+                    "{cap:?} is narrower than the {floor:?} the walk set out with"
+                );
+                if free >= bound_ms * ahead as u64 {
+                    prop_assert_eq!(cap, ms(bound_ms));
+                }
+                let spent = cap * ahead32;
+                if after_reserve >= floor {
+                    // Above the band: what the bounded servers can
+                    // spend between them never reaches into the
+                    // reserve, so the server that runs on the
+                    // remainder still finds the reserve there
+                    // whenever the remainder held it in the first
+                    // place.
+                    prop_assert!(spent <= ms(free), "{spent:?} of {free}ms");
+                    if r >= reserve_ms {
+                        prop_assert!(
+                            ms(r) - spent >= ms(reserve_ms),
+                            "the last server was left {:?} of a {reserve_ms}ms reserve",
+                            ms(r) - spent,
+                        );
+                    }
+                } else if ms(r) >= floor * (ahead32 + 1) {
+                    // In the band, and below it: the reserve is what
+                    // gives way, and the remainder's server is still
+                    // left no less than any one server ahead of it —
+                    // which the floor affords for as long as the
+                    // attempt still holds a window for each server
+                    // ahead and one for the remainder's. A walk
+                    // never asks below that: it funded the floor out
+                    // of what it had at its first server, and the
+                    // windows it hands out cannot spend past it (the
+                    // walk-long property below).
+                    prop_assert!(spent <= ms(r) - cap, "{spent:?} of {r}ms");
+                }
+            }
+        }
+    }
+}
+
+proptest! {
+    /// The first bounded server's window is what the attempt holds
+    /// over the reserve less the floor owed to each server after it,
+    /// up to its bound and to what the attempt has: never narrower
+    /// than its share would be, never so wide that a server after it
+    /// is left less than its floor over the reserve, and the bound
+    /// itself outside an attempt.
+    #[test]
+    fn the_first_bounded_servers_window_leaves_the_others_their_floors(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        start_ms in 0u64..60_000,
+        ahead in 1usize..8,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let caps = ajax::ServerCaps::for_walk(ms(reserve_ms), Some(ms(start_ms)), ahead);
+        let first = caps.first_cap(ms(bound_ms), Some(ms(start_ms)), ahead);
+        let share = caps.cap(ms(bound_ms), Some(ms(start_ms)), ahead);
+        let ahead32 = u32::try_from(ahead).unwrap();
+        let floor = ms(start_ms).min(ms(reserve_ms)) / (ahead32 + 1);
+        prop_assert!(first <= ms(bound_ms));
+        prop_assert!(first <= ms(start_ms));
+        prop_assert!(first >= share, "{:?} narrower than the share {:?}", first, share);
+        let over = ms(start_ms).saturating_sub(ms(reserve_ms));
+        let owed = floor * (ahead32 - 1);
+        if over >= owed + floor {
+            prop_assert!(
+                over - first >= owed,
+                "{:?} of {:?} over the reserve leaves the {} servers after it less than their {:?} floors",
+                first, over, ahead - 1, floor
+            );
+        }
+        prop_assert_eq!(caps.first_cap(ms(bound_ms), None, ahead), ms(bound_ms));
+    }
+
+    /// And a cap only ever widens as the attempt gains time. The
+    /// walk reads what is left afresh before each bounded server,
+    /// and a remainder that is larger must never buy a server a
+    /// narrower window: a rule with a step down in it cuts a healthy
+    /// chain short on the attempts that were going better, which is
+    /// the failure nobody thinks to look for. Holding the reserve
+    /// back whole from the first moment over it had exactly that
+    /// step — a server ahead capped at half the reserve with the
+    /// reserve left, and at a millisecond with the reserve and a
+    /// millisecond.
+    #[test]
+    fn a_bounded_servers_cap_never_narrows_as_the_attempt_gains_time(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        start_ms in 0u64..60_000,
+        remaining_ms in 0u64..60_000,
+        gained_ms in 0u64..60_000,
+        ahead in 0usize..8,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let caps = ajax::ServerCaps::for_walk(ms(reserve_ms), Some(ms(start_ms)), ahead);
+        let cap = |r: u64| caps.cap(ms(bound_ms), Some(ms(r)), ahead);
+        let less = cap(remaining_ms);
+        let more = cap(remaining_ms + gained_ms);
+        prop_assert!(
+            more >= less,
+            "{gained_ms}ms more of the attempt cut a server's cap from {less:?} to {more:?}"
+        );
+    }
+}
+
+proptest! {
+    /// And the floor, being the walk's, is one the walk can afford
+    /// all the way down its servers. Every window it hands out
+    /// leaves the server that runs on the remainder either the
+    /// reserve entire or a window as wide as the one just spent, so
+    /// no server ahead is funded by cutting the last one short; and
+    /// where the attempt set out able to fund the reserve and a
+    /// share for each server ahead — where what was over the reserve
+    /// at the first server, split among them, already reached the
+    /// floor — the servers ahead never touch the reserve at all,
+    /// however each of them spends what it was given. The first
+    /// bounded server is asked as the only one ahead, as the walk
+    /// asks it — its window is the whole of what is over the
+    /// reserve, up to the bound — and the rest share what it leaves.
+    ///
+    /// That is the guarantee a floor read afresh for each server
+    /// loses. Two servers ahead and a walk holding the reserve and
+    /// two shares of it: the first takes its share, and the second,
+    /// asked against the reserve split two ways rather than three,
+    /// takes more than its own — so the chain behind them is
+    /// cancelled on an attempt that had funded it.
+    #[test]
+    fn a_walk_leaves_the_remainders_server_the_reserve_it_set_out_able_to_fund(
+        bound_ms in 1u64..10_000,
+        reserve_ms in 0u64..10_000,
+        start_ms in 0u64..60_000,
+        ahead_at_start in 1usize..8,
+        stalls in proptest::collection::vec(0u64..60_000, 8),
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let reserve = ms(reserve_ms);
+        let start = ms(start_ms);
+        let counted = u32::try_from(ahead_at_start).unwrap();
+        let caps = ajax::ServerCaps::for_walk(reserve, Some(start), ahead_at_start);
+        let floor = start.min(reserve) / (counted + 1);
+        // An attempt that can fund the reserve and a window apiece:
+        // what is over the reserve, split among the servers ahead,
+        // reaches the floor under those windows.
+        let funded = start.saturating_sub(reserve) / counted >= floor;
+        let mut remaining = start;
+        for (i, stall) in stalls.iter().take(ahead_at_start).enumerate() {
+            let ahead = ahead_at_start - i;
+            let ahead32 = u32::try_from(ahead).unwrap();
+            // The first bounded server is asked for its own window —
+            // what is over the reserve less the floors owed to the
+            // servers after it — as the walk asks it; the rest for
+            // their share.
+            let cap = if i == 0 {
+                caps.first_cap(ms(bound_ms), Some(remaining), ahead)
+            } else {
+                caps.cap(ms(bound_ms), Some(remaining), ahead)
+            };
+            prop_assert!(cap <= remaining, "{cap:?} of the {remaining:?} left");
+            // What the servers ahead are set to spend between them:
+            // the first its own window and each server after it its
+            // floor, or every one of them this same share.
+            let spent_ahead = if i == 0 {
+                cap + floor * (ahead32 - 1)
+            } else {
+                cap * ahead32
+            };
+            prop_assert!(
+                remaining.saturating_sub(spent_ahead) >= reserve
+                    || cap * (ahead32 + 1) <= remaining,
+                "with {remaining:?} left and {ahead} ahead, a window of {cap:?} leaves the \
+                 remainder's server neither the {reserve:?} reserve nor a window of its own"
+            );
+            // A server spends its window or answers inside it.
+            remaining -= cap.min(ms(*stall));
+        }
+        if funded {
+            prop_assert!(
+                remaining >= reserve,
+                "the servers ahead left {remaining:?} of a {reserve:?} reserve the attempt \
+                 had funded at its first server"
+            );
+        }
+    }
+}
+
+// ── the reserve a whole chain is worth ──────────────────────────────
+
+proptest! {
+    /// The reserve held back for the server that runs on the
+    /// remainder is a whole chain's worth, and a chain is several
+    /// sequential requests: whatever the per-server bound, the
+    /// reserve outlasts it, since a bound spread over the chain's
+    /// requests is what leaves a healthy loaded host cancelled. It
+    /// is derived from the bound rather than fixed, so the seam that
+    /// shortens the bound to milliseconds for the stalled-host tests
+    /// shortens the reserve with it, and a longer bound never buys
+    /// the last server less.
+    /// A chain's worth grows with the requests it is sized for and
+    /// with the base it is carved from, and the longest chain's worth
+    /// is the reserve: the window every bounded server is given,
+    /// whatever host the listing names, since which chain a page runs
+    /// is known only once it is fetched.
+    #[test]
+    fn a_chains_worth_grows_with_its_requests_and_the_longest_is_the_reserve(
+        bound_ms in 1u64..10_000,
+        longer_ms in 0u64..10_000,
+        requests in 1u32..ajax::CHAIN_REQUESTS,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let worth = ajax::chain_worth(ms(bound_ms), requests);
+        prop_assert!(worth > std::time::Duration::ZERO);
+        prop_assert!(worth <= ajax::chain_worth(ms(bound_ms), requests + 1));
+        prop_assert!(worth <= ajax::chain_worth(ms(bound_ms.max(longer_ms)), requests));
+        prop_assert!(worth < ajax::chain_reserve(ms(bound_ms)));
+        prop_assert_eq!(
+            ajax::chain_worth(ms(bound_ms), ajax::CHAIN_REQUESTS),
+            ajax::chain_reserve(ms(bound_ms))
+        );
+    }
+
+    #[test]
+    fn the_reserve_outlasts_the_bound_and_is_derived_from_it(
+        bound_ms in 1u64..10_000,
+        longer_ms in 1u64..10_000,
+    ) {
+        let ms = std::time::Duration::from_millis;
+        let reserve = ajax::chain_reserve(ms(bound_ms));
+        prop_assert!(
+            reserve > ms(bound_ms),
+            "a {bound_ms}ms bound reserved only {reserve:?}"
+        );
+        prop_assert!(
+            reserve <= ms(bound_ms) * ajax::CHAIN_REQUESTS,
+            "the reserve reached past the chain measured at a whole bound a request: {reserve:?}"
+        );
+        let longer = bound_ms.max(longer_ms);
+        prop_assert!(ajax::chain_reserve(ms(longer)) >= reserve);
+    }
+}
+
+// ── the hosts the client reads ───────────────────────────────────────
+
+proptest! {
+    /// The client reads zokoanime's host, megaplay's, and the numbered
+    /// mirrors the site serves megaplay's player from — `megaplay-`
+    /// then digits then `.buzz`, nothing more on either side — and no
+    /// other host: not one that only starts with a read host's name,
+    /// not a mirror with no number, not a read host under another
+    /// domain.
+    #[test]
+    fn the_hosts_the_client_reads_are_the_named_ones_and_megaplays_numbered_mirrors(
+        number in "[0-9]{1,6}",
+        other in "[a-z]{3,10}\\.(buzz|site|video|net)",
+    ) {
+        let mirror = format!("megaplay-{number}.buzz");
+        let mirror_url = format!("https://{mirror}/stream/s-2/1/sub");
+        let wrong_suffix = format!("megaplay-{number}.buzzy");
+        let wrong_prefix = format!("notmegaplay-{number}.buzz");
+        let not_a_number = format!("megaplay-{number}x.buzz");
+        let under_another = format!("megaplay-{number}.buzz.evil.example");
+        prop_assert!(ajax::readable_host("zokoanime.video"));
+        prop_assert!(ajax::readable_host("megaplay.buzz"));
+        prop_assert!(ajax::readable_host(&mirror), "{mirror}");
+        prop_assert!(ajax::readable(&mirror_url), "{mirror_url}");
+        prop_assert!(!ajax::readable_host("megaplay-.buzz"));
+        prop_assert!(!ajax::readable_host(&wrong_suffix), "{wrong_suffix}");
+        prop_assert!(!ajax::readable_host(&wrong_prefix), "{wrong_prefix}");
+        prop_assert!(!ajax::readable_host(&not_a_number), "{not_a_number}");
+        prop_assert!(!ajax::readable_host("megaplay.buzz.evil.example"));
+        prop_assert!(!ajax::readable_host(&under_another), "{under_another}");
+        prop_assert_eq!(
+            ajax::readable_host(&other),
+            other == "zokoanime.video" || other == "megaplay.buzz"
+        );
+    }
+}
+
+proptest! {
+    /// A megaplay embed URL is one the client reads whatever content
+    /// delivery network its query names. The network is chosen by the
+    /// request the client makes, not by the server the site listed —
+    /// the sources endpoint honours the selector for any media id —
+    /// so a page's own selector says nothing about whether this
+    /// client gets a stream from it, and the host is the whole
+    /// question again.
+    #[test]
+    fn a_megaplay_embed_reads_whatever_family_its_url_names(
+        host in "(megaplay\\.buzz|megaplay-[0-9]{1,3}\\.buzz)",
+        path in "/stream/s-2/[0-9]{1,6}/(sub|dub)",
+        // The networks the site names, and the ones it does not: a
+        // generator of bare letters would name `tcdn` about never.
+        family in proptest::option::of(prop_oneof![
+            Just("tcdn".to_string()),
+            Just("bcdn".to_string()),
+            "[a-z]{1,6}",
+        ]),
+        trailing in "(&autoplay=1|&t=[0-9]{1,3}|)",
+    ) {
+        let query = family
+            .as_ref()
+            .map_or_else(String::new, |family| format!("?s={family}{trailing}"));
+        let embed = format!("https://{host}{path}{query}");
+        prop_assert!(ajax::readable_host(&host), "{host}");
+        prop_assert!(ajax::readable(&embed), "{}", embed);
     }
 }

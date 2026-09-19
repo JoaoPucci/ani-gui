@@ -236,6 +236,22 @@ pub struct StreamSource {
     pub subtitles: Vec<SubtitleTrack>,
 }
 
+/// What an episode resolved to once a quality was selected: the URL
+/// the player loads — the adaptive master, or the rendition the
+/// quality setting chose — with the referer its fetches need and the
+/// sidecar tracks beside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedStream {
+    /// The URL the player loads, validated: it answered with a
+    /// playlist.
+    pub url: String,
+    /// The `Referer` to send on every fetch of it, when the CDN
+    /// checks one.
+    pub referer: Option<String>,
+    /// Sidecar subtitle tracks, outside the playlist.
+    pub subtitles: Vec<SubtitleTrack>,
+}
+
 /// A stream provider: search, episode listing, per-episode audio
 /// mode, and stream-URL resolution. Every method's errors follow the
 /// walk's vocabulary — a typed upstream refusal, a parse failure, the
@@ -315,6 +331,34 @@ pub trait Provider: Send + Sync {
         crate::scraper::hls::stream_url(self, source, quality).await
     }
 
+    /// The stream an episode plays in `mode` at `quality`, validated
+    /// the way the episode step needs it: the master answered with a
+    /// playlist and the quality was selected from it, the rendition
+    /// fetched when one was chosen. The default composes
+    /// [`Provider::master_playlist_url`] and
+    /// [`Provider::quality_stream_url`]; a provider that lists several
+    /// servers per episode overrides it so the validation happens
+    /// inside its walk of the servers, where a dead server can be
+    /// stepped over for the next.
+    ///
+    /// # Errors
+    /// As [`Provider::master_playlist_url`] and
+    /// [`Provider::quality_stream_url`].
+    async fn stream_for(
+        &self,
+        episode_id: u64,
+        mode: &str,
+        quality: &str,
+    ) -> Result<ResolvedStream> {
+        let source = self.master_playlist_url(episode_id, mode).await?;
+        let url = self.quality_stream_url(&source, quality).await?;
+        Ok(ResolvedStream {
+            url,
+            referer: source.referer,
+            subtitles: source.subtitles,
+        })
+    }
+
     /// The premiere year the show's detail page names, when it names
     /// one. A missing page or a page without the hint is the soft
     /// `Ok(None)`; a refusal, rate limit, or transport failure is
@@ -328,6 +372,17 @@ pub trait Provider: Send + Sync {
     /// attempt, when its transport tracks one. The walk stamps
     /// aggregate failure verdicts with it.
     fn last_attempt_at(&self) -> Option<tokio::time::Instant>;
+
+    /// The deadline the walk's attempt against this provider runs
+    /// under, told before the attempt runs, and `None` once it is
+    /// over: a client outside an attempt carries no deadline, since
+    /// the client an answer comes with outlives the attempt and is
+    /// resolved against again. A provider that walks several servers
+    /// per episode shares what remains among them; one that has
+    /// nothing to share it among ignores it, which is the default.
+    fn bound_attempt(&self, deadline: Option<tokio::time::Instant>) {
+        let _ = deadline;
+    }
 }
 
 #[cfg(test)]
