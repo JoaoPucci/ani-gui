@@ -17,8 +17,10 @@ use crate::scraper::provider::Provider;
 /// `"a-b"` with both halves integers and `a <= b`. Anything else is
 /// not a range: the single-episode path keeps its own semantics
 /// (integer and fractional tags), and a malformed pair falls through
-/// to the episode resolver's typed `NoResults` instead of silently
-/// downloading nothing.
+/// to it as a request that names no row, which dead-ends as the
+/// episode's own verdict, [`crate::error::AniError::EpisodeUnavailable`]
+/// — the show having been found and only what was asked for missing
+/// — instead of silently downloading nothing.
 pub(crate) fn episode_range(episode: &str) -> Option<(u32, u32)> {
     let (a, b) = episode.split_once('-')?;
     let a: u32 = a.trim().parse().ok()?;

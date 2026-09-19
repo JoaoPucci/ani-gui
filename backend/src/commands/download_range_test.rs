@@ -10,8 +10,9 @@ fn episode_range_accepts_ordered_integer_pairs_only() {
     assert_eq!(episode_range("5"), None);
     assert_eq!(episode_range("6.5"), None);
     // A reversed pair is not a range; it falls through to the
-    // episode resolver's typed NoResults rather than silently
-    // downloading nothing.
+    // single-episode path, where it names no row and dead-ends as
+    // the episode's own verdict, EpisodeUnavailable, rather than
+    // silently downloading nothing.
     assert_eq!(episode_range("12-1"), None);
     // Fractional halves are not ranges either — the resolver's tag
     // match owns fractional identity.

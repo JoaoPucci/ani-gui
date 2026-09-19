@@ -68,6 +68,11 @@ pub mod keys {
     /// do with a provider.
     pub const SCRAPER_TIMEOUT: &str = "error.scraper.timeout";
 
+    // --- error.play.* ---
+    /// The show was found and the episode was not, or has no stream
+    /// in the requested mode.
+    pub const PLAY_EPISODE_UNAVAILABLE: &str = "error.play.episode_unavailable";
+
     // --- error.search.* ---
     /// Search returned zero results.
     pub const SEARCH_NO_RESULTS: &str = "error.search.no_results";
@@ -94,6 +99,7 @@ mod tests {
             METADATA_SOURCE,
             NETWORK_UNREACHABLE,
             NETWORK_UPSTREAM,
+            PLAY_EPISODE_UNAVAILABLE,
             SCRAPER_PARSE_FAILED,
             SCRAPER_TIMEOUT,
             SEARCH_NO_RESULTS,

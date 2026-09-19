@@ -100,8 +100,8 @@ async fn an_episode_hianime_does_not_serve_does_not_write_anidbs_catalogue_miss_
     };
     let got = play_with_progress(&state, &args, |_| {}).await;
     assert!(
-        matches!(got, Err(crate::error::AniError::NoResults)),
-        "the episode is nowhere: {got:?}"
+        matches!(got, Err(crate::error::AniError::EpisodeUnavailable)),
+        "the episode is nowhere, and that is the episode's own verdict: {got:?}"
     );
     assert!(
         hianime

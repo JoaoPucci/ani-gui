@@ -17,6 +17,22 @@ proptest::proptest! {
     }
 }
 
+proptest::proptest! {
+    /// The statuses that mean the resource asked for is absent —
+    /// 404 and 410 — and nothing else: a block is the provider
+    /// refusing this client, a 400 or 401 is the provider rejecting
+    /// this request, and neither says the episode is missing.
+    #[test]
+    fn not_found_shaped_is_exactly_absence(status in proptest::num::u16::ANY) {
+        let want = status == 404 || status == 410;
+        proptest::prop_assert_eq!(AniError::Upstream { status }.is_not_found_shaped(), want);
+        proptest::prop_assert!(
+            !(want && AniError::Upstream { status }.is_provider_block()),
+            "absence and a block are disjoint"
+        );
+    }
+}
+
 #[test]
 fn rate_limits_block_and_verdicts_do_not() {
     assert!(AniError::RateLimited {
@@ -51,6 +67,7 @@ fn every_variant_has_a_stable_key() {
         },
         AniError::Timeout,
         AniError::NoResults,
+        AniError::EpisodeUnavailable,
         AniError::ParseFailed { detail: "x".into() },
         AniError::FfmpegMissing,
         AniError::PlayerSpawnFailed {
@@ -221,4 +238,18 @@ fn toml_error_maps_to_config_variant() {
     let mapped: AniError = toml_err.into();
     assert!(matches!(mapped, AniError::Config));
     assert_eq!(mapped.key(), "error.config.parse");
+}
+
+/// The show was found and the episode was not, or has no stream in
+/// the mode: the episode's verdict, distinct from a title the
+/// catalogue lacks, so the page can say which. Not found, like the
+/// miss; not a block; its own key.
+#[test]
+fn an_unavailable_episode_is_its_own_not_found() {
+    let e = AniError::EpisodeUnavailable;
+    assert_eq!(e.http_status_code(), 404);
+    assert_eq!(e.key(), "error.play.episode_unavailable");
+    assert!(!e.is_provider_block());
+    let json = serde_json::to_value(&e).expect("serializes");
+    assert_eq!(json["kind"], "episode_unavailable");
 }

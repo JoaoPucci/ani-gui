@@ -209,6 +209,20 @@ describe('detail — play failures render the shared copy with the override', ()
 		);
 	});
 
+	it('an episode the source does not carry names the episode, not the title', async () => {
+		// The override above is for a title the catalogue lacks; a show
+		// that was found without this episode must not fall into it.
+		useDetailHandlers();
+		await mountAndFailEpisode(
+			5,
+			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+		);
+		await until(
+			() => (target.textContent ?? '').includes(m.play_play_failure_episode_unavailable()),
+			'the episode-unavailable copy on the play failure overlay'
+		);
+	});
+
 	it("a catalogue miss keeps this surface's definitive phrasing", async () => {
 		// The one per-surface override the unification preserved: the
 		// detail page states the miss definitively instead of the

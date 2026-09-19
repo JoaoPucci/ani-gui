@@ -153,6 +153,28 @@ describe('startDownload', () => {
 		expect(failureStoreMock.downloadFailureStore.show).not.toHaveBeenCalled();
 	});
 
+	it('shows the episode verdict in the dock instead of a generic failure', async () => {
+		// A download of an episode the provider does not carry rejects
+		// with the typed envelope { kind: 'episode_unavailable', key }
+		// — a unit variant, so no `message` and no `detail` — and the
+		// generic branch would render "Download failed". The dock row
+		// must carry the same episode copy the play page shows: the
+		// show is there, this episode is not.
+		apiMock.downloadStream.mockRejectedValueOnce({
+			kind: 'episode_unavailable',
+			key: 'error.play.episode_unavailable'
+		});
+		startDownload(baseArgs);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			expect.stringMatching(/this episode/i)
+		);
+		expect(storeMock.downloadStore.markError).not.toHaveBeenCalledWith('dl-1', 'Download failed');
+		expect(failureStoreMock.downloadFailureStore.show).not.toHaveBeenCalled();
+	});
+
 	it('translates a thrown Error into markError with its message', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce(new Error('upstream 500'));
 		startDownload(baseArgs);

@@ -379,9 +379,10 @@ impl<T> Negative<'_, T> {
     /// show found without the requested mode, the unknown verdict
     /// is a show found with nothing said about the mode, and an
     /// answered miss that is not clean is an episode dead end on a
-    /// show that was found. A clean miss did not find it, and an
-    /// unreachable provider's error standing in for a miss says
-    /// nothing.
+    /// show that was found — the episode verdict included, which
+    /// names the episode the provider does not carry. A clean miss
+    /// did not find it, and an unreachable provider's error standing
+    /// in for a miss says nothing.
     fn found_the_show(&self) -> bool {
         match self {
             Self::Answer(_) | Self::Unknown(_) => true,

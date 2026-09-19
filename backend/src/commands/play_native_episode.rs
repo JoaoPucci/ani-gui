@@ -18,8 +18,8 @@ pub(super) enum ChainOutcome {
     /// same answer, so the walk ends with the error's identity.
     Stop(NativeError),
     /// Answered dead ends — missing episode, language, embed or
-    /// playlist on a stale candidate: the next alias may carry the
-    /// real show.
+    /// playlist on a stale candidate, a not-found-shaped status: the
+    /// next alias may carry the real show.
     DeadEnd,
     /// Transport weather: proves nothing, stays transient.
     Transient,
@@ -29,10 +29,29 @@ pub(super) enum ChainOutcome {
 pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
     if ne.error.is_provider_block() || matches!(ne.error, AniError::GateRefused) {
         ChainOutcome::Stop(ne)
-    } else if matches!(ne.error, AniError::NoResults | AniError::Upstream { .. }) {
+    } else if matches!(ne.error, AniError::EpisodeUnavailable | AniError::NoResults)
+        || ne.error.is_not_found_shaped()
+    {
         ChainOutcome::DeadEnd
     } else {
         ChainOutcome::Transient
+    }
+}
+
+/// The episode step's verdict for a failure it met: an answered dead
+/// end — the listing without the episode, the embed step without a
+/// stream, a page the host answered with a not-found-shaped status,
+/// 404 or 410 — is the episode's own verdict, since the show was
+/// picked and only this episode is missing. A provider block, a gate
+/// refusal, transport weather and any other upstream status pass
+/// through as they are; they say nothing about the episode — a 400
+/// or 401 is the provider rejecting this request, and told to try
+/// another episode on it the user would be misled.
+pub(super) fn episode_verdict(error: AniError) -> AniError {
+    if matches!(error, AniError::NoResults) || error.is_not_found_shaped() {
+        AniError::EpisodeUnavailable
+    } else {
+        error
     }
 }
 
@@ -44,7 +63,9 @@ pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
 ///
 /// # Errors
 /// `NativeError` (never `clean_miss`): the show matched, so nothing
-/// here is evidence of absence.
+/// here is evidence of absence. An answered dead end is the
+/// episode's own verdict, [`AniError::EpisodeUnavailable`]
+/// ([`episode_verdict`]), for every caller alike.
 pub async fn resolve_episode<P: Provider + ?Sized>(
     client: &P,
     picked: &PickedShow,
@@ -53,7 +74,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
     quality: &str,
 ) -> std::result::Result<ResolvedEpisode, NativeError> {
     let dead_end = |error: AniError| NativeError {
-        error,
+        error: episode_verdict(error),
         clean_miss: false,
         failed_at: None,
     };
