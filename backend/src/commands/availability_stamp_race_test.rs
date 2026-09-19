@@ -1,14 +1,15 @@
-//! What a replay's stamp carries forward when a native resolve
+//! What a replay's stamp leaves standing when a native resolve
 //! writes the same row while the replay is on its way to it.
 //!
 //! The two writers are ordered by the row lock alone. The refresh
 //! generation does not separate them: only a cache-bypassing refresh
 //! bumps it, so a resolve's stamp leaves it where it was and the
 //! replay behind it still passes `with_row_if_ours`. Whatever the
-//! replay writes there lands on top of the resolve's row and holds
-//! for a fresh lifetime, which is why it has to be the row as it
-//! stands at the moment of the write rather than the one the replay
-//! happened to see earlier.
+//! replay decides there it decides over the resolve's row, which is
+//! why it has to read the row as it stands at the moment of the
+//! write rather than the one it happened to see earlier — and why a
+//! positive row it finds standing is left as it is, lifetime and
+//! all, rather than written back.
 //!
 //! Mounted by `#[path]` beside the availability tests and borrowing
 //! their state builder.
