@@ -41,12 +41,22 @@ pub fn parse_search(html: &str) -> Result<Vec<BrowseHit>> {
     let end = html[start..]
         .find("main-sidebar")
         .map_or(html.len(), |i| start + i);
-    let fragments: Vec<&str> = html[start..end].split("flw-item").skip(1).collect();
+    // The split's first piece is what precedes the first boundary:
+    // the list's opening chrome, normally, and passed over as the
+    // mark-less sliver it is — but a first card that lost its
+    // boundary class sits there with its marks intact, and judged
+    // like any fragment it is read as the card it is, or refuses the
+    // listing when it cannot be read, rather than being passed over
+    // for the cards after it. The boundary itself must still be
+    // there: a list with none is a renamed shape, refused above.
+    let mut fragments = html[start..end].split("flw-item");
+    let prefix = fragments.next().unwrap_or_default();
+    let fragments: Vec<&str> = fragments.collect();
     if fragments.is_empty() {
         return none_or_refused(html, "hianime search result list without card boundaries");
     }
-    let hits: Vec<BrowseHit> = fragments
-        .into_iter()
+    let hits: Vec<BrowseHit> = std::iter::once(prefix)
+        .chain(fragments)
         .filter(|fragment| card_shaped(fragment))
         .enumerate()
         .map(|(index, card)| {
