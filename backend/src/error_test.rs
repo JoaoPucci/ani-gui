@@ -17,6 +17,22 @@ proptest::proptest! {
     }
 }
 
+proptest::proptest! {
+    /// The statuses that mean the resource asked for is absent —
+    /// 404 and 410 — and nothing else: a block is the provider
+    /// refusing this client, a 400 or 401 is the provider rejecting
+    /// this request, and neither says the episode is missing.
+    #[test]
+    fn not_found_shaped_is_exactly_absence(status in proptest::num::u16::ANY) {
+        let want = status == 404 || status == 410;
+        proptest::prop_assert_eq!(AniError::Upstream { status }.is_not_found_shaped(), want);
+        proptest::prop_assert!(
+            !(want && AniError::Upstream { status }.is_provider_block()),
+            "absence and a block are disjoint"
+        );
+    }
+}
+
 #[test]
 fn rate_limits_block_and_verdicts_do_not() {
     assert!(AniError::RateLimited {
