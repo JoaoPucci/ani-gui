@@ -310,28 +310,31 @@ pub async fn stamp_after_native(
     .await;
 }
 
-/// Refresh the positive row a served replay stands on. The
-/// resolution cache outlives the availability row — a cached stream
-/// replays for days after an airing show's positive row has expired
-/// — so without this the next probe would start from the primary,
-/// whose clean miss could hide a stream the cache just served. A
-/// replay learns nothing new about the listing, and nothing about
-/// the provider it came through either — the CDN answered for a URL
-/// resolved when that provider last served — so a standing positive
-/// row is written back as it is, whichever provider proved it, cap,
-/// extras and affinity kept, with a fresh lifetime; only where no
-/// positive row stands does the replay write the boolean positive
-/// row a served resolve without a cap writes, naming `provider`.
-/// Under the same refresh guard as a resolve's stamp.
+/// Stamp a served replay's positive, where no positive row stands.
+/// The resolution cache outlives the availability row — a cached
+/// stream replays for days after an airing show's positive row has
+/// expired — so without this the next probe would start from the
+/// primary, whose clean miss could hide a stream the cache just
+/// served. A replay learns nothing new about the listing, and
+/// nothing about the provider it came through either — the CDN
+/// answered for a URL resolved when that provider last served — so
+/// a standing positive row is left exactly as it is, whichever
+/// provider proved it, lifetime included: written back even
+/// unchanged it would take a fresh one, and an ongoing show's exact
+/// cap, replayed daily, would never expire into the reprobe that
+/// learns its new episodes. Only where no positive row stands does
+/// the replay write the boolean positive row a served resolve
+/// without a cap writes, naming `provider` — count-less, so the next
+/// look at the show reprobes it for its cap, starting from that
+/// provider. Under the same refresh guard as a resolve's stamp.
 ///
 /// The row is read inside the lock, not on the way to it. A native
 /// resolve stamping the same row is not a cache-bypassing refresh
 /// and leaves the generation where it was, so a replay behind it
-/// still passes the guard and writes last — carrying forward a row
-/// read earlier would put the resolve's exact cap, or the provider
-/// it failed over to, back to what they were before it ran, for a
-/// fresh lifetime. Read under the lock, the row a replay carries
-/// forward is the one that stands when it writes.
+/// still passes the guard; read under the lock, the row it decides
+/// on is the one that stands when it writes — the resolve's, exact
+/// cap and failed-over provider included, not the one it saw on its
+/// way in.
 pub async fn stamp_after_cache_hit(
     state: &AppState,
     kitsu_id: Option<&str>,
@@ -348,24 +351,13 @@ pub async fn stamp_after_cache_hit(
         &row,
         generation_at_start,
         false,
-        || match standing_row_of(state, &row) {
-            Some(parsed) => write_cache_full(state, id, mode, None, &parsed),
-            None => write_cache(state, id, mode, true, Some(provider)),
+        || {
+            if positive_row_body(state, &row).is_none() {
+                write_cache(state, id, mode, true, Some(provider));
+            }
         },
     )
     .await;
-}
-
-/// The row as it stands, when it is a positive one — the row a
-/// replay writes back untouched, whichever provider proved it.
-/// Anything else (no row, a negative) is none: the replay has
-/// nothing to carry forward from it.
-fn standing_row_of(state: &AppState, row: &str) -> Option<AvailabilityResponse> {
-    meta_cache_get(&state.cache_pool, row)
-        .ok()
-        .flatten()
-        .and_then(|body| serde_json::from_str::<AvailabilityResponse>(&body).ok())
-        .filter(|parsed| parsed.available)
 }
 
 /// The positive row as the cache holds it, byte for byte, or none
