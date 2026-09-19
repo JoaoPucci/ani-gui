@@ -325,3 +325,87 @@ async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
     assert_eq!(row.provider, Some(ProviderId::Hianime));
     assert_eq!(row.episode_count, Some(24));
 }
+
+/// Two resolves for the same show set out together with no positive
+/// row to remember, so both run the primary first. One finds it
+/// unreachable, fails over, and stamps the fallback's success —
+/// hianime's row, exact cap and all. The other is answered late by
+/// the primary with a clean miss. That miss was earned without the
+/// fallback's proof: it says the primary never had the show, which
+/// the fallback's row does not dispute, and written over that row
+/// it would hide a stream just proven playable, and take the
+/// affinity with it — every walk after it would start from the
+/// primary and end on the same miss. The row that stands when the
+/// miss comes to be written is the one that stands.
+#[tokio::test]
+async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_out() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    let generation = state
+        .availability_refreshes
+        .generation(&cache_key(ID, MODE));
+
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        generation,
+        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+    )
+    .await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        generation,
+        ResolveVerdict::missed(Some(ProviderId::Anidb)),
+    )
+    .await;
+
+    let row = row_now(&state);
+    assert!(row.available, "the fallback's success stands: {row:?}");
+    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(
+        row.episode_count,
+        Some(24),
+        "with the cap the fallback's listing paid for"
+    );
+}
+
+/// The same, from a standing row: the primary's positive row stood
+/// when both set out, and one resolve — the primary unreachable to
+/// it — reached the show through the fallback and moved the row
+/// there. The other's late miss was measured against the primary's
+/// row, the one it set out from, and never saw the fallback's; the
+/// fallback's stands.
+#[tokio::test]
+async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set_out() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    seed_standing_row(&state, ProviderId::Anidb, 12);
+    let generation = state
+        .availability_refreshes
+        .generation(&cache_key(ID, MODE));
+
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        generation,
+        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+    )
+    .await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        generation,
+        ResolveVerdict::missed(Some(ProviderId::Anidb)),
+    )
+    .await;
+
+    let row = row_now(&state);
+    assert!(row.available, "the fallback's success stands: {row:?}");
+    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.episode_count, Some(24));
+}
