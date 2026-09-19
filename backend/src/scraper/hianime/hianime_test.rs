@@ -289,6 +289,29 @@ fn a_card_whose_title_is_blank_refuses_the_listing_naming_it() {
 /// picker to the wrong entry. The same the other way round. Either
 /// shape refuses the listing naming that card, rather than leaving
 /// the readable cards around it to stand as the answer.
+/// A heading anchor carrying `data-title` and `data-href` before its
+/// `title` and `href` — the site's markup can decorate the anchor
+/// with data attributes — is read by the whole attribute names, so
+/// the card's identity is the title and slug, not the decoys. The
+/// same for a server row carrying an attribute whose name ends in
+/// `data-type` before `data-type` itself.
+#[test]
+fn attributes_are_read_by_their_whole_names_past_prefixed_decoys() {
+    let page = r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster-x" class="film-poster-ahref" title="Poster"></a></div><div class="film-detail"><h3 class="film-name"><a data-title="Japanese" data-href="123" href="https://hianime.at/cowboy-bebop-1281" title="Cowboy Bebop" class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div></body></html>"#;
+    let hits = parse_search(page).expect("a titled card");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].slug, "cowboy-bebop-1281");
+    assert_eq!(hits[0].title, "Cowboy Bebop");
+
+    let listing = r#"{"status":true,"html":"<div class=\"item server-item\" xdata-type=\"legacy\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#;
+    let servers = parse_servers(listing).expect("parsed");
+    assert_eq!(servers.len(), 1);
+    assert_eq!(
+        servers[0].mode, "sub",
+        "the mode is data-type's, not the decoy's"
+    );
+}
+
 #[test]
 fn a_card_whose_title_and_slug_sit_on_different_anchors_refuses_the_listing() {
     let page = |detail: &str| {

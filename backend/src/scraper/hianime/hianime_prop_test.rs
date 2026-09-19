@@ -290,6 +290,35 @@ proptest::proptest! {
         }
     }
 
+    /// An attribute is read by its whole name. A heading anchor can
+    /// carry another attribute whose name ends in the one asked for
+    /// — `data-title` before `title`, `data-href` before `href` — and
+    /// a read that stops at the first occurrence of the shorter name
+    /// takes the decoy's value as the card's identity: the wrong
+    /// title, or a slug built from a number. The real attribute is
+    /// read whatever decoys precede it.
+    #[test]
+    fn a_cards_attributes_are_read_by_their_whole_names(
+        words in "[a-z]{1,6}(-[a-z]{1,6}){0,3}",
+        id in 1u64..1_000_000,
+        title in "[A-Za-z0-9,:!-][A-Za-z0-9 ,:!-]{0,20}",
+        decoy_title in "[A-Za-z0-9 ,:!-]{0,20}",
+        decoy_href in "[a-z0-9/-]{0,20}",
+        decoys_first in proptest::bool::ANY,
+    ) {
+        let slug = format!("{words}-{id}");
+        let real = format!(r#"href="https://hianime.at/{slug}" title="{}""#, encode_title(&title));
+        let decoys = format!(r#"data-title="{}" data-href="{decoy_href}""#, encode_title(&decoy_title));
+        let attrs = if decoys_first { format!("{decoys} {real}") } else { format!("{real} {decoys}") };
+        let page = format!(
+            r#"<html><body><div class="film_list-wrap"><div class="flw-item"><div class="film-poster"><a href="https://hianime.at/watch/poster-{slug}" class="film-poster-ahref" title="Poster"></a></div><div class="film-detail"><h3 class="film-name"><a {attrs} class="dynamic-name">x</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div></body></html>"#
+        );
+        let hits = parse_search(&page).expect("a titled card");
+        prop_assert_eq!(hits.len(), 1);
+        prop_assert_eq!(&hits[0].slug, &slug, "the slug is the href's, not the decoy's");
+        prop_assert_eq!(&hits[0].title, &title, "the title is the title's, not the decoy's");
+    }
+
     /// A card's identity is one anchor's href and title together,
     /// in whichever order the site writes them; a card whose detail
     /// block spreads the two over different anchors is unreadable
@@ -622,6 +651,34 @@ proptest::proptest! {
             .iter()
             .enumerate()
             .map(|(i, (number, id, _))| episode_row(i, &number.to_string(), *id))
+            .collect();
+        proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
+    }
+
+    /// A row's attributes are read by their whole names: an
+    /// attribute whose name ends in the one asked for — `xdata-id`
+    /// before `data-id`, `data-data-number` before `data-number` —
+    /// is a decoy a read that stops at the first occurrence of the
+    /// shorter name would take, and each is read past such decoys.
+    #[test]
+    fn episode_rows_read_their_attributes_by_whole_names(
+        rows in proptest::collection::vec(
+            (1u32..5000, 1u64..1_000_000_000, 1u64..1_000_000_000, 1u32..5000),
+            1..6,
+        )
+    ) {
+        let html: String = rows
+            .iter()
+            .map(|(number, id, decoy_id, decoy_number)| {
+                format!(
+                    r#"<a class="ssl-item ep-item" xdata-id="{decoy_id}" data-data-number="{decoy_number}" data-number="{number}" data-id="{id}" href="/watch/x?ep={id}"><div class="ssli-order">{number}</div></a>"#
+                )
+            })
+            .collect();
+        let expected: Vec<EpisodeRef> = rows
+            .iter()
+            .enumerate()
+            .map(|(i, (number, id, _, _))| episode_row(i, &number.to_string(), *id))
             .collect();
         proptest::prop_assert_eq!(parse_episode_list(&envelope(&html)).expect("listing"), expected);
     }
