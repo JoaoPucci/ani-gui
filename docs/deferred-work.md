@@ -282,6 +282,33 @@ starting it, and delete it when you find it done.
   candidate survey, the integration shape, and a recommendation. The
   survey's liveness claims rot; re-verify them before building.
 
+## Validating the hianime fallback on the packaged Windows flows
+
+- **Run the packaged Windows build through the hianime fallback**,
+  which has only ever been run on Linux. The production provider
+  order puts hianime behind anidb.app on both packaged platforms, so
+  a release that ships before that run has happened says in its
+  notes that the Windows side of the fallback is unvalidated.
+
+  Why it waited: the run has not been made yet. The Linux run
+  against the live site carries further than a single-platform pass
+  usually does — both packages stage the same impersonating
+  transport, and turning the fallback on spawns, stages and probes
+  nothing new on either platform — but it is still not the run.
+  `docs/proposals/additional-providers.md` states the bar a provider
+  owes on both platforms.
+
+  What is worth knowing: the fallback engages only while anidb.app
+  is unreachable, refusing or broken, so the first play a Windows
+  user makes through it comes when the only other provider is giving
+  them nothing. It does not end there. A show the fallback served
+  has its positive availability row name hianime, and every later
+  play, download and hand-off of that show starts from hianime while
+  that row lives, whether or not anidb.app has recovered — so a
+  Windows user who reached the fallback once keeps using it for that
+  show afterwards, with anidb.app healthy. That is why the run is
+  owed by a release and not merely worth having.
+
 ## Retiring the legacy-script sweep — the v1.0 marker
 
 - **Remove the boot sweep that cleans the retired script from old

@@ -69,3 +69,18 @@ proptest::proptest! {
         proptest::prop_assert_eq!(ShowKey::parse(&key.to_string()), key);
     }
 }
+
+#[test]
+fn a_provider_id_serializes_as_the_renderers_identifier() {
+    // The identifier the frontend's `StreamProvider` names — `anidb`,
+    // not the label `anidb.app` a show key carries — so a response
+    // field typed on one side matches the other without a map.
+    assert_eq!(
+        serde_json::to_string(&ProviderId::Anidb).expect("json"),
+        r#""anidb""#
+    );
+    assert_eq!(
+        serde_json::from_str::<ProviderId>(r#""hianime""#).expect("json"),
+        ProviderId::Hianime
+    );
+}
