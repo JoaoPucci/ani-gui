@@ -171,6 +171,31 @@ starting it, and delete it when you find it done.
   user-level under `~/.local/share/flatpak`, app id `io.mpv.Mpv`) —
   kept here as a reference for probing the same locations, not as
   code to port.
+- **Subtitle presentation: user styling, and the anime's own
+  colours.** Subtitle cues render as the browser draws them — the
+  play page only picks which track shows — with no styling and no
+  preference behind it, for the tracks inside a playlist and the
+  sidecar ones alike. The two directions this could take, not
+  exclusive: letting the user style cues, and tinting them with the
+  per-anime accent the app already picks for a show.
+
+  Worth knowing before starting: the browser's cue styling honours
+  only a short allow-list of properties, and position is not on it;
+  hianime's sidecar WebVTT carries inline markup and its own cue
+  settings; and external players and Syncplay receive the tracks as
+  files and style them themselves, so this is the embedded player
+  only.
+- **Subtitle track selection: a locale-aware default, and a remembered
+  choice.** Which track shows when an episode opens is the provider's
+  call, in every app locale: the browser turns on the track the
+  provider flagged default, the rest start hidden, and the page flips
+  one to showing only when the user picks it. Nothing is remembered —
+  the next episode starts from the provider's flag again.
+
+  It waits on evidence. Every hianime listing captured or played so
+  far carried English alone, flagged default, so an app-language
+  preference has nothing to choose between yet. A payload that flags
+  no track at all starts with every subtitle off.
 - **Illustrated brand assets** — post-1.0.
 - **A notification center.** Two jobs, and the second is the reason
   the feature exists. The first is aggregation: the app's notices are
@@ -179,8 +204,10 @@ starting it, and delete it when you find it done.
   diagnostics page holds boot-time notices — and a single surface
   would give them, and whatever later features emit, somewhere to go
   when the user was not looking. The second is telling users about
-  outages like the provider failure of 2026-08-27 (see "Additional
-  providers" below): every uncached play failed as unreachable and
+  outages like the provider failure of 2026-08-27 — the outage that
+  led to the second provider, now failed over to automatically (see
+  "Providers and failover" in `docs/architecture.md`): every
+  uncached play failed as unreachable and
   the app had nowhere to say the problem was the provider's, not
   their setup's. That job needs a
   notice source that does not exist yet — the app inferring an outage
@@ -254,33 +281,113 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
-## Additional providers
+  The second provider did not change the cost. hianime types each
+  server sub or dub, which is the per-episode signal wanted here,
+  but it lists servers per episode in its own request, so the
+  answer for a show is still one request per episode on either
+  provider.
 
-- **Investigate alternative stream providers and add the viable ones**,
-  so playback survives the current provider having a bad day. All
-  resolution rides a single provider today, and on 2026-08-27 its
-  server-rendered routes stalled globally for hours (TLS completed,
-  then zero bytes until timeout) while its JSON routes kept answering
-  — nothing new could be resolved, and every uncached play was
-  correctly reported as unreachable. Plays kept working only where a
-  cached resolution sat inside its seven-day lifetime *and* its
-  stream URL still answered validation — a dead URL evicts the row and falls
-  through to the unreachable provider. That softens the blow without
-  changing the lesson. pystardust/ani-cli#1877 records the same
-  outage from the outside.
+## Filling catalogue gaps from the second provider
 
-  The investigation half is the real work: which providers are worth
-  scraping, what their catalogues and rate limits look like, and how a
-  second provider slots into resolution (fallback when the first is
-  unreachable, or a per-title choice). The title-resolution bridge
-  (`docs/title-resolution.md`) is keyed by provider ids, so every
-  cache stamped by provider output is part of the answer, not an
-  afterthought.
+- **Ask the next provider when the first answers a miss**, so a show
+  the first provider does not carry plays from the second instead of
+  being hidden — the catalogues as a union. Today an answered miss
+  ends the walk; only an unreachable, refusing or broken provider
+  moves it on. The one exception already ships: a provider a
+  positive availability record put first has its answered miss set
+  aside and the rest of the order asked, since the record proves
+  the show, not every episode. Not in parallel: asking every
+  provider for every
+  request doubles the traffic on the resource this entry worries
+  about and buys nothing when the first provider carries the show,
+  which is most of the time.
 
-  That investigation ran on 2026-09-05, during a second, total outage
-  of the provider: `docs/proposals/additional-providers.md` holds the
-  candidate survey, the integration shape, and a recommendation. The
-  survey's liveness claims rot; re-verify them before building.
+  What it changes underneath: a negative verdict stops meaning "the
+  provider that answered has nothing" and starts meaning "every
+  provider asked has nothing", so a show is absent only when every
+  enabled provider missed, and a row from one provider must not hide
+  a show the walk never asked the next about.
+
+  It waited on a measurement. A miss costs a full walk — every alias
+  searched, up to five candidates probed per alias — and the union
+  makes every genuinely absent show cost one such walk per provider,
+  on the page's probe and on the background warm alike. What hianime
+  tolerates at that rate is unmeasured: in September 2026, with
+  anidb.app down, it carried every request without visible pushback,
+  and a breaker learns after the block, not before.
+
+  Two things a grep will not surface: only the zokoanime embed pages
+  carry the MyAnimeList id in their path, so a cross-check against
+  Kitsu's mapping is per host, not a signal every pick gets; and if
+  the second provider becomes load-bearing rather than a fallback,
+  its domain churn arrives sooner — the canonical domain is filtered
+  per ISP, and the origin is a constant with a test override only.
+
+## Decoding hianime's other embed hosts
+
+- **Read the embed pages of hianime's other servers**, so an episode
+  plays from whichever server the site lists rather than from the
+  one host the client can read. An episode's server list names
+  several servers by slot and the site moves the slots between
+  hosts: on 2026-09-06 `HD-1` was zokoanime.video, whose page carries
+  the XOR'd payload the client decodes; on 2026-09-08 `HD-1` and
+  `HD-2` were megaplay.buzz and the zokoanime server was listed under
+  its own name. The client tries the hosts it can read first and
+  takes the first page that decodes, so the rename cost nothing —
+  but the day the readable host drops off a listing, that episode
+  has no stream.
+
+  What the other pages look like: megaplay.buzz and vidtube.site
+  serve a player page with no payload in its markup (a title like
+  "File 143764 - MegaPlay", a player element, a script); their
+  sources come from a call the script makes, which the client has
+  not been taught. Reverse-engineering that is the work, host by
+  host, and each is a maintenance cost of its own. Not urgent while
+  zokoanime keeps appearing on every listing seen so far.
+
+## Reading hianime.ms and vidnest.fun as providers
+
+- **Read hianime.ms, and the vidnest.fun embed it lists**, so an
+  episode has somewhere left to play from when the hianime the app
+  reads runs out of working embed hosts. hianime.ms is a second
+  front under the hianime name and a different application from
+  hianime.at: its watch page takes its own shape
+  (`https://hianime.ms/watch-<slug>-episode-1-f3808`) and is served
+  from its own templates, it exposes a `/api/player/check` endpoint
+  rather than hianime.at's `/api/theme/...` listing endpoints, and
+  its server list is drawn as buttons — "Ryu", which is its own
+  built-in backup player (`data-server="backup"`), and an embed on
+  vidnest.fun (`https://vidnest.fun/anime/<id>/...`).
+
+  Why it matters: on 2026-09-17 both embed hosts hianime.at lists
+  for an episode failed for the app at once — zokoanime's CDN origin
+  timed out with a 522, and megaplay changed its sources answer to
+  an encrypted field with a CDN selector on the embed URL — while
+  anidb.app was under maintenance, and hianime.ms kept playing the
+  same episodes through Ryu. A third catalogue front, or a third
+  embed host, is what a fallback of one site cannot give.
+
+  Why it waited: reading either site is its own reverse-engineering
+  — hianime.ms's player and catalogue API, vidnest's embed page —
+  each a maintenance cost of its own, like every host the client
+  reads.
+
+## A provider order and switch in settings
+
+- **Let the user order the providers and switch one off.** The
+  order is fixed at build — anidb.app, then hianime — and there is
+  no way to prefer the second or to leave one out.
+
+  Why it waited: it wants the union above first, so that putting a
+  provider first is a preference rather than a way of shrinking the
+  catalogue to one site.
+
+  Worth knowing: the cache's read rule already copes with a provider
+  the app no longer lists — a negative row naming it has nobody to
+  stand behind it and re-probes, and a positive row's affinity to it
+  is ignored. A per-title provider picker is not this, and is not
+  planned: affinity already remembers where each show and its
+  audio were listed, and starts there.
 
 ## Validating the hianime fallback on the packaged Windows flows
 
