@@ -119,6 +119,7 @@ impl Fetch for WalkAliasDies {
             return Err(crate::error::AniError::Network);
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 200,
             body: r#"<div class="grid"><p>No results.</p></div>"#.to_string(),
         })

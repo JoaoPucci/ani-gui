@@ -58,10 +58,13 @@ requires it; the exception is the update check that runs on launch
   or the anime IDs you're browsing; they do not carry any account
   identifier unless you've connected one.
 - **Video playback** — the chosen episode URL is fetched directly
-  from its source CDN. Where that CDN requires a `Referer` naming the
-  catalogue origin, the app sends one so the file is served; where it
+  from its source CDN. Where that CDN requires a `Referer`, it sees a
+  normal one naming the origin of the embed page the stream was read
+  from — the host that actually served that page, which is not always
+  the host the catalogue's listing named, because the catalogue moves
+  those pages between hosts and the request follows the move; where it
   requires none, as the anidb.app CDN does, the app adds no `Referer`
-  of its own.
+  of its own. Nothing identifying you is sent with it.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every

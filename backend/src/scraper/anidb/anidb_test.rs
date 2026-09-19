@@ -347,6 +347,7 @@ impl Fetch for FixtureFetch {
             fixture("embed_op.html")
         } else {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 404,
                 body: String::new(),
             });
@@ -356,7 +357,11 @@ impl Fetch for FixtureFetch {
         } else {
             200
         };
-        Ok(FetchResponse { status, body })
+        Ok(FetchResponse {
+            status,
+            body,
+            url: req.url.clone(),
+        })
     }
 }
 
@@ -484,6 +489,7 @@ impl Fetch for MasterOnly {
             self.fetches
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: fixture("master_op.m3u8"),
             });
@@ -492,11 +498,13 @@ impl Fetch for MasterOnly {
             self.fetches
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: "#EXTM3U\n".into(),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 404,
             body: String::new(),
         })
@@ -550,11 +558,13 @@ impl Fetch for BlockedRendition {
         let url = req.url.as_str();
         if url == "https://cdn.example/op/master.m3u8" {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: fixture("master_op.m3u8"),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 429,
             body: String::new(),
         })
@@ -586,8 +596,9 @@ struct HtmlAnswers;
 
 #[async_trait::async_trait]
 impl Fetch for HtmlAnswers {
-    async fn fetch(&self, _req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 200,
             body: "<html><body>Not here.</body></html>".into(),
         })
@@ -622,11 +633,13 @@ impl Fetch for HtmlRendition {
         let url = req.url.as_str();
         if url == "https://cdn.example/op/master.m3u8" {
             return Ok(FetchResponse {
+                url: req.url.clone(),
                 status: 200,
                 body: fixture("master_op.m3u8"),
             });
         }
         Ok(FetchResponse {
+            url: req.url.clone(),
             status: 200,
             body: "<html><body>Not here.</body></html>".into(),
         })

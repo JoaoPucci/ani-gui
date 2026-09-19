@@ -111,35 +111,27 @@ async fn handle_master(
         );
     }
 
-    let body = match upstream::fetch_text(&state.client, &sess.upstream_url, &sess.referer).await {
-        Ok((bytes, _ct)) => bytes,
-        Err(AniError::Upstream { status }) => {
-            return error_response(
-                StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
-                "upstream error",
-            );
-        }
-        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-    };
+    // The manifest's relative URIs resolve against where it was served
+    // from, which a redirect can move away from the session's URL.
+    let (body, served_from) =
+        match upstream::fetch_text(&state.client, &sess.upstream_url, &sess.referer).await {
+            Ok((bytes, _ct, from)) => (bytes, from),
+            Err(AniError::Upstream { status }) => {
+                return error_response(
+                    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                    "upstream error",
+                );
+            }
+            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+        };
 
-    let rewritten = match rewrite_master(
-        &body,
-        &sess.upstream_url,
-        &state.origin,
-        session,
-        &state.secret,
-    ) {
+    let rewritten = match rewrite_master(&body, &served_from, &state.origin, session, &state.secret)
+    {
         Ok(s) => s,
         Err(_) => {
             // Try as a media playlist before giving up — some upstreams
             // return media directly when there's only one variant.
-            match rewrite_media(
-                &body,
-                &sess.upstream_url,
-                &state.origin,
-                session,
-                &state.secret,
-            ) {
+            match rewrite_media(&body, &served_from, &state.origin, session, &state.secret) {
                 Ok(s) => s,
                 Err(_) => {
                     return error_response(
@@ -275,18 +267,19 @@ async fn handle_seg(
     let is_manifest = path.ends_with(".m3u8");
 
     if is_manifest {
-        let body = match upstream::fetch_text(&state.client, &upstream_url, &sess.referer).await {
-            Ok((b, _ct)) => b,
-            Err(AniError::Upstream { status }) => {
-                return error_response(
-                    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
-                    "upstream",
-                );
-            }
-            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-        };
+        let (body, served_from) =
+            match upstream::fetch_text(&state.client, &upstream_url, &sess.referer).await {
+                Ok((b, _ct, from)) => (b, from),
+                Err(AniError::Upstream { status }) => {
+                    return error_response(
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                        "upstream",
+                    );
+                }
+                Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+            };
         let rewritten =
-            match rewrite_media(&body, &upstream_url, &state.origin, session, &state.secret) {
+            match rewrite_media(&body, &served_from, &state.origin, session, &state.secret) {
                 Ok(s) => s,
                 Err(_) => {
                     return error_response(
@@ -375,6 +368,10 @@ fn clone_passthrough_headers(src: &reqwest::header::HeaderMap) -> HeaderMap {
 #[cfg(test)]
 #[path = "empty_referer_test.rs"]
 mod empty_referer_tests;
+
+#[cfg(test)]
+#[path = "redirected_playlist_test.rs"]
+mod redirected_playlist_tests;
 
 #[cfg(test)]
 #[path = "seg_referer_test.rs"]

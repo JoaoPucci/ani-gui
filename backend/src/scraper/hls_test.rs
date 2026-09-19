@@ -67,6 +67,71 @@ proptest::proptest! {
     }
 }
 
+// ── a redirected master's renditions sit beside where it landed ────
+
+/// A provider whose master answers from another directory: the
+/// transport followed a redirect, and the manifest names its
+/// rendition relative to where it landed. The quality step joins
+/// the rendition to the URL the manifest was served from, and hands
+/// back that URL for the adaptive pick.
+#[tokio::test]
+async fn quality_selection_joins_the_rendition_to_the_url_the_master_was_served_from() {
+    struct Moved;
+    #[async_trait::async_trait]
+    impl Provider for Moved {
+        fn id(&self) -> ProviderId {
+            ProviderId::Anidb
+        }
+        async fn search(&self, _q: &str) -> Result<Vec<BrowseHit>> {
+            unreachable!()
+        }
+        async fn episodes(&self, _s: &str) -> Result<Vec<EpisodeRef>> {
+            unreachable!()
+        }
+        async fn has_mode(&self, _e: u64, _m: &str) -> Result<bool> {
+            unreachable!()
+        }
+        async fn master_playlist_url(&self, _e: u64, _m: &str) -> Result<StreamSource> {
+            unreachable!()
+        }
+        async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
+            self.playlist_at(url, referer).await.map(|(body, _)| body)
+        }
+        async fn playlist_at(&self, url: &str, _referer: Option<&str>) -> Result<(String, String)> {
+            match url {
+                "https://cdn.example/v/old/master.m3u8"
+                | "https://cdn.example/v/new/master.m3u8" => Ok((
+                    "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\n720/index.m3u8\n"
+                        .into(),
+                    "https://cdn.example/v/new/master.m3u8".into(),
+                )),
+                "https://cdn.example/v/new/720/index.m3u8" => Ok(("#EXTM3U\n".into(), url.into())),
+                _ => Err(AniError::Upstream { status: 404 }),
+            }
+        }
+        async fn detail_year(&self, _s: &str) -> Result<Option<u32>> {
+            unreachable!()
+        }
+        fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+            None
+        }
+    }
+    let source = StreamSource {
+        master_url: "https://cdn.example/v/old/master.m3u8".into(),
+        referer: None,
+    };
+    assert_eq!(
+        stream_url(&Moved, &source, "720").await.expect("selected"),
+        "https://cdn.example/v/new/720/index.m3u8",
+        "the rendition sits beside the manifest that named it"
+    );
+    assert_eq!(
+        stream_url(&Moved, &source, "best").await.expect("selected"),
+        "https://cdn.example/v/new/master.m3u8",
+        "the adaptive pick is the master that answered"
+    );
+}
+
 // ── the source's referer reaches the playlist fetch ────────────────
 
 /// A provider hands the resolver a master URL together with the

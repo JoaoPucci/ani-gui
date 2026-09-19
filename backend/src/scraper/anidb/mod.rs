@@ -24,10 +24,11 @@
 pub mod parse;
 pub mod parse_api;
 use crate::scraper::fetch::Fetch;
-use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider, ProviderId, StreamSource};
-pub use parse::{
-    encode_query, is_cloudflare_interstitial, parse_browse, parse_detail_year, slug_search_term,
+use crate::scraper::provider::{
+    encode_query, is_cloudflare_interstitial, BrowseHit, EpisodeRef, Provider, ProviderId,
+    StreamSource,
 };
+pub use parse::{parse_browse, parse_detail_year, slug_search_term};
 pub use parse_api::{extract_master_url, parse_episodes, parse_languages, preferred_embed};
 
 use crate::error::{AniError, Result};
