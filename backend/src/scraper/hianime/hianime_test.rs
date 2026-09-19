@@ -312,6 +312,35 @@ fn attributes_are_read_by_their_whole_names_past_prefixed_decoys() {
     );
 }
 
+/// The split leaves whatever precedes the first boundary as a prefix
+/// the cards do not include. Normally that is the list's own opening
+/// chrome, but a first card that lost its boundary class sits there
+/// with its detail block and film name intact, and a parse that
+/// discards the prefix unseen answers with the cards after it — a
+/// list one card short that reads as complete, and a pick with
+/// nothing to weigh takes the wrong one. The prefix is judged like
+/// any fragment: card-shaped, it is read as a card, and comes back
+/// first; card-shaped and unreadable, it refuses the listing at card
+/// one.
+#[test]
+fn a_first_card_that_lost_its_boundary_is_still_read_first() {
+    let page = r#"<html><body><div class="film_list-wrap"><div class="film-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/lost-1" title="Lost">x</a></h3></div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/kept-2" title="Kept">x</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
+    let hits = parse_search(page).expect("both cards read");
+    assert_eq!(
+        hits.iter().map(|h| h.slug.as_str()).collect::<Vec<_>>(),
+        vec!["lost-1", "kept-2"],
+        "the card ahead of the first boundary is read, in its place"
+    );
+
+    let broken = r#"<html><body><div class="film_list-wrap"><div class="film-item"><div class="film-detail"><h3 class="film-name"><a title="Lost">x</a></h3></div></div><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://hianime.at/kept-2" title="Kept">x</a></h3></div></div></div><div id="main-sidebar"></div></body></html>"#;
+    match parse_search(broken) {
+        Err(AniError::ParseFailed { detail }) => {
+            assert!(detail.contains("card 1"), "{detail}");
+        }
+        other => panic!("a list whose unreadable first card lost its boundary read as {other:?}"),
+    }
+}
+
 #[test]
 fn a_card_whose_title_and_slug_sit_on_different_anchors_refuses_the_listing() {
     let page = |detail: &str| {

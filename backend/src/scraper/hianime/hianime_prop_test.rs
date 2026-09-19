@@ -386,7 +386,14 @@ proptest::proptest! {
     /// class — is among the shapes generated: it carries one mark of
     /// a card and is a card the site rendered broken, not furniture.
     /// With no card corrupted every card is read, in the site's
-    /// order.
+    /// order. And the first card can lose its boundary class as
+    /// well, where a later card keeps it: its marks then sit before
+    /// the first boundary, in the prefix the split leaves ahead of
+    /// the cards, and that prefix is judged like any fragment — read
+    /// as a card when it can be, coming back first, and refusing the
+    /// listing at card one when it cannot, never passed over for the
+    /// cards after it. A list with no boundary at all is the renamed
+    /// shape, refused by its own rule.
     #[test]
     fn one_unreadable_card_refuses_the_listing_naming_its_place(
         cards in proptest::collection::vec(
@@ -403,6 +410,7 @@ proptest::proptest! {
             any::<proptest::sample::Index>(),
             proptest::sample::select(vec!["href", "title", "detail-class"]),
         )),
+        first_lost_boundary in proptest::bool::ANY,
     ) {
         prop_assume!(!cards.iter().any(|(words, _, title, _, _)| words.contains("flw-item") || title.contains("flw-item")));
         let (at, loses) = corrupted.map_or((None, ""), |(index, loses)| {
@@ -419,13 +427,18 @@ proptest::proptest! {
                 _ => format!(r#"<a href="https://hianime.at/{slug}" title="{title}" class="dynamic-name">x</a>"#),
             };
             let detail_class = if here && loses == "detail-class" { "fd-block" } else { "film-detail" };
+            // The first card can lose its boundary class on top of
+            // whatever else is corrupted — where another card keeps
+            // the boundary, so the list still has one: read from the
+            // prefix when readable, refused from it when not.
+            let item_class = if position == 0 && first_lost_boundary && cards.len() > 1 { "film-item" } else { "flw-item" };
             let poster = if *has_poster {
                 format!(r#"<div class="film-poster"><a href="https://hianime.at/watch/poster-{position}" class="film-poster-ahref" title="Poster"></a></div>"#)
             } else {
                 String::new()
             };
             page.push_str(&format!(
-                r#"<div class="flw-item">{poster}<div class="{detail_class}"><h3 class="film-name">{heading}</h3><div class="fd-infor"><span class="fdi-item">{kind}</span></div></div></div>"#
+                r#"<div class="{item_class}">{poster}<div class="{detail_class}"><h3 class="film-name">{heading}</h3><div class="fd-infor"><span class="fdi-item">{kind}</span></div></div></div>"#
             ));
         }
         page.push_str(r#"</div><div id="main-sidebar"></div></body></html>"#);
