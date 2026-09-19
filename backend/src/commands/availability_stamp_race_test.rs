@@ -47,6 +47,37 @@ fn row_now(state: &AppState) -> AvailabilityResponse {
     serde_json::from_str(&body).expect("the row parses")
 }
 
+/// The moment the row was last written, as the cache stamps it: the
+/// stamp its lifetime runs from.
+fn written_at(state: &AppState) -> i64 {
+    let conn = state
+        .cache_pool
+        .get()
+        .expect("the cache pool lends a connection");
+    conn.query_row(
+        "SELECT fetched_at FROM meta_cache WHERE key = ?1",
+        [cache_key(ID, MODE)],
+        |r| r.get(0),
+    )
+    .expect("the row is there")
+}
+
+/// Move the row's stamp back by `secs`, so a write that renews it
+/// shows even inside the second the test runs in.
+fn age_row(state: &AppState, secs: i64) {
+    let conn = state
+        .cache_pool
+        .get()
+        .expect("the cache pool lends a connection");
+    let changed = conn
+        .execute(
+            "UPDATE meta_cache SET fetched_at = fetched_at - ?1 WHERE key = ?2",
+            rusqlite::params![secs, cache_key(ID, MODE)],
+        )
+        .expect("the row's stamp moves");
+    assert_eq!(changed, 1, "the row to age is at {}", cache_key(ID, MODE));
+}
+
 /// Stage the interleaving deterministically: the test takes the row
 /// first, so both writers queue for it, and tokio's mutex hands it
 /// over in the order they asked. The resolve asks first and so
@@ -262,4 +293,34 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
         Some(24),
         "with the cap the resolve wrote"
     );
+}
+
+/// A replay of a still-live cached episode, with the show's positive
+/// row standing. The replay validated an old CDN URL and learned
+/// nothing about the listing, so the row keeps its stamp along with
+/// its cap: written back with a fresh one, an ongoing show's exact
+/// cap, replayed daily, would never reach the reprobe that learns
+/// its new episodes, and every episode past the old cap would stay
+/// gated for as long as the user kept replaying the ones before it.
+#[tokio::test]
+async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    seed_standing_row(&state, ProviderId::Hianime, 24);
+    age_row(&state, 3600);
+    let stamped_at = written_at(&state);
+    let generation = state
+        .availability_refreshes
+        .generation(&cache_key(ID, MODE));
+
+    stamp_after_cache_hit(&state, Some(ID), MODE, generation, ProviderId::Hianime).await;
+
+    assert_eq!(
+        written_at(&state),
+        stamped_at,
+        "the standing row keeps the moment it was written, and with it the lifetime it had left"
+    );
+    let row = row_now(&state);
+    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.episode_count, Some(24));
 }
