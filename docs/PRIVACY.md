@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-19_
+_Last updated: 2026-09-22_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -77,11 +77,14 @@ requires it; the exception is the update check that runs on launch
   page's grid, the play page's episode strip); the warm follows the
   page rather than running once on opening, so paging the grid or
   the strip to new episodes, or changing the audio mode or quality
-  setting, resolves what is newly in view — each of which restamps
-  the record with a day's life, so opening a show's page is enough
-  to renew it; a probe alone — the detail page's or a list's, with
-  nothing resolved after it — leaves an ongoing show's record for a
-  day and a finished show's for thirty — and asks that
+  setting, resolves what is newly in view — each warm that resolves
+  afresh restamps the record with a day's life, while one that
+  reuses a stream from the app's own resolution cache leaves a live
+  record as it is, like any cache-served play, so opening a show's
+  page renews the record only when something in view still resolves;
+  a probe alone — the detail page's or a list's, with nothing
+  resolved after it — leaves an ongoing show's record for a day and
+  a finished show's for thirty — and asks that
   one first for later plays, downloads and
   hand-offs of it, so those requests reach hianime after anidb.app
   recovers; once the record expires the next resolve starts from
