@@ -1813,9 +1813,12 @@ proptest! {
         let caps = ajax::ServerCaps::for_walk(reserve, Some(start), ahead_at_start);
         let floor = start.min(reserve) / (counted + 1);
         // An attempt that can fund the reserve and a window apiece:
-        // what is over the reserve, split among the servers ahead,
-        // reaches the floor under those windows.
-        let funded = start.saturating_sub(reserve) / counted >= floor;
+        // it set out with the reserve in hand, and what is over the
+        // reserve, split among the servers ahead, reaches the floor
+        // under those windows. Short of the reserve there is nothing
+        // over it to split, and a floor of zero would otherwise call
+        // that funded.
+        let funded = start >= reserve && start.saturating_sub(reserve) / counted >= floor;
         let mut remaining = start;
         for (i, stall) in stalls.iter().take(ahead_at_start).enumerate() {
             let ahead = ahead_at_start - i;
