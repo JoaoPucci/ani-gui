@@ -466,3 +466,101 @@ async fn a_native_miss_over_the_row_it_set_out_from_writes_the_negative() {
     assert!(!row.available, "the miss is written: {row:?}");
     assert_eq!(row.provider, Some(ProviderId::Hianime));
 }
+
+/// The primary's positive row stood when both resolves set out. One
+/// resolved through the primary and wrote the row again exactly as
+/// it was — same provider, same cap, same tags — while the other was
+/// still waiting on the primary; the other's late clean miss then
+/// finds the row standing as it stood. It was written again, though,
+/// on proof newer than the miss, so it stands and the miss is the
+/// verdict the caller saw. Judged by its bytes alone the row looks
+/// untouched, and the miss would disable a title just proven
+/// playable for the negative's whole lifetime.
+#[tokio::test]
+async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_stood() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    seed_standing_row(&state, ProviderId::Anidb, 12);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::served(ProviderId::Anidb, Some(12), &[]),
+    )
+    .await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::missed(Some(ProviderId::Anidb)),
+    )
+    .await;
+
+    let row = row_now(&state);
+    assert!(row.available, "the row written again stands: {row:?}");
+    assert_eq!(row.provider, Some(ProviderId::Anidb));
+    assert_eq!(row.episode_count, Some(12));
+}
+
+/// The probe's side of the same case: a cache-bypassing probe sets
+/// out from the primary's standing row, and while its walk waits on
+/// the primary's clean miss a resolve writes that very row again,
+/// unchanged. The probe's negative is refused as it would be over a
+/// row that changed: the row was proven again after the walk began.
+#[tokio::test]
+async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_while_it_was_out() {
+    use wiremock::matchers::{method, path};
+    let anidb = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#)
+                .set_delay(std::time::Duration::from_millis(300)),
+        )
+        .mount(&anidb)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = cache_only_state(&td);
+    state.provider_order = vec![ProviderId::Anidb];
+    let state = std::sync::Arc::new(state);
+    seed_standing_row(&state, ProviderId::Anidb, 12);
+
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Standing Show",
+        "mode": MODE,
+        "kitsu_id": ID,
+        "bypass_cache": true
+    }))
+    .expect("args");
+    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+
+    let probe = tokio::spawn({
+        let state = state.clone();
+        let base = anidb.uri();
+        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+    });
+    // The resolve lands while the probe waits on the primary.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::served(ProviderId::Anidb, Some(12), &[]),
+    )
+    .await;
+    let got = probe.await.expect("the probe finishes");
+
+    assert!(
+        matches!(got, Err(crate::error::AniError::NoResults)),
+        "the primary's miss is the verdict the caller sees: {got:?}"
+    );
+    let row = row_now(&state);
+    assert!(row.available, "the row written again stands: {row:?}");
+    assert_eq!(row.episode_count, Some(12));
+}
