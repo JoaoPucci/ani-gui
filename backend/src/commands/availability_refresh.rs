@@ -16,6 +16,16 @@
 //!
 //! A timestamp cannot stand in for this: `meta_cache.fetched_at` is
 //! whole seconds and the race is sub-second.
+//!
+//! The same map counts the positive rows written for a key, for a
+//! second question the generation cannot answer: whether the positive
+//! row standing when a negative comes to be written is the one its
+//! walk set out from. A resolve's or a probe's success is not a
+//! cache-bypassing refresh and leaves the generation where it was,
+//! and a success that proves the show again through the same provider
+//! writes the row back byte for byte — so neither the generation nor
+//! the row's bytes can tell a late miss that such a success landed
+//! while it was out. The count of positive writes can.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -25,9 +35,17 @@ use std::sync::{Arc, Mutex};
 /// pre-premiere show fetches the airing schedule before it writes.
 pub(crate) type RowLock = Arc<tokio::sync::Mutex<()>>;
 
+/// The counts kept per row: writes made by a cache-bypassing
+/// refresh, and positive rows written by anything at all.
+#[derive(Clone, Copy, Default)]
+struct RowCounts {
+    refreshes: u64,
+    positives: u64,
+}
+
 /// Per-`(kitsu_id, mode)` count of cache writes made by a
-/// cache-bypassing refresh, and the lock that makes reading that
-/// count mean something.
+/// cache-bypassing refresh, of positive rows written, and the lock
+/// that makes reading those counts mean something.
 ///
 /// Keyed per show AND mode because the provider catalogues sub and dub
 /// separately — a refresh of the dub row says nothing about whether
@@ -37,7 +55,7 @@ pub(crate) type RowLock = Arc<tokio::sync::Mutex<()>>;
 /// the cloned `Arc` is cheap.
 #[derive(Clone, Default)]
 pub struct AvailabilityRefreshes {
-    inner: Arc<Mutex<HashMap<String, u64>>>,
+    inner: Arc<Mutex<HashMap<String, RowCounts>>>,
     locks: Arc<Mutex<HashMap<String, RowLock>>>,
 }
 
@@ -54,14 +72,35 @@ impl AvailabilityRefreshes {
     pub fn generation(&self, key: &str) -> u64 {
         self.inner
             .lock()
-            .map(|m| m.get(key).copied().unwrap_or(0))
+            .map(|m| m.get(key).map_or(0, |c| c.refreshes))
             .unwrap_or(0)
     }
 
     /// Record that a refresh is writing this row.
     pub fn bump(&self, key: &str) {
         if let Ok(mut m) = self.inner.lock() {
-            *m.entry(key.to_string()).or_insert(0) += 1;
+            m.entry(key.to_string()).or_default().refreshes += 1;
+        }
+    }
+
+    /// How many positive rows this process has written for the key —
+    /// a resolve's success, a probe's, a replay's. Captured by a
+    /// writer before it goes out and read again under the lock, so a
+    /// negative can tell a positive written while it was out, even
+    /// one that put the same bytes back, from the row it set out
+    /// from.
+    #[must_use]
+    pub fn positives(&self, key: &str) -> u64 {
+        self.inner
+            .lock()
+            .map(|m| m.get(key).map_or(0, |c| c.positives))
+            .unwrap_or(0)
+    }
+
+    /// Record that a positive row was written for this key.
+    pub fn note_positive(&self, key: &str) {
+        if let Ok(mut m) = self.inner.lock() {
+            m.entry(key.to_string()).or_default().positives += 1;
         }
     }
 

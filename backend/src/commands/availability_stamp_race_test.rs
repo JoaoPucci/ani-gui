@@ -102,7 +102,6 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
 
     let resolve = tokio::spawn({
         let state = state.clone();
-        let at_start = at_start.clone();
         async move {
             stamp_after_native(
                 &state,
@@ -118,7 +117,6 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
 
     let replay = tokio::spawn({
         let state = state.clone();
-        let at_start = at_start.clone();
         async move {
             stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, replayed_from).await;
         }

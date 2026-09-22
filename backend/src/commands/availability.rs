@@ -255,31 +255,36 @@ impl<'a> ResolveVerdict<'a> {
 /// work, to measure its answer against when it comes to write: the
 /// row's refresh generation, which says whether the writer still
 /// owns the row at all ([`crate::commands::availability_refresh`]),
-/// and the positive row that stood, byte for byte, which a negative
-/// is measured against.
+/// and how many positive rows had been written for it, which says
+/// whether the positive row standing at the write is one the walk
+/// set out from.
 ///
 /// A negative is measured against the row as it stands when it is
 /// written, under the lock, not the row the walk set out from. The
 /// walk saw the row that stood when it began — the provider to
 /// start from was read from it, and the affinity rules decided what
 /// that provider's denial or silence made of the verdict. A positive
-/// row that appeared or changed while the walk was out it never saw:
-/// a resolve, a probe or a replay stamped it, none of which is a
-/// cache-bypassing refresh, so the generation guard lets the write
-/// through. Such a row proved the show playable on evidence the walk
-/// did not weigh, so it stands, and the negative is the verdict the
-/// caller sees and nothing more. Written, it would hide the stream
-/// for its whole lifetime and take the affinity with it — every walk
-/// after it starting from the primary and ending on the same miss.
-#[derive(Debug, Clone)]
+/// row written while the walk was out it never saw: a resolve, a
+/// probe or a replay stamped it, none of which is a cache-bypassing
+/// refresh, so the generation guard lets the write through. That
+/// includes a row written again exactly as it stood — the same
+/// provider proving the show again, with the same cap — which is
+/// proof newer than the miss that the row's bytes cannot show and
+/// the count of positive writes can. Such a row proved the show
+/// playable on evidence the walk did not weigh, so it stands, and
+/// the negative is the verdict the caller sees and nothing more.
+/// Written, it would hide the stream for its whole lifetime and take
+/// the affinity with it — every walk after it starting from the
+/// primary and ending on the same miss.
+#[derive(Debug, Clone, Copy)]
 pub struct RowAtStart {
     generation: u64,
-    positive_row: Option<String>,
+    positives: u64,
 }
 
 impl RowAtStart {
-    /// The row as it stands, read before any network work. With no
-    /// Kitsu id there is no row: generation zero, nothing standing.
+    /// The row's counts as they stand, read before any network work.
+    /// With no Kitsu id there is no row: both zero.
     #[must_use]
     pub fn read(state: &AppState, kitsu_id: Option<&str>, mode: &str) -> Self {
         let generation = crate::commands::availability_refresh::generation_at_start(
@@ -287,21 +292,22 @@ impl RowAtStart {
             kitsu_id,
             mode,
         );
-        let positive_row = kitsu_id
-            .filter(|s| !s.is_empty())
-            .and_then(|id| positive_row_body(state, &cache_key(id, mode)));
+        let positives = kitsu_id.filter(|s| !s.is_empty()).map_or(0, |id| {
+            state.availability_refreshes.positives(&cache_key(id, mode))
+        });
         Self {
             generation,
-            positive_row,
+            positives,
         }
     }
 
-    /// Whether a positive row stands now that is not the one read at
-    /// the start — one that appeared or changed since — so that a
-    /// negative is not written over it. Asked under the row lock.
+    /// Whether a positive row stands now that was written since the
+    /// start — one the walk never saw, even if it reads as the row it
+    /// set out from — so that a negative is not written over it.
+    /// Asked under the row lock.
     fn positive_row_appeared_since(&self, state: &AppState, row: &str) -> bool {
-        let standing_now = positive_row_body(state, row);
-        standing_now.is_some() && standing_now != self.positive_row
+        positive_row_stands(state, row)
+            && state.availability_refreshes.positives(row) != self.positives
     }
 }
 
@@ -417,7 +423,7 @@ pub async fn stamp_after_cache_hit(
         at_start.generation,
         false,
         || {
-            if positive_row_body(state, &row).is_none() {
+            if !positive_row_stands(state, &row) {
                 write_cache(state, id, mode, true, Some(provider));
             }
         },
@@ -425,15 +431,14 @@ pub async fn stamp_after_cache_hit(
     .await;
 }
 
-/// The positive row as the cache holds it, byte for byte, or none
-/// when no positive row stands: two readings compare equal exactly
-/// when nothing wrote the row between them.
-fn positive_row_body(state: &AppState, row: &str) -> Option<String> {
+/// Whether a positive row stands for the key — one within its
+/// lifetime that says the show is carried.
+fn positive_row_stands(state: &AppState, row: &str) -> bool {
     meta_cache_get(&state.cache_pool, row)
         .ok()
         .flatten()
-        .filter(|body| {
-            serde_json::from_str::<AvailabilityResponse>(body).is_ok_and(|parsed| parsed.available)
+        .is_some_and(|body| {
+            serde_json::from_str::<AvailabilityResponse>(&body).is_ok_and(|parsed| parsed.available)
         })
 }
 
@@ -1024,7 +1029,12 @@ pub fn write_cache_full(
         negative_ttl_for(status, cached_next_airing_at(state, kitsu_id), now)
     };
     if let Ok(serialized) = serde_json::to_string(body) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &serialized, ttl);
+        if meta_cache_put(&state.cache_pool, &key, &serialized, ttl).is_ok() && body.available {
+            // Counted so a negative out at this moment can tell, when
+            // it comes to write, that this proof landed meanwhile —
+            // even where it put the same bytes back.
+            state.availability_refreshes.note_positive(&key);
+        }
     }
 }
 
