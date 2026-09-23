@@ -187,6 +187,26 @@ starting it, and delete it when you find it done.
   from its own failures, or fetching announcements from somewhere it
   trusts — and choosing one is the design work, along with which
   signals feed the surface and what persistence they get.
+- **No way from a Continue Watching card to the show's page.** A
+  card on the home page's Continue Watching row is one button, and
+  the button starts playback of the next episode; the only other
+  control on the row is its menu, which clears the row. A user who
+  wants the show itself — its episode list, its synopsis, its list
+  entry — has to find it again through search or the lists, and
+  wanting that from the row is a recurring itch.
+
+  Why it waited: the direction is undecided and wants discussion
+  before anything is built. A second target on the card is the small
+  answer, and a card that is a single play button with a busy state
+  does not obviously have room for one; a Continue Watching page of
+  its own, where each entry can afford the show's page as a
+  destination, is the larger answer that may make the small one moot.
+  Either way it is a design conversation first, not a change to make
+  on sight.
+
+  Worth knowing: the card already resolves the show's Kitsu match to
+  play it, so knowing where the show's page is was never the hard
+  part.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
   requires a `test(red):` predecessor for anything that introduces a
