@@ -78,7 +78,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, 3, 4, 5],
 				currentEpisode: 1,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([2]);
 	});
@@ -92,7 +93,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, 3, 4, 5],
 				currentEpisode: 5,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([6]);
 	});
@@ -104,7 +106,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, 3],
 				currentEpisode: 3,
 				airing: aired(3),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([]);
 		expect(
@@ -113,7 +116,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, 3],
 				currentEpisode: 3,
 				airing: aired(12),
-				playableCount: 3
+				playableCount: 3,
+				listed: true
 			})
 		).toEqual([]);
 	});
@@ -127,7 +131,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, null, 4, 5],
 				currentEpisode: 1,
 				airing: aired(4),
-				playableCount: 3
+				playableCount: 3,
+				listed: true
 			})
 		).toEqual([1, 2]);
 	});
@@ -139,7 +144,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2],
 				currentEpisode: 2,
 				airing: null,
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([3]);
 	});
@@ -183,7 +189,8 @@ describe('detailWarmTargets', () => {
 				visible: [1, 2, 3, 4, 5],
 				heroEpisode: 3,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([3]);
 	});
@@ -195,7 +202,8 @@ describe('detailWarmTargets', () => {
 				visible: [1, 2, 3],
 				heroEpisode: 4,
 				airing: aired(3),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([]);
 		expect(
@@ -204,7 +212,8 @@ describe('detailWarmTargets', () => {
 				visible: [1, 2, 3],
 				heroEpisode: 4,
 				airing: aired(12),
-				playableCount: 3
+				playableCount: 3,
+				listed: true
 			})
 		).toEqual([]);
 	});
@@ -216,7 +225,8 @@ describe('detailWarmTargets', () => {
 				visible: [1, 2, null, 4, 5],
 				heroEpisode: 1,
 				airing: aired(4),
-				playableCount: 4
+				playableCount: 4,
+				listed: true
 			})
 		).toEqual([1, 2, 4]);
 	});
@@ -228,7 +238,8 @@ describe('detailWarmTargets', () => {
 				visible: null,
 				heroEpisode: 7,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([7]);
 		expect(
@@ -237,7 +248,8 @@ describe('detailWarmTargets', () => {
 				visible: null,
 				heroEpisode: 7,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([7]);
 	});

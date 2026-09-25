@@ -1844,7 +1844,8 @@
 			visible: episodes.map((ep) => ep.number ?? ep.relative_number ?? null),
 			currentEpisode: episodeNum,
 			airing,
-			playableCount: playableEpisodeCount
+			playableCount: playableEpisodeCount,
+			listed: showListed
 		});
 		for (const targetEp of targets) {
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>

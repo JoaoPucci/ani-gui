@@ -943,7 +943,8 @@
 			visible: episodes ? episodes.map((e) => e.number ?? e.relative_number ?? null) : null,
 			heroEpisode: defaultEpisode(),
 			airing,
-			playableCount: playableEpisodeCount
+			playableCount: playableEpisodeCount,
+			listed: availability
 		});
 		const altTitles = altTitlesFromKitsu(detail);
 		for (const ep of targets) {
