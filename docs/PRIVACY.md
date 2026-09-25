@@ -92,7 +92,10 @@ requires it; the exception is the update check that runs on launch
   one first for later plays, downloads and
   hand-offs of it, so those requests reach hianime after anidb.app
   recovers; once the record expires the next resolve starts from
-  anidb.app again. These requests carry the search terms
+  anidb.app again — unless a play or hand-off served from the app's
+  own resolution cache has written a day's record first, as
+  described above, in which case it starts from the provider that
+  record names. These requests carry the search terms
   you typed or the anime IDs you're browsing; they do not carry any
   account identifier unless you've connected one. Resolving an
   episode through hianime also fetches an embed page from the embed
