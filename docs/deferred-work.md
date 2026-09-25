@@ -188,10 +188,14 @@ starting it, and delete it when you find it done.
   trusts — and choosing one is the design work, along with which
   signals feed the surface and what persistence they get.
 - **No way from a Continue Watching card to the show's page.** A
-  card on the home page's Continue Watching row is a button that
-  starts playback of the next episode; the other controls are the
-  chip on each card that removes that card, and the row's menu,
-  which clears the row whole. None of them leads to the show. The
+  card on the home page's Continue Watching row, once its history
+  entry has been matched to a Kitsu show, is a button that starts
+  playback of the next episode; the other controls are the chip on
+  each card that removes that card, and the row's menu, which
+  clears the row whole. None of them leads to the show. (An entry
+  the matcher could not place renders as a link to search instead,
+  and has no show to route to; this entry is about the matched
+  cards.) The
   route that exists runs through playback: the play page's poster,
   title and breadcrumb link to the show's page, so a user who wants
   the show itself — its episode list, its synopsis, its list entry —
@@ -209,8 +213,8 @@ starting it, and delete it when you find it done.
   Either way it is a design conversation first, not a change to make
   on sight.
 
-  Worth knowing: the card already resolves the show's Kitsu match to
-  play it, so knowing where the show's page is was never the hard
+  Worth knowing: a matched card already holds the show's Kitsu match
+  to play it, so knowing where the show's page is was never the hard
   part.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
