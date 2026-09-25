@@ -204,7 +204,12 @@
 		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
 	);
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
-		if (patch.available !== undefined) availability = patch.available;
+		if (patch.available !== undefined) {
+			availability = patch.available;
+			// A patch that carries the verdict is the current lookup's
+			// or a re-ask's that won it — either way the warm's too.
+			warmListed = patch.available;
+		}
 		if (patch.count !== undefined) playableEpisodeCount = patch.count;
 		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
 	}
