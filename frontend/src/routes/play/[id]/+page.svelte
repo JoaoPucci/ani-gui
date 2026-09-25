@@ -990,6 +990,11 @@
 	// beyondPlayable reads it as unbounded, so the warm would resolve
 	// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
 	let availabilityResolved = $state(false);
+	// The current lookup's own verdict, for the warm: null while the
+	// question is open or after it failed, never one retained from an
+	// earlier lookup — `showListed` keeps what the page had on failure,
+	// and the warm must not read the other mode's answer as this one's.
+	let warmListed = $state<boolean | null>(null);
 	/** Whether the provider has the show at all, as the detail page tracks
 	 *  it. null until the first answer. Separate from the cap: a
 	 *  delisted show comes back without a count, so the cap alone
@@ -1039,7 +1044,8 @@
 					check: checkAvailability,
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
-					setResolved: (r) => (availabilityResolved = r)
+					setResolved: (r) => (availabilityResolved = r),
+					setListed: (l) => (warmListed = l)
 				}
 			)
 		);
@@ -1845,7 +1851,7 @@
 			currentEpisode: episodeNum,
 			airing,
 			playableCount: playableEpisodeCount,
-			listed: showListed
+			listed: warmListed
 		});
 		for (const targetEp of targets) {
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>

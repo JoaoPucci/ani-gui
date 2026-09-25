@@ -38,6 +38,14 @@ export interface AvailabilityLookupDeps {
 	 *  including when it failed, since "we asked and could not tell" is
 	 *  an answer the page acts on. */
 	setResolved: (resolved: boolean) => void;
+	/** This lookup's own verdict on whether the provider carries the
+	 *  show: null while the question is open and after it failed, the
+	 *  answer once it landed. Unlike the patch, which leaves the page
+	 *  what it had when a lookup fails, this is never a verdict retained
+	 *  from an earlier lookup — a mode flip whose new lookup failed
+	 *  reports null, not the other mode's answer — so a gate that must
+	 *  not act on a stale verdict, such as the warm, reads this. */
+	setListed: (listed: boolean | null) => void;
 }
 
 /**
@@ -52,6 +60,7 @@ export function startAvailabilityLookup(
 ): () => void {
 	let cancelled = false;
 	deps.setResolved(false);
+	deps.setListed(null);
 	const settle = deps.begin();
 	void deps
 		.check({
@@ -66,6 +75,7 @@ export function startAvailabilityLookup(
 		})
 		.then((r) => {
 			if (cancelled) return;
+			deps.setListed(r.available);
 			// Whatever a re-ask has since established is the re-ask's —
 			// it is newer and it bypassed the cache. Anything it left
 			// unanswered is still this lookup's to fill.
