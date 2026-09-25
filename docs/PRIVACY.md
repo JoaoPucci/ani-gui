@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-22_
+_Last updated: 2026-09-25_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -74,7 +74,11 @@ requires it; the exception is the update check that runs on launch
   resume point when there is one, and the play page for the episode
   after the one playing, or, with resolution caching turned on, both
   pages for every aired and playable episode in view (the detail
-  page's grid, the play page's episode strip); the warm follows the
+  page's grid, the play page's episode strip) — and, when the detail
+  page's availability probe answered nothing or answered no, for
+  every aired episode in view, since no playable count then bounds
+  the warm and each of those resolves is a provider search that
+  finds nothing; the warm follows the
   page rather than running once on opening, so paging the grid or
   the strip to new episodes, or changing the audio mode or quality
   setting, resolves what is newly in view — each warm that resolves
