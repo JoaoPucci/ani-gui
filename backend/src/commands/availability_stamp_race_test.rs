@@ -622,3 +622,35 @@ async fn a_resolve_setting_out_during_a_positive_stamp_reads_the_finished_stamp(
         "the miss over the row the walk set out from is written: {row:?}"
     );
 }
+
+/// A replay that serves while a positive row stands writes nothing
+/// — the row keeps its lifetime — but it is a positive all the same:
+/// a stream just played. A resolve that set out before the replay
+/// and comes back with a clean miss never weighed that, so its miss
+/// is refused over the row, as it is over any positive written
+/// while it was out. Counted as nothing, the replay would leave the
+/// miss free to hide a show that played a moment earlier.
+#[tokio::test]
+async fn a_replay_over_a_standing_row_counts_as_a_positive_for_a_miss_that_set_out_before_it() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    seed_standing_row(&state, ProviderId::Hianime, 24);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
+
+    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Hianime).await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::missed(Some(ProviderId::Hianime)),
+    )
+    .await;
+
+    let row = row_now(&state);
+    assert!(
+        row.available,
+        "the row a replay just served from stands: {row:?}"
+    );
+    assert_eq!(row.episode_count, Some(24));
+}
