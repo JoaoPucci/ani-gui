@@ -36,11 +36,13 @@ use std::sync::{Arc, Mutex};
 pub(crate) type RowLock = Arc<tokio::sync::Mutex<()>>;
 
 /// The counts kept per row: writes made by a cache-bypassing
-/// refresh, and positive rows written by anything at all.
+/// refresh, positive rows written by anything at all, and replays
+/// served from a standing positive row without writing it.
 #[derive(Clone, Copy, Default)]
 struct RowCounts {
     refreshes: u64,
     positives: u64,
+    replays: u64,
 }
 
 /// Per-`(kitsu_id, mode)` count of cache writes made by a
@@ -84,11 +86,11 @@ impl AvailabilityRefreshes {
     }
 
     /// How many positive rows this process has written for the key —
-    /// a resolve's success, a probe's, a replay's. Captured by a
-    /// writer before it goes out and read again under the lock, so a
-    /// negative can tell a positive written while it was out, even
-    /// one that put the same bytes back, from the row it set out
-    /// from.
+    /// a resolve's success, a probe's, a replay's count-less row.
+    /// Captured by a writer before it goes out and read again under
+    /// the lock, so a stamp can tell a positive row written while it
+    /// was out, even one that put the same bytes back, from the row
+    /// it set out from.
     #[must_use]
     pub fn positives(&self, key: &str) -> u64 {
         self.inner
@@ -101,6 +103,25 @@ impl AvailabilityRefreshes {
     pub fn note_positive(&self, key: &str) {
         if let Ok(mut m) = self.inner.lock() {
             m.entry(key.to_string()).or_default().positives += 1;
+        }
+    }
+
+    /// How many replays have been served from a standing positive
+    /// row of this key without writing it. Proof a stream played,
+    /// which a miss out at the time never weighed — but not a row
+    /// written, so a later success is still free to write its own.
+    #[must_use]
+    pub fn replays(&self, key: &str) -> u64 {
+        self.inner
+            .lock()
+            .map(|m| m.get(key).map_or(0, |c| c.replays))
+            .unwrap_or(0)
+    }
+
+    /// Record that a replay was served from this key's standing row.
+    pub fn note_replay(&self, key: &str) {
+        if let Ok(mut m) = self.inner.lock() {
+            m.entry(key.to_string()).or_default().replays += 1;
         }
     }
 

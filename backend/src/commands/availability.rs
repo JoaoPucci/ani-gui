@@ -255,7 +255,8 @@ impl<'a> ResolveVerdict<'a> {
 /// work, in one snapshot under the row's lock: the row's refresh
 /// generation, which says whether the writer still owns the row at
 /// all ([`crate::commands::availability_refresh`]); how many
-/// positive rows had been written for it, which says whether the
+/// positive rows had been written for it, and how many replays
+/// served from its standing row, which together say whether the
 /// positive row standing at the write is one the walk set out from;
 /// and the provider the row remembers, for the walk to start from.
 /// A positive stamp is two steps — the row into the cache, then the
@@ -283,10 +284,22 @@ impl<'a> ResolveVerdict<'a> {
 /// Written, it would hide the stream for its whole lifetime and take
 /// the affinity with it — every walk after it starting from the
 /// primary and ending on the same miss.
+///
+/// A success is measured the same way, against the rows written:
+/// two resolves out at once from the same snapshot can both
+/// succeed, and when one has failed over and written the fallback's
+/// row with the cap its listing paid for, the other's later success
+/// through the primary is older evidence than that row — written
+/// over it, it would gate the episodes just proven playable and
+/// send the next operation back to the slower provider. A replay
+/// served meanwhile is proof a stream played, which holds a miss
+/// back, but not a row written, so it leaves a later success free
+/// to write its own.
 #[derive(Debug, Clone, Copy)]
 pub struct RowAtStart {
     generation: u64,
     positives: u64,
+    replays: u64,
     remembered: Option<crate::scraper::provider::ProviderId>,
 }
 
@@ -299,6 +312,7 @@ impl RowAtStart {
             return Self {
                 generation: 0,
                 positives: 0,
+                replays: 0,
                 remembered: None,
             };
         };
@@ -311,6 +325,7 @@ impl RowAtStart {
         Self {
             generation: state.availability_refreshes.generation(&key),
             positives: state.availability_refreshes.positives(&key),
+            replays: state.availability_refreshes.replays(&key),
             remembered: cached_provider(state, id, mode),
         }
     }
@@ -323,13 +338,23 @@ impl RowAtStart {
         self.remembered
     }
 
-    /// Whether a positive row stands now that was written since the
-    /// start — one the walk never saw, even if it reads as the row it
-    /// set out from — so that a negative is not written over it.
-    /// Asked under the row lock.
-    fn positive_row_appeared_since(&self, state: &AppState, row: &str) -> bool {
+    /// Whether a positive row was written since the start, and
+    /// stands — one the walk never saw, even if it reads as the row
+    /// it set out from — so that a later success is not written over
+    /// it. Asked under the row lock.
+    fn positive_row_written_since(&self, state: &AppState, row: &str) -> bool {
         positive_row_stands(state, row)
             && state.availability_refreshes.positives(row) != self.positives
+    }
+
+    /// Whether a positive stands now that the walk never weighed: a
+    /// row written since the start, or a replay served from the
+    /// standing row since — so that a negative is not written over
+    /// it. Asked under the row lock.
+    fn positive_row_appeared_since(&self, state: &AppState, row: &str) -> bool {
+        self.positive_row_written_since(state, row)
+            || (positive_row_stands(state, row)
+                && state.availability_refreshes.replays(row) != self.replays)
     }
 }
 
@@ -354,7 +379,8 @@ impl RowAtStart {
 /// out at once with the same generation, and when one has failed
 /// over and stamped the fallback's success while the other was
 /// still waiting on the primary, the late miss is not written over
-/// it ([`RowAtStart`]).
+/// it — nor is the other's later success, older evidence than the
+/// row that stands ([`RowAtStart`]).
 pub async fn stamp_after_native(
     state: &AppState,
     kitsu_id: Option<&str>,
@@ -372,7 +398,11 @@ pub async fn stamp_after_native(
         at_start.generation,
         false,
         || {
-            if !verdict.available && at_start.positive_row_appeared_since(state, &row) {
+            if verdict.available {
+                if at_start.positive_row_written_since(state, &row) {
+                    return;
+                }
+            } else if at_start.positive_row_appeared_since(state, &row) {
                 return;
             }
             match verdict.episode_cap {
@@ -419,12 +449,13 @@ pub async fn stamp_after_native(
 /// the replay write the boolean positive row a served resolve
 /// without a cap writes, naming `provider` — count-less, so the next
 /// look at the show reprobes it for its cap, starting from that
-/// provider. Where a positive row stands, the replay still counts
-/// as a positive written: a stream just played, which a miss out at
-/// the time never weighed, so a resolve that set out before the
-/// replay does not write its miss over the row. The row itself, and
-/// its lifetime, are untouched. Under the same refresh guard as a
-/// resolve's stamp.
+/// provider. Where a positive row stands, the replay is counted as
+/// served from it: a stream just played, which a miss out at the
+/// time never weighed, so a resolve that set out before the replay
+/// does not write its miss over the row — while a later success,
+/// which weighs against rows written, is still free to write its
+/// own. The row itself, and its lifetime, are untouched. Under the
+/// same refresh guard as a resolve's stamp.
 ///
 /// The row is read inside the lock, not on the way to it. A native
 /// resolve stamping the same row is not a cache-bypassing refresh
@@ -451,7 +482,7 @@ pub async fn stamp_after_cache_hit(
         false,
         || {
             if positive_row_stands(state, &row) {
-                state.availability_refreshes.note_positive(&row);
+                state.availability_refreshes.note_replay(&row);
             } else {
                 write_cache(state, id, mode, true, Some(provider));
             }
@@ -763,13 +794,24 @@ pub(crate) async fn check_availability_with_base(
                 provider,
             });
         };
-        // A negative is measured against the row as it stands now,
+        // A verdict is measured against the row as it stands now,
         // under the lock, not the row the probe set out from: a
-        // positive row that appeared or changed while the walk was
-        // out stands, and the negative is the verdict the caller sees
-        // and nothing more (see `RowAtStart`).
+        // positive row written while the walk was out stands, and
+        // the verdict is the caller's and nothing more — a negative
+        // yields to a replay served meanwhile as well (see
+        // `RowAtStart`).
         if !available && at_start.positive_row_appeared_since(state, &row) {
             return Err(crate::error::AniError::NoResults);
+        }
+        if available && at_start.positive_row_written_since(state, &row) {
+            return Ok(AvailabilityResponse {
+                available,
+                episode_count,
+                extra_episodes,
+                episode_count_approximate,
+                gate_refused,
+                provider,
+            });
         }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
         write_cache_full(
