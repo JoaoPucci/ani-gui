@@ -189,8 +189,10 @@ starting it, and delete it when you find it done.
   signals feed the surface and what persistence they get.
 - **No way from a Continue Watching card to the show's page.** A
   card on the home page's Continue Watching row, once its history
-  entry has been matched to a Kitsu show, is a button that starts
-  playback of the next episode; the other controls are the chip on
+  entry has been matched to a Kitsu show, is a button that plays
+  the episode it offers — the one after the last watched, or that
+  one again when the show has no further episode to offer; the
+  other controls are the chip on
   each card that removes that card, and the row's menu, which
   clears the row whole. None of them leads to the show. (An entry
   the matcher could not place renders as a link to search instead,
