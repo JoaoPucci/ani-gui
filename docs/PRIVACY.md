@@ -77,8 +77,8 @@ requires it; the exception is the update check that runs on launch
   page's grid, the play page's episode strip) — and, when the detail
   page's availability probe answered nothing or answered no, for
   every aired episode in view, since no playable count then bounds
-  the warm and each of those resolves is a provider search that
-  finds nothing; the warm follows the
+  the warm — a provider resolution attempt apiece, whatever each
+  finds; the warm follows the
   page rather than running once on opening, so paging the grid or
   the strip to new episodes, or changing the audio mode or quality
   setting, resolves what is newly in view — each warm that resolves
@@ -121,8 +121,9 @@ requires it; the exception is the update check that runs on launch
   `Referer` at all — its CDN asks for none, and the app adds none.
   Nothing identifying you is sent with it. The CDN is also reached
   before any playback, whenever an episode is resolved or a cached
-  resolution is reused: a resolve — a page warm, or a play or hand-off
-  that finds nothing cached — fetches the episode's master playlist, to
+  resolution is reused: a resolve — a page warm, a play or hand-off
+  that finds nothing cached, or a download, which always resolves
+  afresh — fetches the episode's master playlist, to
   check that what the page named is a playlist, and, when the quality
   setting is not "best", the playlist of the rendition that setting
   selects as well — a second fetch, at whatever host the master names
