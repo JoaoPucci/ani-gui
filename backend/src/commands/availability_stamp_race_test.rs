@@ -654,3 +654,139 @@ async fn a_replay_over_a_standing_row_counts_as_a_positive_for_a_miss_that_set_o
     );
     assert_eq!(row.episode_count, Some(24));
 }
+
+/// Two resolves set out from the same snapshot. One fails over and
+/// stamps the fallback's success — hianime's row, with the larger
+/// cap its listing paid for — and the other, slower, then succeeds
+/// through the primary with the smaller cap it listed. The later
+/// success is as real as the earlier one, but it is older evidence
+/// than the row that stands: written over it, it would gate the
+/// episodes the fallback had just proven playable and send the next
+/// operation back to the provider that was slower. A positive is
+/// measured against the row that stands when it writes, like a
+/// negative: where a positive row was written since the walk set
+/// out, the later success is not written over it.
+#[tokio::test]
+async fn a_later_native_success_does_not_overwrite_a_positive_row_written_after_it_set_out() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
+
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+    )
+    .await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::served(ProviderId::Anidb, Some(12), &[]),
+    )
+    .await;
+
+    let row = row_now(&state);
+    assert_eq!(
+        row.provider,
+        Some(ProviderId::Hianime),
+        "the fallback's row, written first, stands: {row:?}"
+    );
+    assert_eq!(row.episode_count, Some(24));
+}
+
+/// One-show anidb stub whose browse answer is delayed, so a stamp
+/// can land while the probe waits on it.
+async fn stub_one_show_slowly(count: u32) -> wiremock::MockServer {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(r#"<a href="/anime/probe-show-5"><img alt="Probe Show"/></a>"#)
+                .set_delay(std::time::Duration::from_millis(300)),
+        )
+        .mount(&server)
+        .await;
+    let eps: Vec<String> = (1..=count)
+        .map(|n| format!("{{\"id\":{},\"number\":{}}}", 5000 + n, n))
+        .collect();
+    wiremock::Mock::given(method("GET"))
+        .and(path("/api/frontend/anime/5/episodes"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200)
+                .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
+        )
+        .mount(&server)
+        .await;
+    wiremock::Mock::given(method("GET"))
+        .and(path(format!(
+            "/api/frontend/episode/{}/languages",
+            5000 + count
+        )))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/p1"}]}"#,
+        ))
+        .mount(&server)
+        .await;
+    server
+}
+
+/// The probe's side of the same case: a probe with no row to remember
+/// walks the primary, and while it waits on the primary's answer a
+/// resolve reaches the show through the fallback and stamps hianime's
+/// row with its cap. The primary then answers the probe with the show
+/// and a smaller cap. The probe's answer is the caller's — it is what
+/// the primary said — but the row it finds standing when it takes the
+/// lock was written after it set out, on evidence it did not weigh,
+/// and stands.
+#[tokio::test]
+async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
+    let anidb = stub_one_show_slowly(7).await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = cache_only_state(&td);
+    state.provider_order = vec![ProviderId::Anidb];
+    let state = std::sync::Arc::new(state);
+
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Probe Show",
+        "mode": MODE,
+        "kitsu_id": ID,
+        "episode_count": 7
+    }))
+    .expect("args");
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
+
+    let probe = tokio::spawn({
+        let state = state.clone();
+        let base = anidb.uri();
+        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+    )
+    .await;
+    let got = probe
+        .await
+        .expect("the probe finishes")
+        .expect("the primary answered");
+
+    assert!(got.available, "the probe's own answer is the caller's");
+    assert_eq!(got.episode_count, Some(7));
+    let row = row_now(&state);
+    assert_eq!(
+        row.provider,
+        Some(ProviderId::Hianime),
+        "the fallback's row, stamped while the probe was out, stands: {row:?}"
+    );
+    assert_eq!(row.episode_count, Some(24));
+}
