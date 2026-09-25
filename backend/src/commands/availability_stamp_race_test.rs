@@ -562,3 +562,63 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
     assert!(row.available, "the row written again stands: {row:?}");
     assert_eq!(row.episode_count, Some(12));
 }
+
+/// A positive stamp is two steps — the row goes into the cache, then
+/// the count of positive writes moves — and a resolve setting out in
+/// between must not read the one without the other. Here the stamp
+/// holds the row while it writes, as every writer does; a resolve
+/// that sets out while the row is held waits for it, and what it
+/// reads then is the finished stamp: the fallback's row to start
+/// from, and the count as it stands with that row in it. Its walk
+/// starts from the fallback, and when the fallback answers a clean
+/// miss the negative is a full walk's verdict over the very row it
+/// set out from, so it is written. Read without waiting, the resolve
+/// would see the fallback's row and the count from before it — and
+/// its own miss would be refused as though the row had appeared
+/// behind its back, leaving a row it fully walked standing for the
+/// row's whole lifetime.
+#[tokio::test]
+async fn a_resolve_setting_out_during_a_positive_stamp_reads_the_finished_stamp() {
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    let key = cache_key(ID, MODE);
+
+    // The stamp: row held, the row written, the count not yet moved.
+    let held = state
+        .availability_refreshes
+        .for_row(&key)
+        .lock_owned()
+        .await;
+    let body = serde_json::to_string(&positive_row(ProviderId::Hianime, Some(24)))
+        .expect("the row serialises");
+    crate::cache::db::meta_cache_put(&state.cache_pool, &key, &body, 3600).expect("the row lands");
+
+    // The resolve sets out now.
+    let reader = tokio::spawn({
+        let state = state.clone();
+        async move { RowAtStart::read(&state, Some(ID), MODE) }
+    });
+    tokio::task::yield_now().await;
+
+    // The stamp finishes and lets the row go.
+    state.availability_refreshes.note_positive(&key);
+    drop(held);
+    let at_start = reader.await.expect("the resolve reads its row");
+
+    // Its walk started from the fallback the row names and the
+    // fallback answered a clean miss: a full walk's verdict.
+    stamp_after_native(
+        &state,
+        Some(ID),
+        MODE,
+        &at_start,
+        ResolveVerdict::missed(Some(ProviderId::Hianime)),
+    )
+    .await;
+
+    let row = row_now(&state);
+    assert!(
+        !row.available,
+        "the miss over the row the walk set out from is written: {row:?}"
+    );
+}
