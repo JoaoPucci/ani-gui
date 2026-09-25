@@ -218,18 +218,17 @@ where
     // the fresh resolution outcome alone, under the play path's
     // mapping: answered verdicts are health, weather is distress, a
     // gate refusal records nothing.
-    let remembered = args
-        .kitsu_id
-        .as_deref()
-        .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
     // Read before the resolve, as the play path does: the verdict
     // stamped is the one this resolve got, and a refresh can land any
-    // time between.
+    // time between. The provider to start from comes from the same
+    // read.
     let at_start = crate::commands::availability::RowAtStart::read(
         state,
         args.kitsu_id.as_deref(),
         &args.mode,
-    );
+    )
+    .await;
+    let remembered = at_start.remembered();
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut forward,

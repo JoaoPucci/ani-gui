@@ -105,12 +105,9 @@ where
     // and candidate listings in sequence, each request against its
     // own transport timeout, so an unbounded pick can delay the
     // first transfer past the gate's half-open trial window.
-    let remembered = args
-        .kitsu_id
-        .as_deref()
-        .and_then(|id| super::availability::cached_provider(state, id, &args.mode));
     let at_start =
-        super::availability::RowAtStart::read(state, args.kitsu_id.as_deref(), &args.mode);
+        super::availability::RowAtStart::read(state, args.kitsu_id.as_deref(), &args.mode).await;
+    let remembered = at_start.remembered();
     let mut attempt = RangeStartAttempt {
         args,
         first,

@@ -93,7 +93,7 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
     replayed_from: ProviderId,
 ) {
     let key = cache_key(ID, MODE);
-    let at_start = RowAtStart::read(state, Some(ID), MODE);
+    let at_start = RowAtStart::read(state, Some(ID), MODE).await;
     let held = state
         .availability_refreshes
         .for_row(&key)
@@ -209,7 +209,7 @@ async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_i
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     seed_standing_row(&state, ProviderId::Hianime, 24);
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Anidb).await;
 
@@ -260,7 +260,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
         "kitsu_id": ID
     }))
     .expect("args");
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     let probe = tokio::spawn({
         let state = state.clone();
@@ -307,7 +307,7 @@ async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
     seed_standing_row(&state, ProviderId::Hianime, 24);
     age_row(&state, 3600);
     let stamped_at = written_at(&state);
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Hianime).await;
 
@@ -336,7 +336,7 @@ async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
 async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_out() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
         &state,
@@ -376,7 +376,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     seed_standing_row(&state, ProviderId::Anidb, 12);
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
         &state,
@@ -422,7 +422,7 @@ async fn a_replay_past_the_rows_lifetime_writes_the_providers_positive_row_again
             .is_none(),
         "the seeded row has run out"
     );
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Hianime).await;
 
@@ -449,7 +449,7 @@ async fn a_native_miss_over_the_row_it_set_out_from_writes_the_negative() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     seed_standing_row(&state, ProviderId::Hianime, 24);
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
         &state,
@@ -479,7 +479,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_sto
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     seed_standing_row(&state, ProviderId::Anidb, 12);
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
         &state,
@@ -535,7 +535,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
         "bypass_cache": true
     }))
     .expect("args");
-    let at_start = RowAtStart::read(&state, Some(ID), MODE);
+    let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     let probe = tokio::spawn({
         let state = state.clone();
@@ -596,7 +596,7 @@ async fn a_resolve_setting_out_during_a_positive_stamp_reads_the_finished_stamp(
     // The resolve sets out now.
     let reader = tokio::spawn({
         let state = state.clone();
-        async move { RowAtStart::read(&state, Some(ID), MODE) }
+        async move { RowAtStart::read(&state, Some(ID), MODE).await }
     });
     tokio::task::yield_now().await;
 

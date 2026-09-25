@@ -252,12 +252,19 @@ impl<'a> ResolveVerdict<'a> {
 }
 
 /// What a writer of an availability row reads before its network
-/// work, to measure its answer against when it comes to write: the
-/// row's refresh generation, which says whether the writer still
-/// owns the row at all ([`crate::commands::availability_refresh`]),
-/// and how many positive rows had been written for it, which says
-/// whether the positive row standing at the write is one the walk
-/// set out from.
+/// work, in one snapshot under the row's lock: the row's refresh
+/// generation, which says whether the writer still owns the row at
+/// all ([`crate::commands::availability_refresh`]); how many
+/// positive rows had been written for it, which says whether the
+/// positive row standing at the write is one the walk set out from;
+/// and the provider the row remembers, for the walk to start from.
+/// A positive stamp is two steps — the row into the cache, then the
+/// count — and every writer holds the row across both, so a reader
+/// that takes the row sees the finished stamp or none of it, never
+/// the new row with the count from before it; read apart, a walk
+/// could set out from a row whose count it had not seen and have its
+/// own full-walk miss refused as though the row had appeared behind
+/// its back.
 ///
 /// A negative is measured against the row as it stands when it is
 /// written, under the lock, not the row the walk set out from. The
@@ -280,25 +287,40 @@ impl<'a> ResolveVerdict<'a> {
 pub struct RowAtStart {
     generation: u64,
     positives: u64,
+    remembered: Option<crate::scraper::provider::ProviderId>,
 }
 
 impl RowAtStart {
-    /// The row's counts as they stand, read before any network work.
-    /// With no Kitsu id there is no row: both zero.
-    #[must_use]
-    pub fn read(state: &AppState, kitsu_id: Option<&str>, mode: &str) -> Self {
-        let generation = crate::commands::availability_refresh::generation_at_start(
-            &state.availability_refreshes,
-            kitsu_id,
-            mode,
-        );
-        let positives = kitsu_id.filter(|s| !s.is_empty()).map_or(0, |id| {
-            state.availability_refreshes.positives(&cache_key(id, mode))
-        });
+    /// The row as it stands, read before any network work, under the
+    /// row's lock. With no Kitsu id there is no row: both counts
+    /// zero, nothing remembered.
+    pub async fn read(state: &AppState, kitsu_id: Option<&str>, mode: &str) -> Self {
+        let Some(id) = kitsu_id.filter(|s| !s.is_empty()) else {
+            return Self {
+                generation: 0,
+                positives: 0,
+                remembered: None,
+            };
+        };
+        let key = cache_key(id, mode);
+        let _held = state
+            .availability_refreshes
+            .for_row(&key)
+            .lock_owned()
+            .await;
         Self {
-            generation,
-            positives,
+            generation: state.availability_refreshes.generation(&key),
+            positives: state.availability_refreshes.positives(&key),
+            remembered: cached_provider(state, id, mode),
         }
+    }
+
+    /// The provider a positive row remembered as the walk set out —
+    /// the one it starts from — read in the same snapshot as the
+    /// counts.
+    #[must_use]
+    pub fn remembered(&self) -> Option<crate::scraper::provider::ProviderId> {
+        self.remembered
     }
 
     /// Whether a positive row stands now that was written since the
@@ -590,7 +612,7 @@ pub(crate) async fn check_availability_with_base(
     // a refresh answering in between means this lookup's row is the
     // stale one (see `AvailabilityRefreshes`), and a positive row
     // appearing in between is one a negative is not written over.
-    let at_start = RowAtStart::read(state, args.kitsu_id.as_deref(), mode);
+    let at_start = RowAtStart::read(state, args.kitsu_id.as_deref(), mode).await;
 
     // Cache short-circuit. Skipped when no kitsu_id is supplied.
     // Which rows may be served is [`cache_hit_is_usable`]'s call —
@@ -617,11 +639,7 @@ pub(crate) async fn check_availability_with_base(
     // proved the show, and the reprobe starts from it: from the
     // primary, its clean miss would end the walk and overwrite that
     // proof with a negative.
-    let remembered = args
-        .kitsu_id
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .and_then(|id| cached_provider(state, id, mode));
+    let remembered = at_start.remembered();
     let order = crate::commands::providers::order_with_affinity(&state.provider_order, remembered);
     let remembered = remembered.filter(|r| order.first() == Some(r));
 

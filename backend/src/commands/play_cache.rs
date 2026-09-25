@@ -82,9 +82,9 @@ pub(crate) async fn stamp_availability_on_cache_hit(
 }
 
 /// The row a play's stamp is ordered against — its refresh
-/// generation and the positive row standing — read before the
-/// liveness check, never after it.
-pub(crate) fn row_before_check(
+/// generation, its count of positive writes and the provider it
+/// remembers — read before the liveness check, never after it.
+pub(crate) async fn row_before_check(
     state: &AppState,
     args: &super::play::PlayArgs,
 ) -> crate::commands::availability::RowAtStart {
@@ -93,6 +93,7 @@ pub(crate) fn row_before_check(
         args.kitsu_id.as_deref(),
         args.mode.as_str(),
     )
+    .await
 }
 
 /// How long a cached row may take to prove itself live. The row is
@@ -205,7 +206,7 @@ pub(crate) async fn try_launch_args_from_cache(
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
     // Captured before the check goes out, like a fresh resolve's
     // answer: a refresh landing during the check owns the row.
-    let at_start = row_before_check(state, args);
+    let at_start = row_before_check(state, args).await;
     if !cached_row_is_live(state, &cached).await {
         play_resolution_cache::evict(&state.cache_pool, &cache_key);
         tracing::info!(

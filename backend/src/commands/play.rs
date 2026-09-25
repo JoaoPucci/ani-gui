@@ -255,7 +255,7 @@ where
     // and the resolving alike — not before the write: the answer a
     // play stamps is the one it got here, and a refresh can land any
     // time between.
-    let availability_at_start = crate::commands::play_cache::row_before_check(state, args);
+    let availability_at_start = crate::commands::play_cache::row_before_check(state, args).await;
     if cache_resolutions {
         if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &cache_key) {
             if let Some(resp) = try_serve_cached(state, &cached).await {
@@ -311,10 +311,7 @@ where
     // unreachable. Each attempt's outcome lands on its own provider's
     // breaker so background traffic backs off after provider-shaped
     // failures — and only those; the mapping is play_native_outcome's.
-    let remembered = args
-        .kitsu_id
-        .as_deref()
-        .and_then(|id| crate::commands::availability::cached_provider(state, id, &args.mode));
+    let remembered = availability_at_start.remembered();
     let mut attempt = crate::commands::providers::ResolveAttempt {
         request,
         on_progress: &mut on_progress,
@@ -550,7 +547,8 @@ pub(crate) mod tests {
             &state,
             args.kitsu_id.as_deref(),
             args.mode.as_str(),
-        );
+        )
+        .await;
         stamp_availability_after_native(
             &state,
             &args,
@@ -613,7 +611,8 @@ pub(crate) mod tests {
             &state,
             args.kitsu_id.as_deref(),
             args.mode.as_str(),
-        );
+        )
+        .await;
         stamp_availability_after_native(
             &state,
             &args,
@@ -1976,7 +1975,7 @@ pub(crate) mod tests {
         };
         let row = crate::commands::availability::cache_key("race-1", "sub");
         let at_start =
-            crate::commands::availability::RowAtStart::read(&state, Some("race-1"), "sub");
+            crate::commands::availability::RowAtStart::read(&state, Some("race-1"), "sub").await;
 
         // The refresh answers first: bump + a positive write.
         state.availability_refreshes.bump(&row);
@@ -2020,7 +2019,7 @@ pub(crate) mod tests {
             kitsu_id: Some("cap-1".into()),
         };
         let at_start =
-            crate::commands::availability::RowAtStart::read(&state, Some("cap-1"), "sub");
+            crate::commands::availability::RowAtStart::read(&state, Some("cap-1"), "sub").await;
         stamp_availability_after_native(
             &state,
             &args,
@@ -2067,7 +2066,7 @@ pub(crate) mod tests {
             kitsu_id: Some("dub-2".into()),
         };
         let at_start =
-            crate::commands::availability::RowAtStart::read(&state, Some("dub-2"), "dub");
+            crate::commands::availability::RowAtStart::read(&state, Some("dub-2"), "dub").await;
         stamp_availability_after_native(
             &state,
             &args,
@@ -2119,7 +2118,7 @@ pub(crate) mod tests {
             kitsu_id: Some("dub-1".into()),
         };
         let at_start =
-            crate::commands::availability::RowAtStart::read(&state, Some("dub-1"), "dub");
+            crate::commands::availability::RowAtStart::read(&state, Some("dub-1"), "dub").await;
         stamp_availability_after_native(
             &state,
             &args,
