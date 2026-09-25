@@ -193,9 +193,10 @@ starting it, and delete it when you find it done.
   the show and starts playback — of the episode after the last
   watched, or of that one again at the show's cap, decided when the
   button is clicked, so the number the card shows beforehand is not
-  always the episode played; the other controls are the chip on
-  each card that removes that card, and the row's menu, which
-  clears the row whole. None of them leads to the show. (An entry
+  always the episode played. Nothing else on the card or the row
+  leads to the show either: the chip on a card removes it, the
+  row's menu clears the row whole, the strip's arrows scroll it.
+  (An entry
   the matcher could not place renders as a link to search instead,
   and has no show to route to; this entry is about the matched
   cards.) The
