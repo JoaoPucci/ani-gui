@@ -191,10 +191,13 @@ starting it, and delete it when you find it done.
   card on the home page's Continue Watching row is a button that
   starts playback of the next episode; the other controls are the
   chip on each card that removes that card, and the row's menu,
-  which clears the row whole. None of them leads to the show. A
-  user who wants the show itself — its episode list, its synopsis,
-  its list entry — has to find it again through search or the
-  lists, and wanting that from the row is a recurring itch.
+  which clears the row whole. None of them leads to the show. The
+  route that exists runs through playback: the play page's poster,
+  title and breadcrumb link to the show's page, so a user who wants
+  the show itself — its episode list, its synopsis, its list entry —
+  starts the episode first, or finds the show again through search
+  or the lists. What is missing is a direct route from the card that
+  does not start playback, and wanting one is a recurring itch.
 
   Why it waited: the direction is undecided and wants discussion
   before anything is built. A further target on the card is the
