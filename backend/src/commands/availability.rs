@@ -419,7 +419,12 @@ pub async fn stamp_after_native(
 /// the replay write the boolean positive row a served resolve
 /// without a cap writes, naming `provider` — count-less, so the next
 /// look at the show reprobes it for its cap, starting from that
-/// provider. Under the same refresh guard as a resolve's stamp.
+/// provider. Where a positive row stands, the replay still counts
+/// as a positive written: a stream just played, which a miss out at
+/// the time never weighed, so a resolve that set out before the
+/// replay does not write its miss over the row. The row itself, and
+/// its lifetime, are untouched. Under the same refresh guard as a
+/// resolve's stamp.
 ///
 /// The row is read inside the lock, not on the way to it. A native
 /// resolve stamping the same row is not a cache-bypassing refresh
@@ -445,7 +450,9 @@ pub async fn stamp_after_cache_hit(
         at_start.generation,
         false,
         || {
-            if !positive_row_stands(state, &row) {
+            if positive_row_stands(state, &row) {
+                state.availability_refreshes.note_positive(&row);
+            } else {
                 write_cache(state, id, mode, true, Some(provider));
             }
         },
