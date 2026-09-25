@@ -207,6 +207,20 @@ describe('startAvailabilityLookup', () => {
 		expect(failed.listed).toEqual([null]);
 	});
 
+	it('publishes the verdict only where the writeback lets this lookup own it', async () => {
+		// A cache-bypassing re-ask that answered while this lookup was
+		// out owns the verdict: the writeback drops `available` from
+		// the patch and the page keeps the re-ask's answer. The warm
+		// must follow the same decision — published unconditionally,
+		// a cached "listed" would outrun a re-ask that found the show
+		// delisted and warm episodes for it.
+		const h = harness();
+		h.deps.begin = () => (a) => ({ count: a.count, extraEpisodes: a.extraEpisodes });
+		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
+		await settled();
+		expect(h.listed).toEqual([null]);
+	});
+
 	it('runs the two lookups of a mode flip independently', async () => {
 		const h = harness();
 		const cancelFirst = startAvailabilityLookup(SUBJECT, 'sub', h.deps);
