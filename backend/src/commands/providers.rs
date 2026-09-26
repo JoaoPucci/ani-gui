@@ -408,17 +408,24 @@ enum Negative<'c, T> {
 impl<T> Negative<'_, T> {
     /// Whether the negative found the show: a negative answer is a
     /// show found without the requested mode, the unknown verdict
-    /// is a show found with nothing said about the mode, and the
-    /// episode verdict names the episode a provider that found the
-    /// show does not carry. A title miss did not find it — not the
-    /// clean one, and not the answered dead end on stale candidates
-    /// whose episode lists were gone, which is not clean and is not
-    /// the show either — and an unreachable provider's error standing
-    /// in for a miss says nothing.
+    /// is a show found with nothing said about the mode, the episode
+    /// verdict names the episode a provider that found the show does
+    /// not carry, and a non-blocking upstream status the episode
+    /// chain answered — the host rejecting this request — came from
+    /// inside a show the walk had picked, and says nothing about the
+    /// show's absence. A title miss did not find it — not the clean
+    /// one, and not the answered dead end on stale candidates whose
+    /// episode lists were gone, which is not clean and is not the
+    /// show either — and an unreachable provider's error standing in
+    /// for a miss says nothing, a blocking status included.
     fn found_the_show(&self) -> bool {
         match self {
             Self::Answer(_) | Self::Unknown(_) => true,
-            Self::Miss(ne, _) => matches!(ne.error, AniError::EpisodeUnavailable),
+            Self::Miss(ne, _) => {
+                matches!(ne.error, AniError::EpisodeUnavailable)
+                    || (matches!(ne.error, AniError::Upstream { .. })
+                        && !ne.error.is_provider_block())
+            }
         }
     }
 
