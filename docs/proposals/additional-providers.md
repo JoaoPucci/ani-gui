@@ -1,19 +1,20 @@
 # Proposal: additional stream providers
 
-**Status**: implemented on Linux; the Windows run is still owed.
+**Status**: implemented, and validated on both packaged platforms.
 This is the proposal as it was written on 2026-09-05, before the
 work, kept for its survey and its reasoning; what shipped is
 described in `docs/architecture.md` under "Providers and failover",
 and differs from the design below in its details. Read the tense
 here as historical: the single-provider resolution the opening
 describes, and the seam, the per-provider gates and the orchestrator
-the integration section says are missing, are all built. One thing
-the proposal asks for is not done: it counts a provider as reachable
-only once both packaged platforms have pulled a stream through it,
-and the packaged Windows build has not been run through the fallback
-— `docs/deferred-work.md` records that run, under "Validating the
-hianime fallback on the packaged Windows flows", as owed by a
-release. The candidate survey describes a landscape that rots
+the integration section says are missing, are all built. The last
+piece to land was the bar the proposal sets for reachability — a
+provider counts only once both packaged platforms have pulled a
+stream through it — and the packaged Windows build has since made
+that run: with anidb.app down, the installed v0.14.0 build played,
+completed a download (riding the ffmpeg the installer fetches at
+install time), and handed off to an external player, all through
+hianime. The candidate survey describes a landscape that rots
 quickly — re-verify every claim in it before building on one.
 
 ## Why this matters
