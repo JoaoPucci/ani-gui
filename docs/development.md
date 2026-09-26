@@ -73,30 +73,41 @@ Mostly same packages, different package manager. PRs welcome to add Fedora / Arc
 
 ## Dev loop
 
-In order, starting from the repository root. The snippets are one
-command per line so they run unchanged in bash, PowerShell, or cmd —
-the loop is supported on Linux and Windows. The two long-running
-processes each get their own terminal, opened at the root:
+In order, starting from the repository root. The snippets hold pure
+commands, one per line, and paste unchanged into bash, PowerShell,
+or cmd — cmd has no `#` comment syntax, so the notes live out here
+instead. The loop is supported on Linux and Windows; the two
+long-running processes each get their own terminal, opened at the
+root.
+
+Step 1 — build the Rust sidecar (one-shot per Rust change):
 
 ```sh
-# 1 — build the Rust sidecar (one-shot per Rust change)
 cd backend
 cargo build --bin ani-gui-backend
+```
 
-# 2 — once per checkout, x86_64 Linux only: stage the bundled deps.
-#     Windows skips this: the dev launcher in step 4 stages its own.
+Step 2 — once per checkout, on x86_64 Linux only, stage the bundled
+deps (Windows skips this: the dev launcher in step 4 stages its
+own):
+
+```sh
 cd ../electron
 pnpm run fetch:linux-deps
 ```
 
-```sh
-# 3 — Vite dev server with HMR (keep running, own terminal)
-cd frontend
-pnpm dev          # http://localhost:5173
-```
+Step 3 — the Vite dev server with HMR, at `http://localhost:5173`
+(keep running, own terminal):
 
 ```sh
-# 4 — Electron shell (spawns the sidecar, points at Vite; keep running, own terminal)
+cd frontend
+pnpm dev
+```
+
+Step 4 — the Electron shell; spawns the sidecar, points at Vite
+(keep running, own terminal):
+
+```sh
 cd electron
 pnpm dev
 ```

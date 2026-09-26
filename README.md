@@ -89,38 +89,31 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    cd ani-gui
    pnpm install
    ```
-5. **Build the backend binary** (required before the first run, and after every Rust change). On x86_64 Linux, also stage the bundled tools next to it once per checkout — playback needs the impersonating transport. The fetcher downloads x86_64 Linux builds (the architecture every package ships for), so skip that step on any other host — the staged directory outranks PATH, and incompatible binaries staged there would shadow any transport you do have. Windows needs no staging step here: the dev launcher in step 6 stages its own.
+5. **Build the backend binary** (required before the first run, and after every Rust change):
    ```sh
    cd backend
    cargo build --bin ani-gui-backend
-   cd ../electron
-   pnpm run fetch:linux-deps   # x86_64 Linux only
    ```
-6. **Run the dev app** — two terminals, started in this order:
+   On x86_64 Linux, also stage the bundled tools next to it once per checkout — playback needs the impersonating transport:
    ```sh
-   # Terminal A — Vite dev server, HMR on :5173
+   cd ../electron
+   pnpm run fetch:linux-deps
+   ```
+   The fetcher downloads x86_64 Linux builds (the architecture every package ships for), so skip it on any other host — the staged directory outranks PATH, and incompatible binaries staged there would shadow any transport you do have. Windows needs no staging step here: the dev launcher in step 6 stages its own.
+6. **Run the dev app** — two terminals, started in this order. Terminal A, the Vite dev server with HMR on :5173:
+   ```sh
    cd frontend
    pnpm dev
    ```
+   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport, yt-dlp) next to it, so playback works:
    ```sh
-   # Terminal B — Electron shell, spawns the backend binary from step 5.
-   # On Windows this also stages the bundled tools (impersonating
-   # transport, yt-dlp) next to the backend binary, so playback works.
    cd electron
    pnpm dev
    ```
-7. **Build a distributable bundle**:
+7. **Build a distributable bundle**, from `electron/`. On a Linux host, `pnpm package` builds the `.AppImage` (fast iteration) and `pnpm package:release` builds `.AppImage` + `.deb`. On a Windows host — any shell, with Rust, Node and pnpm installed natively; the dep fetcher needs `bsdtar`, which Windows 10+ ships as `tar.exe`:
    ```sh
    cd electron
-
-   # Linux host
-   pnpm package           # .AppImage — fast iteration
-   pnpm package:release   # .AppImage + .deb
-
-   # Windows host (any shell — PowerShell, cmd, Git Bash; Rust + Node + pnpm
-   # installed natively. `fetch:win-deps` needs `bsdtar`, which Windows 10+
-   # ships as `tar.exe`)
-   pnpm package:win       # NSIS installer
+   pnpm package:win
    ```
 For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
 
