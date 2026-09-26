@@ -408,20 +408,29 @@ enum Negative<'c, T> {
 impl<T> Negative<'_, T> {
     /// Whether the negative found the show: a negative answer is a
     /// show found without the requested mode, the unknown verdict
-    /// is a show found with nothing said about the mode, and an
-    /// answered miss that is not clean is an episode dead end on a
-    /// show that was found — the episode verdict included, which
-    /// names the episode the provider does not carry. A clean miss
-    /// did not find it, and an unreachable provider's error standing
+    /// is a show found with nothing said about the mode, and the
+    /// episode verdict names the episode a provider that found the
+    /// show does not carry. A title miss did not find it — not the
+    /// clean one, and not the answered dead end on stale candidates
+    /// whose episode lists were gone, which is not clean and is not
+    /// the show either — and an unreachable provider's error standing
     /// in for a miss says nothing.
     fn found_the_show(&self) -> bool {
         match self {
             Self::Answer(_) | Self::Unknown(_) => true,
-            Self::Miss(ne, _) => !fails_over(&ne.error) && !ne.clean_miss,
+            Self::Miss(ne, _) => matches!(ne.error, AniError::EpisodeUnavailable),
         }
     }
 
-    /// Whether the negative is a clean catalogue miss.
+    /// Whether the negative is a title miss — the catalogue searched
+    /// and the show not found, whether cleanly or through candidates
+    /// that were dead ends.
+    fn is_title_miss(&self) -> bool {
+        matches!(self, Self::Miss(ne, _) if matches!(ne.error, AniError::NoResults))
+    }
+
+    /// Whether the negative is a clean catalogue miss — the title miss
+    /// that persists.
     fn is_clean_miss(&self) -> bool {
         matches!(self, Self::Miss(ne, _) if ne.clean_miss)
     }
@@ -456,16 +465,19 @@ fn configured_position(configured: &[ProviderId], by: Option<ProviderId>) -> usi
 /// Whether an earlier negative outranks a later one: the earlier is
 /// the unknown verdict and the later is not — the provider that
 /// gave it found the show and said nothing about the mode, which no
-/// negative from elsewhere unsays — or the earlier is a dead end
-/// that found the show and the later is a clean catalogue miss. The
-/// show was found, so a negative from another provider may not
-/// become the verdict a caller persists over it. An absence found
-/// the show too, but an absence and a clean miss both deny the show
-/// for the mode asked and both persist, so they are peers, and the
-/// configured order decides whose row it is ([`firmer_negative`]).
+/// negative from elsewhere unsays — or the earlier found the show
+/// and the later is a title miss, clean or not. The show was found,
+/// so a miss from another catalogue may not become the verdict the
+/// caller sees or persists over it — except that an absence and a
+/// clean miss both deny the show for the mode asked and both
+/// persist, so they are peers, and the configured order decides
+/// whose row it is ([`firmer_negative`]); an absence still outranks
+/// a title miss that is not clean, which persists nothing.
 fn negative_outranks<T>(earlier: &Negative<'_, T>, later: &Negative<'_, T>) -> bool {
     (earlier.is_unknown() && !later.is_unknown())
-        || (earlier.found_the_show() && !earlier.is_answer() && later.is_clean_miss())
+        || (earlier.found_the_show()
+            && later.is_title_miss()
+            && !(earlier.is_answer() && later.is_clean_miss()))
 }
 
 /// The negative that stands of two, with its author, so the provider
