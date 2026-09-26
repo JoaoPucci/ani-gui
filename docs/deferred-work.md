@@ -441,10 +441,12 @@ starting it, and delete it when you find it done.
   `docs/proposals/additional-providers.md` states the bar a provider
   owes on both platforms.
 
-  What is worth knowing: the fallback engages only while anidb.app
-  is unreachable, refusing or broken, so the first play a Windows
-  user makes through it comes when the only other provider is giving
-  them nothing. It does not end there. A show the fallback served
+  What is worth knowing: the fallback engages while anidb.app is
+  unreachable, refusing or broken, or when its answer settles nothing
+  — the show found without the audio asked for, or a denial the
+  show's live record outranks — so the first play a Windows user
+  makes through it mostly comes when the only other provider is
+  giving them nothing. It does not end there. A show the fallback served
   has its positive availability row name hianime, and every later
   play, download and hand-off of that show starts from hianime while
   that row lives, whether or not anidb.app has recovered — so a
