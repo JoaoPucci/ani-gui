@@ -45,7 +45,12 @@ impl Provider for Stub {
 enum Behavior {
     Answer(&'static str),
     Unreachable(fn() -> AniError),
-    Miss { clean: bool },
+    Miss {
+        clean: bool,
+    },
+    /// The show found, the episode not: the provider's own verdict
+    /// on the episode.
+    MissEpisode,
     Stall,
 }
 
@@ -105,6 +110,11 @@ impl Attempt for Scripted {
             Behavior::Miss { clean } => Err(NativeError {
                 error: AniError::NoResults,
                 clean_miss: clean,
+                failed_at: None,
+            }),
+            Behavior::MissEpisode => Err(NativeError {
+                error: AniError::EpisodeUnavailable,
+                clean_miss: false,
                 failed_at: None,
             }),
             Behavior::Stall => std::future::pending().await,
@@ -447,6 +457,10 @@ fn what_fails_over_is_the_provider_being_unreachable_refusing_or_broken() {
         "a parse failure is the site having changed shape — broken, not answering"
     );
     assert!(!fails_over(&AniError::NoResults));
+    assert!(
+        !fails_over(&AniError::EpisodeUnavailable),
+        "an episode the provider does not carry is an answer too"
+    );
     assert!(
         !fails_over(&AniError::Upstream { status: 404 }),
         "an answered not-found is an answer"
@@ -855,7 +869,7 @@ mod surfaced_miss_props {
 }
 
 mod negative_rank_props {
-    use super::{fails_over, firmer_negative, negative_outranks, Attempted, Negative, Stub};
+    use super::{firmer_negative, negative_outranks, Attempted, Negative, Stub};
     use crate::commands::play_native_resolve::NativeError;
     use crate::error::AniError;
     use crate::scraper::provider::ProviderId;
@@ -863,8 +877,11 @@ mod negative_rank_props {
 
     /// The shape of a negative a walk can hold, in values that build
     /// it as many times as a property needs: neither the errors nor
-    /// the answers are cloneable. The last kind is the unknown
-    /// verdict an inconclusive answer leaves.
+    /// the answers are cloneable. Kind 5 is a negative answer, kind 6
+    /// the unknown verdict an inconclusive answer leaves, kind 7 the
+    /// episode verdict — the show found, this episode not carried —
+    /// which is never a clean miss; the rest are title misses and the
+    /// errors that stand in for one.
     #[derive(Debug, Clone)]
     struct Shape {
         kind: u8,
@@ -883,6 +900,9 @@ mod negative_rank_props {
         fn is_unknown(&self) -> bool {
             self.kind == 6
         }
+        fn is_episode_verdict(&self) -> bool {
+            self.kind == 7
+        }
         /// An answered miss, an answered status, or an unreachable
         /// provider's error standing in for a miss.
         fn error(&self) -> AniError {
@@ -893,6 +913,7 @@ mod negative_rank_props {
                 3 => AniError::Upstream {
                     status: self.status,
                 },
+                7 => AniError::EpisodeUnavailable,
                 _ => AniError::ParseFailed {
                     detail: self.detail.clone(),
                 },
@@ -914,21 +935,33 @@ mod negative_rank_props {
             Negative::Miss(
                 NativeError {
                     error: self.error(),
-                    clean_miss: self.clean_miss,
+                    clean_miss: self.clean_miss && !self.is_episode_verdict(),
                     failed_at: None,
                 },
                 self.by,
             )
         }
         /// Whether the negative found the show: an answer, the
-        /// unknown verdict, or an answered miss that is not clean.
+        /// unknown verdict, the episode verdict, or a non-blocking
+        /// upstream status — the chain answered it on a show the walk
+        /// was inside, and it says nothing about the show's absence.
+        /// A title miss did not, clean or not — an answered dead end
+        /// names candidates that were not the show — and an
+        /// unreachable provider's error standing in for a miss says
+        /// nothing, a blocking status included.
         fn found_the_show(&self) -> bool {
             self.is_answer()
                 || self.is_unknown()
-                || (!fails_over(&self.error()) && !self.clean_miss)
+                || self.is_episode_verdict()
+                || (self.kind == 3 && !self.error().is_provider_block())
         }
+        /// A title miss, whichever clean flag it carries.
+        fn is_title_miss(&self) -> bool {
+            self.kind == 0
+        }
+        /// The title miss that persists: a clean one.
         fn is_clean_miss(&self) -> bool {
-            !self.is_answer() && !self.is_unknown() && self.clean_miss
+            self.is_title_miss() && self.clean_miss
         }
         /// What tells two shapes apart once built: the kind, the
         /// clean flag of a miss, and the author.
@@ -938,7 +971,11 @@ mod negative_rank_props {
             } else if self.is_answer() {
                 (5, false, Some(self.by.unwrap_or(ProviderId::Anidb)))
             } else {
-                (self.kind, self.clean_miss, self.by)
+                (
+                    self.kind,
+                    self.clean_miss && !self.is_episode_verdict(),
+                    self.by,
+                )
             }
         }
     }
@@ -953,6 +990,7 @@ mod negative_rank_props {
                     AniError::Network => 1,
                     AniError::Timeout => 2,
                     AniError::Upstream { .. } => 3,
+                    AniError::EpisodeUnavailable => 7,
                     _ => 4,
                 };
                 (kind, ne.clean_miss, *by)
@@ -962,7 +1000,7 @@ mod negative_rank_props {
 
     fn shape() -> impl Strategy<Value = Shape> {
         (
-            0u8..7,
+            0u8..8,
             100u16..600,
             "[a-z ]{0,12}",
             any::<bool>(),
@@ -997,20 +1035,25 @@ mod negative_rank_props {
         /// it is the unknown verdict and the later is not — an
         /// inconclusive provider found the show and said nothing
         /// about the mode, which no negative from elsewhere unsays —
-        /// or the earlier is a dead end that found the show — an
-        /// answered miss that is not clean and not an unreachable
-        /// provider's error standing in for one — and the later is a
-        /// clean catalogue miss. A negative answer found the show too,
-        /// but an absence and a clean miss both deny the show for the
-        /// mode asked and both persist, so they are peers: neither
-        /// outranks the other, and the configured order decides.
+        /// or the earlier found the show without being an absence —
+        /// the episode verdict — and the later is a title miss, clean
+        /// or not: an answered dead end on stale candidates is not the
+        /// show found, and may not displace a verdict from a provider
+        /// that found it. A negative answer found the show too, and
+        /// outranks a title miss that is not clean, which persists
+        /// nothing; but an absence and a clean miss both deny the show
+        /// for the mode asked and both persist, so they are peers:
+        /// neither outranks the other, and the configured order
+        /// decides.
         #[test]
         fn an_unknown_verdict_or_a_dead_end_outranks_and_an_absence_and_a_clean_miss_are_peers(
             earlier in shape(),
             later in shape(),
         ) {
             let expected = (earlier.is_unknown() && !later.is_unknown())
-                || (earlier.found_the_show() && !earlier.is_answer() && later.is_clean_miss());
+                || (earlier.found_the_show()
+                    && later.is_title_miss()
+                    && !(earlier.is_answer() && later.is_clean_miss()));
             prop_assert_eq!(
                 negative_outranks(&earlier.negative(), &later.negative()),
                 expected
@@ -1045,6 +1088,76 @@ mod negative_rank_props {
             let want = if keep_earlier { earlier.summary() } else { later.summary() };
             let got = firmer_negative(earlier.negative(), later.negative(), &configured);
             prop_assert_eq!(summary_of(&got), want);
+
+
+        }
+    }
+}
+
+mod episode_verdict_rank_props {
+    use super::{firmer_negative, negative_outranks, Negative};
+    use crate::commands::play_native_resolve::NativeError;
+    use crate::error::AniError;
+    use crate::scraper::provider::ProviderId;
+    use proptest::prelude::*;
+
+    /// A miss as a provider reports it: a title miss with either
+    /// clean-miss flag, or the episode verdict, which is never clean,
+    /// in values that build the negative as many times as a property
+    /// needs.
+    #[derive(Debug, Clone)]
+    struct MissShape {
+        episode: bool,
+        clean_miss: bool,
+    }
+
+    impl MissShape {
+        fn negative(&self) -> Negative<'static, &'static str> {
+            Negative::Miss(
+                NativeError {
+                    error: if self.episode {
+                        AniError::EpisodeUnavailable
+                    } else {
+                        AniError::NoResults
+                    },
+                    clean_miss: self.clean_miss,
+                    failed_at: None,
+                },
+                Some(ProviderId::Hianime),
+            )
+        }
+    }
+
+    fn miss() -> impl Strategy<Value = MissShape> {
+        (any::<bool>(), any::<bool>()).prop_map(|(episode, clean_miss)| MissShape {
+            episode,
+            clean_miss: clean_miss && !episode,
+        })
+    }
+
+    fn is_episode(negative: &Negative<'_, &'static str>) -> bool {
+        matches!(negative, Negative::Miss(ne, _) if matches!(ne.error, AniError::EpisodeUnavailable))
+    }
+
+    proptest! {
+        /// An episode verdict is a miss that found the show, so it
+        /// outranks a later title miss — clean, or the answered dead
+        /// end on stale candidates that is not clean — and is the one
+        /// kept; a later miss of equal rank from the same provider is
+        /// the one kept, neither standing ahead of the other in the
+        /// configured order.
+        #[test]
+        fn an_episode_verdict_outranks_a_later_title_miss(earlier in miss(), later in miss()) {
+            let outranks = negative_outranks(&earlier.negative(), &later.negative());
+            let expected = earlier.episode && !later.episode;
+            prop_assert_eq!(outranks, expected);
+            let kept = firmer_negative(
+                earlier.negative(),
+                later.negative(),
+                &[ProviderId::Anidb, ProviderId::Hianime],
+            );
+            let kept_is_earlier = if outranks { earlier.episode } else { later.episode };
+            prop_assert_eq!(is_episode(&kept), kept_is_earlier);
         }
     }
 }
@@ -1412,6 +1525,79 @@ async fn a_retried_remembered_providers_own_clean_miss_denies_the_show() {
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
+/// A remembered provider that found the show but not the episode has
+/// said something the rest of the order cannot unsay: a later title
+/// miss means that provider lacks the show, not that the episode
+/// verdict was wrong. The episode's verdict is the one the user sees.
+#[tokio::test]
+async fn a_remembered_providers_episode_verdict_outranks_a_later_title_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Hianime, Behavior::MissEpisode),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &[ProviderId::Hianime, ProviderId::Anidb],
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served the episode");
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "the rest of the order was still asked"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the kept verdict's provider travels with it"
+    );
+}
+
+/// The same when the title miss comes from a skipped provider's
+/// half-open trial: the episode verdict from the provider that was
+/// tried first stands over the trial's title miss.
+#[tokio::test]
+async fn an_episode_verdict_outranks_a_retried_providers_title_miss() {
+    let gates = Gates::new();
+    gates.open(ProviderId::Anidb);
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::Hianime, Behavior::MissEpisode),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served the episode");
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "the episode verdict's provider, not the trial's"
     );
 }
 
@@ -2167,18 +2353,19 @@ async fn a_remembered_providers_clean_miss_yields_to_a_later_inconclusive_answer
 
 // ── an episode miss is not a catalogue miss ─────────────────────────
 
-/// A remembered provider that answers an episode dead end — a miss
-/// that is not clean — found the show and did not deny it; the walk
-/// goes on, and when the rest of the order answers a clean catalogue
-/// miss, that miss must not become the verdict: persisted, it would
-/// be a healthy primary's negative over a show the fallback carries,
-/// and the whole title would be hidden for one unserved episode. The
-/// remembered provider's own miss stands, attributed to it.
+/// A remembered provider that answers the episode verdict — the
+/// show found, this episode not carried — did not deny the show;
+/// the walk goes on, and when the rest of the order answers a clean
+/// catalogue miss, that miss must not become the verdict: persisted,
+/// it would be a healthy primary's negative over a show the fallback
+/// carries, and the whole title would be hidden for one unserved
+/// episode. The remembered provider's own verdict stands, attributed
+/// to it.
 #[tokio::test]
 async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::Hianime, Behavior::MissEpisode),
         (ProviderId::Anidb, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
@@ -2190,7 +2377,11 @@ async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
     )
     .await
     .expect_err("nobody served it");
-    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
     assert!(
         !err.clean_miss,
         "the remembered provider found the show; nothing persists"
@@ -2334,7 +2525,7 @@ async fn an_absence_reached_past_a_remembered_providers_clean_miss_is_its_own() 
 }
 
 /// The skipped providers' trial keeps the same rule: a retried
-/// provider's clean miss does not replace an episode dead end the
+/// provider's clean miss does not replace the episode verdict the
 /// walk already holds — the show was found — while it does replace
 /// the fallback's clean miss, the primary standing first in the
 /// configured order among misses of equal standing.
@@ -2344,7 +2535,7 @@ async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
     gates.open(ProviderId::Anidb);
     let mut attempt = Scripted::new(&[
         (ProviderId::Anidb, Behavior::Miss { clean: true }),
-        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::Hianime, Behavior::MissEpisode),
     ]);
     let err = run_with(
         &gates,
@@ -2355,7 +2546,11 @@ async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
     )
     .await
     .expect_err("nobody served it");
-    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
     assert!(
         !err.clean_miss,
         "the fallback found the show; the retried primary's catalogue miss does not persist"
@@ -2402,6 +2597,50 @@ async fn a_remembered_providers_absence_yields_to_the_rest() {
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// A remembered fallback's episode chain answered a status that is
+/// neither a block nor absence — the host rejecting this request —
+/// which the walk now keeps: it found the show, since the walk was
+/// inside it, so it outranks the primary's clean miss rather than
+/// yielding to it by configured order and then, a clean miss past an
+/// undenied remembered provider, being displaced by a gate refusal
+/// nobody gave. The caller sees the status.
+#[tokio::test]
+async fn a_remembered_providers_answered_status_outranks_the_rests_clean_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Upstream { status: 401 }),
+        ),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(
+        matches!(err.error, AniError::Upstream { status: 401 }),
+        "the remembered provider's own answered status is the verdict: {:?}",
+        err.error
+    );
+    assert!(!err.clean_miss, "the show was found; nothing persists");
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "attributed to the provider that answered it"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "the rest of the order was still asked"
     );
 }
 
@@ -2575,5 +2814,38 @@ async fn a_remembered_providers_absence_stands_when_the_rest_are_unreachable() {
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// The remembered provider answered the episode verdict — the show
+/// is there, this episode is not — and the fallback's search hit
+/// only stale candidates whose episode lists were gone: an answered
+/// dead end, a title miss that is not clean. That dead end found no
+/// show. It may not displace the verdict from the provider that did,
+/// or the user is told the title is missing when one provider has it
+/// and says which episode it lacks.
+#[test]
+fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
+    let episode = Negative::<&'static str>::Miss(
+        NativeError {
+            error: AniError::EpisodeUnavailable,
+            clean_miss: false,
+            failed_at: None,
+        },
+        Some(ProviderId::Anidb),
+    );
+    let dead_end = Negative::<&'static str>::Miss(
+        NativeError {
+            error: AniError::NoResults,
+            clean_miss: false,
+            failed_at: None,
+        },
+        Some(ProviderId::Hianime),
+    );
+    assert!(negative_outranks(&episode, &dead_end));
+    let kept = firmer_negative(episode, dead_end, &ORDER);
+    assert!(
+        matches!(kept, Negative::Miss(ref ne, Some(ProviderId::Anidb)) if matches!(ne.error, AniError::EpisodeUnavailable)),
+        "the episode verdict stands, with its author"
     );
 }

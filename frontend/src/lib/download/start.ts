@@ -7,7 +7,7 @@
  */
 
 import { downloadStream, type DownloadArgs } from '$lib/api';
-import { describeRateLimit } from '$lib/play/error-copy';
+import { describePlayFailure, describeRateLimit } from '$lib/play/error-copy';
 import { downloadStore } from './store.svelte';
 import { downloadFailureStore } from './failure-store.svelte';
 
@@ -17,12 +17,15 @@ import { downloadFailureStore } from './failure-store.svelte';
  *  handler route specific failures (today: ffmpeg_missing) to the
  *  blocking modal instead of the dock's per-row tooltip. */
 function isFfmpegMissingPayload(e: unknown): boolean {
-	return (
-		typeof e === 'object' &&
-		e !== null &&
-		'kind' in e &&
-		(e as { kind: unknown }).kind === 'ffmpeg_missing'
-	);
+	return payloadKind(e) === 'ffmpeg_missing';
+}
+
+/** The `kind` discriminator of a typed-error payload, or null for
+ *  anything that is not one. */
+function payloadKind(e: unknown): string | null {
+	if (typeof e !== 'object' || e === null || !('kind' in e)) return null;
+	const kind = (e as { kind: unknown }).kind;
+	return typeof kind === 'string' ? kind : null;
 }
 
 export function startDownload(args: DownloadArgs & { destDir: string }): string {
@@ -55,6 +58,13 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 			const rateLimited = describeRateLimit(e);
 			if (rateLimited !== null) {
 				downloadStore.markError(id, rateLimited);
+				return;
+			}
+			// The episode verdict — the show is there, this episode is
+			// not — is a unit variant with no message; the dock row
+			// carries the same copy the play page shows for it.
+			if (payloadKind(e) === 'episode_unavailable') {
+				downloadStore.markError(id, describePlayFailure(e));
 				return;
 			}
 			const msg =

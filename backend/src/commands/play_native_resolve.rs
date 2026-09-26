@@ -181,7 +181,13 @@ where
     });
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
+    // A non-blocking status an episode chain answered, kept for the
+    // exhausted walk to surface as itself.
+    let mut chain_status: Option<AniError> = None;
     let mut any_answered_dead_end = false;
+    // A show was picked and its episode chain answered a dead end —
+    // the episode's verdict, distinct from a pool that matched nothing.
+    let mut any_episode_dead_end = false;
     let mut last_failure_at: Option<tokio::time::Instant> = None;
     for t in std::iter::once(req.title).chain(req.alt_titles.iter().map(String::as_str)) {
         match client.search(t).await {
@@ -211,15 +217,25 @@ where
                                 ChainOutcome::Stop(ne) => return Err(ne),
                                 ChainOutcome::DeadEnd => {
                                     any_answered_dead_end = true;
+                                    any_episode_dead_end = true;
                                     continue;
                                 }
-                                ChainOutcome::Transient => {
+                                ChainOutcome::Transient(ne) => {
                                     any_search_errored = true;
                                     last_failure_at = Some(
                                         client
                                             .last_attempt_at()
                                             .unwrap_or_else(tokio::time::Instant::now),
                                     );
+                                    // An answered status is kept for
+                                    // the exhausted walk to surface as
+                                    // itself: the breaker reads it as
+                                    // the provider answering, where the
+                                    // transport failure substituted for
+                                    // it would read as distress.
+                                    if matches!(ne.error, AniError::Upstream { .. }) {
+                                        chain_status = Some(ne.error);
+                                    }
                                     continue;
                                 }
                             },
@@ -308,8 +324,11 @@ where
         }
     }
     if !any_search_succeeded || any_search_errored {
+        // The transient verdict: a transport failure, unless an
+        // episode chain answered a non-blocking status, which stands
+        // as itself so the breaker hears the provider answering.
         return Err(NativeError {
-            error: AniError::Network,
+            error: chain_status.unwrap_or(AniError::Network),
             clean_miss: false,
             failed_at: last_failure_at,
         });
@@ -317,9 +336,15 @@ where
     if any_answered_dead_end {
         // Answered dead ends prove nothing about the show — never
         // the persistable clean miss — but the provider answering is
-        // health to the breaker (NoResults records success).
+        // health to the breaker (both verdicts record success). When
+        // a picked show's episode chain was the dead end, the verdict
+        // is the episode's: the show is there, this episode is not.
         return Err(NativeError {
-            error: AniError::NoResults,
+            error: if any_episode_dead_end {
+                AniError::EpisodeUnavailable
+            } else {
+                AniError::NoResults
+            },
             clean_miss: false,
             failed_at: None,
         });
