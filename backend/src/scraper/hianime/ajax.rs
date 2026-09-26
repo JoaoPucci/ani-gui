@@ -590,11 +590,15 @@ pub fn servers_for<'a>(servers: &'a [ServerEmbed], mode: &str) -> Vec<&'a Server
     readable_hosts.into_iter().chain(rest).collect()
 }
 
-/// What a listed row asks for, as far as two rows can ask the same:
-/// on megaplay's hosts the page alone — origin and path — since the
-/// query names a network the client does not ask for; on any other
-/// host the whole URL, query included, since it is sent as listed.
-fn request_of(embed_url: &str) -> &str {
+/// What a listed row asks for, as far as two rows can ask the same,
+/// and the URL the client fetches for it: on megaplay's hosts the
+/// page alone — origin and path — since the query names a network
+/// the client does not ask for, and the page is fetched without it
+/// so that the row kept for a page is asked at the same URL whichever
+/// listed row it was; on any other host the whole URL, query
+/// included, since it is sent as listed.
+#[must_use]
+pub fn request_of(embed_url: &str) -> &str {
     if megaplay_embed(embed_url) {
         embed_url.split(['?', '#']).next().unwrap_or(embed_url)
     } else {

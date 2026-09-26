@@ -28,7 +28,8 @@ pub mod megaplay_sources;
 pub mod parse;
 pub use ajax::{
     chain_reserve, chain_worth, parse_episode_list, parse_server_listing, parse_servers,
-    remainder_index, servers_for, ServerCaps, ServerEmbed, ServerListing, CHAIN_REQUESTS,
+    remainder_index, request_of, servers_for, ServerCaps, ServerEmbed, ServerListing,
+    CHAIN_REQUESTS,
 };
 pub use detail::parse_detail_year;
 pub use embed::{decode_embed, embed_origin, EmbedPayload};
@@ -215,8 +216,13 @@ impl<F: Fetch> HianimeClient<F> {
     /// The outcome's errors are [`Self::read_page`]'s and the embed
     /// fetch's own refusals and transport failures.
     async fn read_server(&self, server: &ServerEmbed) -> (Result<EmbedPayload>, String) {
-        // The embed host checks that the site sent the viewer.
-        let embed = FetchRequest::get(server.embed_url.clone())
+        // The embed host checks that the site sent the viewer. The
+        // page is asked for by the row's request — on megaplay's
+        // hosts its origin and path, without the network the listing
+        // named ([`request_of`]) — which is also what tells two rows
+        // apart, so a page is fetched at one URL whichever listed row
+        // it was kept for.
+        let embed = FetchRequest::get(request_of(&server.embed_url).to_owned())
             .header("Referer", format!("{}/", self.base));
         let page = match self.page(&embed).await {
             Ok(page) => page,

@@ -119,9 +119,10 @@ requires it; the exception is the update check that runs on launch
   it reads the host — and vidtube.site, and the client fetches from
   whichever the site lists for the episode. The site can stream an episode
   from more than one content delivery network, and the sources request
-  says which one it is answered for; the app asks every megaplay server
-  for the one network whose streams it can play, whichever network the
-  site's listing named that server for. So the hosts a megaplay page leads
+  says which one it is answered for; the app fetches a megaplay page by
+  its origin and path, without the network the site's listing named it
+  for, and asks every megaplay server for the one network whose streams
+  it can play, whichever network the listing named. So the hosts a megaplay page leads
   to are that network's, and no other's.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
