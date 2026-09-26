@@ -78,11 +78,7 @@ requires it; the exception is the update check that runs on launch
   resume point when there is one, and the play page for the episode
   after the one playing, or, with resolution caching turned on, both
   pages for every aired and playable episode in view (the detail
-  page's grid, the play page's episode strip) — and, when the page's
-  availability probe, the detail page's or the play page's, answered
-  nothing or answered no, for every aired episode in view, since no
-  playable count then bounds the warm — a provider resolution attempt
-  apiece, whatever each finds; the warm follows the
+  page's grid, the play page's episode strip); the warm follows the
   page rather than running once on opening, so paging the grid or
   the strip to new episodes, or changing the audio mode or quality
   setting, resolves what is newly in view — each warm that resolves
