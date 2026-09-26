@@ -100,29 +100,29 @@ requires it; the exception is the update check that runs on launch
   identifier unless you've connected one. Resolving an episode through
   hianime also fetches an embed page from the embed hosts the site names
   for that episode — one at a time, the hosts whose pages the client knows
-  how to read first, in the site's order among them, then the rest in the
-  site's order, moving to the next when a page cannot be fetched or read
-  or when the stream its page names does not answer as a playlist, so one
-  resolve can reach more than one of them, and a host the client cannot
-  read is reached only after every one it can has failed — as the listing
-  names them: a listed page that redirects is followed wherever it goes,
-  so a host the listing did not name can be reached through one it did,
-  ahead of hosts listed after it — and on megaplay's pages the sources
-  endpoint of the host that served the page as well, since that is where
-  its player gets the stream, and the host that served a page is not
-  always the one the site's listing named, because the site moves those
-  pages between hosts and the request follows the move. The site chooses
-  those hosts, and they can change without an app update; at the time of
-  writing the listings name zokoanime.video, megaplay.buzz — and the
-  numbered mirrors the site serves megaplay's player from,
-  `megaplay-1.buzz` and the like, which the client reads as it reads the
-  host — and vidtube.site, and the client fetches from whichever the site
-  lists for the episode. The site can stream an episode from more than one
-  content delivery network, and the sources request says which one it is
-  answered for; the app asks every megaplay server for the one network
-  whose streams it can play, whichever network the site's listing named
-  that server for. So the hosts a megaplay page leads to are that
-  network's, and no other's.
+  how to read first — megaplay's ahead of zokoanime's, in the site's order
+  within each — then the rest in the site's order, moving to the next when
+  a page cannot be fetched or read or when the stream its page names does
+  not answer as a playlist, so one resolve can reach more than one of
+  them, and a host the client cannot read is reached only after every one
+  it can has failed — as the listing names them: a listed page that
+  redirects is followed wherever it goes, so a host the listing did not
+  name can be reached through one it did, ahead of hosts listed after it —
+  and on megaplay's pages the sources endpoint of the host that served the
+  page as well, since that is where its player gets the stream, and the
+  host that served a page is not always the one the site's listing named,
+  because the site moves those pages between hosts and the request follows
+  the move. The site chooses those hosts, and they can change without an
+  app update; at the time of writing the listings name zokoanime.video,
+  megaplay.buzz — and the numbered mirrors the site serves megaplay's
+  player from, `megaplay-1.buzz` and the like, which the client reads as
+  it reads the host — and vidtube.site, and the client fetches from
+  whichever the site lists for the episode. The site can stream an episode
+  from more than one content delivery network, and the sources request
+  says which one it is answered for; the app asks every megaplay server
+  for the one network whose streams it can play, whichever network the
+  site's listing named that server for. So the hosts a megaplay page leads
+  to are that network's, and no other's.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
