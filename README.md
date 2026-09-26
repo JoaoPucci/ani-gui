@@ -78,7 +78,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    nvm install 20
    corepack enable
    ```
-   Windows: install Node from [nodejs.org](https://nodejs.org) (or `winget install OpenJS.NodeJS.LTS`), then run `corepack enable` in a terminal opened after the install.
+   Windows: install Node from [nodejs.org](https://nodejs.org) (or `winget install OpenJS.NodeJS.LTS`), then run `corepack enable` once in an **elevated** terminal opened after the install — the command writes its pnpm shims beside Node in `C:\Program Files\nodejs`, which a regular terminal cannot write to (the failure is `EPERM`). A user-scoped Node install (nvm-windows, or Node placed under your profile) needs no elevation.
 3. **System build deps** (Linux only — Windows got its build tools with rustup in step 1):
    ```sh
    sudo apt install -y build-essential libssl-dev pkg-config
