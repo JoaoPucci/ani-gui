@@ -141,19 +141,25 @@ pub fn fails_over(error: &AniError) -> bool {
 /// the show — an episode dead end, or a show found without the mode
 /// — outranks a clean catalogue miss from another provider, which
 /// would otherwise persist as that provider's negative over a show
-/// the remembered one carries; negatives of equal rank keep the one
+/// the remembered one carries — except that an absence and a clean
+/// miss both deny the show for the mode asked and both persist, so
+/// they are peers; negatives of equal rank keep the one
 /// whose provider stands earliest in the configured order — a
 /// negative row is served only while every provider ahead of its own
 /// is refusing, so that is the row the read rule can serve; and the
 /// set-aside negative stands, as given, when the rest were
-/// unreachable. While the remembered provider has not
-/// denied the show — unreachable (skipped for refusing and not heard
-/// from since, or failed over), or heard from with an episode dead
-/// end — a clean miss from the rest is the verdict but not proof: it
-/// says nothing about the show that provider listed, so it surfaces
-/// with its clean flag cleared, still attributed to the provider
-/// that gave it, and no negative outlives the remembered provider's
-/// recovery. An answer from the rest in that state has the same
+/// unreachable. While the remembered provider is unreachable —
+/// skipped for refusing and not heard from since, or failed over —
+/// a clean miss from the rest says nothing about the show that
+/// provider listed, and neither does the title's absence from the
+/// catalogue: what surfaces is the remembered provider's
+/// unavailability — the error that took it out of the walk, or the
+/// gate's refusal when it was skipped and never asked — attributed
+/// to nobody, and no negative outlives the remembered provider's
+/// recovery. Heard from with an episode dead end, it has not denied
+/// the show either, and its dead end outranks the rest's clean miss.
+/// An answer from the rest past an unreachable or undenied
+/// remembered provider has the same
 /// standing and says so ([`Attempted::past_undenied_affinity`]), so
 /// an absence it carries — a show found without the requested mode
 /// — is the caller's to surface and not to persist either.
@@ -185,8 +191,9 @@ pub fn fails_over(error: &AniError) -> bool {
 /// # Errors
 /// The first answer that is not a failover — a miss — or, when no
 /// provider answered, the first unreachable error: the primary's
-/// when it was tried, or the unknown verdict an inconclusive answer
-/// leaves.
+/// when it was tried; the unknown verdict an inconclusive answer
+/// leaves; or, for a clean miss reached past a remembered provider
+/// that was not heard from, that provider's unavailability.
 #[allow(clippy::too_many_arguments)]
 pub async fn with_failover<'c, 'g, A, C, G>(
     configured: &[ProviderId],
@@ -352,16 +359,27 @@ struct Walk<'o> {
     remembered_undenied: bool,
 }
 
-/// The miss as the walk surfaces it: as given, unless the remembered
-/// provider has not denied the show, when its clean flag is cleared
-/// — the verdict the caller sees, not one it may persist over the
-/// row that provider proved. Attribution is the caller's to report,
-/// unchanged.
-fn unpersistable_past_affinity(remembered_undenied: bool, mut miss: NativeError) -> NativeError {
-    if remembered_undenied {
-        miss.clean_miss = false;
-    }
-    miss
+/// Whether a miss is displaced by the remembered provider's
+/// unavailability: a clean miss reached while that provider was not
+/// heard from — skipped for refusing, or failed over — says nothing
+/// about the show the row's provider listed, and neither would the
+/// title's absence from the catalogue; any other miss is the walk's
+/// verdict as given.
+fn miss_past_affinity(remembered_undenied: bool, miss: &NativeError) -> bool {
+    miss.clean_miss && remembered_undenied
+}
+
+/// The remembered provider's unavailability, as the walk surfaces it
+/// in place of a miss past it: the error that took the provider out
+/// of the walk, untouched, or the gate's refusal when none was saved
+/// because the provider was skipped and never asked. Attributed to
+/// nobody, and nothing persists.
+fn unavailability(unreachable: Option<NativeError>) -> NativeError {
+    unreachable.unwrap_or(NativeError {
+        error: AniError::GateRefused,
+        clean_miss: false,
+        failed_at: None,
+    })
 }
 
 /// How one attempt ended: an answer, a failover — the provider
@@ -412,6 +430,12 @@ impl<T> Negative<'_, T> {
         matches!(self, Self::Unknown(_))
     }
 
+    /// Whether the negative is a negative answer — a show found
+    /// without the requested mode.
+    fn is_answer(&self) -> bool {
+        matches!(self, Self::Answer(_))
+    }
+
     /// The provider whose negative it is, when known.
     fn provider(&self) -> Option<ProviderId> {
         match self {
@@ -431,13 +455,16 @@ fn configured_position(configured: &[ProviderId], by: Option<ProviderId>) -> usi
 /// Whether an earlier negative outranks a later one: the earlier is
 /// the unknown verdict and the later is not — the provider that
 /// gave it found the show and said nothing about the mode, which no
-/// negative from elsewhere unsays — or the earlier found the show
-/// and the later is a clean catalogue miss. The show was found, so
-/// a negative from another provider may not become the verdict a
-/// caller persists over it.
+/// negative from elsewhere unsays — or the earlier is a dead end
+/// that found the show and the later is a clean catalogue miss. The
+/// show was found, so a negative from another provider may not
+/// become the verdict a caller persists over it. An absence found
+/// the show too, but an absence and a clean miss both deny the show
+/// for the mode asked and both persist, so they are peers, and the
+/// configured order decides whose row it is ([`firmer_negative`]).
 fn negative_outranks<T>(earlier: &Negative<'_, T>, later: &Negative<'_, T>) -> bool {
     (earlier.is_unknown() && !later.is_unknown())
-        || (earlier.found_the_show() && later.is_clean_miss())
+        || (earlier.found_the_show() && !earlier.is_answer() && later.is_clean_miss())
 }
 
 /// The negative that stands of two, with its author, so the provider
@@ -624,9 +651,10 @@ where
 /// negative replaces the unknown verdict, equals keep the provider
 /// earliest in the configured order, and one unreachable too leaves
 /// it standing. A miss that
-/// surfaces tells the attempt whose it is first, and surfaces
-/// unpersistable when the remembered provider has not denied the
-/// show; a negative answer surfaces as its provider gave it, saying
+/// surfaces tells the attempt whose it is first; a clean miss reached
+/// past a remembered provider that was not heard from does not
+/// surface at all — that provider's unavailability does, nobody's
+/// miss; a negative answer surfaces as its provider gave it, saying
 /// whether it came past an undenied affinity as the walk finally
 /// stands — a trial after it may have been the remembered provider's
 /// own denial; the unknown verdict surfaces as a miss that is not
@@ -695,10 +723,13 @@ where
             Ok(answer)
         }
         Negative::Miss(error, by) => {
+            if miss_past_affinity(walk.remembered_undenied, &error) {
+                return Err(unavailability(walk.first_unreachable.take()));
+            }
             if let Some(by) = by {
                 attempt.missed_by(by);
             }
-            Err(unpersistable_past_affinity(walk.remembered_undenied, error))
+            Err(error)
         }
         // Nothing about the mode was said where the show was found:
         // not absence, and nobody's to persist.
