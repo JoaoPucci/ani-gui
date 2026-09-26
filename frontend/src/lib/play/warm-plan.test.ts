@@ -47,6 +47,30 @@ const aired = (n: number): AiringStatus => ({
 });
 
 describe('playPageWarmTargets', () => {
+	it('a show the probe found absent, or could not ask about, warms nothing', () => {
+		for (const listed of [false, null] as const) {
+			expect(
+				playPageWarmTargets({
+					cacheResolutions: true,
+					visible: [1, 2, 3, 4, 5],
+					currentEpisode: 2,
+					airing: aired(12),
+					playableCount: null,
+					listed
+				})
+			).toEqual([]);
+			expect(
+				playPageWarmTargets({
+					cacheResolutions: false,
+					visible: [1, 2, 3, 4, 5],
+					currentEpisode: 2,
+					airing: aired(12),
+					playableCount: null,
+					listed
+				})
+			).toEqual([]);
+		}
+	});
 	it('narrows to the validated next episode when caching is off', () => {
 		expect(
 			playPageWarmTargets({
@@ -54,7 +78,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, 3, 4, 5],
 				currentEpisode: 1,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([2]);
 	});
@@ -68,7 +93,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, 3, 4, 5],
 				currentEpisode: 5,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([6]);
 	});
@@ -80,7 +106,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, 3],
 				currentEpisode: 3,
 				airing: aired(3),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([]);
 		expect(
@@ -89,7 +116,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, 3],
 				currentEpisode: 3,
 				airing: aired(12),
-				playableCount: 3
+				playableCount: 3,
+				listed: true
 			})
 		).toEqual([]);
 	});
@@ -103,7 +131,8 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2, null, 4, 5],
 				currentEpisode: 1,
 				airing: aired(4),
-				playableCount: 3
+				playableCount: 3,
+				listed: true
 			})
 		).toEqual([1, 2]);
 	});
@@ -115,13 +144,44 @@ describe('playPageWarmTargets', () => {
 				visible: [1, 2],
 				currentEpisode: 2,
 				airing: null,
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([3]);
 	});
 });
 
 describe('detailWarmTargets', () => {
+	it('a show the probe found absent, or could not ask about, warms nothing', () => {
+		// A negative answer leaves no playable count, which the cap
+		// check reads as unbounded — so without this rule every aired
+		// tile in view is resolved, a provider search apiece, for a
+		// show the provider just said it does not carry. A probe that
+		// failed leaves the same null, and the provider is unreachable
+		// besides.
+		for (const listed of [false, null] as const) {
+			expect(
+				detailWarmTargets({
+					cacheResolutions: true,
+					visible: [1, 2, 3, 4, 5],
+					heroEpisode: 1,
+					airing: aired(12),
+					playableCount: null,
+					listed
+				})
+			).toEqual([]);
+			expect(
+				detailWarmTargets({
+					cacheResolutions: false,
+					visible: [1, 2, 3, 4, 5],
+					heroEpisode: 3,
+					airing: aired(12),
+					playableCount: null,
+					listed
+				})
+			).toEqual([]);
+		}
+	});
 	it('narrows to the hero target when caching is off', () => {
 		expect(
 			detailWarmTargets({
@@ -129,7 +189,8 @@ describe('detailWarmTargets', () => {
 				visible: [1, 2, 3, 4, 5],
 				heroEpisode: 3,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([3]);
 	});
@@ -141,7 +202,8 @@ describe('detailWarmTargets', () => {
 				visible: [1, 2, 3],
 				heroEpisode: 4,
 				airing: aired(3),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([]);
 		expect(
@@ -150,7 +212,8 @@ describe('detailWarmTargets', () => {
 				visible: [1, 2, 3],
 				heroEpisode: 4,
 				airing: aired(12),
-				playableCount: 3
+				playableCount: 3,
+				listed: true
 			})
 		).toEqual([]);
 	});
@@ -162,7 +225,8 @@ describe('detailWarmTargets', () => {
 				visible: [1, 2, null, 4, 5],
 				heroEpisode: 1,
 				airing: aired(4),
-				playableCount: 4
+				playableCount: 4,
+				listed: true
 			})
 		).toEqual([1, 2, 4]);
 	});
@@ -174,7 +238,8 @@ describe('detailWarmTargets', () => {
 				visible: null,
 				heroEpisode: 7,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([7]);
 		expect(
@@ -183,7 +248,8 @@ describe('detailWarmTargets', () => {
 				visible: null,
 				heroEpisode: 7,
 				airing: aired(12),
-				playableCount: 12
+				playableCount: 12,
+				listed: true
 			})
 		).toEqual([7]);
 	});

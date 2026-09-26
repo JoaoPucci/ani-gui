@@ -24,6 +24,7 @@ const answer = (over: Partial<AvailabilityResponse> = {}): AvailabilityResponse 
 function harness(respond?: () => Promise<AvailabilityResponse>) {
 	const applied: AvailabilityPatch[] = [];
 	const resolved: boolean[] = [];
+	const listed: (boolean | null)[] = [];
 	const sent: unknown[] = [];
 	const deps: AvailabilityLookupDeps = {
 		check: (args) => {
@@ -38,9 +39,10 @@ function harness(respond?: () => Promise<AvailabilityResponse>) {
 			extraEpisodes: a.extraEpisodes
 		}),
 		apply: (p) => applied.push(p),
-		setResolved: (r) => resolved.push(r)
+		setResolved: (r) => resolved.push(r),
+		setListed: (l) => listed.push(l)
 	};
-	return { deps, applied, resolved, sent };
+	return { deps, applied, resolved, listed, sent };
 }
 
 const settled = () => new Promise((r) => setTimeout(r, 0));
@@ -180,6 +182,43 @@ describe('startAvailabilityLookup', () => {
 		const sent = h.sent[0] as Record<string, unknown>;
 		expect(sent.background).toBeUndefined();
 		expect(sent.bypass_cache).toBeUndefined();
+	});
+
+	it('reports its own verdict apart from what the page keeps, and none when it fails', async () => {
+		// A failed lookup leaves the page what it had — the call to
+		// action still stands on the earlier answer — but a gate that
+		// warms episodes must not read the earlier mode's verdict as
+		// this lookup's. So the verdict is reported apart from the
+		// patch: unset when the question opens, the answer when it
+		// lands, and nothing further when the lookup fails.
+		const carried = harness();
+		startAvailabilityLookup(SUBJECT, 'sub', carried.deps);
+		await settled();
+		expect(carried.listed).toEqual([null, true]);
+
+		const absent = harness(() => Promise.resolve(answer({ available: false })));
+		startAvailabilityLookup(SUBJECT, 'sub', absent.deps);
+		await settled();
+		expect(absent.listed).toEqual([null, false]);
+
+		const failed = harness(() => Promise.reject(new Error('down')));
+		startAvailabilityLookup(SUBJECT, 'dub', failed.deps);
+		await settled();
+		expect(failed.listed).toEqual([null]);
+	});
+
+	it('publishes the verdict only where the writeback lets this lookup own it', async () => {
+		// A cache-bypassing re-ask that answered while this lookup was
+		// out owns the verdict: the writeback drops `available` from
+		// the patch and the page keeps the re-ask's answer. The warm
+		// must follow the same decision — published unconditionally,
+		// a cached "listed" would outrun a re-ask that found the show
+		// delisted and warm episodes for it.
+		const h = harness();
+		h.deps.begin = () => (a) => ({ count: a.count, extraEpisodes: a.extraEpisodes });
+		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
+		await settled();
+		expect(h.listed).toEqual([null]);
 	});
 
 	it('runs the two lookups of a mode flip independently', async () => {

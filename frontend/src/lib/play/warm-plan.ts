@@ -33,11 +33,19 @@ export function planWarm(input: WarmPlanInput): number[] {
 
 /** Inputs both page derivations share: the user's setting, the
  *  airing schedule and the provider's playable cap that validate
- *  every target. */
+ *  every target, and the availability probe's verdict on the show. */
 interface WarmDerivationInput {
 	cacheResolutions: boolean;
 	airing: AiringStatus | null;
 	playableCount: number | null;
+	/** Whether the provider carries the show, as the availability
+	 *  probe answered: true, false, or null when it answered nothing.
+	 *  A negative answer and a failed probe both leave the playable
+	 *  count null, which reads as unbounded — so only a show found
+	 *  listed is warmed at all. Every other verdict makes each warm
+	 *  a provider search that finds nothing, for a show the provider
+	 *  said it does not carry or could not be asked about. */
+	listed: boolean | null;
 }
 
 /** The play page's warm targets: candidates are the strip's visible
@@ -50,6 +58,7 @@ export function playPageWarmTargets(
 		currentEpisode: number;
 	}
 ): number[] {
+	if (input.listed !== true) return [];
 	const warmable = (n: number) =>
 		!epAirState(n, input.airing).unaired && !beyondPlayable(n, input.playableCount);
 	const candidates = input.visible.filter((n): n is number => n !== null && warmable(n));
@@ -70,6 +79,7 @@ export function detailWarmTargets(
 		heroEpisode: number;
 	}
 ): number[] {
+	if (input.listed !== true) return [];
 	const playable = (targets: number[]) =>
 		airedTargets(targets, input.airing).filter((n) => !beyondPlayable(n, input.playableCount));
 	const candidates = playable(
