@@ -136,16 +136,16 @@ prepends an x86_64 runtime, so a build on any other architecture
 produces a package with incompatible executables or fails outright.
 
 The `electron-builder` config declares no macOS target; nothing
-produces a `.dmg`. The dev loop (Vite + Electron from source) runs on
-Linux, where `fetch:linux-deps` stages the transport playback needs.
-On macOS the app launches and browses metadata, but no fetcher
-stages a transport there, so stream resolution falls back to a plain
-`curl` the provider rejects. On Windows the loop does not start at
-all: pnpm executes package scripts through `cmd.exe` regardless of
-the invoking terminal, and the Electron `dev` script sets
-environment variables with a POSIX prefix. `docs/deferred-work.md`
-tracks making it shell-independent; the packaging path is the
-verified Windows flow. No macOS artifact is built or shipped.
+produces a `.dmg`. The dev loop (Vite + Electron from source) runs
+on Linux, where `fetch:linux-deps` stages the transport playback
+needs, and on Windows, where the `dev` launcher stages the bundled
+tools itself before starting Electron. The launcher is a Node
+script, so pnpm's script shell — `cmd.exe` on Windows, regardless
+of the invoking terminal — has no shell-dialect syntax to trip
+over. On macOS the app launches and browses metadata, but no
+fetcher stages a transport there, so stream resolution falls back
+to a plain `curl` the provider rejects. No macOS artifact is built
+or shipped.
 
 ## Logging and debugging
 
