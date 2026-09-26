@@ -182,12 +182,15 @@ fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool 
 /// show the fallback carries, and the fallback's negative, written
 /// during that outage, proves nothing about the primary once it is
 /// back. The two halves ask the gate two different questions. The
-/// row's own provider is asked whether it has recovered — its
-/// breaker closed by a success, or never opened, and no pause
-/// running — because past the cooldown the breaker refuses nobody
-/// while nothing has yet answered, and a negative served on that
-/// alone would short-circuit the very probe whose trial could fail
-/// over. The providers ahead are asked whether they refuse — an open
+/// row's own provider is asked whether it has recovered — seen
+/// answering since it last failed: its breaker closed by a success,
+/// or never opened, no failure since, and no pause running —
+/// because past the cooldown the breaker refuses nobody while
+/// nothing has yet answered, and a negative served on that alone
+/// would short-circuit the very probe whose trial could fail over;
+/// and because the rows a recovered gate serves make no request, so
+/// a failure run short of the threshold could never grow past it
+/// while they were served. The providers ahead are asked whether they refuse — an open
 /// breaker or a running rate-limit pause, either of which sends a
 /// walk asked now to the next provider — so a half-open primary lets
 /// the fallback's row yield to the trial. Otherwise the row is not

@@ -286,7 +286,7 @@ impl ScraperGate {
     }
 
     /// Whether the provider has been seen answering since it last
-    /// refused — the question a negative verdict's own provider is
+    /// failed — the question a negative verdict's own provider is
     /// asked before the verdict is served. [`ScraperGate::is_refusing`]
     /// is the clock's answer, and past the cooldown the two part: the
     /// breaker refuses nobody, but it is half-open — one trial is let
@@ -295,14 +295,26 @@ impl ScraperGate {
     /// breaker counts as recovered when a success closed it, and a
     /// gate nothing has answered through has recovered nothing
     /// either, since the gate is the process's and the verdicts it
-    /// stands behind outlive the process; an advertised pause counts
-    /// as over at its window's end, since the upstream itself named
-    /// that moment and admission clears the pause on the clock. A
-    /// read, never a state change.
+    /// stands behind outlive the process. Nor has a gate with a
+    /// failure run under way: the breaker opens at the third
+    /// consecutive failure, and the verdicts a recovered gate stands
+    /// behind are served without a request, so nothing they do could
+    /// supply the rest — one failure since the last success is a
+    /// provider that may be going down, and its verdicts yield to a
+    /// probe whose outcome teaches the gate. An advertised pause
+    /// counts as over at its window's end, since the upstream itself
+    /// named that moment and admission clears the pause on the clock.
+    /// A read, never a state change.
     #[must_use]
     pub fn is_recovered(&self) -> bool {
         let s = self.inner.lock().expect("gate lock");
-        recovered_at(s.answered, s.open_until, s.paused_until, Instant::now())
+        recovered_at(
+            s.answered,
+            s.consecutive_failures,
+            s.open_until,
+            s.paused_until,
+            Instant::now(),
+        )
     }
 
     /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
@@ -376,21 +388,29 @@ fn refusing_at(open_until: Option<Instant>, paused_until: Option<Instant>, now: 
 }
 
 /// Whether the provider has recovered at `now`: the provider has
-/// `answered` through the gate, the breaker is closed — by a
-/// success, never merely cooled down — and no advertised pause is
+/// `answered` through the gate, nothing has failed since it last
+/// did (`consecutive_failures` is zero), the breaker is closed — by
+/// a success, never merely cooled down — and no advertised pause is
 /// still running. Pure, the mirror of [`refusing_at`]: recovered
 /// implies not refusing, and a breaker past its cooldown without a
 /// success is neither, as is a fresh gate nothing has answered
-/// through. The gate lives in the process while the verdicts it
-/// stands behind live on disk, so "never opened" alone would count a
-/// provider recovered on an app started during its outage.
+/// through, as is a gate with a failure run under way. The gate
+/// lives in the process while the verdicts it stands behind live on
+/// disk, so "never opened" alone would count a provider recovered on
+/// an app started during its outage; and the verdicts a recovered
+/// gate stands behind are served without a request, so a failure run
+/// short of the threshold would otherwise never grow past it.
 fn recovered_at(
     answered: bool,
+    consecutive_failures: u32,
     open_until: Option<Instant>,
     paused_until: Option<Instant>,
     now: Instant,
 ) -> bool {
-    answered && open_until.is_none() && paused_until.is_none_or(|paused| now >= paused)
+    answered
+        && consecutive_failures == 0
+        && open_until.is_none()
+        && paused_until.is_none_or(|paused| now >= paused)
 }
 
 /// Breaker check under the gate lock: refuses while the breaker is
