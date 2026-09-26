@@ -60,9 +60,13 @@ requires it; the exception is the update check that runs on launch
   refused or rate-limited the request, answered a page the app
   cannot read, or its own gate turned a background request away —
   and hianime first, for a while, for a show it was found on while
-  the walk had moved on — a positive availability record, which
-  says the show and the audio are listed there, not that a stream
-  was played: the app remembers
+  the walk had moved on — a positive availability record: written by
+  a probe or a fresh resolve, it says the show and the audio are
+  listed there, not that a stream was played; written again by a
+  play or hand-off served from the app's own resolution cache after
+  the record had lapsed, it says only that a stream resolved there
+  once played again, and is where the next walk starts. The app
+  remembers
   which catalogue carried a show for as long as its availability
   record lasts — a day from the last resolve that found the show
   there: a play, a download, a hand-off — a play or a hand-off
