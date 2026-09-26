@@ -38,8 +38,10 @@ sudo apt install -y build-essential libssl-dev pkg-config
 # Renderer + Electron shell (Node + pnpm via nvm)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 # (open a new shell, or `source ~/.bashrc`)
-nvm install 20 && nvm use 20
-corepack enable && corepack prepare pnpm@latest --activate
+nvm install 20
+# pnpm needs no separate install or version choice: package.json's
+# packageManager field pins it, and corepack fetches that version.
+corepack enable
 ```
 
 ```sh
@@ -71,23 +73,32 @@ Mostly same packages, different package manager. PRs welcome to add Fedora / Arc
 
 ## Dev loop
 
-In order, starting from the repository root — the two one-shot steps
-run in subshells so they leave the working directory alone; the two
-long-running processes each get their own terminal, also opened at
-the root:
+In order, starting from the repository root. The snippets are one
+command per line so they run unchanged in bash, PowerShell, or cmd —
+the loop is supported on Linux and Windows. The two long-running
+processes each get their own terminal, opened at the root:
 
 ```sh
 # 1 — build the Rust sidecar (one-shot per Rust change)
-(cd backend && cargo build --bin ani-gui-backend)
+cd backend
+cargo build --bin ani-gui-backend
 
-# 2 — once per checkout, x86_64 Linux only: stage the bundled deps
-(cd electron && pnpm run fetch:linux-deps)
+# 2 — once per checkout, x86_64 Linux only: stage the bundled deps.
+#     Windows skips this: the dev launcher in step 4 stages its own.
+cd ../electron
+pnpm run fetch:linux-deps
+```
 
+```sh
 # 3 — Vite dev server with HMR (keep running, own terminal)
-cd frontend && pnpm dev          # http://localhost:5173
+cd frontend
+pnpm dev          # http://localhost:5173
+```
 
+```sh
 # 4 — Electron shell (spawns the sidecar, points at Vite; keep running, own terminal)
-cd electron && pnpm dev
+cd electron
+pnpm dev
 ```
 
 Step 2's position is load-bearing on a fresh checkout: it must run
