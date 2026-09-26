@@ -187,6 +187,41 @@ starting it, and delete it when you find it done.
   from its own failures, or fetching announcements from somewhere it
   trusts — and choosing one is the design work, along with which
   signals feed the surface and what persistence they get.
+- **No way from a Continue Watching card to the show's page.** A
+  card on the home page's Continue Watching row, once its history
+  entry has been matched to a Kitsu show, is a button that tries to
+  take the user into playback — with a fresh resolution, a cached
+  one, or a player that already has the episode, or, when the
+  resolution fails, a failure notice instead — of an episode chosen when
+  the button is clicked, usually the one after the last watched, so
+  the number the card shows beforehand, where it shows one, is not
+  always the episode played. Nothing else on the card or the row
+  leads to the show either: the chip on a card removes it, the
+  row's menu clears the row whole, the strip's arrows scroll it.
+  (An entry the matcher could not place renders as a link to search
+  instead, and has no show to route to; one whose match came back
+  without a title renders as a card whose click does nothing. This
+  entry is about the matched, titled cards.) The
+  route that exists runs through playback: the play page's poster,
+  title and breadcrumb link to the show's page, so a user who wants
+  the show itself — its episode list, its synopsis, its list entry —
+  starts the episode first, or finds the show again through search
+  or the lists. What is missing is a direct route from the card that
+  does not start playback, and wanting one is a recurring itch.
+
+  Why it waited: the direction is undecided and wants discussion
+  before anything is built. A further target on the card is the
+  small answer — the remove chip shows a card can carry one — and a
+  card that is a play button with a busy state does not obviously
+  have room for a second; a Continue Watching page of
+  its own, where each entry can afford the show's page as a
+  destination, is the larger answer that may make the small one moot.
+  Either way it is a design conversation first, not a change to make
+  on sight.
+
+  Worth knowing: a matched card already holds the show's Kitsu match
+  to play it, so knowing where the show's page is was never the hard
+  part.
 
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
   requires a `test(red):` predecessor for anything that introduces a
