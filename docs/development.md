@@ -51,20 +51,32 @@ sudo apt install -y mpv jq ripgrep
 
 ### Then in the repo
 
+Clone and run the one workspace install, which covers `frontend/`
+and `electron/`; the frontend's install also sets up Lefthook and
+writes the `pre-commit` / `pre-push` git hooks (set `LEFTHOOK=0` to
+skip them for a single command):
+
 ```sh
 git clone git@github.com:JoaoPucci/ani-gui.git
 cd ani-gui
+pnpm install
+```
 
-# Bash test toolchain (vendored bats + plugins at pinned tags)
+The bash test toolchain (vendored bats + plugins at pinned tags) is
+POSIX by design — run this from a POSIX shell (Git Bash on Windows),
+and only if you work in the bash layer:
+
+```sh
 ./tests/bash/helpers/install-bats.sh
+```
 
-# Frontend + Electron deps. The frontend `pnpm install` also installs
-# Lefthook and writes the `pre-commit` / `pre-push` git hooks. To skip
-# the hooks for a single command set `LEFTHOOK=0`.
-pnpm install   # one workspace install covers frontend/ and electron/
+Verify the Rust toolchain, ending back at the root, where the dev
+loop below starts:
 
-# Verify Rust toolchain
-(cd backend && cargo --version)
+```sh
+cd backend
+cargo --version
+cd ..
 ```
 
 ### Other distros
@@ -171,13 +183,19 @@ or shipped.
 
 ## Logging and debugging
 
-The backend uses [`tracing`](https://docs.rs/tracing). Adjust verbosity by setting `RUST_LOG` before launching the backend (or the Electron shell that spawns it):
+The backend uses [`tracing`](https://docs.rs/tracing). Adjust verbosity by setting `RUST_LOG` before launching the backend (or the Electron shell that spawns it). bash:
 
 ```sh
 RUST_LOG=ani_gui=debug,axum=info pnpm --dir electron dev
 ```
 
-Logs also tee to `$XDG_DATA_HOME/ani-gui/logs/ani-gui.log` (daily rotation, 7-day retention).
+PowerShell:
+
+```powershell
+$env:RUST_LOG = 'ani_gui=debug,axum=info'; pnpm --dir electron dev
+```
+
+Logs also tee to a daily-rotated `ani-gui.log` (7-day retention) under `$XDG_DATA_HOME/ani-gui/logs/` on Linux, `%APPDATA%\thirdmovement\ani-gui\data\logs\` on Windows — `ani-gui-dev` in place of `ani-gui` for dev-profile runs.
 
 The streaming proxy port is logged at startup:
 

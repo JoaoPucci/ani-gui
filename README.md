@@ -110,7 +110,12 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    cd electron
    pnpm dev
    ```
-7. **Build a distributable bundle**, from `electron/`. On a Linux host, `pnpm package` builds the `.AppImage` (fast iteration) and `pnpm package:release` builds `.AppImage` + `.deb`. On a Windows host — any shell, with Rust, Node and pnpm installed natively; the dep fetcher needs `bsdtar`, which Windows 10+ ships as `tar.exe`:
+7. **Build a distributable bundle** — a fresh terminal at the repository root. On an x86_64 Linux host (`pnpm package` instead builds only the `.AppImage`, for faster iteration):
+   ```sh
+   cd electron
+   pnpm package:release
+   ```
+   On an x64 Windows host — any shell, with Rust, Node and pnpm installed natively; the dep fetcher needs `bsdtar`, which Windows 10+ ships as `tar.exe`:
    ```sh
    cd electron
    pnpm package:win
