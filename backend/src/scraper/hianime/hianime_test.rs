@@ -1186,8 +1186,9 @@ fn megaplays_servers_come_first_then_zokoanimes_then_the_sites_order() {
 /// Two rows are one attempt when they make the same request. On
 /// megaplay's hosts that is the same page — origin and path,
 /// whatever the query — since the client asks a megaplay page for
-/// one network whatever the listing named it for, and the query
-/// goes nowhere. On every other host the embed request carries the
+/// one network whatever the listing named it for, and the page
+/// itself is fetched by origin and path, the listing's query going
+/// nowhere. On every other host the embed request carries the
 /// query as listed, and a query can name a different server, so
 /// there two rows are one attempt only when the whole URL is the
 /// same. The first in the site's order is kept. Rows on different
@@ -1235,6 +1236,32 @@ fn rows_that_make_the_same_request_are_one_attempt() {
             .map(|s| s.embed_url.as_str())
             .collect::<Vec<_>>(),
         vec!["https://megaplay.buzz/stream/s-2/1/dub?s=tcdn"]
+    );
+}
+
+/// The page the client fetches for a megaplay row is the row's
+/// request — origin and path, without the network the listing named
+/// — so the row kept for a page is asked at the same URL whichever
+/// listed row it was, and the site's query cannot make one listed
+/// row's page fail where another's would answer.
+#[tokio::test]
+async fn a_megaplay_page_is_asked_by_origin_and_path_whatever_network_the_listing_named() {
+    let c = client();
+    // The listing names the same megaplay page under two networks,
+    // then a zokoanime page; the megaplay page here carries no
+    // player, so the resolve ends on zokoanime's.
+    let _ = c.master_playlist_url(21420, "sub").await;
+    let asked: Vec<String> = c
+        .transport()
+        .requests()
+        .iter()
+        .map(|r| r.url.to_string())
+        .filter(|u| u.contains("megaplay") && u.contains("/stream/s-2/"))
+        .collect();
+    assert_eq!(
+        asked,
+        vec!["https://megaplay.buzz/stream/s-2/8272/sub".to_string()],
+        "one page request, by origin and path, whatever the listing's query"
     );
 }
 
@@ -1500,7 +1527,7 @@ fn refused(status: u16) -> crate::error::Result<FetchResponse> {
 const REDIRECTS: &[(&str, &str)] = &[
     // A host the client never reads, moved onto one it does.
     (
-        "https://megaplay.buzz/stream/s-2/8272/sub?s=moved",
+        "https://megaplay.buzz/stream/s-2/8273/sub",
         "https://zokoanime.video/stream/mal/9/nopayload/sub",
     ),
     // A readable host that hands its page to another origin.
@@ -1620,7 +1647,7 @@ impl Fetch for Site {
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21443") => {
                 if ajax {
                     ok(
-                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3Mi9zdWI/cz1tb3ZlZA==\"></div>"}"#,
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvODI3My9zdWI=\"></div>"}"#,
                     )
                 } else {
                     refused(403)
@@ -2289,14 +2316,14 @@ impl Fetch for Site {
             // megaplay's pages as captured: no payload, the player
             // element naming the media. The sources endpoint wants the
             // page's own origin as the referer, like its player sends.
-            "https://megaplay.buzz/stream/s-2/734292/sub?s=bcdn" => {
+            "https://megaplay.buzz/stream/s-2/734292/sub" => {
                 if header(req, "Referer") == Some(&format!("{BASE}/")) {
                     ok(MEGAPLAY_PAGE)
                 } else {
                     refused(403)
                 }
             }
-            "https://megaplay.buzz/stream/s-2/734303/sub?s=bcdn" => {
+            "https://megaplay.buzz/stream/s-2/734303/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "179412"))
             }
             // A page the site made for the network whose segments
@@ -2306,7 +2333,7 @@ impl Fetch for Site {
             // for the network the client plays: a request naming any
             // other falls through to the 404 the site gives an
             // endpoint it does not serve.
-            "https://megaplay.buzz/stream/s-2/734304/sub?s=tcdn" => {
+            "https://megaplay.buzz/stream/s-2/734304/sub" => {
                 ok(MEGAPLAY_PAGE.replace("179411", "179413"))
             }
             "https://megaplay.buzz/stream/getSourcesNew?id=179413&s=bcdn" => ok(MEGAPLAY_SOURCES),
@@ -2441,8 +2468,7 @@ impl Fetch for Site {
             "https://vidtube.site/embed/8272/sub" => ok(
                 r#"<html><head><title>VidTube</title></head><body><div id="player"></div><script src="/assets/vt.js"></script></body></html>"#,
             ),
-            "https://megaplay.buzz/stream/s-2/8272/sub?s=tcdn"
-            | "https://megaplay.buzz/stream/s-2/8272/sub?s=bcdn" => ok(
+            "https://megaplay.buzz/stream/s-2/8272/sub" => ok(
                 r#"<html><head><title>File 143764 - MegaPlay</title></head><body><div id="player"></div><script src="/assets/player.js"></script></body></html>"#,
             ),
             // The payload marker is there; the blob is not one the
