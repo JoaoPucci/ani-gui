@@ -107,6 +107,12 @@
 	// unbounded and resolve aired-but-uncatalogued padded tiles
 	// (Codex P2 #3566100686).
 	let availabilityResolved = $state(false);
+	// The current lookup's own verdict, for the warm: null while the
+	// question is open or after it failed, never one retained from
+	// an earlier lookup — `availability` above keeps what the page had
+	// on failure, for the call to action, and the warm must not read
+	// the other mode's answer as this one's.
+	let warmListed = $state<boolean | null>(null);
 
 	// The provider's availableEpisodes for the chosen candidate, populated
 	// alongside availability. This is the authoritative "what's
@@ -198,7 +204,12 @@
 		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
 	);
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
-		if (patch.available !== undefined) availability = patch.available;
+		if (patch.available !== undefined) {
+			availability = patch.available;
+			// A patch that carries the verdict is the current lookup's
+			// or a re-ask's that won it — either way the warm's too.
+			warmListed = patch.available;
+		}
 		if (patch.count !== undefined) playableEpisodeCount = patch.count;
 		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
 	}
@@ -644,7 +655,8 @@
 					check: checkAvailability,
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
-					setResolved: (r) => (availabilityResolved = r)
+					setResolved: (r) => (availabilityResolved = r),
+					setListed: (l) => (warmListed = l)
 				}
 			)
 		);
@@ -824,6 +836,7 @@
 		error = null;
 		availability = null;
 		availabilityResolved = false;
+		warmListed = null;
 		playableEpisodeCount = null;
 		extraEpisodes = [];
 		resumeEntry = null;
@@ -943,7 +956,8 @@
 			visible: episodes ? episodes.map((e) => e.number ?? e.relative_number ?? null) : null,
 			heroEpisode: defaultEpisode(),
 			airing,
-			playableCount: playableEpisodeCount
+			playableCount: playableEpisodeCount,
+			listed: warmListed
 		});
 		const altTitles = altTitlesFromKitsu(detail);
 		for (const ep of targets) {
