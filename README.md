@@ -100,7 +100,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    pnpm run fetch:linux-deps
    ```
    The fetcher downloads x86_64 Linux builds (the architecture every package ships for), so skip it on any other host — the staged directory outranks PATH, and incompatible binaries staged there would shadow any transport you do have. Windows needs no staging step here: the dev launcher in step 6 stages its own.
-6. **Run the dev app** — two terminals, started in this order. Terminal A, the Vite dev server with HMR on :5173:
+6. **Run the dev app** — two terminals, each opened at the repository root (the step-5 shell is sitting in `backend/` or `electron/`, so don't continue in it), started in this order. Terminal A, the Vite dev server with HMR on :5173:
    ```sh
    cd frontend
    pnpm dev
