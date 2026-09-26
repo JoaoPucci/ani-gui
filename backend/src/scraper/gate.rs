@@ -110,6 +110,13 @@ pub(super) struct GateState {
     /// breaker, the mirror of the stale-success filter against
     /// `opened_at`.
     last_recovery_at: Option<Instant>,
+    /// Whether the provider has answered through this gate at all —
+    /// a success or a rate limit, the provider naming a moment to
+    /// come back; a failure proves nothing. The gate is the
+    /// process's while the verdicts it stands behind outlive the
+    /// process, so a gate nothing has answered through has recovered
+    /// nothing, whatever its breaker reads.
+    answered: bool,
 }
 
 /// See the module docs. One instance lives in `AppState`; every
@@ -134,6 +141,7 @@ impl ScraperGate {
                 opened_at: None,
                 half_open_trial_at: None,
                 last_recovery_at: None,
+                answered: false,
             }),
         }
     }
@@ -252,6 +260,63 @@ impl ScraperGate {
         Ok(trial_stamp)
     }
 
+    /// Whether the breaker is open right now — a failover
+    /// orchestrator's question before it spends a budget on a provider
+    /// whose consecutive failures already tripped it. Interactive
+    /// admits bypass an open breaker by the gate's own contract, so
+    /// the admit path cannot answer this. A read, never a state
+    /// change.
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        let s = self.inner.lock().expect("gate lock");
+        s.open_until.is_some_and(|until| Instant::now() < until)
+    }
+
+    /// Whether the provider is refusing right now: the breaker open,
+    /// or an advertised rate-limit window still running. Admission
+    /// keeps the two apart — background waits through a pause and is
+    /// refused by an open breaker — but a verdict that has to be
+    /// stood behind asks one question of both: a walk sent to this
+    /// provider now is told to come back later, and moves on to the
+    /// next. A read, never a state change.
+    #[must_use]
+    pub fn is_refusing(&self) -> bool {
+        let s = self.inner.lock().expect("gate lock");
+        refusing_at(s.open_until, s.paused_until, Instant::now())
+    }
+
+    /// Whether the provider has been seen answering since it last
+    /// failed — the question a negative verdict's own provider is
+    /// asked before the verdict is served. [`ScraperGate::is_refusing`]
+    /// is the clock's answer, and past the cooldown the two part: the
+    /// breaker refuses nobody, but it is half-open — one trial is let
+    /// through, and only a success closes it — so a provider whose
+    /// outage merely outlasted the cooldown has recovered nothing. A
+    /// breaker counts as recovered when a success closed it, and a
+    /// gate nothing has answered through has recovered nothing
+    /// either, since the gate is the process's and the verdicts it
+    /// stands behind outlive the process. Nor has a gate with a
+    /// failure run under way: the breaker opens at the third
+    /// consecutive failure, and the verdicts a recovered gate stands
+    /// behind are served without a request, so nothing they do could
+    /// supply the rest — one failure since the last success is a
+    /// provider that may be going down, and its verdicts yield to a
+    /// probe whose outcome teaches the gate. An advertised pause
+    /// counts as over at its window's end, since the upstream itself
+    /// named that moment and admission clears the pause on the clock.
+    /// A read, never a state change.
+    #[must_use]
+    pub fn is_recovered(&self) -> bool {
+        let s = self.inner.lock().expect("gate lock");
+        recovered_at(
+            s.answered,
+            s.consecutive_failures,
+            s.open_until,
+            s.paused_until,
+            Instant::now(),
+        )
+    }
+
     /// Typed outcome reporting: like [`ScraperGate::record_outcome`],
     /// but a [`ScrapeOutcome::RateLimited`] opens an advertised-window
     /// pause immediately — background admits then WAIT through the
@@ -274,6 +339,8 @@ impl ScraperGate {
                     // failure path.
                     return;
                 }
+                // A rate limit is the provider answering.
+                s.answered = true;
                 let now = Instant::now();
                 // The hint is untrusted input: clamp before the
                 // Instant addition so a hostile value can neither
@@ -306,8 +373,45 @@ impl ScraperGate {
 // `record_outcome` lives in a `#[path]` child module so its
 // complexity counts against its own file while the gate's state
 // stays private to this module tree.
+#[cfg(test)]
+#[path = "gate_open_test.rs"]
+mod open_tests;
+
 #[path = "gate_recording.rs"]
 mod recording;
+
+/// Whether the provider is refusing at `now`: the breaker open, or an
+/// advertised pause running. Pure, so the read's contract can be
+/// stated as a property beside [`recovered_at`].
+fn refusing_at(open_until: Option<Instant>, paused_until: Option<Instant>, now: Instant) -> bool {
+    open_until.is_some_and(|until| now < until) || paused_until.is_some_and(|paused| now < paused)
+}
+
+/// Whether the provider has recovered at `now`: the provider has
+/// `answered` through the gate, nothing has failed since it last
+/// did (`consecutive_failures` is zero), the breaker is closed — by
+/// a success, never merely cooled down — and no advertised pause is
+/// still running. Pure, the mirror of [`refusing_at`]: recovered
+/// implies not refusing, and a breaker past its cooldown without a
+/// success is neither, as is a fresh gate nothing has answered
+/// through, as is a gate with a failure run under way. The gate
+/// lives in the process while the verdicts it stands behind live on
+/// disk, so "never opened" alone would count a provider recovered on
+/// an app started during its outage; and the verdicts a recovered
+/// gate stands behind are served without a request, so a failure run
+/// short of the threshold would otherwise never grow past it.
+fn recovered_at(
+    answered: bool,
+    consecutive_failures: u32,
+    open_until: Option<Instant>,
+    paused_until: Option<Instant>,
+    now: Instant,
+) -> bool {
+    answered
+        && consecutive_failures == 0
+        && open_until.is_none()
+        && paused_until.is_none_or(|paused| now >= paused)
+}
 
 /// Breaker check under the gate lock: refuses while the breaker is
 /// open, and once the cooldown elapses hands the half-open trial role

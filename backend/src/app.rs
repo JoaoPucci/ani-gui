@@ -60,10 +60,21 @@ pub struct AppState {
     /// Test override for the anidb provider origin the native play
     /// resolution scrapes. `None` in production (the real site).
     pub anidb_base: Option<String>,
-    /// Admission gate for provider traffic: paces background probes
+    /// Admission gate for anidb traffic: paces background probes
     /// and breaks the circuit on consecutive failures so cold caches
     /// can't rate-limit the IP out from under a user's click.
     pub anidb_gate: Arc<crate::scraper::gate::ScraperGate>,
+    /// Test override for the hianime origin. `None` in production.
+    pub hianime_base: Option<String>,
+    /// hianime's own admission gate. One breaker per provider: an
+    /// outage on one must not pace or refuse traffic to the other.
+    pub hianime_gate: Arc<crate::scraper::gate::ScraperGate>,
+    /// The providers a walk runs against, in order — the next is
+    /// asked only when the one before it was unreachable, refusing
+    /// or broken (see `commands::providers`). Production lists them
+    /// all; a test lists the ones it stubs, so a stubbed outage
+    /// cannot fall through to a real site.
+    pub provider_order: Vec<crate::scraper::provider::ProviderId>,
     /// On-disk image-cache directory served by the `image://` protocol.
     pub image_cache_dir: PathBuf,
     /// Connection pool for the SQLite metadata cache.
@@ -162,6 +173,12 @@ impl AppState {
             history_path,
             anidb_base: None,
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            hianime_base: None,
+            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            provider_order: vec![
+                crate::scraper::provider::ProviderId::Anidb,
+                crate::scraper::provider::ProviderId::Hianime,
+            ],
             image_cache_dir,
             cache_pool,
             kitsu,
@@ -288,6 +305,9 @@ mod tests {
             history_path: PathBuf::from("/tmp/ani-gui/history"),
             anidb_base: None,
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            hianime_base: None,
+            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),

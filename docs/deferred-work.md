@@ -179,8 +179,9 @@ starting it, and delete it when you find it done.
   diagnostics page holds boot-time notices — and a single surface
   would give them, and whatever later features emit, somewhere to go
   when the user was not looking. The second is telling users about
-  outages like the provider failure of 2026-08-27 (see "Additional
-  providers" below): every uncached play failed as unreachable and
+  outages like the provider failure of 2026-08-27 — the outage that
+  led to the second provider, now failed over to automatically: every
+  uncached play failed as unreachable and
   the app had nowhere to say the problem was the provider's, not
   their setup's. That job needs a
   notice source that does not exist yet — the app inferring an outage
@@ -289,33 +290,32 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
-## Additional providers
+## Validating the hianime fallback on the packaged Windows flows
 
-- **Investigate alternative stream providers and add the viable ones**,
-  so playback survives the current provider having a bad day. All
-  resolution rides a single provider today, and on 2026-08-27 its
-  server-rendered routes stalled globally for hours (TLS completed,
-  then zero bytes until timeout) while its JSON routes kept answering
-  — nothing new could be resolved, and every uncached play was
-  correctly reported as unreachable. Plays kept working only where a
-  cached resolution sat inside its seven-day lifetime *and* its
-  stream URL still answered validation — a dead URL evicts the row and falls
-  through to the unreachable provider. That softens the blow without
-  changing the lesson. pystardust/ani-cli#1877 records the same
-  outage from the outside.
+- **Run the packaged Windows build through the hianime fallback**,
+  which has only ever been run on Linux. The production provider
+  order puts hianime behind anidb.app on both packaged platforms, so
+  a release that ships before that run has happened says in its
+  notes that the Windows side of the fallback is unvalidated.
 
-  The investigation half is the real work: which providers are worth
-  scraping, what their catalogues and rate limits look like, and how a
-  second provider slots into resolution (fallback when the first is
-  unreachable, or a per-title choice). The title-resolution bridge
-  (`docs/title-resolution.md`) is keyed by provider ids, so every
-  cache stamped by provider output is part of the answer, not an
-  afterthought.
+  Why it waited: the run has not been made yet. The Linux run
+  against the live site carries further than a single-platform pass
+  usually does — both packages stage the same impersonating
+  transport, and turning the fallback on spawns, stages and probes
+  nothing new on either platform — but it is still not the run.
+  `docs/proposals/additional-providers.md` states the bar a provider
+  owes on both platforms.
 
-  That investigation ran on 2026-09-05, during a second, total outage
-  of the provider: `docs/proposals/additional-providers.md` holds the
-  candidate survey, the integration shape, and a recommendation. The
-  survey's liveness claims rot; re-verify them before building.
+  What is worth knowing: the fallback engages only while anidb.app
+  is unreachable, refusing or broken, so the first play a Windows
+  user makes through it comes when the only other provider is giving
+  them nothing. It does not end there. A show the fallback served
+  has its positive availability row name hianime, and every later
+  play, download and hand-off of that show starts from hianime while
+  that row lives, whether or not anidb.app has recovered — so a
+  Windows user who reached the fallback once keeps using it for that
+  show afterwards, with anidb.app healthy. That is why the run is
+  owed by a release and not merely worth having.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 

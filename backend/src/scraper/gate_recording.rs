@@ -24,6 +24,7 @@ impl ScraperGate {
                     return;
                 }
             }
+            s.answered = true;
             s.consecutive_failures = 0;
             s.open_until = None;
             s.opened_at = None;
