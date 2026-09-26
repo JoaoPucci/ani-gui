@@ -195,7 +195,14 @@ PowerShell:
 $env:RUST_LOG = 'ani_gui=debug,axum=info'; pnpm --dir electron dev
 ```
 
-Logs also tee to a daily-rotated `ani-gui.log` (7-day retention) under `$XDG_DATA_HOME/ani-gui/logs/` on Linux, `%APPDATA%\thirdmovement\ani-gui\data\logs\` on Windows — `ani-gui-dev` in place of `ani-gui` for dev-profile runs.
+cmd:
+
+```bat
+set RUST_LOG=ani_gui=debug,axum=info
+pnpm --dir electron dev
+```
+
+There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file.
 
 The streaming proxy port is logged at startup:
 
@@ -203,7 +210,9 @@ The streaming proxy port is logged at startup:
 INFO ani_gui::proxy: stream proxy listening on 127.0.0.1:42337
 ```
 
-Use it to inspect proxied requests with `curl`:
+Use it to inspect proxied requests with `curl`. In Windows
+PowerShell spell it `curl.exe` — bare `curl` there is an alias for
+`Invoke-WebRequest`, which rejects `-sI`:
 
 ```sh
 curl -sI http://127.0.0.1:42337/healthz
