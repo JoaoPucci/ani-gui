@@ -353,7 +353,11 @@ consumer rather than to skim it:
   a tracked log is read against the rest of that log; a release
   note against the docs it summarizes; both against the code. Two
   statements the same change leaves in contradiction are a finding
-  even when each file reads fine alone.
+  even when each file reads fine alone. Deletion has the inbound
+  half of the same duty: removing a heading, an entry, or a promise
+  means sweeping the repository for what referenced it — and the
+  sweep's patterns must tolerate line-wrapped prose, which hides a
+  reference from a naive grep behind a line break.
 
 The gate spends the cheap budget so the expensive one confirms
 instead of discovers. It does not replace external review — it is
