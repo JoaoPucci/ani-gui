@@ -443,8 +443,10 @@ starting it, and delete it when you find it done.
 
   What is worth knowing: the fallback engages while anidb.app is
   unreachable, refusing or broken, or when its answer settles nothing
-  — the show found without the audio asked for, or a denial the
-  show's live record outranks — so the first play a Windows user
+  — the show found with every sampled row silent about the audio
+  asked for, or a denial the show's live record outranks; a show
+  found and the audio reported absent is an answer, and ends the
+  walk — so the first play a Windows user
   makes through it mostly comes when the only other provider is
   giving them nothing. It does not end there. A show the fallback served
   has its positive availability row name hianime, and every later
