@@ -955,6 +955,18 @@ mod negative_rank_props {
             })
     }
 
+    /// A configured order the walk ranks equals by: both providers in
+    /// either order, one of them, or nobody.
+    fn configured() -> impl Strategy<Value = Vec<ProviderId>> {
+        prop_oneof![
+            Just(vec![ProviderId::Anidb, ProviderId::Hianime]),
+            Just(vec![ProviderId::Hianime, ProviderId::Anidb]),
+            Just(vec![ProviderId::Anidb]),
+            Just(vec![ProviderId::Hianime]),
+            Just(Vec::new()),
+        ]
+    }
+
     proptest! {
         /// The earlier negative outranks the later one exactly when
         /// it is the unknown verdict and the later is not — an
@@ -977,13 +989,33 @@ mod negative_rank_props {
             );
         }
 
-        /// The negative that stands travels with its author: the
-        /// kept one is one of the two, untouched.
+        /// The negative that stands is one of the two, untouched: the
+        /// earlier when it outranks the later, the later when it
+        /// outranks the earlier, and between negatives of equal rank
+        /// the one whose provider stands earliest in the configured
+        /// order — a negative row is served only while every provider
+        /// ahead of its own is refusing — with a negative nobody gave
+        /// behind every provider, and the later when neither stands
+        /// ahead of the other.
         #[test]
-        fn the_kept_negative_keeps_its_author(earlier in shape(), later in shape()) {
-            let keep_earlier = negative_outranks(&earlier.negative(), &later.negative());
+        fn the_kept_negative_is_the_firmer_or_the_earliest_configured(
+            earlier in shape(),
+            later in shape(),
+            configured in configured(),
+        ) {
+            let position = |by: Option<ProviderId>| {
+                by.and_then(|p| configured.iter().position(|c| *c == p))
+                    .unwrap_or(usize::MAX)
+            };
+            let keep_earlier = if negative_outranks(&earlier.negative(), &later.negative()) {
+                true
+            } else if negative_outranks(&later.negative(), &earlier.negative()) {
+                false
+            } else {
+                position(earlier.summary().2) < position(later.summary().2)
+            };
             let want = if keep_earlier { earlier.summary() } else { later.summary() };
-            let got = firmer_negative(earlier.negative(), later.negative());
+            let got = firmer_negative(earlier.negative(), later.negative(), &configured);
             prop_assert_eq!(summary_of(&got), want);
         }
     }
@@ -1025,7 +1057,7 @@ async fn a_remembered_providers_answered_miss_yields_to_the_rest() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1052,7 +1084,7 @@ async fn a_remembered_providers_miss_stands_when_the_rest_are_unreachable() {
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1085,7 +1117,7 @@ async fn a_clean_miss_reached_after_the_remembered_provider_failed_over_is_not_p
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1145,7 +1177,7 @@ async fn a_clean_miss_reached_past_a_skipped_remembered_provider_is_not_persista
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Background,
         &mut attempt,
@@ -1175,7 +1207,7 @@ async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_ove
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1210,7 +1242,7 @@ async fn an_answer_reached_after_the_remembered_provider_failed_over_says_so() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1260,7 +1292,7 @@ async fn an_answer_reached_past_a_skipped_remembered_provider_says_so_on_a_backg
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Background,
         &mut attempt,
@@ -1288,7 +1320,7 @@ async fn a_retried_remembered_providers_own_answer_is_not_past_affinity() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1307,10 +1339,13 @@ async fn a_retried_remembered_providers_own_answer_is_not_past_affinity() {
 }
 
 /// When the retried remembered provider answers a miss of its own,
-/// it was heard from: that miss is the verdict, as given, and it is
-/// the remembered provider's.
+/// it was heard from: it denied the show for itself, so the verdict
+/// is a clean miss that persists. Between its miss and the primary's
+/// equal one the primary's stands — first in the configured order —
+/// and the row names the primary, which the read rule can serve it
+/// for.
 #[tokio::test]
-async fn a_retried_remembered_providers_own_clean_miss_stands() {
+async fn a_retried_remembered_providers_own_clean_miss_denies_the_show() {
     let gates = Gates::new();
     gates.open(ProviderId::Hianime);
     let mut attempt = Scripted::new(&[
@@ -1319,7 +1354,7 @@ async fn a_retried_remembered_providers_own_clean_miss_stands() {
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1327,8 +1362,19 @@ async fn a_retried_remembered_providers_own_clean_miss_stands() {
     .await
     .expect_err("both missed");
     assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
-    assert!(err.clean_miss, "the remembered provider's own clean miss");
-    assert_eq!(attempt.answered_by, Some(ProviderId::Hianime));
+    assert!(
+        err.clean_miss,
+        "the remembered provider denied the show for itself"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Anidb),
+        "the primary's equal miss is the row's, first in the configured order"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
 }
 
 /// The gate admits an interactive click through an open breaker as
@@ -1507,8 +1553,9 @@ async fn a_saved_miss_keeps_the_provider_that_produced_it_when_the_retried_one_i
     );
 }
 
-/// When the retried primary answers a miss of its own, that miss —
-/// the last answer given — is the verdict, and it is the primary's.
+/// When the retried primary answers a miss of its own, that miss is
+/// the verdict, and it is the primary's: two clean misses are of
+/// equal rank, and the primary stands first in the configured order.
 #[tokio::test]
 async fn a_retried_providers_own_miss_is_attributed_to_it() {
     let gates = Gates::new();
@@ -1567,8 +1614,9 @@ async fn a_skipped_provider_is_retried_when_the_fallback_answered_absence_on_an_
     );
 }
 
-/// The trial's own negative answer is the last answer given, and it
-/// replaces the verdict, author and all, as a trial's miss does: the
+/// The trial's own negative answer is of equal rank with the
+/// fallback's, and the primary stands first in the configured order,
+/// so it replaces the verdict, author and all, as a trial's miss does: the
 /// primary said the show has no dub, and that is a verdict the
 /// primary stands behind, served while the primary answers — the
 /// fallback's absence would stand only while the primary refused,
@@ -1706,10 +1754,12 @@ async fn an_absence_with_nothing_skipped_is_the_answer_as_before() {
 }
 
 /// A skipped remembered provider that answers its trial with its own
-/// absence was heard from: its answer is the verdict, and it is not
-/// past affinity — the row's own provider gave it.
+/// absence was heard from: the row's own provider denied the mode,
+/// so the verdict is not past affinity. Between its absence and the
+/// primary's equal one the primary's stands — first in the
+/// configured order — and the row names the primary.
 #[tokio::test]
-async fn a_retried_remembered_providers_own_absence_is_not_past_affinity() {
+async fn a_retried_remembered_providers_own_absence_denies_the_mode() {
     let gates = Gates::new();
     gates.open(ProviderId::Hianime);
     let mut attempt = Scripted::new(&[
@@ -1718,15 +1768,19 @@ async fn a_retried_remembered_providers_own_absence_is_not_past_affinity() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the remembered provider answered for itself");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(got.value, "absent from hianime");
+    assert_eq!(
+        got.provider,
+        ProviderId::Anidb,
+        "the primary's equal absence stands, first in the configured order"
+    );
+    assert_eq!(got.value, "absent from anidb");
     assert!(
         !got.past_undenied_affinity,
         "the row's own provider was heard from"
@@ -1753,7 +1807,7 @@ async fn a_fallbacks_absence_past_a_retried_remembered_provider_still_down_says_
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1789,7 +1843,7 @@ async fn a_fallbacks_absence_past_a_retried_remembered_providers_clean_miss_is_i
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1888,7 +1942,7 @@ async fn an_absence_past_a_remembered_providers_inconclusive_answer_is_unknown()
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2045,7 +2099,7 @@ async fn a_remembered_providers_clean_miss_yields_to_a_later_inconclusive_answer
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2080,7 +2134,7 @@ async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2103,10 +2157,11 @@ async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
     );
 }
 
-/// Two episode dead ends are misses of equal standing: the last
-/// answer given stands, as before, and nothing persists either way.
+/// Two episode dead ends are misses of equal standing: the one kept
+/// is the provider's that stands earliest in the configured order —
+/// the primary's, asked last here — and nothing persists either way.
 #[tokio::test]
-async fn a_later_episode_miss_replaces_the_remembered_providers_own() {
+async fn equal_episode_misses_past_a_remembered_fallback_keep_the_primarys() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (ProviderId::Hianime, Behavior::Miss { clean: false }),
@@ -2114,7 +2169,7 @@ async fn a_later_episode_miss_replaces_the_remembered_providers_own() {
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2126,10 +2181,11 @@ async fn a_later_episode_miss_replaces_the_remembered_providers_own() {
 }
 
 /// Two clean misses are of equal standing too: the remembered
-/// provider denied the show, the rest denied it, and the later one
-/// stands, clean and persistable, as before.
+/// provider denied the show, the rest denied it, and the primary's
+/// stands — first in the configured order, asked last here — clean
+/// and persistable.
 #[tokio::test]
-async fn a_remembered_providers_clean_miss_yields_to_a_later_clean_miss() {
+async fn equal_clean_misses_past_a_remembered_fallback_keep_the_primarys() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (ProviderId::Hianime, Behavior::Miss { clean: true }),
@@ -2137,7 +2193,7 @@ async fn a_remembered_providers_clean_miss_yields_to_a_later_clean_miss() {
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2162,7 +2218,7 @@ async fn a_remembered_providers_episode_miss_stands_when_the_rest_are_unreachabl
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2188,7 +2244,7 @@ async fn an_absence_reached_past_a_remembered_providers_episode_miss_says_so() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2214,7 +2270,7 @@ async fn an_absence_reached_past_a_remembered_providers_clean_miss_is_its_own() 
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2231,8 +2287,8 @@ async fn an_absence_reached_past_a_remembered_providers_clean_miss_is_its_own() 
 /// The skipped providers' trial keeps the same rule: a retried
 /// provider's clean miss does not replace an episode dead end the
 /// walk already holds — the show was found — while it does replace
-/// a clean miss, the last answer given among misses of equal
-/// standing.
+/// the fallback's clean miss, the primary standing first in the
+/// configured order among misses of equal standing.
 #[tokio::test]
 async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
     let gates = Gates::new();
@@ -2285,7 +2341,7 @@ async fn a_remembered_providers_absence_yields_to_the_rest() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2300,13 +2356,85 @@ async fn a_remembered_providers_absence_yields_to_the_rest() {
     );
 }
 
+/// Two clean misses are negatives of equal rank, and the one kept is
+/// the provider's that stands earliest in the configured order. A
+/// negative row is served only while every provider ahead of its own
+/// is refusing, so a row naming the fallback, written while the
+/// remembered primary answered a clean miss of its own, would never
+/// be served — every look at the show would walk both providers
+/// again. The primary's miss stands, and persists.
+#[tokio::test]
+async fn equal_clean_misses_keep_the_provider_earliest_in_the_configured_order() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        Some(ProviderId::Anidb),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("both missed");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        err.clean_miss,
+        "the remembered provider denied the show for itself; the miss persists"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime],
+        "the remembered primary's miss is set aside and the rest asked"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Anidb),
+        "the row names the provider the read rule can serve it for"
+    );
+}
+
+/// Two absences the same way: the remembered primary's own absence
+/// stands over the fallback's, so the negative row names the primary
+/// and is served while the primary answers.
+#[tokio::test]
+async fn equal_absences_keep_the_provider_earliest_in_the_configured_order() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+    ]);
+    let got = run_with(
+        &gates,
+        &ORDER,
+        Some(ProviderId::Anidb),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect("an absence is an answer");
+    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.value, "absent from anidb");
+    assert!(
+        !got.past_undenied_affinity,
+        "the remembered provider denied the mode for itself"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Anidb, ProviderId::Hianime]
+    );
+}
+
 /// Two absences are negatives of equal standing — both found the
-/// show — so the last answer given stands, attributed to the provider
-/// that gave it; the remembered provider denied the mode for itself,
-/// so the later absence is its own verdict, not one past an undenied
+/// show — so the one kept is the provider's that stands earliest in
+/// the configured order: the primary's, asked last here, attributed
+/// to it; the remembered provider denied the mode for itself, so the
+/// primary's absence is its own verdict, not one past an undenied
 /// affinity.
 #[tokio::test]
-async fn a_later_absence_replaces_the_remembered_providers_own() {
+async fn equal_absences_past_a_remembered_fallback_keep_the_primarys() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
@@ -2314,7 +2442,7 @@ async fn a_later_absence_replaces_the_remembered_providers_own() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2346,7 +2474,7 @@ async fn a_remembered_providers_absence_outranks_a_later_clean_miss() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2380,7 +2508,7 @@ async fn a_remembered_providers_absence_stands_when_the_rest_are_unreachable() {
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &ORDER,
         Some(ProviderId::Hianime),
         ScrapePriority::Interactive,
         &mut attempt,
