@@ -318,7 +318,48 @@ they could install. Both were written down as deferred work and
 neither was treated as blocking. That judgement is what this rule
 removes.
 
-## 16. Pointers
+## 16. The change is reviewed before the reviewer sees it
+
+External review rounds are the scarcest resource this repository
+spends. Every finding external review has produced here was correct,
+and each round costs more than the self-review that would have made
+it unnecessary — so a change earns its push, not just its merge.
+
+Before a pull request opens, and before every push to one, the full
+diff gets an adversarial pass — by a second agent where one is
+available — instructed to walk the change as its most literal
+consumer rather than to skim it:
+
+- **Claims are verified the way their audience consumes them.** A
+  document that names a platform is executed on that platform; a
+  snippet that names a shell is traced in that shell's dialect,
+  carrying the working directory and environment from step to step;
+  a comment or note that describes behavior is checked against the
+  code that would have to produce it. A claim that cannot be
+  grounded does not ship. The gate exists because a run of exactly
+  such claims shipped: snippets said to run in `cmd.exe` that cmd
+  parses as arguments, steps whose `cd` assumed a directory an
+  earlier step had already left, a documented log file no sink ever
+  wrote.
+
+- **A finding closes its class, not its instance.** Whether the
+  gate or an external reviewer finds it, one instance means the
+  whole diff — and the files it touches — get swept for the class
+  before the next push. Four consecutive review rounds, each
+  finding the next instance of the class the previous fix had
+  patched by the line, are the history behind this rule.
+
+- **Cross-file consistency is part of the diff.** An entry added to
+  a tracked log is read against the rest of that log; a release
+  note against the docs it summarizes; both against the code. Two
+  statements the same change leaves in contradiction are a finding
+  even when each file reads fine alone.
+
+The gate spends the cheap budget so the expensive one confirms
+instead of discovers. It does not replace external review — it is
+what makes external review affordable.
+
+## 17. Pointers
 
 - `docs/architecture.md` — public architecture
 - `docs/testing.md` — test pyramid, fixture management, coverage targets
