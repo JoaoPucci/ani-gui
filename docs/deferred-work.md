@@ -145,6 +145,27 @@ starting it, and delete it when you find it done.
   same source-scoped treatment the progress and resume listeners
   got, not another registration inside the effect's conditional.
 
+- **A download beside an active play starves the player until it
+  misreports an expired link.** The downloader spawns yt-dlp with
+  16-way fragment concurrency; the player's fragment load policy
+  (`frontend/src/lib/play/hls-load-policy.ts`) deliberately turns a
+  crawling fetch fatal within seconds so stalls surface fast. Run
+  against the same host, the download's burst starves the player's
+  next segment fetch, hls.js fatals with `fragLoadError`, and the
+  stale-stream policy — which can only see a network-class error —
+  answers with the rotated-URL treatment: an "expired link" toast
+  and a full evict + re-resolve, for a URL resolved seconds earlier.
+  Buffered video keeps playing throughout, which makes the toast
+  read as a false alarm. Observed on the v0.14.0 Windows package
+  against hianime: download spawned, player fatal nine seconds
+  later.
+
+  Directions rather than a prescription: cap or pace the
+  downloader's concurrency while a play session is live, classify
+  fragment errors during an active same-host download as the
+  host-slow (nudge) class instead of the rotated-URL class, or name
+  contention in the toast instead of expiry.
+
 ## Interface
 
 - **Localised content fetch** — synopsis and episode titles.
