@@ -93,7 +93,11 @@ async fn a_fresh_success_ends_the_pause_and_an_open_breaker_refuses_too() {
 /// live on disk, so an app started during an outage holds a fresh
 /// gate for a provider that is down, and a verdict served on "never
 /// opened" alone would hide, for the rest of the row's life, a show
-/// only the fallback carries. Recovered means seen answering.
+/// only the fallback carries. Recovered means seen answering since it
+/// last failed: a failure after a success is a provider that may be
+/// going down, and a verdict served on the success alone would make
+/// no request that could teach the gate the rest — the breaker opens
+/// only on failures the served rows never generate.
 #[tokio::test(start_paused = true)]
 async fn a_cooled_breaker_refuses_nobody_but_is_recovered_only_by_a_success() {
     let gate = ScraperGate::new();
@@ -104,6 +108,14 @@ async fn a_cooled_breaker_refuses_nobody_but_is_recovered_only_by_a_success() {
     );
     gate.record(ScrapeOutcome::Success, Instant::now());
     assert!(gate.is_recovered(), "a success is what recovery is");
+    gate.record(ScrapeOutcome::Failure, Instant::now());
+    assert!(!gate.is_refusing(), "one failure opens nothing");
+    assert!(
+        !gate.is_recovered(),
+        "but a failure since the last success is not answering"
+    );
+    gate.record(ScrapeOutcome::Success, Instant::now());
+    assert!(gate.is_recovered(), "answering again is recovery again");
     for _ in 0..FAILURE_THRESHOLD {
         gate.record(ScrapeOutcome::Failure, Instant::now());
     }
@@ -169,17 +181,19 @@ mod recovery_props {
         /// recovered; a breaker whose cooldown has elapsed without a
         /// success is neither — the half-open state that tells the
         /// two questions apart — and so is a breaker that never
-        /// opened while nothing has answered through it.
+        /// opened while nothing has answered through it, or while
+        /// something has failed since the last success.
         #[test]
         fn recovered_never_refuses_and_a_cooled_breaker_is_neither(
             open in deadline(),
             paused in deadline(),
+            failures in 0u32..5,
         ) {
             let base = Instant::now() + Duration::from_secs(200);
             let open_until = at(base, open);
             let paused_until = at(base, paused);
             for answered in [false, true] {
-                let recovered = recovered_at(answered, open_until, paused_until, base);
+                let recovered = recovered_at(answered, failures, open_until, paused_until, base);
                 let refusing = refusing_at(open_until, paused_until, base);
                 prop_assert!(!(recovered && refusing));
                 if let Some(until) = open_until {
@@ -193,8 +207,8 @@ mod recovery_props {
                     let pause_running = paused_until.is_some_and(|p| base < p);
                     prop_assert_eq!(
                         recovered,
-                        answered && !pause_running,
-                        "a breaker that never opened has recovered only once something answered"
+                        answered && failures == 0 && !pause_running,
+                        "a breaker that never opened has recovered only once something answered, and nothing failed since"
                     );
                     prop_assert_eq!(refusing, pause_running);
                 }

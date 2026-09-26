@@ -20,10 +20,14 @@ fn negative_row(provider: Option<crate::scraper::provider::ProviderId>) -> Avail
 }
 
 /// A provider stands behind its own negative only once it has been
-/// seen answering: past the cooldown the breaker refuses nobody but
-/// is half-open, and the row served then would short-circuit the very
-/// probe whose trial could fail over — hiding, for the rest of the
-/// row's life, a show only the fallback carries. A success closes the
+/// seen answering since it last failed: past the cooldown the breaker
+/// refuses nobody but is half-open, and the row served then would
+/// short-circuit the very probe whose trial could fail over — hiding,
+/// for the rest of the row's life, a show only the fallback carries.
+/// A single failure after a success is the same position one step
+/// earlier: the rows a recovered gate serves make no request, so
+/// nothing they do could open the breaker, and the row yields to a
+/// probe whose outcome teaches the gate. A success closes the
 /// breaker and the row stands again. The providers ahead are still
 /// asked whether they refuse: a half-open primary does not, so the
 /// fallback's negative stops standing and the next look reprobes,
@@ -51,6 +55,24 @@ async fn a_negative_row_is_backed_by_its_provider_only_once_it_has_recovered() {
     assert!(
         negative_row_is_backed(&state, &primary),
         "once the primary has answered, its row stands"
+    );
+    state.anidb_gate.record(
+        crate::scraper::gate::ScrapeOutcome::Failure,
+        tokio::time::Instant::now(),
+    );
+    assert!(!state.anidb_gate.is_refusing(), "one failure opens nothing");
+    assert!(
+        !negative_row_is_backed(&state, &primary),
+        "but a failure since the last success un-backs the row: the next look probes"
+    );
+    assert!(
+        !negative_row_is_backed(&state, &fallback),
+        "and the fallback's row still yields to a primary that is not refusing"
+    );
+    close_breaker(&state.anidb_gate);
+    assert!(
+        negative_row_is_backed(&state, &primary),
+        "answering again backs it again"
     );
 
     open_breaker(&state.anidb_gate);
