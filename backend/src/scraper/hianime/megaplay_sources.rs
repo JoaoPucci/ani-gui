@@ -106,8 +106,10 @@ where
 
 /// The track rows the client reads, out of whatever the response put
 /// in the field. Anything that is not a list yields no tracks; a row
-/// that is not a track in the known shape is dropped, and the rows
-/// that read keep the response's order.
+/// that is not an object, or not a track in the known shape, is
+/// dropped — a list positionally shaped like a track included, which
+/// serde would otherwise read into the struct — and the rows that
+/// read keep the response's order.
 fn readable_tracks<'de, D>(deserializer: D) -> std::result::Result<Vec<WireTrack>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -118,6 +120,7 @@ where
     };
     Ok(rows
         .into_iter()
+        .filter(serde_json::Value::is_object)
         .filter_map(|row| serde_json::from_value(row).ok())
         .collect())
 }
