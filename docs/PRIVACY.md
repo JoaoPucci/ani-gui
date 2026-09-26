@@ -69,7 +69,9 @@ requires it; the exception is the update check that runs on launch
   listed there, not that a stream was played; written again by a
   play, hand-off or page warm served from the app's own resolution cache after
   the record had lapsed, it says only that a stream resolved there
-  once played again, and is where the next walk starts. The app
+  once validated again at its CDN — the record is written before
+  anything plays, and a page warm plays nothing — and is where the
+  next walk starts. The app
   remembers
   which catalogue carried a show for as long as its availability
   record lasts — a day from the last resolve that found the show
@@ -108,9 +110,12 @@ requires it; the exception is the update check that runs on launch
   order among them, then the rest in the site's order, moving to the
   next when a page cannot be fetched or read, so one resolve can
   reach more than one of them, and a host the client cannot read is
-  reached only after every one it can has failed; the first page
-  that reads is the resolve's, and its stream failing afterwards is
-  the resolve failing, not a reason to contact another host. The
+  reached only after every one it can has failed — as the listing
+  names them: a listed page that redirects is followed wherever it
+  goes, so a host the listing did not name can be reached through
+  one it did, ahead of hosts listed after it; the first page that
+  reads is the resolve's, and its stream failing afterwards is the
+  resolve failing, not a reason to contact another host. The
   site chooses those hosts, and they can change without an
   app update; at the time of writing the listings name
   zokoanime.video, megaplay.buzz and vidtube.site, and the client
@@ -133,9 +138,11 @@ requires it; the exception is the update check that runs on launch
   afresh — fetches the episode's master playlist, to
   check that what the page named is a playlist, and, when the quality
   setting is not "best" and the master offers a rendition matching
-  it, that rendition's playlist as well — a second fetch, at whatever
-  host the master names for it; a master with no such rendition is
-  kept as it is, with no second fetch; and any play served from the
+  it whose address resolves against the master's, that rendition's
+  playlist as well — a second fetch, at whatever host the master
+  names for it; a master with no such rendition, or one whose
+  matching rendition's address does not resolve, is kept as it is,
+  with no second fetch; and any play served from the
   resolution cache — a page warm,
   a play in the app, or a hand-off to an external player or Syncplay —
   checks the cached stream and each of its subtitle tracks at the CDN
