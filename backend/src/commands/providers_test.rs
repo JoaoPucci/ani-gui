@@ -786,8 +786,8 @@ mod affinity_props {
     }
 }
 
-mod persistable_props {
-    use super::unpersistable_past_affinity;
+mod surfaced_miss_props {
+    use super::{miss_past_affinity, unavailability};
     use crate::commands::play_native_resolve::NativeError;
     use crate::error::AniError;
     use proptest::prelude::*;
@@ -805,26 +805,51 @@ mod persistable_props {
     }
 
     proptest! {
-        /// The error and its instant pass through untouched; the
-        /// clean flag survives exactly when the remembered provider
-        /// denied the show for itself.
+        /// A miss is displaced by the remembered provider's
+        /// unavailability exactly when it is clean and that provider
+        /// was not heard from: a clean miss says nothing about the
+        /// show the row's provider listed, and neither would the
+        /// title's absence from the catalogue; any other miss is the
+        /// walk's verdict as given.
         #[test]
-        fn only_the_clean_flag_moves_and_only_past_an_undenied_affinity(
+        fn only_a_clean_miss_past_an_undenied_affinity_is_displaced(
             remembered_undenied in any::<bool>(),
             clean_miss in any::<bool>(),
             error in error(),
-            failed_at_offset_ms in prop::option::of(0u64..10_000),
         ) {
-            let failed_at = failed_at_offset_ms
-                .map(|ms| tokio::time::Instant::now() + std::time::Duration::from_millis(ms));
-            let before = format!("{error:?}");
-            let got = unpersistable_past_affinity(
-                remembered_undenied,
-                NativeError { error, clean_miss, failed_at },
+            let miss = NativeError { error, clean_miss, failed_at: None };
+            prop_assert_eq!(
+                miss_past_affinity(remembered_undenied, &miss),
+                clean_miss && remembered_undenied
             );
-            prop_assert_eq!(format!("{:?}", got.error), before);
-            prop_assert_eq!(got.failed_at, failed_at);
-            prop_assert_eq!(got.clean_miss, clean_miss && !remembered_undenied);
+        }
+
+        /// What displaces it is the error that took the remembered
+        /// provider out of the walk, untouched — error, flag and
+        /// instant — or, when none was saved because the provider was
+        /// skipped and never asked, the gate's refusal, never clean.
+        #[test]
+        fn the_unavailability_is_the_saved_error_or_the_gates_refusal(
+            saved in prop::option::of((error(), any::<bool>(), prop::option::of(0u64..10_000))),
+        ) {
+            match saved {
+                Some((error, clean_miss, failed_at_offset_ms)) => {
+                    let failed_at = failed_at_offset_ms.map(|ms| {
+                        tokio::time::Instant::now() + std::time::Duration::from_millis(ms)
+                    });
+                    let before = format!("{error:?}");
+                    let got = unavailability(Some(NativeError { error, clean_miss, failed_at }));
+                    prop_assert_eq!(format!("{:?}", got.error), before);
+                    prop_assert_eq!(got.clean_miss, clean_miss);
+                    prop_assert_eq!(got.failed_at, failed_at);
+                }
+                None => {
+                    let got = unavailability(None);
+                    prop_assert!(matches!(got.error, AniError::GateRefused), "{:?}", got.error);
+                    prop_assert!(!got.clean_miss);
+                    prop_assert_eq!(got.failed_at, None);
+                }
+            }
         }
     }
 }
@@ -972,17 +997,20 @@ mod negative_rank_props {
         /// it is the unknown verdict and the later is not — an
         /// inconclusive provider found the show and said nothing
         /// about the mode, which no negative from elsewhere unsays —
-        /// or the earlier found the show — a negative answer, or an
+        /// or the earlier is a dead end that found the show — an
         /// answered miss that is not clean and not an unreachable
         /// provider's error standing in for one — and the later is a
-        /// clean catalogue miss.
+        /// clean catalogue miss. A negative answer found the show too,
+        /// but an absence and a clean miss both deny the show for the
+        /// mode asked and both persist, so they are peers: neither
+        /// outranks the other, and the configured order decides.
         #[test]
-        fn an_unknown_verdict_or_a_negative_that_found_the_show_outranks_and_nothing_else_does(
+        fn an_unknown_verdict_or_a_dead_end_outranks_and_an_absence_and_a_clean_miss_are_peers(
             earlier in shape(),
             later in shape(),
         ) {
             let expected = (earlier.is_unknown() && !later.is_unknown())
-                || (earlier.found_the_show() && later.is_clean_miss());
+                || (earlier.found_the_show() && !earlier.is_answer() && later.is_clean_miss());
             prop_assert_eq!(
                 negative_outranks(&earlier.negative(), &later.negative()),
                 expected
@@ -1100,13 +1128,15 @@ async fn a_remembered_providers_miss_stands_when_the_rest_are_unreachable() {
 
 /// A positive row put the remembered provider first because it
 /// proved the show; while that provider is unreachable, a clean miss
-/// from the rest of the order proves nothing about the row. It is the
-/// verdict the user sees, attributed to the provider that missed, but
-/// not one the caller may persist as a negative — that negative would
-/// outlive the remembered provider's recovery and keep a playable
-/// title disabled.
+/// from the rest of the order proves nothing about the row, and
+/// neither does "not in the catalogue" — the show is on the provider
+/// the row remembers, which is down. The verdict the user sees is
+/// that provider's unavailability, the error that took it out of the
+/// walk, and nothing persists: a negative would outlive the
+/// remembered provider's recovery and keep a playable title disabled.
 #[tokio::test]
-async fn a_clean_miss_reached_after_the_remembered_provider_failed_over_is_not_persistable() {
+async fn a_clean_miss_reached_after_the_remembered_provider_failed_over_surfaces_its_unavailability(
+) {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
@@ -1124,16 +1154,13 @@ async fn a_clean_miss_reached_after_the_remembered_provider_failed_over_is_not_p
     )
     .await
     .expect_err("nobody served it");
-    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
     assert!(
-        !err.clean_miss,
-        "a miss reached past an unreachable remembered provider is not persistable"
+        matches!(err.error, AniError::Network),
+        "the remembered provider's own unavailability: {:?}",
+        err.error
     );
-    assert_eq!(
-        attempt.answered_by,
-        Some(ProviderId::Anidb),
-        "the miss is still attributed to the provider that gave it"
-    );
+    assert!(!err.clean_miss, "nothing persists over the row");
+    assert_eq!(attempt.answered_by, None, "the verdict is nobody's miss");
 }
 
 /// The same walk with nothing remembered: the first provider's
@@ -1165,9 +1192,11 @@ async fn a_clean_miss_reached_after_an_unremembered_providers_outage_stands() {
 
 /// A remembered provider skipped for refusing is unreachable the
 /// same way: on a background walk it is never asked, so the rest's
-/// clean miss surfaces past it and is not persistable either.
+/// clean miss reached past it is not the verdict either — the gate's
+/// refusal is, since the skip recorded no error of the provider's —
+/// and nothing persists.
 #[tokio::test]
-async fn a_clean_miss_reached_past_a_skipped_remembered_provider_is_not_persistable_on_a_background_walk(
+async fn a_clean_miss_reached_past_a_skipped_remembered_provider_surfaces_its_refusal_on_a_background_walk(
 ) {
     let gates = Gates::new();
     gates.open(ProviderId::Hianime);
@@ -1184,17 +1213,22 @@ async fn a_clean_miss_reached_past_a_skipped_remembered_provider_is_not_persista
     )
     .await
     .expect_err("the skipped provider was not asked");
-    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        matches!(err.error, AniError::GateRefused),
+        "the remembered provider's gate is refusing: {:?}",
+        err.error
+    );
     assert!(!err.clean_miss, "the row's provider was never heard from");
     assert_eq!(attempt.asked(), vec![ProviderId::Anidb]);
-    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+    assert_eq!(attempt.answered_by, None, "the verdict is nobody's miss");
 }
 
 /// On an interactive walk the skipped remembered provider gets its
-/// trial; when that trial fails over too, the rest's clean miss
-/// surfaces past a provider that was still unreachable.
+/// trial; when that trial fails over too, the provider was still
+/// unreachable, and the trial's own error is the verdict rather than
+/// the rest's clean miss.
 #[tokio::test]
-async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_over_is_not_persistable(
+async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_over_surfaces_its_unavailability(
 ) {
     let gates = Gates::new();
     gates.open(ProviderId::Hianime);
@@ -1214,7 +1248,11 @@ async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_ove
     )
     .await
     .expect_err("nobody served it");
-    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        matches!(err.error, AniError::Network),
+        "the trial's own error: {:?}",
+        err.error
+    );
     assert!(
         !err.clean_miss,
         "the row's provider was tried and unreachable"
@@ -1223,7 +1261,7 @@ async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_ove
         attempt.asked(),
         vec![ProviderId::Anidb, ProviderId::Hianime]
     );
-    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+    assert_eq!(attempt.answered_by, None, "the verdict is nobody's miss");
 }
 
 /// An answer has the same standing as a miss: reached from the rest
@@ -1647,18 +1685,21 @@ async fn a_retried_skipped_providers_own_absence_is_the_verdict() {
 }
 
 /// A trial's clean miss does not replace the fallback's absence: the
-/// absence found the show, a catalogue miss did not, and the rank
-/// between them is the rank between any two negatives. The absence
-/// stands, attributed to the fallback.
+/// absence found the show, a catalogue miss did not, but both deny
+/// the show for the mode asked and both persist, so they are peers
+/// and the configured order decides whose row it is: the primary's,
+/// which the read rule can serve once its trial has closed its
+/// breaker — a row naming the fallback would be served only while
+/// the primary refused, which it just stopped doing.
 #[tokio::test]
-async fn a_retried_skipped_providers_clean_miss_does_not_replace_the_fallbacks_absence() {
+async fn a_retried_skipped_providers_clean_miss_takes_the_fallbacks_absences_place() {
     let gates = Gates::new();
     gates.open(ProviderId::Anidb);
     let mut attempt = Scripted::new(&[
         (ProviderId::Anidb, Behavior::Miss { clean: true }),
         (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
     ]);
-    let got = run_with(
+    let err = run_with(
         &gates,
         &ORDER,
         None,
@@ -1666,9 +1707,17 @@ async fn a_retried_skipped_providers_clean_miss_does_not_replace_the_fallbacks_a
         &mut attempt,
     )
     .await
-    .expect("the fallback's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(got.value, "absent from hianime");
+    .expect_err("both denied it; the primary's clean miss is the verdict");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        err.clean_miss,
+        "both denied the show for the mode; the miss persists"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Anidb),
+        "the row names the primary, first in the configured order"
+    );
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Hianime, ProviderId::Anidb],
@@ -1849,7 +1898,7 @@ async fn a_fallbacks_absence_past_a_retried_remembered_providers_clean_miss_is_i
         &mut attempt,
     )
     .await
-    .expect("the fallback's absence outranks the trial's clean miss");
+    .expect("the fallback's absence and the trial's clean miss are peers; the primary's stands");
     assert_eq!(got.provider, ProviderId::Anidb);
     assert_eq!(got.value, "absent from anidb");
     assert!(
@@ -2461,18 +2510,19 @@ async fn equal_absences_past_a_remembered_fallback_keep_the_primarys() {
     );
 }
 
-/// The remembered provider's absence found the show; a clean
-/// catalogue miss from the rest did not, and does not outrank it:
-/// the absence stands, attributed to the remembered provider, and is
-/// its own denial of the mode — persistable, as a row naming it.
+/// The remembered provider's absence denied the mode and the
+/// primary's clean miss denied the show; both persist, so neither
+/// outranks the other, and the row names the primary — first in the
+/// configured order, the row the read rule can serve — rather than
+/// the remembered provider a healthy primary stands ahead of.
 #[tokio::test]
-async fn a_remembered_providers_absence_outranks_a_later_clean_miss() {
+async fn a_remembered_providers_absence_and_the_primarys_clean_miss_are_peers() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
         (ProviderId::Anidb, Behavior::Miss { clean: true }),
     ]);
-    let got = run_with(
+    let err = run_with(
         &gates,
         &ORDER,
         Some(ProviderId::Hianime),
@@ -2480,12 +2530,16 @@ async fn a_remembered_providers_absence_outranks_a_later_clean_miss() {
         &mut attempt,
     )
     .await
-    .expect("the remembered provider's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(got.value, "absent from hianime");
+    .expect_err("both denied it; the primary's clean miss is the verdict");
+    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
     assert!(
-        !got.past_undenied_affinity,
-        "the row's own provider gave the verdict"
+        err.clean_miss,
+        "the remembered provider denied the mode for itself; the miss persists"
+    );
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Anidb),
+        "the row names the primary, first in the configured order"
     );
     assert_eq!(
         attempt.asked(),

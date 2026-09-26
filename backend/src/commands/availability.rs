@@ -1969,10 +1969,12 @@ mod tests {
     async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest_miss() {
         // The row's provider is unreachable for the reprobe, so the
         // walk moves on and the primary answers a clean miss. That
-        // miss is what the probe reports, but it proves nothing about
-        // the show the fallback listed: persisting it as the primary's
-        // negative would outlive the fallback's recovery and keep a
-        // playable title disabled for the negative's whole TTL.
+        // miss proves nothing about the show the fallback listed, and
+        // neither would the title's absence from the catalogue: what
+        // the probe reports is the fallback's own unavailability, and
+        // nothing persists — the primary's negative would outlive the
+        // fallback's recovery and keep a playable title disabled for
+        // the negative's whole TTL.
         use wiremock::matchers::{method, path};
         let anidb = wiremock::MockServer::start().await;
         wiremock::Mock::given(method("GET"))
@@ -2010,8 +2012,8 @@ mod tests {
         .expect("args");
         let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
         assert!(
-            matches!(got, Err(crate::error::AniError::NoResults)),
-            "the primary's miss is the verdict the caller sees: {got:?}"
+            matches!(&got, Err(e) if crate::commands::providers::fails_over(e)),
+            "the fallback's own unavailability is the verdict the caller sees: {got:?}"
         );
         assert!(
             !anidb
