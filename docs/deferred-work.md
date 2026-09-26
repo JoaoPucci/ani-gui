@@ -345,9 +345,10 @@ starting it, and delete it when you find it done.
 
   It waited on a measurement. A miss costs a full walk — every alias
   searched, up to five candidates probed per alias — and the union
-  makes every genuinely absent show cost one such walk per provider,
-  on the page's probe and on the background warm alike. What hianime
-  tolerates at that rate is unmeasured: in September 2026, with
+  makes every genuinely absent show cost one such walk per provider
+  on the page's probe; the background warm holds back for a show the
+  probe found absent, so it adds none. What hianime tolerates at
+  that rate is unmeasured: in September 2026, with
   anidb.app down, it carried every request without visible pushback,
   and a breaker learns after the block, not before.
 
