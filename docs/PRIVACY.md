@@ -55,77 +55,87 @@ requires it; the exception is the update check that runs on launch
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the streaming catalogues playback resolves
-  against: anidb.app first, and hianime (reached at hianime.at) when
-  the walk moves on from anidb.app — because it was unreachable,
-  refused or rate-limited the request, answered a page the app
-  cannot read, or its own gate turned a background request away, or
-  because it answered without settling the question: it found the
-  show but said nothing about the audio asked for, or it denied a
-  show a live record remembers it carrying, which the record
-  outranks until the rest of the order has been asked — and hianime
-  first, for a while, for a show it was found on while
-  the walk had moved on — a positive availability record: written by
-  a probe or a fresh resolve, it says the show and the audio are
-  listed there, not that a stream was played; written again by a
-  play, hand-off or page warm served from the app's own resolution cache after
-  the record had lapsed, it says only that a stream resolved there
-  once validated again at its CDN — the record is written before
-  anything plays, and a page warm plays nothing — and is where the
-  next walk starts. The app
-  remembers
-  which catalogue carried a show for as long as its availability
-  record lasts — a day from the last resolve that found the show
-  there: a play, a download, a hand-off — a play, hand-off or page warm
-  served from the app's own resolution cache leaves a live record
-  as it is and writes a day's record again once it has lapsed,
-  while a download always resolves afresh and never reads that
-  cache — or the background warm a page runs — the
-  detail page for the episode its Play button targets, which is the
-  resume point when there is one, and the play page for the episode
-  after the one playing, or, with resolution caching turned on, both
-  pages for every aired and playable episode in view (the detail
-  page's grid, the play page's episode strip); the warm follows the
-  page rather than running once on opening, so paging the grid or
-  the strip to new episodes, or changing the audio mode or quality
-  setting, resolves what is newly in view — each warm that resolves
-  afresh restamps the record with a day's life, while one that
-  reuses a stream from the app's own resolution cache leaves a live
-  record as it is, like any cache-served play, so opening a show's
-  page renews the record only when something in view still resolves;
-  a probe alone — the detail page's or a list's, with nothing
-  resolved after it — leaves an ongoing show's record for a day and
-  a finished show's for thirty — and asks that
-  one first for later plays, downloads and
-  hand-offs of it, so those requests reach hianime after anidb.app
-  recovers; once the record expires the next resolve starts from
-  anidb.app again — unless a play, hand-off or page warm served from the app's
-  own resolution cache has written a day's record first, as
-  described above, in which case it starts from the provider that
-  record names. These requests carry the search terms
-  you typed or the anime IDs you're browsing; they do not carry any
-  account identifier unless you've connected one. Resolving an
-  episode through hianime also fetches an embed page from the embed
-  hosts the site names for that episode — one at a time, the hosts
-  whose pages the client knows how to read first, in the site's
-  order among them, then the rest in the site's order, moving to the
-  next when a page cannot be fetched or read, so one resolve can
-  reach more than one of them, and a host the client cannot read is
-  reached only after every one it can has failed — as the listing
-  names them: a listed page that redirects is followed wherever it
-  goes, so a host the listing did not name can be reached through
-  one it did, ahead of hosts listed after it; the first page that
-  reads is the resolve's, and its stream failing afterwards is the
-  resolve failing, not a reason to contact another host. The
-  site chooses those hosts, and they can change without an
-  app update; at the time of writing the listings name
-  zokoanime.video, megaplay.buzz and vidtube.site, and the client
-  fetches from whichever the site lists for the episode.
+  against: anidb.app first, and hianime (reached at hianime.at) when the
+  walk moves on from anidb.app — because it was unreachable, refused or
+  rate-limited the request, answered a page the app cannot read, or its
+  own gate turned a background request away, or because it answered
+  without settling the question: it found the show but said nothing about
+  the audio asked for, or it denied a show a live record remembers it
+  carrying, which the record outranks until the rest of the order has been
+  asked — and hianime first, for a while, for a show it was found on while
+  the walk had moved on — a positive availability record: written by a
+  probe or a fresh resolve, it says the show and the audio are listed
+  there, not that a stream was played; written again by a play, hand-off
+  or page warm served from the app's own resolution cache after the record
+  had lapsed, it says only that a stream resolved there once validated
+  again at its CDN — the record is written before anything plays, and a
+  page warm plays nothing — and is where the next walk starts. The app
+  remembers which catalogue carried a show for as long as its availability
+  record lasts — a day from the last resolve that found the show there: a
+  play, a download, a hand-off — a play, hand-off or page warm served from
+  the app's own resolution cache leaves a live record as it is and writes
+  a day's record again once it has lapsed, while a download always
+  resolves afresh and never reads that cache — or the background warm a
+  page runs — the detail page for the episode its Play button targets,
+  which is the resume point when there is one, and the play page for the
+  episode after the one playing, or, with resolution caching turned on,
+  both pages for every aired and playable episode in view (the detail
+  page's grid, the play page's episode strip); the warm follows the page
+  rather than running once on opening, so paging the grid or the strip to
+  new episodes, or changing the audio mode or quality setting, resolves
+  what is newly in view — each warm that resolves afresh restamps the
+  record with a day's life, while one that reuses a stream from the app's
+  own resolution cache leaves a live record as it is, like any
+  cache-served play, so opening a show's page renews the record only when
+  something in view still resolves; a probe alone — the detail page's or a
+  list's, with nothing resolved after it — leaves an ongoing show's record
+  for a day and a finished show's for thirty — and asks that one first for
+  later plays, downloads and hand-offs of it, so those requests reach
+  hianime after anidb.app recovers; once the record expires the next
+  resolve starts from anidb.app again — unless a play, hand-off or page
+  warm served from the app's own resolution cache has written a day's
+  record first, as described above, in which case it starts from the
+  provider that record names. These requests carry the search terms you
+  typed or the anime IDs you're browsing; they do not carry any account
+  identifier unless you've connected one. Resolving an episode through
+  hianime also fetches an embed page from the embed hosts the site names
+  for that episode — one at a time, the hosts whose pages the client knows
+  how to read first — megaplay's ahead of zokoanime's, in the site's order
+  within each — then the rest in the site's order, moving to the next when
+  a page cannot be fetched or read or when the stream its page names does
+  not answer as a playlist, so one resolve can reach more than one of
+  them, and a host the client cannot read is reached only after every one
+  it can has failed — as the listing names them: a listed page that
+  redirects is followed wherever it goes, so a host the listing did not
+  name can be reached through one it did, ahead of hosts listed after it —
+  and on megaplay's pages the sources endpoint of the host that served the
+  page as well, since that is where its player gets the stream, and the
+  host that served a page is not always the one the site's listing named,
+  because the site moves those pages between hosts and the request follows
+  the move. The site chooses those hosts, and they can change without an
+  app update; at the time of writing the listings name zokoanime.video,
+  megaplay.buzz — and the numbered mirrors the site serves megaplay's
+  player from, `megaplay-1.buzz` and the like, which the client reads as
+  it reads the host — and vidtube.site, and the client fetches from
+  whichever the site lists for the episode. The site can stream an episode
+  from more than one content delivery network, and the sources request
+  says which one it is answered for; the app fetches a megaplay page by
+  its origin and path, without the network the site's listing named it
+  for, and asks every megaplay server for the one network whose streams
+  it can play, whichever network the listing named. So the hosts a megaplay page leads
+  to are that network's, and no other's.
 - **Video playback** — the chosen episode's playlist, its segments and
   any sidecar subtitle files are fetched directly from the source CDN
   the catalogue or its embed page names. For hianime that is, at the
-  time of writing, a host under aniwatchtv.uk; the app does not restrict
-  these fetches to a list of hosts, so the provider's choice is what it
-  reaches. For hianime the CDN sees a normal `Referer` naming the origin
+  time of writing, a host under aniwatchtv.uk behind the zokoanime
+  pages, and behind the megaplay pages the hosts the sources endpoint
+  names for the network the app asks for — ncdn.imgnex.top for
+  playlists, bb.akirax.buzz for segments, xdw5v.qeltrix.top for
+  subtitle files. The site's other networks stream from hosts of their
+  own, megap.norami.top and fetch.nexabloom.top among them, and none of
+  those is contacted, because the app never asks for a network other
+  than the one it plays. The app does not restrict these fetches to a
+  list of hosts, so the provider's choice is what it reaches. For hianime the CDN sees a normal `Referer` naming the origin
   of the embed page the stream was read from — the host that actually
   served that page, which is not always the host the catalogue's listing
   named, because the catalogue moves those pages between hosts and the
