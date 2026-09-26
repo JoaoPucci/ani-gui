@@ -132,9 +132,11 @@ requires it; the exception is the update check that runs on launch
   that finds nothing cached, or a download, which always resolves
   afresh — fetches the episode's master playlist, to
   check that what the page named is a playlist, and, when the quality
-  setting is not "best", the playlist of the rendition that setting
-  selects as well — a second fetch, at whatever host the master names
-  for it; and any play served from the resolution cache — a page warm,
+  setting is not "best" and the master offers a rendition matching
+  it, that rendition's playlist as well — a second fetch, at whatever
+  host the master names for it; a master with no such rendition is
+  kept as it is, with no second fetch; and any play served from the
+  resolution cache — a page warm,
   a play in the app, or a hand-off to an external player or Syncplay —
   checks the cached stream and each of its subtitle tracks at the CDN
   before the row is trusted, so a cached replay reaches every listed
