@@ -1137,13 +1137,19 @@ mod episode_verdict_rank_props {
         /// An episode verdict is a miss that found the show, so it
         /// outranks a later title miss — clean, or the answered dead
         /// end on stale candidates that is not clean — and is the one
-        /// kept; a later miss of equal rank is the last answer given.
+        /// kept; a later miss of equal rank from the same provider is
+        /// the one kept, neither standing ahead of the other in the
+        /// configured order.
         #[test]
         fn an_episode_verdict_outranks_a_later_title_miss(earlier in miss(), later in miss()) {
             let outranks = negative_outranks(&earlier.negative(), &later.negative());
             let expected = earlier.episode && !later.episode;
             prop_assert_eq!(outranks, expected);
-            let kept = firmer_negative(earlier.negative(), later.negative());
+            let kept = firmer_negative(
+                earlier.negative(),
+                later.negative(),
+                &[ProviderId::Anidb, ProviderId::Hianime],
+            );
             let kept_is_earlier = if outranks { earlier.episode } else { later.episode };
             prop_assert_eq!(is_episode(&kept), kept_is_earlier);
         }
@@ -2787,7 +2793,7 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
         Some(ProviderId::Hianime),
     );
     assert!(negative_outranks(&episode, &dead_end));
-    let kept = firmer_negative(episode, dead_end);
+    let kept = firmer_negative(episode, dead_end, &ORDER);
     assert!(
         matches!(kept, Negative::Miss(ref ne, Some(ProviderId::Anidb)) if matches!(ne.error, AniError::EpisodeUnavailable)),
         "the episode verdict stands, with its author"
