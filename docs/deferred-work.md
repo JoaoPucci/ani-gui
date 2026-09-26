@@ -145,26 +145,30 @@ starting it, and delete it when you find it done.
   same source-scoped treatment the progress and resume listeners
   got, not another registration inside the effect's conditional.
 
-- **A download beside an active play starves the player until it
-  misreports an expired link.** The downloader spawns yt-dlp with
-  16-way fragment concurrency; the player's fragment load policy
+- **A download beside an active play starves the player and breaks
+  playback.** The downloader spawns yt-dlp with 16-way fragment
+  concurrency; the player's fragment load policy
   (`frontend/src/lib/play/hls-load-policy.ts`) deliberately turns a
   crawling fetch fatal within seconds so stalls surface fast. Run
   against the same host, the download's burst starves the player's
   next segment fetch, hls.js fatals with `fragLoadError`, and the
   stale-stream policy — which can only see a network-class error —
-  answers with the rotated-URL treatment: an "expired link" toast
-  and a full evict + re-resolve, for a URL resolved seconds earlier.
-  Buffered video keeps playing throughout, which makes the toast
-  read as a false alarm. Observed on the v0.14.0 Windows package
-  against hianime: download spawned, player fatal nine seconds
-  later.
+  answers with the rotated-URL treatment. The damage is not
+  cosmetic, and it escalates: the auto-retry budget is one per
+  session, so the first contention hit interrupts a working stream
+  with a forced evict + re-resolve, and the next one has no budget
+  left and stops playback on the error overlay. Both outcomes were
+  hit on the v0.14.0 Windows package against hianime (download
+  spawned, player fatal nine seconds later, buffered video playing
+  at the moment it fired), one per run.
 
-  Directions rather than a prescription: cap or pace the
-  downloader's concurrency while a play session is live, classify
-  fragment errors during an active same-host download as the
-  host-slow (nudge) class instead of the rotated-URL class, or name
-  contention in the toast instead of expiry.
+  The fix has to stop the interruptions, not rename them: cap or
+  pace the downloader's concurrency while a play session is live,
+  and/or classify fragment errors during an active same-host
+  download as the host-slow (nudge) class instead of the
+  rotated-URL class. Toast wording that says contention rather than
+  expiry is worth having, but only alongside — a correctly-worded
+  interruption is still an interruption.
 
 ## Interface
 
