@@ -21,8 +21,12 @@ pub(super) enum ChainOutcome {
     /// playlist on a stale candidate, a not-found-shaped status: the
     /// next alias may carry the real show.
     DeadEnd,
-    /// Transport weather: proves nothing, stays transient.
-    Transient,
+    /// Transport weather, or an upstream status that is neither a
+    /// block nor absence: proves nothing about the show, so the walk
+    /// goes on, and the error is kept — an exhausted walk surfaces an
+    /// answered status as the status, which the breaker reads as the
+    /// provider answering rather than as a transport failure.
+    Transient(NativeError),
 }
 
 /// Classify a failed [`resolve_episode`] for the walk.
@@ -34,7 +38,7 @@ pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
     {
         ChainOutcome::DeadEnd
     } else {
-        ChainOutcome::Transient
+        ChainOutcome::Transient(ne)
     }
 }
 

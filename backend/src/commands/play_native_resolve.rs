@@ -181,6 +181,9 @@ where
     });
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
+    // A non-blocking status an episode chain answered, kept for the
+    // exhausted walk to surface as itself.
+    let mut chain_status: Option<AniError> = None;
     let mut any_answered_dead_end = false;
     // A show was picked and its episode chain answered a dead end —
     // the episode's verdict, distinct from a pool that matched nothing.
@@ -217,13 +220,22 @@ where
                                     any_episode_dead_end = true;
                                     continue;
                                 }
-                                ChainOutcome::Transient => {
+                                ChainOutcome::Transient(ne) => {
                                     any_search_errored = true;
                                     last_failure_at = Some(
                                         client
                                             .last_attempt_at()
                                             .unwrap_or_else(tokio::time::Instant::now),
                                     );
+                                    // An answered status is kept for
+                                    // the exhausted walk to surface as
+                                    // itself: the breaker reads it as
+                                    // the provider answering, where the
+                                    // transport failure substituted for
+                                    // it would read as distress.
+                                    if matches!(ne.error, AniError::Upstream { .. }) {
+                                        chain_status = Some(ne.error);
+                                    }
                                     continue;
                                 }
                             },
@@ -312,8 +324,11 @@ where
         }
     }
     if !any_search_succeeded || any_search_errored {
+        // The transient verdict: a transport failure, unless an
+        // episode chain answered a non-blocking status, which stands
+        // as itself so the breaker hears the provider answering.
         return Err(NativeError {
-            error: AniError::Network,
+            error: chain_status.unwrap_or(AniError::Network),
             clean_miss: false,
             failed_at: last_failure_at,
         });
