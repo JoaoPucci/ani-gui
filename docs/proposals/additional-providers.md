@@ -1,8 +1,20 @@
 # Proposal: additional stream providers
 
-**Status**: proposed. The candidate survey below was taken on
-2026-09-05 and describes a landscape that rots quickly — re-verify
-every claim in it before building on one.
+**Status**: implemented on Linux; the Windows run is still owed.
+This is the proposal as it was written on 2026-09-05, before the
+work, kept for its survey and its reasoning; what shipped is
+described in `docs/architecture.md` under "Providers and failover",
+and differs from the design below in its details. Read the tense
+here as historical: the single-provider resolution the opening
+describes, and the seam, the per-provider gates and the orchestrator
+the integration section says are missing, are all built. One thing
+the proposal asks for is not done: it counts a provider as reachable
+only once both packaged platforms have pulled a stream through it,
+and the packaged Windows build has not been run through the fallback
+— `docs/deferred-work.md` records that run, under "Validating the
+hianime fallback on the packaged Windows flows", as owed by a
+release. The candidate survey describes a landscape that rots
+quickly — re-verify every claim in it before building on one.
 
 ## Why this matters
 
@@ -150,6 +162,23 @@ the list should the transport gap below ever be closed.
 **animepahe.** Found at animepahe.pw (the .ru domain now redirects
 to a for-sale page at .su). Behind the same Cloudflare interactive
 challenge as allanime. Same conclusion.
+
+**hianime.ms.** Seen on 2026-09-17, after this survey: a second
+front under the hianime name and a different application from the
+hianime.at front above — its own watch-page templates, a
+`/api/player/check` endpoint where hianime.at has `/api/theme/...`
+listings, and a server list of buttons naming its own built-in
+backup player, "Ryu", beside an embed on vidnest.fun. It kept
+playing episodes on the day both embed hosts hianime.at listed for
+an episode failed at once, which argues for a third catalogue front
+rather than a second; nothing about it has been probed against
+requirement 1, on either platform.
+
+**vidnest.fun.** The embed host hianime.ms lists beside its own
+player (`https://vidnest.fun/anime/<id>/...`), seen the same day
+and unprobed in the same way. Its interest is as an embed host
+rather than a catalogue: a second way to play what hianime.ms
+lists.
 
 **Not surveyed**: the gogoanime/anitaku lineage (a history of domain
 deaths), 9anime/aniwave (shut down in 2024), and smaller sites. The

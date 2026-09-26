@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-17_
+_Last updated: 2026-09-26_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -26,7 +26,8 @@ ani-gui keeps the following on your computer only:
   similar information fetched from public APIs. Stored in a local
   SQLite database under your OS's cache directory.
 - **Watch history** — a plain-text file in the app's own state
-  directory. Lists what you've watched and where you left off.
+  directory. Lists what you've watched, where you left off and
+  when.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
@@ -53,18 +54,105 @@ requires it; the exception is the update check that runs on launch
 (below). For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
-  only if connected), and the anidb.app streaming catalogue playback
-  resolves against. These requests carry the search terms you typed
-  or the anime IDs you're browsing; they do not carry any account
-  identifier unless you've connected one.
-- **Video playback** — the chosen episode URL is fetched directly
-  from its source CDN. Where that CDN requires a `Referer`, it sees a
-  normal one naming the origin of the embed page the stream was read
-  from — the host that actually served that page, which is not always
-  the host the catalogue's listing named, because the catalogue moves
-  those pages between hosts and the request follows the move; where it
-  requires none, as the anidb.app CDN does, the app adds no `Referer`
-  of its own. Nothing identifying you is sent with it.
+  only if connected), and the streaming catalogues playback resolves
+  against: anidb.app first, and hianime (reached at hianime.at) when
+  the walk moves on from anidb.app — because it was unreachable,
+  refused or rate-limited the request, answered a page the app
+  cannot read, or its own gate turned a background request away, or
+  because it answered without settling the question: it found the
+  show but said nothing about the audio asked for, or it denied a
+  show a live record remembers it carrying, which the record
+  outranks until the rest of the order has been asked — and hianime
+  first, for a while, for a show it was found on while
+  the walk had moved on — a positive availability record: written by
+  a probe or a fresh resolve, it says the show and the audio are
+  listed there, not that a stream was played; written again by a
+  play, hand-off or page warm served from the app's own resolution cache after
+  the record had lapsed, it says only that a stream resolved there
+  once validated again at its CDN — the record is written before
+  anything plays, and a page warm plays nothing — and is where the
+  next walk starts. The app
+  remembers
+  which catalogue carried a show for as long as its availability
+  record lasts — a day from the last resolve that found the show
+  there: a play, a download, a hand-off — a play, hand-off or page warm
+  served from the app's own resolution cache leaves a live record
+  as it is and writes a day's record again once it has lapsed,
+  while a download always resolves afresh and never reads that
+  cache — or the background warm a page runs — the
+  detail page for the episode its Play button targets, which is the
+  resume point when there is one, and the play page for the episode
+  after the one playing, or, with resolution caching turned on, both
+  pages for every aired and playable episode in view (the detail
+  page's grid, the play page's episode strip); the warm follows the
+  page rather than running once on opening, so paging the grid or
+  the strip to new episodes, or changing the audio mode or quality
+  setting, resolves what is newly in view — each warm that resolves
+  afresh restamps the record with a day's life, while one that
+  reuses a stream from the app's own resolution cache leaves a live
+  record as it is, like any cache-served play, so opening a show's
+  page renews the record only when something in view still resolves;
+  a probe alone — the detail page's or a list's, with nothing
+  resolved after it — leaves an ongoing show's record for a day and
+  a finished show's for thirty — and asks that
+  one first for later plays, downloads and
+  hand-offs of it, so those requests reach hianime after anidb.app
+  recovers; once the record expires the next resolve starts from
+  anidb.app again — unless a play, hand-off or page warm served from the app's
+  own resolution cache has written a day's record first, as
+  described above, in which case it starts from the provider that
+  record names. These requests carry the search terms
+  you typed or the anime IDs you're browsing; they do not carry any
+  account identifier unless you've connected one. Resolving an
+  episode through hianime also fetches an embed page from the embed
+  hosts the site names for that episode — one at a time, the hosts
+  whose pages the client knows how to read first, in the site's
+  order among them, then the rest in the site's order, moving to the
+  next when a page cannot be fetched or read, so one resolve can
+  reach more than one of them, and a host the client cannot read is
+  reached only after every one it can has failed — as the listing
+  names them: a listed page that redirects is followed wherever it
+  goes, so a host the listing did not name can be reached through
+  one it did, ahead of hosts listed after it; the first page that
+  reads is the resolve's, and its stream failing afterwards is the
+  resolve failing, not a reason to contact another host. The
+  site chooses those hosts, and they can change without an
+  app update; at the time of writing the listings name
+  zokoanime.video, megaplay.buzz and vidtube.site, and the client
+  fetches from whichever the site lists for the episode.
+- **Video playback** — the chosen episode's playlist, its segments and
+  any sidecar subtitle files are fetched directly from the source CDN
+  the catalogue or its embed page names. For hianime that is, at the
+  time of writing, a host under aniwatchtv.uk; the app does not restrict
+  these fetches to a list of hosts, so the provider's choice is what it
+  reaches. For hianime the CDN sees a normal `Referer` naming the origin
+  of the embed page the stream was read from — the host that actually
+  served that page, which is not always the host the catalogue's listing
+  named, because the catalogue moves those pages between hosts and the
+  request follows the move; for anidb.app the requests carry no
+  `Referer` at all — its CDN asks for none, and the app adds none.
+  Nothing identifying you is sent with it. The CDN is also reached
+  before any playback, whenever an episode is resolved or a cached
+  resolution is reused: a resolve — a page warm, a play or hand-off
+  that finds nothing cached, or a download, which always resolves
+  afresh — fetches the episode's master playlist, to
+  check that what the page named is a playlist, and, when the quality
+  setting is not "best" and the master offers a rendition matching
+  it whose address resolves against the master's, that rendition's
+  playlist as well — a second fetch, at whatever host the master
+  names for it; a master with no such rendition, or one whose
+  matching rendition's address does not resolve, is kept as it is,
+  with no second fetch; and any play served from the
+  resolution cache — a page warm,
+  a play in the app, or a hand-off to an external player or Syncplay —
+  checks the cached stream and each of its subtitle tracks at the CDN
+  before the row is trusted, so a cached replay reaches every listed
+  subtitle host whether or not the player goes on to use that track.
+  Segments and
+  subtitle files are fetched when playback starts — in the app, or in an
+  external player or Syncplay the app hands the stream to — and by a
+  download, which fetches the segments through the bundled tool and the
+  subtitle files beside them without any playback.
 - **Tracker integration (optional)** — only if you sign in to AniList
   or MyAnimeList:
   - Your OAuth bearer token is sent to that provider's API on every
