@@ -67,13 +67,13 @@ requires it; the exception is the update check that runs on launch
   the walk had moved on — a positive availability record: written by
   a probe or a fresh resolve, it says the show and the audio are
   listed there, not that a stream was played; written again by a
-  play or hand-off served from the app's own resolution cache after
+  play, hand-off or page warm served from the app's own resolution cache after
   the record had lapsed, it says only that a stream resolved there
   once played again, and is where the next walk starts. The app
   remembers
   which catalogue carried a show for as long as its availability
   record lasts — a day from the last resolve that found the show
-  there: a play, a download, a hand-off — a play or a hand-off
+  there: a play, a download, a hand-off — a play, hand-off or page warm
   served from the app's own resolution cache leaves a live record
   as it is and writes a day's record again once it has lapsed,
   while a download always resolves afresh and never reads that
@@ -96,7 +96,7 @@ requires it; the exception is the update check that runs on launch
   one first for later plays, downloads and
   hand-offs of it, so those requests reach hianime after anidb.app
   recovers; once the record expires the next resolve starts from
-  anidb.app again — unless a play or hand-off served from the app's
+  anidb.app again — unless a play, hand-off or page warm served from the app's
   own resolution cache has written a day's record first, as
   described above, in which case it starts from the provider that
   record names. These requests carry the search terms
