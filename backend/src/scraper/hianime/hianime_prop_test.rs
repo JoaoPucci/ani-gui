@@ -1145,7 +1145,8 @@ proptest::proptest! {
 
     /// Whatever the subtitle list looks like — absent, `null`, not a
     /// list, or a list mixing rows the client reads with rows missing
-    /// a field, not objects at all, naming a source the transport
+    /// a field, not objects at all — a list positionally shaped like
+    /// a track included — naming a source the transport
     /// cannot fetch, or naming one longer than any a CDN signs — the
     /// stream comes back, and exactly the readable rows with a
     /// fetchable source of a sane length come with it, in order.
@@ -1169,6 +1170,10 @@ proptest::proptest! {
                     "[a-z]{2}".prop_map(|lang| (None, serde_json::json!({"lang": lang, "src": "https://hls.example/x.vtt"}))),
                     "[a-z]{2}".prop_map(|s| (None, serde_json::json!(s))),
                     Just((None, serde_json::json!(null))),
+                    // A list positionally shaped like a track: serde
+                    // would read a sequence into the struct.
+                    ("[a-z]{2}", "[A-Za-z ]{1,12}", proptest::bool::ANY, "https://[a-z]{2,8}\\.example/[a-z0-9/]{1,20}\\.vtt")
+                        .prop_map(|(lang, label, default, url)| (None, serde_json::json!([lang, label, default, url]))),
                     // Rows the client reads whose source it cannot
                     // fetch: relative, or under another scheme.
                     ("[a-z]{2}", "/[a-z0-9/]{1,20}\\.vtt")

@@ -435,8 +435,11 @@ fn a_tracks_field_the_reader_cannot_read_costs_only_those_rows() {
     assert!(payload.subtitles.is_empty());
     // Readable rows survive rows of another shape beside them, in
     // the page's order.
+    // A list positionally shaped like a track is not a track: serde
+    // would read a sequence into the struct, and the row would come
+    // through as a caption with a made-up label.
     let mixed = format!(
-        r#"{{"sources":{{"file":"{stream}"}},"tracks":[{{"file":"https://cdn.example/subs/track_0_eng.vtt","label":"English","kind":"captions","default":true}},null,"junk",3,{{"label":"No file","kind":"captions"}},{{"file":["https://cdn.example/subs/track_9_x.vtt"],"label":"Wrong shape","kind":"captions"}},{{"file":"https://cdn.example/subs/track_2_ger.vtt","label":"German","kind":"subtitles"}}]}}"#
+        r#"{{"sources":{{"file":"{stream}"}},"tracks":[{{"file":"https://cdn.example/subs/track_0_eng.vtt","label":"English","kind":"captions","default":true}},null,"junk",3,{{"label":"No file","kind":"captions"}},{{"file":["https://cdn.example/subs/track_9_x.vtt"],"label":"Wrong shape","kind":"captions"}},["https://cdn.example/subs/track_5_fre.vtt","Sequence","captions",true],{{"file":"https://cdn.example/subs/track_2_ger.vtt","label":"German","kind":"subtitles"}}]}}"#
     );
     let payload = parse_sources(&mixed).expect("readable rows");
     assert_eq!(

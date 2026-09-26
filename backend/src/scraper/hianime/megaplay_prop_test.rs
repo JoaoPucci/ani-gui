@@ -237,8 +237,9 @@ proptest! {
     }
 
     /// Rows of another shape beside readable ones — `null`, a
-    /// string, a number, a list, an object without a file — cost
-    /// themselves and nothing else; the readable rows survive in
+    /// string, a number, a list, a list positionally shaped like a
+    /// track, an object without a file — cost themselves and nothing
+    /// else; the readable rows survive in
     /// order, and a tracks field that is not a list at all yields no
     /// tracks and still the stream.
     #[test]
@@ -263,11 +264,15 @@ proptest! {
                     "kind": "captions",
                 })
                 .to_string(),
-                None => match (i + usize::from(junk)) % 5 {
+                None => match (i + usize::from(junk)) % 6 {
                     0 => "null".to_string(),
                     1 => "\"junk\"".to_string(),
                     2 => "3".to_string(),
                     3 => "[\"https://c.example/x.vtt\"]".to_string(),
+                    // A list positionally shaped like a track.
+                    4 => format!(
+                        r#"["https://c.example/subs/track_{i}_seq.vtt","Sequence","captions",true]"#
+                    ),
                     _ => r#"{"label":"No file","kind":"captions"}"#.to_string(),
                 },
             })
