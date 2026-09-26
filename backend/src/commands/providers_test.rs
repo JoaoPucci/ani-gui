@@ -942,12 +942,18 @@ mod negative_rank_props {
             )
         }
         /// Whether the negative found the show: an answer, the
-        /// unknown verdict, or the episode verdict. A title miss did
-        /// not, clean or not — an answered dead end names candidates
-        /// that were not the show — and an unreachable provider's
-        /// error standing in for a miss says nothing.
+        /// unknown verdict, the episode verdict, or a non-blocking
+        /// upstream status — the chain answered it on a show the walk
+        /// was inside, and it says nothing about the show's absence.
+        /// A title miss did not, clean or not — an answered dead end
+        /// names candidates that were not the show — and an
+        /// unreachable provider's error standing in for a miss says
+        /// nothing, a blocking status included.
         fn found_the_show(&self) -> bool {
-            self.is_answer() || self.is_unknown() || self.is_episode_verdict()
+            self.is_answer()
+                || self.is_unknown()
+                || self.is_episode_verdict()
+                || (self.kind == 3 && !self.error().is_provider_block())
         }
         /// A title miss, whichever clean flag it carries.
         fn is_title_miss(&self) -> bool {
@@ -2591,6 +2597,50 @@ async fn a_remembered_providers_absence_yields_to_the_rest() {
     assert_eq!(
         attempt.asked(),
         vec![ProviderId::Hianime, ProviderId::Anidb]
+    );
+}
+
+/// A remembered fallback's episode chain answered a status that is
+/// neither a block nor absence — the host rejecting this request —
+/// which the walk now keeps: it found the show, since the walk was
+/// inside it, so it outranks the primary's clean miss rather than
+/// yielding to it by configured order and then, a clean miss past an
+/// undenied remembered provider, being displaced by a gate refusal
+/// nobody gave. The caller sees the status.
+#[tokio::test]
+async fn a_remembered_providers_answered_status_outranks_the_rests_clean_miss() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::Hianime,
+            Behavior::Unreachable(|| AniError::Upstream { status: 401 }),
+        ),
+        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+    ]);
+    let err = run_with(
+        &gates,
+        &ORDER,
+        Some(ProviderId::Hianime),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("nobody served it");
+    assert!(
+        matches!(err.error, AniError::Upstream { status: 401 }),
+        "the remembered provider's own answered status is the verdict: {:?}",
+        err.error
+    );
+    assert!(!err.clean_miss, "the show was found; nothing persists");
+    assert_eq!(
+        attempt.answered_by,
+        Some(ProviderId::Hianime),
+        "attributed to the provider that answered it"
+    );
+    assert_eq!(
+        attempt.asked(),
+        vec![ProviderId::Hianime, ProviderId::Anidb],
+        "the rest of the order was still asked"
     );
 }
 
