@@ -112,7 +112,9 @@ pub fn fails_over(error: &AniError) -> bool {
     ) || error.is_provider_block()
 }
 
-/// Run `attempt` against `order`'s providers until one answers.
+/// Run `attempt` against the providers of `configured` — the state's
+/// order, which the availability cache's read rule ranks by — until
+/// one answers, starting from `remembered` when it is listed.
 ///
 /// A provider that is refusing — its breaker open, or an advertised
 /// rate-limit window still running — is skipped while another
@@ -139,9 +141,12 @@ pub fn fails_over(error: &AniError) -> bool {
 /// the show — an episode dead end, or a show found without the mode
 /// — outranks a clean catalogue miss from another provider, which
 /// would otherwise persist as that provider's negative over a show
-/// the remembered one carries; negatives of equal rank keep the
-/// last answer given; and the set-aside negative stands, as given,
-/// when the rest were unreachable. While the remembered provider has not
+/// the remembered one carries; negatives of equal rank keep the one
+/// whose provider stands earliest in the configured order — a
+/// negative row is served only while every provider ahead of its own
+/// is refusing, so that is the row the read rule can serve; and the
+/// set-aside negative stands, as given, when the rest were
+/// unreachable. While the remembered provider has not
 /// denied the show — unreachable (skipped for refusing and not heard
 /// from since, or failed over), or heard from with an episode dead
 /// end — a clean miss from the rest is the verdict but not proof: it
@@ -160,10 +165,11 @@ pub fn fails_over(error: &AniError) -> bool {
 /// answered gave a negative answer ([`Attempt::is_negative`]) — the
 /// skipped ones are asked before it surfaces. A skipped provider
 /// may have recovered: an answer that is not negative is then the
-/// walk's, and its own negative answer or miss — the last answer
-/// given — replaces the verdict, author and all, while one still
-/// unreachable leaves it standing. Background traffic keeps the
-/// skip.
+/// walk's, and its own negative answer or miss replaces the verdict,
+/// author and all, by the same rank as between any two negatives —
+/// the provider earliest in the configured order among equals —
+/// while one still unreachable leaves it standing. Background
+/// traffic keeps the skip.
 ///
 /// An inconclusive answer ([`Attempt::is_inconclusive`]) found the
 /// show and said nothing about the mode: the walk moves on from it
@@ -183,7 +189,7 @@ pub fn fails_over(error: &AniError) -> bool {
 /// leaves.
 #[allow(clippy::too_many_arguments)]
 pub async fn with_failover<'c, 'g, A, C, G>(
-    order: &[ProviderId],
+    configured: &[ProviderId],
     remembered: Option<ProviderId>,
     priority: ScrapePriority,
     total_budget: Duration,
@@ -198,7 +204,10 @@ where
     G: Fn(ProviderId) -> &'g ScraperGate,
 {
     let overall = tokio::time::Instant::now();
+    let order = order_with_affinity(configured, remembered);
+    let remembered = remembered.filter(|r| configured.contains(r));
     let mut walk = Walk {
+        configured,
         first_unreachable: None,
         any_unreachable: false,
         skipped: Vec::new(),
@@ -241,7 +250,7 @@ where
                     continue;
                 }
                 return retry_skipped(
-                    against_set_aside(set_aside.take(), negative),
+                    against_set_aside(set_aside.take(), negative, walk.configured),
                     overall,
                     total_budget,
                     attempt_budget,
@@ -261,6 +270,7 @@ where
                 set_aside = Some(against_set_aside(
                     set_aside.take(),
                     Negative::Unknown(Some(by)),
+                    walk.configured,
                 ));
             }
             Tried::Missed(miss, by) => {
@@ -270,7 +280,7 @@ where
                     continue;
                 }
                 return retry_skipped(
-                    against_set_aside(set_aside.take(), negative),
+                    against_set_aside(set_aside.take(), negative, walk.configured),
                     overall,
                     total_budget,
                     attempt_budget,
@@ -317,7 +327,10 @@ where
 }
 
 /// What a walk has learned so far.
-struct Walk {
+struct Walk<'o> {
+    /// The configured order, which negatives of equal rank are ranked
+    /// by ([`firmer_negative`]).
+    configured: &'o [ProviderId],
     /// The first unreachable error, to surface when nobody answers
     /// and nothing was held.
     first_unreachable: Option<NativeError>,
@@ -398,6 +411,21 @@ impl<T> Negative<'_, T> {
     fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown(_))
     }
+
+    /// The provider whose negative it is, when known.
+    fn provider(&self) -> Option<ProviderId> {
+        match self {
+            Self::Answer(a) => Some(a.provider),
+            Self::Miss(_, by) | Self::Unknown(by) => *by,
+        }
+    }
+}
+
+/// Where a negative's provider stands in the configured order, with
+/// a negative nobody gave behind every provider.
+fn configured_position(configured: &[ProviderId], by: Option<ProviderId>) -> usize {
+    by.and_then(|p| configured.iter().position(|c| *c == p))
+        .unwrap_or(usize::MAX)
 }
 
 /// Whether an earlier negative outranks a later one: the earlier is
@@ -413,11 +441,26 @@ fn negative_outranks<T>(earlier: &Negative<'_, T>, later: &Negative<'_, T>) -> b
 }
 
 /// The negative that stands of two, with its author, so the provider
-/// travels with the verdict that is kept: the earlier when it
-/// outranks the later ([`negative_outranks`]), otherwise the later —
-/// the last answer given, among negatives of equal rank.
-fn firmer_negative<'c, T>(earlier: Negative<'c, T>, later: Negative<'c, T>) -> Negative<'c, T> {
+/// travels with the verdict that is kept: the one that outranks the
+/// other ([`negative_outranks`]), and among negatives of equal rank
+/// the one whose provider stands earliest in the configured order —
+/// a negative row is served only while every provider ahead of its
+/// own is refusing, so that is the row the read rule can serve — the
+/// later when neither stands ahead of the other.
+fn firmer_negative<'c, T>(
+    earlier: Negative<'c, T>,
+    later: Negative<'c, T>,
+    configured: &[ProviderId],
+) -> Negative<'c, T> {
     if negative_outranks(&earlier, &later) {
+        return earlier;
+    }
+    if negative_outranks(&later, &earlier) {
+        return later;
+    }
+    if configured_position(configured, earlier.provider())
+        < configured_position(configured, later.provider())
+    {
         earlier
     } else {
         later
@@ -430,9 +473,10 @@ fn firmer_negative<'c, T>(earlier: Negative<'c, T>, later: Negative<'c, T>) -> N
 fn against_set_aside<'c, T>(
     set_aside: Option<Negative<'c, T>>,
     later: Negative<'c, T>,
+    configured: &[ProviderId],
 ) -> Negative<'c, T> {
     match set_aside {
-        Some(earlier) => firmer_negative(earlier, later),
+        Some(earlier) => firmer_negative(earlier, later, configured),
         None => later,
     }
 }
@@ -487,7 +531,7 @@ async fn try_provider<'c, 'g, A, C, G>(
     client_for: &mut C,
     gate_of: &G,
     attempt: &mut A,
-    walk: &mut Walk,
+    walk: &mut Walk<'_>,
 ) -> Tried<'c, A::Output>
 where
     A: Attempt,
@@ -574,11 +618,12 @@ where
 /// the gate would have admitted anyway — an open breaker's half-open
 /// trial, a pause it ignores for a click. Those are asked now: an
 /// answer that is not negative is the walk's, a negative answer, a
-/// miss or an inconclusive answer of theirs — the last answer given
-/// — replaces the verdict they were asked for, author and all, by
-/// rank ([`firmer_negative`]): a clean miss does not replace a
-/// negative that found the show, no negative replaces the unknown
-/// verdict, and one unreachable too leaves it standing. A miss that
+/// miss or an inconclusive answer of theirs replaces the verdict they
+/// were asked for, author and all, by rank ([`firmer_negative`]): a
+/// clean miss does not replace a negative that found the show, no
+/// negative replaces the unknown verdict, equals keep the provider
+/// earliest in the configured order, and one unreachable too leaves
+/// it standing. A miss that
 /// surfaces tells the attempt whose it is first, and surfaces
 /// unpersistable when the remembered provider has not denied the
 /// show; a negative answer surfaces as its provider gave it, saying
@@ -599,7 +644,7 @@ async fn retry_skipped<'c, 'g, A, C, G>(
     client_for: &mut C,
     gate_of: &G,
     attempt: &mut A,
-    walk: &mut Walk,
+    walk: &mut Walk<'_>,
 ) -> Result<Attempted<'c, A::Output>, NativeError>
 where
     A: Attempt,
@@ -624,14 +669,16 @@ where
             {
                 Tried::Answered(answer) if !A::is_negative(&answer.value) => return Ok(answer),
                 Tried::Answered(answer) => {
-                    verdict = firmer_negative(verdict, Negative::Answer(answer));
+                    verdict = firmer_negative(verdict, Negative::Answer(answer), walk.configured);
                 }
                 Tried::FailedOver => {}
                 Tried::Inconclusive(by) => {
-                    verdict = firmer_negative(verdict, Negative::Unknown(Some(by)));
+                    verdict =
+                        firmer_negative(verdict, Negative::Unknown(Some(by)), walk.configured);
                 }
                 Tried::Missed(ne, by) => {
-                    verdict = firmer_negative(verdict, Negative::Miss(ne, Some(by)));
+                    verdict =
+                        firmer_negative(verdict, Negative::Miss(ne, Some(by)), walk.configured);
                 }
             }
         }
@@ -773,12 +820,10 @@ pub async fn run_from<'a, A: Attempt>(
     priority: ScrapePriority,
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
-    let order = order_with_affinity(&state.provider_order, remembered);
-    let remembered = remembered.filter(|r| order.first() == Some(r));
     run_at(
         state,
         Origins::of(state),
-        &order,
+        &state.provider_order,
         remembered,
         priority,
         attempt,
@@ -802,8 +847,9 @@ pub fn order_with_affinity(
     }
 }
 
-/// [`run`] with the providers' origins and order named by the caller,
-/// and the provider a positive row put first, when one did.
+/// [`run`] with the providers' origins and configured order named by
+/// the caller, and the provider a positive row put first, when one
+/// did; the walk starts from it when the order lists it.
 ///
 /// # Errors
 /// As [`with_failover`].
