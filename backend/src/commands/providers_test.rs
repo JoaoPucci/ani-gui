@@ -2341,18 +2341,19 @@ async fn a_remembered_providers_clean_miss_yields_to_a_later_inconclusive_answer
 
 // ── an episode miss is not a catalogue miss ─────────────────────────
 
-/// A remembered provider that answers an episode dead end — a miss
-/// that is not clean — found the show and did not deny it; the walk
-/// goes on, and when the rest of the order answers a clean catalogue
-/// miss, that miss must not become the verdict: persisted, it would
-/// be a healthy primary's negative over a show the fallback carries,
-/// and the whole title would be hidden for one unserved episode. The
-/// remembered provider's own miss stands, attributed to it.
+/// A remembered provider that answers the episode verdict — the
+/// show found, this episode not carried — did not deny the show;
+/// the walk goes on, and when the rest of the order answers a clean
+/// catalogue miss, that miss must not become the verdict: persisted,
+/// it would be a healthy primary's negative over a show the fallback
+/// carries, and the whole title would be hidden for one unserved
+/// episode. The remembered provider's own verdict stands, attributed
+/// to it.
 #[tokio::test]
 async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::Hianime, Behavior::MissEpisode),
         (ProviderId::Anidb, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
@@ -2364,7 +2365,11 @@ async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
     )
     .await
     .expect_err("nobody served it");
-    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
     assert!(
         !err.clean_miss,
         "the remembered provider found the show; nothing persists"
@@ -2508,7 +2513,7 @@ async fn an_absence_reached_past_a_remembered_providers_clean_miss_is_its_own() 
 }
 
 /// The skipped providers' trial keeps the same rule: a retried
-/// provider's clean miss does not replace an episode dead end the
+/// provider's clean miss does not replace the episode verdict the
 /// walk already holds — the show was found — while it does replace
 /// the fallback's clean miss, the primary standing first in the
 /// configured order among misses of equal standing.
@@ -2518,7 +2523,7 @@ async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
     gates.open(ProviderId::Anidb);
     let mut attempt = Scripted::new(&[
         (ProviderId::Anidb, Behavior::Miss { clean: true }),
-        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::Hianime, Behavior::MissEpisode),
     ]);
     let err = run_with(
         &gates,
@@ -2529,7 +2534,11 @@ async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
     )
     .await
     .expect_err("nobody served it");
-    assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
+    assert!(
+        matches!(err.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        err.error
+    );
     assert!(
         !err.clean_miss,
         "the fallback found the show; the retried primary's catalogue miss does not persist"
