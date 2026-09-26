@@ -190,8 +190,8 @@ starting it, and delete it when you find it done.
 - **No way from a Continue Watching card to the show's page.** A
   card on the home page's Continue Watching row, once its history
   entry has been matched to a Kitsu show, is a button that takes
-  the user into playback — resolving the episode afresh, or
-  rejoining a player that already has it — of an episode chosen when
+  the user into playback — with a fresh resolution, a cached one,
+  or a player that already has the episode — of an episode chosen when
   the button is clicked, usually the one after the last watched, so
   the number the card shows beforehand is not always the episode
   played. Nothing else on the card or the row
