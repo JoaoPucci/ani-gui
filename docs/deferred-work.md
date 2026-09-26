@@ -331,17 +331,10 @@ starting it, and delete it when you find it done.
   moves it on. The one exception already ships: a provider a
   positive availability record put first has its answered miss set
   aside and the rest of the order asked, since the record proves
-  the show, not every episode. Not in parallel: asking every
-  provider for every
-  request doubles the traffic on the resource this entry worries
-  about and buys nothing when the first provider carries the show,
-  which is most of the time.
-
-  What it changes underneath: a negative verdict stops meaning "the
-  provider that answered has nothing" and starts meaning "every
-  provider asked has nothing", so a show is absent only when every
-  enabled provider missed, and a row from one provider must not hide
-  a show the walk never asked the next about.
+  the show, not every episode. Asking every provider for every
+  request would double the traffic on the resource this entry
+  worries about and buy nothing when the first provider carries the
+  show, which is most of the time.
 
   It waited on a measurement. A miss costs a full walk — every alias
   searched, up to five candidates probed per alias — and the union
