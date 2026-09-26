@@ -194,8 +194,8 @@ starting it, and delete it when you find it done.
   one, or a player that already has the episode, or, when the
   resolution fails, a failure notice instead — of an episode chosen when
   the button is clicked, usually the one after the last watched, so
-  the number the card shows beforehand is not always the episode
-  played. Nothing else on the card or the row
+  the number the card shows beforehand, where it shows one, is not
+  always the episode played. Nothing else on the card or the row
   leads to the show either: the chip on a card removes it, the
   row's menu clears the row whole, the strip's arrows scroll it.
   (An entry the matcher could not place renders as a link to search
