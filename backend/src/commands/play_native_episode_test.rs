@@ -244,7 +244,9 @@ proptest::proptest! {
     /// NoResults, not-found-shaped upstream statuses) move to the
     /// next alias, and everything else — transport weather and an
     /// upstream status that is neither a block nor absence — stays
-    /// transient.
+    /// transient, with the error intact too: an exhausted walk
+    /// surfaces an answered status as the status, which the breaker
+    /// reads as the provider answering, not as a transport failure.
     #[test]
     fn chain_failures_classify_by_the_decision_table(
         kind in 0u8..7,
@@ -265,6 +267,7 @@ proptest::proptest! {
         let dead_end = !stops
             && (matches!(error, AniError::EpisodeUnavailable | AniError::NoResults)
                 || matches!(error, AniError::Upstream { status } if status == 404 || status == 410));
+        let shown = format!("{error:?}");
         let ne = NativeError {
             error,
             clean_miss: false,
@@ -280,7 +283,14 @@ proptest::proptest! {
                 );
             }
             ChainOutcome::DeadEnd => proptest::prop_assert!(dead_end),
-            ChainOutcome::Transient => proptest::prop_assert!(!stops && !dead_end),
+            ChainOutcome::Transient(kept) => {
+                proptest::prop_assert!(!stops && !dead_end);
+                proptest::prop_assert_eq!(
+                    format!("{:?}", kept.error),
+                    shown,
+                    "the transient outcome keeps the error's identity"
+                );
+            }
         }
     }
 }

@@ -757,6 +757,44 @@ async fn a_transport_death_in_the_episode_chain_stays_transient() {
 }
 
 #[tokio::test]
+async fn an_answered_upstream_status_in_the_episode_chain_survives_alias_exhaustion() {
+    // The embed step answered a 401 — the host rejecting this
+    // request, neither a block nor absence. The walk goes on to the
+    // next alias as it would from transport weather, and when no
+    // alias resolves the verdict is that status, not the transport
+    // failure the walk used to substitute: the breaker reads a
+    // non-blocking status as the provider answering, and read as a
+    // transport failure a run of such rejections would open the
+    // provider's breaker.
+    let fate = ChainFate {
+        chain: Some(401),
+        log: std::sync::Mutex::new(Vec::new()),
+    };
+    let ne = run_chain(&fate).await.expect_err("nothing resolved");
+    assert!(
+        matches!(ne.error, crate::error::AniError::Upstream { status: 401 }),
+        "the status survives alias exhaustion, got {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss, "the show was found; nothing persists");
+    assert!(
+        matches!(
+            crate::commands::play_native_outcome::breaker_outcome::<()>(
+                crate::scraper::gate::ScrapePriority::Interactive,
+                &Err(ne),
+            ),
+            Some(crate::scraper::gate::ScrapeOutcome::Success)
+        ),
+        "the provider answered; the breaker hears health"
+    );
+    let log = fate.log.lock().expect("log");
+    assert!(
+        log.iter().any(|u| u.contains("fallback")),
+        "an answered status keeps the walk going: {log:?}"
+    );
+}
+
+#[tokio::test]
 async fn the_resolve_names_the_matched_rows_slot_and_tag() {
     // A resume looks up slot numbers — the integer `number` field
     // the provider's episode list is built from — so the history
