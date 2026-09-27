@@ -4507,6 +4507,108 @@ async fn a_download_waiting_for_the_lane_runs_free_once_playback_stops() {
     );
 }
 
+/// An ffmpeg stub that logs its pid and arguments, waits for `go`,
+/// then writes its output — ffmpeg's is its last argument — and logs
+/// that it finished.
+#[cfg(unix)]
+fn stage_waiting_ffmpeg(bin: &std::path::Path, log: &std::path::Path, go: &std::path::Path) {
+    stage_tool(
+        bin,
+        "ffmpeg",
+        &format!(
+            "echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'video' > \"$last\"\necho \"done $$\" >> '{log}'\nexit 0",
+            log = log.display(),
+            go = go.display(),
+        ),
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn ffmpeg_fallbacks_take_the_paced_lane_one_at_a_time() {
+    // No yt-dlp on this install: the transfer is ffmpeg's alone. One
+    // connection is the paced allowance itself, and the allowance is
+    // one beside the player for the whole app — so while playback is
+    // live the second fallback waits for the first's ffmpeg to finish
+    // before it spawns its own.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ffmpeg(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 10",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let second = spawn_download_tool_paced(
+        &source,
+        dest_b.path(),
+        "Show Episode 11",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_b,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let still = std::fs::read_to_string(&log).expect("log");
+        assert_eq!(
+            still.lines().count(),
+            1,
+            "the second fallback waits for the lane: {still}"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, b, ()) = tokio::join!(first, second, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    assert_eq!(
+        b.expect("the second transfer completes"),
+        Transferred::Episode
+    );
+    let calls: Vec<String> = std::fs::read_to_string(&log)
+        .expect("log")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(calls.len(), 4, "two runs, two exits: {calls:?}");
+    assert!(
+        calls[1].starts_with("done"),
+        "the first run finished before the second spawned: {calls:?}"
+    );
+    assert!(dest_a.path().join("Show Episode 10.mp4").exists());
+    assert!(dest_b.path().join("Show Episode 11.mp4").exists());
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_paced_download_runs_free_again_once_playback_stops() {
