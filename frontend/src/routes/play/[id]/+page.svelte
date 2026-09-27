@@ -1585,6 +1585,13 @@
 			addSourceScopedCleanup(() => {
 				engine.destroy();
 			});
+			// One held retry pending per source: a second failure inside
+			// a hold re-arms it rather than adding a second startLoad,
+			// which would only abort the first's fragment.
+			let holdRetry: ReturnType<typeof setTimeout> | null = null;
+			addSourceScopedCleanup(() => {
+				if (holdRetry !== null) clearTimeout(holdRetry);
+			});
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
 			// One guard per source: a fragment the engine keeps asking
@@ -1606,7 +1613,7 @@
 				const action = stallMachine.failure({
 					err,
 					hasAutoRetried,
-					rendition: (data as { frag?: { type?: string } }).frag?.type,
+					rendition: data.frag?.type,
 					bufferAheadSeconds: videoEl
 						? bufferAheadSeconds(videoEl.buffered, videoEl.currentTime)
 						: 0,
@@ -1618,8 +1625,11 @@
 				// and its notices are for a player with nothing left to
 				// play. The timer retires with the source.
 				if (action.act === 'hold') {
-					const retry = setTimeout(() => engine.startLoad(), action.delayMs);
-					addSourceScopedCleanup(() => clearTimeout(retry));
+					if (holdRetry !== null) clearTimeout(holdRetry);
+					holdRetry = setTimeout(() => {
+						holdRetry = null;
+						engine.startLoad();
+					}, action.delayMs);
 					return;
 				}
 				// A host-slow stall on a stream that was playing: retry

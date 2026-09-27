@@ -84,10 +84,12 @@ export type StreamFailureResponse = 'hold' | 'nudge' | 'recover' | 'surface';
 
 /** The response ladder for a fatal stream failure.
  *
- *  `hold` — a network-class failure while the player has buffered
- *  media in hand: nothing shown, no session swap, the engine asked to
- *  load again after a delay that grows per failure. What is buffered
- *  keeps playing meanwhile.
+ *  `hold` — an hls.js network-class failure while the player has
+ *  buffered media in hand: nothing shown, no session swap, the engine
+ *  asked to load again after a delay that grows per failure and never
+ *  outruns the buffer. What is buffered keeps playing meanwhile. Only
+ *  the engine can be asked again; a progressive mp4's element would
+ *  have to reload its source, dropping the buffer, so it is not held.
  *
  *  `nudge` — retry the SAME stream (`hls.startLoad()`): no session
  *  swap, no loading overlay, buffer and position kept. Earned only
@@ -118,6 +120,7 @@ export function decideStreamFailureResponse(args: {
 	// player holds and asks again later, quietly. Buffered media is no
 	// help against a media error, which is about the bytes in hand.
 	if (
+		args.err.source === 'hls' &&
 		isNetworkClassStreamError(args.err) &&
 		runwaySeconds(args.bufferAheadSeconds, args.playbackRate) >= HOLD_MIN_BUFFER_SECONDS
 	) {
