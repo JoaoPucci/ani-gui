@@ -96,3 +96,91 @@ async fn a_subtitle_listing_is_not_media() {
     let _ = get(router, &format!("/s/{}/subtitles", id.as_string())).await;
     assert!(!sessions.playback_live(WINDOW));
 }
+
+/// A body that streams for longer than the window — one mp4 range
+/// request can run for minutes — keeps playback live as its chunks
+/// flow, not only at the moment the request was admitted; otherwise a
+/// download beside it would be let back to full speed while the bytes
+/// were still moving.
+#[tokio::test]
+async fn a_streaming_body_keeps_playback_live_chunk_by_chunk() {
+    use futures_util::StreamExt as _;
+    let sessions = SessionTable::new();
+    let chunks: Vec<std::result::Result<bytes::Bytes, std::io::Error>> = vec![
+        Ok(bytes::Bytes::from_static(b"one")),
+        Err(std::io::Error::other("hiccup")),
+        Ok(bytes::Bytes::from_static(b"two")),
+    ];
+    let mut body = Box::pin(noting_media(tokio_stream::iter(chunks), sessions.clone()));
+    assert!(!sessions.playback_live(WINDOW), "nothing streamed yet");
+    let first = body.next().await.expect("first chunk").expect("ok");
+    assert_eq!(first, bytes::Bytes::from_static(b"one"));
+    let after_first = std::time::Instant::now();
+    assert!(sessions.playback_live_at(after_first, WINDOW));
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    assert!(body
+        .next()
+        .await
+        .expect("the error passes through")
+        .is_err());
+    assert!(
+        !sessions.playback_live_at(
+            after_first + std::time::Duration::from_millis(20),
+            std::time::Duration::from_millis(1)
+        ),
+        "an error item is not media served"
+    );
+    let second = body.next().await.expect("second chunk").expect("ok");
+    assert_eq!(second, bytes::Bytes::from_static(b"two"));
+    assert!(
+        sessions.playback_live_at(
+            after_first + std::time::Duration::from_millis(20),
+            std::time::Duration::from_millis(1)
+        ),
+        "the second chunk refreshed the note past the first"
+    );
+    assert!(
+        body.next().await.is_none(),
+        "the stream ends as its source does"
+    );
+}
+
+#[tokio::test]
+async fn an_mp4_range_marks_playback_live_and_streams_the_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/file.mp4"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![7u8; 4096]))
+        .mount(&server)
+        .await;
+    let secret = AppSecret::from_bytes([7u8; 32]);
+    let sessions = SessionTable::new();
+    let session = StreamSession::new_with_kind(
+        url::Url::parse(&format!("{}/file.mp4", server.uri())).expect("mp4 url"),
+        MediaKind::Mp4,
+        "https://embed.example/".to_string(),
+    );
+    let id = session.id;
+    sessions.insert(session);
+    let router = build_router(ProxyState {
+        sessions: sessions.clone(),
+        secret,
+        client: reqwest::Client::new(),
+        origin: ProxyOrigin::new("127.0.0.1", 1),
+    });
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(format!("/s/{}/file.mp4", id.as_string()))
+                .body(axum::body::Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("router responds");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    assert_eq!(body.len(), 4096, "the body streams through unchanged");
+    assert!(sessions.playback_live(WINDOW));
+}
