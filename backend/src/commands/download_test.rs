@@ -4611,6 +4611,97 @@ async fn ffmpeg_fallbacks_take_the_paced_lane_one_at_a_time() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn an_ffmpeg_fallback_running_free_claims_the_lane_when_playback_starts() {
+    // ffmpeg started with nothing playing, so without the lane. The
+    // user starts an episode: the fallback keeps running — it cannot
+    // resume, and one connection is the allowance — but it is now the
+    // connection beside the player, so it takes the lane and a second
+    // download that starts during playback waits for it.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ffmpeg(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 12",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the free ffmpeg", |l| l.len() == 1).await;
+        live.store(true, std::sync::atomic::Ordering::Relaxed);
+        // Two polls: time for the running fallback to see playback
+        // and take the lane.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let second = spawn_download_tool_paced(
+            &source,
+            dest_b.path(),
+            "Show Episode 13",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(10),
+            &mut on_line_b,
+            &pacing,
+        );
+        let release = async {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            let still = std::fs::read_to_string(&log).expect("log");
+            assert_eq!(
+                still.lines().count(),
+                1,
+                "the second download waits behind the running fallback: {still}"
+            );
+            std::fs::write(&go, b"").expect("go");
+        };
+        let (b, ()) = tokio::join!(second, release);
+        assert_eq!(
+            b.expect("the second transfer completes"),
+            Transferred::Episode
+        );
+    };
+    let (a, ()) = tokio::join!(first, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    let calls: Vec<String> = std::fs::read_to_string(&log)
+        .expect("log")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(calls.len(), 4, "two runs, two exits: {calls:?}");
+    assert!(
+        calls[1].starts_with("done"),
+        "the fallback finished before the second spawned: {calls:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_paced_download_runs_free_again_once_playback_stops() {
     // The player paused or the episode ended: after the window of
     // silence the download is taken down and started again at full
