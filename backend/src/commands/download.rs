@@ -351,22 +351,6 @@ where
     })
 }
 
-/// Spawn the download tool directly on a resolved stream URL —
-/// yt-dlp when present (v5's own arguments: fragment-retrying,
-/// 16-way concurrent), falling back to ffmpeg stream-copy when
-/// yt-dlp is missing or fails, mirroring the script's download()
-/// chains them. Streams each stderr line into `on_line`; the child
-/// dies with a dropped future (kill_on_drop), which is what the
-/// dock's Cancel rides.
-///
-/// `path_env` is the PATH searched for the tools — the caller passes
-/// the process environment; tests stage stub executables.
-///
-/// # Errors
-/// [`AniError::FfmpegMissing`] when neither tool is on `path_env`
-/// (the typed error the install modal renders);
-/// [`AniError::Scraper`] when the chosen tool exits non-zero;
-/// [`AniError::Timeout`] past the transfer deadline.
 /// One lock per destination file, held for the whole spawn.
 ///
 /// Two downloads of the same episode resolve to the same path — the
@@ -1394,6 +1378,11 @@ pub(crate) enum Transferred {
     Nothing,
 }
 
+/// The unpaced entry point the tests drive: [`spawn_download_tool_paced`]
+/// with a pacing nothing paces.
+///
+/// # Errors
+/// As [`spawn_download_tool_paced`].
 #[cfg(test)]
 pub(crate) async fn spawn_download_tool<F>(
     source: &StreamSource,
@@ -1420,16 +1409,30 @@ where
     .await
 }
 
-/// [`spawn_download_tool`], yielding to live playback: yt-dlp runs
-/// paced while `pacing` says playback is live, and a change of state
-/// under a running transfer takes the tool down and starts it again
-/// at the other concurrency on the same output, which yt-dlp resumes
-/// from the fragments it already has. The ffmpeg fallback is a single
-/// connection: it holds the paced lane from its start whether or not
-/// anything plays, and is never taken down, since it cannot resume.
+/// Spawn the download tool on a resolved stream URL — yt-dlp when
+/// present, falling back to ffmpeg stream-copy when yt-dlp is missing
+/// or fails, as the script's download() chained them — yielding to
+/// live playback. Streams each stderr line into `on_line`; the child
+/// dies with a dropped future (kill_on_drop), which is what the dock's
+/// Cancel rides.
+///
+/// yt-dlp runs paced while `pacing` says playback is live, and a
+/// change of state under a running transfer takes the tool down and
+/// starts it again at the other concurrency on the same output, which
+/// yt-dlp resumes from the fragments it already has. The ffmpeg
+/// fallback is a single connection: it holds the paced lane from its
+/// start whether or not anything plays, and is never taken down, since
+/// it cannot resume.
+///
+/// `path_env` is the PATH searched for the tools — the caller passes
+/// the process environment; tests stage stub executables.
 ///
 /// # Errors
-/// As [`spawn_download_tool`].
+/// [`AniError::FfmpegMissing`] when neither tool is on `path_env`
+/// (the typed error the install modal renders);
+/// [`AniError::Scraper`] when the chosen tool exits non-zero;
+/// [`AniError::Timeout`] past the transfer deadline, including while
+/// waiting for the lane.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn spawn_download_tool_paced<F>(
     source: &StreamSource,
@@ -1806,11 +1809,6 @@ fn a_download_tool_exists(path_env: &str) -> bool {
         || find_tool(path_env, "ffmpeg", suffixes).is_some()
 }
 
-/// Run one download tool to completion, streaming stderr lines.
-///
-/// # Errors
-/// [`AniError::Timeout`] past the deadline, [`AniError::Network`] on
-/// spawn failure, [`AniError::Scraper`] on a non-zero exit.
 /// yt-dlp's command line for one run of a transfer: v5's arguments,
 /// the quality preference as a format sort, `fragments` in flight —
 /// sixteen with nothing playing, one while playback is live — and,
@@ -1865,6 +1863,11 @@ enum ToolRun {
     Interrupted,
 }
 
+/// Run one download tool to completion, streaming stderr lines.
+///
+/// # Errors
+/// [`AniError::Timeout`] past the deadline, [`AniError::Network`] on
+/// spawn failure, [`AniError::Scraper`] on a non-zero exit.
 async fn run_tool<F>(
     cmd: tokio::process::Command,
     deadline: tokio::time::Instant,
