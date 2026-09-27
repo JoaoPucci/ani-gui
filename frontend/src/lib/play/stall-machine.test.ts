@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HlsStallMachine } from './stall-machine';
+import { HlsStallMachine, HOLD_DELAYS_MS } from './stall-machine';
 import { STALL_NUDGE_BUDGET } from './stale-stream';
 
 const hostSlow = {
@@ -231,5 +231,50 @@ describe('HlsStallMachine — no-fragment failures find their rendition', () => 
 				rendition: 'audio'
 			})
 		).toEqual({ act: 'nudge', toast: true });
+	});
+});
+
+describe('HlsStallMachine — holding with buffered media in hand', () => {
+	const netErr = { source: 'hls', type: 'networkError', details: 'fragLoadError' } as const;
+
+	it('holds with a delay that grows per failure and stops growing at the last step', () => {
+		const m = new HlsStallMachine();
+		const delays = HOLD_DELAYS_MS.map(() =>
+			m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120 })
+		);
+		expect(delays).toEqual(HOLD_DELAYS_MS.map((delayMs) => ({ act: 'hold', delayMs })));
+		expect(m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120 })).toEqual({
+			act: 'hold',
+			delayMs: HOLD_DELAYS_MS[HOLD_DELAYS_MS.length - 1]
+		});
+	});
+
+	it('a landed fragment of the rendition starts the delays over', () => {
+		const m = new HlsStallMachine();
+		m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120 });
+		m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120 });
+		m.fragmentLoaded({ frag: { type: 'main' } });
+		expect(m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120 })).toEqual({
+			act: 'hold',
+			delayMs: HOLD_DELAYS_MS[0]
+		});
+	});
+
+	it('keeps renditions apart', () => {
+		const m = new HlsStallMachine();
+		m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120, rendition: 'audio' });
+		expect(
+			m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120, rendition: 'main' })
+		).toEqual({ act: 'hold', delayMs: HOLD_DELAYS_MS[0] });
+	});
+
+	it('reset forgets the holds', () => {
+		const m = new HlsStallMachine();
+		m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120 });
+		m.reset();
+		expect(m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120 })).toEqual({
+			act: 'hold',
+			delayMs: HOLD_DELAYS_MS[0]
+		});
 	});
 });
