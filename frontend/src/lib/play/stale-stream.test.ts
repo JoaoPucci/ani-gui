@@ -343,6 +343,19 @@ describe('decideStreamFailureResponse — with buffered media in hand', () => {
 		).toBe('recover');
 	});
 
+	it('measures the buffer at playback speed', () => {
+		// Twenty seconds of media at double speed is ten of playback:
+		// too little to hold.
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadError' },
+				bufferAheadSeconds: 20,
+				playbackRate: 2
+			})
+		).toBe('recover');
+	});
+
 	it('does not hold a media error: buffered media is no help against one', () => {
 		expect(
 			decideStreamFailureResponse({

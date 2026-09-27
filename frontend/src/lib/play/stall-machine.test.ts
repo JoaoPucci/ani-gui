@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HlsStallMachine, HOLD_DELAYS_MS } from './stall-machine';
+import { HlsStallMachine, HOLD_DELAYS_MS, HOLD_RUNWAY_MARGIN_S } from './stall-machine';
 import { STALL_NUDGE_BUDGET } from './stale-stream';
 
 const hostSlow = {
@@ -266,6 +266,40 @@ describe('HlsStallMachine — holding with buffered media in hand', () => {
 		expect(
 			m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 120, rendition: 'main' })
 		).toEqual({ act: 'hold', delayMs: HOLD_DELAYS_MS[0] });
+	});
+
+	it('never lets a delay outrun the buffer: the retry fires with a margin of media to spare', () => {
+		// Fifteen seconds in hand and a sixteen-second delay would empty
+		// the buffer before the engine is asked again, with nothing
+		// shown and nothing recovering.
+		const m = new HlsStallMachine();
+		const delays = HOLD_DELAYS_MS.map(() =>
+			m.failure({ err: netErr, hasAutoRetried: false, bufferAheadSeconds: 15 })
+		);
+		const runwayMs = (15 - HOLD_RUNWAY_MARGIN_S) * 1000;
+		expect(delays[0]).toEqual({ act: 'hold', delayMs: Math.min(HOLD_DELAYS_MS[0], runwayMs) });
+		for (const d of delays) {
+			expect(d.act).toBe('hold');
+			expect((d as { delayMs: number }).delayMs).toBeLessThanOrEqual(runwayMs);
+		}
+	});
+
+	it('reads the buffer at playback speed', () => {
+		// Forty seconds of media at double speed is twenty seconds of
+		// playback: enough to hold, and the delay is capped to it.
+		const m = new HlsStallMachine();
+		for (let i = 0; i < HOLD_DELAYS_MS.length; i++) {
+			const d = m.failure({
+				err: netErr,
+				hasAutoRetried: false,
+				bufferAheadSeconds: 40,
+				playbackRate: 2
+			});
+			expect(d.act).toBe('hold');
+			expect((d as { delayMs: number }).delayMs).toBeLessThanOrEqual(
+				(20 - HOLD_RUNWAY_MARGIN_S) * 1000
+			);
+		}
 	});
 
 	it('reset forgets the holds', () => {
