@@ -145,6 +145,31 @@ starting it, and delete it when you find it done.
   same source-scoped treatment the progress and resume listeners
   got, not another registration inside the effect's conditional.
 
+- **A download beside an active play starves the player and breaks
+  playback.** The downloader spawns yt-dlp with 16-way fragment
+  concurrency; the player's fragment load policy
+  (`frontend/src/lib/play/hls-load-policy.ts`) deliberately turns a
+  crawling fetch fatal within seconds so stalls surface fast. Run
+  against the same host, the download's burst starves the player's
+  next segment fetch, hls.js fatals with `fragLoadError`, and the
+  stale-stream policy — which can only see a network-class error —
+  answers with the rotated-URL treatment. The damage is not
+  cosmetic, and it escalates: the auto-retry budget is one per
+  session, so the first contention hit interrupts a working stream
+  with a forced evict + re-resolve, and the next one has no budget
+  left and stops playback on the error overlay. Both outcomes were
+  hit on the v0.14.0 Windows package against hianime (download
+  spawned, player fatal nine seconds later, buffered video playing
+  at the moment it fired), one per run.
+
+  The fix has to stop the interruptions, not rename them: cap or
+  pace the downloader's concurrency while a play session is live,
+  and/or classify fragment errors during an active same-host
+  download as the host-slow (nudge) class instead of the
+  rotated-URL class. Toast wording that says contention rather than
+  expiry is worth having, but only alongside — a correctly-worded
+  interruption is still an interruption.
+
 ## Interface
 
 - **Localised content fetch** — synopsis and episode titles.
@@ -445,37 +470,6 @@ starting it, and delete it when you find it done.
   planned: affinity already remembers where each show and its
   audio were listed, and starts there.
 
-## Validating the hianime fallback on the packaged Windows flows
-
-- **Run the packaged Windows build through the hianime fallback**,
-  which has only ever been run on Linux. The production provider
-  order puts hianime behind anidb.app on both packaged platforms, so
-  a release that ships before that run has happened says in its
-  notes that the Windows side of the fallback is unvalidated.
-
-  Why it waited: the run has not been made yet. The Linux run
-  against the live site carries further than a single-platform pass
-  usually does — both packages stage the same impersonating
-  transport, and turning the fallback on spawns, stages and probes
-  nothing new on either platform — but it is still not the run.
-  `docs/proposals/additional-providers.md` states the bar a provider
-  owes on both platforms.
-
-  What is worth knowing: the fallback engages while anidb.app is
-  unreachable, refusing or broken, or when its answer settles nothing
-  — the show found with every sampled row silent about the audio
-  asked for, or a denial the show's live record outranks; a show
-  found and the audio reported absent is an answer, and ends the
-  walk — so the first play a Windows user
-  makes through it mostly comes when the only other provider is
-  giving them nothing. It does not end there. A show the fallback served
-  has its positive availability row name hianime, and every later
-  play, download and hand-off of that show starts from hianime while
-  that row lives, whether or not anidb.app has recovered — so a
-  Windows user who reached the fallback once keeps using it for that
-  show afterwards, with anidb.app healthy. That is why the run is
-  owed by a release and not merely worth having.
-
 ## Retiring the legacy-script sweep — the v1.0 marker
 
 - **Remove the boot sweep that cleans the retired script from old
@@ -700,3 +694,10 @@ the shape against the app as it is then.
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
   a script ever needs it.
+- **`paths::logs_dir()` has no consumer.** The helper and its doc
+  comment describe a log directory, and the development docs used to
+  promise a rotated log file there, but no file sink exists — the
+  backend's `tracing_subscriber::fmt()` writes to the default stream
+  only. Either wire a file appender to the helper or remove it; a
+  file sink would also give packaged desktop launches, which have no
+  terminal, somewhere to leave a trace.

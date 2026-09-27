@@ -63,57 +63,62 @@ The installer will fetch ffmpeg automatically the first time it runs (~80 MB) so
 
 ## Build from source
 
-Tested on Linux. On macOS the dev loop (steps 5–6) launches and browses metadata, but playback needs an impersonating transport and no fetcher stages one there. It does not currently run on Windows: pnpm executes package scripts through `cmd.exe` there, and the Electron `dev` script sets environment variables with a POSIX prefix — [`docs/deferred-work.md`](./docs/deferred-work.md) tracks making it shell-independent. The packaging scripts (step 7) build per-host artifacts and are the verified Windows flow — run on x86_64 Linux for `.AppImage` / `.deb`, on x64 Windows for the NSIS installer. There is no macOS packaging target yet.
+Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electron `dev` script is a Node launcher with no shell-dialect syntax, and on Windows it stages the bundled tools itself, as step 6 notes. On macOS the dev loop launches and browses metadata, but playback needs an impersonating transport and no fetcher stages one there. The packaging scripts (step 7) build per-host artifacts — run on x86_64 Linux for `.AppImage` / `.deb`, on x64 Windows for the NSIS installer. There is no macOS packaging target yet.
 
-1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`):
+1. **Install Rust** (toolchain pinned by `rust-toolchain.toml`). Linux / macOS:
    ```sh
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    . "$HOME/.cargo/env"   # (or re-open the shell) so `cargo` is on PATH
    ```
-2. **Install Node 20+ and pnpm** (via nvm — skip the curl step if you already have nvm or installed Node another way):
+   Windows: download and run `rustup-init.exe` from [rustup.rs](https://rustup.rs) — it sets up the MSVC toolchain and offers to install the Visual Studio build tools it needs.
+2. **Install Node 20–24 and enable corepack.** The repository pins its pnpm version in `package.json`, so `corepack enable` is the whole pnpm setup — corepack fetches the pinned version on first use. Node 25+ no longer bundles corepack; on those, install it first (`npm install -g corepack`) and the rest is unchanged. Linux / macOS (via nvm — skip the curl step if you already have nvm or installed Node another way):
    ```sh
    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
    # re-open the shell (or `source ~/.bashrc`) so nvm is on PATH
-   nvm install 20 && nvm use 20
-   corepack enable && corepack prepare pnpm@latest --activate
+   nvm install 20
+   corepack enable
    ```
-3. **System build deps** (Linux):
+   Windows: install Node from [nodejs.org](https://nodejs.org) (or `winget install OpenJS.NodeJS.LTS`), then run `corepack enable` once in an **elevated** terminal opened after the install — the command writes its pnpm shims beside Node in `C:\Program Files\nodejs`, which a regular terminal cannot write to (the failure is `EPERM`). A user-scoped Node install (nvm-windows, or Node placed under your profile) needs no elevation.
+3. **System build deps** (Linux only — Windows got its build tools with rustup in step 1):
    ```sh
    sudo apt install -y build-essential libssl-dev pkg-config
    ```
-4. **Clone and install JS deps**:
+4. **Clone and install JS deps** — one workspace install covers frontend and electron. From here on, every snippet is line-per-command and runs unchanged in bash, PowerShell, or cmd:
    ```sh
-   git clone https://github.com/JoaoPucci/ani-gui.git && cd ani-gui
-   (cd frontend && pnpm install)
-   (cd electron && pnpm install)
+   git clone https://github.com/JoaoPucci/ani-gui.git
+   cd ani-gui
+   pnpm install
    ```
-5. **Build the backend binary** (required before the first run, and after every Rust change). On x86_64 Linux, also stage the bundled tools next to it once per checkout — playback needs the impersonating transport. The fetcher downloads x86_64 Linux builds (the architecture every package ships for), so skip that step on any other host — the staged directory outranks PATH, and incompatible binaries staged there would shadow any transport you do have:
+5. **Build the backend binary** (required before the first run, and after every Rust change):
    ```sh
-   cd backend && cargo build --bin ani-gui-backend
-   (cd ../electron && pnpm run fetch:linux-deps)   # x86_64 Linux only
+   cd backend
+   cargo build --bin ani-gui-backend
    ```
-6. **Run the dev app** — two terminals, started in this order:
+   On x86_64 Linux, also stage the bundled tools next to it once per checkout — playback needs the impersonating transport:
    ```sh
-   # Terminal A — Vite dev server, HMR on :5173
-   cd frontend && pnpm dev
-
-   # Terminal B — Electron shell, spawns the backend binary from step 5.
-   # On Windows this also stages the bundled tools (impersonating
-   # transport, yt-dlp) next to the backend binary, so playback works.
-   cd electron && pnpm dev
+   cd ../electron
+   pnpm run fetch:linux-deps
    ```
-7. **Build a distributable bundle**:
+   The fetcher downloads x86_64 Linux builds (the architecture every package ships for), so skip it on any other host — the staged directory outranks PATH, and incompatible binaries staged there would shadow any transport you do have. Windows needs no staging step here: the dev launcher in step 6 stages its own.
+6. **Run the dev app** — two terminals, each opened at the repository root (the step-5 shell is sitting in `backend/` or `electron/`, so don't continue in it), started in this order. Terminal A, the Vite dev server with HMR on :5173:
+   ```sh
+   cd frontend
+   pnpm dev
+   ```
+   Terminal B, the Electron shell — spawns the backend binary from step 5, and on Windows also stages the bundled tools (impersonating transport, yt-dlp) next to it, so playback works:
    ```sh
    cd electron
-
-   # Linux host
-   pnpm package           # .AppImage — fast iteration
-   pnpm package:release   # .AppImage + .deb
-
-   # Windows host (any shell — PowerShell, cmd, Git Bash; Rust + Node + pnpm
-   # installed natively. `fetch:win-deps` needs `bsdtar`, which Windows 10+
-   # ships as `tar.exe`)
-   pnpm package:win       # NSIS installer
+   pnpm dev
+   ```
+7. **Build a distributable bundle** — a fresh terminal at the repository root. On an x86_64 Linux host (`pnpm package` instead builds only the `.AppImage`, for faster iteration):
+   ```sh
+   cd electron
+   pnpm package:release
+   ```
+   On an x64 Windows host — any shell, with Rust, Node and pnpm installed natively; the dep fetcher needs `bsdtar`, which Windows 10+ ships as `tar.exe`:
+   ```sh
+   cd electron
+   pnpm package:win
    ```
 For lints, git hooks, and the bash test toolchain see [`docs/development.md`](./docs/development.md).
 
