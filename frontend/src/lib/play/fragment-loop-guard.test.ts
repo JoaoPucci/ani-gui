@@ -71,6 +71,15 @@ describe('the fragment loop guard', () => {
 		}
 	});
 
+	it('trips once: the engine it stops is stopped, and loads that follow are not a second trip', () => {
+		const t = clock();
+		const guard = new FragmentLoopGuard(t.now);
+		for (let i = 0; i < FRAGMENT_LOAD_ALLOWANCE; i++) guard.loaded('main:0:1');
+		expect(guard.loaded('main:0:1')).toBe(true);
+		expect(guard.loaded('main:0:1')).toBe(false);
+		expect(guard.loaded('main:0:2')).toBe(false);
+	});
+
 	it('reads the wall clock when none is given', () => {
 		const guard = new FragmentLoopGuard();
 		expect(guard.loaded('0:1')).toBe(false);

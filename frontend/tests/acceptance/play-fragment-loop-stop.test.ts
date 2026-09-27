@@ -4,8 +4,9 @@
 // mocked engine reports the same fragment loaded again and again, the
 // way hls.js does for a fragment it loads but cannot buffer, and the
 // assertions are what the user experiences: the engine's loading
-// stops once, and the player's error surface names the stream that
-// loads but never buffers, in the locale.
+// stops once — a later report of the same fragment is not a second
+// stop — and the player's error surface names the stream that loads
+// but never buffers, in the locale.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -169,6 +170,9 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 			() => (target.textContent ?? '').includes(m.play_error_fragment_loop()),
 			'the error surface'
 		);
+		// A late report of the same fragment is not a second stop.
+		hls.emit(FRAG_LOADED, first);
+		expect(hls.stopLoadCalls).toBe(1);
 	});
 
 	it('does not stop a stream whose renditions each load a fragment twice', async () => {
