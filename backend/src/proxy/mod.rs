@@ -12,13 +12,13 @@
 //! header. Segment URLs in rewritten manifests carry an HMAC signature
 //! the proxy verifies before issuing the upstream fetch.
 
+pub mod host_budget;
 pub mod m3u8;
 pub mod token;
 pub mod upstream;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
@@ -290,6 +290,9 @@ async fn handle_mp4(
         .get(axum::http::header::RANGE)
         .and_then(|v| v.to_str().ok());
 
+    host_budget::HOST_BUDGET
+        .admit(&host_budget::host_key(&sess.upstream_url))
+        .await;
     let upstream_resp =
         match upstream::fetch_streaming(&state.client, &sess.upstream_url, &sess.referer, range)
             .await
@@ -422,6 +425,11 @@ async fn handle_seg(
     // `upstream::` fetches use: a stored referer that is empty, or
     // that cannot become a header value, sends no header at all
     // rather than an empty one or some other origin's name.
+    // Every segment the player asks for passes through here, so this
+    // is where its fetches are spaced to the host's budget.
+    host_budget::HOST_BUDGET
+        .admit(&host_budget::host_key(&upstream_url))
+        .await;
     let mut req = state.client.get(upstream_url.as_str());
     if let Some(referer) = upstream::referer_header(&sess.referer) {
         req = req.header(reqwest::header::REFERER, referer);
