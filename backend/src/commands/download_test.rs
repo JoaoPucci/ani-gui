@@ -4997,6 +4997,58 @@ async fn an_ffmpeg_fallback_waiting_for_the_lane_fails_at_its_deadline() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_paced_run_outlives_the_transfers_ceiling() {
+    // The transfer's ceiling guards a hung tool. A paced run is slow
+    // by design — one fragment at a limited rate for as long as the
+    // user watches — and ends the moment playback stops, so the
+    // ceiling does not apply to it: a transfer whose paced run takes
+    // longer than the ceiling still completes.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines = Vec::new();
+    let mut on_line = |l: &str| lines.push(l.to_string());
+    let transfer = spawn_download_tool_paced(
+        &source,
+        dest.path(),
+        "Show Episode 22",
+        None,
+        &path_env,
+        std::time::Duration::from_millis(400),
+        &mut on_line,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the paced spawn", |l| l.len() == 1).await;
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (got, ()) = tokio::join!(transfer, drive);
+    assert_eq!(
+        got.expect("the paced transfer completes past the ceiling"),
+        Transferred::Episode
+    );
+    assert!(dest.path().join("Show Episode 22.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_paced_download_runs_free_again_once_playback_stops() {
     // The player paused or the episode ended: after the window of
     // silence the download is taken down and started again at full
