@@ -4624,12 +4624,12 @@ async fn ffmpeg_fallbacks_take_the_paced_lane_one_at_a_time() {
 #[cfg(unix)]
 #[tokio::test]
 async fn an_ffmpeg_fallback_started_while_idle_holds_the_lane_when_playback_starts() {
-    // ffmpeg started with nothing playing. The user starts an episode:
-    // the fallback keeps running — it cannot resume, and one
-    // connection is the allowance — and it is the connection beside
-    // the player, so a second download that starts during playback
-    // waits for it. It holds the lane from its start, so there is no
-    // moment between playback starting and the lane being taken.
+    // The live-start variant of the idle case: ffmpeg started with
+    // nothing playing, the user starts an episode, and a second
+    // download begins during playback. The fallback keeps running —
+    // it cannot resume, and one connection is the allowance — and it
+    // holds the lane from its start, so the second download waits for
+    // it whether it begins during playback, as here, or before.
     let bin = tempfile::tempdir().expect("bin");
     let dest_a = tempfile::tempdir().expect("dest a");
     let dest_b = tempfile::tempdir().expect("dest b");

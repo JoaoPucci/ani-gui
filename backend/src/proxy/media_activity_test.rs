@@ -197,3 +197,42 @@ async fn an_hls_sessions_mp4_request_is_refused_without_marking_playback_live() 
         "a refused request is not media served"
     );
 }
+
+#[tokio::test]
+async fn a_subtitle_track_fetch_is_not_media() {
+    // A playing player fetches its subtitle track from the proxy too;
+    // a track is text beside the media, and serving one says nothing
+    // about whether the media is moving.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
+        .mount(&server)
+        .await;
+    let sessions = SessionTable::new();
+    let mut session = StreamSession::new_with_kind(
+        url::Url::parse("https://cdn.example/master.m3u8").expect("master url"),
+        MediaKind::Hls,
+        "https://embed.example/".to_string(),
+    );
+    session.subtitles = vec![crate::scraper::provider::SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/en.vtt", server.uri()),
+    }];
+    let id = session.id;
+    sessions.insert(session);
+    let router = build_router(ProxyState {
+        sessions: sessions.clone(),
+        secret: AppSecret::from_bytes([7u8; 32]),
+        client: reqwest::Client::new(),
+        origin: ProxyOrigin::new("127.0.0.1", 1),
+    });
+    let status = get(router, &format!("/s/{}/sub/0.vtt", id.as_string())).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !sessions.playback_live(WINDOW),
+        "a subtitle track is not media"
+    );
+}
