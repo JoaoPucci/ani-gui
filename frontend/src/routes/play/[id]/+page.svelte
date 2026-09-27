@@ -104,6 +104,7 @@
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
 	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
+	import { FragmentLoopGuard } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
@@ -1584,8 +1585,23 @@
 			});
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
+			// One guard per source: a fragment the engine keeps asking
+			// for is a stream that cannot be buffered, and asking on
+			// gets the address refused by the host. Past the allowance
+			// the engine stops and the failure surfaces like any other
+			// the player cannot recover from.
+			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
 				stallMachine.fragmentLoaded(data as { frag?: { type?: string } });
+				const frag = (data as { frag?: { level?: number; sn?: number | string } }).frag;
+				if (!frag || !loopGuard.loaded(`${frag.level}:${frag.sn}`)) return;
+				engine.stopLoad();
+				console.warn('[play] fragment loop guard: engine stopped on fragment', frag.sn);
+				playerError =
+					exhaustedStallOverlayMessage(
+						{ source: 'hls', type: 'mediaError', details: 'fragLoop' },
+						hasAutoRetried
+					) ?? 'Playback error: mediaError / fragLoop';
 			});
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
