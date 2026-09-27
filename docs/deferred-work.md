@@ -278,8 +278,8 @@ starting it, and delete it when you find it done.
 - **A spoiler-free mode.** Episode thumbnails and episode titles
   give away what happens — a thumbnail of a character who was not
   meant to survive, a title that names the twist — and the app shows
-  both wherever it lists episodes: the detail page's grid, the play
-  page's strip, the Continue Watching cards, the download dock. A
+  both wherever it lists episodes, the detail page's grid, the play
+  page's strip and the Continue Watching cards among them. A
   mode that hides thumbnails and censors titles, and whatever else
   turns out to spoil, would let someone browse a show they are
   partway through without being told what comes next.
