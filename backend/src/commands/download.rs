@@ -1425,8 +1425,8 @@ where
 /// under a running transfer takes the tool down and starts it again
 /// at the other concurrency on the same output, which yt-dlp resumes
 /// from the fragments it already has. The ffmpeg fallback is a single
-/// connection: it takes the paced lane while playback is live and is
-/// never taken down, since it cannot resume.
+/// connection: it holds the paced lane from its start whether or not
+/// anything plays, and is never taken down, since it cannot resume.
 ///
 /// # Errors
 /// As [`spawn_download_tool`].
@@ -1628,19 +1628,13 @@ where
     }
     let exe = ffmpeg.ok_or(AniError::FfmpegMissing)?;
     // One connection is the paced allowance itself, and the allowance
-    // is one beside the player for the whole app: while playback is
-    // live the fallback takes its turn on the lane like a paced yt-dlp
-    // would, and a lane that opens because playback stopped is not
-    // needed. ffmpeg cannot resume an HLS transfer, so a change of
-    // playback under it is not a reason to take it down — it keeps
-    // the lane until it ends, and one that started free claims the
-    // lane when playback starts, so that nothing else opens a
-    // connection beside it.
-    let mut turn = if pacing.is_live() {
-        pacing.paced_turn().await
-    } else {
-        None
-    };
+    // is one beside the player for the whole app. ffmpeg cannot be
+    // paced down, and cannot be taken down and resumed, so a fallback
+    // holds the lane from its start whether or not anything plays:
+    // fallbacks run one after the other, whichever is running when
+    // playback starts is already the one connection the allowance
+    // grants, and a paced yt-dlp waits behind it.
+    let _turn = pacing.lane().await;
     let mut cmd = tokio::process::Command::new(exe);
     if let Some(p) = &child_path {
         cmd.env("PATH", p);
@@ -1665,25 +1659,7 @@ where
         .arg("copy")
         .arg(&scratch.path);
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
-    let mut repackage_failed = false;
-    let result = {
-        let run = run_tool(cmd, deadline, on_line, &mut repackage_failed);
-        tokio::pin!(run);
-        loop {
-            if turn.is_some() {
-                break run.await;
-            }
-            tokio::select! {
-                result = &mut run => break result,
-                permit = pacing.claim_when_live() => {
-                    turn = Some(permit);
-                    tracing::info!("download: playback started under ffmpeg; the fallback holds the paced lane");
-                }
-            }
-        }
-    };
-    drop(turn);
-    match result {
+    match run_tool(cmd, deadline, on_line, &mut false).await {
         Ok(()) => finish(&scratch, &target, on_line).await,
         Err(e) => Err(e),
     }
