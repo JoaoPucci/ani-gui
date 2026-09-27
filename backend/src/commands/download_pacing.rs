@@ -38,6 +38,12 @@ pub(crate) const PACED_FRAGMENTS: u32 = 1;
 /// beside the player's own fetches.
 pub(crate) const PACED_RATE_LIMIT: &str = "512K";
 
+/// A paced run's own ceiling: a day. The transfer's ceiling guards a
+/// hung tool, and a paced run is slow by design and ends the moment
+/// playback stops — so it runs under this one instead, and the time it
+/// took is added to the transfer's ceiling for what follows.
+pub(crate) const PACED_RUN_CEILING: Duration = Duration::from_secs(24 * 60 * 60);
+
 /// How long after the last media fetch playback counts as live: a
 /// playing player fetches a segment every few seconds, and a paused
 /// one with a full buffer fetches nothing, so a window of silence is
