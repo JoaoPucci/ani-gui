@@ -184,3 +184,16 @@ async fn an_mp4_range_marks_playback_live_and_streams_the_body() {
     assert_eq!(body.len(), 4096, "the body streams through unchanged");
     assert!(sessions.playback_live(WINDOW));
 }
+
+#[tokio::test]
+async fn an_hls_sessions_mp4_request_is_refused_without_marking_playback_live() {
+    // The route refuses a session whose media is not an mp4 before it
+    // fetches anything, and a refusal serves no media.
+    let (router, sessions, id, _secret) = proxy_on("https://cdn.example/master.m3u8");
+    let status = get(router, &format!("/s/{}/file.mp4", id.as_string())).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert!(
+        !sessions.playback_live(WINDOW),
+        "a refused request is not media served"
+    );
+}
