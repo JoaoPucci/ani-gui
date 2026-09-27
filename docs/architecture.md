@@ -56,7 +56,7 @@ Three layers, in lockstep:
 5. The backend creates a `StreamSession` (UUID, upstream URL, referer, expiry), stores it in memory, and returns a token to the renderer.
 6. The renderer mounts `<video>` and points hls.js at `http://127.0.0.1:<port>/s/<token>/master.m3u8`.
 7. The streaming proxy fetches the upstream master playlist with the referer the session stores — the embed page's origin for a hianime stream, no origin for an anidb.app one, whose CDN checks for none — parses it with `m3u8-rs`, and rewrites every variant + segment URI to flow back through itself with HMAC-signed sub-tokens. CORS headers are added so hls.js inside the webview can consume the rewritten manifest without preflight blocks.
-8. Subsequent segment requests follow the same path: hls.js asks the proxy, the proxy asks the upstream with the same referer, bytes stream back.
+8. Subsequent segment requests follow the same path: hls.js asks the proxy, the proxy asks the upstream with the same referer, bytes stream back. A fragment hls.js loads but cannot buffer is one it asks for again; past four loads of one fragment in ten seconds the player stops the engine rather than let it run against the host.
 
 ## Providers and failover
 
