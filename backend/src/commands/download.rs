@@ -1633,8 +1633,10 @@ where
     // would, and a lane that opens because playback stopped is not
     // needed. ffmpeg cannot resume an HLS transfer, so a change of
     // playback under it is not a reason to take it down — it keeps
-    // the lane until it ends.
-    let _turn = if pacing.is_live() {
+    // the lane until it ends, and one that started free claims the
+    // lane when playback starts, so that nothing else opens a
+    // connection beside it.
+    let mut turn = if pacing.is_live() {
         pacing.paced_turn().await
     } else {
         None
@@ -1663,7 +1665,25 @@ where
         .arg("copy")
         .arg(&scratch.path);
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
-    match run_tool(cmd, deadline, on_line, &mut false).await {
+    let mut repackage_failed = false;
+    let result = {
+        let run = run_tool(cmd, deadline, on_line, &mut repackage_failed);
+        tokio::pin!(run);
+        loop {
+            if turn.is_some() {
+                break run.await;
+            }
+            tokio::select! {
+                result = &mut run => break result,
+                permit = pacing.claim_when_live() => {
+                    turn = Some(permit);
+                    tracing::info!("download: playback started under ffmpeg; the fallback holds the paced lane");
+                }
+            }
+        }
+    };
+    drop(turn);
+    match result {
         Ok(()) => finish(&scratch, &target, on_line).await,
         Err(e) => Err(e),
     }
