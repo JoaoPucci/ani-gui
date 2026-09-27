@@ -42,7 +42,10 @@ fn an_idle_bucket_refills_to_the_burst_and_no_further() {
     }
     let later = now + Duration::from_secs(600);
     for _ in 0..SEGMENT_BURST {
-        assert_eq!(take(&mut bucket, later, SEGMENT_BURST, SEGMENT_REFILL), None);
+        assert_eq!(
+            take(&mut bucket, later, SEGMENT_BURST, SEGMENT_REFILL),
+            None
+        );
     }
     assert!(
         take(&mut bucket, later, SEGMENT_BURST, SEGMENT_REFILL).is_some(),
@@ -96,5 +99,9 @@ fn the_key_is_host_and_port() {
     let d = Url::parse("http://127.0.0.1:4002/seg.ts").expect("url");
     assert_eq!(host_key(&a), "cdn.example:443");
     assert_ne!(host_key(&a), host_key(&b));
-    assert_ne!(host_key(&c), host_key(&d), "two servers on one machine are two budgets");
+    assert_ne!(
+        host_key(&c),
+        host_key(&d),
+        "two servers on one machine are two budgets"
+    );
 }
