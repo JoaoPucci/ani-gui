@@ -100,6 +100,7 @@
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
 	import {
 		exhaustedStallOverlayMessage,
+		fragmentLoopOverlayMessage,
 		stallNudgeToast,
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
@@ -1598,11 +1599,7 @@
 				if (!frag || !loopGuard.loaded(fragmentLoopKey(frag))) return;
 				engine.stopLoad();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', frag.sn);
-				playerError =
-					exhaustedStallOverlayMessage(
-						{ source: 'hls', type: 'mediaError', details: 'fragLoop' },
-						hasAutoRetried
-					) ?? 'Playback error: mediaError / fragLoop';
+				playerError = fragmentLoopOverlayMessage();
 			});
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
