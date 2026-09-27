@@ -321,9 +321,11 @@ removes.
 ## 16. The change is reviewed before the reviewer sees it
 
 External review rounds are the scarcest resource this repository
-spends. Every finding external review has produced here was correct,
-and each round costs more than the self-review that would have made
-it unnecessary — so a change earns its push, not just its merge.
+spends. Most findings external review has produced here were
+correct, and the rest were correct in substance while overstating
+their reach; each round costs more than the self-review that would
+have made most of them unnecessary — so a change earns its push, not
+just its merge.
 
 Before a pull request opens, and before every push to one, the full
 diff gets an adversarial pass — by a second agent where one is
