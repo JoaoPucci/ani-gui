@@ -277,13 +277,13 @@ async fn handle_mp4(
     let Some(sess) = state.sessions.get(&session) else {
         return error_response(StatusCode::NOT_FOUND, "session not found or expired");
     };
-    state.sessions.note_media_fetch();
     if !matches!(sess.media_kind, MediaKind::Mp4) {
         return error_response(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             "session media is not MP4 — use /master.m3u8",
         );
     }
+    state.sessions.note_media_fetch();
 
     let range = headers_in
         .get(axum::http::header::RANGE)
