@@ -103,6 +103,10 @@ async fn handle_master(
     let Some(sess) = state.sessions.get(&session) else {
         return error_response(StatusCode::NOT_FOUND, "session not found or expired");
     };
+    // The master is the first thing a starting player asks for: a
+    // download running beside it yields from here, not after the
+    // first segment has already competed with it.
+    state.sessions.note_media_fetch();
 
     // The HLS rewrite path only makes sense for .m3u8 sessions; an MP4
     // would otherwise be buffered (hundreds of MB) and fail to parse.
@@ -273,6 +277,7 @@ async fn handle_mp4(
     let Some(sess) = state.sessions.get(&session) else {
         return error_response(StatusCode::NOT_FOUND, "session not found or expired");
     };
+    state.sessions.note_media_fetch();
     if !matches!(sess.media_kind, MediaKind::Mp4) {
         return error_response(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -352,6 +357,10 @@ async fn handle_seg(
     let Some(sess) = state.sessions.get(&session) else {
         return error_response(StatusCode::NOT_FOUND, "session not found");
     };
+    // Media playlists and segments alike: both are the player
+    // fetching, and a segment every few seconds is what a download
+    // must leave room for.
+    state.sessions.note_media_fetch();
 
     let upstream_url = match decode_seg_url(&q.u) {
         Ok(u) => u,

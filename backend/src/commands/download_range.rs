@@ -202,7 +202,15 @@ where
             subtitles: resolved.subtitles,
         };
         // The sidecars are fetched beside the transfer, while their
-        // signed URLs are as fresh as the stream's.
+        // signed URLs are as fresh as the stream's. The transfer yields
+        // to playback the proxy is serving.
+        let is_live = || {
+            state
+                .sessions
+                .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
+        };
+        let pacing =
+            super::download_pacing::Pacing::new(&is_live, super::download_pacing::PACING_POLL);
         super::download_transfer::transfer_with_sidecars(
             &state.proxy_http,
             &source,
@@ -217,6 +225,7 @@ where
                     line: line.to_string(),
                 });
             },
+            &pacing,
         )
         .await?;
     }
