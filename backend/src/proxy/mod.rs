@@ -432,9 +432,15 @@ async fn handle_seg(
     }
     let resp = match req.send().await {
         Ok(r) => r,
-        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+        Err(e) => {
+            tracing::warn!(url = %upstream_url, error = %e, "proxy: upstream segment fetch failed");
+            return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed");
+        }
     };
     let status = resp.status();
+    if !status.is_success() {
+        tracing::warn!(url = %upstream_url, %status, "proxy: upstream answered a segment with an error");
+    }
     let headers = clone_passthrough_headers(resp.headers());
     let stream = noting_media(resp.bytes_stream(), state.sessions.clone());
     (

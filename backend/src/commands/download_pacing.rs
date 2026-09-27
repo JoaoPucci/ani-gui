@@ -2,7 +2,7 @@
 //! fragments at once, and against the host the player is streaming
 //! from that burst starves the player's next segment within seconds.
 //! While the proxy has served media recently — playback is live — a
-//! download runs two fragments wide instead. yt-dlp cannot change its
+//! download runs one fragment at a time instead. yt-dlp cannot change its
 //! concurrency mid-run, so when playback starts or stops under a
 //! running download the supervisor takes the tool down and starts it
 //! again on the same output, which yt-dlp resumes from the fragments
@@ -13,9 +13,12 @@ use std::time::Duration;
 /// Fragments in flight when nothing is playing: v5's `-N 16`.
 pub(crate) const FAST_FRAGMENTS: u32 = 16;
 
-/// Fragments in flight while playback is live. Two keeps the transfer
-/// moving while leaving the player's single fetch most of the host.
-pub(crate) const PACED_FRAGMENTS: u32 = 2;
+/// Fragments in flight while playback is live: one, the floor a
+/// download can pace to and still move. The player holds up to three
+/// connections of its own to the same host — a segment, a playlist,
+/// a subtitle — and a live run with two download fragments beside
+/// them still lost the player's segment request.
+pub(crate) const PACED_FRAGMENTS: u32 = 1;
 
 /// How long after the last media fetch playback counts as live: a
 /// playing player fetches a segment every few seconds, and a paused

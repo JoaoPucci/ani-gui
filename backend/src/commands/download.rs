@@ -1546,6 +1546,11 @@ where
                 quality,
                 super::download_pacing::fragment_concurrency(live),
             );
+            tracing::info!(
+                fragments = super::download_pacing::fragment_concurrency(live),
+                playback_live = live,
+                "download: spawning yt-dlp",
+            );
             let mut repackage_failed = false;
             match run_tool_until(
                 cmd,
@@ -1769,7 +1774,7 @@ fn a_download_tool_exists(path_env: &str) -> bool {
 /// spawn failure, [`AniError::Scraper`] on a non-zero exit.
 /// yt-dlp's command line for one run of a transfer: v5's arguments,
 /// the quality preference as a format sort, and `fragments` in flight
-/// — sixteen with nothing playing, two while playback is live.
+/// — sixteen with nothing playing, one while playback is live.
 fn ytdlp_command(
     exe: &std::path::Path,
     child_path: Option<&std::ffi::OsStr>,
