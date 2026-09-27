@@ -38,8 +38,10 @@ sudo apt install -y build-essential libssl-dev pkg-config
 # Renderer + Electron shell (Node + pnpm via nvm)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 # (open a new shell, or `source ~/.bashrc`)
-nvm install 20 && nvm use 20
-corepack enable && corepack prepare pnpm@latest --activate
+nvm install 20
+# pnpm needs no separate install or version choice: package.json's
+# packageManager field pins it, and corepack fetches that version.
+corepack enable
 ```
 
 ```sh
@@ -49,20 +51,32 @@ sudo apt install -y mpv jq ripgrep
 
 ### Then in the repo
 
+Clone and run the one workspace install, which covers `frontend/`
+and `electron/`; the frontend's install also sets up Lefthook and
+writes the `pre-commit` / `pre-push` git hooks (set `LEFTHOOK=0` to
+skip them for a single command):
+
 ```sh
 git clone git@github.com:JoaoPucci/ani-gui.git
 cd ani-gui
+pnpm install
+```
 
-# Bash test toolchain (vendored bats + plugins at pinned tags)
+The bash test toolchain (vendored bats + plugins at pinned tags) is
+POSIX by design — run this from a POSIX shell (Git Bash on Windows),
+and only if you work in the bash layer:
+
+```sh
 ./tests/bash/helpers/install-bats.sh
+```
 
-# Frontend + Electron deps. The frontend `pnpm install` also installs
-# Lefthook and writes the `pre-commit` / `pre-push` git hooks. To skip
-# the hooks for a single command set `LEFTHOOK=0`.
-pnpm install   # one workspace install covers frontend/ and electron/
+Verify the Rust toolchain, ending back at the root, where the dev
+loop below starts:
 
-# Verify Rust toolchain
-(cd backend && cargo --version)
+```sh
+cd backend
+cargo --version
+cd ..
 ```
 
 ### Other distros
@@ -71,23 +85,43 @@ Mostly same packages, different package manager. PRs welcome to add Fedora / Arc
 
 ## Dev loop
 
-In order, starting from the repository root — the two one-shot steps
-run in subshells so they leave the working directory alone; the two
-long-running processes each get their own terminal, also opened at
-the root:
+In order, starting from the repository root. The snippets hold pure
+commands, one per line, and paste unchanged into bash, PowerShell,
+or cmd — cmd has no `#` comment syntax, so the notes live out here
+instead. The loop is supported on Linux and Windows; the two
+long-running processes each get their own terminal, opened at the
+root.
+
+Step 1 — build the Rust sidecar (one-shot per Rust change):
 
 ```sh
-# 1 — build the Rust sidecar (one-shot per Rust change)
-(cd backend && cargo build --bin ani-gui-backend)
+cd backend
+cargo build --bin ani-gui-backend
+```
 
-# 2 — once per checkout, x86_64 Linux only: stage the bundled deps
-(cd electron && pnpm run fetch:linux-deps)
+Step 2 — once per checkout, on x86_64 Linux only, stage the bundled
+deps (Windows skips this: the dev launcher in step 4 stages its
+own):
 
-# 3 — Vite dev server with HMR (keep running, own terminal)
-cd frontend && pnpm dev          # http://localhost:5173
+```sh
+cd ../electron
+pnpm run fetch:linux-deps
+```
 
-# 4 — Electron shell (spawns the sidecar, points at Vite; keep running, own terminal)
-cd electron && pnpm dev
+Step 3 — the Vite dev server with HMR, at `http://localhost:5173`
+(keep running, own terminal):
+
+```sh
+cd frontend
+pnpm dev
+```
+
+Step 4 — the Electron shell; spawns the sidecar, points at Vite
+(keep running, own terminal):
+
+```sh
+cd electron
+pnpm dev
 ```
 
 Step 2's position is load-bearing on a fresh checkout: it must run
@@ -136,26 +170,39 @@ prepends an x86_64 runtime, so a build on any other architecture
 produces a package with incompatible executables or fails outright.
 
 The `electron-builder` config declares no macOS target; nothing
-produces a `.dmg`. The dev loop (Vite + Electron from source) runs on
-Linux, where `fetch:linux-deps` stages the transport playback needs.
-On macOS the app launches and browses metadata, but no fetcher
-stages a transport there, so stream resolution falls back to a plain
-`curl` the provider rejects. On Windows the loop does not start at
-all: pnpm executes package scripts through `cmd.exe` regardless of
-the invoking terminal, and the Electron `dev` script sets
-environment variables with a POSIX prefix. `docs/deferred-work.md`
-tracks making it shell-independent; the packaging path is the
-verified Windows flow. No macOS artifact is built or shipped.
+produces a `.dmg`. The dev loop (Vite + Electron from source) runs
+on Linux, where `fetch:linux-deps` stages the transport playback
+needs, and on Windows, where the `dev` launcher stages the bundled
+tools itself before starting Electron. The launcher is a Node
+script, so pnpm's script shell — `cmd.exe` on Windows, regardless
+of the invoking terminal — has no shell-dialect syntax to trip
+over. On macOS the app launches and browses metadata, but no
+fetcher stages a transport there, so stream resolution falls back
+to a plain `curl` the provider rejects. No macOS artifact is built
+or shipped.
 
 ## Logging and debugging
 
-The backend uses [`tracing`](https://docs.rs/tracing). Adjust verbosity by setting `RUST_LOG` before launching the backend (or the Electron shell that spawns it):
+The backend uses [`tracing`](https://docs.rs/tracing). Adjust verbosity by setting `RUST_LOG` before launching the backend (or the Electron shell that spawns it). bash:
 
 ```sh
 RUST_LOG=ani_gui=debug,axum=info pnpm --dir electron dev
 ```
 
-Logs also tee to `$XDG_DATA_HOME/ani-gui/logs/ani-gui.log` (daily rotation, 7-day retention).
+PowerShell:
+
+```powershell
+$env:RUST_LOG = 'ani_gui=debug,axum=info'; pnpm --dir electron dev
+```
+
+cmd:
+
+```bat
+set RUST_LOG=ani_gui=debug,axum=info
+pnpm --dir electron dev
+```
+
+There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file.
 
 The streaming proxy port is logged at startup:
 
@@ -163,7 +210,9 @@ The streaming proxy port is logged at startup:
 INFO ani_gui::proxy: stream proxy listening on 127.0.0.1:42337
 ```
 
-Use it to inspect proxied requests with `curl`:
+Use it to inspect proxied requests with `curl`. In Windows
+PowerShell spell it `curl.exe` — bare `curl` there is an alias for
+`Invoke-WebRequest`, which rejects `-sI`:
 
 ```sh
 curl -sI http://127.0.0.1:42337/healthz
