@@ -105,3 +105,21 @@ fn the_key_is_host_and_port() {
         "two servers on one machine are two budgets"
     );
 }
+
+proptest! {
+    #[test]
+    fn the_key_is_the_url_host_and_its_port_and_nothing_else(
+        host in "[a-z][a-z0-9-]{0,12}(\\.[a-z][a-z0-9-]{0,12}){0,3}",
+        port in 1u16..=65535,
+        https in proptest::bool::ANY,
+        path in "/[a-z0-9/._-]{0,40}",
+    ) {
+        let scheme = if https { "https" } else { "http" };
+        let explicit = Url::parse(&format!("{scheme}://{host}:{port}{path}")).expect("url");
+        prop_assert_eq!(host_key(&explicit), format!("{host}:{port}"));
+        let implied = Url::parse(&format!("{scheme}://{host}{path}")).expect("url");
+        prop_assert_eq!(host_key(&implied), format!("{host}:{}", if https { 443 } else { 80 }));
+        let other_path = Url::parse(&format!("{scheme}://{host}:{port}/elsewhere")).expect("url");
+        prop_assert_eq!(host_key(&explicit), host_key(&other_path));
+    }
+}
