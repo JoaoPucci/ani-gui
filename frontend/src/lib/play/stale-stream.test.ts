@@ -356,6 +356,20 @@ describe('decideStreamFailureResponse — with buffered media in hand', () => {
 		).toBe('recover');
 	});
 
+	it('holds only for the hls.js engine: a progressive mp4 has no engine to ask again', () => {
+		// The element's own network error on an mp4 session means the
+		// element's fetch failed; asking it to load again resets the
+		// source and drops what is buffered, so buffered media does not
+		// earn a hold there. The recovery takes it as before.
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'video', code: 2 },
+				bufferAheadSeconds: 120
+			})
+		).toBe('recover');
+	});
+
 	it('does not hold a media error: buffered media is no help against one', () => {
 		expect(
 			decideStreamFailureResponse({

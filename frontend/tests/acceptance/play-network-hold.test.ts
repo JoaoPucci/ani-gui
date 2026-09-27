@@ -209,6 +209,20 @@ describe('play route — a network failure with buffered media in hand is held',
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
 
+	it('keeps one retry pending per source when two renditions fail inside a hold', async () => {
+		// The main and audio renditions each fail while a hold is
+		// pending; one startLoad() covers both, since the engine's
+		// startLoad begins by stopping what is loading.
+		const hls = await mountPlayingHls();
+		bufferedTo(getGlobalVideo(), 300, 10);
+
+		hls.emit(ERROR, { ...NETWORK_FATAL, frag: { type: 'main' } });
+		hls.emit(ERROR, { ...NETWORK_FATAL, frag: { type: 'audio' } });
+		await until(() => hls.startLoadCalls >= 1, 'the held retry', HOLD_DELAYS_MS[0] + 3000);
+		await new Promise((r) => setTimeout(r, 500));
+		expect(hls.startLoadCalls).toBe(1);
+	});
+
 	it('holds a host-slow timeout too, without the nudge notice', async () => {
 		const hls = await mountPlayingHls();
 		bufferedTo(getGlobalVideo(), 300, 10);
