@@ -17,6 +17,7 @@ import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
 import { m } from '../../src/lib/paraglide/messages';
 import { FRAGMENT_LOAD_ALLOWANCE } from '../../src/lib/play/fragment-loop-guard';
+import { HOLD_DELAYS_MS } from '../../src/lib/play/stall-machine';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -42,6 +43,7 @@ vi.mock('hls.js', () => {
 		}
 		handlers: Record<string, Handler[]> = {};
 		stopLoadCalls = 0;
+		startLoadCalls = 0;
 		constructor() {
 			FakeHls.instances.push(this);
 		}
@@ -50,7 +52,9 @@ vi.mock('hls.js', () => {
 		on(event: string, handler: Handler) {
 			(this.handlers[event] ??= []).push(handler);
 		}
-		startLoad() {}
+		startLoad() {
+			this.startLoadCalls += 1;
+		}
 		stopLoad() {
 			this.stopLoadCalls += 1;
 		}
@@ -69,10 +73,12 @@ import { getGlobalVideo } from '../../src/lib/play/global-video';
 
 type FakeHlsT = InstanceType<typeof Hls> & {
 	stopLoadCalls: number;
+	startLoadCalls: number;
 	emit: (event: string, data: unknown) => void;
 };
 const hlsInstances = () => (Hls as unknown as { instances: FakeHlsT[] }).instances;
 const FRAG_LOADED = (Hls as unknown as { Events: { FRAG_LOADED: string } }).Events.FRAG_LOADED;
+const ERROR = (Hls as unknown as { Events: { ERROR: string } }).Events.ERROR;
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -173,6 +179,27 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		// A late report of the same fragment is not a second stop.
 		hls.emit(FRAG_LOADED, first);
 		expect(hls.stopLoadCalls).toBe(1);
+	});
+
+	it('a stopped engine is not started again by a held retry or a later failure', async () => {
+		// A hold armed before the trip, and a fatal that arrives after
+		// it, would each ask the engine to load again behind the error
+		// surface — and the guard reports only its first trip, so
+		// nothing would stop it a second time.
+		const hls = await mountHls();
+		const video = getGlobalVideo();
+		Object.defineProperty(video, 'buffered', {
+			configurable: true,
+			get: () => ({ length: 1, start: () => 0, end: () => 300 })
+		});
+		video.currentTime = 10;
+		hls.emit(ERROR, { fatal: true, type: 'networkError', details: 'fragLoadError' });
+		const first = { frag: { type: 'main', level: 0, sn: 1 } };
+		for (let i = 0; i <= FRAGMENT_LOAD_ALLOWANCE; i++) hls.emit(FRAG_LOADED, first);
+		expect(hls.stopLoadCalls).toBe(1);
+		hls.emit(ERROR, { fatal: true, type: 'networkError', details: 'fragLoadTimeOut' });
+		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[0] + 500));
+		expect(hls.startLoadCalls).toBe(0);
 	});
 
 	it('does not stop a stream whose renditions each load a fragment twice', async () => {

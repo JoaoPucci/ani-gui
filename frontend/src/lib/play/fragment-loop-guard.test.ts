@@ -80,6 +80,14 @@ describe('the fragment loop guard', () => {
 		expect(guard.loaded('main:0:2')).toBe(false);
 	});
 
+	it('says whether it has tripped, for whoever else would restart the engine', () => {
+		const t = clock();
+		const guard = new FragmentLoopGuard(t.now);
+		expect(guard.hasTripped).toBe(false);
+		for (let i = 0; i <= FRAGMENT_LOAD_ALLOWANCE; i++) guard.loaded('main:0:1');
+		expect(guard.hasTripped).toBe(true);
+	});
+
 	it('reads the wall clock when none is given', () => {
 		const guard = new FragmentLoopGuard();
 		expect(guard.loaded('0:1')).toBe(false);
