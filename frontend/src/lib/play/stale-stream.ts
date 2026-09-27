@@ -63,9 +63,20 @@ export function isHostSlowStreamError(err: StreamFailure): boolean {
  *  the full recovery. */
 export const STALL_NUDGE_BUDGET = 3;
 
-export type StreamFailureResponse = 'nudge' | 'recover' | 'surface';
+/** Buffered media in hand past which a network failure is held rather
+ *  than recovered from or surfaced: enough for the engine to be asked
+ *  again a few times, with growing delays, before the playhead reaches
+ *  the end of it. */
+export const HOLD_MIN_BUFFER_SECONDS = 15;
+
+export type StreamFailureResponse = 'hold' | 'nudge' | 'recover' | 'surface';
 
 /** The response ladder for a fatal stream failure.
+ *
+ *  `hold` — a network-class failure while the player has buffered
+ *  media in hand: nothing shown, no session swap, the engine asked to
+ *  load again after a delay that grows per failure. What is buffered
+ *  keeps playing meanwhile.
  *
  *  `nudge` — retry the SAME stream (`hls.startLoad()`): no session
  *  swap, no loading overlay, buffer and position kept. Earned only
@@ -85,7 +96,20 @@ export function decideStreamFailureResponse(args: {
 	hasAutoRetried: boolean;
 	nudgesUsed: number;
 	playbackProgressed: boolean;
+	/** The run of buffered media from the playhead, in seconds. Left
+	 *  out, the buffer is taken to be empty. */
+	bufferAheadSeconds?: number;
 }): StreamFailureResponse {
+	// A 429 or a dropped connection while minutes of the episode are
+	// already buffered is not yet a failure the user can see: the
+	// player holds and asks again later, quietly. Buffered media is no
+	// help against a media error, which is about the bytes in hand.
+	if (
+		isNetworkClassStreamError(args.err) &&
+		(args.bufferAheadSeconds ?? 0) >= HOLD_MIN_BUFFER_SECONDS
+	) {
+		return 'hold';
+	}
 	if (
 		isHostSlowStreamError(args.err) &&
 		args.playbackProgressed &&

@@ -105,6 +105,7 @@
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
 	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
+	import { bufferAheadSeconds } from '$lib/play/buffer-ahead';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
@@ -1605,8 +1606,21 @@
 				const action = stallMachine.failure({
 					err,
 					hasAutoRetried,
-					rendition: (data as { frag?: { type?: string } }).frag?.type
+					rendition: (data as { frag?: { type?: string } }).frag?.type,
+					bufferAheadSeconds: videoEl
+						? bufferAheadSeconds(videoEl.buffered, videoEl.currentTime)
+						: 0
 				});
+				// A network failure with buffered media in hand is not yet
+				// a failure the user can see: hold, and ask the engine to
+				// load again after a growing delay, quietly. The recovery
+				// and its notices are for a player with nothing left to
+				// play. The timer retires with the source.
+				if (action.act === 'hold') {
+					const retry = setTimeout(() => engine.startLoad(), action.delayMs);
+					addSourceScopedCleanup(() => clearTimeout(retry));
+					return;
+				}
 				// A host-slow stall on a stream that was playing: retry
 				// the SAME stream. startLoad keeps the buffer and the
 				// position — no session swap, no loading overlay; a

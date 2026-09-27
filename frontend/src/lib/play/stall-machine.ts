@@ -30,7 +30,13 @@ function renditionFromDetails(err: StreamFailure): string | null {
 	return null;
 }
 
+/** How long a held failure waits before the engine is asked to load
+ *  again: doubling per failure of the same rendition, from two seconds
+ *  to sixteen, and starting over once a fragment of it lands. */
+export const HOLD_DELAYS_MS = [2000, 4000, 8000, 16000] as const;
+
 export type StallAction =
+	| { act: 'hold'; delayMs: number }
 	| { act: 'nudge'; toast: boolean }
 	| { act: 'recover' }
 	| { act: 'surface' };
@@ -42,13 +48,19 @@ export class HlsStallMachine {
 	 *  Failures without frag data stall the main rendition (the
 	 *  common case — hls.js fatals do not always carry a frag). */
 	private nudges = new Map<string, number>();
+	private holds = new Map<string, number>();
 	private hasProgressed = false;
 
 	/** A fatal error arrived; decide the response. A nudge counts
 	 *  against ITS rendition's burst budget and asks for the toast
 	 *  only when no stall was active — one "host is slow" notice per
 	 *  trouble window, however many renditions join it. */
-	failure(input: { err: StreamFailure; hasAutoRetried: boolean; rendition?: string }): StallAction {
+	failure(input: {
+		err: StreamFailure;
+		hasAutoRetried: boolean;
+		rendition?: string;
+		bufferAheadSeconds?: number;
+	}): StallAction {
 		const rendition = input.rendition ?? renditionFromDetails(input.err) ?? 'main';
 		const used = this.nudges.get(rendition) ?? 0;
 		const response = decideStreamFailureResponse({
@@ -56,6 +68,11 @@ export class HlsStallMachine {
 			nudgesUsed: used,
 			playbackProgressed: this.hasProgressed
 		});
+		if (response === 'hold') {
+			const held = this.holds.get(rendition) ?? 0;
+			this.holds.set(rendition, held + 1);
+			return { act: 'hold', delayMs: HOLD_DELAYS_MS[Math.min(held, HOLD_DELAYS_MS.length - 1)] };
+		}
 		if (response === 'nudge') {
 			const anyActive = [...this.nudges.values()].some((n) => n > 0);
 			this.nudges.set(rendition, used + 1);
@@ -69,7 +86,10 @@ export class HlsStallMachine {
 	 *  video proves nothing about an audio stall. */
 	fragmentLoaded(data: { frag?: { type?: string } }): void {
 		const type = data.frag?.type;
-		if (type !== undefined) this.nudges.delete(type);
+		if (type !== undefined) {
+			this.nudges.delete(type);
+			this.holds.delete(type);
+		}
 	}
 
 	/** Playback crossed the running threshold on the CURRENT stream:
@@ -86,6 +106,7 @@ export class HlsStallMachine {
 	 *  itself again. */
 	reset(): void {
 		this.nudges.clear();
+		this.holds.clear();
 		this.hasProgressed = false;
 	}
 }
