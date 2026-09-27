@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	FRAGMENT_LOAD_ALLOWANCE,
 	FRAGMENT_LOAD_WINDOW_MS,
-	FragmentLoopGuard
+	FragmentLoopGuard,
+	fragmentLoopKey
 } from './fragment-loop-guard';
 
 function clock(start = 0) {
@@ -14,6 +15,30 @@ function clock(start = 0) {
 		}
 	};
 }
+
+describe('fragmentLoopKey', () => {
+	it('tells renditions apart: main, audio and subtitle playlists number their fragments independently', () => {
+		const main = fragmentLoopKey({ type: 'main', level: 0, sn: 12 });
+		const audio = fragmentLoopKey({ type: 'audio', level: 0, sn: 12 });
+		const subtitle = fragmentLoopKey({ type: 'subtitle', level: 0, sn: 12 });
+		expect(new Set([main, audio, subtitle]).size).toBe(3);
+	});
+
+	it('tells levels and sequence numbers apart within a rendition', () => {
+		expect(fragmentLoopKey({ type: 'main', level: 0, sn: 12 })).not.toBe(
+			fragmentLoopKey({ type: 'main', level: 1, sn: 12 })
+		);
+		expect(fragmentLoopKey({ type: 'main', level: 0, sn: 12 })).not.toBe(
+			fragmentLoopKey({ type: 'main', level: 0, sn: 13 })
+		);
+	});
+
+	it('is the same for the same fragment', () => {
+		expect(fragmentLoopKey({ type: 'main', level: 0, sn: 12 })).toBe(
+			fragmentLoopKey({ type: 'main', level: 0, sn: 12 })
+		);
+	});
+});
 
 describe('the fragment loop guard', () => {
 	it('lets a playing stream load every fragment once', () => {
@@ -60,5 +85,18 @@ describe('the fragment loop guard', () => {
 		}
 		expect(guard.loaded('0:2')).toBe(false);
 		expect(guard.loaded('1:1')).toBe(true);
+	});
+
+	it('does not add up healthy loads across renditions', () => {
+		// A seek within the window reloads the main, audio and subtitle
+		// fragments that cover it; three renditions loading once each
+		// is not one fragment looping.
+		const t = clock();
+		const guard = new FragmentLoopGuard(t.now);
+		for (let i = 0; i < 2; i++) {
+			for (const type of ['main', 'audio', 'subtitle']) {
+				expect(guard.loaded(fragmentLoopKey({ type, level: 0, sn: 12 }))).toBe(false);
+			}
+		}
 	});
 });
