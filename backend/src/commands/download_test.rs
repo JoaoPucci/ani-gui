@@ -4181,6 +4181,18 @@ async fn until_log(
     }
 }
 
+/// The byte-rate limit a logged spawn carries, if any.
+#[cfg(unix)]
+fn rate_limit_of(line: &str) -> Option<&str> {
+    let mut parts = line.split_whitespace();
+    while let Some(p) = parts.next() {
+        if p == "--limit-rate" {
+            return parts.next();
+        }
+    }
+    None
+}
+
 #[cfg(unix)]
 fn concurrency_of(line: &str) -> Option<&str> {
     let mut parts = line.split_whitespace();
@@ -4781,6 +4793,65 @@ async fn ffmpeg_fallbacks_run_one_at_a_time_even_with_nothing_playing() {
     assert!(
         calls[1].starts_with("done"),
         "the first run finished before the second spawned: {calls:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_paced_download_also_limits_its_byte_rate() {
+    // The host counts requests per address. One fragment at a time
+    // still asks for one as fast as the host answers, which with
+    // small segments is several a second — so the paced run also
+    // limits its byte rate, which spaces its requests out, and the
+    // free run does neither.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    std::fs::write(&go, b"").expect("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    for (live, stem) in [(true, "Show Episode 16"), (false, "Show Episode 17")] {
+        let flag = std::sync::atomic::AtomicBool::new(live);
+        let is_live = || flag.load(std::sync::atomic::Ordering::Relaxed);
+        let lane = tokio::sync::Semaphore::new(1);
+        let pacing = crate::commands::download_pacing::Pacing::new(
+            &is_live,
+            std::time::Duration::from_millis(50),
+            &lane,
+        );
+        let mut lines = Vec::new();
+        let mut on_line = |l: &str| lines.push(l.to_string());
+        spawn_download_tool_paced(
+            &source,
+            dest.path(),
+            stem,
+            None,
+            &path_env,
+            std::time::Duration::from_secs(10),
+            &mut on_line,
+            &pacing,
+        )
+        .await
+        .expect("the transfer completes");
+    }
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    let spawns: Vec<&str> = calls.lines().filter(|l| !l.starts_with("done")).collect();
+    assert_eq!(spawns.len(), 2, "one spawn each: {calls}");
+    assert_eq!(
+        rate_limit_of(spawns[0]),
+        Some(crate::commands::download_pacing::PACED_RATE_LIMIT),
+        "paced: the byte rate is limited: {calls}"
+    );
+    assert_eq!(
+        rate_limit_of(spawns[1]),
+        None,
+        "free: no byte-rate limit: {calls}"
     );
 }
 
