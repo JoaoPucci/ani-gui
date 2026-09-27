@@ -136,11 +136,23 @@ impl<'a> Pacing<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn the_concurrency_follows_playback() {
         assert_eq!(fragment_concurrency(true), PACED_FRAGMENTS);
         assert_eq!(fragment_concurrency(false), FAST_FRAGMENTS);
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn the_concurrency_is_one_of_the_two_and_paced_is_the_smaller(live in proptest::bool::ANY) {
+            let n = fragment_concurrency(live);
+            prop_assert!(n >= 1, "a download always moves");
+            prop_assert!(n <= FAST_FRAGMENTS, "nothing exceeds the free concurrency");
+            prop_assert_eq!(n == PACED_FRAGMENTS, live);
+            prop_assert_eq!(n == FAST_FRAGMENTS, !live);
+        }
     }
 
     #[tokio::test(start_paused = true)]
