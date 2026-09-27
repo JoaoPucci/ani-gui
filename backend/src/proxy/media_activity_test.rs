@@ -236,3 +236,48 @@ async fn a_subtitle_track_fetch_is_not_media() {
         "a subtitle track is not media"
     );
 }
+
+#[tokio::test]
+async fn an_mp4_sessions_master_request_is_refused_without_marking_playback_live() {
+    // The master route refuses a session whose media is an mp4 before
+    // it fetches anything; a refusal serves no media, on this route as
+    // on the others.
+    let secret = AppSecret::from_bytes([7u8; 32]);
+    let sessions = SessionTable::new();
+    let session = StreamSession::new_with_kind(
+        url::Url::parse("https://cdn.example/video.mp4").expect("mp4 url"),
+        MediaKind::Mp4,
+        "https://embed.example/".to_string(),
+    );
+    let id = session.id;
+    sessions.insert(session);
+    let router = build_router(ProxyState {
+        sessions: sessions.clone(),
+        secret,
+        client: reqwest::Client::new(),
+        origin: ProxyOrigin::new("127.0.0.1", 1),
+    });
+    let status = get(router, &format!("/s/{}/master.m3u8", id.as_string())).await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert!(
+        !sessions.playback_live(WINDOW),
+        "a refused request is not media served"
+    );
+}
+
+#[tokio::test]
+async fn a_segment_request_with_a_bad_token_is_refused_without_marking_playback_live() {
+    let (router, sessions, id, _secret) = proxy_on("https://cdn.example/master.m3u8");
+    let seg = "https://cdn.example/seg-001.ts";
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(seg.as_bytes());
+    let status = get(
+        router,
+        &format!("/s/{}/seg?u={encoded}&t=not-a-signature", id.as_string()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(
+        !sessions.playback_live(WINDOW),
+        "a refused request is not media served"
+    );
+}
