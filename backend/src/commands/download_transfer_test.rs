@@ -81,6 +81,7 @@ async fn sidecars_are_fetched_while_the_transfer_runs() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect("the transfer completes");
@@ -124,6 +125,7 @@ async fn a_failed_transfer_does_not_wait_on_a_stalling_track() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect_err("the transfer failed");
@@ -198,6 +200,7 @@ async fn a_failed_transfer_leaves_no_sidecar_it_fetched() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect_err("the transfer failed");
@@ -250,6 +253,7 @@ async fn a_sidecar_takes_its_name_only_once_the_transfer_has_succeeded() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect("the transfer completes");
@@ -296,6 +300,7 @@ async fn a_tool_that_writes_nothing_installs_no_sidecar() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect("a tool that writes nothing is not a failed transfer");
@@ -340,6 +345,7 @@ async fn sidecars_install_beside_an_episode_already_at_its_name() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect("having the episode already is not a failure");
