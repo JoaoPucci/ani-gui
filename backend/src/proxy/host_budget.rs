@@ -5,11 +5,15 @@
 //! with a download's requests beside it tipping it sooner. Every fetch
 //! the player makes passes through the proxy, so the proxy spaces them:
 //! each upstream host has a budget with a burst for startup and seeks
-//! and a steady refill after it. hls.js loads one segment at a time and
-//! allows ten seconds for a first byte, so a wait here of a second or so
-//! paces its stream without it noticing, and the player still buffers
-//! as far ahead as it likes — over minutes rather than seconds. The
-//! budget is per host and per process, like the address the host counts.
+//! and a steady refill after it, and every fetch the proxy makes to the
+//! host on the player's behalf — playlists, segments, mp4 ranges,
+//! subtitle tracks — is charged to it. hls.js loads one segment at a
+//! time and the player allows it ten seconds for a first byte, so a
+//! wait here of a second or so is absorbed, and the player still
+//! buffers as far ahead as it likes — over minutes rather than
+//! seconds; while it is still filling that buffer, a seek past it may
+//! take a few seconds longer than it otherwise would. The budget is
+//! per host and per process, like the address the host counts.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -97,7 +101,7 @@ impl HostBudget {
     pub(crate) async fn admit(&self, host: &str) {
         loop {
             let wait = {
-                let mut buckets = self.buckets.lock().expect("host budget lock");
+                let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
                 let now = Instant::now();
                 let bucket = buckets
                     .entry(host.to_owned())

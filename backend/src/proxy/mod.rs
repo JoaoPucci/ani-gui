@@ -121,6 +121,9 @@ async fn handle_master(
 
     // The manifest's relative URIs resolve against where it was served
     // from, which a redirect can move away from the session's URL.
+    host_budget::HOST_BUDGET
+        .admit(&host_budget::host_key(&sess.upstream_url))
+        .await;
     let (body, served_from) =
         match upstream::fetch_text(&state.client, &sess.upstream_url, &sess.referer).await {
             Ok((bytes, _ct, from)) => (bytes, from),
@@ -215,6 +218,9 @@ async fn handle_subtitle(
     // Read only up to the subtitle cap: a track URL can point at
     // something far larger than a subtitle file, and the player asks
     // for every attached track on its own.
+    host_budget::HOST_BUDGET
+        .admit(&host_budget::host_key(&upstream_url))
+        .await;
     let body = match upstream::fetch_subtitle(&state.client, &upstream_url, &sess.referer).await {
         Ok(upstream::CappedBody::Whole(bytes)) => bytes,
         Ok(upstream::CappedBody::Oversized) => {
@@ -383,6 +389,11 @@ async fn handle_seg(
     let path = upstream_url.path();
     let is_manifest = path.ends_with(".m3u8");
 
+    // Every fetch the proxy makes to the host on the player's behalf
+    // is charged to the host's budget — playlists as well as media.
+    host_budget::HOST_BUDGET
+        .admit(&host_budget::host_key(&upstream_url))
+        .await;
     if is_manifest {
         let (body, served_from) =
             match upstream::fetch_text(&state.client, &upstream_url, &sess.referer).await {
@@ -425,11 +436,6 @@ async fn handle_seg(
     // `upstream::` fetches use: a stored referer that is empty, or
     // that cannot become a header value, sends no header at all
     // rather than an empty one or some other origin's name.
-    // Every segment the player asks for passes through here, so this
-    // is where its fetches are spaced to the host's budget.
-    host_budget::HOST_BUDGET
-        .admit(&host_budget::host_key(&upstream_url))
-        .await;
     let mut req = state.client.get(upstream_url.as_str());
     if let Some(referer) = upstream::referer_header(&sess.referer) {
         req = req.header(reqwest::header::REFERER, referer);
