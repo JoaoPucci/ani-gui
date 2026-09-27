@@ -72,13 +72,6 @@ export function stallNudgeToast(): PushArgs {
 /** Cause-naming overlay copy once the retry budget is spent and the
  *  failure still carries the host-slow signature; null keeps the
  *  caller's generic message. */
-/** The overlay's message when the engine was stopped for asking for
- *  one fragment past its allowance: a stream that loads but never
- *  buffers is not a slow host or an expired link. */
-export function fragmentLoopOverlayMessage(): string {
-	return m.play_error_fragment_loop();
-}
-
 export function exhaustedStallOverlayMessage(
 	err: StreamFailure,
 	hasAutoRetried: boolean
@@ -86,4 +79,11 @@ export function exhaustedStallOverlayMessage(
 	if (!hasAutoRetried || !isNetworkClassStreamError(err)) return null;
 	if (err.source !== 'hls') return null;
 	return HOST_SLOW.test(err.details ?? '') ? m.play_error_host_slow() : null;
+}
+
+/** The overlay's message when the engine was stopped for asking for
+ *  one fragment past its allowance: a stream that loads but never
+ *  buffers is not a slow host or an expired link. */
+export function fragmentLoopOverlayMessage(): string {
+	return m.play_error_fragment_loop();
 }

@@ -3,8 +3,14 @@ import {
 	FRAGMENT_LOAD_ALLOWANCE,
 	FRAGMENT_LOAD_WINDOW_MS,
 	FragmentLoopGuard,
-	fragmentLoopKey
+	fragmentLoopKey,
+	type FragmentIdentity
 } from './fragment-loop-guard';
+
+/** hls.js's fragment identity as the page hands it over. */
+function frag(type: string, level: number, sn: number): FragmentIdentity {
+	return { type, level, sn } as FragmentIdentity;
+}
 
 function clock(start = 0) {
 	let now = start;
@@ -18,25 +24,19 @@ function clock(start = 0) {
 
 describe('fragmentLoopKey', () => {
 	it('tells renditions apart: main, audio and subtitle playlists number their fragments independently', () => {
-		const main = fragmentLoopKey({ type: 'main', level: 0, sn: 12 });
-		const audio = fragmentLoopKey({ type: 'audio', level: 0, sn: 12 });
-		const subtitle = fragmentLoopKey({ type: 'subtitle', level: 0, sn: 12 });
+		const main = fragmentLoopKey(frag('main', 0, 12));
+		const audio = fragmentLoopKey(frag('audio', 0, 12));
+		const subtitle = fragmentLoopKey(frag('subtitle', 0, 12));
 		expect(new Set([main, audio, subtitle]).size).toBe(3);
 	});
 
 	it('tells levels and sequence numbers apart within a rendition', () => {
-		expect(fragmentLoopKey({ type: 'main', level: 0, sn: 12 })).not.toBe(
-			fragmentLoopKey({ type: 'main', level: 1, sn: 12 })
-		);
-		expect(fragmentLoopKey({ type: 'main', level: 0, sn: 12 })).not.toBe(
-			fragmentLoopKey({ type: 'main', level: 0, sn: 13 })
-		);
+		expect(fragmentLoopKey(frag('main', 0, 12))).not.toBe(fragmentLoopKey(frag('main', 1, 12)));
+		expect(fragmentLoopKey(frag('main', 0, 12))).not.toBe(fragmentLoopKey(frag('main', 0, 13)));
 	});
 
 	it('is the same for the same fragment', () => {
-		expect(fragmentLoopKey({ type: 'main', level: 0, sn: 12 })).toBe(
-			fragmentLoopKey({ type: 'main', level: 0, sn: 12 })
-		);
+		expect(fragmentLoopKey(frag('main', 0, 12))).toBe(fragmentLoopKey(frag('main', 0, 12)));
 	});
 });
 
@@ -88,14 +88,16 @@ describe('the fragment loop guard', () => {
 	});
 
 	it('does not add up healthy loads across renditions', () => {
-		// A seek within the window reloads the main, audio and subtitle
-		// fragments that cover it; three renditions loading once each
-		// is not one fragment looping.
+		// Two seeks within the window reload the main, audio and
+		// subtitle fragments that cover the spot: six loads sharing a
+		// level and sequence number, two per rendition. Six is past the
+		// allowance if the renditions are added up, and two is not when
+		// they are kept apart.
 		const t = clock();
 		const guard = new FragmentLoopGuard(t.now);
 		for (let i = 0; i < 2; i++) {
 			for (const type of ['main', 'audio', 'subtitle']) {
-				expect(guard.loaded(fragmentLoopKey({ type, level: 0, sn: 12 }))).toBe(false);
+				expect(guard.loaded(fragmentLoopKey(frag(type, 0, 12)))).toBe(false);
 			}
 		}
 	});

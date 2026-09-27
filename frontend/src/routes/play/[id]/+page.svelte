@@ -1593,12 +1593,10 @@
 			// the player cannot recover from.
 			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
-				stallMachine.fragmentLoaded(data as { frag?: { type?: string } });
-				const frag = (data as { frag?: { type?: string; level?: number; sn?: number | string } })
-					.frag;
-				if (!frag || !loopGuard.loaded(fragmentLoopKey(frag))) return;
+				stallMachine.fragmentLoaded(data);
+				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
 				engine.stopLoad();
-				console.warn('[play] fragment loop guard: engine stopped on fragment', frag.sn);
+				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
 			});
 			hls.on(Hls.Events.ERROR, (_, data) => {

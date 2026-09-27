@@ -136,6 +136,7 @@ function useShowHandlers() {
 			})
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
 	);
 }
@@ -170,7 +171,10 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		);
 	});
 
-	it('does not stop a stream whose renditions each load a fragment once', async () => {
+	it('does not stop a stream whose renditions each load a fragment twice', async () => {
+		// Two seeks within the window: six loads sharing a level and
+		// sequence number, two per rendition — past the allowance only
+		// if renditions were added up.
 		const hls = await mountHls();
 		for (let i = 0; i < 2; i++) {
 			for (const type of ['main', 'audio', 'subtitle']) {
