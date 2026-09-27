@@ -43,6 +43,12 @@ export class FragmentLoopGuard {
 
 	constructor(private readonly now: () => number = () => Date.now()) {}
 
+	/** Whether the guard has tripped: the engine it stopped is stopped,
+	 *  and nothing else should start it again. */
+	get hasTripped(): boolean {
+		return this.tripped;
+	}
+
 	/** Records a load of the fragment `key` names — its rendition,
 	 *  level and sequence number. True the one time a fragment has
 	 *  loaded more times inside the window than the allowance: the

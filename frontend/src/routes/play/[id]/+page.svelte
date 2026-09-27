@@ -1604,11 +1604,16 @@
 				stallMachine.fragmentLoaded(data);
 				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
 				engine.stopLoad();
+				if (holdRetry !== null) clearTimeout(holdRetry);
+				holdRetry = null;
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
 			});
 			hls.on(Hls.Events.ERROR, (_, data) => {
 				if (!data.fatal) return;
+				// An engine the guard stopped stays stopped: no hold, no
+				// nudge, no recovery would do anything but start it again.
+				if (loopGuard.hasTripped) return;
 				const err = { source: 'hls', type: data.type, details: data.details } as const;
 				const action = stallMachine.failure({
 					err,
