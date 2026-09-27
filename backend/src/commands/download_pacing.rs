@@ -87,6 +87,21 @@ impl<'a> Pacing<'a> {
         }
     }
 
+    /// The lane, once playback is live and the lane is open: for a
+    /// run that started free and cannot be paced down, so that while
+    /// it goes on beside the player it counts as the one connection
+    /// the allowance grants. Never resolves while nothing plays.
+    pub(crate) async fn claim_when_live(&self) -> SemaphorePermit<'a> {
+        loop {
+            if !self.is_live() {
+                self.until_live_changes(false).await;
+            }
+            if let Some(permit) = self.paced_turn().await {
+                return permit;
+            }
+        }
+    }
+
     /// A turn on the paced lane for one run of the tool. `Some` holds
     /// the lane until dropped; `None` means playback stopped while
     /// the lane was busy, and the run is free instead. Re-asks after
