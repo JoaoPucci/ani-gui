@@ -2,6 +2,8 @@
 //! passes at once, and the request after it waits a refill. Mounted by
 //! `#[path]` beside the other proxy tests.
 
+use std::time::Duration;
+
 use super::*;
 use tower::ServiceExt as _;
 use wiremock::matchers::{method, path as wm_path};
