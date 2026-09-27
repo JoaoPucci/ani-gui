@@ -275,6 +275,21 @@ starting it, and delete it when you find it done.
   to play it, so knowing where the show's page is was never the hard
   part.
 
+- **A spoiler-free mode.** Episode thumbnails and episode titles
+  give away what happens — a thumbnail of a character who was not
+  meant to survive, a title that names the twist — and the app shows
+  both wherever it lists episodes, the detail page's grid, the play
+  page's strip and the Continue Watching cards among them. A
+  mode that hides thumbnails and censors titles, and whatever else
+  turns out to spoil, would let someone browse a show they are
+  partway through without being told what comes next.
+
+  Why it waited: there is not much to it yet beyond the wish. What
+  counts as a spoiler, whether it is a global switch or per show, and
+  where the line sits — everything after the episode being watched,
+  or everything unwatched — are for the discussion at implementation
+  time, not for this entry.
+
 - **Nothing enforces the red-before-green pairing.** `AGENTS.md` §2
   requires a `test(red):` predecessor for anything that introduces a
   `feat` or a `fix`, and spells the verification out as a mechanical
