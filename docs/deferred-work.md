@@ -166,6 +166,18 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
+- **Two app instances do not share the playback record or the paced
+  lane.** The proxy's record of media served and the lane that paced
+  downloads take in turn live in one backend process, so a download
+  started in a second instance runs at full speed beside the first
+  instance's playback — the load the pacing exists to remove. Two
+  instances downloading the same file already coordinate through a
+  lock file in the download folder, chosen because it is the one
+  location both provably agree on while anything a process is
+  configured with can differ between them; the record and the lane
+  want the same shape. It waited because the single-instance path was
+  being reworked around the host's per-address request budget first,
+  and the shared version follows that answer.
 - **What a history removal does not reach.** Removing a show from the
   history, or clearing it, misses five things, each described in
   [`architecture.md`](./architecture.md#watch-history-and-removing-it):
@@ -177,6 +189,7 @@ starting it, and delete it when you find it done.
   logged while the removal succeeds. Each of the first four is a link
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
+
 
 ## Interface
 
