@@ -1419,10 +1419,11 @@ where
 /// yt-dlp runs paced while `pacing` says playback is live, and a
 /// change of state under a running transfer takes the tool down and
 /// starts it again at the other concurrency on the same output, which
-/// yt-dlp resumes from the fragments it already has. The ffmpeg
-/// fallback is a single connection: it holds the paced lane from its
-/// start whether or not anything plays, and is never taken down, since
-/// it cannot resume.
+/// yt-dlp resumes from the fragments it already has. A paced run has a
+/// ceiling of its own, and the time it took extends the transfer's.
+/// The ffmpeg fallback is a single connection: it holds the paced lane
+/// from its start whether or not anything plays, and is never taken
+/// down, since it cannot resume.
 ///
 /// `path_env` is the PATH searched for the tools — the caller passes
 /// the process environment; tests stage stub executables.
@@ -1539,6 +1540,12 @@ where
     // whole file exists, so a half transfer is never sitting under the
     // name the dock, the file manager and every other download read.
     let mut scratch = Scratch::new(dest);
+    // The ceiling guards a hung tool. A paced run is slow by design
+    // and ends the moment playback stops, so it runs under a ceiling
+    // of its own, and the time it took is added to the transfer's for
+    // what follows — the free runs, the waits for the lane, and the
+    // fallback.
+    let mut deadline = deadline;
     if let Some(exe) = ytdlp {
         // Supervised: a run ends by exiting, by failing, or by playback
         // starting or stopping under it — then the tool is down and the
@@ -1583,15 +1590,24 @@ where
                 "download: spawning yt-dlp",
             );
             let mut repackage_failed = false;
+            let started = tokio::time::Instant::now();
+            let run_deadline = if live {
+                started + super::download_pacing::PACED_RUN_CEILING
+            } else {
+                deadline
+            };
             let run = run_tool_until(
                 cmd,
-                deadline,
+                run_deadline,
                 on_line,
                 &mut repackage_failed,
                 pacing.until_live_changes(live),
             )
             .await;
             drop(turn);
+            if live {
+                deadline += started.elapsed();
+            }
             match run {
                 Ok(ToolRun::Exited) => return finish(&scratch, &target, on_line).await,
                 Ok(ToolRun::Interrupted) => {
