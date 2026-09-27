@@ -4197,7 +4197,7 @@ fn concurrency_of(line: &str) -> Option<&str> {
 async fn a_download_started_while_playback_is_live_runs_paced() {
     // Sixteen fragments in flight against the host the player is
     // streaming from starve the player's next segment; a download
-    // that starts while segments are flowing asks for two.
+    // that starts while segments are flowing asks for one.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let log = dest.path().join("calls.log");
@@ -4233,7 +4233,7 @@ async fn a_download_started_while_playback_is_live_runs_paced() {
     assert_eq!(spawns.len(), 1, "one spawn: {calls}");
     assert_eq!(
         concurrency_of(spawns[0]),
-        Some("2"),
+        Some("1"),
         "paced while playback is live: {calls}"
     );
     assert!(dest.path().join("Show Episode 3.mp4").exists());
@@ -4288,7 +4288,7 @@ async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
         let second = until_log(&log, "the paced respawn", |l| l.len() == 2).await;
         assert_eq!(
             concurrency_of(&second[1]),
-            Some("2"),
+            Some("1"),
             "playback started: paced"
         );
         std::fs::write(&go, b"").expect("go");
@@ -4355,7 +4355,7 @@ async fn a_paced_download_runs_free_again_once_playback_stops() {
     );
     let drive = async {
         let first = until_log(&log, "the first spawn", |l| l.len() == 1).await;
-        assert_eq!(concurrency_of(&first[0]), Some("2"));
+        assert_eq!(concurrency_of(&first[0]), Some("1"));
         live.store(false, std::sync::atomic::Ordering::Relaxed);
         let second = until_log(&log, "the full-speed respawn", |l| l.len() == 2).await;
         assert_eq!(concurrency_of(&second[1]), Some("16"));
@@ -4375,7 +4375,7 @@ async fn the_download_command_paces_on_the_proxys_record_of_playback() {
     // End to end: the proxy noted a media fetch moments ago, so the
     // command's transfer spawns paced; with nothing noted it spawns
     // at full speed.
-    for (live, want) in [(true, "2"), (false, "16")] {
+    for (live, want) in [(true, "1"), (false, "16")] {
         let server = stub_range_show().await;
         let td = tempfile::tempdir().expect("td");
         let state = native_test_state(&td, &server.uri());
