@@ -4857,6 +4857,146 @@ async fn a_paced_download_also_limits_its_byte_rate() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_download_waiting_for_the_lane_fails_at_its_deadline() {
+    // The transfer's ceiling is one absolute instant, and waiting for
+    // the lane is time the transfer is spending: a download queued
+    // behind another's paced run past its own deadline fails as a
+    // timeout there, instead of pending until the holder's later one.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 18",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        let started = tokio::time::Instant::now();
+        let second = spawn_download_tool_paced(
+            &source,
+            dest_b.path(),
+            "Show Episode 19",
+            None,
+            &path_env,
+            std::time::Duration::from_millis(400),
+            &mut on_line_b,
+            &pacing,
+        )
+        .await;
+        assert!(
+            matches!(second, Err(AniError::Timeout)),
+            "the queued download fails at its own deadline: {second:?}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "and does so when that deadline passes, not the holder's"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, ()) = tokio::join!(first, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_waiting_for_the_lane_fails_at_its_deadline() {
+    // The same ceiling for the fallback: one ffmpeg holds the lane
+    // for as long as it runs, and a second whose deadline passes while
+    // it waits fails there.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ffmpeg(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 20",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
+        let started = tokio::time::Instant::now();
+        let second = spawn_download_tool_paced(
+            &source,
+            dest_b.path(),
+            "Show Episode 21",
+            None,
+            &path_env,
+            std::time::Duration::from_millis(400),
+            &mut on_line_b,
+            &pacing,
+        )
+        .await;
+        assert!(
+            matches!(second, Err(AniError::Timeout)),
+            "the queued fallback fails at its own deadline: {second:?}"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, ()) = tokio::join!(first, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_paced_download_runs_free_again_once_playback_stops() {
     // The player paused or the episode ended: after the window of
     // silence the download is taken down and started again at full
