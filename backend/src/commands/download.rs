@@ -291,7 +291,11 @@ where
             .sessions
             .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
     };
-    let pacing = super::download_pacing::Pacing::new(&is_live, super::download_pacing::PACING_POLL);
+    let pacing = super::download_pacing::Pacing::new(
+        &is_live,
+        super::download_pacing::PACING_POLL,
+        &super::download_pacing::PACED_LANE,
+    );
     super::download_transfer::transfer_with_sidecars(
         &state.proxy_http,
         &source,
@@ -1537,6 +1541,24 @@ where
         // next run resumes its fragments at the other concurrency.
         let mut live = pacing.is_live();
         let (e, repackage_failed) = loop {
+            // Paced runs take the app's one lane in turn, so two
+            // downloads beside the player put one yt-dlp against the
+            // host, not one each. Waiting ends when the lane opens or
+            // when playback stops — then the run is free.
+            let turn = if live {
+                match pacing.paced_turn().await {
+                    Some(turn) => Some(turn),
+                    None => {
+                        live = false;
+                        tracing::info!(
+                            "download: playback stopped while waiting for the paced lane; running free",
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
             let cmd = ytdlp_command(
                 &exe,
                 child_path.as_deref(),
@@ -1552,15 +1574,16 @@ where
                 "download: spawning yt-dlp",
             );
             let mut repackage_failed = false;
-            match run_tool_until(
+            let run = run_tool_until(
                 cmd,
                 deadline,
                 on_line,
                 &mut repackage_failed,
                 pacing.until_live_changes(live),
             )
-            .await
-            {
+            .await;
+            drop(turn);
+            match run {
                 Ok(ToolRun::Exited) => return finish(&scratch, &target, on_line).await,
                 Ok(ToolRun::Interrupted) => {
                     live = pacing.is_live();
