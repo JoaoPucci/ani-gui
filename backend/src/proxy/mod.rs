@@ -18,6 +18,7 @@ pub mod upstream;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
@@ -524,6 +525,10 @@ mod seg_referer_tests;
 #[cfg(test)]
 #[path = "media_activity_test.rs"]
 mod media_activity_tests;
+
+#[cfg(test)]
+#[path = "host_budget_route_test.rs"]
+mod host_budget_route_tests;
 
 #[cfg(test)]
 mod tests {
