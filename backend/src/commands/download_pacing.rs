@@ -1,8 +1,9 @@
 //! How a download yields to live playback. yt-dlp fetches sixteen
 //! fragments at once, and against the host the player is streaming
-//! from that burst starves the player's next segment within seconds.
-//! While the proxy has served media recently — playback is live — a
-//! download runs one fragment at a time instead. yt-dlp cannot change its
+//! from that burst spends the address's request budget at the host,
+//! which refuses the player's next segment within seconds. While the
+//! proxy has served media recently — playback is live — a download
+//! runs one fragment at a time at a limited byte rate instead. yt-dlp cannot change its
 //! concurrency mid-run, so when playback starts or stops under a
 //! running download the supervisor takes the tool down and starts it
 //! again on the same output, which yt-dlp resumes from the fragments
@@ -30,6 +31,14 @@ pub(crate) const FAST_FRAGMENTS: u32 = 16;
 /// them still lost the player's segment request.
 pub(crate) const PACED_FRAGMENTS: u32 = 1;
 
+/// The byte rate a paced run is held to, in yt-dlp's `--limit-rate`
+/// spelling. The host counts requests per address, and one fragment
+/// at a time against small segments is still several requests a
+/// second; at this rate a megabyte segment takes about two seconds,
+/// which keeps the download's share of the address's budget small
+/// beside the player's own fetches.
+pub(crate) const PACED_RATE_LIMIT: &str = "512K";
+
 /// How long after the last media fetch playback counts as live: a
 /// playing player fetches a segment every few seconds, and a paused
 /// one with a full buffer fetches nothing, so a window of silence is
@@ -52,6 +61,13 @@ pub(crate) fn fragment_concurrency(playback_live: bool) -> u32 {
     } else {
         FAST_FRAGMENTS
     }
+}
+
+/// The byte-rate limit for the current state of playback: held while
+/// playback is live, none otherwise.
+#[must_use]
+pub(crate) fn rate_limit(playback_live: bool) -> Option<&'static str> {
+    playback_live.then_some(PACED_RATE_LIMIT)
 }
 
 /// The transfer's view of playback: a question it can ask at any
@@ -152,6 +168,7 @@ mod tests {
             prop_assert!(n <= FAST_FRAGMENTS, "nothing exceeds the free concurrency");
             prop_assert_eq!(n == PACED_FRAGMENTS, live);
             prop_assert_eq!(n == FAST_FRAGMENTS, !live);
+            prop_assert_eq!(rate_limit(live).is_some(), live, "the byte rate is limited exactly when paced");
         }
     }
 

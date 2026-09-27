@@ -1568,9 +1568,11 @@ where
                 &scratch.path,
                 quality,
                 super::download_pacing::fragment_concurrency(live),
+                super::download_pacing::rate_limit(live),
             );
             tracing::info!(
                 fragments = super::download_pacing::fragment_concurrency(live),
+                rate_limit = super::download_pacing::rate_limit(live).unwrap_or("none"),
                 playback_live = live,
                 "download: spawning yt-dlp",
             );
@@ -1805,8 +1807,11 @@ fn a_download_tool_exists(path_env: &str) -> bool {
 /// [`AniError::Timeout`] past the deadline, [`AniError::Network`] on
 /// spawn failure, [`AniError::Scraper`] on a non-zero exit.
 /// yt-dlp's command line for one run of a transfer: v5's arguments,
-/// the quality preference as a format sort, and `fragments` in flight
-/// — sixteen with nothing playing, one while playback is live.
+/// the quality preference as a format sort, `fragments` in flight —
+/// sixteen with nothing playing, one while playback is live — and,
+/// while playback is live, the byte-rate limit that spaces requests
+/// out.
+#[allow(clippy::too_many_arguments)]
 fn ytdlp_command(
     exe: &std::path::Path,
     child_path: Option<&std::ffi::OsStr>,
@@ -1815,6 +1820,7 @@ fn ytdlp_command(
     scratch: &std::path::Path,
     quality: Option<&str>,
     fragments: u32,
+    rate_limit: Option<&str>,
 ) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(exe);
     if let Some(p) = child_path {
@@ -1826,9 +1832,11 @@ fn ytdlp_command(
         .arg("--fragment-retries")
         .arg("infinite")
         .arg("-N")
-        .arg(fragments.to_string())
-        .arg("-o")
-        .arg(scratch);
+        .arg(fragments.to_string());
+    if let Some(rate) = rate_limit {
+        cmd.arg("--limit-rate").arg(rate);
+    }
+    cmd.arg("-o").arg(scratch);
     // v5 downloads the variant select_quality chose; the same
     // preference expressed through yt-dlp's format sort.
     match quality {
