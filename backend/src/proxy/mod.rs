@@ -332,7 +332,10 @@ async fn handle_mp4(
         HeaderValue::from_static("no-store"),
     );
 
-    let body = Body::from_stream(upstream_resp.bytes_stream());
+    let body = Body::from_stream(noting_media(
+        upstream_resp.bytes_stream(),
+        state.sessions.clone(),
+    ));
     (status, out_headers, body).into_response()
 }
 
@@ -433,7 +436,7 @@ async fn handle_seg(
     };
     let status = resp.status();
     let headers = clone_passthrough_headers(resp.headers());
-    let stream = resp.bytes_stream();
+    let stream = noting_media(resp.bytes_stream(), state.sessions.clone());
     (
         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK),
         headers,
@@ -448,6 +451,27 @@ fn decode_seg_url(b64: &str) -> crate::Result<Url> {
         .map_err(|_| AniError::InvalidToken)?;
     let s = std::str::from_utf8(&bytes).map_err(|_| AniError::InvalidToken)?;
     Url::parse(s).map_err(|_| AniError::InvalidToken)
+}
+
+/// A media body whose chunks keep the session table's record of
+/// playback fresh as they flow. The note at the request's admission
+/// covers a segment, gone in seconds; an mp4 range request streams
+/// for minutes, and a download beside it must not be let back to full
+/// speed while its bytes are still moving. An error in the stream is
+/// passed through and is not media served.
+fn noting_media<S, E>(
+    stream: S,
+    sessions: SessionTable,
+) -> impl futures_util::Stream<Item = std::result::Result<bytes::Bytes, E>>
+where
+    S: futures_util::Stream<Item = std::result::Result<bytes::Bytes, E>>,
+{
+    use futures_util::StreamExt as _;
+    stream.inspect(move |chunk| {
+        if chunk.is_ok() {
+            sessions.note_media_fetch();
+        }
+    })
 }
 
 fn error_response(status: StatusCode, body: &'static str) -> Response {
