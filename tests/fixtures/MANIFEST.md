@@ -14,6 +14,7 @@ timestamp, and SHA-256. Fixtures over 1 MB live in git-LFS.
 | `anilist/` | GraphQL responses for `Page.media(sort: TRENDING_DESC)`, `Page.media(season:, seasonYear:)`. |
 | `m3u8/` | Master playlist (multi-bitrate), media playlist with absolute URIs, media playlist with relative URIs, edge cases (`EXT-X-I-FRAME-STREAM-INF`, `EXT-X-BYTERANGE`, encrypted with `EXT-X-KEY`). |
 | `history/` | Watch-history samples for the GUI's reader: empty, single-entry, multi-entry, duplicate-id, malformed-line. |
+| `hls/` | Synthesized MPEG-TS samples for the player's demuxer regression tests, as base64 text: a stream whose video starts under one second and whose audio starts after it. |
 
 ## Refresh flow
 

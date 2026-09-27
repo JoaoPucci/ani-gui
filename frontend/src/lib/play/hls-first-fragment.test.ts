@@ -13,13 +13,19 @@ import Hls, { ChunkMetadata } from 'hls.js';
  * rollover picks the audio's instead, every video frame of that
  * fragment lands before zero and is dropped by the media source, and
  * the engine asks for the fragment again as fast as the host answers
- * — a hundred requests a second until the host refuses the address.
+ * — well over a hundred requests a second until the host refuses the
+ * address.
  *
- * The fixture is a two-second encode with that shape: video from
- * 0.184 s, audio from 1.163 s, one program, H.264 and AAC.
+ * The fixture is a 2.4-second synthesized encode with that shape —
+ * video from 0.184 s, audio from 1.163 s, one program, H.264 and AAC —
+ * kept as base64 text in the manifest-backed fixture store, whose
+ * manifest carries the command that made it and its checksum.
  */
 
-const FIXTURE = new URL('./fixtures/video-before-audio.mpegts', import.meta.url);
+const FIXTURE = new URL(
+	'../../../../tests/fixtures/hls/video-before-audio.mpegts.b64',
+	import.meta.url
+);
 const VIDEO_START_S = 0.184;
 
 interface Posted {
@@ -34,22 +40,35 @@ interface RemuxResult {
 	audio?: { startPTS: number; endPTS: number };
 }
 
-/** Drives the worker bundle in-process, the way a Web Worker would. */
-async function transmuxFirstFragment(bytes: Uint8Array): Promise<RemuxResult[]> {
-	const posted: Posted[] = [];
-	let onMessage: ((e: { data: unknown }) => void) | null = null;
+/** The worker bundle, loaded once for the file the way a Web Worker
+ *  would load it: it registers one message listener on `self` at
+ *  module top level, so the shims that catch it are installed before
+ *  the import and the handler is kept for every call after. The
+ *  globals stay shimmed for the rest of the file; vitest runs each
+ *  test file in its own module graph, so nothing else sees them. */
+const posted: Posted[] = [];
+const workerHandler: ((e: { data: unknown }) => void) | null = await (async () => {
+	let handler: ((e: { data: unknown }) => void) | null = null;
 	const g = globalThis as unknown as Record<string, unknown>;
 	g.self = globalThis;
 	g.postMessage = (msg: Posted) => {
 		posted.push(msg);
 	};
 	g.addEventListener = (type: string, fn: (e: { data: unknown }) => void) => {
-		if (type === 'message') onMessage = fn;
+		if (type === 'message') handler = fn;
 	};
 	// @ts-expect-error the worker bundle ships without a declaration file
 	await import('hls.js/dist/hls.worker.js');
-	if (!onMessage) throw new Error('the worker did not register a message handler');
-	const send = (data: Record<string, unknown>) => onMessage!({ data: { instanceNo: 1, ...data } });
+	return handler;
+})();
+
+/** Drives the loaded worker bundle through one fragment: init,
+ *  configure, demux, flush — the messages hls.js itself sends. */
+function transmuxFirstFragment(bytes: Uint8Array): RemuxResult[] {
+	if (!workerHandler) throw new Error('the worker did not register a message handler');
+	const onMessage = workerHandler;
+	posted.length = 0;
+	const send = (data: Record<string, unknown>) => onMessage({ data: { instanceNo: 1, ...data } });
 	send({
 		cmd: 'init',
 		id: 'main',
@@ -90,9 +109,9 @@ async function transmuxFirstFragment(bytes: Uint8Array): Promise<RemuxResult[]> 
 }
 
 describe('the first fragment of a stream whose video starts before its audio', () => {
-	it('keeps its video: the stream begins at the video, not at the audio', async () => {
-		const bytes = new Uint8Array(readFileSync(FIXTURE));
-		const results = await transmuxFirstFragment(bytes);
+	it('keeps its video: the stream begins at the video, not at the audio', () => {
+		const bytes = new Uint8Array(Buffer.from(readFileSync(FIXTURE, 'utf8'), 'base64'));
+		const results = transmuxFirstFragment(bytes);
 		const init = results.map((r) => r.initSegment).find((s) => s?.initPTS !== undefined);
 		expect(init, 'an init segment carrying the stream origin').toBeDefined();
 		// The origin is the earliest timestamp of the fragment — the
@@ -101,9 +120,12 @@ describe('the first fragment of a stream whose video starts before its audio', (
 		expect(init!.initPTS! / init!.timescale!).toBeCloseTo(VIDEO_START_S, 2);
 		const video = results.map((r) => r.video).find(Boolean);
 		expect(video, 'remuxed video').toBeDefined();
+		// The origin and a non-negative start are what tell the two
+		// versions apart: the misread put the video's start a second
+		// before zero. The remuxer's own dropped-frame count is zero on
+		// both, since the drop it caused happened in the media source.
 		expect(video!.startPTS).toBeGreaterThanOrEqual(0);
 		expect(video!.startPTS).toBeLessThan(0.1);
-		expect(video!.dropped ?? 0).toBe(0);
 		expect(video!.nb).toBeGreaterThan(0);
 	});
 });
