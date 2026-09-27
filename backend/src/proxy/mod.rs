@@ -483,6 +483,10 @@ mod subtitle_tests;
 mod seg_referer_tests;
 
 #[cfg(test)]
+#[path = "media_activity_test.rs"]
+mod media_activity_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

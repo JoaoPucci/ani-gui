@@ -4134,3 +4134,281 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
         "the row that remembered the provider stands; an episode verdict writes no absence"
     );
 }
+
+// ── a download yields to live playback ──────────────────────────────
+
+/// A yt-dlp stub that logs its pid and arguments, then waits for
+/// `go` before writing its output and logging that it finished — so a
+/// test can watch which spawn ran with which concurrency, release the
+/// one it wants to finish, and tell a spawn that was killed (it never
+/// logs `done`) from one that ran to the end.
+#[cfg(unix)]
+fn stage_waiting_ytdlp(bin: &std::path::Path, log: &std::path::Path, go: &std::path::Path) {
+    stage_tool(
+        bin,
+        "yt-dlp",
+        &format!(
+            "echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\n{write}\necho \"done $$\" >> '{log}'\nexit 0",
+            log = log.display(),
+            go = go.display(),
+            write = writes_its_output("video"),
+        ),
+    );
+}
+
+/// Polls `log` until `cond` holds over its lines, within a bound.
+#[cfg(unix)]
+async fn until_log(
+    log: &std::path::Path,
+    what: &str,
+    cond: impl Fn(&[String]) -> bool,
+) -> Vec<String> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let lines: Vec<String> = std::fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        if cond(&lines) {
+            return lines;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}: {lines:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+#[cfg(unix)]
+fn concurrency_of(line: &str) -> Option<&str> {
+    let mut parts = line.split_whitespace();
+    while let Some(p) = parts.next() {
+        if p == "-N" {
+            return parts.next();
+        }
+    }
+    None
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_started_while_playback_is_live_runs_paced() {
+    // Sixteen fragments in flight against the host the player is
+    // streaming from starve the player's next segment; a download
+    // that starts while segments are flowing asks for two.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    let go = dest.path().join("go");
+    std::fs::write(&go, b"").expect("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+    );
+    let mut lines = Vec::new();
+    let got = spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 3",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the paced transfer completes");
+    assert_eq!(got, Transferred::Episode);
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    let spawns: Vec<&str> = calls.lines().filter(|l| !l.starts_with("done")).collect();
+    assert_eq!(spawns.len(), 1, "one spawn: {calls}");
+    assert_eq!(
+        concurrency_of(spawns[0]),
+        Some("2"),
+        "paced while playback is live: {calls}"
+    );
+    assert!(dest.path().join("Show Episode 3.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
+    // The download was running sixteen wide with nothing playing;
+    // the user starts an episode. yt-dlp cannot change its
+    // concurrency mid-run, so the supervisor takes it down and
+    // starts it again paced, on the same output: yt-dlp resumes from
+    // the fragments it already has, and the killed run never
+    // finishes anything.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    let go = dest.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+    );
+    let mut lines = Vec::new();
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut on_line = |l: &str| lines.push(l.to_string());
+    let transfer = spawn_download_tool_paced(
+        &source,
+        dest.path(),
+        "Show Episode 4",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line,
+        &pacing,
+    );
+    let drive = async {
+        let first = until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        assert_eq!(
+            concurrency_of(&first[0]),
+            Some("16"),
+            "nothing playing: full speed"
+        );
+        live.store(true, std::sync::atomic::Ordering::Relaxed);
+        let second = until_log(&log, "the paced respawn", |l| l.len() == 2).await;
+        assert_eq!(
+            concurrency_of(&second[1]),
+            Some("2"),
+            "playback started: paced"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (got, ()) = tokio::join!(transfer, drive);
+    assert_eq!(
+        got.expect("the resumed transfer completes"),
+        Transferred::Episode
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    let done: Vec<&str> = calls.lines().filter(|l| l.starts_with("done")).collect();
+    let second_pid = calls
+        .lines()
+        .nth(1)
+        .and_then(|l| l.split_whitespace().next());
+    assert_eq!(
+        done.len(),
+        1,
+        "only the respawn finished; the first was taken down: {calls}"
+    );
+    assert_eq!(
+        done[0].split_whitespace().nth(1),
+        second_pid,
+        "the run that finished is the paced one: {calls}"
+    );
+    assert!(dest.path().join("Show Episode 4.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_paced_download_runs_free_again_once_playback_stops() {
+    // The player paused or the episode ended: after the window of
+    // silence the download is taken down and started again at full
+    // speed, resuming where it was.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    let go = dest.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+    );
+    let mut lines = Vec::new();
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut on_line = |l: &str| lines.push(l.to_string());
+    let transfer = spawn_download_tool_paced(
+        &source,
+        dest.path(),
+        "Show Episode 5",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line,
+        &pacing,
+    );
+    let drive = async {
+        let first = until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        assert_eq!(concurrency_of(&first[0]), Some("2"));
+        live.store(false, std::sync::atomic::Ordering::Relaxed);
+        let second = until_log(&log, "the full-speed respawn", |l| l.len() == 2).await;
+        assert_eq!(concurrency_of(&second[1]), Some("16"));
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (got, ()) = tokio::join!(transfer, drive);
+    assert_eq!(
+        got.expect("the resumed transfer completes"),
+        Transferred::Episode
+    );
+    assert!(dest.path().join("Show Episode 5.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_download_command_paces_on_the_proxys_record_of_playback() {
+    // End to end: the proxy noted a media fetch moments ago, so the
+    // command's transfer spawns paced; with nothing noted it spawns
+    // at full speed.
+    for (live, want) in [(true, "2"), (false, "16")] {
+        let server = stub_range_show().await;
+        let td = tempfile::tempdir().expect("td");
+        let state = native_test_state(&td, &server.uri());
+        if live {
+            state.sessions.note_media_fetch();
+        }
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        let log = dest.path().join("calls.log");
+        stage_tool(
+            bin.path(),
+            "yt-dlp",
+            &format!(
+                "echo \"$*\" >> '{}'\n{}\nexit 0",
+                log.display(),
+                writes_its_output("video")
+            ),
+        );
+        let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+            "title": "Range Show",
+            "episode": "1",
+            "mode": "sub",
+            "download_dir": dest.path().to_string_lossy(),
+        }))
+        .expect("args");
+        download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+            .await
+            .expect("the episode downloads");
+        let calls = std::fs::read_to_string(&log).expect("the tool ran");
+        assert_eq!(
+            concurrency_of(calls.lines().next().expect("one spawn")),
+            Some(want),
+            "live={live}: {calls}"
+        );
+    }
+}
