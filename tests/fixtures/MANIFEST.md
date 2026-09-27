@@ -11,10 +11,9 @@ timestamp, and SHA-256. Fixtures over 1 MB live in git-LFS.
 |---|---|
 | `anidb/` | Synthesized anidb.app response shapes the native resolver scrapes: browse pages (results, empty, cloudflare interstitial), a detail page (MAL link + Seasons), episodes JSON, languages JSON, an embed page, and a master playlist. |
 | `kitsu/` | JSON:API responses for `/anime?filter[text]=`, `/anime/:id`, `/anime?filter[status]=`, `/anime/:id/relationships/genres`. |
-| `anilist/` | GraphQL responses for `Page.media(sort: TRENDING_DESC)`, `Page.media(season:, seasonYear:)`. |
-| `m3u8/` | Master playlist (multi-bitrate), media playlist with absolute URIs, media playlist with relative URIs, edge cases (`EXT-X-I-FRAME-STREAM-INF`, `EXT-X-BYTERANGE`, encrypted with `EXT-X-KEY`). |
 | `history/` | Watch-history samples for the GUI's reader: empty, single-entry, multi-entry, duplicate-id, malformed-line. |
 | `hls/` | Synthesized MPEG-TS samples for the player's demuxer regression tests, as base64 text: a stream whose video starts under one second and whose audio starts after it. |
+| `arch/` | Stand-in checks the bats harness under `tests/bash/arch/` drives: a check a stray environment can redirect. |
 
 ## Refresh flow
 
