@@ -1425,7 +1425,8 @@ where
 /// under a running transfer takes the tool down and starts it again
 /// at the other concurrency on the same output, which yt-dlp resumes
 /// from the fragments it already has. The ffmpeg fallback is a single
-/// connection and is not paced.
+/// connection: it takes the paced lane while playback is live and is
+/// never taken down, since it cannot resume.
 ///
 /// # Errors
 /// As [`spawn_download_tool`].
@@ -1626,6 +1627,18 @@ where
         }
     }
     let exe = ffmpeg.ok_or(AniError::FfmpegMissing)?;
+    // One connection is the paced allowance itself, and the allowance
+    // is one beside the player for the whole app: while playback is
+    // live the fallback takes its turn on the lane like a paced yt-dlp
+    // would, and a lane that opens because playback stopped is not
+    // needed. ffmpeg cannot resume an HLS transfer, so a change of
+    // playback under it is not a reason to take it down — it keeps
+    // the lane until it ends.
+    let _turn = if pacing.is_live() {
+        pacing.paced_turn().await
+    } else {
+        None
+    };
     let mut cmd = tokio::process::Command::new(exe);
     if let Some(p) = &child_path {
         cmd.env("PATH", p);
