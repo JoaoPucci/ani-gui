@@ -353,6 +353,10 @@ pub fn seconds_until_expiry(session: &StreamSession) -> u64 {
 }
 
 #[cfg(test)]
+#[path = "token_activity_test.rs"]
+mod activity_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
