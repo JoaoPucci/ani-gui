@@ -12,7 +12,9 @@
 //! not one per download: paced runs take [`PACED_LANE`] in turn, so
 //! two episodes downloading during playback put one yt-dlp against
 //! the host at a time, and the other waits for it or for playback to
-//! stop, whichever comes first.
+//! stop, whichever comes first. The ffmpeg fallback is one connection
+//! that can be neither paced down nor resumed, so it holds the lane
+//! from its start regardless of playback.
 
 use std::time::Duration;
 
@@ -87,19 +89,15 @@ impl<'a> Pacing<'a> {
         }
     }
 
-    /// The lane, once playback is live and the lane is open: for a
-    /// run that started free and cannot be paced down, so that while
-    /// it goes on beside the player it counts as the one connection
-    /// the allowance grants. Never resolves while nothing plays.
-    pub(crate) async fn claim_when_live(&self) -> SemaphorePermit<'a> {
-        loop {
-            if !self.is_live() {
-                self.until_live_changes(false).await;
-            }
-            if let Some(permit) = self.paced_turn().await {
-                return permit;
-            }
-        }
+    /// The lane, whether or not anything plays: for a run that is one
+    /// connection and cannot be paced down or resumed, so that if
+    /// playback starts under it, it is already the one connection the
+    /// allowance grants.
+    pub(crate) async fn lane(&self) -> SemaphorePermit<'a> {
+        self.lane
+            .acquire()
+            .await
+            .expect("the paced lane is never closed")
     }
 
     /// A turn on the paced lane for one run of the tool. `Some` holds
