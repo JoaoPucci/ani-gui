@@ -44,6 +44,7 @@ pub(crate) async fn transfer_with_sidecars<F>(
     path_env: &str,
     timeout: std::time::Duration,
     on_line: &mut F,
+    pacing: &super::download_pacing::Pacing<'_>,
 ) -> Result<Vec<PathBuf>>
 where
     F: FnMut(&str) + Send,
@@ -57,8 +58,8 @@ where
         super::download::SIDECAR_PHASE_DEADLINE,
         super::download::SIDECAR_FETCH_CONCURRENCY,
     ));
-    let mut transfer = std::pin::pin!(super::download::spawn_download_tool(
-        source, dest, file_stem, quality, path_env, timeout, on_line,
+    let mut transfer = std::pin::pin!(super::download::spawn_download_tool_paced(
+        source, dest, file_stem, quality, path_env, timeout, on_line, pacing,
     ));
     let mut staged = None;
     let transferred = loop {
