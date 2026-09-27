@@ -104,7 +104,7 @@
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
 	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
-	import { FragmentLoopGuard } from '$lib/play/fragment-loop-guard';
+	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
@@ -1593,8 +1593,9 @@
 			const loopGuard = new FragmentLoopGuard();
 			hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
 				stallMachine.fragmentLoaded(data as { frag?: { type?: string } });
-				const frag = (data as { frag?: { level?: number; sn?: number | string } }).frag;
-				if (!frag || !loopGuard.loaded(`${frag.level}:${frag.sn}`)) return;
+				const frag = (data as { frag?: { type?: string; level?: number; sn?: number | string } })
+					.frag;
+				if (!frag || !loopGuard.loaded(fragmentLoopKey(frag))) return;
 				engine.stopLoad();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', frag.sn);
 				playerError =

@@ -21,6 +21,22 @@
 export const FRAGMENT_LOAD_ALLOWANCE = 4;
 export const FRAGMENT_LOAD_WINDOW_MS = 10_000;
 
+/** What hls.js hands a fragment-loaded listener, as much of it as the
+ *  key needs: the rendition (`main`, `audio`, `subtitle`), whose
+ *  playlists number their fragments independently, then the level
+ *  and the sequence number within it. */
+export interface FragmentIdentity {
+	type?: string;
+	level?: number;
+	sn?: number | string;
+}
+
+/** The key one fragment loads under: the same fragment of the same
+ *  rendition, and nothing else, shares it. */
+export function fragmentLoopKey(frag: FragmentIdentity): string {
+	return `${frag.type ?? 'main'}:${frag.level ?? 0}:${frag.sn ?? ''}`;
+}
+
 export class FragmentLoopGuard {
 	private readonly loads = new Map<string, number[]>();
 
