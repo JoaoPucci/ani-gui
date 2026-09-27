@@ -7,8 +7,16 @@
 //! running download the supervisor takes the tool down and starts it
 //! again on the same output, which yt-dlp resumes from the fragments
 //! it already has ([`super::download::spawn_download_tool_paced`]).
+//!
+//! The allowance is one fragment beside the player for the whole app,
+//! not one per download: paced runs take [`PACED_LANE`] in turn, so
+//! two episodes downloading during playback put one yt-dlp against
+//! the host at a time, and the other waits for it or for playback to
+//! stop, whichever comes first.
 
 use std::time::Duration;
+
+use tokio::sync::{Semaphore, SemaphorePermit};
 
 /// Fragments in flight when nothing is playing: v5's `-N 16`.
 pub(crate) const FAST_FRAGMENTS: u32 = 16;
@@ -29,6 +37,11 @@ pub(crate) const PLAYBACK_LIVE_WINDOW: Duration = Duration::from_secs(30);
 /// How often a running transfer asks whether playback changed.
 pub(crate) const PACING_POLL: Duration = Duration::from_secs(2);
 
+/// The one paced lane of the app: while playback is live, yt-dlp runs
+/// for one download at a time. Free runs — nothing playing — do not
+/// take it. One per process because the host sees one address.
+pub(crate) static PACED_LANE: Semaphore = Semaphore::const_new(1);
+
 /// The fragment concurrency for the current state of playback.
 #[must_use]
 pub(crate) fn fragment_concurrency(playback_live: bool) -> u32 {
@@ -46,11 +59,20 @@ pub(crate) fn fragment_concurrency(playback_live: bool) -> u32 {
 pub(crate) struct Pacing<'a> {
     is_live: &'a (dyn Fn() -> bool + Sync),
     poll: Duration,
+    lane: &'a Semaphore,
 }
 
 impl<'a> Pacing<'a> {
-    pub(crate) fn new(is_live: &'a (dyn Fn() -> bool + Sync), poll: Duration) -> Self {
-        Self { is_live, poll }
+    pub(crate) fn new(
+        is_live: &'a (dyn Fn() -> bool + Sync),
+        poll: Duration,
+        lane: &'a Semaphore,
+    ) -> Self {
+        Self {
+            is_live,
+            poll,
+            lane,
+        }
     }
 
     /// A transfer nothing paces: playback is never live. The seam the
@@ -61,6 +83,22 @@ impl<'a> Pacing<'a> {
         Pacing {
             is_live: &|| false,
             poll: Duration::from_secs(3600),
+            lane: &PACED_LANE,
+        }
+    }
+
+    /// A turn on the paced lane for one run of the tool. `Some` holds
+    /// the lane until dropped; `None` means playback stopped while
+    /// the lane was busy, and the run is free instead. Re-asks after
+    /// acquiring, since the lane may have opened because the holder's
+    /// own playback check went idle.
+    pub(crate) async fn paced_turn(&self) -> Option<SemaphorePermit<'a>> {
+        tokio::select! {
+            permit = self.lane.acquire() => {
+                let permit = permit.expect("the paced lane is never closed");
+                self.is_live().then_some(permit)
+            }
+            () = self.until_live_changes(true) => None,
         }
     }
 
@@ -96,7 +134,8 @@ mod tests {
     async fn the_change_is_seen_at_the_next_poll_and_not_before() {
         let live = std::sync::atomic::AtomicBool::new(false);
         let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
-        let pacing = Pacing::new(&is_live, Duration::from_secs(2));
+        let lane = Semaphore::new(1);
+        let pacing = Pacing::new(&is_live, Duration::from_secs(2), &lane);
         let waited =
             tokio::time::timeout(Duration::from_secs(5), pacing.until_live_changes(false)).await;
         assert!(waited.is_err(), "nothing changed: the wait goes on");
@@ -105,5 +144,29 @@ mod tests {
             tokio::time::timeout(Duration::from_secs(3), pacing.until_live_changes(false)).await;
         assert!(waited.is_ok(), "the change is seen within a poll");
         assert!(!Pacing::never().is_live());
+    }
+
+    #[tokio::test]
+    async fn a_turn_on_a_busy_lane_ends_when_playback_stops() {
+        let live = std::sync::atomic::AtomicBool::new(true);
+        let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+        let lane = Semaphore::new(1);
+        let pacing = Pacing::new(&is_live, Duration::from_millis(10), &lane);
+        let held = pacing.paced_turn().await.expect("an open lane is taken");
+        let waiting = pacing.paced_turn();
+        let waited = tokio::time::timeout(Duration::from_millis(100), waiting).await;
+        assert!(waited.is_err(), "a held lane keeps the second waiting");
+        live.store(false, std::sync::atomic::Ordering::Relaxed);
+        let waited = tokio::time::timeout(Duration::from_millis(500), pacing.paced_turn()).await;
+        assert!(
+            matches!(waited, Ok(None)),
+            "playback stopped: the wait ends without the lane"
+        );
+        drop(held);
+        live.store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(
+            pacing.paced_turn().await.is_some(),
+            "the lane is free again"
+        );
     }
 }
