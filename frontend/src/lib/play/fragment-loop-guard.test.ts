@@ -46,6 +46,11 @@ describe('the fragment loop guard', () => {
 		}
 	});
 
+	it('reads the wall clock when none is given', () => {
+		const guard = new FragmentLoopGuard();
+		expect(guard.loaded('0:1')).toBe(false);
+	});
+
 	it('counts fragments apart from one another', () => {
 		const t = clock();
 		const guard = new FragmentLoopGuard(t.now);
