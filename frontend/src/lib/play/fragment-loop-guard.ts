@@ -39,17 +39,22 @@ export function fragmentLoopKey(frag: FragmentIdentity): string {
 
 export class FragmentLoopGuard {
 	private readonly loads = new Map<string, number[]>();
+	private tripped = false;
 
 	constructor(private readonly now: () => number = () => Date.now()) {}
 
-	/** Records a load of the fragment `key` names — its level and
-	 *  sequence number. True when that fragment has now loaded more
-	 *  times inside the window than the allowance. */
+	/** Records a load of the fragment `key` names — its rendition,
+	 *  level and sequence number. True the one time a fragment has
+	 *  loaded more times inside the window than the allowance: the
+	 *  engine the caller then stops is stopped, and a late report is
+	 *  not a second trip. */
 	loaded(key: string): boolean {
+		if (this.tripped) return false;
 		const at = this.now();
 		const recent = (this.loads.get(key) ?? []).filter((t) => at - t < FRAGMENT_LOAD_WINDOW_MS);
 		recent.push(at);
 		this.loads.set(key, recent);
-		return recent.length > FRAGMENT_LOAD_ALLOWANCE;
+		this.tripped = recent.length > FRAGMENT_LOAD_ALLOWANCE;
+		return this.tripped;
 	}
 }
