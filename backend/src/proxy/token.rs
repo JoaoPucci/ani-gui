@@ -231,8 +231,9 @@ impl StreamSession {
 ///
 /// The table also records when the proxy last served media for any
 /// session — the master a starting player asks for first, then the
-/// segments or mp4 ranges — so that a download running beside a
-/// playing stream can yield to it ([`SessionTable::playback_live`]).
+/// segments or mp4 ranges, chunk by chunk as their bodies stream — so
+/// that a download running beside a playing stream can yield to it
+/// ([`SessionTable::playback_live`]).
 /// The app state and the proxy state hold clones of one table, so the
 /// proxy's note is the download command's answer.
 #[derive(Clone, Default)]
