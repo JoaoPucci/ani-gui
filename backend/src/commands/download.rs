@@ -1546,16 +1546,19 @@ where
             // downloads beside the player put one yt-dlp against the
             // host, not one each. Waiting ends when the lane opens or
             // when playback stops — then the run is free.
+            // Waiting for the lane is time the transfer is spending,
+            // bounded by the same deadline as everything else in it.
             let turn = if live {
-                match pacing.paced_turn().await {
-                    Some(turn) => Some(turn),
-                    None => {
+                match tokio::time::timeout_at(deadline, pacing.paced_turn()).await {
+                    Ok(Some(turn)) => Some(turn),
+                    Ok(None) => {
                         live = false;
                         tracing::info!(
                             "download: playback stopped while waiting for the paced lane; running free",
                         );
                         continue;
                     }
+                    Err(_) => return Err(AniError::Timeout),
                 }
             } else {
                 None
@@ -1636,7 +1639,9 @@ where
     // fallbacks run one after the other, whichever is running when
     // playback starts is already the one connection the allowance
     // grants, and a paced yt-dlp waits behind it.
-    let _turn = pacing.lane().await;
+    let _turn = tokio::time::timeout_at(deadline, pacing.lane())
+        .await
+        .map_err(|_| AniError::Timeout)?;
     let mut cmd = tokio::process::Command::new(exe);
     if let Some(p) = &child_path {
         cmd.env("PATH", p);
