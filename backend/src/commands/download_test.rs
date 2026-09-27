@@ -4206,9 +4206,11 @@ async fn a_download_started_while_playback_is_live_runs_paced() {
     stage_waiting_ytdlp(bin.path(), &log, &go);
     let live = std::sync::atomic::AtomicBool::new(true);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
+        &lane,
     );
     let mut lines = Vec::new();
     let got = spawn_download_tool_paced(
@@ -4255,9 +4257,11 @@ async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
     stage_waiting_ytdlp(bin.path(), &log, &go);
     let live = std::sync::atomic::AtomicBool::new(false);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
+        &lane,
     );
     let mut lines = Vec::new();
     let source = StreamSource {
@@ -4318,6 +4322,191 @@ async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
     assert!(dest.path().join("Show Episode 4.mp4").exists());
 }
 
+/// Two transfers over one stub, told apart in the log by the
+/// destination each spawn's output path sits in.
+#[cfg(unix)]
+fn spawn_into<'a>(lines: &'a [String], dest: &std::path::Path) -> Option<&'a String> {
+    let needle = format!("-o {}/", dest.display());
+    lines
+        .iter()
+        .find(|l| !l.starts_with("done") && l.contains(&needle))
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn paced_downloads_take_the_lane_one_at_a_time() {
+    // Two episodes downloading while one plays: each yt-dlp on its
+    // own would keep one fragment in flight, and two beside the
+    // player is the load that lost its segment request. The paced
+    // lane is one per app — the second download's yt-dlp does not
+    // spawn until the first's has finished.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 6",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let second = spawn_download_tool_paced(
+        &source,
+        dest_b.path(),
+        "Show Episode 7",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_b,
+        &pacing,
+    );
+    let drive = async {
+        let one = until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        assert_eq!(concurrency_of(&one[0]), Some("1"), "paced: {one:?}");
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let still = std::fs::read_to_string(&log).expect("log");
+        assert_eq!(
+            still.lines().count(),
+            1,
+            "the second download waits for the lane: {still}"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, b, ()) = tokio::join!(first, second, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    assert_eq!(
+        b.expect("the second transfer completes"),
+        Transferred::Episode
+    );
+    let calls: Vec<String> = std::fs::read_to_string(&log)
+        .expect("log")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(calls.len(), 4, "two spawns, two exits: {calls:?}");
+    assert!(
+        calls[1].starts_with("done"),
+        "the first run finished before the second spawned: {calls:?}"
+    );
+    assert_eq!(
+        concurrency_of(&calls[2]),
+        Some("1"),
+        "the second is paced too: {calls:?}"
+    );
+    assert!(dest_a.path().join("Show Episode 6.mp4").exists());
+    assert!(dest_b.path().join("Show Episode 7.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_waiting_for_the_lane_runs_free_once_playback_stops() {
+    // The second download is queued behind the first's paced run
+    // when playback stops. Nothing is left to yield to, so it spawns
+    // at full speed without waiting for the lane.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 8",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let second = spawn_download_tool_paced(
+        &source,
+        dest_b.path(),
+        "Show Episode 9",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_b,
+        &pacing,
+    );
+    let drive = async {
+        // Whichever download took the lane first is running; the
+        // other is the one queued behind it.
+        let first = until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        let queued_dest = if spawn_into(&first, dest_a.path()).is_some() {
+            dest_b.path()
+        } else {
+            dest_a.path()
+        };
+        live.store(false, std::sync::atomic::Ordering::Relaxed);
+        let lines = until_log(&log, "the queued download spawning", |l| {
+            spawn_into(l, queued_dest).is_some()
+        })
+        .await;
+        let queued = spawn_into(&lines, queued_dest).expect("its spawn");
+        assert_eq!(concurrency_of(queued), Some("16"), "free: {lines:?}");
+        assert!(
+            !lines.iter().any(|l| l.starts_with("done")),
+            "it spawned while the first was still running: {lines:?}"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, b, ()) = tokio::join!(first, second, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    assert_eq!(
+        b.expect("the second transfer completes"),
+        Transferred::Episode
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_paced_download_runs_free_again_once_playback_stops() {
@@ -4331,9 +4520,11 @@ async fn a_paced_download_runs_free_again_once_playback_stops() {
     stage_waiting_ytdlp(bin.path(), &log, &go);
     let live = std::sync::atomic::AtomicBool::new(true);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
     let pacing = crate::commands::download_pacing::Pacing::new(
         &is_live,
         std::time::Duration::from_millis(50),
+        &lane,
     );
     let mut lines = Vec::new();
     let source = StreamSource {
