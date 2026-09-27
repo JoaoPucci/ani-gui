@@ -1609,7 +1609,8 @@
 					rendition: (data as { frag?: { type?: string } }).frag?.type,
 					bufferAheadSeconds: videoEl
 						? bufferAheadSeconds(videoEl.buffered, videoEl.currentTime)
-						: 0
+						: 0,
+					playbackRate: videoEl?.playbackRate
 				});
 				// A network failure with buffered media in hand is not yet
 				// a failure the user can see: hold, and ask the engine to

@@ -15,7 +15,11 @@
  * network with buffered media keeps the clock moving.
  */
 
-import { decideStreamFailureResponse, type StreamFailure } from '$lib/play/stale-stream';
+import {
+	decideStreamFailureResponse,
+	runwaySeconds,
+	type StreamFailure
+} from '$lib/play/stale-stream';
 
 /** Rendition named by a no-fragment failure's details: side-playlist
  *  errors (audioTrackLoadTimeOut, subtitleTrackLoadTimeOut, their
@@ -34,6 +38,11 @@ function renditionFromDetails(err: StreamFailure): string | null {
  *  again: doubling per failure of the same rendition, from two seconds
  *  to sixteen, and starting over once a fragment of it lands. */
 export const HOLD_DELAYS_MS = [2000, 4000, 8000, 16000] as const;
+
+/** Playback seconds the buffer must still hold when a held retry
+ *  fires: the delay is capped so the engine is asked again with this
+ *  much media to spare, whatever the schedule says. */
+export const HOLD_RUNWAY_MARGIN_S = 5;
 
 export type StallAction =
 	| { act: 'hold'; delayMs: number }
@@ -60,6 +69,7 @@ export class HlsStallMachine {
 		hasAutoRetried: boolean;
 		rendition?: string;
 		bufferAheadSeconds?: number;
+		playbackRate?: number;
 	}): StallAction {
 		const rendition = input.rendition ?? renditionFromDetails(input.err) ?? 'main';
 		const used = this.nudges.get(rendition) ?? 0;
@@ -71,7 +81,10 @@ export class HlsStallMachine {
 		if (response === 'hold') {
 			const held = this.holds.get(rendition) ?? 0;
 			this.holds.set(rendition, held + 1);
-			return { act: 'hold', delayMs: HOLD_DELAYS_MS[Math.min(held, HOLD_DELAYS_MS.length - 1)] };
+			const scheduled = HOLD_DELAYS_MS[Math.min(held, HOLD_DELAYS_MS.length - 1)];
+			const runway = runwaySeconds(input.bufferAheadSeconds, input.playbackRate);
+			const withinRunway = Math.max(0, (runway - HOLD_RUNWAY_MARGIN_S) * 1000);
+			return { act: 'hold', delayMs: Math.min(scheduled, withinRunway) };
 		}
 		if (response === 'nudge') {
 			const anyActive = [...this.nudges.values()].some((n) => n > 0);

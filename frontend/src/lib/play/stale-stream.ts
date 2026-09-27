@@ -69,6 +69,17 @@ export const STALL_NUDGE_BUDGET = 3;
  *  the end of it. */
 export const HOLD_MIN_BUFFER_SECONDS = 15;
 
+/** Seconds of playback the buffered media is good for: its length in
+ *  media time over the playback rate. A rate of zero or a missing one
+ *  reads as normal speed. */
+export function runwaySeconds(
+	bufferAheadSeconds: number | undefined,
+	playbackRate?: number
+): number {
+	const rate = playbackRate && playbackRate > 0 ? playbackRate : 1;
+	return (bufferAheadSeconds ?? 0) / rate;
+}
+
 export type StreamFailureResponse = 'hold' | 'nudge' | 'recover' | 'surface';
 
 /** The response ladder for a fatal stream failure.
@@ -96,9 +107,11 @@ export function decideStreamFailureResponse(args: {
 	hasAutoRetried: boolean;
 	nudgesUsed: number;
 	playbackProgressed: boolean;
-	/** The run of buffered media from the playhead, in seconds. Left
-	 *  out, the buffer is taken to be empty. */
+	/** The run of buffered media from the playhead, in media seconds.
+	 *  Left out, the buffer is taken to be empty. */
 	bufferAheadSeconds?: number;
+	/** The rate that media plays at; left out, normal speed. */
+	playbackRate?: number;
 }): StreamFailureResponse {
 	// A 429 or a dropped connection while minutes of the episode are
 	// already buffered is not yet a failure the user can see: the
@@ -106,7 +119,7 @@ export function decideStreamFailureResponse(args: {
 	// help against a media error, which is about the bytes in hand.
 	if (
 		isNetworkClassStreamError(args.err) &&
-		(args.bufferAheadSeconds ?? 0) >= HOLD_MIN_BUFFER_SECONDS
+		runwaySeconds(args.bufferAheadSeconds, args.playbackRate) >= HOLD_MIN_BUFFER_SECONDS
 	) {
 		return 'hold';
 	}
