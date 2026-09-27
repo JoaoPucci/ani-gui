@@ -209,8 +209,11 @@ where
                 .sessions
                 .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
         };
-        let pacing =
-            super::download_pacing::Pacing::new(&is_live, super::download_pacing::PACING_POLL);
+        let pacing = super::download_pacing::Pacing::new(
+            &is_live,
+            super::download_pacing::PACING_POLL,
+            &super::download_pacing::PACED_LANE,
+        );
         super::download_transfer::transfer_with_sidecars(
             &state.proxy_http,
             &source,
