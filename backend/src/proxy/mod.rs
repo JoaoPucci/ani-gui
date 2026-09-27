@@ -107,7 +107,6 @@ async fn handle_master(
     // The master is the first thing a starting player asks for: a
     // download running beside it yields from here, not after the
     // first segment has already competed with it.
-    state.sessions.note_media_fetch();
 
     // The HLS rewrite path only makes sense for .m3u8 sessions; an MP4
     // would otherwise be buffered (hundreds of MB) and fail to parse.
@@ -121,6 +120,7 @@ async fn handle_master(
 
     // The manifest's relative URIs resolve against where it was served
     // from, which a redirect can move away from the session's URL.
+    state.sessions.note_media_fetch();
     host_budget::HOST_BUDGET
         .admit(&host_budget::host_key(&sess.upstream_url))
         .await;
@@ -373,7 +373,6 @@ async fn handle_seg(
     // Media playlists and segments alike: both are the player
     // fetching, and a segment every few seconds is what a download
     // must leave room for.
-    state.sessions.note_media_fetch();
 
     let upstream_url = match decode_seg_url(&q.u) {
         Ok(u) => u,
@@ -389,6 +388,7 @@ async fn handle_seg(
     let path = upstream_url.path();
     let is_manifest = path.ends_with(".m3u8");
 
+    state.sessions.note_media_fetch();
     // Every fetch the proxy makes to the host on the player's behalf
     // is charged to the host's budget — playlists as well as media.
     host_budget::HOST_BUDGET
