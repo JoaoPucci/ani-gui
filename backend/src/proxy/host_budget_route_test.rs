@@ -292,3 +292,37 @@ async fn a_redirect_hop_is_charged_to_the_host_it_lands_on() {
         "the server the redirect landed on answered one too"
     );
 }
+
+#[tokio::test]
+async fn a_subtitle_track_the_player_loads_waits_behind_its_media() {
+    // The player loads every attached track through the proxy beside
+    // its segments. A track is not what keeps playback going: asked
+    // first, with the budget spent, it still reaches the host after a
+    // media request that arrived later has had its token.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
+        .mount(&server)
+        .await;
+    let url = url::Url::parse(&format!("{}/en.vtt", server.uri())).expect("url");
+    let key = host_budget::host_key(&url);
+    let budget = host_budget::HostBudget::new(1, Duration::from_millis(500));
+    budget.admit(&key).await;
+    let client = upstream::build_client().expect("client builds");
+    let track = async {
+        let body = upstream::fetch_subtitle(&client, &budget, &url, "").await;
+        (body.is_ok(), tokio::time::Instant::now())
+    };
+    let media = async {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        budget.admit(&key).await;
+        tokio::time::Instant::now()
+    };
+    let ((served, track_done), media_admitted) = tokio::join!(track, media);
+    assert!(served, "the track was served");
+    assert!(
+        media_admitted < track_done,
+        "the media request, arriving later, was admitted before the track was fetched"
+    );
+}
