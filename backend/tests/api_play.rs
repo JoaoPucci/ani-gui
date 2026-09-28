@@ -107,6 +107,7 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str, hianime_base: Option<&st
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
+        host_budget: ani_gui::proxy::host_budget::HostBudget::fresh(),
         meta_http: reqwest::Client::new(),
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,

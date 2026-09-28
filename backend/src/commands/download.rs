@@ -298,6 +298,7 @@ where
     );
     super::download_transfer::transfer_with_sidecars(
         &state.proxy_http,
+        &state.host_budget,
         &source,
         &dest,
         &file_stem,
@@ -978,9 +979,14 @@ pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
 /// name taken by then is the user's and the track is skipped — but
 /// filled only by the caller's install, so a track fetched beside a
 /// transfer that then fails is dropped with its scratch and never
-/// sits at a name beside no media. Returned in listing order.
+/// sits at a name beside no media. Returned in listing order. Each
+/// fetch is charged to the host's budget: the tracks reach the host
+/// from the player's address, and the host counts them with the
+/// player's requests.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn stage_sidecar_subtitles_with(
     client: &reqwest::Client,
+    budget: &crate::proxy::host_budget::HostBudget,
     tracks: &[crate::scraper::provider::SubtitleTrack],
     referer: Option<&str>,
     dest: &std::path::Path,
@@ -1004,7 +1010,7 @@ pub(crate) async fn stage_sidecar_subtitles_with(
     let fetches: Vec<_> = tracks
         .iter()
         .enumerate()
-        .map(|(i, track)| fetch_sidecar_track_by(client, track, referer, until, i))
+        .map(|(i, track)| fetch_sidecar_track_by(client, budget, track, referer, until, i))
         .collect();
     let mut arrivals = stream::iter(fetches).buffer_unordered(concurrency.max(1));
     let mut staged: Vec<(usize, SidecarClaim)> = Vec::new();
@@ -1096,13 +1102,17 @@ pub(crate) fn sidecar_suffixes<'a>(langs: impl Iterator<Item = &'a str>) -> Vec<
 /// the track's place in the listing so the arrival can be named.
 async fn fetch_sidecar_track_by<'a>(
     client: &'a reqwest::Client,
+    budget: &'a crate::proxy::host_budget::HostBudget,
     track: &'a crate::scraper::provider::SubtitleTrack,
     referer: Option<&'a str>,
     until: tokio::time::Instant,
     index: usize,
 ) -> (usize, Option<bytes::Bytes>) {
-    let body = match tokio::time::timeout_at(until, fetch_sidecar_track(client, track, referer))
-        .await
+    let body = match tokio::time::timeout_at(
+        until,
+        fetch_sidecar_track(client, budget, track, referer),
+    )
+    .await
     {
         Ok(body) => body,
         Err(_elapsed) => {
@@ -1116,18 +1126,26 @@ async fn fetch_sidecar_track_by<'a>(
 /// One track's body, when the CDN serves it: a refusal, a transport
 /// failure, a body that does not arrive or one larger than a
 /// subtitle file can be (read only up to the cap, never held whole)
-/// is logged and `None`.
+/// is logged and `None`, and so is a track whose URL does not parse.
+/// The fetch is charged to the host's budget, hop by hop.
 async fn fetch_sidecar_track(
     client: &reqwest::Client,
+    budget: &crate::proxy::host_budget::HostBudget,
     track: &crate::scraper::provider::SubtitleTrack,
     referer: Option<&str>,
 ) -> Option<bytes::Bytes> {
-    use crate::proxy::upstream::{read_body_capped, CappedBody, SUBTITLE_BODY_CAP};
-    let mut req = client.get(&track.url);
-    if let Some(r) = referer {
-        req = req.header(reqwest::header::REFERER, r);
+    use crate::proxy::upstream::{read_body_capped, send_paced, CappedBody, SUBTITLE_BODY_CAP};
+    let Ok(url) = url::Url::parse(&track.url) else {
+        tracing::warn!(lang = %track.lang, "download: subtitle url unparseable, skipped");
+        return None;
+    };
+    // The referer goes the way every other fetch sends it: an empty
+    // one is no header, not an empty one.
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(v) = referer.and_then(crate::proxy::upstream::referer_header) {
+        headers.insert(reqwest::header::REFERER, v);
     }
-    match req.send().await {
+    match send_paced(client, budget, reqwest::Method::GET, &url, headers).await {
         Ok(resp) if resp.status().is_success() => {
             match read_body_capped(resp, SUBTITLE_BODY_CAP).await {
                 Ok(CappedBody::Whole(b)) => Some(b),
