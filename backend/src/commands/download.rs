@@ -1376,6 +1376,22 @@ pub(crate) fn ytdlp_referer_args(referer: Option<&str>) -> Vec<String> {
     referer.map_or_else(Vec::new, |r| vec!["--referer".into(), r.into()])
 }
 
+/// The rate a fallback reads its input at. While playback is live,
+/// the stream's own: `-re` reads at the native rate, one segment per
+/// segment's duration, the rate the player consumes it at, so the
+/// fallback's requests reach the host no faster than a second player
+/// would. Otherwise as fast as the host answers. Chosen once, at the
+/// start: ffmpeg cannot change rate mid-run and cannot be taken down
+/// and resumed, so a fallback started while nothing plays runs at
+/// full speed for its whole run, holding the lane.
+pub(crate) fn ffmpeg_pace_args(playback_live: bool) -> Vec<&'static str> {
+    if playback_live {
+        vec!["-re"]
+    } else {
+        Vec::new()
+    }
+}
+
 /// ffmpeg takes raw request headers, CRLF-terminated, ahead of the
 /// input they apply to; or nothing when the stream needs none.
 pub(crate) fn ffmpeg_referer_args(referer: Option<&str>) -> Vec<String> {
@@ -1682,12 +1698,14 @@ where
     }
     let exe = ffmpeg.ok_or(AniError::FfmpegMissing)?;
     // One connection is the paced allowance itself, and the allowance
-    // is one beside the player for the whole app. ffmpeg cannot be
-    // paced down, and cannot be taken down and resumed, so a fallback
-    // holds the lane from its start whether or not anything plays:
-    // fallbacks run one after the other, whichever is running when
-    // playback starts is already the one connection the allowance
-    // grants, and a paced yt-dlp waits behind it.
+    // is one beside the player for the whole app. ffmpeg cannot change
+    // its rate mid-run, and cannot be taken down and resumed, so a
+    // fallback holds the lane from its start whether or not anything
+    // plays: fallbacks run one after the other, whichever is running
+    // when playback starts is already the one connection the
+    // allowance grants, and a paced yt-dlp waits behind it. Its rate
+    // is chosen at its start as well: the stream's own while playback
+    // is live, full speed otherwise.
     let _turn = tokio::time::timeout_at(deadline, pacing.lane())
         .await
         .map_err(|_| AniError::Timeout)?;
@@ -1709,6 +1727,7 @@ where
         .arg("error")
         .arg("-stats")
         .args(ffmpeg_referer_args(referer))
+        .args(ffmpeg_pace_args(pacing.is_live()))
         .arg("-i")
         .arg(master_url)
         .arg("-c")
