@@ -1381,9 +1381,12 @@ pub(crate) fn ytdlp_referer_args(referer: Option<&str>) -> Vec<String> {
 /// segment's duration, the rate the player consumes it at, so the
 /// fallback's requests reach the host no faster than a second player
 /// would. Otherwise as fast as the host answers. Chosen once, at the
-/// start: ffmpeg cannot change rate mid-run and cannot be taken down
-/// and resumed, so a fallback started while nothing plays runs at
-/// full speed for its whole run, holding the lane.
+/// start, and kept to the end: ffmpeg cannot change rate mid-run and
+/// cannot be taken down and resumed, so a fallback started while
+/// nothing plays runs at full speed for its whole run, even if
+/// playback starts under it, and one started while playback is live
+/// keeps the stream's rate even after playback stops — an episode
+/// takes as long as it plays.
 pub(crate) fn ffmpeg_pace_args(playback_live: bool) -> Vec<&'static str> {
     if playback_live {
         vec!["-re"]
@@ -1709,6 +1712,7 @@ where
     let _turn = tokio::time::timeout_at(deadline, pacing.lane())
         .await
         .map_err(|_| AniError::Timeout)?;
+    let live = pacing.is_live();
     let mut cmd = tokio::process::Command::new(exe);
     if let Some(p) = &child_path {
         cmd.env("PATH", p);
@@ -1727,14 +1731,22 @@ where
         .arg("error")
         .arg("-stats")
         .args(ffmpeg_referer_args(referer))
-        .args(ffmpeg_pace_args(pacing.is_live()))
+        .args(ffmpeg_pace_args(live))
         .arg("-i")
         .arg(master_url)
         .arg("-c")
         .arg("copy")
         .arg(&scratch.path);
+    // A fallback reading at the stream's rate takes as long as the
+    // stream plays; like a paced run it has a ceiling of its own, not
+    // the transfer's, which is sized for a tool running free.
+    let run_deadline = if live {
+        tokio::time::Instant::now() + super::download_pacing::PACED_RUN_CEILING
+    } else {
+        deadline
+    };
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
-    match run_tool(cmd, deadline, on_line, &mut false).await {
+    match run_tool(cmd, run_deadline, on_line, &mut false).await {
         Ok(()) => finish(&scratch, &target, on_line).await,
         Err(e) => Err(e),
     }
