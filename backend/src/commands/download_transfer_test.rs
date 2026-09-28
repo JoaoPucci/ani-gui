@@ -449,3 +449,74 @@ async fn sidecars_beside_live_playback_are_fetched_one_at_a_time() {
         "the second track was asked for once the first had answered, not {apart:?} later"
     );
 }
+
+/// While playback is live, one sidecar fetch reaches the host at a
+/// time across every download, not one per download: two phases that
+/// each chose four at a time — both began before playback did — still
+/// put their tracks to the host one after another, so the host's line
+/// never holds more than one of them ahead of the player's next
+/// request.
+#[tokio::test]
+async fn sidecar_fetches_across_downloads_go_one_at_a_time_while_playback_is_live() {
+    let server = MockServer::start().await;
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let delay = std::time::Duration::from_millis(300);
+    let langs = ["en", "es", "pt", "fr"];
+    for lang in langs {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/{lang}.vtt")))
+            .respond_with(Arrivals {
+                seen: std::sync::Arc::clone(&seen),
+                delay,
+            })
+            .mount(&server)
+            .await;
+    }
+    let track = |lang: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}/subs/{lang}.vtt", server.uri()),
+    };
+    let first = [track(langs[0]), track(langs[1])];
+    let second = [track(langs[2]), track(langs[3])];
+    let dest_a = tempfile::tempdir().expect("dest");
+    let dest_b = tempfile::tempdir().expect("dest");
+    let live = || true;
+    let lane = tokio::sync::Semaphore::new(1);
+    let gate = super::super::download_pacing::SidecarGate::new(&live, &lane);
+    let client = reqwest::Client::new();
+    let budget = crate::proxy::host_budget::HostBudget::fresh();
+    let phase = |tracks: &'static [SubtitleTrack], dest: &std::path::Path| {
+        let dest = dest.to_path_buf();
+        let (client, budget, gate) = (&client, &budget, &gate);
+        async move {
+            super::super::download::stage_sidecar_subtitles_with(
+                client,
+                budget,
+                gate,
+                tracks,
+                None,
+                &dest,
+                "Show Episode 1",
+                super::super::download::SIDECAR_PHASE_DEADLINE,
+                super::super::download::SIDECAR_FETCH_CONCURRENCY,
+            )
+            .await
+        }
+    };
+    let first: &'static [SubtitleTrack] = Box::leak(Box::new(first));
+    let second: &'static [SubtitleTrack] = Box::leak(Box::new(second));
+    let (a, b) = tokio::join!(phase(first, dest_a.path()), phase(second, dest_b.path()));
+    assert_eq!(a.len() + b.len(), 4, "every track staged");
+    let mut seen = seen.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    seen.sort();
+    assert_eq!(seen.len(), 4, "every track asked for");
+    for pair in seen.windows(2) {
+        let apart = pair[1].saturating_duration_since(pair[0]);
+        assert!(
+            apart >= delay - std::time::Duration::from_millis(50),
+            "a track was asked for {apart:?} after the one before it answered"
+        );
+    }
+}
