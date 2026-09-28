@@ -89,9 +89,11 @@ pub(crate) fn take(
     }
 }
 
-/// The budgets of every host the proxy has fetched from.
+/// The budgets of every host fetched from, and the line of requests
+/// waiting at each.
 pub struct HostBudget {
     buckets: Mutex<HashMap<String, Bucket>>,
+    lines: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     burst: u32,
     refill: Duration,
 }
@@ -101,6 +103,7 @@ impl HostBudget {
     pub(crate) fn new(burst: u32, refill: Duration) -> Self {
         Self {
             buckets: Mutex::new(HashMap::new()),
+            lines: Mutex::new(HashMap::new()),
             burst,
             refill,
         }
@@ -127,7 +130,18 @@ impl HostBudget {
     }
 
     /// A token for `host`, waiting for one while the burst is spent.
+    /// Waiters are served in the order they arrived: each takes its
+    /// place in the host's line and keeps it until it has its token,
+    /// so a request arriving as a token matures does not take it from
+    /// one that has waited for it, and a few requests arriving at once
+    /// cannot keep taking the tokens ahead of the one that has waited
+    /// longest.
     pub(crate) async fn admit(&self, host: &str) {
+        let line = {
+            let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
+            Arc::clone(lines.entry(host.to_owned()).or_default())
+        };
+        let _place = line.lock().await;
         loop {
             let wait = {
                 let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
