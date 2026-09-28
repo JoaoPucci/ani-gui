@@ -465,10 +465,7 @@ async fn handle_seg(
     .await
     {
         Ok(r) => r,
-        Err(_) => {
-            tracing::warn!(url = %upstream_url, "proxy: upstream segment fetch failed");
-            return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed");
-        }
+        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
     };
     let status = resp.status();
     if !status.is_success() {
