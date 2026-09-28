@@ -146,8 +146,9 @@ starting it, and delete it when you find it done.
   got, not another registration inside the effect's conditional.
 
 - **Two app instances do not share the playback record, the paced
-  lane or the host budget.** The proxy's record of media served, the
-  lane that paced downloads take in turn and the per-host budget the
+  lanes or the host budget.** The proxy's record of media served, the
+  lanes that paced downloads and their subtitle fetches take in turn
+  and the per-host budget the
   proxy paces the player's fetches to all live in one backend process,
   so a download started in a second instance runs at full speed beside
   the first instance's playback, and two instances playing from one

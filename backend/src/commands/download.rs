@@ -965,7 +965,9 @@ pub(crate) const SIDECAR_PHASE_DEADLINE: std::time::Duration = std::time::Durati
 /// deadline, few enough that a listing at the track cap never opens
 /// more than a handful of connections or holds more than a handful of
 /// bodies. When playback is live as the phase starts they are fetched
-/// one at a time ([`super::download_pacing::sidecar_concurrency`]).
+/// one at a time ([`super::download_pacing::sidecar_concurrency`]);
+/// while it is live, every download's fetches share one lane
+/// ([`super::download_pacing::SIDECAR_LANE`]).
 pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
 
 /// The sidecar phase up to the names. The resolve bounds its listing
