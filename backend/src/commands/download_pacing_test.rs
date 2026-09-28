@@ -61,3 +61,20 @@ async fn a_turn_on_a_busy_lane_ends_when_playback_stops() {
         "the lane is free again"
     );
 }
+
+#[test]
+fn a_downloads_tracks_are_fetched_one_at_a_time_while_playback_is_live() {
+    assert_eq!(sidecar_concurrency(true), 1);
+    assert_eq!(
+        sidecar_concurrency(false),
+        super::super::download::SIDECAR_FETCH_CONCURRENCY
+    );
+    assert_eq!(
+        sidecar_phase_deadline(false),
+        super::super::download::SIDECAR_PHASE_DEADLINE
+    );
+    assert!(
+        sidecar_phase_deadline(true) > sidecar_phase_deadline(false),
+        "tracks taking their tokens one at a time behind the player's need the time"
+    );
+}
