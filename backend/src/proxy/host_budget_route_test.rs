@@ -81,12 +81,16 @@ async fn the_request_after_the_burst_waits_a_refill() {
         "the burst is served without waiting: {:?}",
         burst_done - start
     );
+    // The wait is measured from the first take: the bucket refills
+    // through the burst, so the token the next request needs matures
+    // a refill after the burst began, however long the burst took to
+    // serve.
     assert_eq!(get(router.clone(), &uri).await, StatusCode::OK);
     let after = tokio::time::Instant::now();
     assert!(
-        after - burst_done >= host_budget::SEGMENT_REFILL - Duration::from_millis(100),
+        after - start >= host_budget::SEGMENT_REFILL - Duration::from_millis(100),
         "the request after the burst waited a refill: {:?}",
-        after - burst_done
+        after - start
     );
 }
 
@@ -116,7 +120,7 @@ async fn a_playlist_fetch_spends_the_budget_too() {
     );
     assert_eq!(get(router.clone(), &uri).await, StatusCode::OK);
     assert!(
-        tokio::time::Instant::now() - burst_done
+        tokio::time::Instant::now() - start
             >= host_budget::SEGMENT_REFILL - Duration::from_millis(100),
         "the playlist fetch past the burst waited a refill"
     );
@@ -163,7 +167,7 @@ async fn a_subtitle_track_fetch_spends_the_budget_too() {
     );
     assert_eq!(get(router.clone(), &uri).await, StatusCode::OK);
     assert!(
-        tokio::time::Instant::now() - burst_done
+        tokio::time::Instant::now() - start
             >= host_budget::SEGMENT_REFILL - Duration::from_millis(100),
         "the track fetch past the burst waited a refill"
     );
@@ -198,7 +202,7 @@ async fn a_media_playlist_fetch_through_the_segment_route_spends_the_budget_too(
     );
     assert_eq!(get(router.clone(), &uri).await, StatusCode::OK);
     assert!(
-        tokio::time::Instant::now() - burst_done
+        tokio::time::Instant::now() - start
             >= host_budget::SEGMENT_REFILL - Duration::from_millis(100),
         "the media playlist fetch past the burst waited a refill"
     );
