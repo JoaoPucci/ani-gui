@@ -100,9 +100,37 @@ pub(crate) async fn send_paced(
     url: &Url,
     headers: HeaderMap,
 ) -> Result<reqwest::Response> {
+    send_paced_as(client, budget, Admission::Player, method, url, headers).await
+}
+
+/// Whose traffic a paced fetch is: the player's, which waits its
+/// turn in the host's line, or background traffic, which never takes
+/// a place in it ([`HostBudget::admit_background`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Admission {
+    Player,
+    Background,
+}
+
+/// [`send_paced`], each hop admitted as `admission` says.
+///
+/// # Errors
+/// As [`send_paced`].
+pub(crate) async fn send_paced_as(
+    client: &reqwest::Client,
+    budget: &HostBudget,
+    admission: Admission,
+    method: Method,
+    url: &Url,
+    headers: HeaderMap,
+) -> Result<reqwest::Response> {
     let mut url = url.clone();
     for _ in 0..=REDIRECT_HOP_CAP {
-        budget.admit(&host_key(&url)).await;
+        let host = host_key(&url);
+        match admission {
+            Admission::Player => budget.admit(&host).await,
+            Admission::Background => budget.admit_background(&host).await,
+        }
         let resp = client
             .request(method.clone(), url.as_str())
             .headers(headers.clone())

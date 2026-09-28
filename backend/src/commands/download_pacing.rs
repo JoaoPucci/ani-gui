@@ -106,9 +106,9 @@ static NEVER_LANE: Semaphore = Semaphore::const_new(Semaphore::MAX_PERMITS);
 /// across every download, so the host's line holds at most one of
 /// them ahead of the player's next request whatever concurrency each
 /// download's phase chose. A fetch that asked before playback went
-/// live is past the gate already and keeps its place — up to a
-/// phase's concurrency per download, at the moment playback starts —
-/// and the fetches after it take the lane.
+/// live is past the gate already, but it is background traffic at
+/// the host's budget ([`crate::proxy::host_budget::HostBudget::admit_background`])
+/// and never waits in the line ahead of the player either.
 pub(crate) static SIDECAR_LANE: Semaphore = Semaphore::const_new(1);
 
 /// What a sidecar fetch asks before it goes to the host: whether
