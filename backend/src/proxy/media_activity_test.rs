@@ -26,6 +26,7 @@ fn proxy_on(master: &str) -> (Router, SessionTable, SessionId, AppSecret) {
         secret: secret.clone(),
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     };
     (build_router(state), sessions, id, secret)
 }
@@ -167,6 +168,7 @@ async fn an_mp4_range_marks_playback_live_and_streams_the_body() {
         secret,
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     });
     let resp = router
         .oneshot(
@@ -228,6 +230,7 @@ async fn a_subtitle_track_fetch_is_not_media() {
         secret: AppSecret::from_bytes([7u8; 32]),
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     });
     let status = get(router, &format!("/s/{}/sub/0.vtt", id.as_string())).await;
     assert_eq!(status, StatusCode::OK);
@@ -256,6 +259,7 @@ async fn an_mp4_sessions_master_request_is_refused_without_marking_playback_live
         secret,
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     });
     let status = get(router, &format!("/s/{}/master.m3u8", id.as_string())).await;
     assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);

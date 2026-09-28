@@ -45,6 +45,7 @@ fn proxy_over(upstream_url: &str) -> (Router, SessionId, AppSecret) {
         secret: secret.clone(),
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     };
     (build_router(state), id, secret)
 }

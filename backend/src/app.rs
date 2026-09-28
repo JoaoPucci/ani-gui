@@ -211,6 +211,7 @@ impl AppState {
             secret: self.secret.clone(),
             client: self.proxy_http.clone(),
             origin: self.proxy_origin.clone(),
+            host_budget: crate::proxy::host_budget::HostBudget::fresh(),
         }
     }
 }

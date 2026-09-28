@@ -13,10 +13,11 @@
 //! buffers as far ahead as it likes — over minutes rather than
 //! seconds; while it is still filling that buffer, a seek past it may
 //! take a few seconds longer than it otherwise would. The budget is
-//! per host and per process, like the address the host counts.
+//! per host and per proxy, and the app builds one proxy — the address
+//! the host counts.
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -81,7 +82,7 @@ pub(crate) fn take(
 }
 
 /// The budgets of every host the proxy has fetched from.
-pub(crate) struct HostBudget {
+pub struct HostBudget {
     buckets: Mutex<HashMap<String, Bucket>>,
     burst: u32,
     refill: Duration,
@@ -95,6 +96,14 @@ impl HostBudget {
             burst,
             refill,
         }
+    }
+
+    /// The budget a proxy is built with: the app's constants, shared
+    /// by every route of that proxy. The app builds one proxy, so this
+    /// is one budget per process — the address the host counts.
+    #[must_use]
+    pub fn fresh() -> Arc<Self> {
+        Arc::new(Self::new(SEGMENT_BURST, SEGMENT_REFILL))
     }
 
     /// A token for `host`, waiting for one while the burst is spent.
@@ -134,10 +143,6 @@ pub(crate) fn host_key(url: &Url) -> String {
         url.port_or_known_default().unwrap_or(0)
     )
 }
-
-/// The app's budgets, one per process — the address the host counts.
-pub(crate) static HOST_BUDGET: LazyLock<HostBudget> =
-    LazyLock::new(|| HostBudget::new(SEGMENT_BURST, SEGMENT_REFILL));
 
 #[cfg(test)]
 #[path = "host_budget_test.rs"]
