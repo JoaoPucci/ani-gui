@@ -106,6 +106,9 @@
 	} from '$lib/play/stall-notice';
 	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
 	import { bufferAheadSeconds } from '$lib/play/buffer-ahead';
+	import { scheduleHeldRetry } from '$lib/play/held-retry';
+	import { runwaySeconds } from '$lib/play/stale-stream';
+	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
@@ -1588,10 +1591,12 @@
 			// One held retry pending per source: a second failure inside
 			// a hold re-arms it rather than adding a second startLoad,
 			// which would only abort the first's fragment.
-			let holdRetry: ReturnType<typeof setTimeout> | null = null;
-			addSourceScopedCleanup(() => {
-				if (holdRetry !== null) clearTimeout(holdRetry);
-			});
+			let cancelHeldRetry: (() => void) | null = null;
+			const dropHeldRetry = () => {
+				cancelHeldRetry?.();
+				cancelHeldRetry = null;
+			};
+			addSourceScopedCleanup(dropHeldRetry);
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
 			// One guard per source: a fragment the engine keeps asking
@@ -1604,8 +1609,7 @@
 				stallMachine.fragmentLoaded(data);
 				if (!loopGuard.loaded(fragmentLoopKey(data.frag))) return;
 				engine.stopLoad();
-				if (holdRetry !== null) clearTimeout(holdRetry);
-				holdRetry = null;
+				dropHeldRetry();
 				console.warn('[play] fragment loop guard: engine stopped on fragment', data.frag.sn);
 				playerError = fragmentLoopOverlayMessage();
 			});
@@ -1614,6 +1618,11 @@
 				// An engine the guard stopped stays stopped: no hold, no
 				// nudge, no recovery would do anything but start it again.
 				if (loopGuard.hasTripped) return;
+				// A fatal while a retry is pending supersedes it: a hold
+				// re-arms it, and anything else — the buffer nearly out,
+				// a media error — takes a path the old retry would only
+				// start the engine under.
+				dropHeldRetry();
 				const err = { source: 'hls', type: data.type, details: data.details } as const;
 				const action = stallMachine.failure({
 					err,
@@ -1628,13 +1637,25 @@
 				// a failure the user can see: hold, and ask the engine to
 				// load again after a growing delay, quietly. The recovery
 				// and its notices are for a player with nothing left to
-				// play. The timer retires with the source.
+				// play. The timer watches the runway while it waits — a
+				// seek or a rate change drains the buffer sooner than the
+				// delay allowed for — and retires with the source.
 				if (action.act === 'hold') {
-					if (holdRetry !== null) clearTimeout(holdRetry);
-					holdRetry = setTimeout(() => {
-						holdRetry = null;
-						engine.startLoad();
-					}, action.delayMs);
+					cancelHeldRetry = scheduleHeldRetry({
+						delayMs: action.delayMs,
+						runwaySeconds: () =>
+							videoEl
+								? runwaySeconds(
+										bufferAheadSeconds(videoEl.buffered, videoEl.currentTime),
+										videoEl.playbackRate
+									)
+								: 0,
+						marginSeconds: HOLD_RUNWAY_MARGIN_S,
+						fire: () => {
+							cancelHeldRetry = null;
+							engine.startLoad();
+						}
+					});
 					return;
 				}
 				// A host-slow stall on a stream that was playing: retry
