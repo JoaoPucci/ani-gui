@@ -225,6 +225,41 @@ describe('play route — a network failure with buffered media in hand is held',
 		expect(hls.startLoadCalls).toBe(1);
 	});
 
+	it('a fatal that is not held cancels the pending retry', async () => {
+		// The hold was armed with minutes in hand; a later fatal finds
+		// the buffer nearly out and takes the recovery. The old retry
+		// must not start the engine the recovery is replacing.
+		const hls = await mountPlayingHls();
+		const video = getGlobalVideo();
+		bufferedTo(video, 300, 10);
+		hls.emit(ERROR, NETWORK_FATAL);
+		expect(hls.startLoadCalls).toBe(0);
+		const streamsBefore = FakeEventSource.instances.length;
+
+		bufferedTo(video, 24, 10);
+		hls.emit(ERROR, NETWORK_FATAL);
+		await until(
+			() => FakeEventSource.instances.length > streamsBefore,
+			'the recovery resolve stream'
+		);
+		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[0] + 500));
+		expect(hls.startLoadCalls).toBe(0);
+	});
+
+	it('a held retry fires early once the runway shrinks', async () => {
+		// Four failures reach the longest delay; a seek to near the end
+		// of the buffer leaves less than the margin, and the retry
+		// fires within a tick instead of sixteen seconds later.
+		const hls = await mountPlayingHls();
+		const video = getGlobalVideo();
+		bufferedTo(video, 300, 10);
+		for (let i = 0; i < HOLD_DELAYS_MS.length; i++) hls.emit(ERROR, NETWORK_FATAL);
+		expect(hls.startLoadCalls).toBe(0);
+
+		video.currentTime = 297;
+		await until(() => hls.startLoadCalls === 1, 'the early retry', 3000);
+	});
+
 	it('holds a host-slow timeout too, without the nudge notice', async () => {
 		const hls = await mountPlayingHls();
 		bufferedTo(getGlobalVideo(), 300, 10);
