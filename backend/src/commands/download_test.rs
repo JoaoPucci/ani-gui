@@ -5316,3 +5316,43 @@ async fn an_ffmpeg_fallback_started_while_nothing_plays_reads_at_full_speed() {
         "the fallback reads at full speed: {ffmpeg}"
     );
 }
+
+/// A fallback reading at the stream's rate takes as long as the
+/// stream plays, which the transfer's ceiling — sized for a tool
+/// running free — does not allow for. Like a paced run, it has a
+/// ceiling of its own: a fallback started while playback is live
+/// whose run takes longer than the transfer's ceiling still completes.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_started_while_playback_is_live_outlives_the_transfers_ceiling() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "sleep 0.7; exit 0");
+    let is_live = || true;
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let got = spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_millis(400),
+        &mut |_| {},
+        &pacing,
+    )
+    .await;
+    assert!(
+        got.is_ok(),
+        "the fallback completed under its own ceiling: {got:?}"
+    );
+}
