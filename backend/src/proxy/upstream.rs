@@ -88,7 +88,9 @@ pub(crate) fn redirect_target(
 /// headers go with every hop as given, the session's referer among
 /// them, where a transport following the redirect itself would
 /// replace the referer with the URL that redirected. Returns the
-/// first response that is not a redirect.
+/// first response that is not a redirect. Every hop is admitted as
+/// the player's traffic, in the host's line; [`send_paced_as`] sends
+/// background traffic.
 ///
 /// # Errors
 /// [`AniError::Network`] for a connection or DNS failure on any hop,

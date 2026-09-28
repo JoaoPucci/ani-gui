@@ -42,8 +42,8 @@ pub(crate) const SIDECAR_PHASE_DEADLINE_LIVE: Duration = Duration::from_secs(4 *
 /// transfer, chosen once as the phase starts: one while playback is
 /// live, so the phase has at most one fetch in flight;
 /// [`SIDECAR_FETCH_CONCURRENCY`](super::download::SIDECAR_FETCH_CONCURRENCY)
-/// otherwise. Across downloads, [`SIDECAR_LANE`] is what bounds the
-/// host's line while playback is live.
+/// otherwise. Across downloads, [`SIDECAR_LANE`] bounds how many are
+/// in flight while playback is live.
 #[must_use]
 pub(crate) fn sidecar_concurrency(playback_live: bool) -> usize {
     if playback_live {
@@ -102,13 +102,14 @@ pub(crate) static PACED_LANE: Semaphore = Semaphore::const_new(1);
 #[cfg(test)]
 static NEVER_LANE: Semaphore = Semaphore::const_new(Semaphore::MAX_PERMITS);
 
-/// The sidecar fetches' lane while playback is live: one at a time
-/// across every download, so the host's line holds at most one of
-/// them ahead of the player's next request whatever concurrency each
-/// download's phase chose. A fetch that asked before playback went
-/// live is past the gate already, but it is background traffic at
-/// the host's budget ([`crate::proxy::host_budget::HostBudget::admit_background`])
-/// and never waits in the line ahead of the player either.
+/// The sidecar fetches' lane while playback is live: one in flight at
+/// a time across every download, whatever concurrency each
+/// download's phase chose, so the idle tokens the player leaves go to
+/// one track at a time. None of them waits in the host's line ahead
+/// of the player — they are background traffic at the host's budget
+/// ([`crate::proxy::host_budget::HostBudget::admit_background`]),
+/// including a fetch that asked before playback went live and is past
+/// the gate already.
 pub(crate) static SIDECAR_LANE: Semaphore = Semaphore::const_new(1);
 
 /// What a sidecar fetch asks before it goes to the host: whether
