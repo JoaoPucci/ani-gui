@@ -415,6 +415,10 @@ pub async fn fetch_streaming(
 mod prop_tests;
 
 #[cfg(test)]
+#[path = "upstream_redirect_prop_test.rs"]
+mod redirect_prop_tests;
+
+#[cfg(test)]
 mod track_cap_props {
     use super::{within_track_cap, SUBTITLE_TRACK_CAP};
     use proptest::prelude::*;
