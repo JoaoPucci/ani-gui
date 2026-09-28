@@ -4718,8 +4718,9 @@ async fn an_ffmpeg_fallback_started_while_idle_holds_the_lane_when_playback_star
 async fn ffmpeg_fallbacks_run_one_at_a_time_even_with_nothing_playing() {
     // Two fallbacks running free when an episode starts would be two
     // connections beside the player, and neither can change its rate
-    // mid-run or be taken down and resumed. So a fallback holds the lane from
-    // its start whether or not anything plays: fallbacks run one
+    // mid-run or be taken down and resumed. So a fallback holds the
+    // lane from its start whether or not anything plays: fallbacks
+    // run one
     // after the other, and whichever is running when playback starts
     // is already the one connection the allowance grants.
     let bin = tempfile::tempdir().expect("bin");
