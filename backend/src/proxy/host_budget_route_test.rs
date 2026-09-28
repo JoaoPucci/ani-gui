@@ -222,7 +222,9 @@ async fn each_proxy_owns_its_budget() {
         sign_segment(&secret_b, id_b, &seg)
     );
     let start = tokio::time::Instant::now();
-    assert_eq!(get(second, &uri_b).await, StatusCode::OK);
+    for _ in 0..host_budget::SEGMENT_BURST {
+        assert_eq!(get(second.clone(), &uri_b).await, StatusCode::OK);
+    }
     assert!(
         tokio::time::Instant::now() - start < host_budget::SEGMENT_REFILL,
         "the second proxy's burst is its own"
