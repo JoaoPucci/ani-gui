@@ -13,8 +13,16 @@
 //! buffers as far ahead as it likes — over minutes rather than
 //! seconds; while it is still filling that buffer, a seek past it may
 //! take a few seconds longer than it otherwise would. The budget is
-//! per host and per proxy, and the app builds one proxy — the address
-//! the host counts.
+//! per host and per app: the proxy charges every fetch it makes on the
+//! player's behalf, hop by hop where a redirect sends it on, and a
+//! download charges the subtitle tracks it stages beside its transfer,
+//! since the host counts both against the one address. Not charged: a
+//! cached resolution's liveness check — a ping and a read of each
+//! track, once, before the player starts, under a deadline of seconds
+//! that waiting for tokens would spend, and a handful of requests the
+//! burst leaves room for — and what runs outside the app's client, the
+//! resolver's fetch of a playlist through the impersonating transport
+//! and the download tools, which the lane paces instead.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -98,9 +106,10 @@ impl HostBudget {
         }
     }
 
-    /// The budget a proxy is built with: the app's constants, shared
-    /// by every route of that proxy. The app builds one proxy, so this
-    /// is one budget per process — the address the host counts.
+    /// The budget an app state is built with: the app's constants,
+    /// shared by the proxy it builds and the downloads it runs. The app
+    /// builds one, so this is one budget per process — the address the
+    /// host counts.
     #[must_use]
     pub fn fresh() -> Arc<Self> {
         Arc::new(Self::new(SEGMENT_BURST, SEGMENT_REFILL))

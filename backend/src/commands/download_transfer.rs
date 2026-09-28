@@ -37,6 +37,7 @@ use std::path::{Path, PathBuf};
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn transfer_with_sidecars<F>(
     client: &reqwest::Client,
+    budget: &crate::proxy::host_budget::HostBudget,
     source: &StreamSource,
     dest: &Path,
     file_stem: &str,
@@ -51,6 +52,7 @@ where
 {
     let mut sidecars = std::pin::pin!(super::download::stage_sidecar_subtitles_with(
         client,
+        budget,
         &source.subtitles,
         source.referer.as_deref(),
         dest,
