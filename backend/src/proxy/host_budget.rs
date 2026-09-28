@@ -16,13 +16,15 @@
 //! per host and per app: the proxy charges every fetch it makes on the
 //! player's behalf, hop by hop where a redirect sends it on, and a
 //! download charges the subtitle tracks it stages beside its transfer,
-//! since the host counts both against the one address. Not charged: a
-//! cached resolution's liveness check — a ping and a read of each
-//! track, once, before the player starts, under a deadline of seconds
-//! that waiting for tokens would spend, and a handful of requests the
-//! burst leaves room for — and what runs outside the app's client, the
-//! resolver's fetch of a playlist through the impersonating transport
-//! and the download tools, which the lane paces instead.
+//! since the host counts both against the one address. Of the app's
+//! own fetches, not charged: a cached resolution's liveness check — a
+//! ping and a read of each track, at most a track cap's worth at once,
+//! before the player starts, under a deadline of seconds that waiting
+//! for tokens would spend — and what runs outside the app's client,
+//! the resolver's fetch of a playlist through the impersonating
+//! transport and the download tools, which the lane paces instead. An
+//! external player the app hands a stream to fetches from the host on
+//! its own, outside the app entirely.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -157,7 +159,7 @@ impl HostBudget {
                     tracing::debug!(
                         host,
                         wait_ms = wait.as_millis(),
-                        "proxy: pacing a fetch to the host's budget",
+                        "budget: pacing a fetch to the host's budget",
                     );
                     tokio::time::sleep(wait).await;
                 }
