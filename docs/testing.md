@@ -35,9 +35,9 @@ tests/
 ├── fixtures/              # shared goldens (bash + rust + ts)
 │   ├── anidb/             # synthesized anidb.app response shapes
 │   ├── kitsu/             # JSON:API responses
-│   ├── anilist/           # GraphQL responses
-│   ├── m3u8/              # master + media playlists, edge cases
-│   └── history/           # watch-history samples
+│   ├── history/           # watch-history samples
+│   ├── hls/               # synthesized transport streams, as base64 text
+│   └── arch/              # stand-in checks the bats harness drives
 └── arch/                  # cross-cutting architectural invariants
     ├── i18n.sh
     ├── deferral_record.sh

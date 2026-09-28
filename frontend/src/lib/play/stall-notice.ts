@@ -80,3 +80,10 @@ export function exhaustedStallOverlayMessage(
 	if (err.source !== 'hls') return null;
 	return HOST_SLOW.test(err.details ?? '') ? m.play_error_host_slow() : null;
 }
+
+/** The overlay's message when the engine was stopped for asking for
+ *  one fragment past its allowance: a stream that loads but never
+ *  buffers is not a slow host or an expired link. */
+export function fragmentLoopOverlayMessage(): string {
+	return m.play_error_fragment_loop();
+}

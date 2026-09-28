@@ -22,7 +22,7 @@
 		"prepare": "lefthook install -f"
 	},
 	"dependencies": {
-		"hls.js": "1.6.16",
+		"hls.js": "1.6.19",
 		"lottie-web": "5.13.0"
 	},
 	"devDependencies": {
