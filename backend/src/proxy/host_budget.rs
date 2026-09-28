@@ -16,7 +16,8 @@
 //! per host and per app: the proxy charges every fetch it makes on the
 //! player's behalf, hop by hop where a redirect sends it on, and a
 //! download charges the subtitle tracks it stages beside its transfer,
-//! since the host counts both against the one address. Of the app's
+//! since the host counts both against the one address — as background
+//! traffic, which takes a token only while no one waits for one. Of the app's
 //! own fetches, not charged: a cached resolution's liveness check — a
 //! ping and a read of each track, at most a track cap's worth at once,
 //! before the player starts, under a deadline of seconds that waiting
@@ -139,21 +140,10 @@ impl HostBudget {
     /// cannot keep taking the tokens ahead of the one that has waited
     /// longest.
     pub(crate) async fn admit(&self, host: &str) {
-        let line = {
-            let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
-            Arc::clone(lines.entry(host.to_owned()).or_default())
-        };
+        let line = self.line(host);
         let _place = line.lock().await;
         loop {
-            let wait = {
-                let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
-                let now = Instant::now();
-                let bucket = buckets
-                    .entry(host.to_owned())
-                    .or_insert_with(|| Bucket::full(self.burst, now));
-                take(bucket, now, self.burst, self.refill)
-            };
-            match wait {
+            match self.take_for(host) {
                 None => return,
                 Some(wait) => {
                     tracing::debug!(
@@ -165,6 +155,43 @@ impl HostBudget {
                 }
             }
         }
+    }
+
+    /// A token for `host` for background traffic — a download's
+    /// subtitle tracks — which never takes a place in the host's line:
+    /// it takes a token only while no one is waiting for one, and
+    /// otherwise waits a refill and looks again. Whoever is in the
+    /// line is served first, however long the background fetch has
+    /// been waiting; with the line empty it waits for its token like
+    /// any other.
+    pub(crate) async fn admit_background(&self, host: &str) {
+        let line = self.line(host);
+        loop {
+            let wait = match line.try_lock() {
+                Ok(_nobody_waiting) => match self.take_for(host) {
+                    None => return,
+                    Some(wait) => wait,
+                },
+                Err(_someone_waiting) => self.refill,
+            };
+            tokio::time::sleep(wait).await;
+        }
+    }
+
+    /// The line of requests waiting at `host`.
+    fn line(&self, host: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
+        Arc::clone(lines.entry(host.to_owned()).or_default())
+    }
+
+    /// Takes a token for `host` now, or says how long until one.
+    fn take_for(&self, host: &str) -> Option<Duration> {
+        let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        let bucket = buckets
+            .entry(host.to_owned())
+            .or_insert_with(|| Bucket::full(self.burst, now));
+        take(bucket, now, self.burst, self.refill)
     }
 }
 
