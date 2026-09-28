@@ -1464,7 +1464,10 @@ where
 /// ceiling of its own, and the time it took extends the transfer's.
 /// The ffmpeg fallback is a single connection: it holds the paced lane
 /// from its start whether or not anything plays, and is never taken
-/// down, since it cannot resume.
+/// down, since it cannot resume. Its rate is chosen with the lane and
+/// kept to its end — the stream's own while playback is live, under
+/// the paced run's ceiling; full speed otherwise, under the
+/// transfer's.
 ///
 /// `path_env` is the PATH searched for the tools — the caller passes
 /// the process environment; tests stage stub executables.
@@ -1474,9 +1477,10 @@ where
 /// (the typed error the install modal renders);
 /// [`AniError::Scraper`] when the chosen tool exits non-zero;
 /// [`AniError::Timeout`] past the transfer deadline, including while
-/// the fallback waits for the lane. A paced run runs under a ceiling
-/// of its own and a wait for the lane during playback under none;
-/// the time either took extends the transfer's.
+/// the fallback waits for the lane. A paced run, and a fallback
+/// started while playback is live, run under a ceiling of their own,
+/// and a wait for the lane during playback under none; the time a
+/// paced run or that wait took extends the transfer's.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn spawn_download_tool_paced<F>(
     source: &StreamSource,
@@ -1587,8 +1591,8 @@ where
     // and ends the moment playback stops, so it runs under a ceiling
     // of its own; a wait for the lane while playback is live ends the
     // same way and runs under none. The time either took is added to
-    // the transfer's ceiling for what follows — the free runs and the
-    // fallback.
+    // the transfer's ceiling for what follows — the free runs, the
+    // fallback's wait for the lane and an idle-started fallback's run.
     let mut deadline = deadline;
     if let Some(exe) = ytdlp {
         // Supervised: a run ends by exiting, by failing, or by playback

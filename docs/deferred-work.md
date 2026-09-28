@@ -160,20 +160,20 @@ starting it, and delete it when you find it done.
   same shape. It waited because the single-instance path was being
   reworked around the host's per-address request budget first, and
   the shared version follows that answer.
+- **An ffmpeg fallback keeps the rate it started with.** Started while
+  nothing plays it reads at full speed for its run, holding the lane,
+  and keeps that rate when playback starts under it — a spender the
+  pacing leaves; started while playback is live it reads at the
+  stream's own rate to its end, even after playback stops, and holds
+  the lane that long, so a second fallback queued behind it waits for
+  the whole title. ffmpeg cannot change rate mid-run and cannot be
+  resumed, so the change the supervisor could make is to take it down
+  and start it again at the other rate from scratch — cheap early in a
+  run, a full re-download late in one. Whether to, and where a cutover
+  pays, is the maintainer's call; it waits on that.
 
 ## Interface
 
-
-- **An ffmpeg fallback keeps the rate it started with.** Started while
-  nothing plays it reads at full speed for its run, holding the lane,
-  and keeps that rate when playback starts under it — the one spender
-  the pacing leaves; started while playback is live it reads at the
-  stream's own rate to its end, even after playback stops. ffmpeg
-  cannot change rate mid-run and cannot be resumed, so the change the
-  supervisor could make is to take it down and start it again at the
-  other rate from scratch — cheap early in a run, a full re-download
-  late in one. Whether to, and where a cutover pays, is the
-  maintainer's call; it waits on that.
 - **Localised content fetch** — synopsis and episode titles.
 - **Franchise and season grouping** across surfaces.
 - **Play-page keep-alive → normal reload with a persisted position.**
