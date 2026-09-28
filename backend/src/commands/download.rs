@@ -991,6 +991,7 @@ pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
 pub(crate) async fn stage_sidecar_subtitles_with(
     client: &reqwest::Client,
     budget: &crate::proxy::host_budget::HostBudget,
+    gate: &super::download_pacing::SidecarGate<'_>,
     tracks: &[crate::scraper::provider::SubtitleTrack],
     referer: Option<&str>,
     dest: &std::path::Path,
@@ -1014,7 +1015,7 @@ pub(crate) async fn stage_sidecar_subtitles_with(
     let fetches: Vec<_> = tracks
         .iter()
         .enumerate()
-        .map(|(i, track)| fetch_sidecar_track_by(client, budget, track, referer, until, i))
+        .map(|(i, track)| fetch_sidecar_track_by(client, budget, gate, track, referer, until, i))
         .collect();
     let mut arrivals = stream::iter(fetches).buffer_unordered(concurrency.max(1));
     let mut staged: Vec<(usize, SidecarClaim)> = Vec::new();
@@ -1107,15 +1108,19 @@ pub(crate) fn sidecar_suffixes<'a>(langs: impl Iterator<Item = &'a str>) -> Vec<
 async fn fetch_sidecar_track_by<'a>(
     client: &'a reqwest::Client,
     budget: &'a crate::proxy::host_budget::HostBudget,
+    gate: &'a super::download_pacing::SidecarGate<'a>,
     track: &'a crate::scraper::provider::SubtitleTrack,
     referer: Option<&'a str>,
     until: tokio::time::Instant,
     index: usize,
 ) -> (usize, Option<bytes::Bytes>) {
-    let body = match tokio::time::timeout_at(
-        until,
-        fetch_sidecar_track(client, budget, track, referer),
-    )
+    // While playback is live the fetch waits its turn on the lane every
+    // download's sidecar fetches share; the wait counts against the
+    // phase's deadline like the fetch does.
+    let body = match tokio::time::timeout_at(until, async {
+        let _turn = gate.turn().await;
+        fetch_sidecar_track(client, budget, track, referer).await
+    })
     .await
     {
         Ok(body) => body,
