@@ -40,8 +40,12 @@ function renditionFromDetails(err: StreamFailure): string | null {
 export const HOLD_DELAYS_MS = [2000, 4000, 8000, 16000] as const;
 
 /** Playback seconds the buffer must still hold when a held retry
- *  fires: the delay is capped so the engine is asked again with this
- *  much media to spare, whatever the schedule says. */
+ *  fires. Two things keep it: the delay is capped here, at the
+ *  failure, to what the buffer then holds past this margin — the
+ *  bound for a player that keeps the rate it had — and the timer
+ *  behind the retry (`held-retry.ts`) reads the runway against this
+ *  same margin while it waits, for a seek or a rate change that
+ *  drains the buffer sooner than the cap allowed for. */
 export const HOLD_RUNWAY_MARGIN_S = 5;
 
 export type StallAction =
