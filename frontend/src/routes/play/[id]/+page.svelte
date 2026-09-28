@@ -1528,11 +1528,25 @@
 		armSourceScopedListeners({ video: videoEl, showId: id, episode: episodeNum });
 		playerError = null;
 
+		// One held retry pending per source: a second failure inside
+		// a hold re-arms it rather than adding a second startLoad,
+		// which would only abort the first's fragment. The engine arms
+		// it; the element's own error, below, cancels it too, since
+		// the retry it would fire starts the engine under the surface.
+		// It retires with the source.
+		let cancelHeldRetry: (() => void) | null = null;
+		const dropHeldRetry = () => {
+			cancelHeldRetry?.();
+			cancelHeldRetry = null;
+		};
+		addSourceScopedCleanup(dropHeldRetry);
+
 		// Native <video> error events fire for HTTP 4xx/5xx and codec
 		// failures alike. Wire one listener that covers both the MP4
 		// path and the native-HLS fallback so the user sees something
 		// when upstream returns 403 / the byte-stream is unreadable.
 		const onVideoError = () => {
+			dropHeldRetry();
 			const err = videoEl?.error;
 			const code = err?.code ?? 0;
 			const codeName =
@@ -1588,15 +1602,6 @@
 			addSourceScopedCleanup(() => {
 				engine.destroy();
 			});
-			// One held retry pending per source: a second failure inside
-			// a hold re-arms it rather than adding a second startLoad,
-			// which would only abort the first's fragment.
-			let cancelHeldRetry: (() => void) | null = null;
-			const dropHeldRetry = () => {
-				cancelHeldRetry?.();
-				cancelHeldRetry = null;
-			};
-			addSourceScopedCleanup(dropHeldRetry);
 			hls.loadSource(mediaUrl);
 			hls.attachMedia(videoEl);
 			// One guard per source: a fragment the engine keeps asking
