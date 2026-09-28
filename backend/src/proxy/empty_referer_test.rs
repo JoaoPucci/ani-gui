@@ -187,8 +187,9 @@ async fn a_kind_probe_without_a_referer_sends_no_referer_header() {
         .await;
 
     let client = upstream::build_client().expect("client builds");
+    let budget = crate::proxy::host_budget::HostBudget::fresh();
     let url = Url::parse(&format!("{}/videos/x/sub/1", server.uri())).expect("probe url");
-    let kind = upstream::classify_via_head(&client, &url, "")
+    let kind = upstream::classify_via_head(&client, &budget, &url, "")
         .await
         .expect("the probe answers");
 
