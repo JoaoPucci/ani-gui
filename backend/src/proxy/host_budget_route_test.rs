@@ -1,6 +1,8 @@
-//! The proxy admits a segment fetch through the host's budget: a burst
-//! passes at once, and the request after it waits a refill. Mounted by
-//! `#[path]` beside the other proxy tests.
+//! The proxy charges every fetch it makes on the player's behalf —
+//! segments, playlists, subtitle tracks — to the host's budget: a burst
+//! passes at once, the request after it waits a refill, and each
+//! proxy's budget is its own. Mounted by `#[path]` beside the other
+//! proxy tests.
 
 use std::time::Duration;
 
