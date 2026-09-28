@@ -5378,3 +5378,58 @@ mod ffmpeg_pace_props {
         }
     }
 }
+
+/// A subtitle track a download stages waits behind the player: queued
+/// first, with the budget spent, it still reaches the host after a
+/// player's request that arrived later has had its token.
+#[tokio::test]
+async fn a_sidecar_fetch_queued_first_still_waits_behind_the_player() {
+    use crate::proxy::host_budget::HostBudget;
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
+        .mount(&server)
+        .await;
+    let key = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    let budget = HostBudget::new(1, std::time::Duration::from_millis(500));
+    budget.admit(&key).await;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/subs/en.vtt", server.uri()),
+    }];
+    let client = reqwest::Client::new();
+    let gate = crate::commands::download_pacing::SidecarGate::never();
+    let sidecar = async {
+        let staged = stage_sidecar_subtitles_with(
+            &client,
+            &budget,
+            &gate,
+            &tracks,
+            None,
+            dest.path(),
+            "Show Episode 2",
+            SIDECAR_PHASE_DEADLINE,
+            SIDECAR_FETCH_CONCURRENCY,
+        )
+        .await;
+        (staged, std::time::Instant::now())
+    };
+    let player = async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        budget.admit(&key).await;
+        std::time::Instant::now()
+    };
+    let ((staged, sidecar_done), player_admitted) = tokio::join!(sidecar, player);
+    assert_eq!(staged.len(), 1, "the track staged");
+    assert!(
+        player_admitted < sidecar_done,
+        "the player's request, arriving later, was admitted before the track was fetched"
+    );
+}

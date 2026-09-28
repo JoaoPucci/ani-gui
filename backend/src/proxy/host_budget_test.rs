@@ -158,3 +158,56 @@ async fn a_token_goes_to_the_waiter_that_has_waited_for_it() {
         "the token went to the request that waited for it"
     );
 }
+
+/// A background fetch never waits in the host's line: it takes a
+/// token only when no one is waiting for one, so a player's request
+/// that arrives after it is served first.
+#[tokio::test(start_paused = true)]
+async fn a_background_fetch_never_waits_ahead_of_the_player() {
+    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit("cdn.example:443").await;
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let background = {
+        let (budget, order) = (Arc::clone(&budget), Arc::clone(&order));
+        tokio::spawn(async move {
+            budget.admit_background("cdn.example:443").await;
+            order
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push("background");
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let player = {
+        let (budget, order) = (Arc::clone(&budget), Arc::clone(&order));
+        tokio::spawn(async move {
+            budget.admit("cdn.example:443").await;
+            order
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push("player");
+        })
+    };
+    player.await.expect("player");
+    background.await.expect("background");
+    assert_eq!(
+        *order.lock().unwrap_or_else(|e| e.into_inner()),
+        vec!["player", "background"],
+        "the player's request went first"
+    );
+}
+
+/// With no one waiting, a background fetch waits for its token like
+/// any other and is admitted.
+#[tokio::test(start_paused = true)]
+async fn a_background_fetch_alone_is_admitted_at_the_next_token() {
+    let budget = HostBudget::new(1, Duration::from_millis(500));
+    budget.admit("cdn.example:443").await;
+    let start = tokio::time::Instant::now();
+    budget.admit_background("cdn.example:443").await;
+    let waited = start.elapsed();
+    assert!(
+        waited >= Duration::from_millis(500) && waited < Duration::from_millis(1000),
+        "{waited:?}"
+    );
+}
