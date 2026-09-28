@@ -11,11 +11,18 @@ describe('scheduleHeldRetry', () => {
 
 	it('fires when the delay is up while the runway stays long', () => {
 		const fire = vi.fn();
-		scheduleHeldRetry({ delayMs: 8000, runwaySeconds: () => 120, marginSeconds: 5, fire });
+		const cancel = scheduleHeldRetry({
+			delayMs: 8000,
+			runwaySeconds: () => 120,
+			marginSeconds: 5,
+			fire
+		});
 		vi.advanceTimersByTime(7999);
 		expect(fire).not.toHaveBeenCalled();
 		vi.advanceTimersByTime(1);
 		expect(fire).toHaveBeenCalledTimes(1);
+		// Cancelling after the fact is nothing, and it fires once.
+		cancel();
 		vi.advanceTimersByTime(60_000);
 		expect(fire).toHaveBeenCalledTimes(1);
 	});
@@ -49,10 +56,12 @@ describe('scheduleHeldRetry', () => {
 		expect(fire).not.toHaveBeenCalled();
 	});
 
-	it('fires at once for a delay shorter than a tick', () => {
+	it('fires at its delay when that is shorter than a tick, not a tick later', () => {
 		const fire = vi.fn();
 		scheduleHeldRetry({ delayMs: 100, runwaySeconds: () => 120, marginSeconds: 5, fire });
-		vi.advanceTimersByTime(100);
+		vi.advanceTimersByTime(99);
+		expect(fire).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1);
 		expect(fire).toHaveBeenCalledTimes(1);
 	});
 });
