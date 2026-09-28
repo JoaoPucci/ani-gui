@@ -1145,7 +1145,9 @@ async fn fetch_sidecar_track(
     track: &crate::scraper::provider::SubtitleTrack,
     referer: Option<&str>,
 ) -> Option<bytes::Bytes> {
-    use crate::proxy::upstream::{read_body_capped, send_paced, CappedBody, SUBTITLE_BODY_CAP};
+    use crate::proxy::upstream::{
+        read_body_capped, send_paced_as, Admission, CappedBody, SUBTITLE_BODY_CAP,
+    };
     let Ok(url) = url::Url::parse(&track.url) else {
         tracing::warn!(lang = %track.lang, "download: subtitle url unparseable, skipped");
         return None;
@@ -1156,7 +1158,18 @@ async fn fetch_sidecar_track(
     if let Some(v) = referer.and_then(crate::proxy::upstream::referer_header) {
         headers.insert(reqwest::header::REFERER, v);
     }
-    match send_paced(client, budget, reqwest::Method::GET, &url, headers).await {
+    // Background traffic: the track never waits in the host's line
+    // ahead of the player's next request.
+    match send_paced_as(
+        client,
+        budget,
+        Admission::Background,
+        reqwest::Method::GET,
+        &url,
+        headers,
+    )
+    .await
+    {
         Ok(resp) if resp.status().is_success() => {
             match read_body_capped(resp, SUBTITLE_BODY_CAP).await {
                 Ok(CappedBody::Whole(b)) => Some(b),
