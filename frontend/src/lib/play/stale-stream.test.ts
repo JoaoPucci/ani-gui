@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	canRecoverFromStaleStream,
 	decideStreamFailureResponse,
+	HOLD_MIN_BUFFER_SECONDS,
 	isHostSlowStreamError,
 	shouldAttemptStaleStreamRetry,
 	shouldResetStaleStreamBudget,
@@ -293,5 +294,89 @@ describe('isHostSlowStreamError', () => {
 			isHostSlowStreamError({ source: 'hls', type: 'networkError', details: 'fragLoadError' })
 		).toBe(false);
 		expect(isHostSlowStreamError({ source: 'video', code: 2 })).toBe(false);
+	});
+});
+
+describe('decideStreamFailureResponse — with buffered media in hand', () => {
+	// A 429 or a dropped connection while minutes of the episode are
+	// already buffered is not yet a failure the user can see. The
+	// player holds and asks again later, quietly; the recovery and its
+	// notices are for a player with nothing left to play.
+	const base = { hasAutoRetried: false, nudgesUsed: 0, playbackProgressed: true };
+
+	it('holds a network error when the buffer runs long', () => {
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadError' },
+				bufferAheadSeconds: HOLD_MIN_BUFFER_SECONDS
+			})
+		).toBe('hold');
+	});
+
+	it('holds a host-slow timeout too, rather than nudging with a notice', () => {
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' },
+				bufferAheadSeconds: 120
+			})
+		).toBe('hold');
+	});
+
+	it('takes the recovery once the buffer is nearly out', () => {
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadError' },
+				bufferAheadSeconds: HOLD_MIN_BUFFER_SECONDS - 1
+			})
+		).toBe('recover');
+	});
+
+	it('assumes an empty buffer when none is reported', () => {
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadError' }
+			})
+		).toBe('recover');
+	});
+
+	it('measures the buffer at playback speed', () => {
+		// Twenty seconds of media at double speed is ten of playback:
+		// too little to hold.
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'hls', type: 'networkError', details: 'fragLoadError' },
+				bufferAheadSeconds: 20,
+				playbackRate: 2
+			})
+		).toBe('recover');
+	});
+
+	it('holds only for the hls.js engine: a progressive mp4 has no engine to ask again', () => {
+		// The element's own network error on an mp4 session means the
+		// element's fetch failed; asking it to load again resets the
+		// source and drops what is buffered, so buffered media does not
+		// earn a hold there. The recovery takes it as before.
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'video', code: 2 },
+				bufferAheadSeconds: 120
+			})
+		).toBe('recover');
+	});
+
+	it('does not hold a media error: buffered media is no help against one', () => {
+		expect(
+			decideStreamFailureResponse({
+				...base,
+				err: { source: 'hls', type: 'mediaError', details: 'bufferAppendError' },
+				bufferAheadSeconds: 120
+			})
+		).toBe('surface');
 	});
 });

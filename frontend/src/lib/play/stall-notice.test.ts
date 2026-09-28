@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	classifyStallCause,
 	exhaustedStallOverlayMessage,
+	fragmentLoopOverlayMessage,
 	stallNudgeToast,
 	stallRecoveryToast
 } from './stall-notice';
@@ -74,6 +75,12 @@ describe('exhaustedStallOverlayMessage', () => {
 		).toBeNull();
 		expect(exhaustedStallOverlayMessage({ source: 'hls', type: 'mediaError' }, true)).toBeNull();
 		expect(exhaustedStallOverlayMessage({ source: 'video', code: 2 }, true)).toBeNull();
+	});
+});
+
+describe('fragmentLoopOverlayMessage', () => {
+	it('names the stream that loads but never buffers, in the locale', () => {
+		expect(fragmentLoopOverlayMessage()).toBe(m.play_error_fragment_loop());
 	});
 });
 
