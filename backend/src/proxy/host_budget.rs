@@ -6,10 +6,10 @@
 //! the player makes passes through the proxy, so the proxy spaces them:
 //! each upstream host has a budget with a burst for startup and seeks
 //! and a steady refill after it, and every fetch the proxy makes to the
-//! host on the player's behalf — playlists, segments, mp4 ranges,
-//! and the subtitle tracks it loads as background traffic behind
-//! them — is charged to it. hls.js loads one segment at a
-//! time and the player allows it ten seconds for a first byte, so a
+//! host on the player's behalf — playlists, segments, mp4 ranges, and
+//! the subtitle tracks the player loads, which wait behind the media —
+//! is charged to it. hls.js loads one segment at a time and the player
+//! allows it ten seconds for a first byte, so a
 //! wait here of a second or so is absorbed, and the player still
 //! buffers as far ahead as it likes — over minutes rather than
 //! seconds; while it is still filling that buffer, a seek past it may
@@ -158,8 +158,9 @@ impl HostBudget {
         }
     }
 
-    /// A token for `host` for background traffic — a download's
-    /// subtitle tracks — which never takes a place in the host's line:
+    /// A token for `host` for background traffic — subtitle tracks,
+    /// the player's and a download's, which playback can wait for —
+    /// which never takes a place in the host's line:
     /// it takes a token only while no one is waiting for one, and
     /// otherwise waits a refill and looks again. Whoever is in the
     /// line is served first, however long the background fetch has
