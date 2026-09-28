@@ -1433,9 +1433,9 @@ where
 /// (the typed error the install modal renders);
 /// [`AniError::Scraper`] when the chosen tool exits non-zero;
 /// [`AniError::Timeout`] past the transfer deadline, including while
-/// the fallback waits for the lane; a paced run and a wait for the
-/// lane during playback run under a ceiling of their own and extend
-/// the transfer's.
+/// the fallback waits for the lane. A paced run runs under a ceiling
+/// of its own and a wait for the lane during playback under none;
+/// the time either took extends the transfer's.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn spawn_download_tool_paced<F>(
     source: &StreamSource,
@@ -1544,9 +1544,10 @@ where
     let mut scratch = Scratch::new(dest);
     // The ceiling guards a hung tool. A paced run is slow by design
     // and ends the moment playback stops, so it runs under a ceiling
-    // of its own, and so does a wait for the lane while playback is
-    // live; the time either took is added to the transfer's ceiling
-    // for what follows — the free runs and the fallback.
+    // of its own; a wait for the lane while playback is live ends the
+    // same way and runs under none. The time either took is added to
+    // the transfer's ceiling for what follows — the free runs and the
+    // fallback.
     let mut deadline = deadline;
     if let Some(exe) = ytdlp {
         // Supervised: a run ends by exiting, by failing, or by playback
