@@ -32,7 +32,7 @@ fn proxy_on(master: &str) -> (Router, SessionId, AppSecret) {
     let state = ProxyState {
         sessions,
         secret: secret.clone(),
-        client: reqwest::Client::new(),
+        client: upstream::build_client().expect("client builds"),
         origin: ProxyOrigin::new("127.0.0.1", 1),
         host_budget: host_budget::HostBudget::fresh(),
     };
