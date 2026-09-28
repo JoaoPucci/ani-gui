@@ -63,9 +63,33 @@ export function isHostSlowStreamError(err: StreamFailure): boolean {
  *  the full recovery. */
 export const STALL_NUDGE_BUDGET = 3;
 
-export type StreamFailureResponse = 'nudge' | 'recover' | 'surface';
+/** Buffered media in hand past which a network failure is held rather
+ *  than recovered from or surfaced: enough for the engine to be asked
+ *  again a few times, with growing delays, before the playhead reaches
+ *  the end of it. */
+export const HOLD_MIN_BUFFER_SECONDS = 15;
+
+/** Seconds of playback the buffered media is good for: its length in
+ *  media time over the playback rate. A rate of zero or a missing one
+ *  reads as normal speed. */
+export function runwaySeconds(
+	bufferAheadSeconds: number | undefined,
+	playbackRate?: number
+): number {
+	const rate = playbackRate && playbackRate > 0 ? playbackRate : 1;
+	return (bufferAheadSeconds ?? 0) / rate;
+}
+
+export type StreamFailureResponse = 'hold' | 'nudge' | 'recover' | 'surface';
 
 /** The response ladder for a fatal stream failure.
+ *
+ *  `hold` — an hls.js network-class failure while the player has
+ *  buffered media in hand: nothing shown, no session swap, the engine
+ *  asked to load again after a delay that grows per failure and never
+ *  outruns the buffer. What is buffered keeps playing meanwhile. Only
+ *  the engine can be asked again; a progressive mp4's element would
+ *  have to reload its source, dropping the buffer, so it is not held.
  *
  *  `nudge` — retry the SAME stream (`hls.startLoad()`): no session
  *  swap, no loading overlay, buffer and position kept. Earned only
@@ -85,7 +109,23 @@ export function decideStreamFailureResponse(args: {
 	hasAutoRetried: boolean;
 	nudgesUsed: number;
 	playbackProgressed: boolean;
+	/** The run of buffered media from the playhead, in media seconds.
+	 *  Left out, the buffer is taken to be empty. */
+	bufferAheadSeconds?: number;
+	/** The rate that media plays at; left out, normal speed. */
+	playbackRate?: number;
 }): StreamFailureResponse {
+	// A 429 or a dropped connection while minutes of the episode are
+	// already buffered is not yet a failure the user can see: the
+	// player holds and asks again later, quietly. Buffered media is no
+	// help against a media error, which is about the bytes in hand.
+	if (
+		args.err.source === 'hls' &&
+		isNetworkClassStreamError(args.err) &&
+		runwaySeconds(args.bufferAheadSeconds, args.playbackRate) >= HOLD_MIN_BUFFER_SECONDS
+	) {
+		return 'hold';
+	}
 	if (
 		isHostSlowStreamError(args.err) &&
 		args.playbackProgressed &&
