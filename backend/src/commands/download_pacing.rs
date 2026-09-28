@@ -123,7 +123,8 @@ pub(crate) struct SidecarGate<'a> {
 
 impl<'a> SidecarGate<'a> {
     /// A gate over a view of playback and a lane of the caller's.
-    #[cfg(test)]
+    /// Only the transfer's cases build one, and they run on Unix alone.
+    #[cfg(all(test, unix))]
     pub(crate) fn new(is_live: &'a (dyn Fn() -> bool + Sync), lane: &'a Semaphore) -> Self {
         Self { is_live, lane }
     }
