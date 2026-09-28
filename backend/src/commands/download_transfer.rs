@@ -51,11 +51,12 @@ where
     F: FnMut(&str) + Send,
 {
     // The tracks are paced with the transfer. Whether playback is live
-    // is read once, as the phase starts: one at a time while it is, so
-    // the host's line never holds more than one of them ahead of the
-    // player, under a deadline long enough for a listing at the cap
-    // to take its tokens that way; four at a time otherwise, for the
-    // phase's minute, even if playback starts inside it.
+    // is read once, as the phase starts, for the phase's concurrency
+    // and deadline: one at a time under a deadline long enough for a
+    // listing at the cap to take its tokens that way, or four at a
+    // time for the phase's minute. Each fetch also asks the gate, so
+    // once playback is live every download's tracks share one lane
+    // to the host, whatever the phase chose.
     let live = pacing.is_live();
     let gate = pacing.sidecar_gate();
     let mut sidecars = std::pin::pin!(super::download::stage_sidecar_subtitles_with(

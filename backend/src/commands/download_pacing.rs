@@ -33,16 +33,17 @@ pub(crate) const FAST_FRAGMENTS: u32 = 16;
 pub(crate) const PACED_FRAGMENTS: u32 = 1;
 
 /// The sidecar phase's deadline while playback is live: the tracks
-/// take their tokens one at a time behind the player's, and a listing
-/// at the track cap needs the time.
+/// take their tokens one at a time behind the player's, sharing one
+/// lane with every other download's, and a listing at the track cap
+/// needs the time.
 pub(crate) const SIDECAR_PHASE_DEADLINE_LIVE: Duration = Duration::from_secs(4 * 60);
 
 /// How many subtitle tracks a download fetches at once beside its
 /// transfer, chosen once as the phase starts: one while playback is
-/// live, so a listing at the cap holds at most one place in the
-/// host's line ahead of the player's next request;
+/// live, so the phase has at most one fetch in flight;
 /// [`SIDECAR_FETCH_CONCURRENCY`](super::download::SIDECAR_FETCH_CONCURRENCY)
-/// otherwise.
+/// otherwise. Across downloads, [`SIDECAR_LANE`] is what bounds the
+/// host's line while playback is live.
 #[must_use]
 pub(crate) fn sidecar_concurrency(playback_live: bool) -> usize {
     if playback_live {
@@ -104,7 +105,10 @@ static NEVER_LANE: Semaphore = Semaphore::const_new(Semaphore::MAX_PERMITS);
 /// The sidecar fetches' lane while playback is live: one at a time
 /// across every download, so the host's line holds at most one of
 /// them ahead of the player's next request whatever concurrency each
-/// download's phase chose.
+/// download's phase chose. A fetch that asked before playback went
+/// live is past the gate already and keeps its place — up to a
+/// phase's concurrency per download, at the moment playback starts —
+/// and the fetches after it take the lane.
 pub(crate) static SIDECAR_LANE: Semaphore = Semaphore::const_new(1);
 
 /// What a sidecar fetch asks before it goes to the host: whether
