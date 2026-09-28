@@ -11,7 +11,12 @@ use tower::ServiceExt as _;
 use wiremock::matchers::{method, path as wm_path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-fn proxy_on(master: &str) -> (Router, SessionId, AppSecret) {
+/// A proxy over `master` with the budget given, on the client the app
+/// builds — the one the hop of a redirect is visible to.
+fn proxy_with(
+    master: &str,
+    host_budget: std::sync::Arc<host_budget::HostBudget>,
+) -> (Router, SessionId, AppSecret) {
     let secret = AppSecret::from_bytes([7u8; 32]);
     let sessions = SessionTable::new();
     let session = StreamSession::new_with_kind(
@@ -24,11 +29,20 @@ fn proxy_on(master: &str) -> (Router, SessionId, AppSecret) {
     let state = ProxyState {
         sessions,
         secret: secret.clone(),
-        client: reqwest::Client::new(),
+        client: upstream::build_client().expect("client builds"),
         origin: ProxyOrigin::new("127.0.0.1", 1),
-        host_budget: host_budget::HostBudget::fresh(),
+        host_budget,
     };
     (build_router(state), id, secret)
+}
+
+fn proxy_on(master: &str) -> (Router, SessionId, AppSecret) {
+    proxy_with(master, host_budget::HostBudget::fresh())
+}
+
+fn on_hand(budget: &host_budget::HostBudget, server: &MockServer) -> Option<f64> {
+    let url = url::Url::parse(&server.uri()).expect("server url");
+    budget.on_hand(&host_budget::host_key(&url))
 }
 
 async fn get(router: Router, uri: &str) -> StatusCode {
@@ -228,5 +242,48 @@ async fn each_proxy_owns_its_budget() {
     assert!(
         tokio::time::Instant::now() - start < host_budget::SEGMENT_REFILL,
         "the second proxy's burst is its own"
+    );
+}
+
+#[tokio::test]
+async fn a_redirect_hop_is_charged_to_the_host_it_lands_on() {
+    // The master the session stored redirects to another server.
+    // Each hop is a request the host that answers it counts: the
+    // server that redirected spent a token, and so did the one that
+    // served the manifest — where a transport following the redirect
+    // on its own charged the first and left the second unpaced.
+    let origin = MockServer::start().await;
+    let target = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/master.m3u8"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/real.m3u8", target.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/real.m3u8"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:4,\nseg.ts\n"),
+        )
+        .mount(&target)
+        .await;
+    let budget = host_budget::HostBudget::fresh();
+    let (router, id, _secret) =
+        proxy_with(&format!("{}/master.m3u8", origin.uri()), budget.clone());
+    let uri = format!("/s/{}/master.m3u8", id.as_string());
+    assert_eq!(get(router, &uri).await, StatusCode::OK);
+    let one_spent = Some(f64::from(host_budget::SEGMENT_BURST - 1));
+    assert_eq!(
+        on_hand(&budget, &origin),
+        one_spent,
+        "the server that redirected answered a request"
+    );
+    assert_eq!(
+        on_hand(&budget, &target),
+        one_spent,
+        "the server the redirect landed on answered one too"
     );
 }
