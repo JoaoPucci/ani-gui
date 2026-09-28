@@ -70,7 +70,11 @@ pub(crate) const REDIRECT_HOP_CAP: usize = 10;
 /// is missing or cannot be resolved — such a response is returned as
 /// it is, and its status read like any other that is not a success.
 #[must_use]
-pub fn redirect_target(status: StatusCode, location: Option<&str>, from: &Url) -> Option<Url> {
+pub(crate) fn redirect_target(
+    status: StatusCode,
+    location: Option<&str>,
+    from: &Url,
+) -> Option<Url> {
     if !matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308) {
         return None;
     }
