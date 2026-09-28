@@ -24,6 +24,7 @@ fn proxy_on(master: &str) -> (Router, SessionId, AppSecret) {
         secret: secret.clone(),
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     };
     (build_router(state), id, secret)
 }
@@ -132,6 +133,7 @@ async fn a_subtitle_track_fetch_spends_the_budget_too() {
         secret: AppSecret::from_bytes([7u8; 32]),
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     });
     let uri = format!("/s/{}/sub/0.vtt", id.as_string());
     let start = tokio::time::Instant::now();
@@ -183,5 +185,44 @@ async fn a_media_playlist_fetch_through_the_segment_route_spends_the_budget_too(
         tokio::time::Instant::now() - burst_done
             >= host_budget::SEGMENT_REFILL - Duration::from_millis(100),
         "the media playlist fetch past the burst waited a refill"
+    );
+}
+
+#[tokio::test]
+async fn each_proxy_owns_its_budget() {
+    // The tests' mock servers are pooled and their ports recycled, so
+    // a budget shared by every proxy in the process would hand the
+    // next router a bucket the previous one spent. Each proxy state
+    // carries its own: a second proxy against the same host starts
+    // with a full burst.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"payload".to_vec()))
+        .mount(&server)
+        .await;
+    let seg = format!("{}/seg.ts", server.uri());
+    let (first, id_a, secret_a) = proxy_on("https://cdn.example/master.m3u8");
+    let uri_a = format!(
+        "/s/{}/seg?u={}&t={}",
+        id_a.as_string(),
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(seg.as_bytes()),
+        sign_segment(&secret_a, id_a, &seg)
+    );
+    for _ in 0..host_budget::SEGMENT_BURST {
+        assert_eq!(get(first.clone(), &uri_a).await, StatusCode::OK);
+    }
+    let (second, id_b, secret_b) = proxy_on("https://cdn.example/master.m3u8");
+    let uri_b = format!(
+        "/s/{}/seg?u={}&t={}",
+        id_b.as_string(),
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(seg.as_bytes()),
+        sign_segment(&secret_b, id_b, &seg)
+    );
+    let start = tokio::time::Instant::now();
+    assert_eq!(get(second, &uri_b).await, StatusCode::OK);
+    assert!(
+        tokio::time::Instant::now() - start < host_budget::SEGMENT_REFILL,
+        "the second proxy's burst is its own"
     );
 }
