@@ -246,6 +246,23 @@ describe('play route — a network failure with buffered media in hand is held',
 		expect(hls.startLoadCalls).toBe(0);
 	});
 
+	it("the video element's own error cancels the pending retry", async () => {
+		// The element reports a decode failure while a retry is
+		// pending: that surfaces the error and nothing the old retry
+		// could start would play, so it must not start the engine
+		// under the surface.
+		const hls = await mountPlayingHls();
+		const video = getGlobalVideo();
+		bufferedTo(video, 300, 10);
+		hls.emit(ERROR, NETWORK_FATAL);
+		expect(hls.startLoadCalls).toBe(0);
+
+		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[0] + 500));
+		expect(hls.startLoadCalls).toBe(0);
+	});
+
 	it('a held retry fires early once the runway shrinks', async () => {
 		// Four failures reach the longest delay; a seek to near the end
 		// of the buffer leaves less than the margin, and the retry
