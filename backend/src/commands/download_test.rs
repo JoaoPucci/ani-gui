@@ -252,6 +252,7 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
+        host_budget: crate::proxy::host_budget::HostBudget::fresh(),
         meta_http: reqwest::Client::new(),
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
@@ -3632,6 +3633,7 @@ async fn write_sidecar_subtitles_with(
 ) -> Vec<PathBuf> {
     let staged = stage_sidecar_subtitles_with(
         client,
+        &crate::proxy::host_budget::HostBudget::fresh(),
         tracks,
         referer,
         dest,
@@ -5142,4 +5144,93 @@ async fn the_download_command_paces_on_the_proxys_record_of_playback() {
             "live={live}: {calls}"
         );
     }
+}
+
+/// The subtitle tracks a download stages beside its transfer reach
+/// the host from the address the player fetches from, and the host
+/// counts them with the player's requests: each is charged to the
+/// host's budget.
+#[tokio::test]
+async fn sidecar_fetches_spend_the_hosts_budget() {
+    use crate::proxy::host_budget::{host_key, HostBudget, SEGMENT_BURST};
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for lang in ["en", "es"] {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/{lang}.vtt")))
+            .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks: Vec<_> = ["en", "es"]
+        .into_iter()
+        .map(|lang| SubtitleTrack {
+            lang: lang.into(),
+            label: lang.into(),
+            default: lang == "en",
+            url: format!("{}/subs/{lang}.vtt", server.uri()),
+        })
+        .collect();
+    let budget = HostBudget::fresh();
+    let staged = stage_sidecar_subtitles_with(
+        &reqwest::Client::new(),
+        &budget,
+        &tracks,
+        Some("https://embed.example/"),
+        dest.path(),
+        "Show Episode 2",
+        SIDECAR_PHASE_DEADLINE,
+        SIDECAR_FETCH_CONCURRENCY,
+    )
+    .await;
+    assert_eq!(staged.len(), 2, "both tracks staged");
+    let key = host_key(&url::Url::parse(&server.uri()).expect("server url"));
+    let on_hand = budget.on_hand(&key).expect("the host was fetched from");
+    assert!(
+        on_hand < f64::from(SEGMENT_BURST) - 1.0,
+        "two tracks spent two tokens: {on_hand}"
+    );
+}
+
+/// A sidecar fetched for a stream whose CDN wants no referer sends
+/// none — not an empty one — as every other fetch the app makes.
+#[tokio::test]
+async fn a_sidecar_fetch_without_a_referer_sends_no_referer_header() {
+    use crate::proxy::host_budget::HostBudget;
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/subs/en.vtt", server.uri()),
+    }];
+    let staged = stage_sidecar_subtitles_with(
+        &reqwest::Client::new(),
+        &HostBudget::fresh(),
+        &tracks,
+        Some(""),
+        dest.path(),
+        "Show Episode 2",
+        SIDECAR_PHASE_DEADLINE,
+        SIDECAR_FETCH_CONCURRENCY,
+    )
+    .await;
+    assert_eq!(staged.len(), 1, "the track staged");
+    let requests = server.received_requests().await.expect("requests recorded");
+    assert!(
+        requests.iter().all(|r| !r.headers.contains_key("referer")),
+        "an empty referer was announced instead of none"
+    );
 }
