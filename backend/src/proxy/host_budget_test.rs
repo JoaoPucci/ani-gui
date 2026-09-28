@@ -109,7 +109,9 @@ fn the_key_is_host_and_port() {
 proptest! {
     #[test]
     fn the_key_is_the_url_host_and_its_port_and_nothing_else(
-        host in "[a-z][a-z0-9-]{0,12}(\\.[a-z][a-z0-9-]{0,12}){0,3}",
+        // Labels without hyphens: the url crate refuses some hyphenated
+        // ones (an `xn--` prefix) as invalid international names.
+        host in "[a-z][a-z0-9]{0,12}(\\.[a-z][a-z0-9]{0,12}){0,3}",
         port in 1u16..=65535,
         https in proptest::bool::ANY,
         path in "/[a-z0-9/._-]{0,40}",
