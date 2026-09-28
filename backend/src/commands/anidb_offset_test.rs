@@ -6,6 +6,7 @@ fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
+        host_budget: crate::proxy::host_budget::HostBudget::fresh(),
         meta_http: reqwest::Client::new(),
         proxy_origin: crate::proxy::ProxyOrigin::new("127.0.0.1", 0),
         bundled_bin: None,

@@ -74,6 +74,7 @@ async fn sidecars_are_fetched_while_the_transfer_runs() {
     let path_env = stage_tool(bin.path(), &format!("sleep 2\ntouch '{}'", flag.display()));
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -118,6 +119,7 @@ async fn a_failed_transfer_does_not_wait_on_a_stalling_track() {
     let started = std::time::Instant::now();
     transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -193,6 +195,7 @@ async fn a_failed_transfer_leaves_no_sidecar_it_fetched() {
     let path_env = stage_tool(bin.path(), "sleep 2\nexit 1");
     transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source,
         dest.path(),
         "Show Episode 1",
@@ -246,6 +249,7 @@ async fn a_sidecar_takes_its_name_only_once_the_transfer_has_succeeded() {
     );
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -293,6 +297,7 @@ async fn a_tool_that_writes_nothing_installs_no_sidecar() {
     let path_env = stage_tool(bin.path(), "sleep 1\nexit 0");
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -338,6 +343,7 @@ async fn sidecars_install_beside_an_episode_already_at_its_name() {
     let path_env = stage_tool(bin.path(), &format!("touch '{}'", ran.display()));
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
