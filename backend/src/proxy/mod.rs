@@ -51,6 +51,9 @@ pub struct ProxyState {
     /// How rewritten URIs are formatted back into manifests. Set after the
     /// proxy actually binds to a port.
     pub origin: ProxyOrigin,
+    /// The per-host budget every fetch to a host on the player's behalf
+    /// is charged to.
+    pub host_budget: Arc<host_budget::HostBudget>,
 }
 
 /// Build the axum router. The router is generic over its state, so callers
@@ -104,10 +107,6 @@ async fn handle_master(
     let Some(sess) = state.sessions.get(&session) else {
         return error_response(StatusCode::NOT_FOUND, "session not found or expired");
     };
-    // The master is the first thing a starting player asks for: a
-    // download running beside it yields from here, not after the
-    // first segment has already competed with it.
-
     // The HLS rewrite path only makes sense for .m3u8 sessions; an MP4
     // would otherwise be buffered (hundreds of MB) and fail to parse.
     // 415 tells the renderer to use /file.mp4 instead.
@@ -118,12 +117,16 @@ async fn handle_master(
         );
     }
 
-    // The manifest's relative URIs resolve against where it was served
-    // from, which a redirect can move away from the session's URL.
+    // The master is the first thing a starting player asks for: a
+    // download running beside it yields from here, not after the
+    // first segment has already competed with it.
     state.sessions.note_media_fetch();
-    host_budget::HOST_BUDGET
+    state
+        .host_budget
         .admit(&host_budget::host_key(&sess.upstream_url))
         .await;
+    // The manifest's relative URIs resolve against where it was served
+    // from, which a redirect can move away from the session's URL.
     let (body, served_from) =
         match upstream::fetch_text(&state.client, &sess.upstream_url, &sess.referer).await {
             Ok((bytes, _ct, from)) => (bytes, from),
@@ -215,12 +218,13 @@ async fn handle_subtitle(
     let Ok(upstream_url) = Url::parse(&sub.url) else {
         return error_response(StatusCode::BAD_GATEWAY, "subtitle url unparseable");
     };
+    state
+        .host_budget
+        .admit(&host_budget::host_key(&upstream_url))
+        .await;
     // Read only up to the subtitle cap: a track URL can point at
     // something far larger than a subtitle file, and the player asks
     // for every attached track on its own.
-    host_budget::HOST_BUDGET
-        .admit(&host_budget::host_key(&upstream_url))
-        .await;
     let body = match upstream::fetch_subtitle(&state.client, &upstream_url, &sess.referer).await {
         Ok(upstream::CappedBody::Whole(bytes)) => bytes,
         Ok(upstream::CappedBody::Oversized) => {
@@ -296,7 +300,8 @@ async fn handle_mp4(
         .get(axum::http::header::RANGE)
         .and_then(|v| v.to_str().ok());
 
-    host_budget::HOST_BUDGET
+    state
+        .host_budget
         .admit(&host_budget::host_key(&sess.upstream_url))
         .await;
     let upstream_resp =
@@ -370,10 +375,6 @@ async fn handle_seg(
     let Some(sess) = state.sessions.get(&session) else {
         return error_response(StatusCode::NOT_FOUND, "session not found");
     };
-    // Media playlists and segments alike: both are the player
-    // fetching, and a segment every few seconds is what a download
-    // must leave room for.
-
     let upstream_url = match decode_seg_url(&q.u) {
         Ok(u) => u,
         Err(_) => return error_response(StatusCode::BAD_REQUEST, "bad segment url encoding"),
@@ -388,10 +389,14 @@ async fn handle_seg(
     let path = upstream_url.path();
     let is_manifest = path.ends_with(".m3u8");
 
+    // Media playlists and segments alike: both are the player
+    // fetching, and a segment every few seconds is what a download
+    // must leave room for.
     state.sessions.note_media_fetch();
     // Every fetch the proxy makes to the host on the player's behalf
     // is charged to the host's budget — playlists as well as media.
-    host_budget::HOST_BUDGET
+    state
+        .host_budget
         .admit(&host_budget::host_key(&upstream_url))
         .await;
     if is_manifest {
