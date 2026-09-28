@@ -125,3 +125,36 @@ proptest! {
         prop_assert_eq!(host_key(&explicit), host_key(&other_path));
     }
 }
+
+/// A request that finds the burst spent waits for the next token, and
+/// one arriving just as that token matures — before the waiter's own
+/// sleep is over — must not take it: waiters are served in the order
+/// they arrived, so a few requests arriving at once beside a download
+/// cannot keep taking the tokens ahead of the player's request that
+/// has waited longest.
+#[tokio::test(start_paused = true)]
+async fn a_token_goes_to_the_waiter_that_has_waited_for_it() {
+    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit("cdn.example:443").await;
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let waiter = |i: u8| {
+        let budget = Arc::clone(&budget);
+        let order = Arc::clone(&order);
+        tokio::spawn(async move {
+            budget.admit("cdn.example:443").await;
+            order.lock().unwrap_or_else(|e| e.into_inner()).push(i);
+        })
+    };
+    let first = waiter(0);
+    // The token matures at the refill; the first waiter wakes a shade
+    // after it, and the second arrives in between.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let second = waiter(1);
+    first.await.expect("first waiter");
+    second.await.expect("second waiter");
+    assert_eq!(
+        *order.lock().unwrap_or_else(|e| e.into_inner()),
+        vec![0, 1],
+        "the token went to the request that waited for it"
+    );
+}
