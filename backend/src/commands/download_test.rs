@@ -4863,8 +4863,7 @@ async fn a_download_waiting_for_the_lane_during_playback_outlives_its_ceiling() 
     // it lasts as long as playback does and ends the moment playback
     // stops — so the ceiling does not run against it either: a
     // download queued behind another's paced run past its own deadline
-    // still runs once the lane opens, and its free runs afterwards get
-    // the ceiling they would have had.
+    // still runs once the lane opens.
     let bin = tempfile::tempdir().expect("bin");
     let dest_a = tempfile::tempdir().expect("dest a");
     let dest_b = tempfile::tempdir().expect("dest b");
