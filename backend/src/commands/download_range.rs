@@ -216,6 +216,7 @@ where
         );
         super::download_transfer::transfer_with_sidecars(
             &state.proxy_http,
+            &state.host_budget,
             &source,
             dest,
             &file_stem,
