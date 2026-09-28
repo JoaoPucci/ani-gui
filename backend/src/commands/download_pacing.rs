@@ -30,6 +30,37 @@ pub(crate) const FAST_FRAGMENTS: u32 = 16;
 /// limit beside it.
 pub(crate) const PACED_FRAGMENTS: u32 = 1;
 
+/// The sidecar phase's deadline while playback is live: the tracks
+/// take their tokens one at a time behind the player's, and a listing
+/// at the track cap needs the time.
+pub(crate) const SIDECAR_PHASE_DEADLINE_LIVE: Duration = Duration::from_secs(4 * 60);
+
+/// How many subtitle tracks a download fetches at once beside its
+/// transfer: one while playback is live, so a listing at the cap
+/// holds at most one place in the host's line ahead of the player's
+/// next request; [`SIDECAR_FETCH_CONCURRENCY`](super::download::SIDECAR_FETCH_CONCURRENCY)
+/// otherwise.
+#[must_use]
+pub(crate) fn sidecar_concurrency(playback_live: bool) -> usize {
+    if playback_live {
+        1
+    } else {
+        super::download::SIDECAR_FETCH_CONCURRENCY
+    }
+}
+
+/// The sidecar phase's deadline: [`SIDECAR_PHASE_DEADLINE`](super::download::SIDECAR_PHASE_DEADLINE)
+/// for a host that stalls, [`SIDECAR_PHASE_DEADLINE_LIVE`] while
+/// playback is live.
+#[must_use]
+pub(crate) fn sidecar_phase_deadline(playback_live: bool) -> Duration {
+    if playback_live {
+        SIDECAR_PHASE_DEADLINE_LIVE
+    } else {
+        super::download::SIDECAR_PHASE_DEADLINE
+    }
+}
+
 /// The byte rate a paced run is held to, in yt-dlp's `--limit-rate`
 /// spelling. The host counts requests per address, and one fragment
 /// at a time against small segments is still several requests a
