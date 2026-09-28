@@ -192,6 +192,17 @@ starting it, and delete it when you find it done.
   and start it again at the other rate from scratch — cheap early in a
   run, a full re-download late in one. Whether to, and where a cutover
   pays, is the maintainer's call; it waits on that.
+- **An external player streams outside the pacing.** mpv and Syncplay
+  are handed the stream's own URL and fetch from the host themselves,
+  so the proxy's record sees none of it: a download started while one
+  plays runs at full speed, and nothing spaces the external player's
+  own requests. Routing the handoff through the proxy would make it
+  observable and budgeted like the embedded player, at the cost of
+  tying the external player to the app being open. It waits because
+  nothing has shown the gap hurting — the external player has not been
+  seen to refetch or error out beside a download, as the embedded one
+  did — and the routing changes how a working handoff behaves.
+
 - **What a history removal does not reach.** Removing a show from the
   history, or clearing it, misses five things, each described in
   [`architecture.md`](./architecture.md#watch-history-and-removing-it):
@@ -203,7 +214,6 @@ starting it, and delete it when you find it done.
   logged while the removal succeeds. Each of the first four is a link
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
-
 
 ## Interface
 
