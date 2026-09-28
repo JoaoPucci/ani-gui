@@ -50,6 +50,11 @@ pub(crate) async fn transfer_with_sidecars<F>(
 where
     F: FnMut(&str) + Send,
 {
+    // The tracks are paced with the transfer: one at a time while
+    // playback is live, so the host's line never holds more than one
+    // of them ahead of the player, and under a deadline long enough
+    // for a listing at the cap to take its tokens that way.
+    let live = pacing.is_live();
     let mut sidecars = std::pin::pin!(super::download::stage_sidecar_subtitles_with(
         client,
         budget,
@@ -57,8 +62,8 @@ where
         source.referer.as_deref(),
         dest,
         file_stem,
-        super::download::SIDECAR_PHASE_DEADLINE,
-        super::download::SIDECAR_FETCH_CONCURRENCY,
+        super::download_pacing::sidecar_phase_deadline(live),
+        super::download_pacing::sidecar_concurrency(live),
     ));
     let mut transfer = std::pin::pin!(super::download::spawn_download_tool_paced(
         source, dest, file_stem, quality, path_env, timeout, on_line, pacing,
