@@ -207,10 +207,11 @@ async fn a_media_playlist_fetch_through_the_segment_route_spends_the_budget_too(
 #[tokio::test]
 async fn each_proxy_owns_its_budget() {
     // The tests' mock servers are pooled and their ports recycled, so
-    // a budget shared by every proxy in the process would hand the
-    // next router a bucket the previous one spent. Each proxy state
-    // carries its own: a second proxy against the same host starts
-    // with a full burst.
+    // a budget global to the process would hand the next router a
+    // bucket the previous one spent. A budget belongs to the state it
+    // was built with — the app's, in production, and each test's
+    // here: a second proxy built with its own against the same host
+    // starts with a full burst.
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(wm_path("/seg.ts"))
