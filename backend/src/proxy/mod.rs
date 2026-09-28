@@ -52,7 +52,8 @@ pub struct ProxyState {
     /// proxy actually binds to a port.
     pub origin: ProxyOrigin,
     /// The per-host budget every fetch to a host on the player's behalf
-    /// is charged to.
+    /// is charged to, hop by hop, by the fetch itself
+    /// ([`upstream::send_paced`]).
     pub host_budget: Arc<host_budget::HostBudget>,
 }
 
@@ -121,23 +122,25 @@ async fn handle_master(
     // download running beside it yields from here, not after the
     // first segment has already competed with it.
     state.sessions.note_media_fetch();
-    state
-        .host_budget
-        .admit(&host_budget::host_key(&sess.upstream_url))
-        .await;
     // The manifest's relative URIs resolve against where it was served
     // from, which a redirect can move away from the session's URL.
-    let (body, served_from) =
-        match upstream::fetch_text(&state.client, &sess.upstream_url, &sess.referer).await {
-            Ok((bytes, _ct, from)) => (bytes, from),
-            Err(AniError::Upstream { status }) => {
-                return error_response(
-                    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
-                    "upstream error",
-                );
-            }
-            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-        };
+    let (body, served_from) = match upstream::fetch_text(
+        &state.client,
+        &state.host_budget,
+        &sess.upstream_url,
+        &sess.referer,
+    )
+    .await
+    {
+        Ok((bytes, _ct, from)) => (bytes, from),
+        Err(AniError::Upstream { status }) => {
+            return error_response(
+                StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                "upstream error",
+            );
+        }
+        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+    };
 
     let rewritten = match rewrite_master(&body, &served_from, &state.origin, session, &state.secret)
     {
@@ -218,14 +221,17 @@ async fn handle_subtitle(
     let Ok(upstream_url) = Url::parse(&sub.url) else {
         return error_response(StatusCode::BAD_GATEWAY, "subtitle url unparseable");
     };
-    state
-        .host_budget
-        .admit(&host_budget::host_key(&upstream_url))
-        .await;
     // Read only up to the subtitle cap: a track URL can point at
     // something far larger than a subtitle file, and the player asks
     // for every attached track on its own.
-    let body = match upstream::fetch_subtitle(&state.client, &upstream_url, &sess.referer).await {
+    let body = match upstream::fetch_subtitle(
+        &state.client,
+        &state.host_budget,
+        &upstream_url,
+        &sess.referer,
+    )
+    .await
+    {
         Ok(upstream::CappedBody::Whole(bytes)) => bytes,
         Ok(upstream::CappedBody::Oversized) => {
             return error_response(
@@ -300,23 +306,24 @@ async fn handle_mp4(
         .get(axum::http::header::RANGE)
         .and_then(|v| v.to_str().ok());
 
-    state
-        .host_budget
-        .admit(&host_budget::host_key(&sess.upstream_url))
-        .await;
-    let upstream_resp =
-        match upstream::fetch_streaming(&state.client, &sess.upstream_url, &sess.referer, range)
-            .await
-        {
-            Ok(r) => r,
-            Err(AniError::Upstream { status }) => {
-                return error_response(
-                    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
-                    "upstream error",
-                );
-            }
-            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-        };
+    let upstream_resp = match upstream::fetch_streaming(
+        &state.client,
+        &state.host_budget,
+        &sess.upstream_url,
+        &sess.referer,
+        range,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(AniError::Upstream { status }) => {
+            return error_response(
+                StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                "upstream error",
+            );
+        }
+        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+    };
 
     // Echo back the upstream status (200 for full, 206 for partial)
     // and the headers a video element needs: content-type tells the
@@ -393,24 +400,24 @@ async fn handle_seg(
     // fetching, and a segment every few seconds is what a download
     // must leave room for.
     state.sessions.note_media_fetch();
-    // Every fetch the proxy makes to the host on the player's behalf
-    // is charged to the host's budget — playlists as well as media.
-    state
-        .host_budget
-        .admit(&host_budget::host_key(&upstream_url))
-        .await;
     if is_manifest {
-        let (body, served_from) =
-            match upstream::fetch_text(&state.client, &upstream_url, &sess.referer).await {
-                Ok((b, _ct, from)) => (b, from),
-                Err(AniError::Upstream { status }) => {
-                    return error_response(
-                        StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
-                        "upstream",
-                    );
-                }
-                Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-            };
+        let (body, served_from) = match upstream::fetch_text(
+            &state.client,
+            &state.host_budget,
+            &upstream_url,
+            &sess.referer,
+        )
+        .await
+        {
+            Ok((b, _ct, from)) => (b, from),
+            Err(AniError::Upstream { status }) => {
+                return error_response(
+                    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                    "upstream",
+                );
+            }
+            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+        };
         let rewritten =
             match rewrite_media(&body, &served_from, &state.origin, session, &state.secret) {
                 Ok(s) => s,
@@ -441,19 +448,25 @@ async fn handle_seg(
     // `upstream::` fetches use: a stored referer that is empty, or
     // that cannot become a header value, sends no header at all
     // rather than an empty one or some other origin's name.
-    let mut req = state.client.get(upstream_url.as_str());
+    let mut headers = HeaderMap::new();
     if let Some(referer) = upstream::referer_header(&sess.referer) {
-        req = req.header(reqwest::header::REFERER, referer);
+        headers.insert(reqwest::header::REFERER, referer);
     }
     if let Some(range) = headers_in.get("range") {
-        if let Ok(rstr) = range.to_str() {
-            req = req.header("Range", rstr);
-        }
+        headers.insert(reqwest::header::RANGE, range.clone());
     }
-    let resp = match req.send().await {
+    let resp = match upstream::send_paced(
+        &state.client,
+        &state.host_budget,
+        reqwest::Method::GET,
+        &upstream_url,
+        headers,
+    )
+    .await
+    {
         Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(url = %upstream_url, error = %e, "proxy: upstream segment fetch failed");
+        Err(_) => {
+            tracing::warn!(url = %upstream_url, "proxy: upstream segment fetch failed");
             return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed");
         }
     };
