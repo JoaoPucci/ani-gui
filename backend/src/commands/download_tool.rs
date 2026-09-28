@@ -30,6 +30,16 @@
 /// id and the trailing advice are respectively arbitrary and
 /// reworded across releases, and pinning either would turn a future
 /// yt-dlp into a silent regression.
+/// Whether an ffmpeg line is a build older than 7.1 rejecting the
+/// option that turns 7.1's extension check off: the build has no
+/// such check and no such option, and refuses the whole command for
+/// it. The match is the line naming the option as unknown — the line
+/// after it, "Error splitting the argument list", says the same of
+/// any unknown option.
+pub(crate) fn ffmpeg_rejected_extension_picky(line: &str) -> bool {
+    line.contains("Unrecognized option 'extension_picky'")
+}
+
 pub(crate) fn yt_dlp_could_not_repackage(stderr: &str) -> bool {
     stderr.lines().any(|line| {
         let line = line.trim_start();
