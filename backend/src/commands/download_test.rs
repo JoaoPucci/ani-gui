@@ -3634,6 +3634,7 @@ async fn write_sidecar_subtitles_with(
     let staged = stage_sidecar_subtitles_with(
         client,
         &crate::proxy::host_budget::HostBudget::fresh(),
+        &crate::commands::download_pacing::SidecarGate::never(),
         tracks,
         referer,
         dest,
@@ -5179,6 +5180,7 @@ async fn sidecar_fetches_spend_the_hosts_budget() {
     let staged = stage_sidecar_subtitles_with(
         &reqwest::Client::new(),
         &budget,
+        &crate::commands::download_pacing::SidecarGate::never(),
         &tracks,
         Some("https://embed.example/"),
         dest.path(),
@@ -5220,6 +5222,7 @@ async fn a_sidecar_fetch_without_a_referer_sends_no_referer_header() {
     let staged = stage_sidecar_subtitles_with(
         &reqwest::Client::new(),
         &HostBudget::fresh(),
+        &crate::commands::download_pacing::SidecarGate::never(),
         &tracks,
         Some(""),
         dest.path(),
