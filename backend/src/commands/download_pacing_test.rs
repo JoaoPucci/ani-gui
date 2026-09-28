@@ -78,3 +78,21 @@ fn a_downloads_tracks_are_fetched_one_at_a_time_while_playback_is_live() {
         "tracks taking their tokens one at a time behind the player's need the time"
     );
 }
+
+proptest! {
+    /// The sidecar selectors choose between their two values by
+    /// liveness alone: live is the smaller concurrency and the longer
+    /// deadline, and neither value is ever anything else.
+    #[test]
+    fn the_sidecar_choices_are_one_of_two_and_live_is_the_slower(live in proptest::bool::ANY) {
+        let n = sidecar_concurrency(live);
+        prop_assert!(n == 1 || n == super::super::download::SIDECAR_FETCH_CONCURRENCY);
+        prop_assert_eq!(n == 1, live);
+        let d = sidecar_phase_deadline(live);
+        prop_assert!(
+            d == super::super::download::SIDECAR_PHASE_DEADLINE || d == SIDECAR_PHASE_DEADLINE_LIVE
+        );
+        prop_assert_eq!(d == SIDECAR_PHASE_DEADLINE_LIVE, live);
+        prop_assert!(SIDECAR_PHASE_DEADLINE_LIVE > super::super::download::SIDECAR_PHASE_DEADLINE);
+    }
+}

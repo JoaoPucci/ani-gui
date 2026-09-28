@@ -5357,3 +5357,21 @@ async fn an_ffmpeg_fallback_started_while_playback_is_live_outlives_the_transfer
         "the fallback completed under its own ceiling: {got:?}"
     );
 }
+
+mod ffmpeg_pace_props {
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The fallback's rate argument follows liveness alone: the
+        /// native-rate flag when playback is live, nothing otherwise,
+        /// and never anything else.
+        #[test]
+        fn the_pace_argument_is_the_native_rate_flag_exactly_when_live(live in proptest::bool::ANY) {
+            let args = super::ffmpeg_pace_args(live);
+            prop_assert_eq!(args.is_empty(), !live);
+            if live {
+                prop_assert_eq!(args, vec!["-re"]);
+            }
+        }
+    }
+}
