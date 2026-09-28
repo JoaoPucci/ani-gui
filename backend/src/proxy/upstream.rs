@@ -268,7 +268,17 @@ pub async fn fetch_subtitle(
         headers.insert(REFERER, v);
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
-    let resp = send_paced(client, budget, Method::GET, url, headers).await?;
+    // A track is not what keeps playback going: it is background
+    // traffic, served after any media request waiting for a token.
+    let resp = send_paced_as(
+        client,
+        budget,
+        Admission::Background,
+        Method::GET,
+        url,
+        headers,
+    )
+    .await?;
     let status = resp.status();
     if !status.is_success() {
         return Err(AniError::Upstream {

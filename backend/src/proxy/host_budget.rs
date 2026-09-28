@@ -7,7 +7,8 @@
 //! each upstream host has a budget with a burst for startup and seeks
 //! and a steady refill after it, and every fetch the proxy makes to the
 //! host on the player's behalf — playlists, segments, mp4 ranges,
-//! subtitle tracks — is charged to it. hls.js loads one segment at a
+//! and the subtitle tracks it loads as background traffic behind
+//! them — is charged to it. hls.js loads one segment at a
 //! time and the player allows it ten seconds for a first byte, so a
 //! wait here of a second or so is absorbed, and the player still
 //! buffers as far ahead as it likes — over minutes rather than
