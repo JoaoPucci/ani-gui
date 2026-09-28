@@ -144,6 +144,8 @@ function useShowHandlers() {
 		),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
+		// The mount's next-episode prefetch.
+		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
 	);
 }
@@ -181,11 +183,7 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		expect(hls.stopLoadCalls).toBe(1);
 	});
 
-	it('a stopped engine is not started again by a held retry or a later failure', async () => {
-		// A hold armed before the trip, and a fatal that arrives after
-		// it, would each ask the engine to load again behind the error
-		// surface — and the guard reports only its first trip, so
-		// nothing would stop it a second time.
+	it('a hold armed before the trip does not start the stopped engine', async () => {
 		const hls = await mountHls();
 		const video = getGlobalVideo();
 		Object.defineProperty(video, 'buffered', {
@@ -197,8 +195,26 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		const first = { frag: { type: 'main', level: 0, sn: 1 } };
 		for (let i = 0; i <= FRAGMENT_LOAD_ALLOWANCE; i++) hls.emit(FRAG_LOADED, first);
 		expect(hls.stopLoadCalls).toBe(1);
-		hls.emit(ERROR, { fatal: true, type: 'networkError', details: 'fragLoadTimeOut' });
 		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[0] + 500));
+		expect(hls.startLoadCalls).toBe(0);
+	});
+
+	it('a failure after the trip does not start the stopped engine', async () => {
+		// The trip's own loads reset the rendition's hold count, so the
+		// re-armed delay would be the first rung; the wait covers the
+		// second rung as well, so the case does not lean on that reset.
+		const hls = await mountHls();
+		const video = getGlobalVideo();
+		Object.defineProperty(video, 'buffered', {
+			configurable: true,
+			get: () => ({ length: 1, start: () => 0, end: () => 300 })
+		});
+		video.currentTime = 10;
+		const first = { frag: { type: 'main', level: 0, sn: 1 } };
+		for (let i = 0; i <= FRAGMENT_LOAD_ALLOWANCE; i++) hls.emit(FRAG_LOADED, first);
+		expect(hls.stopLoadCalls).toBe(1);
+		hls.emit(ERROR, { fatal: true, type: 'networkError', details: 'fragLoadTimeOut' });
+		await new Promise((r) => setTimeout(r, HOLD_DELAYS_MS[1] + 500));
 		expect(hls.startLoadCalls).toBe(0);
 	});
 
