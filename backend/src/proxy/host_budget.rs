@@ -106,6 +106,17 @@ impl HostBudget {
         Arc::new(Self::new(SEGMENT_BURST, SEGMENT_REFILL))
     }
 
+    /// The tokens `host` has on hand as of its last take, for a test
+    /// to see what a fetch spent; `None` for a host never fetched from.
+    #[cfg(test)]
+    pub(crate) fn on_hand(&self, host: &str) -> Option<f64> {
+        self.buckets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(host)
+            .map(Bucket::tokens)
+    }
+
     /// A token for `host`, waiting for one while the burst is spent.
     pub(crate) async fn admit(&self, host: &str) {
         loop {
