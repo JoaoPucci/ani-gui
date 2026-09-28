@@ -955,16 +955,17 @@ pub(crate) async fn publish_without_links(
 /// after the media tool had already finished under its hour. A CDN
 /// that has not answered in a minute is stalling, and the deadline
 /// turns that into a skipped track rather than a download that never
-/// reports done. While playback is live the phase runs under
-/// [`super::download_pacing::SIDECAR_PHASE_DEADLINE_LIVE`] instead.
+/// reports done. When playback is live as the phase starts it runs
+/// under [`super::download_pacing::SIDECAR_PHASE_DEADLINE_LIVE`]
+/// instead.
 pub(crate) const SIDECAR_PHASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// How many sidecar tracks are fetched at once while nothing plays.
 /// Enough that a listing's few languages overlap under the phase
 /// deadline, few enough that a listing at the track cap never opens
 /// more than a handful of connections or holds more than a handful of
-/// bodies. While playback is live they are fetched one at a time
-/// ([`super::download_pacing::sidecar_concurrency`]).
+/// bodies. When playback is live as the phase starts they are fetched
+/// one at a time ([`super::download_pacing::sidecar_concurrency`]).
 pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
 
 /// The sidecar phase up to the names. The resolve bounds its listing
