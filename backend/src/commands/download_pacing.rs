@@ -36,9 +36,10 @@ pub(crate) const PACED_FRAGMENTS: u32 = 1;
 pub(crate) const SIDECAR_PHASE_DEADLINE_LIVE: Duration = Duration::from_secs(4 * 60);
 
 /// How many subtitle tracks a download fetches at once beside its
-/// transfer: one while playback is live, so a listing at the cap
-/// holds at most one place in the host's line ahead of the player's
-/// next request; [`SIDECAR_FETCH_CONCURRENCY`](super::download::SIDECAR_FETCH_CONCURRENCY)
+/// transfer, chosen once as the phase starts: one while playback is
+/// live, so a listing at the cap holds at most one place in the
+/// host's line ahead of the player's next request;
+/// [`SIDECAR_FETCH_CONCURRENCY`](super::download::SIDECAR_FETCH_CONCURRENCY)
 /// otherwise.
 #[must_use]
 pub(crate) fn sidecar_concurrency(playback_live: bool) -> usize {
@@ -49,7 +50,8 @@ pub(crate) fn sidecar_concurrency(playback_live: bool) -> usize {
     }
 }
 
-/// The sidecar phase's deadline: [`SIDECAR_PHASE_DEADLINE`](super::download::SIDECAR_PHASE_DEADLINE)
+/// The sidecar phase's deadline, chosen once as the phase starts:
+/// [`SIDECAR_PHASE_DEADLINE`](super::download::SIDECAR_PHASE_DEADLINE)
 /// for a host that stalls, [`SIDECAR_PHASE_DEADLINE_LIVE`] while
 /// playback is live.
 #[must_use]
