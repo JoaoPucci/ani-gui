@@ -14,8 +14,10 @@
 //! two episodes downloading during playback put one yt-dlp against
 //! the host at a time, and the other waits for it or for playback to
 //! stop, whichever comes first. The ffmpeg fallback is one connection
-//! that can be neither paced down nor resumed, so it holds the lane
-//! from its start regardless of playback.
+//! whose rate is set at its start — the stream's own while playback is
+//! live, full speed otherwise, kept to its end either way — and that
+//! cannot be resumed, so it holds the lane from its start regardless
+//! of playback.
 
 use std::time::Duration;
 
@@ -151,9 +153,9 @@ impl<'a> Pacing<'a> {
     }
 
     /// The lane, whether or not anything plays: for a run that is one
-    /// connection and cannot be paced down or resumed, so that if
-    /// playback starts under it, it is already the one connection the
-    /// allowance grants.
+    /// connection, keeps the rate it started with and cannot be
+    /// resumed, so that if playback starts under it, it is already
+    /// the one connection the allowance grants.
     pub(crate) async fn lane(&self) -> SemaphorePermit<'a> {
         self.lane
             .acquire()
