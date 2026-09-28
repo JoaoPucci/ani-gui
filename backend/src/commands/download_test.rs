@@ -5234,3 +5234,85 @@ async fn a_sidecar_fetch_without_a_referer_sends_no_referer_header() {
         "an empty referer was announced instead of none"
     );
 }
+
+/// A fallback started while playback is live reads its input at the
+/// stream's own rate — one segment per segment's duration, the rate
+/// the player consumes it at — rather than as fast as the host
+/// answers: holding the lane keeps a second downloader out, and this
+/// keeps the fallback's own requests from spending the host's
+/// allowance.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_started_while_playback_is_live_reads_at_the_streams_rate() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let is_live = || true;
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("ffmpeg fallback succeeds");
+    let ffmpeg = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    assert!(
+        ffmpeg.contains(" -re "),
+        "the fallback reads at the stream's rate: {ffmpeg}"
+    );
+}
+
+/// One started while nothing plays reads as fast as the host answers,
+/// as before.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_started_while_nothing_plays_reads_at_full_speed() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("ffmpeg fallback succeeds");
+    let ffmpeg = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    assert!(
+        !ffmpeg.contains(" -re "),
+        "the fallback reads at full speed: {ffmpeg}"
+    );
+}
