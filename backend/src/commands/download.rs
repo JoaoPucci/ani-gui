@@ -1433,7 +1433,9 @@ where
 /// (the typed error the install modal renders);
 /// [`AniError::Scraper`] when the chosen tool exits non-zero;
 /// [`AniError::Timeout`] past the transfer deadline, including while
-/// waiting for the lane.
+/// the fallback waits for the lane; a paced run and a wait for the
+/// lane during playback run under a ceiling of their own and extend
+/// the transfer's.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn spawn_download_tool_paced<F>(
     source: &StreamSource,
@@ -1542,9 +1544,9 @@ where
     let mut scratch = Scratch::new(dest);
     // The ceiling guards a hung tool. A paced run is slow by design
     // and ends the moment playback stops, so it runs under a ceiling
-    // of its own, and the time it took is added to the transfer's for
-    // what follows — the free runs, the waits for the lane, and the
-    // fallback.
+    // of its own, and so does a wait for the lane while playback is
+    // live; the time either took is added to the transfer's ceiling
+    // for what follows — the free runs and the fallback.
     let mut deadline = deadline;
     if let Some(exe) = ytdlp {
         // Supervised: a run ends by exiting, by failing, or by playback
@@ -1556,19 +1558,24 @@ where
             // downloads beside the player put one yt-dlp against the
             // host, not one each. Waiting ends when the lane opens or
             // when playback stops — then the run is free.
-            // Waiting for the lane is time the transfer is spending,
-            // bounded by the same deadline as everything else in it.
+            // Waiting for the lane while playback is live is time of the
+            // same kind as a paced run: it lasts as long as playback does
+            // and ends when playback stops, so the ceiling does not run
+            // against it, and the time it took extends the ceiling for
+            // what follows.
             let turn = if live {
-                match tokio::time::timeout_at(deadline, pacing.paced_turn()).await {
-                    Ok(Some(turn)) => Some(turn),
-                    Ok(None) => {
+                let waited = tokio::time::Instant::now();
+                let turn = pacing.paced_turn().await;
+                deadline += waited.elapsed();
+                match turn {
+                    Some(turn) => Some(turn),
+                    None => {
                         live = false;
                         tracing::info!(
                             "download: playback stopped while waiting for the paced lane; running free",
                         );
                         continue;
                     }
-                    Err(_) => return Err(AniError::Timeout),
                 }
             } else {
                 None
