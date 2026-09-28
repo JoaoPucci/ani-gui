@@ -1751,12 +1751,12 @@ where
         // can tell a file the user already had from one that arrived
         // mid-transfer.
         cmd.arg("-y");
-        // ffmpeg 7.1's hls demuxer refuses segments whose names do not
-        // end in an extension it expects, which the providers' do not,
-        // so the check is turned off; a build older than 7.1 has no
-        // such check and no such option, and rejects the whole
-        // command for it — Ubuntu 24.04's ffmpeg is one — so it gets
-        // the command again without the option.
+        // Newer ffmpeg builds' hls demuxer refuses segments whose
+        // names do not end in an extension it expects, which the
+        // providers' do not, so the check is turned off; a build
+        // without the check has no such option, and rejects the whole
+        // command for it — Ubuntu 24.04's 6.1 is one — so it gets the
+        // command again without the option.
         if extension_check_off {
             cmd.arg("-extension_picky").arg("0");
         }

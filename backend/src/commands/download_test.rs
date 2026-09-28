@@ -5439,6 +5439,12 @@ async fn a_sidecar_fetch_queued_first_still_waits_behind_the_player() {
 /// 24.04's, which the `.deb` recommends — has no such check and no
 /// such option, and rejects the whole command for it: such a build
 /// gets the command again without the option.
+/// Newer ffmpeg builds' hls demuxer refuses segments whose names do
+/// not end in an extension it expects, which the providers' do not,
+/// so the fallback turns that check off. A build without the check —
+/// Ubuntu 24.04's 6.1, which the `.deb` recommends — has no such
+/// option, and rejects the whole command for it: such a build gets
+/// the command again without the option.
 #[cfg(unix)]
 #[tokio::test]
 async fn an_ffmpeg_that_rejects_the_extension_option_gets_the_command_without_it() {
