@@ -57,9 +57,11 @@ where
     // to take its tokens that way; four at a time otherwise, for the
     // phase's minute, even if playback starts inside it.
     let live = pacing.is_live();
+    let gate = pacing.sidecar_gate();
     let mut sidecars = std::pin::pin!(super::download::stage_sidecar_subtitles_with(
         client,
         budget,
+        &gate,
         &source.subtitles,
         source.referer.as_deref(),
         dest,
