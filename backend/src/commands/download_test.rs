@@ -4857,11 +4857,14 @@ async fn a_paced_download_also_limits_its_byte_rate() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn a_download_waiting_for_the_lane_fails_at_its_deadline() {
-    // The transfer's ceiling is one absolute instant, and waiting for
-    // the lane is time the transfer is spending: a download queued
-    // behind another's paced run past its own deadline fails as a
-    // timeout there, instead of pending until the holder's later one.
+async fn a_download_waiting_for_the_lane_during_playback_outlives_its_ceiling() {
+    // The transfer's ceiling guards a hung tool. Waiting for the lane
+    // while playback is live is the same kind of time as a paced run —
+    // it lasts as long as playback does and ends the moment playback
+    // stops — so the ceiling does not run against it either: a
+    // download queued behind another's paced run past its own deadline
+    // still runs once the lane opens, and its free runs afterwards get
+    // the ceiling they would have had.
     let bin = tempfile::tempdir().expect("bin");
     let dest_a = tempfile::tempdir().expect("dest a");
     let dest_b = tempfile::tempdir().expect("dest b");
@@ -4898,7 +4901,6 @@ async fn a_download_waiting_for_the_lane_fails_at_its_deadline() {
     );
     let drive = async {
         until_log(&log, "the first spawn", |l| l.len() == 1).await;
-        let started = tokio::time::Instant::now();
         let second = spawn_download_tool_paced(
             &source,
             dest_b.path(),
@@ -4908,17 +4910,16 @@ async fn a_download_waiting_for_the_lane_fails_at_its_deadline() {
             std::time::Duration::from_millis(400),
             &mut on_line_b,
             &pacing,
-        )
-        .await;
-        assert!(
-            matches!(second, Err(AniError::Timeout)),
-            "the queued download fails at its own deadline: {second:?}"
         );
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(3),
-            "and does so when that deadline passes, not the holder's"
+        let release = async {
+            tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+            std::fs::write(&go, b"").expect("go");
+        };
+        let (b, ()) = tokio::join!(second, release);
+        assert_eq!(
+            b.expect("the queued download completes once the lane opens"),
+            Transferred::Episode
         );
-        std::fs::write(&go, b"").expect("go");
     };
     let (a, ()) = tokio::join!(first, drive);
     assert_eq!(
