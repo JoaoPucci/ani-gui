@@ -101,6 +101,50 @@ pub(crate) static PACED_LANE: Semaphore = Semaphore::const_new(1);
 #[cfg(test)]
 static NEVER_LANE: Semaphore = Semaphore::const_new(Semaphore::MAX_PERMITS);
 
+/// The sidecar fetches' lane while playback is live: one at a time
+/// across every download, so the host's line holds at most one of
+/// them ahead of the player's next request whatever concurrency each
+/// download's phase chose.
+pub(crate) static SIDECAR_LANE: Semaphore = Semaphore::const_new(1);
+
+/// What a sidecar fetch asks before it goes to the host: whether
+/// playback is live now, and if it is, a turn on the lane every
+/// download's sidecar fetches share. Asked per fetch, so a phase that
+/// began before playback did yields from its next fetch on.
+pub(crate) struct SidecarGate<'a> {
+    is_live: &'a (dyn Fn() -> bool + Sync),
+    lane: &'a Semaphore,
+}
+
+impl<'a> SidecarGate<'a> {
+    /// A gate over a view of playback and a lane of the caller's.
+    #[cfg(test)]
+    pub(crate) fn new(is_live: &'a (dyn Fn() -> bool + Sync), lane: &'a Semaphore) -> Self {
+        Self { is_live, lane }
+    }
+
+    /// A gate nothing closes: playback is never live.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn never() -> SidecarGate<'static> {
+        SidecarGate {
+            is_live: &|| false,
+            lane: &NEVER_LANE,
+        }
+    }
+
+    /// A turn on the shared lane while playback is live, held for the
+    /// fetch; nothing otherwise.
+    pub(crate) async fn turn(&self) -> Option<SemaphorePermit<'a>> {
+        if (self.is_live)() {
+            // The lane is a static nobody closes.
+            self.lane.acquire().await.ok()
+        } else {
+            None
+        }
+    }
+}
+
 /// The fragment concurrency for the current state of playback.
 #[must_use]
 pub(crate) fn fragment_concurrency(playback_live: bool) -> u32 {
@@ -138,6 +182,15 @@ impl<'a> Pacing<'a> {
             is_live,
             poll,
             lane,
+        }
+    }
+
+    /// The gate this transfer's sidecar fetches ask: the same view of
+    /// playback, and the lane every download's sidecar fetches share.
+    pub(crate) fn sidecar_gate(&self) -> SidecarGate<'a> {
+        SidecarGate {
+            is_live: self.is_live,
+            lane: &SIDECAR_LANE,
         }
     }
 
