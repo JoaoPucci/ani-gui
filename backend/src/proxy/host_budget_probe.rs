@@ -49,7 +49,7 @@ impl HostBudget {
         let _waiting = ProbeWaiting::new(self, host);
         loop {
             let wait = match line.try_lock() {
-                Ok(_nobody_waiting) => match self.take_for(host) {
+                Ok(_nobody_waiting) => match self.take_for(host, 0) {
                     None => return,
                     Some(wait) => wait,
                 },
