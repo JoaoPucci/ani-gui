@@ -5766,31 +5766,72 @@ async fn an_ffmpeg_fallback_while_playback_is_live_reads_through_the_relay() {
 
 #[test]
 fn the_download_relay_is_a_background_session_on_the_proxy() {
-    use crate::proxy::{MediaKind, ProxyOrigin, SessionId, SessionTable};
+    // A download's master is a playlist whatever its path says — the
+    // resolver accepts only a body that opens as one — so the relay
+    // is the playlist route, never the mp4 route, which passes bytes
+    // through unrewritten.
+    use crate::proxy::{MediaKind, ProxyOrigin, SessionTable};
     let sessions = SessionTable::new();
     let origin = ProxyOrigin::new("127.0.0.1", 41417);
-    for (master, file) in [
-        ("https://cdn.example/x/master.m3u8", "master.m3u8"),
-        ("https://cdn.example/x/episode.mp4", "file.mp4"),
+    for master in [
+        "https://cdn.example/x/master.m3u8",
+        "https://cdn.example/x/episode.mp4",
     ] {
-        let url = open_download_relay(&sessions, &origin, master, Some("https://embed.example/"));
-        let prefix = format!("{}/s/", origin.base);
-        let rest = url.strip_prefix(&prefix).expect("on the proxy");
-        let (id, path) = rest.split_once('/').expect("id and file");
-        assert_eq!(path, file, "{url}");
-        let session = sessions
-            .get(&SessionId::parse(id).expect("session id"))
-            .expect("the session is open");
+        let (id, url) =
+            open_download_relay(&sessions, &origin, master, Some("https://embed.example/"))
+                .expect("a URL master opens a relay");
+        assert_eq!(
+            url,
+            format!("{}/s/{}/master.m3u8", origin.base, id.as_string()),
+            "the playlist route"
+        );
+        let session = sessions.get(&id).expect("the session is open");
         assert!(session.background, "the download's own session");
         assert_eq!(session.upstream_url.as_str(), master);
         assert_eq!(session.referer, "https://embed.example/");
-        assert_eq!(
-            session.media_kind,
-            if file == "file.mp4" {
-                MediaKind::Mp4
-            } else {
-                MediaKind::Hls
-            }
-        );
+        assert_eq!(session.media_kind, MediaKind::Hls);
     }
+}
+
+#[test]
+fn a_master_that_is_not_a_url_opens_no_relay() {
+    // With no relay the paced run keeps its own caps; handing back the
+    // master as though it were one would run uncapped at the host.
+    let sessions = crate::proxy::SessionTable::new();
+    let origin = crate::proxy::ProxyOrigin::new("127.0.0.1", 41417);
+    assert!(open_download_relay(&sessions, &origin, "not a url", None).is_none());
+    assert!(sessions.is_empty());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_download_closes_its_relay_when_the_transfer_ends() {
+    // The relay's session is signed and lives as long as a paced run
+    // may; once the transfer is over nothing should fetch through it.
+    let server = stub_range_show().await;
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server.uri());
+    state.sessions.note_media_fetch();
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("the episode downloads");
+    assert!(
+        state.sessions.is_empty(),
+        "the relay's session was closed; {} left",
+        state.sessions.len()
+    );
 }
