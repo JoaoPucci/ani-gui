@@ -211,3 +211,82 @@ async fn a_background_fetch_alone_is_admitted_at_the_next_token() {
         "{waited:?}"
     );
 }
+
+#[test]
+fn background_traffic_leaves_the_reserve_in_the_bucket() {
+    // Background traffic takes what the player is not using, never the
+    // last tokens: with the reserve still in the bucket it waits, and
+    // it waits exactly until one more token than the reserve is there.
+    let now = Instant::now();
+    let mut bucket = Bucket::full(SEGMENT_BURST, now);
+    for _ in 0..(SEGMENT_BURST - BACKGROUND_RESERVE) {
+        assert_eq!(
+            take_leaving(
+                &mut bucket,
+                now,
+                SEGMENT_BURST,
+                SEGMENT_REFILL,
+                BACKGROUND_RESERVE
+            ),
+            None
+        );
+    }
+    let wait = take_leaving(
+        &mut bucket,
+        now,
+        SEGMENT_BURST,
+        SEGMENT_REFILL,
+        BACKGROUND_RESERVE,
+    )
+    .expect("the reserve is not background traffic's");
+    assert!(
+        wait >= SEGMENT_REFILL && wait <= SEGMENT_REFILL + Duration::from_millis(2),
+        "{wait:?}"
+    );
+    // The player still has the reserve.
+    for _ in 0..BACKGROUND_RESERVE {
+        assert_eq!(take(&mut bucket, now, SEGMENT_BURST, SEGMENT_REFILL), None);
+    }
+}
+
+proptest! {
+    /// Whatever the bucket holds and however long since it was last
+    /// topped up, a background take that succeeds leaves at least the
+    /// reserve behind.
+    #[test]
+    fn a_background_take_never_dips_into_the_reserve(
+        spent in 0u32..=SEGMENT_BURST,
+        elapsed_ms in 0u64..60_000,
+        reserve in 0u32..SEGMENT_BURST,
+    ) {
+        let start = Instant::now();
+        let mut bucket = Bucket::full(SEGMENT_BURST, start);
+        for _ in 0..spent {
+            let _ = take(&mut bucket, start, SEGMENT_BURST, SEGMENT_REFILL);
+        }
+        let now = start + Duration::from_millis(elapsed_ms);
+        if take_leaving(&mut bucket, now, SEGMENT_BURST, SEGMENT_REFILL, reserve).is_none() {
+            prop_assert!(bucket.tokens() >= f64::from(reserve));
+        }
+    }
+}
+
+/// The budget the app builds keeps the reserve: background traffic
+/// takes the burst down to it, and the player's request after that is
+/// served at once.
+#[tokio::test(start_paused = true)]
+async fn the_apps_budget_keeps_the_players_reserve_from_background_traffic() {
+    let budget = HostBudget::fresh();
+    for _ in 0..(SEGMENT_BURST - BACKGROUND_RESERVE) {
+        budget.admit_background("cdn.example:443").await;
+    }
+    let start = tokio::time::Instant::now();
+    for _ in 0..BACKGROUND_RESERVE {
+        budget.admit("cdn.example:443").await;
+    }
+    assert_eq!(
+        tokio::time::Instant::now(),
+        start,
+        "the reserve was the player's"
+    );
+}
