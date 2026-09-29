@@ -291,23 +291,10 @@ where
             .sessions
             .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
     };
-    // The relay is opened the first time a paced run asks for it, and
-    // kept for the transfer.
-    let relay_cell = std::sync::OnceLock::new();
-    let relay = || {
-        Some(
-            relay_cell
-                .get_or_init(|| {
-                    open_download_relay(
-                        &state.sessions,
-                        &state.proxy_origin,
-                        &source.master_url,
-                        source.referer.as_deref(),
-                    )
-                })
-                .clone(),
-        )
-    };
+    // The relay opens the first time a paced run asks for it and
+    // closes when the transfer is done with it.
+    let download_relay = DownloadRelay::new(state, &source);
+    let relay = || download_relay.url();
     let pacing = super::download_pacing::Pacing::new(
         &is_live,
         super::download_pacing::PACING_POLL,
@@ -1863,32 +1850,72 @@ where
 
 /// Open the relay a download fetches through while playback is live: a
 /// background session on the app's proxy for `master`, sent with
-/// `referer`, living as long as a paced run may, and the proxy URL its
-/// media kind is served from. A master that is not a URL is returned
-/// as it is — there is nothing for the proxy to fetch.
+/// `referer`, living as long as a paced run may, and the URL of the
+/// proxy's playlist route for it. A download's master is a playlist
+/// whatever its path says — the resolver accepts only a body that
+/// opens as one — so the relay is the playlist route. `None` for a
+/// master that is not a URL: there is nothing for the proxy to fetch,
+/// and the paced run keeps its own caps.
 pub(crate) fn open_download_relay(
     sessions: &crate::proxy::SessionTable,
     origin: &crate::proxy::ProxyOrigin,
     master: &str,
     referer: Option<&str>,
-) -> String {
+) -> Option<(crate::proxy::SessionId, String)> {
     use crate::proxy::{MediaKind, StreamSession};
-    let Ok(url) = url::Url::parse(master) else {
-        return master.to_string();
-    };
-    let kind = MediaKind::from_url(&url).unwrap_or(MediaKind::Hls);
+    let url = url::Url::parse(master).ok()?;
     let session = StreamSession::background(
         url,
-        kind,
+        MediaKind::Hls,
         referer.unwrap_or(""),
         super::download_pacing::PACED_RUN_CEILING,
     );
     let id = sessions.insert(session);
-    let file = match kind {
-        MediaKind::Hls => "master.m3u8",
-        MediaKind::Mp4 => "file.mp4",
-    };
-    format!("{}/s/{}/{}", origin.base, id.as_string(), file)
+    let relay = format!("{}/s/{}/master.m3u8", origin.base, id.as_string());
+    Some((id, relay))
+}
+
+/// A transfer's relay: opened the first time a paced run asks for it,
+/// kept for the transfer, and closed when the transfer is done with it
+/// — however the transfer ends — since its session is signed and lives
+/// as long as a paced run may.
+pub(crate) struct DownloadRelay<'a> {
+    state: &'a crate::app::AppState,
+    source: &'a StreamSource,
+    opened: std::sync::OnceLock<Option<(crate::proxy::SessionId, String)>>,
+}
+
+impl<'a> DownloadRelay<'a> {
+    pub(crate) fn new(state: &'a crate::app::AppState, source: &'a StreamSource) -> Self {
+        Self {
+            state,
+            source,
+            opened: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// The relay's URL, opening it on the first ask.
+    pub(crate) fn url(&self) -> Option<String> {
+        self.opened
+            .get_or_init(|| {
+                open_download_relay(
+                    &self.state.sessions,
+                    &self.state.proxy_origin,
+                    &self.source.master_url,
+                    self.source.referer.as_deref(),
+                )
+            })
+            .as_ref()
+            .map(|(_, url)| url.clone())
+    }
+}
+
+impl Drop for DownloadRelay<'_> {
+    fn drop(&mut self) {
+        if let Some(Some((id, _))) = self.opened.get() {
+            self.state.sessions.remove(id);
+        }
+    }
 }
 
 /// Publish a finished transfer and say so on the progress stream.
