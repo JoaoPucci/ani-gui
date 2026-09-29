@@ -53,8 +53,10 @@ sudo apt install -y mpv jq ripgrep
 
 Clone and run the one workspace install, which covers `frontend/`
 and `electron/`; the frontend's install also sets up Lefthook and
-writes the `pre-commit` / `pre-push` git hooks (set `LEFTHOOK=0` to
-skip them for a single command):
+writes the `pre-commit` / `pre-push` git hooks (`LEFTHOOK=0` skips
+them for a single command, and `LEFTHOOK_EXCLUDE=<name>` skips one
+check by its name in `lefthook.yml`; AGENTS.md §12 says when a
+commit may do either):
 
 ```sh
 git clone git@github.com:JoaoPucci/ani-gui.git
