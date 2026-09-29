@@ -213,7 +213,8 @@ where
             &is_live,
             super::download_pacing::PACING_POLL,
             &super::download_pacing::PACED_LANE,
-        );
+        )
+        .woken_by(state.sessions.media_noted());
         super::download_transfer::transfer_with_sidecars(
             &state.proxy_http,
             &state.host_budget,
