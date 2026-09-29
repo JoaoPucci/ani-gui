@@ -103,6 +103,12 @@ pub(crate) fn take_leaving(
     refill: Duration,
     reserve: u32,
 ) -> Option<Duration> {
+    // A reserve as large as the burst leaves background traffic
+    // nothing: it would wait for good.
+    debug_assert!(
+        reserve < burst,
+        "the reserve {reserve} leaves no room under the burst {burst}"
+    );
     let elapsed = now.saturating_duration_since(bucket.refilled_at);
     let refilled = elapsed.as_secs_f64() / refill.as_secs_f64();
     bucket.tokens = (bucket.tokens + refilled).min(f64::from(burst));
