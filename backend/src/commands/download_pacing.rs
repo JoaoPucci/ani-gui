@@ -197,8 +197,8 @@ impl<'a> Pacing<'a> {
     }
 
     /// The same pacing, woken by `noted` — the proxy's note of a media
-    /// fetch — so a change of playback is seen at once rather than at
-    /// the next poll.
+    /// fetch — so playback starting is seen at once rather than at the
+    /// next poll.
     #[must_use]
     pub(crate) fn woken_by(self, noted: &'a tokio::sync::Notify) -> Self {
         Self {
@@ -263,26 +263,32 @@ impl<'a> Pacing<'a> {
 
     /// Resolves once playback is no longer in the state `current`
     /// describes — the moment a running tool should be respawned at
-    /// the other concurrency. Never resolves while nothing changes.
-    /// Looks at each poll and, when woken by the proxy's notes, at
-    /// each note too: playback starting is seen at the player's first
-    /// request. Playback stopping is a silence, which only the poll
-    /// sees.
+    /// the other pace. Never resolves while nothing changes. When
+    /// woken by the proxy's notes and waiting for playback to start,
+    /// it registers for the next note, looks, and waits for a note or
+    /// the poll, so a start is seen at the player's first request —
+    /// including one noted before the wait began. Playback stopping is
+    /// a silence no note announces, so a wait for it looks at each
+    /// poll alone.
     pub(crate) async fn until_live_changes(&self, current: bool) {
         loop {
             match self.noted {
-                Some(noted) => {
+                Some(noted) if !current => {
                     let note = noted.notified();
                     tokio::pin!(note);
-                    // Registered before the look below, so a note that
-                    // lands between the two is not missed.
                     note.as_mut().enable();
+                    // Registered first, then a look: a note that lands
+                    // after the look is the one registered for, and one
+                    // before it is in what the look sees.
+                    if self.is_live() != current {
+                        return;
+                    }
                     tokio::select! {
                         () = tokio::time::sleep(self.poll) => {}
                         () = note => {}
                     }
                 }
-                None => tokio::time::sleep(self.poll).await,
+                _ => tokio::time::sleep(self.poll).await,
             }
             if self.is_live() != current {
                 return;
