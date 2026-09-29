@@ -66,6 +66,19 @@ pub(crate) fn sidecar_phase_deadline(playback_live: bool) -> Duration {
     }
 }
 
+/// Fragments a relayed run keeps in flight. The proxy admits each as
+/// background traffic, so how many are in flight does not decide how
+/// many reach the host; a few keep one ready whenever the player
+/// leaves a token.
+pub(crate) const RELAYED_FRAGMENTS: u32 = 4;
+
+/// How long a relayed run's tool waits for a request's first byte, in
+/// seconds. The proxy holds a background request until the player
+/// leaves a token, which while the player fills its buffer can be a
+/// minute or more; the tool's default of twenty seconds would give up
+/// on requests that are only waiting their turn.
+pub(crate) const RELAYED_SOCKET_TIMEOUT_S: u32 = 300;
+
 /// The byte rate a paced run is held to, in yt-dlp's `--limit-rate`
 /// spelling. The host counts requests per address, and one fragment
 /// at a time against small segments is still several requests a
@@ -176,6 +189,7 @@ pub(crate) struct Pacing<'a> {
     is_live: &'a (dyn Fn() -> bool + Sync),
     poll: Duration,
     lane: &'a Semaphore,
+    relay: Option<&'a (dyn Fn() -> Option<String> + Sync)>,
 }
 
 impl<'a> Pacing<'a> {
@@ -188,7 +202,25 @@ impl<'a> Pacing<'a> {
             is_live,
             poll,
             lane,
+            relay: None,
         }
+    }
+
+    /// The same pacing with a relay: where the transfer fetches from
+    /// while playback is live — the app's proxy, which charges the
+    /// download's requests to the host's budget behind the player's —
+    /// in place of a byte-rate cap.
+    #[must_use]
+    pub(crate) fn with_relay(self, relay: &'a (dyn Fn() -> Option<String> + Sync)) -> Self {
+        Self {
+            relay: Some(relay),
+            ..self
+        }
+    }
+
+    /// The relay's URL for this transfer, when it has one.
+    pub(crate) fn relay_url(&self) -> Option<String> {
+        self.relay.and_then(|relay| relay())
     }
 
     /// The gate this transfer's sidecar fetches ask: the same view of
@@ -210,6 +242,7 @@ impl<'a> Pacing<'a> {
             is_live: &|| false,
             poll: Duration::from_secs(3600),
             lane: &NEVER_LANE,
+            relay: None,
         }
     }
 

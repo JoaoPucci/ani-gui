@@ -291,11 +291,29 @@ where
             .sessions
             .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
     };
+    // The relay is opened the first time a paced run asks for it, and
+    // kept for the transfer.
+    let relay_cell = std::sync::OnceLock::new();
+    let relay = || {
+        Some(
+            relay_cell
+                .get_or_init(|| {
+                    open_download_relay(
+                        &state.sessions,
+                        &state.proxy_origin,
+                        &source.master_url,
+                        source.referer.as_deref(),
+                    )
+                })
+                .clone(),
+        )
+    };
     let pacing = super::download_pacing::Pacing::new(
         &is_live,
         super::download_pacing::PACING_POLL,
         &super::download_pacing::PACED_LANE,
-    );
+    )
+    .with_relay(&relay);
     super::download_transfer::transfer_with_sidecars(
         &state.proxy_http,
         &state.host_budget,
@@ -1646,20 +1664,44 @@ where
             } else {
                 None
             };
+            // While playback is live the run fetches through the relay
+            // when there is one: the proxy charges its requests to the
+            // host's budget behind the player's, so it takes whatever
+            // the player leaves, uncapped. Without one it is paced by
+            // concurrency and byte rate instead.
+            let relayed = if live { pacing.relay_url() } else { None };
+            let (source_url, run_referer, fragments, rate, socket_timeout) = match &relayed {
+                Some(relay) => (
+                    relay.as_str(),
+                    None,
+                    super::download_pacing::RELAYED_FRAGMENTS,
+                    None,
+                    Some(super::download_pacing::RELAYED_SOCKET_TIMEOUT_S),
+                ),
+                None => (
+                    master_url,
+                    referer,
+                    super::download_pacing::fragment_concurrency(live),
+                    super::download_pacing::rate_limit(live),
+                    None,
+                ),
+            };
             let cmd = ytdlp_command(
                 &exe,
                 child_path.as_deref(),
-                referer,
-                master_url,
+                run_referer,
+                source_url,
                 &scratch.path,
                 quality,
-                super::download_pacing::fragment_concurrency(live),
-                super::download_pacing::rate_limit(live),
+                fragments,
+                rate,
+                socket_timeout,
             );
             tracing::info!(
-                fragments = super::download_pacing::fragment_concurrency(live),
-                rate_limit = super::download_pacing::rate_limit(live).unwrap_or("none"),
+                fragments,
+                rate_limit = rate.unwrap_or("none"),
                 playback_live = live,
+                relayed = relayed.is_some(),
                 "download: spawning yt-dlp",
             );
             let mut repackage_failed = false;
@@ -1737,6 +1779,15 @@ where
         .await
         .map_err(|_| AniError::Timeout)?;
     let live = pacing.is_live();
+    // Started while playback is live, the fallback reads through the
+    // relay when there is one — at whatever pace the budget leaves it,
+    // the referer the proxy's to send — and at the stream's own rate
+    // when there is not.
+    let relayed = if live { pacing.relay_url() } else { None };
+    let (input, input_referer) = match &relayed {
+        Some(relay) => (relay.as_str(), None),
+        None => (master_url, referer),
+    };
     let command = |extension_check_off: bool| {
         let mut cmd = tokio::process::Command::new(&exe);
         if let Some(p) = &child_path {
@@ -1763,10 +1814,10 @@ where
         cmd.arg("-loglevel")
             .arg("error")
             .arg("-stats")
-            .args(ffmpeg_referer_args(referer))
-            .args(ffmpeg_pace_args(live))
+            .args(ffmpeg_referer_args(input_referer))
+            .args(ffmpeg_pace_args(live && relayed.is_none()))
             .arg("-i")
-            .arg(master_url)
+            .arg(input)
             .arg("-c")
             .arg("copy")
             .arg(&scratch.path);
@@ -1802,6 +1853,36 @@ where
         Ok(()) => finish(&scratch, &target, on_line).await,
         Err(e) => Err(e),
     }
+}
+
+/// Open the relay a download fetches through while playback is live: a
+/// background session on the app's proxy for `master`, sent with
+/// `referer`, living as long as a paced run may, and the proxy URL its
+/// media kind is served from. A master that is not a URL is returned
+/// as it is — there is nothing for the proxy to fetch.
+pub(crate) fn open_download_relay(
+    sessions: &crate::proxy::SessionTable,
+    origin: &crate::proxy::ProxyOrigin,
+    master: &str,
+    referer: Option<&str>,
+) -> String {
+    use crate::proxy::{MediaKind, StreamSession};
+    let Ok(url) = url::Url::parse(master) else {
+        return master.to_string();
+    };
+    let kind = MediaKind::from_url(&url).unwrap_or(MediaKind::Hls);
+    let session = StreamSession::background(
+        url,
+        kind,
+        referer.unwrap_or(""),
+        super::download_pacing::PACED_RUN_CEILING,
+    );
+    let id = sessions.insert(session);
+    let file = match kind {
+        MediaKind::Hls => "master.m3u8",
+        MediaKind::Mp4 => "file.mp4",
+    };
+    format!("{}/s/{}/{}", origin.base, id.as_string(), file)
 }
 
 /// Publish a finished transfer and say so on the progress stream.
@@ -1939,10 +2020,10 @@ fn a_download_tool_exists(path_env: &str) -> bool {
 }
 
 /// yt-dlp's command line for one run of a transfer: v5's arguments,
-/// the quality preference as a format sort, `fragments` in flight —
-/// sixteen with nothing playing, one while playback is live — and,
-/// while playback is live, the byte-rate limit that spaces requests
-/// out.
+/// the quality preference as a format sort, `fragments` in flight,
+/// the byte-rate limit that spaces requests out when a paced run has
+/// no relay, and the socket timeout a relayed run waits behind the
+/// player with.
 #[allow(clippy::too_many_arguments)]
 fn ytdlp_command(
     exe: &std::path::Path,
@@ -1953,6 +2034,7 @@ fn ytdlp_command(
     quality: Option<&str>,
     fragments: u32,
     rate_limit: Option<&str>,
+    socket_timeout_s: Option<u32>,
 ) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(exe);
     if let Some(p) = child_path {
@@ -1967,6 +2049,9 @@ fn ytdlp_command(
         .arg(fragments.to_string());
     if let Some(rate) = rate_limit {
         cmd.arg("--limit-rate").arg(rate);
+    }
+    if let Some(timeout) = socket_timeout_s {
+        cmd.arg("--socket-timeout").arg(timeout.to_string());
     }
     cmd.arg("-o").arg(scratch);
     // v5 downloads the variant select_quality chose; the same
