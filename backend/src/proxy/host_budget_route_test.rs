@@ -335,11 +335,19 @@ fn background_proxy(
     master: &str,
     budget: std::sync::Arc<host_budget::HostBudget>,
 ) -> (Router, SessionTable, SessionId, AppSecret) {
+    background_proxy_of(master, MediaKind::Hls, budget)
+}
+
+fn background_proxy_of(
+    master: &str,
+    kind: MediaKind,
+    budget: std::sync::Arc<host_budget::HostBudget>,
+) -> (Router, SessionTable, SessionId, AppSecret) {
     let secret = AppSecret::from_bytes([7u8; 32]);
     let sessions = SessionTable::new();
     let session = StreamSession::background(
         url::Url::parse(master).expect("master url"),
-        MediaKind::Hls,
+        kind,
         String::new(),
         Duration::from_secs(60),
     );
@@ -461,4 +469,126 @@ fn a_downloads_session_lives_as_long_as_it_is_given() {
         .expect("in the future");
     assert!(left > long - Duration::from_secs(5), "{left:?}");
     assert!(session.background);
+}
+
+/// The response's status once its whole body has been read — the
+/// streaming routes note media chunk by chunk as the body is read.
+async fn get_drained(router: Router, uri: &str) -> StatusCode {
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(uri)
+                .body(axum::body::Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("router responds");
+    let status = resp.status();
+    axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .expect("body read");
+    status
+}
+
+fn seg_uri(secret: &AppSecret, id: SessionId, upstream: &str) -> String {
+    let token = sign_segment(secret, id, upstream);
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(upstream.as_bytes());
+    format!("/s/{}/seg?u={encoded}&t={token}", id.as_string())
+}
+
+#[tokio::test]
+async fn a_downloads_media_playlist_and_segment_bodies_are_not_playback() {
+    // Every path a download's fetch takes through the segment route —
+    // a media playlist, and a segment whose body is read to its end —
+    // leaves playback as it was.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/v/index.m3u8"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:4,\nseg.ts\n"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/v/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![7u8; 64 * 1024]))
+        .mount(&server)
+        .await;
+    let (router, sessions, id, secret) = background_proxy(
+        &format!("{}/master.m3u8", server.uri()),
+        host_budget::HostBudget::fresh(),
+    );
+    let playlist = format!("{}/v/index.m3u8", server.uri());
+    assert_eq!(
+        get_drained(router.clone(), &seg_uri(&secret, id, &playlist)).await,
+        StatusCode::OK
+    );
+    let seg = format!("{}/v/seg.ts", server.uri());
+    assert_eq!(
+        get_drained(router, &seg_uri(&secret, id, &seg)).await,
+        StatusCode::OK
+    );
+    assert!(
+        !sessions.playback_live(Duration::from_secs(30)),
+        "the download's playlist and segment bodies did not mark playback live"
+    );
+}
+
+#[tokio::test]
+async fn a_downloads_mp4_body_is_not_playback() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/episode.mp4"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![7u8; 64 * 1024]))
+        .mount(&server)
+        .await;
+    let (router, sessions, id, _secret) = background_proxy_of(
+        &format!("{}/episode.mp4", server.uri()),
+        MediaKind::Mp4,
+        host_budget::HostBudget::fresh(),
+    );
+    assert_eq!(
+        get_drained(router, &format!("/s/{}/file.mp4", id.as_string())).await,
+        StatusCode::OK
+    );
+    assert!(
+        !sessions.playback_live(Duration::from_secs(30)),
+        "the download's mp4 body did not mark playback live"
+    );
+}
+
+#[tokio::test]
+async fn a_players_drained_segment_does_mark_playback() {
+    // The same drained segment through a player's session marks
+    // playback live — the cases above hold because the session is the
+    // download's, not because a drained body notes nothing.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/v/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![7u8; 64 * 1024]))
+        .mount(&server)
+        .await;
+    let secret = AppSecret::from_bytes([7u8; 32]);
+    let sessions = SessionTable::new();
+    let session = StreamSession::new_with_kind(
+        url::Url::parse(&format!("{}/master.m3u8", server.uri())).expect("url"),
+        MediaKind::Hls,
+        String::new(),
+    );
+    let id = session.id;
+    sessions.insert(session);
+    let router = build_router(ProxyState {
+        sessions: sessions.clone(),
+        secret: secret.clone(),
+        client: upstream::build_client().expect("client builds"),
+        origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
+    });
+    let seg = format!("{}/v/seg.ts", server.uri());
+    assert_eq!(
+        get_drained(router, &seg_uri(&secret, id, &seg)).await,
+        StatusCode::OK
+    );
+    assert!(sessions.playback_live(Duration::from_secs(30)));
 }
