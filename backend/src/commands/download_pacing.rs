@@ -88,7 +88,9 @@ pub(crate) const PACED_RUN_CEILING: Duration = Duration::from_secs(24 * 60 * 60)
 /// the player standing still.
 pub(crate) const PLAYBACK_LIVE_WINDOW: Duration = Duration::from_secs(30);
 
-/// How often a running transfer asks whether playback changed.
+/// How often a running transfer asks whether playback changed. Playback
+/// starting is also seen at once, when the proxy notes the player's
+/// first request; stopping is a silence, which only this sees.
 pub(crate) const PACING_POLL: Duration = Duration::from_secs(2);
 
 /// The one paced lane of the app: while playback is live, yt-dlp runs
@@ -169,13 +171,15 @@ pub(crate) fn rate_limit(playback_live: bool) -> Option<&'static str> {
 }
 
 /// The transfer's view of playback: a question it can ask at any
-/// moment, and how often it asks while a tool runs. Production asks
-/// the session table the proxy shares with the download command; the
+/// moment, how often it asks while a tool runs, and what wakes it to
+/// ask between times. Production asks the session table the proxy
+/// shares with the download command and is woken by its notes; the
 /// tests hand it a flag.
 pub(crate) struct Pacing<'a> {
     is_live: &'a (dyn Fn() -> bool + Sync),
     poll: Duration,
     lane: &'a Semaphore,
+    noted: Option<&'a tokio::sync::Notify>,
 }
 
 impl<'a> Pacing<'a> {
@@ -188,6 +192,18 @@ impl<'a> Pacing<'a> {
             is_live,
             poll,
             lane,
+            noted: None,
+        }
+    }
+
+    /// The same pacing, woken by `noted` — the proxy's note of a media
+    /// fetch — so a change of playback is seen at once rather than at
+    /// the next poll.
+    #[must_use]
+    pub(crate) fn woken_by(self, noted: &'a tokio::sync::Notify) -> Self {
+        Self {
+            noted: Some(noted),
+            ..self
         }
     }
 
@@ -210,6 +226,7 @@ impl<'a> Pacing<'a> {
             is_live: &|| false,
             poll: Duration::from_secs(3600),
             lane: &NEVER_LANE,
+            noted: None,
         }
     }
 
@@ -247,9 +264,26 @@ impl<'a> Pacing<'a> {
     /// Resolves once playback is no longer in the state `current`
     /// describes — the moment a running tool should be respawned at
     /// the other concurrency. Never resolves while nothing changes.
+    /// Looks at each poll and, when woken by the proxy's notes, at
+    /// each note too: playback starting is seen at the player's first
+    /// request. Playback stopping is a silence, which only the poll
+    /// sees.
     pub(crate) async fn until_live_changes(&self, current: bool) {
         loop {
-            tokio::time::sleep(self.poll).await;
+            match self.noted {
+                Some(noted) => {
+                    let note = noted.notified();
+                    tokio::pin!(note);
+                    // Registered before the look below, so a note that
+                    // lands between the two is not missed.
+                    note.as_mut().enable();
+                    tokio::select! {
+                        () = tokio::time::sleep(self.poll) => {}
+                        () = note => {}
+                    }
+                }
+                None => tokio::time::sleep(self.poll).await,
+            }
             if self.is_live() != current {
                 return;
             }
