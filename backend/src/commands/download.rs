@@ -1623,12 +1623,16 @@ where
     // the transfer's ceiling for what follows — the free runs, the
     // fallback's wait for the lane and an idle-started fallback's run.
     let mut deadline = deadline;
+    // Whether the yt-dlp run that failed was fetching through the
+    // relay: the relay may be why, and the fallback does not try it
+    // again.
+    let mut relayed_run_failed = false;
     if let Some(exe) = ytdlp {
         // Supervised: a run ends by exiting, by failing, or by playback
         // starting or stopping under it — then the tool is down and the
         // next run resumes its fragments at the other concurrency.
         let mut live = pacing.is_live();
-        let (e, repackage_failed) = loop {
+        let (e, repackage_failed, failed_relayed) = loop {
             // Paced runs take the app's one lane in turn, so two
             // downloads beside the player put one yt-dlp against the
             // host, not one each. Waiting ends when the lane opens or
@@ -1723,9 +1727,10 @@ where
                         "download: playback changed; resuming yt-dlp at the other pace",
                     );
                 }
-                Err(e) => break (e, repackage_failed),
+                Err(e) => break (e, repackage_failed, relayed.is_some()),
             }
         };
+        relayed_run_failed = failed_relayed;
         if repackage_failed {
             // yt-dlp's own report: what it wrote is raw
             // MPEG-TS under an .mp4 name. It never reached the
@@ -1775,7 +1780,11 @@ where
     // relay when there is one — at whatever pace the budget leaves it,
     // the referer the proxy's to send — and at the stream's own rate
     // when there is not.
-    let relayed = if live { pacing.relay_url() } else { None };
+    let relayed = if live && !relayed_run_failed {
+        pacing.relay_url()
+    } else {
+        None
+    };
     let (input, input_referer) = match &relayed {
         Some(relay) => (relay.as_str(), None),
         None => (master_url, referer),
@@ -1802,6 +1811,12 @@ where
         // command again without the option.
         if extension_check_off {
             cmd.arg("-extension_picky").arg("0");
+        }
+        // The relay is on this machine; a proxy the environment
+        // names would carry the request somewhere else. An empty one
+        // is ffmpeg's connect directly.
+        if relayed.is_some() {
+            cmd.arg("-http_proxy").arg("");
         }
         cmd.arg("-loglevel")
             .arg("error")
@@ -2055,8 +2070,8 @@ fn a_download_tool_exists(path_env: &str) -> bool {
 /// yt-dlp's command line for one run of a transfer: v5's arguments,
 /// the quality preference as a format sort, `fragments` in flight,
 /// the byte-rate limit that spaces requests out when a paced run has
-/// no relay, and the socket timeout a relayed run waits behind the
-/// player with.
+/// no relay, and for a relayed run the socket timeout it waits behind
+/// the player with and a direct connection to the relay.
 #[allow(clippy::too_many_arguments)]
 fn ytdlp_command(
     exe: &std::path::Path,
@@ -2084,7 +2099,11 @@ fn ytdlp_command(
         cmd.arg("--limit-rate").arg(rate);
     }
     if let Some(timeout) = socket_timeout_s {
+        // A relayed run: the relay is on this machine, and a proxy the
+        // environment or the system names would carry the requests
+        // somewhere else. An empty proxy is yt-dlp's connect directly.
         cmd.arg("--socket-timeout").arg(timeout.to_string());
+        cmd.arg("--proxy").arg("");
     }
     cmd.arg("-o").arg(scratch);
     // v5 downloads the variant select_quality chose; the same
