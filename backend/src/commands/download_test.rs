@@ -5108,9 +5108,10 @@ async fn a_paced_download_runs_free_again_once_playback_stops() {
 #[tokio::test]
 async fn the_download_command_paces_on_the_proxys_record_of_playback() {
     // End to end: the proxy noted a media fetch moments ago, so the
-    // command's transfer spawns paced; with nothing noted it spawns
-    // at full speed.
-    for (live, want) in [(true, "1"), (false, "16")] {
+    // command's transfer spawns through the relay, on the app's proxy,
+    // with the relayed fragments in flight; with nothing noted it
+    // spawns against the host at full speed.
+    for (live, want) in [(true, "4"), (false, "16")] {
         let server = stub_range_show().await;
         let td = tempfile::tempdir().expect("td");
         let state = native_test_state(&td, &server.uri());
@@ -5140,10 +5141,12 @@ async fn the_download_command_paces_on_the_proxys_record_of_playback() {
             .await
             .expect("the episode downloads");
         let calls = std::fs::read_to_string(&log).expect("the tool ran");
+        let spawn = calls.lines().next().expect("one spawn");
+        assert_eq!(concurrency_of(spawn), Some(want), "live={live}: {calls}");
         assert_eq!(
-            concurrency_of(calls.lines().next().expect("one spawn")),
-            Some(want),
-            "live={live}: {calls}"
+            spawn.contains(&format!("{}/s/", state.proxy_origin.base)),
+            live,
+            "through the relay exactly when live: {calls}"
         );
     }
 }
