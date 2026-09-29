@@ -155,21 +155,24 @@ async fn a_subtitle_track_fetch_spends_the_budget_too() {
         origin: ProxyOrigin::new("127.0.0.1", 1),
         host_budget: host_budget::HostBudget::fresh(),
     });
+    // A track is background traffic: it takes the burst down to the
+    // player's reserve and no further, and the track after that waits
+    // a refill.
     let uri = format!("/s/{}/sub/0.vtt", id.as_string());
     let start = tokio::time::Instant::now();
-    for _ in 0..host_budget::SEGMENT_BURST {
+    for _ in 0..(host_budget::SEGMENT_BURST - host_budget::BACKGROUND_RESERVE) {
         assert_eq!(get(router.clone(), &uri).await, StatusCode::OK);
     }
     let burst_done = tokio::time::Instant::now();
     assert!(
         burst_done - start < host_budget::SEGMENT_REFILL,
-        "the burst is served without waiting"
+        "the burst above the reserve is served without waiting"
     );
     assert_eq!(get(router.clone(), &uri).await, StatusCode::OK);
     assert!(
         tokio::time::Instant::now() - start
             >= host_budget::SEGMENT_REFILL - Duration::from_millis(100),
-        "the track fetch past the burst waited a refill"
+        "the track fetch that would take the reserve waited a refill"
     );
 }
 
