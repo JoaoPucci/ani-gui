@@ -9,8 +9,11 @@ use url::Url;
 const REDIRECTS: [u16; 5] = [301, 302, 303, 307, 308];
 
 proptest! {
-    /// Only the five redirect statuses send the fetch on; any other
-    /// status is the answer, whatever Location it carries.
+    /// Only the five redirect statuses send the fetch on, and only
+    /// with a Location that resolves against the URL that answered;
+    /// any other status is the answer, whatever Location it carries.
+    /// A Location that does not resolve — `///`, a scheme-relative
+    /// reference naming no host — is a redirect returned as it is.
     #[test]
     fn only_a_redirect_status_sends_the_fetch_on(
         status in 100u16..600,
@@ -19,11 +22,23 @@ proptest! {
         let from = Url::parse("https://cdn.example:8443/dir/master.m3u8").expect("url");
         let status = StatusCode::from_u16(status).expect("status");
         let target = redirect_target(status, location.as_deref(), &from);
-        if REDIRECTS.contains(&status.as_u16()) && location.is_some() {
+        let resolves = location.as_deref().is_some_and(|l| from.join(l).is_ok());
+        if REDIRECTS.contains(&status.as_u16()) && resolves {
             prop_assert!(target.is_some());
         } else {
             prop_assert_eq!(target, None);
         }
+    }
+
+    /// The case the generator found: a redirect to `///` names no
+    /// host, so there is nowhere to send the fetch.
+    #[test]
+    fn a_location_naming_no_host_is_not_followed(
+        status in prop::sample::select(REDIRECTS.to_vec()),
+    ) {
+        let from = Url::parse("https://cdn.example:8443/dir/master.m3u8").expect("url");
+        let status = StatusCode::from_u16(status).expect("status");
+        prop_assert_eq!(redirect_target(status, Some("///"), &from), None);
     }
 
     /// A relative Location resolves against the URL that answered:
