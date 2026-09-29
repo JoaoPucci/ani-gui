@@ -16,17 +16,22 @@
 //! take a few seconds longer than it otherwise would. The budget is
 //! per host and per app: the proxy charges every fetch it makes on the
 //! player's behalf, hop by hop where a redirect sends it on, and a
-//! download charges the subtitle tracks it stages beside its transfer,
-//! since the host counts both against the one address — as background
-//! traffic, which takes a token only while no one waits for one. Of the app's
-//! own fetches, not charged: a cached resolution's liveness check — a
-//! ping and a read of each track, at most a track cap's worth at once,
-//! before the player starts, under a deadline of seconds that waiting
-//! for tokens would spend — and what runs outside the app's client,
-//! the resolver's fetch of a playlist through the impersonating
-//! transport and the download tools, which the lane paces instead. An
-//! external player the app hands a stream to fetches from the host on
-//! its own, outside the app entirely.
+//! download charges the subtitle tracks it stages beside its transfer
+//! and, while playback is live, its own fetches through the proxy,
+//! since the host counts them all against the one address — as
+//! background traffic, which takes a token only while no one waits for
+//! one and never takes the last [`BACKGROUND_RESERVE`] of the bucket,
+//! so the player's next requests find them there. The bucket is per
+//! host: a download from a different host than the player's has a
+//! bucket of its own, and the two meet only if the host counts them
+//! together. Of the app's own fetches, not charged: a cached
+//! resolution's liveness check — a ping and a read of each track, at
+//! most a track cap's worth at once, before the player starts, under a
+//! deadline of seconds that waiting for tokens would spend — and what
+//! runs outside the app's client, the resolver's fetch of a playlist
+//! through the impersonating transport and the download tools when
+//! nothing plays. An external player the app hands a stream to fetches
+//! from the host on its own, outside the app entirely.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
