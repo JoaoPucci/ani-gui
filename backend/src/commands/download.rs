@@ -1769,9 +1769,9 @@ where
     // plays: fallbacks run one after the other, whichever is running
     // when playback starts is already the one connection the
     // allowance grants, and a paced yt-dlp waits behind it. Its
-    // source is chosen at its start as well: the relay, or the
-    // stream's own rate without one, while playback is live; the host
-    // at full speed otherwise.
+    // source is chosen at its start as well: while playback is live
+    // the relay, or the stream's own rate without one or after a
+    // relayed run failed; the host at full speed otherwise.
     let _turn = tokio::time::timeout_at(deadline, pacing.lane())
         .await
         .map_err(|_| AniError::Timeout)?;
@@ -1906,11 +1906,17 @@ const RELAY_ADDRESSES: &str = "127.0.0.1,localhost";
 /// already names kept after them.
 fn never_proxy_the_relay(cmd: &mut tokio::process::Command) {
     for var in ["no_proxy", "NO_PROXY"] {
-        let value = match std::env::var(var) {
-            Ok(existing) if !existing.is_empty() => format!("{RELAY_ADDRESSES},{existing}"),
-            _ => RELAY_ADDRESSES.to_string(),
-        };
-        cmd.env(var, value);
+        cmd.env(var, relay_exceptions(std::env::var(var).ok().as_deref()));
+    }
+}
+
+/// The proxy exceptions a relayed run's tool is given: the relay's
+/// addresses first, then whatever the environment already named, kept
+/// whole.
+pub(crate) fn relay_exceptions(existing: Option<&str>) -> String {
+    match existing {
+        Some(existing) if !existing.is_empty() => format!("{RELAY_ADDRESSES},{existing}"),
+        _ => RELAY_ADDRESSES.to_string(),
     }
 }
 
