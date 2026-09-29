@@ -209,23 +209,10 @@ where
                 .sessions
                 .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
         };
-        // The relay is opened the first time a paced run asks for it, and
-        // kept for the transfer.
-        let relay_cell = std::sync::OnceLock::new();
-        let relay = || {
-            Some(
-                relay_cell
-                    .get_or_init(|| {
-                        super::download::open_download_relay(
-                            &state.sessions,
-                            &state.proxy_origin,
-                            &source.master_url,
-                            source.referer.as_deref(),
-                        )
-                    })
-                    .clone(),
-            )
-        };
+        // The relay opens the first time a paced run asks for it and
+        // closes when the transfer is done with it.
+        let download_relay = super::download::DownloadRelay::new(state, &source);
+        let relay = || download_relay.url();
         let pacing = super::download_pacing::Pacing::new(
             &is_live,
             super::download_pacing::PACING_POLL,
