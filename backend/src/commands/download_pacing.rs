@@ -18,7 +18,8 @@
 //! playback to stop, whichever comes first. The ffmpeg fallback is one
 //! connection whose source is set at its start — through the relay
 //! while playback is live, or at the stream's own rate when there is
-//! none, the host directly otherwise, kept to its end either way — and
+//! none or a relayed run has just failed through it, the host
+//! directly otherwise, kept to its end either way — and
 //! that cannot be resumed, so it holds the lane from its start
 //! regardless of playback.
 
