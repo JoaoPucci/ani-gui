@@ -109,8 +109,11 @@ pub(crate) async fn send_paced(
 /// turn in the host's line, or background traffic, which never takes
 /// a place in it ([`HostBudget::admit_background`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Admission {
+pub enum Admission {
+    /// The player's traffic: waits its turn in the host's line.
     Player,
+    /// Background traffic: never takes a place in the line, and
+    /// leaves the budget's reserve to the player.
     Background,
 }
 
@@ -301,6 +304,7 @@ pub async fn fetch_subtitle(
 pub async fn fetch_text(
     client: &reqwest::Client,
     budget: &HostBudget,
+    admission: Admission,
     url: &Url,
     referer: &str,
 ) -> Result<(Bytes, Option<String>, Url)> {
@@ -310,7 +314,7 @@ pub async fn fetch_text(
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
 
-    let resp = send_paced(client, budget, Method::GET, url, headers).await?;
+    let resp = send_paced_as(client, budget, admission, Method::GET, url, headers).await?;
     let status = resp.status();
     if !status.is_success() {
         return Err(AniError::Upstream {
@@ -404,6 +408,7 @@ pub async fn classify_via_head(
 pub async fn fetch_streaming(
     client: &reqwest::Client,
     budget: &HostBudget,
+    admission: Admission,
     url: &Url,
     referer: &str,
     range: Option<&str>,
@@ -419,7 +424,7 @@ pub async fn fetch_streaming(
         }
     }
 
-    let resp = send_paced(client, budget, Method::GET, url, headers).await?;
+    let resp = send_paced_as(client, budget, admission, Method::GET, url, headers).await?;
     let status = resp.status();
     if !status.is_success() {
         let server = resp
@@ -678,10 +683,15 @@ mod tests {
 
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/master.m3u8", server.uri())).unwrap();
-        let (body, _ct, _from) =
-            fetch_text(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
-                .await
-                .unwrap();
+        let (body, _ct, _from) = fetch_text(
+            &client,
+            &HostBudget::fresh(),
+            Admission::Player,
+            &url,
+            "https://allmanga.to",
+        )
+        .await
+        .unwrap();
         assert_eq!(&body[..], b"#EXTM3U\n");
     }
 
@@ -699,9 +709,15 @@ mod tests {
 
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/anything", server.uri())).unwrap();
-        let err = fetch_text(&client, &HostBudget::fresh(), &url, "https://wrong.example")
-            .await
-            .unwrap_err();
+        let err = fetch_text(
+            &client,
+            &HostBudget::fresh(),
+            Admission::Player,
+            &url,
+            "https://wrong.example",
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, AniError::Upstream { status: 404 }));
     }
 
@@ -715,9 +731,15 @@ mod tests {
 
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/x", server.uri())).unwrap();
-        let err = fetch_text(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
-            .await
-            .unwrap_err();
+        let err = fetch_text(
+            &client,
+            &HostBudget::fresh(),
+            Admission::Player,
+            &url,
+            "https://allmanga.to",
+        )
+        .await
+        .unwrap_err();
         match err {
             AniError::Upstream { status } => assert_eq!(status, 403),
             other => panic!("expected Upstream {{status:403}}, got {other:?}"),
