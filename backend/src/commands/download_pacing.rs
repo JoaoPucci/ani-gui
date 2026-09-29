@@ -88,7 +88,9 @@ pub(crate) const PACED_RUN_CEILING: Duration = Duration::from_secs(24 * 60 * 60)
 /// the player standing still.
 pub(crate) const PLAYBACK_LIVE_WINDOW: Duration = Duration::from_secs(30);
 
-/// How often a running transfer asks whether playback changed.
+/// How often a running transfer asks whether playback changed. Playback
+/// starting is also seen at once, when the proxy notes the player's
+/// first request; stopping is a silence, which only this sees.
 pub(crate) const PACING_POLL: Duration = Duration::from_secs(2);
 
 /// The one paced lane of the app: while playback is live, yt-dlp runs
@@ -169,8 +171,9 @@ pub(crate) fn rate_limit(playback_live: bool) -> Option<&'static str> {
 }
 
 /// The transfer's view of playback: a question it can ask at any
-/// moment, and how often it asks while a tool runs. Production asks
-/// the session table the proxy shares with the download command; the
+/// moment, how often it asks while a tool runs, and what wakes it to
+/// ask between times. Production asks the session table the proxy
+/// shares with the download command and is woken by its notes; the
 /// tests hand it a flag.
 pub(crate) struct Pacing<'a> {
     is_live: &'a (dyn Fn() -> bool + Sync),
