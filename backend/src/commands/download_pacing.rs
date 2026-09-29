@@ -282,7 +282,7 @@ impl<'a> Pacing<'a> {
 
     /// Resolves once playback is no longer in the state `current`
     /// describes — the moment a running tool should be respawned at
-    /// the other concurrency. Never resolves while nothing changes.
+    /// the other pace. Never resolves while nothing changes.
     pub(crate) async fn until_live_changes(&self, current: bool) {
         loop {
             tokio::time::sleep(self.poll).await;

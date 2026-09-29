@@ -1630,7 +1630,7 @@ where
     if let Some(exe) = ytdlp {
         // Supervised: a run ends by exiting, by failing, or by playback
         // starting or stopping under it — then the tool is down and the
-        // next run resumes its fragments at the other concurrency.
+        // next run resumes its fragments at the other pace.
         let mut live = pacing.is_live();
         let (e, repackage_failed, failed_relayed) = loop {
             // Paced runs take the app's one lane in turn, so two
