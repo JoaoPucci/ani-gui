@@ -5598,6 +5598,8 @@ mod extension_option_props {
     }
 }
 
+/// Only the Unix-only transfer cases hand a pacing this relay.
+#[cfg(unix)]
 const RELAY: &str = "http://127.0.0.1:9/s/relay/master.m3u8";
 
 /// A paced download spent a byte-rate cap on the host's allowance. With
