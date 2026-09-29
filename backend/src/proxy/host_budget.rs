@@ -45,6 +45,11 @@ pub(crate) const SEGMENT_BURST: u32 = 20;
 /// it.
 pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 
+/// Tokens background traffic leaves in the bucket: the player's next
+/// request and a seek's few are served from them at once, however much
+/// background traffic has been taking what the player was not using.
+pub(crate) const BACKGROUND_RESERVE: u32 = 5;
+
 /// One host's budget: the tokens on hand and when they were last
 /// topped up.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -73,23 +78,38 @@ impl Bucket {
 /// long until it does. Pure over its inputs: the bucket is topped up by
 /// the time since it last was, one token per `refill`, capped at
 /// `burst`.
+#[cfg(test)]
 pub(crate) fn take(
     bucket: &mut Bucket,
     now: Instant,
     burst: u32,
     refill: Duration,
 ) -> Option<Duration> {
+    take_leaving(bucket, now, burst, refill, 0)
+}
+
+/// [`take`], leaving `reserve` tokens behind: a token is taken only
+/// while more than the reserve is in the bucket, and otherwise the
+/// wait is until there is.
+pub(crate) fn take_leaving(
+    bucket: &mut Bucket,
+    now: Instant,
+    burst: u32,
+    refill: Duration,
+    reserve: u32,
+) -> Option<Duration> {
     let elapsed = now.saturating_duration_since(bucket.refilled_at);
     let refilled = elapsed.as_secs_f64() / refill.as_secs_f64();
     bucket.tokens = (bucket.tokens + refilled).min(f64::from(burst));
     bucket.refilled_at = now;
-    if bucket.tokens >= 1.0 {
+    let needed = 1.0 + f64::from(reserve);
+    if bucket.tokens >= needed {
         bucket.tokens -= 1.0;
         None
     } else {
         // A shade past the exact instant, so a caller who waits this
         // long and asks again is not turned away by rounding.
-        Some(refill.mul_f64(1.0 - bucket.tokens) + Duration::from_millis(1))
+        Some(refill.mul_f64(needed - bucket.tokens) + Duration::from_millis(1))
     }
 }
 
@@ -100,6 +120,7 @@ pub struct HostBudget {
     lines: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     burst: u32,
     refill: Duration,
+    reserve: u32,
 }
 
 impl HostBudget {
@@ -110,6 +131,7 @@ impl HostBudget {
             lines: Mutex::new(HashMap::new()),
             burst,
             refill,
+            reserve: 0,
         }
     }
 
@@ -119,7 +141,10 @@ impl HostBudget {
     /// host counts.
     #[must_use]
     pub fn fresh() -> Arc<Self> {
-        Arc::new(Self::new(SEGMENT_BURST, SEGMENT_REFILL))
+        Arc::new(Self {
+            reserve: BACKGROUND_RESERVE,
+            ..Self::new(SEGMENT_BURST, SEGMENT_REFILL)
+        })
     }
 
     /// The tokens `host` has on hand as of its last take, for a test
@@ -144,7 +169,7 @@ impl HostBudget {
         let line = self.line(host);
         let _place = line.lock().await;
         loop {
-            match self.take_for(host) {
+            match self.take_for(host, 0) {
                 None => return,
                 Some(wait) => {
                     tracing::debug!(
@@ -165,12 +190,14 @@ impl HostBudget {
     /// otherwise waits a refill and looks again. Whoever is in the
     /// line is served first, however long the background fetch has
     /// been waiting; with the line empty it waits for its token like
-    /// any other.
+    /// any other. It never takes the budget's reserve
+    /// ([`BACKGROUND_RESERVE`] in the app's budget), which is left for
+    /// the player's next requests.
     pub(crate) async fn admit_background(&self, host: &str) {
         let line = self.line(host);
         loop {
             let wait = match line.try_lock() {
-                Ok(_nobody_waiting) => match self.take_for(host) {
+                Ok(_nobody_waiting) => match self.take_for(host, self.reserve) {
                     None => return,
                     Some(wait) => wait,
                 },
@@ -186,14 +213,15 @@ impl HostBudget {
         Arc::clone(lines.entry(host.to_owned()).or_default())
     }
 
-    /// Takes a token for `host` now, or says how long until one.
-    fn take_for(&self, host: &str) -> Option<Duration> {
+    /// Takes a token for `host` now, leaving `reserve` behind, or says
+    /// how long until it can.
+    fn take_for(&self, host: &str, reserve: u32) -> Option<Duration> {
         let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         let bucket = buckets
             .entry(host.to_owned())
             .or_insert_with(|| Bucket::full(self.burst, now));
-        take(bucket, now, self.burst, self.refill)
+        take_leaving(bucket, now, self.burst, self.refill, reserve)
     }
 }
 
