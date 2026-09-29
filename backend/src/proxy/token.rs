@@ -273,6 +273,10 @@ impl StreamSession {
 pub struct SessionTable {
     inner: Arc<DashMap<SessionId, Arc<StreamSession>>>,
     media_activity: Arc<std::sync::Mutex<Option<Instant>>>,
+    /// Woken each time a media fetch is noted, so a download waiting
+    /// on the record learns of playback at once rather than at its
+    /// next look.
+    media_noted: Arc<tokio::sync::Notify>,
 }
 
 /// Whether playback is live at `now`: some media was fetched, no more
@@ -290,6 +294,12 @@ impl SessionTable {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// What wakes each time a media fetch is noted.
+    #[must_use]
+    pub fn media_noted(&self) -> &tokio::sync::Notify {
+        &self.media_noted
     }
 
     /// Insert a session. Returns its id for the caller to embed in URLs.
@@ -340,8 +350,11 @@ impl SessionTable {
     /// [`Self::note_media_fetch`] at an explicit instant. The latest
     /// note is the one that counts.
     pub fn note_media_fetch_at(&self, at: Instant) {
-        let mut last = self.media_activity.lock().expect("media activity lock");
-        *last = Some(last.map_or(at, |prev| prev.max(at)));
+        {
+            let mut last = self.media_activity.lock().expect("media activity lock");
+            *last = Some(last.map_or(at, |prev| prev.max(at)));
+        }
+        self.media_noted.notify_waiters();
     }
 
     /// Whether playback is live: media was fetched within `window`
