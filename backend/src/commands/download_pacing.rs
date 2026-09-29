@@ -95,8 +95,9 @@ pub(crate) const PACED_RATE_LIMIT: &str = "512K";
 /// hung tool, and a paced run is slow by design and ends the moment
 /// playback stops — so it runs under this one instead, and the time it
 /// took is added to the transfer's ceiling for what follows. An ffmpeg
-/// fallback started while playback is live runs under it too: it
-/// reads at the stream's rate to its end, as long as the stream plays.
+/// fallback started while playback is live runs under it too: through
+/// the relay at the pace the budget leaves it, or at the stream's rate,
+/// it can take as long as the stream plays.
 pub(crate) const PACED_RUN_CEILING: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// How long after the last media fetch playback counts as live: a

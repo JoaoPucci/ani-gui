@@ -170,12 +170,12 @@ starting it, and delete it when you find it done.
   — a spender the pacing leaves; started while playback is live it
   reads through the proxy's budget to its end, even after playback
   stops, at whatever pace the budget leaves it — or, after a run
-  through the proxy failed, from the host at the stream's own rate. ffmpeg cannot switch
-  source mid-run and cannot be resumed, so the change the supervisor
-  could make is to take it down and start it again from the other
-  source from scratch — cheap early in a run, a full re-download late
-  in one. Whether to, and where a cutover pays, is the maintainer's
-  call; it waits on that.
+  through the proxy failed, from the host at the stream's own rate.
+  ffmpeg cannot switch source mid-run and cannot be resumed, so the
+  change the supervisor could make is to take it down and start it
+  again from the other source from scratch — cheap early in a run, a
+  full re-download late in one. Whether to, and where a cutover pays,
+  is the maintainer's call; it waits on that.
 - **An external player streams outside the pacing.** mpv and Syncplay
   are handed the stream's own URL and fetch from the host themselves,
   so the proxy's record sees none of it: a download started while one
