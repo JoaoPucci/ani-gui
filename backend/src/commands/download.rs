@@ -1779,7 +1779,8 @@ where
     // Started while playback is live, the fallback reads through the
     // relay when there is one — at whatever pace the budget leaves it,
     // the referer the proxy's to send — and at the stream's own rate
-    // when there is not.
+    // when there is not, or when the yt-dlp run before it failed
+    // through the relay, which may be why.
     let relayed = if live && !relayed_run_failed {
         pacing.relay_url()
     } else {
