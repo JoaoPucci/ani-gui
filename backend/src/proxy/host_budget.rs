@@ -30,7 +30,7 @@
 //! deadline of seconds that waiting for tokens would spend — and what
 //! runs outside the app's client, the resolver's fetch of a playlist
 //! through the impersonating transport and the download tools when
-//! nothing plays. An external player the app hands a stream to fetches
+//! nothing plays, or after a run through the proxy failed. An external player the app hands a stream to fetches
 //! from the host on its own, outside the app entirely.
 
 use std::collections::HashMap;
