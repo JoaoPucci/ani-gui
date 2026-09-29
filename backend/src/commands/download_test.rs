@@ -6030,8 +6030,9 @@ async fn a_relayed_runs_tools_never_proxy_the_relays_address() {
         .find(|l| l.starts_with("yt-dlp "))
         .expect("yt-dlp ran");
     for var in ["no_proxy", "NO_PROXY"] {
+        let expected = relay_exceptions(std::env::var(var).ok().as_deref());
         assert!(
-            ytdlp.contains(&format!("{var}=[127.0.0.1")),
+            ytdlp.contains(&format!("{var}=[{expected}]")),
             "yt-dlp {var}: {ytdlp}"
         );
     }
@@ -6058,8 +6059,9 @@ async fn a_relayed_runs_tools_never_proxy_the_relays_address() {
         .find(|l| l.starts_with("ffmpeg "))
         .expect("ffmpeg ran");
     for var in ["no_proxy", "NO_PROXY"] {
+        let expected = relay_exceptions(std::env::var(var).ok().as_deref());
         assert!(
-            ffmpeg.contains(&format!("{var}=[127.0.0.1")),
+            ffmpeg.contains(&format!("{var}=[{expected}]")),
             "ffmpeg {var}: {ffmpeg}"
         );
     }
@@ -6112,4 +6114,27 @@ async fn a_repackage_after_a_relayed_run_still_reads_through_the_relay() {
         .expect("ffmpeg ran");
     assert!(run.contains(RELAY), "through the relay: {run}");
     assert!(!run.contains(" -re "), "{run}");
+}
+
+mod relay_exception_props {
+    use super::super::relay_exceptions;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The relay's addresses come first, and whatever the
+        /// environment already named is kept whole after them.
+        #[test]
+        fn the_relays_addresses_lead_and_the_existing_exceptions_follow_whole(
+            existing in proptest::option::of("[a-z0-9.,*-]{0,40}"),
+        ) {
+            let got = relay_exceptions(existing.as_deref());
+            prop_assert!(got.starts_with("127.0.0.1,localhost"));
+            match existing.as_deref() {
+                Some(e) if !e.is_empty() => {
+                    prop_assert_eq!(got, format!("127.0.0.1,localhost,{e}"));
+                }
+                _ => prop_assert_eq!(got, "127.0.0.1,localhost"),
+            }
+        }
+    }
 }
