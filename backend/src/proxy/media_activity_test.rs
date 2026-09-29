@@ -112,7 +112,11 @@ async fn a_streaming_body_keeps_playback_live_chunk_by_chunk() {
         Err(std::io::Error::other("hiccup")),
         Ok(bytes::Bytes::from_static(b"two")),
     ];
-    let mut body = Box::pin(noting_media(tokio_stream::iter(chunks), sessions.clone()));
+    let mut body = Box::pin(noting_media(
+        tokio_stream::iter(chunks),
+        sessions.clone(),
+        true,
+    ));
     assert!(!sessions.playback_live(WINDOW), "nothing streamed yet");
     let first = body.next().await.expect("first chunk").expect("ok");
     assert_eq!(first, bytes::Bytes::from_static(b"one"));
