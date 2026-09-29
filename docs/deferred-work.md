@@ -122,13 +122,16 @@ starting it, and delete it when you find it done.
 - **The pre-commit hook and strict TDD are in tension — for frontend
   commits.** `frontend-test` is the only hook command that runs tests,
   so a frontend `test(red):` commit fails by construction and is
-  rejected. It has been worked around with `--no-verify`, which
-  disables every other check too; the workaround is the bug.
+  rejected. AGENTS.md §12 sanctions committing such a red with that
+  check excluded by name, and the type check too when the red does
+  not compile; what remains is that the exclusion is by hand and
+  nothing ties it to the subject — any commit can exclude the check
+  and nothing notices.
 
   The non-obvious part: pre-commit cannot see the commit message. Git
   writes `COMMIT_EDITMSG` after pre-commit runs, even for `git commit
-  -m` — verified with a probe hook. So the gate has to move to
-  `commit-msg` and skip only for a `test(red):` subject.
+  -m` — verified with a probe hook. So a gate that skips the tests
+  only for a `test(red):` subject has to live in `commit-msg`.
 
 ## Correctness in the app (continued)
 
