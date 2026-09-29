@@ -5594,3 +5594,200 @@ mod extension_option_props {
     }
     }
 }
+
+const RELAY: &str = "http://127.0.0.1:9/s/relay/master.m3u8";
+
+/// A paced download spent a byte-rate cap on the host's allowance. With
+/// a relay — the app's proxy, which charges the download's requests to
+/// the host's budget behind the player's — it fetches through the
+/// relay instead: no byte-rate cap, the referer left to the proxy, and
+/// the patience to wait behind a player filling its buffer.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_paced_download_with_a_relay_fetches_through_it() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_secs(3600),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("yt-dlp ran");
+    assert!(run.contains(RELAY), "fetches through the relay: {run}");
+    assert!(!run.contains("cdn.example"), "not the host directly: {run}");
+    assert!(!run.contains("--limit-rate"), "no byte-rate cap: {run}");
+    assert!(
+        !run.contains("--referer"),
+        "the proxy sends the referer: {run}"
+    );
+    assert!(
+        run.contains(&format!(
+            "--socket-timeout {}",
+            crate::commands::download_pacing::RELAYED_SOCKET_TIMEOUT_S
+        )),
+        "waits behind the player without giving up: {run}"
+    );
+    assert!(
+        run.contains(&format!(
+            "-N {}",
+            crate::commands::download_pacing::RELAYED_FRAGMENTS
+        )),
+        "{run}"
+    );
+}
+
+/// With nothing playing the relay is not asked: the download goes to
+/// the host directly, at full speed.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_with_nothing_playing_does_not_use_the_relay() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    let is_live = || false;
+    let asked = std::sync::atomic::AtomicBool::new(false);
+    let relay = || {
+        asked.store(true, std::sync::atomic::Ordering::Relaxed);
+        Some(RELAY.to_string())
+    };
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_secs(3600),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(run.contains("https://cdn.example/x/master.m3u8"), "{run}");
+    assert!(
+        !asked.load(std::sync::atomic::Ordering::Relaxed),
+        "the relay was not asked"
+    );
+}
+
+/// A fallback started while playback is live reads through the relay
+/// too, at whatever pace the budget leaves it rather than the stream's
+/// own rate.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_while_playback_is_live_reads_through_the_relay() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the fallback completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    assert!(run.contains(RELAY), "{run}");
+    assert!(
+        !run.contains(" -re "),
+        "the budget paces it, not the stream's rate: {run}"
+    );
+    assert!(
+        !run.contains("-headers"),
+        "the proxy sends the referer: {run}"
+    );
+}
+
+#[test]
+fn the_download_relay_is_a_background_session_on_the_proxy() {
+    use crate::proxy::{MediaKind, ProxyOrigin, SessionId, SessionTable};
+    let sessions = SessionTable::new();
+    let origin = ProxyOrigin::new("127.0.0.1", 41417);
+    for (master, file) in [
+        ("https://cdn.example/x/master.m3u8", "master.m3u8"),
+        ("https://cdn.example/x/episode.mp4", "file.mp4"),
+    ] {
+        let url = open_download_relay(&sessions, &origin, master, Some("https://embed.example/"));
+        let prefix = format!("{}/s/", origin.base);
+        let rest = url.strip_prefix(&prefix).expect("on the proxy");
+        let (id, path) = rest.split_once('/').expect("id and file");
+        assert_eq!(path, file, "{url}");
+        let session = sessions
+            .get(&SessionId::parse(id).expect("session id"))
+            .expect("the session is open");
+        assert!(session.background, "the download's own session");
+        assert_eq!(session.upstream_url.as_str(), master);
+        assert_eq!(session.referer, "https://embed.example/");
+        assert_eq!(
+            session.media_kind,
+            if file == "file.mp4" {
+                MediaKind::Mp4
+            } else {
+                MediaKind::Hls
+            }
+        );
+    }
+}
