@@ -1414,8 +1414,9 @@ pub(crate) fn ytdlp_referer_args(referer: Option<&str>) -> Vec<String> {
     referer.map_or_else(Vec::new, |r| vec!["--referer".into(), r.into()])
 }
 
-/// The rate a fallback reads its input at. While playback is live,
-/// the stream's own: `-re` reads at the native rate, one segment per
+/// The rate a fallback without a relay reads its input at. While
+/// playback is live, the stream's own: `-re` reads at the native rate,
+/// one segment per
 /// segment's duration, the rate the player consumes it at, so the
 /// fallback's requests reach the host no faster than a second player
 /// would. Otherwise as fast as the host answers. Chosen once, at the
@@ -1497,15 +1498,18 @@ where
 ///
 /// yt-dlp runs paced while `pacing` says playback is live, and a
 /// change of state under a running transfer takes the tool down and
-/// starts it again at the other concurrency on the same output, which
-/// yt-dlp resumes from the fragments it already has. A paced run has a
+/// starts it again at the other pace on the same output, which yt-dlp
+/// resumes from the fragments it already has. A paced run fetches
+/// through the pacing's relay when it has one — the proxy, charging
+/// the run's requests to the host's budget behind the player's — and
+/// is otherwise held to one fragment at a limited byte rate; it has a
 /// ceiling of its own, and the time it took extends the transfer's.
 /// The ffmpeg fallback is a single connection: it holds the paced lane
 /// from its start whether or not anything plays, and is never taken
-/// down, since it cannot resume. Its rate is chosen with the lane and
-/// kept to its end — the stream's own while playback is live, under
-/// the paced run's ceiling; full speed otherwise, under the
-/// transfer's.
+/// down, since it cannot resume. Its source is chosen with the lane
+/// and kept to its end — while playback is live the relay, or the
+/// stream's own rate without one, under the paced run's ceiling; the
+/// host at full speed otherwise, under the transfer's.
 ///
 /// `path_env` is the PATH searched for the tools — the caller passes
 /// the process environment; tests stage stub executables.
@@ -1772,9 +1776,10 @@ where
     // fallback holds the lane from its start whether or not anything
     // plays: fallbacks run one after the other, whichever is running
     // when playback starts is already the one connection the
-    // allowance grants, and a paced yt-dlp waits behind it. Its rate
-    // is chosen at its start as well: the stream's own while playback
-    // is live, full speed otherwise.
+    // allowance grants, and a paced yt-dlp waits behind it. Its
+    // source is chosen at its start as well: the relay, or the
+    // stream's own rate without one, while playback is live; the host
+    // at full speed otherwise.
     let _turn = tokio::time::timeout_at(deadline, pacing.lane())
         .await
         .map_err(|_| AniError::Timeout)?;
@@ -1823,9 +1828,10 @@ where
             .arg(&scratch.path);
         cmd
     };
-    // A fallback reading at the stream's rate takes as long as the
-    // stream plays; like a paced run it has a ceiling of its own, not
-    // the transfer's, which is sized for a tool running free.
+    // A fallback started live — through the relay behind the player,
+    // or at the stream's rate — can take as long as the stream plays;
+    // like a paced run it has a ceiling of its own, not the
+    // transfer's, which is sized for a tool running free.
     let run_deadline = if live {
         tokio::time::Instant::now() + super::download_pacing::PACED_RUN_CEILING
     } else {
