@@ -5713,15 +5713,14 @@ async fn a_download_with_nothing_playing_does_not_use_the_relay() {
     );
 }
 
-/// A fallback started while playback is live reads through the relay
-/// too, at whatever pace the budget leaves it rather than the stream's
-/// own rate.
+/// On an install with ffmpeg alone, a fallback started while playback
+/// is live reads through the relay too, at whatever pace the budget
+/// leaves it rather than the stream's own rate.
 #[cfg(unix)]
 #[tokio::test]
 async fn an_ffmpeg_fallback_while_playback_is_live_reads_through_the_relay() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
     stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
     let is_live = || true;
     let relay = || Some(RELAY.to_string());
@@ -5834,4 +5833,141 @@ async fn the_download_closes_its_relay_when_the_transfer_ends() {
         "the relay's session was closed; {} left",
         state.sessions.len()
     );
+}
+
+/// Each argument a stub was given, bracketed, so an empty one shows.
+#[cfg(unix)]
+const BRACKETS_ITS_ARGS: &str =
+    "printf '%s ' \"$0\" >&2; for a in \"$@\"; do printf '[%s]' \"$a\" >&2; done; echo >&2";
+
+/// The relay is on this machine. A proxy the environment or the system
+/// names would carry the tools' requests to it somewhere else, so a
+/// relayed run tells each tool to connect directly.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_relayed_run_connects_to_the_relay_directly() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{BRACKETS_ITS_ARGS}; exit 1"),
+    );
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_secs(3600),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    let _ = spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await;
+    let run = lines
+        .iter()
+        .find(|l| l.contains("[--proxy]"))
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        run.contains("[--proxy][]"),
+        "yt-dlp connects directly: {lines:?}"
+    );
+
+    // ffmpeg alone, relayed.
+    let bin = tempfile::tempdir().expect("bin");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!("{BRACKETS_ITS_ARGS}; exit 0"),
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 3",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the fallback completes");
+    let run = lines
+        .iter()
+        .find(|l| l.contains("[-i]"))
+        .expect("ffmpeg ran");
+    assert!(
+        run.contains("[-http_proxy][]"),
+        "ffmpeg connects directly: {run}"
+    );
+    assert!(run.contains(RELAY), "{run}");
+}
+
+/// When the relayed yt-dlp run is what failed, the relay may be why:
+/// the fallback does not try it again, and reads from the host directly
+/// at the stream's own rate instead.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_fallback_after_a_relayed_run_failed_reads_from_the_host() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the fallback completes");
+    // The referer header ends in a line break, so the echoed command
+    // spans lines; read it whole.
+    let joined = lines.join(" ");
+    let run = &joined[joined.find("ffmpeg ").expect("ffmpeg ran")..];
+    assert!(
+        !run.contains(RELAY),
+        "not the relay that just failed: {run}"
+    );
+    assert!(run.contains("https://cdn.example/x/master.m3u8"), "{run}");
+    assert!(run.contains(" -re "), "at the stream's own rate: {run}");
+    assert!(run.contains("-headers"), "with the referer: {run}");
 }
