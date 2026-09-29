@@ -1665,20 +1665,18 @@ where
             // the player leaves, uncapped. Without one it is paced by
             // concurrency and byte rate instead.
             let relayed = if live { pacing.relay_url() } else { None };
-            let (source_url, run_referer, fragments, rate, socket_timeout) = match &relayed {
+            let (source_url, run_referer, fragments, rate) = match &relayed {
                 Some(relay) => (
                     relay.as_str(),
                     None,
                     super::download_pacing::RELAYED_FRAGMENTS,
                     None,
-                    Some(super::download_pacing::RELAYED_SOCKET_TIMEOUT_S),
                 ),
                 None => (
                     master_url,
                     referer,
                     super::download_pacing::fragment_concurrency(live),
                     super::download_pacing::rate_limit(live),
-                    None,
                 ),
             };
             let cmd = ytdlp_command(
@@ -1690,7 +1688,7 @@ where
                 quality,
                 fragments,
                 rate,
-                socket_timeout,
+                relayed.is_some(),
             );
             tracing::info!(
                 fragments,
@@ -1727,7 +1725,9 @@ where
                         "download: playback changed; resuming yt-dlp at the other pace",
                     );
                 }
-                Err(e) => break (e, repackage_failed, relayed.is_some()),
+                // A run that fetched everything and left only the wrong
+                // container behind did not fail because of the relay.
+                Err(e) => break (e, repackage_failed, relayed.is_some() && !repackage_failed),
             }
         };
         relayed_run_failed = failed_relayed;
@@ -1817,6 +1817,10 @@ where
         // is ffmpeg's connect directly.
         if relayed.is_some() {
             cmd.arg("-http_proxy").arg("");
+            // The empty option reaches only the first request: the
+            // playlist demuxer drops it for the playlists and segments
+            // it opens next, which read the environment instead.
+            never_proxy_the_relay(&mut cmd);
         }
         cmd.arg("-loglevel")
             .arg("error")
@@ -1888,6 +1892,25 @@ pub(crate) fn open_download_relay(
     let id = sessions.insert(session);
     let relay = format!("{}/s/{}/master.m3u8", origin.base, id.as_string());
     Some((id, relay))
+}
+
+/// The addresses a relayed run's tools must never proxy — the relay
+/// is on this machine — ahead of any exceptions the environment
+/// already names.
+const RELAY_ADDRESSES: &str = "127.0.0.1,localhost";
+
+/// Tell a relayed run's tool, and every child it starts, never to
+/// proxy the relay's address: both spellings of the exception list,
+/// with the relay's addresses first and whatever the environment
+/// already names kept after them.
+fn never_proxy_the_relay(cmd: &mut tokio::process::Command) {
+    for var in ["no_proxy", "NO_PROXY"] {
+        let value = match std::env::var(var) {
+            Ok(existing) if !existing.is_empty() => format!("{RELAY_ADDRESSES},{existing}"),
+            _ => RELAY_ADDRESSES.to_string(),
+        };
+        cmd.env(var, value);
+    }
 }
 
 /// A transfer's relay: opened the first time a paced run asks for it,
@@ -2070,7 +2093,7 @@ fn a_download_tool_exists(path_env: &str) -> bool {
 /// yt-dlp's command line for one run of a transfer: v5's arguments,
 /// the quality preference as a format sort, `fragments` in flight,
 /// the byte-rate limit that spaces requests out when a paced run has
-/// no relay, and for a relayed run the socket timeout it waits behind
+/// no relay, and for a `relayed` run the socket timeout it waits behind
 /// the player with and a direct connection to the relay.
 #[allow(clippy::too_many_arguments)]
 fn ytdlp_command(
@@ -2082,7 +2105,7 @@ fn ytdlp_command(
     quality: Option<&str>,
     fragments: u32,
     rate_limit: Option<&str>,
-    socket_timeout_s: Option<u32>,
+    relayed: bool,
 ) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(exe);
     if let Some(p) = child_path {
@@ -2098,12 +2121,16 @@ fn ytdlp_command(
     if let Some(rate) = rate_limit {
         cmd.arg("--limit-rate").arg(rate);
     }
-    if let Some(timeout) = socket_timeout_s {
-        // A relayed run: the relay is on this machine, and a proxy the
-        // environment or the system names would carry the requests
-        // somewhere else. An empty proxy is yt-dlp's connect directly.
-        cmd.arg("--socket-timeout").arg(timeout.to_string());
+    if relayed {
+        cmd.arg("--socket-timeout")
+            .arg(super::download_pacing::RELAYED_SOCKET_TIMEOUT_S.to_string());
+        // The relay is on this machine, and a proxy the environment
+        // or the system names would carry the requests somewhere
+        // else: an empty proxy is yt-dlp's connect directly, and the
+        // environment's exceptions reach the ffmpeg it may hand a
+        // stream to.
         cmd.arg("--proxy").arg("");
+        never_proxy_the_relay(&mut cmd);
     }
     cmd.arg("-o").arg(scratch);
     // v5 downloads the variant select_quality chose; the same
