@@ -144,3 +144,23 @@ async fn a_note_that_changes_nothing_does_not_end_the_wait() {
         "playback is as it was: the wait goes on"
     );
 }
+
+/// Playback that started before the wait began — its note sent before
+/// anything was listening, after the caller last looked — is seen at
+/// once, not at the next poll.
+#[tokio::test(start_paused = true)]
+async fn a_change_before_the_wait_began_is_seen_at_once() {
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = Semaphore::new(1);
+    let noted = tokio::sync::Notify::new();
+    let pacing = Pacing::new(&is_live, Duration::from_secs(3600), &lane).woken_by(&noted);
+    live.store(true, std::sync::atomic::Ordering::Relaxed);
+    noted.notify_waiters();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1), pacing.until_live_changes(false))
+            .await
+            .is_ok(),
+        "the change was seen at once"
+    );
+}
