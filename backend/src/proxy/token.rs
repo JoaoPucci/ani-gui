@@ -186,6 +186,10 @@ pub struct StreamSession {
     pub subtitles: Vec<crate::scraper::provider::SubtitleTrack>,
     /// Wall-clock expiry. After this point the session is GC'd on next read.
     pub expires_at: SystemTime,
+    /// A session the app opened for its own download rather than for
+    /// the player: what the proxy fetches for it is background traffic
+    /// at the host's budget, and does not mark playback live.
+    pub background: bool,
 }
 
 impl StreamSession {
@@ -217,6 +221,35 @@ impl StreamSession {
             referer: referer.into(),
             subtitles: Vec::new(),
             expires_at: SystemTime::now() + DEFAULT_SESSION_TTL,
+            background: false,
+        }
+    }
+
+    /// A session the app opens for its own download: background, and
+    /// living for `ttl` — as long as the download is given — rather
+    /// than the few hours a player's session is kept.
+    #[must_use]
+    pub fn background(
+        upstream_url: url::Url,
+        media_kind: MediaKind,
+        referer: impl Into<String>,
+        ttl: Duration,
+    ) -> Self {
+        Self {
+            expires_at: SystemTime::now() + ttl,
+            background: true,
+            ..Self::new_with_kind(upstream_url, media_kind, referer)
+        }
+    }
+
+    /// How the proxy's fetches for this session are admitted at the
+    /// host's budget.
+    #[must_use]
+    pub fn admission(&self) -> crate::proxy::upstream::Admission {
+        if self.background {
+            crate::proxy::upstream::Admission::Background
+        } else {
+            crate::proxy::upstream::Admission::Player
         }
     }
 

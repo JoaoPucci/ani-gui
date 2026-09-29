@@ -121,13 +121,17 @@ async fn handle_master(
 
     // The master is the first thing a starting player asks for: a
     // download running beside it yields from here, not after the
-    // first segment has already competed with it.
-    state.sessions.note_media_fetch();
+    // first segment has already competed with it. A download's own
+    // session is not the player, and marks nothing.
+    if !sess.background {
+        state.sessions.note_media_fetch();
+    }
     // The manifest's relative URIs resolve against where it was served
     // from, which a redirect can move away from the session's URL.
     let (body, served_from) = match upstream::fetch_text(
         &state.client,
         &state.host_budget,
+        sess.admission(),
         &sess.upstream_url,
         &sess.referer,
     )
@@ -301,7 +305,9 @@ async fn handle_mp4(
             "session media is not MP4 — use /master.m3u8",
         );
     }
-    state.sessions.note_media_fetch();
+    if !sess.background {
+        state.sessions.note_media_fetch();
+    }
 
     let range = headers_in
         .get(axum::http::header::RANGE)
@@ -310,6 +316,7 @@ async fn handle_mp4(
     let upstream_resp = match upstream::fetch_streaming(
         &state.client,
         &state.host_budget,
+        sess.admission(),
         &sess.upstream_url,
         &sess.referer,
         range,
@@ -358,6 +365,7 @@ async fn handle_mp4(
     let body = Body::from_stream(noting_media(
         upstream_resp.bytes_stream(),
         state.sessions.clone(),
+        !sess.background,
     ));
     (status, out_headers, body).into_response()
 }
@@ -399,12 +407,15 @@ async fn handle_seg(
 
     // Media playlists and segments alike: both are the player
     // fetching, and a segment every few seconds is what a download
-    // must leave room for.
-    state.sessions.note_media_fetch();
+    // must leave room for. A download's own session marks nothing.
+    if !sess.background {
+        state.sessions.note_media_fetch();
+    }
     if is_manifest {
         let (body, served_from) = match upstream::fetch_text(
             &state.client,
             &state.host_budget,
+            sess.admission(),
             &upstream_url,
             &sess.referer,
         )
@@ -456,9 +467,10 @@ async fn handle_seg(
     if let Some(range) = headers_in.get("range") {
         headers.insert(reqwest::header::RANGE, range.clone());
     }
-    let resp = match upstream::send_paced(
+    let resp = match upstream::send_paced_as(
         &state.client,
         &state.host_budget,
+        sess.admission(),
         reqwest::Method::GET,
         &upstream_url,
         headers,
@@ -473,7 +485,11 @@ async fn handle_seg(
         tracing::warn!(url = %upstream_url, %status, "proxy: upstream answered a segment with an error");
     }
     let headers = clone_passthrough_headers(resp.headers());
-    let stream = noting_media(resp.bytes_stream(), state.sessions.clone());
+    let stream = noting_media(
+        resp.bytes_stream(),
+        state.sessions.clone(),
+        !sess.background,
+    );
     (
         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK),
         headers,
@@ -495,17 +511,19 @@ fn decode_seg_url(b64: &str) -> crate::Result<Url> {
 /// covers a segment, gone in seconds; an mp4 range request streams
 /// for minutes, and a download beside it must not be let back to full
 /// speed while its bytes are still moving. An error in the stream is
-/// passed through and is not media served.
+/// passed through and is not media served. With `note` false — a
+/// download's own session — nothing is noted.
 fn noting_media<S, E>(
     stream: S,
     sessions: SessionTable,
+    note: bool,
 ) -> impl futures_util::Stream<Item = std::result::Result<bytes::Bytes, E>>
 where
     S: futures_util::Stream<Item = std::result::Result<bytes::Bytes, E>>,
 {
     use futures_util::StreamExt as _;
     stream.inspect(move |chunk| {
-        if chunk.is_ok() {
+        if note && chunk.is_ok() {
             sessions.note_media_fetch();
         }
     })
