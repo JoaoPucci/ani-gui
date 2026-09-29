@@ -5971,3 +5971,145 @@ async fn a_fallback_after_a_relayed_run_failed_reads_from_the_host() {
     assert!(run.contains(" -re "), "at the stream's own rate: {run}");
     assert!(run.contains("-headers"), "with the referer: {run}");
 }
+
+/// Each tool reports the proxy exceptions it was started with.
+#[cfg(unix)]
+const REPORTS_ITS_PROXY_EXCEPTIONS: &str =
+    "echo \"$(basename \"$0\") no_proxy=[$no_proxy] NO_PROXY=[$NO_PROXY]\" >&2";
+
+/// The empty proxy a relayed run passes reaches only the request the
+/// tool makes first: ffmpeg's playlist demuxer drops an empty option
+/// when it opens the playlists and segments the relay points it at,
+/// and falls back to the proxy the environment names. A relayed run's
+/// tools are told, through their environment, that the relay's
+/// address is never to be proxied — which every request they and
+/// their own children make reads.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_relayed_runs_tools_never_proxy_the_relays_address() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{REPORTS_ITS_PROXY_EXCEPTIONS}; exit 1"),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!("{REPORTS_ITS_PROXY_EXCEPTIONS}; exit 0"),
+    );
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    )
+    .with_relay(&relay);
+    // yt-dlp through the relay, then ffmpeg alone through it.
+    let mut lines = Vec::new();
+    let _ = spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await;
+    let ytdlp = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("yt-dlp ran");
+    for var in ["no_proxy", "NO_PROXY"] {
+        assert!(
+            ytdlp.contains(&format!("{var}=[127.0.0.1")),
+            "yt-dlp {var}: {ytdlp}"
+        );
+    }
+    std::fs::remove_file(bin.path().join("yt-dlp")).expect("ffmpeg alone");
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 3",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the fallback completes");
+    let ffmpeg = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    for var in ["no_proxy", "NO_PROXY"] {
+        assert!(
+            ffmpeg.contains(&format!("{var}=[127.0.0.1")),
+            "ffmpeg {var}: {ffmpeg}"
+        );
+    }
+}
+
+/// A relayed run that fetched everything and only left the wrong
+/// container behind did not fail because of the relay: the fallback
+/// that repackages it reads through the relay while playback is live,
+/// behind the player, not from the host directly.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_repackage_after_a_relayed_run_still_reads_through_the_relay() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2; exit 0",
+    );
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the repackage completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    assert!(run.contains(RELAY), "through the relay: {run}");
+    assert!(!run.contains(" -re "), "{run}");
+}
