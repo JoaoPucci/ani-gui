@@ -3,21 +3,24 @@
 //! from that burst spends the address's request budget at the host,
 //! which refuses the player's next segment within seconds. While the
 //! proxy has served media recently — playback is live — a download
-//! runs one fragment at a time at a limited byte rate instead. yt-dlp cannot change its
-//! concurrency mid-run, so when playback starts or stops under a
+//! fetches through the proxy instead, on a background session whose
+//! requests the host's budget admits behind the player's and never
+//! from the player's reserve; without that relay it runs one fragment
+//! at a time at a limited byte rate. yt-dlp cannot change its source
+//! or concurrency mid-run, so when playback starts or stops under a
 //! running download the supervisor takes the tool down and starts it
 //! again on the same output, which yt-dlp resumes from the fragments
 //! it already has ([`super::download::spawn_download_tool_paced`]).
 //!
-//! The allowance is one fragment beside the player for the whole app,
-//! not one per download: paced runs take [`PACED_LANE`] in turn, so
-//! two episodes downloading during playback put one yt-dlp against
-//! the host at a time, and the other waits for it or for playback to
-//! stop, whichever comes first. The ffmpeg fallback is one connection
-//! whose rate is set at its start — the stream's own while playback is
-//! live, full speed otherwise, kept to its end either way — and that
-//! cannot be resumed, so it holds the lane from its start regardless
-//! of playback.
+//! Paced runs take [`PACED_LANE`] in turn, one download for the whole
+//! app, so two episodes downloading during playback put one yt-dlp
+//! behind the player at a time, and the other waits for it or for
+//! playback to stop, whichever comes first. The ffmpeg fallback is one
+//! connection whose source is set at its start — through the relay
+//! while playback is live, or at the stream's own rate when there is
+//! none, the host directly otherwise, kept to its end either way — and
+//! that cannot be resumed, so it holds the lane from its start
+//! regardless of playback.
 
 use std::time::Duration;
 
@@ -26,10 +29,10 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 /// Fragments in flight when nothing is playing: v5's `-N 16`.
 pub(crate) const FAST_FRAGMENTS: u32 = 16;
 
-/// Fragments in flight while playback is live: one, the floor a
-/// download can pace to and still move. How much of the address's
-/// request budget that one fragment spends is set by the byte-rate
-/// limit beside it.
+/// Fragments in flight while playback is live and the run has no
+/// relay: one, the floor a download can pace to and still move. How
+/// much of the address's request budget that one fragment spends is
+/// set by the byte-rate limit beside it.
 pub(crate) const PACED_FRAGMENTS: u32 = 1;
 
 /// The sidecar phase's deadline while playback is live: the tracks
@@ -79,7 +82,7 @@ pub(crate) const RELAYED_FRAGMENTS: u32 = 4;
 /// on requests that are only waiting their turn.
 pub(crate) const RELAYED_SOCKET_TIMEOUT_S: u32 = 300;
 
-/// The byte rate a paced run is held to, in yt-dlp's `--limit-rate`
+/// The byte rate a paced run without a relay is held to, in yt-dlp's `--limit-rate`
 /// spelling. The host counts requests per address, and one fragment
 /// at a time against small segments is still several requests a
 /// second; at this rate a megabyte segment takes about two seconds,
