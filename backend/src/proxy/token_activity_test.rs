@@ -75,3 +75,19 @@ mod props {
         }
     }
 }
+
+#[tokio::test]
+async fn a_media_fetch_note_wakes_whoever_waits_on_it() {
+    let sessions = SessionTable::new();
+    let noted = sessions.media_noted();
+    let waiting = noted.notified();
+    tokio::pin!(waiting);
+    waiting.as_mut().enable();
+    sessions.note_media_fetch();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), waiting)
+            .await
+            .is_ok(),
+        "the note woke the waiter"
+    );
+}

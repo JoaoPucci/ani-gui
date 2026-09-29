@@ -96,3 +96,51 @@ proptest! {
         prop_assert!(SIDECAR_PHASE_DEADLINE_LIVE > super::super::download::SIDECAR_PHASE_DEADLINE);
     }
 }
+
+/// Playback starting under a free run is seen when the proxy notes the
+/// player's first request, not at the next poll: a free run left going
+/// for up to a poll fires another full burst beside the player's start.
+#[tokio::test(start_paused = true)]
+async fn a_note_from_the_proxy_ends_the_wait_at_once() {
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = Semaphore::new(1);
+    let noted = tokio::sync::Notify::new();
+    let pacing = Pacing::new(&is_live, Duration::from_secs(3600), &lane).woken_by(&noted);
+    let waiting = pacing.until_live_changes(false);
+    tokio::pin!(waiting);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(10), waiting.as_mut())
+            .await
+            .is_err(),
+        "nothing changed: the wait goes on"
+    );
+    live.store(true, std::sync::atomic::Ordering::Relaxed);
+    noted.notify_waiters();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1), waiting.as_mut())
+            .await
+            .is_ok(),
+        "the note ended the wait at once, not at the next poll"
+    );
+}
+
+/// A note that changes nothing — playback was already live, or a
+/// download's own session — does not end the wait.
+#[tokio::test(start_paused = true)]
+async fn a_note_that_changes_nothing_does_not_end_the_wait() {
+    let is_live = || true;
+    let lane = Semaphore::new(1);
+    let noted = tokio::sync::Notify::new();
+    let pacing = Pacing::new(&is_live, Duration::from_secs(3600), &lane).woken_by(&noted);
+    let waiting = pacing.until_live_changes(true);
+    tokio::pin!(waiting);
+    let _ = tokio::time::timeout(Duration::from_millis(10), waiting.as_mut()).await;
+    noted.notify_waiters();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(10), waiting.as_mut())
+            .await
+            .is_err(),
+        "playback is as it was: the wait goes on"
+    );
+}
