@@ -9,20 +9,21 @@
 //! host on the player's behalf — playlists, segments, mp4 ranges, and
 //! the subtitle tracks the player loads, which wait behind the media —
 //! is charged to it. hls.js loads one segment at a time and the player
-//! allows it ten seconds for a first byte, so a wait here of a second
-//! or so is absorbed, and the player still buffers as far ahead as it
-//! likes — over minutes rather than seconds; while it is still filling
-//! that buffer, a seek past it may take a few seconds longer than it
-//! otherwise would. The budget is per host and per app: the proxy
-//! charges every fetch it makes on the player's behalf, hop by hop
-//! where a redirect sends it on, and a download charges the subtitle
-//! tracks it stages beside its transfer and, while playback is live,
-//! its own fetches through the proxy, since the host counts them all
-//! against the one address — as background traffic, which takes a token
-//! only while no one waits for one until it has waited
-//! [`BACKGROUND_PATIENCE`], when it is served in turn with the player,
-//! and which never takes the last [`BACKGROUND_RESERVE`] of the bucket,
-//! so the player's next requests find them there. The bucket is per
+//! allows it ten seconds for a first byte, so a
+//! wait here of a second or so is absorbed, and the player still
+//! buffers as far ahead as it likes — over minutes rather than
+//! seconds; while it is still filling that buffer, a seek past it may
+//! take a few seconds longer than it otherwise would. The budget is
+//! per host and per app: the proxy charges every fetch it makes on the
+//! player's behalf, hop by hop where a redirect sends it on, and a
+//! download charges the subtitle tracks it stages beside its transfer
+//! and, while playback is live, its own fetches through the proxy,
+//! since the host counts them all against the one address — as
+//! background traffic, one request at a time, which while no one waits
+//! takes a token only above the last [`BACKGROUND_RESERVE`] of the
+//! bucket, so the player's next requests find them there, and while the
+//! player waits takes every other token with it, so a player filling
+//! its buffer neither starves it nor is starved. The bucket is per
 //! host: a download from a different host than the player's has a
 //! bucket of its own, and the two meet only if the host counts them
 //! together. What reaches the host past the budget is charged to it
@@ -52,7 +53,8 @@ pub(crate) const SEGMENT_BURST: u32 = 20;
 /// The steady rate once the burst is spent: one request per this
 /// interval, forty a minute. A segment plays for about five seconds,
 /// so the buffer still grows three times faster than playback drains
-/// it.
+/// it, and over one and a half times as fast while background traffic
+/// takes every other token.
 pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 
 /// Tokens background traffic leaves in the bucket: the player's next
