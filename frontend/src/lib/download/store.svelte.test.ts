@@ -7,7 +7,12 @@
 // `$.async_mode_flag` against `globalThis` and asserts a Document
 // is available even outside components.
 import { beforeEach, describe, expect, it } from 'vitest';
-import { downloadStore, parseProgressStatus, terminalReport } from './store.svelte';
+import {
+	downloadStore,
+	parseProgressStatus,
+	terminalReport,
+	parseRateReport
+} from './store.svelte';
 
 describe('downloadStore', () => {
 	beforeEach(() => {
@@ -278,5 +283,34 @@ describe('terminalReport', () => {
 		expect(terminalReport({ key: 'repackage_retry', path: null })).toBeNull();
 		expect(terminalReport({ key: 'retry_ffmpeg', path: null })).toBeNull();
 		expect(terminalReport(null)).toBeNull();
+	});
+});
+
+describe('speed reports', () => {
+	it('reads the backend rate report as bytes a second', () => {
+		expect(parseRateReport('status.download.rate 1572864')).toBe(1572864);
+		expect(parseRateReport('status.download.rate 0')).toBe(0);
+		expect(parseRateReport('status.download.rate')).toBeNull();
+		expect(parseRateReport('status.download.rate fast')).toBeNull();
+		expect(parseRateReport('Playing episode 3')).toBeNull();
+	});
+
+	it('keeps the speed on the item and leaves the progress line as it was', () => {
+		const id = downloadStore.add({
+			title: 'Frieren',
+			episode: '7',
+			mode: 'sub',
+			quality: '1080',
+			destDir: '/dl'
+		});
+		downloadStore.markActive(id, new AbortController());
+		downloadStore.setProgress(id, 'Matched Frieren');
+		downloadStore.setProgress(id, 'status.download.rate 2048');
+		const item = downloadStore.items.find((i) => i.id === id);
+		expect(item?.speed).toBe(2048);
+		expect(item?.progress).toBe('Matched Frieren');
+		downloadStore.setProgress(id, 'Playing episode 2');
+		expect(downloadStore.items.find((i) => i.id === id)?.speed).toBe(2048);
+		downloadStore.dismiss(id);
 	});
 });
