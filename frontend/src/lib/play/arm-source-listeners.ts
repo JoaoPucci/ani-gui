@@ -61,7 +61,9 @@ export function armSourceScopedListeners(input: {
 	};
 	const onMetadata = () => {
 		if (recovered !== null) video.currentTime = recovered;
-		if (recovered !== null || kept === null || Number.isFinite(video.duration)) {
+		// A started mark, at zero, has nothing to judge, so only a point
+		// past it waits for the length.
+		if (recovered !== null || !kept || Number.isFinite(video.duration)) {
 			resumeKept();
 			return;
 		}

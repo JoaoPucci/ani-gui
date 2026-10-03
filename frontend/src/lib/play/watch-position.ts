@@ -64,11 +64,14 @@ export function savePosition(
 ): void {
 	const key = keyOf(showId, episode);
 	const rest = load(storage).filter(([k]) => k !== key);
-	if (isFinishedAt(seconds, duration)) {
+	// A point in the first seconds is a start over, never a finish —
+	// on a stream shorter than its last 90 seconds as well.
+	const point = seconds < RESUME_MIN_S ? 0 : seconds;
+	if (point > 0 && isFinishedAt(point, duration)) {
 		store(storage, rest);
 		return;
 	}
-	store(storage, [...rest, [key, seconds < RESUME_MIN_S ? 0 : seconds]]);
+	store(storage, [...rest, [key, point]]);
 }
 
 /** Marks `episode` of `showId` started, at zero, unless a point is
