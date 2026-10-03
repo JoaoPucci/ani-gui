@@ -19,22 +19,23 @@
 //! tracks it stages beside its transfer and, while playback is live,
 //! its own fetches through the proxy, since the host counts them all
 //! against the one address — as background traffic, which takes a token
-//! only while no one waits for one and never takes the last
-//! [`BACKGROUND_RESERVE`] of the bucket, so the player's next requests
-//! find them there. The bucket is per host: a download from a different
-//! host than the player's has a bucket of its own, and the two meet
-//! only if the host counts them together. What reaches the host past
-//! the budget is charged to it too: a cached resolution's liveness
-//! check spends a token per request without waiting — it runs before
-//! the player starts, under a deadline of seconds — and while a
-//! download tool runs, every host's tokens are held to what the tool's
-//! requests in flight leave of the burst, never below one: its
-//! fragments go wherever its playlists send them, which the app does
-//! not see. When it ends, every host is left where the hold left it,
-//! one not yet fetched from included ([`UnpacedRun`]). Not charged: the
-//! resolver's fetches of a playlist through the impersonating
-//! transport, one or two requests ahead of the player's own, and an
-//! external player the
+//! only while no one waits for one until it has waited
+//! [`BACKGROUND_PATIENCE`], when it is served in turn with the player,
+//! and which never takes the last [`BACKGROUND_RESERVE`] of the bucket,
+//! so the player's next requests find them there. The bucket is per
+//! host: a download from a different host than the player's has a
+//! bucket of its own, and the two meet only if the host counts them
+//! together. What reaches the host past the budget is charged to it
+//! too: a cached resolution's liveness check spends a token per request
+//! without waiting — it runs before the player starts, under a deadline
+//! of seconds — and while a download tool runs, every host's tokens are
+//! held to what the tool's requests in flight leave of the burst, never
+//! below one: its fragments go wherever its playlists send them, which
+//! the app does not see. When it ends, every host is left where the
+//! hold left it, one not yet fetched from included ([`UnpacedRun`]).
+//! Not charged: the resolver's fetches of a playlist through the
+//! impersonating transport, one or two requests ahead of the player's
+//! own, and an external player the
 //! app hands a stream to, which fetches from the host on its own,
 //! outside the app entirely.
 
@@ -286,7 +287,7 @@ impl HostBudget {
 
     /// A token for `host` for background traffic — subtitle tracks,
     /// the player's and a download's, which playback can wait for —
-    /// which never takes a place in the host's line:
+    /// which within its patience takes no place in the host's line:
     /// it takes a token only while no one is waiting for one, and
     /// otherwise waits a refill and looks again. Whoever is in the
     /// line is served first while the background fetch is within its
