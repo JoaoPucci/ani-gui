@@ -16,7 +16,7 @@
 //!   `EXT-X-STREAM-INF` and `EXT-X-MEDIA` URI, return the new manifest.
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
-//! - [`rewrite_uri`] (private) — resolve a relative URI against a base,
+//! - `build_proxy_uri` (private) — resolve a relative URI against a base,
 //!   then build a proxy URL with HMAC token, marked `k=pl` when the
 //!   manifest names it as a playlist.
 //! - [`names_a_playlist`] — whether the segment route is fetching a
