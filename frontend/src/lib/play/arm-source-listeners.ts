@@ -56,14 +56,40 @@ export function armSourceScopedListeners(input: {
 		savePosition(showId, episode, video.currentTime, video.duration, positions);
 	};
 	const onMetadata = () => {
-		const resumeAt = recovered ?? keptUnlessFinished(kept);
-		if (resumeAt !== null) video.currentTime = resumeAt;
+		if (recovered !== null) video.currentTime = recovered;
+		if (recovered !== null || kept === null || Number.isFinite(video.duration)) {
+			resumeKept();
+			return;
+		}
+		// The length is not known yet — hls.js sets it from the playlist,
+		// and a playlist without an end grows it — so the kept point
+		// cannot be judged. Wait for the first known length; a seek by
+		// the viewer or playback starting first makes the stream theirs.
+		video.addEventListener('durationchange', onDuration);
+		video.addEventListener('seeking', letGo);
+		video.addEventListener('playing', letGo);
+	};
+	const stopWaiting = () => {
+		video.removeEventListener('durationchange', onDuration);
+		video.removeEventListener('seeking', letGo);
+		video.removeEventListener('playing', letGo);
+	};
+	const onDuration = () => {
+		if (Number.isFinite(video.duration)) resumeKept();
+	};
+	const letGo = () => {
+		stopWaiting();
 		opened = true;
 	};
-	const keptUnlessFinished = (point: number | null): number | null => {
-		if (point === null || !isFinishedAt(point, video.duration)) return point;
-		clearPosition(showId, episode, positions);
-		return null;
+	// Seeks to the kept point unless the known length puts it in the
+	// last 90 seconds, where it is forgotten instead. Decided once.
+	const resumeKept = () => {
+		stopWaiting();
+		if (recovered === null && kept !== null) {
+			if (isFinishedAt(kept, video.duration)) clearPosition(showId, episode, positions);
+			else video.currentTime = kept;
+		}
+		opened = true;
 	};
 	const onTime = () => {
 		if (Math.abs(video.currentTime - savedAt) >= SAVE_EVERY_S) save();
@@ -73,6 +99,7 @@ export function armSourceScopedListeners(input: {
 	};
 	scope.add(() => {
 		save();
+		stopWaiting();
 		opened = false;
 		video.removeEventListener('playing', markProgress);
 		video.removeEventListener('loadedmetadata', onMetadata);
