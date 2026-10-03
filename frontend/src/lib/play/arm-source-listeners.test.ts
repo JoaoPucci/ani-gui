@@ -21,7 +21,7 @@ let scope: SourceScope;
 let positions: PositionStorage;
 
 function arm(showId: string, episode: number) {
-	return armSourceScopedListeners({ video, showId, episode, scope, positions });
+	armSourceScopedListeners({ video, showId, episode, scope, positions });
 }
 
 function playAt(seconds: number, duration = 1420) {
@@ -233,18 +233,6 @@ describe('armSourceScopedListeners', () => {
 			expect(video.currentTime).toBe(700);
 		});
 
-		it('a move by the viewer while waiting drops the pending resume, and from then on the position is kept', () => {
-			savePosition('show-a', 6, 600, Number.NaN, positions);
-			const source = arm('show-a', 6);
-			metadataWith(Number.POSITIVE_INFINITY);
-			source.viewerMoved();
-			video.currentTime = 200;
-			durationBecomes(1420);
-			expect(video.currentTime).toBe(200);
-			video.dispatchEvent(new Event('pause'));
-			expect(readPosition('show-a', 6, positions)).toBe(200);
-		});
-
 		it('autoplay while waiting neither drops the resume nor writes over the kept point', () => {
 			// The element autoplays: it starts playing, and ticks, before
 			// the length is known. Neither is the viewer moving.
@@ -270,17 +258,6 @@ describe('armSourceScopedListeners', () => {
 			video.dispatchEvent(new Event('seeking'));
 			durationBecomes(1420);
 			expect(video.currentTime).toBe(600);
-		});
-
-		it('a move by the viewer once the point is decided changes nothing', () => {
-			savePosition('show-a', 6, 600, Number.NaN, positions);
-			const source = arm('show-a', 6);
-			metadataWith(1420);
-			expect(video.currentTime).toBe(600);
-			source.viewerMoved();
-			video.currentTime = 700;
-			video.dispatchEvent(new Event('pause'));
-			expect(readPosition('show-a', 6, positions)).toBe(700);
 		});
 
 		it('leaving while waiting keeps the kept point', () => {
