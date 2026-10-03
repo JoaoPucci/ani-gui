@@ -92,3 +92,20 @@ export function clearPosition(
 		load(storage).filter(([k]) => k !== key)
 	);
 }
+
+/** Forgets every kept episode of `showId` — its history row is gone. */
+export function clearShowPositions(
+	showId: string,
+	storage: PositionStorage | null = defaultStorage()
+): void {
+	const prefix = `${showId}:`;
+	store(
+		storage,
+		load(storage).filter(([k]) => !k.startsWith(prefix))
+	);
+}
+
+/** Forgets every kept episode — the history is cleared. */
+export function clearAllPositions(storage: PositionStorage | null = defaultStorage()): void {
+	store(storage, []);
+}

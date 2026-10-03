@@ -13,6 +13,9 @@ export interface ConfirmDeleteDeps {
 	history: HistoryEntry[];
 	matches: Record<string, KitsuAnimeRef | null | undefined>;
 	historyDelete: (id: string) => Promise<void>;
+	/** Forgets where a removed show's episodes were left, once its
+	 *  rows are gone. */
+	forgetPositions?: (kitsuId: string) => void;
 }
 
 export interface ConfirmDeleteResult {
@@ -48,6 +51,8 @@ export async function executeKitsuGroupDelete(
 	for (const id of groupIds) {
 		await deps.historyDelete(id);
 	}
+	const shows = new Set(groupIds.map((id) => deps.matches[id]?.id).filter((k) => !!k));
+	for (const kitsuId of shows) deps.forgetPositions?.(kitsuId as string);
 	const removed = new Set(groupIds);
 	return {
 		removedIds: groupIds,

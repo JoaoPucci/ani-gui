@@ -98,7 +98,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
-	import { readPosition } from '$lib/play/watch-position';
+	import { clearShowPositions, readPosition } from '$lib/play/watch-position';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -262,7 +262,8 @@
 			const result = await executeKitsuGroupDelete(deleteCandidate.entry.id, {
 				history: history ?? [],
 				matches: historyMatches,
-				historyDelete
+				historyDelete,
+				forgetPositions: clearShowPositions
 			});
 			// Open the gate IMMEDIATELY before the optimistic mutation
 			// so the 350ms auto-close window starts when Svelte's

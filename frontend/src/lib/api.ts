@@ -25,6 +25,7 @@
  * without a backend address.
  */
 import type { StreamProvider } from '$lib/history/show-key';
+import { clearAllPositions } from '$lib/play/watch-position';
 
 let apiBaseCache: string | null = null;
 
@@ -425,8 +426,9 @@ export function historyList(): Promise<HistoryEntry[]> {
 	return getJson<HistoryEntry[]>('/api/history');
 }
 
+/** Clears the history, and with it where each episode was left. */
 export function historyClear(): Promise<void> {
-	return deleteJson<void>('/api/history');
+	return deleteJson<void>('/api/history').then(() => clearAllPositions());
 }
 
 /** Remove one history row by its `show_id`. Backend rewrites
