@@ -225,4 +225,23 @@ describe('play route — the page owns its video', () => {
 		expect(readPosition(KITSU_ID, 1)).toBe(600);
 		expect(readPosition(KITSU_ID, 2)).toBeNull();
 	});
+
+	it('an autoplaying stream whose length arrives late still resumes where it was left', async () => {
+		// The element autoplays. When the stream's length is not known by
+		// its metadata, playback starts and ticks before it is; the resume
+		// waits for the length rather than letting the ticks overwrite
+		// the kept point.
+		savePosition(KITSU_ID, 1, 612.5, 1420);
+		const { video } = await mountHls();
+		let length = Number.POSITIVE_INFINITY;
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => length });
+		video.dispatchEvent(new Event('loadedmetadata'));
+		video.dispatchEvent(new Event('playing'));
+		video.currentTime = 0.3;
+		video.dispatchEvent(new Event('timeupdate'));
+		expect(readPosition(KITSU_ID, 1)).toBe(612.5);
+		length = 1420;
+		video.dispatchEvent(new Event('durationchange'));
+		expect(video.currentTime).toBe(612.5);
+	});
 });

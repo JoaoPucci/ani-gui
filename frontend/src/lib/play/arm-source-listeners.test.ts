@@ -21,7 +21,7 @@ let scope: SourceScope;
 let positions: PositionStorage;
 
 function arm(showId: string, episode: number) {
-	armSourceScopedListeners({ video, showId, episode, scope, positions });
+	return armSourceScopedListeners({ video, showId, episode, scope, positions });
 }
 
 function playAt(seconds: number, duration = 1420) {
@@ -233,23 +233,54 @@ describe('armSourceScopedListeners', () => {
 			expect(video.currentTime).toBe(700);
 		});
 
-		it('a seek by the viewer while waiting drops the pending resume', () => {
+		it('a move by the viewer while waiting drops the pending resume, and from then on the position is kept', () => {
 			savePosition('show-a', 6, 600, Number.NaN, positions);
-			arm('show-a', 6);
+			const source = arm('show-a', 6);
 			metadataWith(Number.POSITIVE_INFINITY);
+			source.viewerMoved();
 			video.currentTime = 200;
-			video.dispatchEvent(new Event('seeking'));
 			durationBecomes(1420);
 			expect(video.currentTime).toBe(200);
+			video.dispatchEvent(new Event('pause'));
+			expect(readPosition('show-a', 6, positions)).toBe(200);
 		});
 
-		it('playback starting while waiting drops the pending resume', () => {
+		it('autoplay while waiting neither drops the resume nor writes over the kept point', () => {
+			// The element autoplays: it starts playing, and ticks, before
+			// the length is known. Neither is the viewer moving.
 			savePosition('show-a', 6, 600, Number.NaN, positions);
 			arm('show-a', 6);
 			metadataWith(Number.POSITIVE_INFINITY);
 			video.dispatchEvent(new Event('playing'));
+			video.currentTime = 0.3;
+			video.dispatchEvent(new Event('timeupdate'));
+			video.dispatchEvent(new Event('pause'));
+			expect(readPosition('show-a', 6, positions)).toBe(600);
 			durationBecomes(1420);
-			expect(video.currentTime).toBe(0);
+			expect(video.currentTime).toBe(600);
+		});
+
+		it("the engine's own seek while waiting does not drop the resume", () => {
+			// hls.js jumps gaps and the stream's start by seeking the
+			// element; that is not the viewer moving.
+			savePosition('show-a', 6, 600, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(Number.POSITIVE_INFINITY);
+			video.currentTime = 0.2;
+			video.dispatchEvent(new Event('seeking'));
+			durationBecomes(1420);
+			expect(video.currentTime).toBe(600);
+		});
+
+		it('a move by the viewer once the point is decided changes nothing', () => {
+			savePosition('show-a', 6, 600, Number.NaN, positions);
+			const source = arm('show-a', 6);
+			metadataWith(1420);
+			expect(video.currentTime).toBe(600);
+			source.viewerMoved();
+			video.currentTime = 700;
+			video.dispatchEvent(new Event('pause'));
+			expect(readPosition('show-a', 6, positions)).toBe(700);
 		});
 
 		it('leaving while waiting keeps the kept point', () => {
@@ -262,11 +293,15 @@ describe('armSourceScopedListeners', () => {
 			expect(readPosition('show-a', 6, positions)).toBe(600);
 		});
 
-		it('a length that never becomes known never seeks', () => {
+		it('a length that never becomes known never seeks, and nothing is written for the stream', () => {
 			savePosition('show-a', 6, 1400, Number.NaN, positions);
 			arm('show-a', 6);
 			metadataWith(Number.POSITIVE_INFINITY);
-			expect(video.currentTime).toBe(0);
+			video.dispatchEvent(new Event('playing'));
+			video.currentTime = 40;
+			video.dispatchEvent(new Event('timeupdate'));
+			video.dispatchEvent(new Event('pause'));
+			scope.flush();
 			expect(readPosition('show-a', 6, positions)).toBe(1400);
 		});
 
