@@ -3,7 +3,9 @@ import {
 	FINISHED_REMAINING_S,
 	MAX_POSITIONS,
 	RESUME_MIN_S,
+	clearAllPositions,
 	clearPosition,
+	clearShowPositions,
 	readPosition,
 	savePosition,
 	type PositionStorage
@@ -52,6 +54,26 @@ describe('watch position', () => {
 		savePosition('42', 3, 612.4, 1420, s);
 		clearPosition('42', 3, s);
 		expect(readPosition('42', 3, s)).toBeNull();
+	});
+
+	it("forgets every kept episode of one show, and only that show's", () => {
+		const s = memory();
+		savePosition('42', 3, 612.4, 1420, s);
+		savePosition('42', 4, 100, 1420, s);
+		savePosition('420', 3, 200, 1420, s);
+		clearShowPositions('42', s);
+		expect(readPosition('42', 3, s)).toBeNull();
+		expect(readPosition('42', 4, s)).toBeNull();
+		expect(readPosition('420', 3, s)).toBe(200);
+	});
+
+	it('forgets every kept episode', () => {
+		const s = memory();
+		savePosition('42', 3, 612.4, 1420, s);
+		savePosition('7', 1, 100, 1420, s);
+		clearAllPositions(s);
+		expect(readPosition('42', 3, s)).toBeNull();
+		expect(readPosition('7', 1, s)).toBeNull();
 	});
 
 	it('keeps only the most recent episodes', () => {

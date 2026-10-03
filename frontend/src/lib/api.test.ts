@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readPosition, savePosition } from './play/watch-position';
 import {
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
@@ -152,6 +153,41 @@ describe('historyClear', () => {
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/history`);
 		expect(init?.method).toBe('DELETE');
+	});
+});
+
+describe('historyClear — kept positions', () => {
+	// Clearing history is clearing where each episode was left: the
+	// positions are the rest of the watch record.
+	const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+	let data: Map<string, string>;
+	beforeEach(() => {
+		data = new Map();
+		Object.defineProperty(globalThis, 'localStorage', {
+			configurable: true,
+			value: {
+				getItem: (k: string) => data.get(k) ?? null,
+				setItem: (k: string, v: string) => void data.set(k, v)
+			}
+		});
+	});
+	afterEach(() => {
+		if (original) Object.defineProperty(globalThis, 'localStorage', original);
+		else Reflect.deleteProperty(globalThis, 'localStorage');
+	});
+
+	it('forgets every kept position once the history is cleared', async () => {
+		savePosition('42', 3, 612.4, 1420);
+		globalThis.fetch = mockFetchOnce(null, 204) as unknown as typeof fetch;
+		await historyClear();
+		expect(readPosition('42', 3)).toBeNull();
+	});
+
+	it('keeps them when the clear fails', async () => {
+		savePosition('42', 3, 612.4, 1420);
+		globalThis.fetch = mockFetchOnce({ error: 'down' }, 500) as unknown as typeof fetch;
+		await expect(historyClear()).rejects.toBeTruthy();
+		expect(readPosition('42', 3)).toBe(612.4);
 	});
 });
 

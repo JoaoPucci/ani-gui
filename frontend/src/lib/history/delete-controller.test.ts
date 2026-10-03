@@ -74,3 +74,33 @@ describe('executeKitsuGroupDelete', () => {
 		expect(result.remainingHistory.map((e) => e.id)).toEqual(['aa-2']);
 	});
 });
+
+describe('executeKitsuGroupDelete — kept positions', () => {
+	test("forgets the removed show's kept positions once its rows are gone", async () => {
+		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
+		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
+		const order: string[] = [];
+		const historyDelete = vi.fn(async (id: string) => {
+			order.push(`delete:${id}`);
+		});
+		const forgetPositions = vi.fn((kitsuId: string) => {
+			order.push(`forget:${kitsuId}`);
+		});
+
+		await executeKitsuGroupDelete('aa-1', { history, matches, historyDelete, forgetPositions });
+
+		expect(order).toEqual(['delete:aa-1', 'delete:aa-2', 'forget:k-1']);
+	});
+
+	test('a failed delete forgets nothing', async () => {
+		const history = [h('aa-1')];
+		const matches = { 'aa-1': m('k-1') };
+		const historyDelete = vi.fn().mockRejectedValue(new Error('down'));
+		const forgetPositions = vi.fn();
+
+		await expect(
+			executeKitsuGroupDelete('aa-1', { history, matches, historyDelete, forgetPositions })
+		).rejects.toThrow('down');
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+});
