@@ -53,6 +53,11 @@ export interface DownloadItem {
 	 *  the message bundles — and the dock renders the translation.
 	 *  Cleared when a later raw line supersedes the report. */
 	progressStatus: ProgressStatus | null;
+	/** The download's speed in bytes a second, from the backend's
+	 *  latest `status.download.rate` report; null until the first. A
+	 *  rate report updates this alone — the progress line the dock
+	 *  shows stays as it was. */
+	speed: number | null;
 }
 
 /** One of the backend's own progress reports, as a stable key the UI
@@ -114,6 +119,13 @@ export function parseProgressStatus(line: string): ProgressStatus | null {
 	return { key, path: path && path.length > 0 ? path : null };
 }
 
+/** The bytes a second a backend `status.download.rate N` report
+ *  carries; null for any other line. */
+export function parseRateReport(line: string): number | null {
+	const match = line.match(/^status\.download\.rate (\d+)$/);
+	return match ? Number.parseInt(match[1], 10) : null;
+}
+
 let nextId = 1;
 
 class DownloadStore {
@@ -161,7 +173,8 @@ class DownloadStore {
 				unseen: false,
 				rangeTotal,
 				currentEp: null,
-				progressStatus: null
+				progressStatus: null,
+				speed: null
 			},
 			...this.items
 		];
@@ -175,6 +188,13 @@ class DownloadStore {
 	}
 
 	setProgress(id: string, line: string) {
+		// The backend's speed report, once a second while a tool runs:
+		// it updates the speed alone, and the line the dock shows stays.
+		const speed = parseRateReport(line);
+		if (speed !== null) {
+			this.items = this.items.map((i) => (i.id === id ? { ...i, speed } : i));
+			return;
+		}
 		// A range download emits `Playing episode N` before it resolves each
 		// episode. That line comes from the backend's own range loop, not
 		// from yt-dlp or ffmpeg — it is a protocol line the orchestrator

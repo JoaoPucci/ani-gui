@@ -63,5 +63,7 @@
 	"status_abandoned_claim": "An interrupted download left an empty file at {path}; delete it and try again.",
 	"status_claim_pending": "Another download is publishing {path} and has not finished; try again shortly.",
 	"status_repackage_retry": "yt-dlp could not repackage the stream; retrying with ffmpeg.",
-	"status_retry_ffmpeg": "yt-dlp failed; retrying with ffmpeg."
+	"status_retry_ffmpeg": "yt-dlp failed; retrying with ffmpeg.",
+	"speed_kbps": "{value} KB/s",
+	"speed_mbps": "{value} MB/s"
 }
