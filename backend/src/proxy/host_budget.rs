@@ -67,6 +67,13 @@ pub(crate) use unpaced::UnpacedRun;
 /// background traffic has been taking what the player was not using.
 pub(crate) const BACKGROUND_RESERVE: u32 = 5;
 
+/// How long background traffic yields to the player before it joins
+/// the host's line and is served in turn. A player filling its buffer
+/// keeps a request waiting at all times, for a minute after a start or
+/// a seek; without a limit a download beside it would take nothing for
+/// all that time.
+pub(crate) const BACKGROUND_PATIENCE: Duration = Duration::from_millis(4500);
+
 /// One host's budget: the tokens on hand and when they were last
 /// topped up.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -219,14 +226,18 @@ impl HostBudget {
     /// which never takes a place in the host's line:
     /// it takes a token only while no one is waiting for one, and
     /// otherwise waits a refill and looks again. Whoever is in the
-    /// line is served first, however long the background fetch has
-    /// been waiting, and so is a cached row's probe waiting at the host
+    /// line is served first while the background fetch is within its
+    /// patience, and so is a cached row's probe waiting at the host
     /// ([`Self::admit_probe`]); with neither, it waits for its token like
     /// any other. It never takes the budget's reserve
     /// ([`BACKGROUND_RESERVE`] in the app's budget), which is left for
-    /// the player's next requests.
+    /// the player's next requests. Once it has waited
+    /// [`BACKGROUND_PATIENCE`] it stops yielding and joins the line,
+    /// served in turn with the player, so a player filling its buffer
+    /// cannot keep it waiting for the whole fill.
     pub(crate) async fn admit_background(&self, host: &str) {
         let line = self.line(host);
+        let out_of_patience = Instant::now() + BACKGROUND_PATIENCE;
         loop {
             let wait = match line.try_lock() {
                 Ok(_nobody_waiting) if !self.probes_waiting(host) => {
@@ -237,8 +248,15 @@ impl HostBudget {
                 }
                 _someone_waiting => self.refill,
             };
-            tokio::time::sleep(wait).await;
+            let now = Instant::now();
+            if now >= out_of_patience {
+                break;
+            }
+            tokio::time::sleep(wait.min(out_of_patience - now)).await;
         }
+        // Waited its patience: it joins the line and is served in turn
+        // with the player.
+        self.admit(host).await;
     }
 
     /// The line of requests waiting at `host`.
