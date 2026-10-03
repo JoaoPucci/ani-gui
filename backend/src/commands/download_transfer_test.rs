@@ -74,6 +74,7 @@ async fn sidecars_are_fetched_while_the_transfer_runs() {
     let path_env = stage_tool(bin.path(), &format!("sleep 2\ntouch '{}'", flag.display()));
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -81,6 +82,7 @@ async fn sidecars_are_fetched_while_the_transfer_runs() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect("the transfer completes");
@@ -117,6 +119,7 @@ async fn a_failed_transfer_does_not_wait_on_a_stalling_track() {
     let started = std::time::Instant::now();
     transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -124,6 +127,7 @@ async fn a_failed_transfer_does_not_wait_on_a_stalling_track() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect_err("the transfer failed");
@@ -191,6 +195,7 @@ async fn a_failed_transfer_leaves_no_sidecar_it_fetched() {
     let path_env = stage_tool(bin.path(), "sleep 2\nexit 1");
     transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source,
         dest.path(),
         "Show Episode 1",
@@ -198,6 +203,7 @@ async fn a_failed_transfer_leaves_no_sidecar_it_fetched() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect_err("the transfer failed");
@@ -243,6 +249,7 @@ async fn a_sidecar_takes_its_name_only_once_the_transfer_has_succeeded() {
     );
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -250,6 +257,7 @@ async fn a_sidecar_takes_its_name_only_once_the_transfer_has_succeeded() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect("the transfer completes");
@@ -289,6 +297,7 @@ async fn a_tool_that_writes_nothing_installs_no_sidecar() {
     let path_env = stage_tool(bin.path(), "sleep 1\nexit 0");
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -296,6 +305,7 @@ async fn a_tool_that_writes_nothing_installs_no_sidecar() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect("a tool that writes nothing is not a failed transfer");
@@ -333,6 +343,7 @@ async fn sidecars_install_beside_an_episode_already_at_its_name() {
     let path_env = stage_tool(bin.path(), &format!("touch '{}'", ran.display()));
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
         &source(&server),
         dest.path(),
         "Show Episode 1",
@@ -340,6 +351,7 @@ async fn sidecars_install_beside_an_episode_already_at_its_name() {
         &path_env,
         std::time::Duration::from_secs(30),
         &mut |_| {},
+        &super::super::download_pacing::Pacing::never(),
     )
     .await
     .expect("having the episode already is not a failure");
@@ -357,4 +369,154 @@ async fn sidecars_install_beside_an_episode_already_at_its_name() {
         vec![dest.path().join("Show Episode 1.en.vtt")],
         "the sidecar lands beside the episode that is there"
     );
+}
+
+/// Records when each request arrived and answers it after a delay.
+struct Arrivals {
+    seen: std::sync::Arc<std::sync::Mutex<Vec<std::time::Instant>>>,
+    delay: std::time::Duration,
+}
+
+impl Respond for Arrivals {
+    fn respond(&self, _: &wiremock::Request) -> ResponseTemplate {
+        self.seen
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(std::time::Instant::now());
+        ResponseTemplate::new(200)
+            .set_body_string("WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n")
+            .set_delay(self.delay)
+    }
+}
+
+/// Beside live playback the tracks are fetched one at a time, so the
+/// host's line never holds more than one of them ahead of the
+/// player's next request: with two tracks each answered after a
+/// delay, the second is asked for only once the first has answered.
+#[cfg(unix)]
+#[tokio::test]
+async fn sidecars_beside_live_playback_are_fetched_one_at_a_time() {
+    let server = MockServer::start().await;
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let delay = std::time::Duration::from_millis(300);
+    for lang in ["en", "es"] {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/{lang}.vtt")))
+            .respond_with(Arrivals {
+                seen: std::sync::Arc::clone(&seen),
+                delay,
+            })
+            .mount(&server)
+            .await;
+    }
+    let mut source = source(&server);
+    source.subtitles.push(SubtitleTrack {
+        lang: "es".into(),
+        label: "Español".into(),
+        default: false,
+        url: format!("{}/subs/es.vtt", server.uri()),
+    });
+    let dest = tempfile::tempdir().expect("dest");
+    let bin = tempfile::tempdir().expect("bin");
+    let path_env = stage_tool(bin.path(), "sleep 1");
+    let lane = tokio::sync::Semaphore::new(1);
+    let live = || true;
+    let pacing = super::super::download_pacing::Pacing::new(
+        &live,
+        std::time::Duration::from_secs(3600),
+        &lane,
+    );
+    let written = transfer_with_sidecars(
+        &reqwest::Client::new(),
+        &crate::proxy::host_budget::HostBudget::fresh(),
+        &source,
+        dest.path(),
+        "Show Episode 1",
+        Some("best"),
+        &path_env,
+        std::time::Duration::from_secs(30),
+        &mut |_| {},
+        &pacing,
+    )
+    .await
+    .expect("the transfer completes");
+    assert_eq!(written.len(), 2, "both tracks landed");
+    let seen = seen.lock().unwrap_or_else(|e| e.into_inner());
+    assert_eq!(seen.len(), 2, "both tracks were asked for");
+    let apart = seen[1].saturating_duration_since(seen[0]);
+    assert!(
+        apart >= delay - std::time::Duration::from_millis(50),
+        "the second track was asked for once the first had answered, not {apart:?} later"
+    );
+}
+
+/// While playback is live, one sidecar fetch reaches the host at a
+/// time across every download, not one per download: two phases that
+/// each chose four at a time — both began before playback did — still
+/// put their tracks to the host one after another, so the host's line
+/// never holds more than one of them ahead of the player's next
+/// request.
+#[tokio::test]
+async fn sidecar_fetches_across_downloads_go_one_at_a_time_while_playback_is_live() {
+    let server = MockServer::start().await;
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let delay = std::time::Duration::from_millis(300);
+    let langs = ["en", "es", "pt", "fr"];
+    for lang in langs {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/{lang}.vtt")))
+            .respond_with(Arrivals {
+                seen: std::sync::Arc::clone(&seen),
+                delay,
+            })
+            .mount(&server)
+            .await;
+    }
+    let track = |lang: &str| SubtitleTrack {
+        lang: lang.into(),
+        label: lang.into(),
+        default: false,
+        url: format!("{}/subs/{lang}.vtt", server.uri()),
+    };
+    let first = [track(langs[0]), track(langs[1])];
+    let second = [track(langs[2]), track(langs[3])];
+    let dest_a = tempfile::tempdir().expect("dest");
+    let dest_b = tempfile::tempdir().expect("dest");
+    let live = || true;
+    let lane = tokio::sync::Semaphore::new(1);
+    let gate = super::super::download_pacing::SidecarGate::new(&live, &lane);
+    let client = reqwest::Client::new();
+    let budget = crate::proxy::host_budget::HostBudget::fresh();
+    let phase = |tracks: &'static [SubtitleTrack], dest: &std::path::Path| {
+        let dest = dest.to_path_buf();
+        let (client, budget, gate) = (&client, &budget, &gate);
+        async move {
+            super::super::download::stage_sidecar_subtitles_with(
+                client,
+                budget,
+                gate,
+                tracks,
+                None,
+                &dest,
+                "Show Episode 1",
+                super::super::download::SIDECAR_PHASE_DEADLINE,
+                super::super::download::SIDECAR_FETCH_CONCURRENCY,
+            )
+            .await
+        }
+    };
+    let first: &'static [SubtitleTrack] = Box::leak(Box::new(first));
+    let second: &'static [SubtitleTrack] = Box::leak(Box::new(second));
+    let (a, b) = tokio::join!(phase(first, dest_a.path()), phase(second, dest_b.path()));
+    assert_eq!(a.len() + b.len(), 4, "every track staged");
+    let mut seen = seen.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    seen.sort();
+    assert_eq!(seen.len(), 4, "every track asked for");
+    for pair in seen.windows(2) {
+        let apart = pair[1].saturating_duration_since(pair[0]);
+        assert!(
+            apart >= delay - std::time::Duration::from_millis(50),
+            "a track was asked for {apart:?} after the one before it answered"
+        );
+    }
 }

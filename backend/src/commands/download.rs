@@ -284,9 +284,22 @@ where
         subtitles: resolved.subtitles,
     };
     // The sidecars are fetched beside the transfer, while their
-    // signed URLs are as fresh as the stream's.
+    // signed URLs are as fresh as the stream's. The transfer yields
+    // to playback the proxy is serving.
+    let is_live = || {
+        state
+            .sessions
+            .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
+    };
+    let pacing = super::download_pacing::Pacing::new(
+        &is_live,
+        super::download_pacing::PACING_POLL,
+        &super::download_pacing::PACED_LANE,
+    )
+    .woken_by(state.sessions.media_noted());
     super::download_transfer::transfer_with_sidecars(
         &state.proxy_http,
+        &state.host_budget,
         &source,
         &dest,
         &file_stem,
@@ -299,6 +312,7 @@ where
                 line: line.to_string(),
             });
         },
+        &pacing,
     )
     .await?;
 
@@ -339,22 +353,6 @@ where
     })
 }
 
-/// Spawn the download tool directly on a resolved stream URL —
-/// yt-dlp when present (v5's own arguments: fragment-retrying,
-/// 16-way concurrent), falling back to ffmpeg stream-copy when
-/// yt-dlp is missing or fails, mirroring the script's download()
-/// chains them. Streams each stderr line into `on_line`; the child
-/// dies with a dropped future (kill_on_drop), which is what the
-/// dock's Cancel rides.
-///
-/// `path_env` is the PATH searched for the tools — the caller passes
-/// the process environment; tests stage stub executables.
-///
-/// # Errors
-/// [`AniError::FfmpegMissing`] when neither tool is on `path_env`
-/// (the typed error the install modal renders);
-/// [`AniError::Scraper`] when the chosen tool exits non-zero;
-/// [`AniError::Timeout`] past the transfer deadline.
 /// One lock per destination file, held for the whole spawn.
 ///
 /// Two downloads of the same episode resolve to the same path — the
@@ -958,13 +956,19 @@ pub(crate) async fn publish_without_links(
 /// after the media tool had already finished under its hour. A CDN
 /// that has not answered in a minute is stalling, and the deadline
 /// turns that into a skipped track rather than a download that never
-/// reports done.
+/// reports done. When playback is live as the phase starts it runs
+/// under [`super::download_pacing::SIDECAR_PHASE_DEADLINE_LIVE`]
+/// instead.
 pub(crate) const SIDECAR_PHASE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// How many sidecar tracks are fetched at once. Enough that a
-/// listing's few languages overlap under the phase deadline, few
-/// enough that a listing at the track cap never opens more than a
-/// handful of connections or holds more than a handful of bodies.
+/// How many sidecar tracks are fetched at once while nothing plays.
+/// Enough that a listing's few languages overlap under the phase
+/// deadline, few enough that a listing at the track cap never opens
+/// more than a handful of connections or holds more than a handful of
+/// bodies. When playback is live as the phase starts they are fetched
+/// one at a time ([`super::download_pacing::sidecar_concurrency`]);
+/// while it is live, every download's fetches share one lane
+/// ([`super::download_pacing::SIDECAR_LANE`]).
 pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
 
 /// The sidecar phase up to the names. The resolve bounds its listing
@@ -982,9 +986,15 @@ pub(crate) const SIDECAR_FETCH_CONCURRENCY: usize = 4;
 /// name taken by then is the user's and the track is skipped — but
 /// filled only by the caller's install, so a track fetched beside a
 /// transfer that then fails is dropped with its scratch and never
-/// sits at a name beside no media. Returned in listing order.
+/// sits at a name beside no media. Returned in listing order. Each
+/// fetch is charged to the host's budget: the tracks reach the host
+/// from the player's address, and the host counts them with the
+/// player's requests.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn stage_sidecar_subtitles_with(
     client: &reqwest::Client,
+    budget: &crate::proxy::host_budget::HostBudget,
+    gate: &super::download_pacing::SidecarGate<'_>,
     tracks: &[crate::scraper::provider::SubtitleTrack],
     referer: Option<&str>,
     dest: &std::path::Path,
@@ -1008,7 +1018,7 @@ pub(crate) async fn stage_sidecar_subtitles_with(
     let fetches: Vec<_> = tracks
         .iter()
         .enumerate()
-        .map(|(i, track)| fetch_sidecar_track_by(client, track, referer, until, i))
+        .map(|(i, track)| fetch_sidecar_track_by(client, budget, gate, track, referer, until, i))
         .collect();
     let mut arrivals = stream::iter(fetches).buffer_unordered(concurrency.max(1));
     let mut staged: Vec<(usize, SidecarClaim)> = Vec::new();
@@ -1100,13 +1110,21 @@ pub(crate) fn sidecar_suffixes<'a>(langs: impl Iterator<Item = &'a str>) -> Vec<
 /// the track's place in the listing so the arrival can be named.
 async fn fetch_sidecar_track_by<'a>(
     client: &'a reqwest::Client,
+    budget: &'a crate::proxy::host_budget::HostBudget,
+    gate: &'a super::download_pacing::SidecarGate<'a>,
     track: &'a crate::scraper::provider::SubtitleTrack,
     referer: Option<&'a str>,
     until: tokio::time::Instant,
     index: usize,
 ) -> (usize, Option<bytes::Bytes>) {
-    let body = match tokio::time::timeout_at(until, fetch_sidecar_track(client, track, referer))
-        .await
+    // While playback is live the fetch waits its turn on the lane every
+    // download's sidecar fetches share; the wait counts against the
+    // phase's deadline like the fetch does.
+    let body = match tokio::time::timeout_at(until, async {
+        let _turn = gate.turn().await;
+        fetch_sidecar_track(client, budget, track, referer).await
+    })
+    .await
     {
         Ok(body) => body,
         Err(_elapsed) => {
@@ -1120,18 +1138,39 @@ async fn fetch_sidecar_track_by<'a>(
 /// One track's body, when the CDN serves it: a refusal, a transport
 /// failure, a body that does not arrive or one larger than a
 /// subtitle file can be (read only up to the cap, never held whole)
-/// is logged and `None`.
+/// is logged and `None`, and so is a track whose URL does not parse.
+/// The fetch is charged to the host's budget, hop by hop.
 async fn fetch_sidecar_track(
     client: &reqwest::Client,
+    budget: &crate::proxy::host_budget::HostBudget,
     track: &crate::scraper::provider::SubtitleTrack,
     referer: Option<&str>,
 ) -> Option<bytes::Bytes> {
-    use crate::proxy::upstream::{read_body_capped, CappedBody, SUBTITLE_BODY_CAP};
-    let mut req = client.get(&track.url);
-    if let Some(r) = referer {
-        req = req.header(reqwest::header::REFERER, r);
+    use crate::proxy::upstream::{
+        read_body_capped, send_paced_as, Admission, CappedBody, SUBTITLE_BODY_CAP,
+    };
+    let Ok(url) = url::Url::parse(&track.url) else {
+        tracing::warn!(lang = %track.lang, "download: subtitle url unparseable, skipped");
+        return None;
+    };
+    // The referer goes the way every other fetch sends it: an empty
+    // one is no header, not an empty one.
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(v) = referer.and_then(crate::proxy::upstream::referer_header) {
+        headers.insert(reqwest::header::REFERER, v);
     }
-    match req.send().await {
+    // Background traffic: the track never waits in the host's line
+    // ahead of the player's next request.
+    match send_paced_as(
+        client,
+        budget,
+        Admission::Background,
+        reqwest::Method::GET,
+        &url,
+        headers,
+    )
+    .await
+    {
         Ok(resp) if resp.status().is_success() => {
             match read_body_capped(resp, SUBTITLE_BODY_CAP).await {
                 Ok(CappedBody::Whole(b)) => Some(b),
@@ -1358,6 +1397,25 @@ pub(crate) fn ytdlp_referer_args(referer: Option<&str>) -> Vec<String> {
     referer.map_or_else(Vec::new, |r| vec!["--referer".into(), r.into()])
 }
 
+/// The rate a fallback reads its input at. While playback is live,
+/// the stream's own: `-re` reads at the native rate, one segment per
+/// segment's duration, the rate the player consumes it at, so the
+/// fallback's requests reach the host no faster than a second player
+/// would. Otherwise as fast as the host answers. Chosen once, at the
+/// start, and kept to the end: ffmpeg cannot change rate mid-run and
+/// cannot be taken down and resumed, so a fallback started while
+/// nothing plays runs at full speed for its whole run, even if
+/// playback starts under it, and one started while playback is live
+/// keeps the stream's rate even after playback stops — an episode
+/// takes as long as it plays.
+pub(crate) fn ffmpeg_pace_args(playback_live: bool) -> Vec<&'static str> {
+    if playback_live {
+        vec!["-re"]
+    } else {
+        Vec::new()
+    }
+}
+
 /// ffmpeg takes raw request headers, CRLF-terminated, ahead of the
 /// input they apply to; or nothing when the stream needs none.
 pub(crate) fn ffmpeg_referer_args(referer: Option<&str>) -> Vec<String> {
@@ -1382,6 +1440,12 @@ pub(crate) enum Transferred {
     Nothing,
 }
 
+/// The unpaced entry point the tests drive: [`spawn_download_tool_paced`]
+/// with a pacing nothing paces.
+///
+/// # Errors
+/// As [`spawn_download_tool_paced`].
+#[cfg(test)]
 pub(crate) async fn spawn_download_tool<F>(
     source: &StreamSource,
     dest: &std::path::Path,
@@ -1390,6 +1454,64 @@ pub(crate) async fn spawn_download_tool<F>(
     path_env: &str,
     timeout: std::time::Duration,
     on_line: &mut F,
+) -> Result<Transferred>
+where
+    F: FnMut(&str) + Send,
+{
+    spawn_download_tool_paced(
+        source,
+        dest,
+        file_stem,
+        quality,
+        path_env,
+        timeout,
+        on_line,
+        &super::download_pacing::Pacing::never(),
+    )
+    .await
+}
+
+/// Spawn the download tool on a resolved stream URL — yt-dlp when
+/// present, falling back to ffmpeg stream-copy when yt-dlp is missing
+/// or fails, as the script's download() chained them — yielding to
+/// live playback. Streams each stderr line into `on_line`; the child
+/// dies with a dropped future (kill_on_drop), which is what the dock's
+/// Cancel rides.
+///
+/// yt-dlp runs paced while `pacing` says playback is live, and a
+/// change of state under a running transfer takes the tool down and
+/// starts it again at the other concurrency on the same output, which
+/// yt-dlp resumes from the fragments it already has. A paced run has a
+/// ceiling of its own, and the time it took extends the transfer's.
+/// The ffmpeg fallback is a single connection: it holds the paced lane
+/// from its start whether or not anything plays, and is never taken
+/// down, since it cannot resume. Its rate is chosen with the lane and
+/// kept to its end — the stream's own while playback is live, under
+/// the paced run's ceiling; full speed otherwise, under the
+/// transfer's.
+///
+/// `path_env` is the PATH searched for the tools — the caller passes
+/// the process environment; tests stage stub executables.
+///
+/// # Errors
+/// [`AniError::FfmpegMissing`] when neither tool is on `path_env`
+/// (the typed error the install modal renders);
+/// [`AniError::Scraper`] when the chosen tool exits non-zero;
+/// [`AniError::Timeout`] past the transfer deadline, including while
+/// the fallback waits for the lane. A paced run, and a fallback
+/// started while playback is live, run under a ceiling of their own,
+/// and a wait for the lane during playback under none; the time a
+/// paced run or that wait took extends the transfer's.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn spawn_download_tool_paced<F>(
+    source: &StreamSource,
+    dest: &std::path::Path,
+    file_stem: &str,
+    quality: Option<&str>,
+    path_env: &str,
+    timeout: std::time::Duration,
+    on_line: &mut F,
+    pacing: &super::download_pacing::Pacing<'_>,
 ) -> Result<Transferred>
 where
     F: FnMut(&str) + Send,
@@ -1486,68 +1608,136 @@ where
     // whole file exists, so a half transfer is never sitting under the
     // name the dock, the file manager and every other download read.
     let mut scratch = Scratch::new(dest);
+    // The ceiling guards a hung tool. A paced run is slow by design
+    // and ends the moment playback stops, so it runs under a ceiling
+    // of its own; a wait for the lane while playback is live ends the
+    // same way and runs under none. The time either took is added to
+    // the transfer's ceiling for what follows — the free runs, the
+    // fallback's wait for the lane and an idle-started fallback's run.
+    let mut deadline = deadline;
     if let Some(exe) = ytdlp {
-        let mut cmd = tokio::process::Command::new(exe);
-        if let Some(p) = &child_path {
-            cmd.env("PATH", p);
-        }
-        cmd.args(ytdlp_referer_args(referer))
-            .arg(master_url)
-            .arg("--no-skip-unavailable-fragments")
-            .arg("--fragment-retries")
-            .arg("infinite")
-            .arg("-N")
-            .arg("16")
-            .arg("-o")
-            .arg(&scratch.path);
-        // v5 downloads the variant select_quality chose; the same
-        // preference expressed through yt-dlp's format sort.
-        match quality {
-            Some("worst") => {
-                cmd.arg("-S").arg("+res");
-            }
-            Some(q) if q.chars().all(|c| c.is_ascii_digit()) && !q.is_empty() => {
-                cmd.arg("-S").arg(format!("res:{q}"));
-            }
-            _ => {}
-        }
-        let mut repackage_failed = false;
-        match run_tool(cmd, deadline, on_line, &mut repackage_failed).await {
-            Ok(()) => return finish(&scratch, &target, on_line).await,
-            Err(e) => {
-                if repackage_failed {
-                    // yt-dlp's own report: what it wrote is raw
-                    // MPEG-TS under an .mp4 name. It never reached the
-                    // target, so this is only a scratch file to drop —
-                    // the removal that used to happen here was against
-                    // the user's own file, and the `-y` that licensed
-                    // the retry to write over it is gone with it.
-                    // The warning names the condition and suggests
-                    // ffmpeg; it is not a report that ffmpeg is
-                    // missing. So an install that has one gets the
-                    // retry, and only an install without one is told
-                    // to go and install it.
-                    if ffmpeg.is_none() {
-                        return Err(AniError::FfmpegMissing);
+        // Supervised: a run ends by exiting, by failing, or by playback
+        // starting or stopping under it — then the tool is down and the
+        // next run resumes its fragments at the other concurrency.
+        let mut live = pacing.is_live();
+        let (e, repackage_failed) = loop {
+            // Paced runs take the app's one lane in turn, so two
+            // downloads beside the player put one yt-dlp against the
+            // host, not one each. Waiting ends when the lane opens or
+            // when playback stops — then the run is free.
+            // Waiting for the lane while playback is live is time of the
+            // same kind as a paced run: it lasts as long as playback does
+            // and ends when playback stops, so the ceiling does not run
+            // against it, and the time it took extends the ceiling for
+            // what follows.
+            let turn = if live {
+                let waited = tokio::time::Instant::now();
+                let turn = pacing.paced_turn().await;
+                deadline += waited.elapsed();
+                match turn {
+                    Some(turn) => Some(turn),
+                    None => {
+                        live = false;
+                        tracing::info!(
+                            "download: playback stopped while waiting for the paced lane; running free",
+                        );
+                        continue;
                     }
-                    // A fresh name for the retry rather than writing
-                    // over the condemned one, so nothing it leaves can
-                    // be mistaken for what ffmpeg produces.
-                    scratch.renew(dest);
-                    on_line("status.download.repackage_retry");
-                } else {
-                    // v5's && chain: a failing yt-dlp run retries the
-                    // whole stream through ffmpeg when one exists.
-                    if ffmpeg.is_none() {
-                        return Err(e);
-                    }
-                    scratch.renew(dest);
-                    on_line("status.download.retry_ffmpeg");
                 }
+            } else {
+                None
+            };
+            let cmd = ytdlp_command(
+                &exe,
+                child_path.as_deref(),
+                referer,
+                master_url,
+                &scratch.path,
+                quality,
+                super::download_pacing::fragment_concurrency(live),
+                super::download_pacing::rate_limit(live),
+            );
+            tracing::info!(
+                fragments = super::download_pacing::fragment_concurrency(live),
+                rate_limit = super::download_pacing::rate_limit(live).unwrap_or("none"),
+                playback_live = live,
+                "download: spawning yt-dlp",
+            );
+            let mut repackage_failed = false;
+            let started = tokio::time::Instant::now();
+            let run_deadline = if live {
+                started + super::download_pacing::PACED_RUN_CEILING
+            } else {
+                deadline
+            };
+            let run = run_tool_until(
+                cmd,
+                run_deadline,
+                on_line,
+                &mut repackage_failed,
+                pacing.until_live_changes(live),
+            )
+            .await;
+            drop(turn);
+            if live {
+                deadline += started.elapsed();
             }
+            match run {
+                Ok(ToolRun::Exited) => return finish(&scratch, &target, on_line).await,
+                Ok(ToolRun::Interrupted) => {
+                    live = pacing.is_live();
+                    tracing::info!(
+                        playback_live = live,
+                        "download: playback changed; resuming yt-dlp at the other pace",
+                    );
+                }
+                Err(e) => break (e, repackage_failed),
+            }
+        };
+        if repackage_failed {
+            // yt-dlp's own report: what it wrote is raw
+            // MPEG-TS under an .mp4 name. It never reached the
+            // target, so this is only a scratch file to drop —
+            // the removal that used to happen here was against
+            // the user's own file, and the `-y` that licensed
+            // the retry to write over it is gone with it.
+            // The warning names the condition and suggests
+            // ffmpeg; it is not a report that ffmpeg is
+            // missing. So an install that has one gets the
+            // retry, and only an install without one is told
+            // to go and install it.
+            if ffmpeg.is_none() {
+                return Err(AniError::FfmpegMissing);
+            }
+            // A fresh name for the retry rather than writing
+            // over the condemned one, so nothing it leaves can
+            // be mistaken for what ffmpeg produces.
+            scratch.renew(dest);
+            on_line("status.download.repackage_retry");
+        } else {
+            // v5's && chain: a failing yt-dlp run retries the
+            // whole stream through ffmpeg when one exists.
+            if ffmpeg.is_none() {
+                return Err(e);
+            }
+            scratch.renew(dest);
+            on_line("status.download.retry_ffmpeg");
         }
     }
     let exe = ffmpeg.ok_or(AniError::FfmpegMissing)?;
+    // One connection is the paced allowance itself, and the allowance
+    // is one beside the player for the whole app. ffmpeg cannot change
+    // its rate mid-run, and cannot be taken down and resumed, so a
+    // fallback holds the lane from its start whether or not anything
+    // plays: fallbacks run one after the other, whichever is running
+    // when playback starts is already the one connection the
+    // allowance grants, and a paced yt-dlp waits behind it. Its rate
+    // is chosen at its start as well: the stream's own while playback
+    // is live, full speed otherwise.
+    let _turn = tokio::time::timeout_at(deadline, pacing.lane())
+        .await
+        .map_err(|_| AniError::Timeout)?;
+    let live = pacing.is_live();
     let mut cmd = tokio::process::Command::new(exe);
     if let Some(p) = &child_path {
         cmd.env("PATH", p);
@@ -1566,13 +1756,22 @@ where
         .arg("error")
         .arg("-stats")
         .args(ffmpeg_referer_args(referer))
+        .args(ffmpeg_pace_args(live))
         .arg("-i")
         .arg(master_url)
         .arg("-c")
         .arg("copy")
         .arg(&scratch.path);
+    // A fallback reading at the stream's rate takes as long as the
+    // stream plays; like a paced run it has a ceiling of its own, not
+    // the transfer's, which is sized for a tool running free.
+    let run_deadline = if live {
+        tokio::time::Instant::now() + super::download_pacing::PACED_RUN_CEILING
+    } else {
+        deadline
+    };
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
-    match run_tool(cmd, deadline, on_line, &mut false).await {
+    match run_tool(cmd, run_deadline, on_line, &mut false).await {
         Ok(()) => finish(&scratch, &target, on_line).await,
         Err(e) => Err(e),
     }
@@ -1712,17 +1911,95 @@ fn a_download_tool_exists(path_env: &str) -> bool {
         || find_tool(path_env, "ffmpeg", suffixes).is_some()
 }
 
+/// yt-dlp's command line for one run of a transfer: v5's arguments,
+/// the quality preference as a format sort, `fragments` in flight —
+/// sixteen with nothing playing, one while playback is live — and,
+/// while playback is live, the byte-rate limit that spaces requests
+/// out.
+#[allow(clippy::too_many_arguments)]
+fn ytdlp_command(
+    exe: &std::path::Path,
+    child_path: Option<&std::ffi::OsStr>,
+    referer: Option<&str>,
+    master_url: &str,
+    scratch: &std::path::Path,
+    quality: Option<&str>,
+    fragments: u32,
+    rate_limit: Option<&str>,
+) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(exe);
+    if let Some(p) = child_path {
+        cmd.env("PATH", p);
+    }
+    cmd.args(ytdlp_referer_args(referer))
+        .arg(master_url)
+        .arg("--no-skip-unavailable-fragments")
+        .arg("--fragment-retries")
+        .arg("infinite")
+        .arg("-N")
+        .arg(fragments.to_string());
+    if let Some(rate) = rate_limit {
+        cmd.arg("--limit-rate").arg(rate);
+    }
+    cmd.arg("-o").arg(scratch);
+    // v5 downloads the variant select_quality chose; the same
+    // preference expressed through yt-dlp's format sort.
+    match quality {
+        Some("worst") => {
+            cmd.arg("-S").arg("+res");
+        }
+        Some(q) if q.chars().all(|c| c.is_ascii_digit()) && !q.is_empty() => {
+            cmd.arg("-S").arg(format!("res:{q}"));
+        }
+        _ => {}
+    }
+    cmd
+}
+
+/// How a tool run ended when it did not fail: the tool exited
+/// successfully, or the caller's `stop` resolved first and the tool
+/// was taken down mid-run for the caller to start again.
+#[derive(Debug, PartialEq, Eq)]
+enum ToolRun {
+    Exited,
+    Interrupted,
+}
+
 /// Run one download tool to completion, streaming stderr lines.
 ///
 /// # Errors
 /// [`AniError::Timeout`] past the deadline, [`AniError::Network`] on
 /// spawn failure, [`AniError::Scraper`] on a non-zero exit.
 async fn run_tool<F>(
-    mut cmd: tokio::process::Command,
+    cmd: tokio::process::Command,
     deadline: tokio::time::Instant,
     on_line: &mut F,
     repackage_failed: &mut bool,
 ) -> Result<()>
+where
+    F: FnMut(&str) + Send,
+{
+    run_tool_until(
+        cmd,
+        deadline,
+        on_line,
+        repackage_failed,
+        std::future::pending(),
+    )
+    .await
+    .map(|_| ())
+}
+
+/// [`run_tool`], interruptible: when `stop` resolves before the tool
+/// exits, the tool's process group is taken down and the run reports
+/// itself interrupted rather than failed.
+async fn run_tool_until<F>(
+    mut cmd: tokio::process::Command,
+    deadline: tokio::time::Instant,
+    on_line: &mut F,
+    repackage_failed: &mut bool,
+    stop: impl std::future::Future<Output = ()>,
+) -> Result<ToolRun>
 where
     F: FnMut(&str) + Send,
 {
@@ -1787,11 +2064,20 @@ where
         }
         child.child_mut().wait().await.map_err(|_| AniError::Io)
     };
-    let status = tokio::time::timeout_at(deadline, drive)
-        .await
-        .map_err(|_| AniError::Timeout)??;
+    // Whichever resolves first: the tool running to its end (or the
+    // deadline), or the caller's stop. On a stop the drive is dropped
+    // here and the guard takes the tool's process group down as the
+    // child goes out of scope below.
+    let outcome = tokio::select! {
+        run = tokio::time::timeout_at(deadline, drive) => Some(run),
+        () = stop => None,
+    };
+    let Some(run) = outcome else {
+        return Ok(ToolRun::Interrupted);
+    };
+    let status = run.map_err(|_| AniError::Timeout)??;
     if status.success() {
-        Ok(())
+        Ok(ToolRun::Exited)
     } else {
         Err(AniError::Scraper {
             key: crate::i18n::keys::SCRAPER_PARSE_FAILED,

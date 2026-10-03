@@ -1,0 +1,213 @@
+//! The host budget's pure core and its admission, mounted by `#[path]`
+//! beside the module.
+
+use super::*;
+use proptest::prelude::*;
+
+#[test]
+fn a_burst_is_served_without_waiting_and_the_next_request_waits_a_refill() {
+    let now = Instant::now();
+    let mut bucket = Bucket::full(SEGMENT_BURST, now);
+    for _ in 0..SEGMENT_BURST {
+        assert_eq!(take(&mut bucket, now, SEGMENT_BURST, SEGMENT_REFILL), None);
+    }
+    let wait = take(&mut bucket, now, SEGMENT_BURST, SEGMENT_REFILL).expect("the burst is spent");
+    assert!(
+        wait >= SEGMENT_REFILL && wait <= SEGMENT_REFILL + Duration::from_millis(2),
+        "{wait:?}"
+    );
+}
+
+#[test]
+fn waiting_the_returned_time_yields_a_token() {
+    let now = Instant::now();
+    let mut bucket = Bucket::full(SEGMENT_BURST, now);
+    for _ in 0..SEGMENT_BURST {
+        take(&mut bucket, now, SEGMENT_BURST, SEGMENT_REFILL);
+    }
+    let wait = take(&mut bucket, now, SEGMENT_BURST, SEGMENT_REFILL).expect("spent");
+    assert_eq!(
+        take(&mut bucket, now + wait, SEGMENT_BURST, SEGMENT_REFILL),
+        None,
+        "the token promised for then is there"
+    );
+}
+
+#[test]
+fn an_idle_bucket_refills_to_the_burst_and_no_further() {
+    let now = Instant::now();
+    let mut bucket = Bucket::full(SEGMENT_BURST, now);
+    for _ in 0..SEGMENT_BURST {
+        take(&mut bucket, now, SEGMENT_BURST, SEGMENT_REFILL);
+    }
+    let later = now + Duration::from_secs(600);
+    for _ in 0..SEGMENT_BURST {
+        assert_eq!(
+            take(&mut bucket, later, SEGMENT_BURST, SEGMENT_REFILL),
+            None
+        );
+    }
+    assert!(
+        take(&mut bucket, later, SEGMENT_BURST, SEGMENT_REFILL).is_some(),
+        "ten idle minutes buy one burst, not more"
+    );
+}
+
+proptest! {
+    #[test]
+    fn tokens_stay_within_the_burst_and_no_wait_exceeds_a_refill(
+        gaps in proptest::collection::vec(0u64..4000, 1..200)
+    ) {
+        let mut now = Instant::now();
+        let mut bucket = Bucket::full(SEGMENT_BURST, now);
+        for gap in gaps {
+            now += Duration::from_millis(gap);
+            let wait = take(&mut bucket, now, SEGMENT_BURST, SEGMENT_REFILL);
+            prop_assert!(bucket.tokens() >= 0.0);
+            prop_assert!(bucket.tokens() <= f64::from(SEGMENT_BURST));
+            if let Some(wait) = wait {
+                prop_assert!(wait <= SEGMENT_REFILL + Duration::from_millis(1));
+            }
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_budget_admits_a_burst_at_once_and_the_next_after_a_refill() {
+    let budget = HostBudget::new(3, Duration::from_secs(1));
+    let start = Instant::now();
+    for _ in 0..3 {
+        budget.admit("cdn.example:443").await;
+    }
+    assert_eq!(Instant::now(), start, "the burst waits for nothing");
+    budget.admit("cdn.example:443").await;
+    assert!(
+        Instant::now() - start >= Duration::from_secs(1),
+        "the fourth waited a refill"
+    );
+    // Another host has a burst of its own.
+    let before = Instant::now();
+    budget.admit("other.example:443").await;
+    assert_eq!(Instant::now(), before);
+}
+
+#[test]
+fn the_key_is_host_and_port() {
+    let a = Url::parse("https://cdn.example/a/seg.ts").expect("url");
+    let b = Url::parse("https://cdn.example:8443/b/seg.ts").expect("url");
+    let c = Url::parse("http://127.0.0.1:4001/seg.ts").expect("url");
+    let d = Url::parse("http://127.0.0.1:4002/seg.ts").expect("url");
+    assert_eq!(host_key(&a), "cdn.example:443");
+    assert_ne!(host_key(&a), host_key(&b));
+    assert_ne!(
+        host_key(&c),
+        host_key(&d),
+        "two servers on one machine are two budgets"
+    );
+}
+
+proptest! {
+    #[test]
+    fn the_key_is_the_url_host_and_its_port_and_nothing_else(
+        // Labels without hyphens: the url crate refuses some hyphenated
+        // ones (an `xn--` prefix) as invalid international names.
+        host in "[a-z][a-z0-9]{0,12}(\\.[a-z][a-z0-9]{0,12}){0,3}",
+        port in 1u16..=65535,
+        https in proptest::bool::ANY,
+        path in "/[a-z0-9/._-]{0,40}",
+    ) {
+        let scheme = if https { "https" } else { "http" };
+        let explicit = Url::parse(&format!("{scheme}://{host}:{port}{path}")).expect("url");
+        prop_assert_eq!(host_key(&explicit), format!("{host}:{port}"));
+        let implied = Url::parse(&format!("{scheme}://{host}{path}")).expect("url");
+        prop_assert_eq!(host_key(&implied), format!("{host}:{}", if https { 443 } else { 80 }));
+        let other_path = Url::parse(&format!("{scheme}://{host}:{port}/elsewhere")).expect("url");
+        prop_assert_eq!(host_key(&explicit), host_key(&other_path));
+    }
+}
+
+/// A request that finds the burst spent waits for the next token, and
+/// one arriving just as that token matures — before the waiter's own
+/// sleep is over — must not take it: waiters are served in the order
+/// they arrived, so a few requests arriving at once beside a download
+/// cannot keep taking the tokens ahead of the player's request that
+/// has waited longest.
+#[tokio::test(start_paused = true)]
+async fn a_token_goes_to_the_waiter_that_has_waited_for_it() {
+    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit("cdn.example:443").await;
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let waiter = |i: u8| {
+        let budget = Arc::clone(&budget);
+        let order = Arc::clone(&order);
+        tokio::spawn(async move {
+            budget.admit("cdn.example:443").await;
+            order.lock().unwrap_or_else(|e| e.into_inner()).push(i);
+        })
+    };
+    let first = waiter(0);
+    // The token matures at the refill; the first waiter wakes a shade
+    // after it, and the second arrives in between.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let second = waiter(1);
+    first.await.expect("first waiter");
+    second.await.expect("second waiter");
+    assert_eq!(
+        *order.lock().unwrap_or_else(|e| e.into_inner()),
+        vec![0, 1],
+        "the token went to the request that waited for it"
+    );
+}
+
+/// A background fetch never waits in the host's line: it takes a
+/// token only when no one is waiting for one, so a player's request
+/// that arrives after it is served first.
+#[tokio::test(start_paused = true)]
+async fn a_background_fetch_never_waits_ahead_of_the_player() {
+    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit("cdn.example:443").await;
+    let order = Arc::new(Mutex::new(Vec::new()));
+    let background = {
+        let (budget, order) = (Arc::clone(&budget), Arc::clone(&order));
+        tokio::spawn(async move {
+            budget.admit_background("cdn.example:443").await;
+            order
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push("background");
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let player = {
+        let (budget, order) = (Arc::clone(&budget), Arc::clone(&order));
+        tokio::spawn(async move {
+            budget.admit("cdn.example:443").await;
+            order
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push("player");
+        })
+    };
+    player.await.expect("player");
+    background.await.expect("background");
+    assert_eq!(
+        *order.lock().unwrap_or_else(|e| e.into_inner()),
+        vec!["player", "background"],
+        "the player's request went first"
+    );
+}
+
+/// With no one waiting, a background fetch waits for its token like
+/// any other and is admitted.
+#[tokio::test(start_paused = true)]
+async fn a_background_fetch_alone_is_admitted_at_the_next_token() {
+    let budget = HostBudget::new(1, Duration::from_millis(500));
+    budget.admit("cdn.example:443").await;
+    let start = tokio::time::Instant::now();
+    budget.admit_background("cdn.example:443").await;
+    let waited = start.elapsed();
+    assert!(
+        waited >= Duration::from_millis(500) && waited < Duration::from_millis(1000),
+        "{waited:?}"
+    );
+}

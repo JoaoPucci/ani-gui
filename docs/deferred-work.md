@@ -148,30 +148,43 @@ starting it, and delete it when you find it done.
   same source-scoped treatment the progress and resume listeners
   got, not another registration inside the effect's conditional.
 
-- **A download beside an active play starves the player and breaks
-  playback.** The downloader spawns yt-dlp with 16-way fragment
-  concurrency; the player's fragment load policy
-  (`frontend/src/lib/play/hls-load-policy.ts`) deliberately turns a
-  crawling fetch fatal within seconds so stalls surface fast. Run
-  against the same host, the download's burst starves the player's
-  next segment fetch, hls.js fatals with `fragLoadError`, and the
-  stale-stream policy — which can only see a network-class error —
-  answers with the rotated-URL treatment. The damage is not
-  cosmetic, and it escalates: the auto-retry budget is one per
-  session, so the first contention hit interrupts a working stream
-  with a forced evict + re-resolve, and the next one has no budget
-  left and stops playback on the error overlay. Both outcomes were
-  hit on the v0.14.0 Windows package against hianime (download
-  spawned, player fatal nine seconds later, buffered video playing
-  at the moment it fired), one per run.
-
-  The fix has to stop the interruptions, not rename them: cap or
-  pace the downloader's concurrency while a play session is live,
-  and/or classify fragment errors during an active same-host
-  download as the host-slow (nudge) class instead of the
-  rotated-URL class. Toast wording that says contention rather than
-  expiry is worth having, but only alongside — a correctly-worded
-  interruption is still an interruption.
+- **Two app instances do not share the playback record, the paced
+  lanes or the host budget.** The proxy's record of media served, the
+  lanes that paced downloads and their subtitle fetches take in turn
+  and the per-host budget the
+  proxy paces the player's fetches to all live in one backend process,
+  so a download started in a second instance runs at full speed beside
+  the first instance's playback, and two instances playing from one
+  host each spend a full burst against the one address the host
+  counts — the loads the pacing exists to remove. Two instances
+  downloading the same file already coordinate through a lock file in
+  the download folder, chosen because it is the one location both
+  provably agree on while anything a process is configured with can
+  differ between them; the record, the lane and the budget want the
+  same shape. It waited because the single-instance path was being
+  reworked around the host's per-address request budget first, and
+  the shared version follows that answer.
+- **An ffmpeg fallback keeps the rate it started with.** Started while
+  nothing plays it reads at full speed for its run, holding the lane,
+  and keeps that rate when playback starts under it — a spender the
+  pacing leaves; started while playback is live it reads at the
+  stream's own rate to its end, even after playback stops, and holds
+  the lane that long, so a second fallback queued behind it waits for
+  the whole title. ffmpeg cannot change rate mid-run and cannot be
+  resumed, so the change the supervisor could make is to take it down
+  and start it again at the other rate from scratch — cheap early in a
+  run, a full re-download late in one. Whether to, and where a cutover
+  pays, is the maintainer's call; it waits on that.
+- **An external player streams outside the pacing.** mpv and Syncplay
+  are handed the stream's own URL and fetch from the host themselves,
+  so the proxy's record sees none of it: a download started while one
+  plays runs at full speed, and nothing spaces the external player's
+  own requests. Routing the handoff through the proxy would make it
+  observable and budgeted like the embedded player, at the cost of
+  tying the external player to the app being open. It waits because
+  nothing has shown the gap hurting — the external player has not been
+  seen to refetch or error out beside a download, as the embedded one
+  did — and the routing changes how a working handoff behaves.
 
 ## Interface
 

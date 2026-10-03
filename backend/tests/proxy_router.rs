@@ -51,6 +51,7 @@ async fn start_harness() -> Harness {
         secret: secret.clone(),
         client,
         origin: origin.clone(),
+        host_budget: ani_gui::proxy::host_budget::HostBudget::fresh(),
     };
 
     let router = build_router(state);

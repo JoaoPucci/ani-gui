@@ -32,6 +32,10 @@ pub struct AppState {
     pub sessions: SessionTable,
     /// Outbound http client used by the proxy.
     pub proxy_http: reqwest::Client,
+    /// The per-host request budget the proxy's fetches on the player's
+    /// behalf and a download's subtitle tracks are charged to. One per
+    /// app state, since the host counts both against the one address.
+    pub host_budget: Arc<crate::proxy::host_budget::HostBudget>,
     /// Outbound HTTP client for metadata calls (Kitsu, AniList,
     /// images, GitHub release polls). Separate from
     /// `proxy_http` so these calls carry tight timeouts: the proxy
@@ -166,6 +170,7 @@ impl AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http,
+            host_budget: crate::proxy::host_budget::HostBudget::fresh(),
             meta_http,
             proxy_origin,
             bundled_bin,
@@ -211,6 +216,7 @@ impl AppState {
             secret: self.secret.clone(),
             client: self.proxy_http.clone(),
             origin: self.proxy_origin.clone(),
+            host_budget: self.host_budget.clone(),
         }
     }
 }
@@ -298,6 +304,7 @@ mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            host_budget: crate::proxy::host_budget::HostBudget::fresh(),
             meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,
