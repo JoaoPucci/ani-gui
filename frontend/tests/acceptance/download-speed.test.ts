@@ -78,7 +78,9 @@ describe('download speed', () => {
 		);
 	});
 
-	it('shows no speed before any download has reported one', () => {
+	it('shows zero as soon as a download is running, before its first bytes', () => {
+		// A download waiting on its first bytes is still running; a
+		// readout that stayed hidden until then read as no change.
 		const id = downloadStore.add({
 			title: 'Frieren',
 			episode: '7',
@@ -89,6 +91,8 @@ describe('download speed', () => {
 		downloadStore.markActive(id, new AbortController());
 		apps.push(mount(DownloadBar, { target }));
 		flushSync();
-		expect(target.querySelector('.dl-bar-speed')).toBeNull();
+		expect(target.querySelector('.dl-bar-speed')?.textContent).toContain(
+			m.download_speed_kbps({ value: '0' })
+		);
 	});
 });

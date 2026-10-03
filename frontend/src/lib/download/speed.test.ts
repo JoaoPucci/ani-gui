@@ -38,9 +38,16 @@ describe('totalSpeed', () => {
 		).toBe(1500);
 	});
 
-	it('is nothing while no running download has reported a speed', () => {
-		expect(totalSpeed([{ status: 'active', speed: null }])).toBeNull();
+	it('reads a running download that has not reported yet as zero', () => {
+		// A download the user just started is running even before its
+		// first bytes; showing nothing read as the feature missing.
+		expect(totalSpeed([{ status: 'active', speed: null }])).toBe(0);
+		expect(totalSpeed([{ status: 'pending', speed: null }])).toBe(0);
+	});
+
+	it('is nothing while no download is running', () => {
 		expect(totalSpeed([])).toBeNull();
 		expect(totalSpeed([{ status: 'error', speed: 4000 }])).toBeNull();
+		expect(totalSpeed([{ status: 'done', speed: 4000 }])).toBeNull();
 	});
 });
