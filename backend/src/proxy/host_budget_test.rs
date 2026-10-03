@@ -434,6 +434,40 @@ async fn a_background_fetch_given_up_while_waiting_holds_no_turn() {
     assert!(start.elapsed() >= Duration::from_millis(500));
 }
 
+/// The longest of `requests` player admissions at the host, the
+/// player stepping out of the line for `between` after each — each
+/// under a timeout well past any wait a turn allows, so a turn that
+/// never comes fails the case instead of spinning it.
+async fn player_waits(budget: &HostBudget, between: Duration, requests: usize) -> Duration {
+    let mut longest = Duration::ZERO;
+    for request in 0..requests {
+        let start = tokio::time::Instant::now();
+        tokio::time::timeout(SEGMENT_REFILL * 8, budget.admit("cdn.example:443"))
+            .await
+            .unwrap_or_else(|_| panic!("the player's request {request} was never admitted"));
+        longest = longest.max(start.elapsed());
+        // Out of the line while the segment transfers.
+        tokio::time::sleep(between).await;
+    }
+    longest
+}
+
+/// Background fetchers that each take a token in turn and spend
+/// `transfer` on it, as many as `count`.
+fn background_fetchers(budget: &Arc<HostBudget>, count: usize) -> Vec<tokio::task::JoinHandle<()>> {
+    (0..count)
+        .map(|_| {
+            let budget = Arc::clone(budget);
+            tokio::spawn(async move {
+                loop {
+                    budget.admit_background("cdn.example:443").await;
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                }
+            })
+        })
+        .collect()
+}
+
 /// hls.js loads one segment at a time, so between its requests the
 /// player is out of the line, transferring. A background request owed
 /// the next token must still collect it then, and not sleep through it
@@ -459,14 +493,7 @@ async fn a_player_between_segments_never_waits_long_on_a_turn_it_gave_away() {
                 })
             })
             .collect();
-        let mut longest = Duration::ZERO;
-        for _ in 0..60 {
-            let start = tokio::time::Instant::now();
-            budget.admit("cdn.example:443").await;
-            longest = longest.max(start.elapsed());
-            // Out of the line while the segment transfers.
-            tokio::time::sleep(Duration::from_millis(300)).await;
-        }
+        let longest = player_waits(&budget, Duration::from_millis(300), 60).await;
         for fetcher in &fetchers {
             fetcher.abort();
         }
@@ -537,4 +564,71 @@ async fn a_background_request_given_up_leaves_the_next_its_turn() {
     let served = tokio::time::timeout(Duration::from_millis(500) * 3, second).await;
     player.abort();
     assert!(served.is_ok(), "the second background request got its turn");
+}
+
+/// A player asking faster than the refill keeps the bucket near empty,
+/// and a background request whose wait above the reserve runs several
+/// refills must still look again in time to take a turn the player
+/// owes it: the player is never left yielding for longer than a couple
+/// of refills.
+#[tokio::test(start_paused = true)]
+async fn a_player_asking_faster_than_the_refill_never_waits_long_beside_background_traffic() {
+    let budget = HostBudget::fresh();
+    let fetchers = background_fetchers(&budget, 4);
+    let longest = player_waits(&budget, Duration::from_millis(1200), 200).await;
+    for fetcher in &fetchers {
+        fetcher.abort();
+    }
+    assert!(
+        longest <= SEGMENT_REFILL * 2 + Duration::from_millis(100),
+        "a player request waited {longest:?}"
+    );
+}
+
+/// A player as hls.js runs one: it fills its buffer a minute ahead,
+/// one five-second segment at a time, then asks once a segment's worth
+/// of playback, while four background fetches wait beside it. During
+/// the fill no request waits more than a couple of refills; a minute
+/// into steady play, once what it leaves of each refill has rebuilt the
+/// reserve, it finds a token on hand every time, because a turn owed is
+/// collected while it is between segments rather than coming due when
+/// it asks.
+#[tokio::test(start_paused = true)]
+async fn a_player_filling_then_playing_steadily_beside_background_traffic() {
+    let budget = HostBudget::fresh();
+    let fetchers = background_fetchers(&budget, 4);
+    let start = tokio::time::Instant::now();
+    let mut buffered = Duration::ZERO;
+    let (mut fill_longest, mut steady_longest) = (Duration::ZERO, Duration::ZERO);
+    let mut steady_since = None;
+    for _ in 0..120 {
+        let ahead = buffered.saturating_sub(start.elapsed());
+        let steady = ahead > Duration::from_secs(60);
+        if steady {
+            steady_since.get_or_insert_with(tokio::time::Instant::now);
+            tokio::time::sleep(ahead - Duration::from_secs(60)).await;
+        }
+        let asked = tokio::time::Instant::now();
+        tokio::time::timeout(SEGMENT_REFILL * 8, budget.admit("cdn.example:443"))
+            .await
+            .expect("the player's request was admitted");
+        let waited = asked.elapsed();
+        match steady_since {
+            None => fill_longest = fill_longest.max(waited),
+            Some(since) if asked - since > Duration::from_secs(60) => {
+                steady_longest = steady_longest.max(waited);
+            }
+            Some(_) => {}
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        buffered += Duration::from_secs(5);
+    }
+    for fetcher in &fetchers {
+        fetcher.abort();
+    }
+    assert!(
+        fill_longest <= SEGMENT_REFILL * 2 + Duration::from_millis(100),
+        "a request during the fill waited {fill_longest:?}"
+    );
+    assert_eq!(steady_longest, Duration::ZERO, "a steady request waited");
 }
