@@ -53,6 +53,21 @@ describe('download speed', () => {
 		expect(target.querySelector('.dl-bar')?.textContent).toContain(expected);
 	});
 
+	it("names the speed in the top bar indicator's accessible label", () => {
+		// The indicator's label is what a screen reader announces for it,
+		// and it replaces the button's text: the speed has to be in it.
+		startDownload('Frieren', 1.5 * 1024 * 1024);
+		apps.push(mount(DownloadDock, { target }));
+		flushSync();
+		const trigger = target.querySelector('button[aria-haspopup="menu"]');
+		expect(trigger?.getAttribute('aria-label')).toBe(
+			m.download_dock_active_speed_label({
+				count: 1,
+				speed: m.download_speed_mbps({ value: '1.5' })
+			})
+		);
+	});
+
 	it('adds up every running download', () => {
 		startDownload('Frieren', 300 * 1024);
 		startDownload('Dandadan', 200 * 1024);
