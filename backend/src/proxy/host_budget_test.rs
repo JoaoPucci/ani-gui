@@ -433,3 +433,108 @@ async fn a_background_fetch_given_up_while_waiting_holds_no_turn() {
     .expect("two refills' worth of player requests in two refills");
     assert!(start.elapsed() >= Duration::from_millis(500));
 }
+
+/// hls.js loads one segment at a time, so between its requests the
+/// player is out of the line, transferring. A background request owed
+/// the next token must still collect it then, and not sleep through it
+/// waiting for tokens above the reserve while the player, back in the
+/// line, yields that token to it: however many background fetches are
+/// in flight, a player's request is admitted within a couple of refills
+/// and the two still share the host.
+#[tokio::test(start_paused = true)]
+async fn a_player_between_segments_never_waits_long_on_a_turn_it_gave_away() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    for background in [1, 4] {
+        let budget = HostBudget::fresh();
+        let taken = Arc::new(AtomicUsize::new(0));
+        let fetchers: Vec<_> = (0..background)
+            .map(|_| {
+                let (budget, taken) = (Arc::clone(&budget), Arc::clone(&taken));
+                tokio::spawn(async move {
+                    loop {
+                        budget.admit_background("cdn.example:443").await;
+                        taken.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                    }
+                })
+            })
+            .collect();
+        let mut longest = Duration::ZERO;
+        for _ in 0..60 {
+            let start = tokio::time::Instant::now();
+            budget.admit("cdn.example:443").await;
+            longest = longest.max(start.elapsed());
+            // Out of the line while the segment transfers.
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+        for fetcher in &fetchers {
+            fetcher.abort();
+        }
+        let taken = taken.load(Ordering::SeqCst);
+        assert!(
+            longest <= SEGMENT_REFILL * 2 + Duration::from_millis(100),
+            "{background} background fetchers: a player request waited {longest:?}"
+        );
+        assert!(
+            taken >= 40,
+            "{background} background fetchers took {taken} beside the player's 60"
+        );
+    }
+}
+
+/// A token the player finds on hand gives no turn away: a background
+/// request waiting for a token above the reserve keeps waiting when the
+/// player takes one of the reserve without waiting.
+#[tokio::test(start_paused = true)]
+async fn a_token_the_player_found_on_hand_gives_no_turn_away() {
+    let budget = HostBudget::fresh();
+    for _ in 0..(SEGMENT_BURST - BACKGROUND_RESERVE) {
+        budget.admit_background("cdn.example:443").await;
+    }
+    let background = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move { budget.admit_background("cdn.example:443").await })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    budget.admit("cdn.example:443").await;
+    // Past the background request's next look, a refill on: still
+    // short of a token above the reserve.
+    tokio::time::sleep(SEGMENT_REFILL + Duration::from_millis(100)).await;
+    assert!(
+        !background.is_finished(),
+        "the background request took a turn the player never waited for"
+    );
+    background.abort();
+}
+
+/// Background requests take their turn one at a time: one given up
+/// while it waits clears only its own turn, and the next in flight
+/// takes the turn from there.
+#[tokio::test(start_paused = true)]
+async fn a_background_request_given_up_leaves_the_next_its_turn() {
+    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit("cdn.example:443").await;
+    let player = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move {
+            loop {
+                budget.admit("cdn.example:443").await;
+            }
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let first = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move { budget.admit_background("cdn.example:443").await })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let second = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move { budget.admit_background("cdn.example:443").await })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    first.abort();
+    let served = tokio::time::timeout(Duration::from_millis(500) * 3, second).await;
+    player.abort();
+    assert!(served.is_ok(), "the second background request got its turn");
+}
