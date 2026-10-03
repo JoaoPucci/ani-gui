@@ -501,13 +501,15 @@ async fn get_play_stream(
 /// `progress` events, then a final `done` event with the destination
 /// directory, or an `error` event before close.
 ///
-/// A `progress` event is one line of text and carries three kinds of
+/// A `progress` event is one line of text and carries four kinds of
 /// thing, which a consumer cannot tell apart except by their content.
 /// Resolution reports arrive first — `Searching …`, `Matched …`,
 /// `… links fetched` — because the stream opens before either tool
 /// runs. A range download adds its own `Matched …` and one
 /// `Playing episode N` per episode from the loop that drives them.
-/// Only then does the downloader's own stderr start, ANSI-stripped.
+/// Only then does the downloader's own stderr start, ANSI-stripped,
+/// with the run's speed beside it once a second as a
+/// `status.download.rate` line.
 ///
 /// EventSource is GET-only, so DownloadArgs comes through query
 /// params; the frontend uses fetch + ReadableStream rather than the

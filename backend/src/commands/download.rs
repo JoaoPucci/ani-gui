@@ -4,13 +4,15 @@
 //! ffmpeg when yt-dlp is absent or fails, to write the file to disk.
 //!
 //! Everything the dock shows arrives as one stream of text lines,
-//! forwarded to the SSE handler in `api::get_download_stream`, and the
-//! tool is only its last third. Resolution reports go first —
-//! `Searching`, `Matched`, `… links fetched` — because they happen
-//! before either tool exists. A range download interleaves its own
-//! `Matched` and a `Playing episode N` per episode from the loop in
-//! `download_range`. Then the tool's stderr. A change to the protocol
-//! is a change to all three, not to yt-dlp's output alone.
+//! forwarded to the SSE handler in `api::get_download_stream`, from
+//! four sources. Resolution reports go first — `Searching`, `Matched`,
+//! `… links fetched` — because they happen before either tool exists.
+//! A range download interleaves its own `Matched` and a `Playing
+//! episode N` per episode from the loop in `download_range`. Then the
+//! tool's stderr, and, beside it, the run's speed as a
+//! `status.download.rate` line once a second, measured from the
+//! progress the tool prints on stdout. A change to the protocol is a
+//! change to all four, not to yt-dlp's output alone.
 
 use std::path::PathBuf;
 
@@ -67,13 +69,14 @@ pub struct DownloadArgs {
 }
 
 /// SSE event body for one line of the download's progress stream —
-/// see the module header for the three sources that feed it. Frontend
-/// renders the latest line under each active download row.
+/// see the module header for the four sources that feed it. The
+/// frontend keeps a speed report as the download's speed and renders
+/// any other latest line under its row.
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadProgress {
     /// One line of text. A tool's stderr arrives ANSI-stripped; the
-    /// resolution and orchestration lines are composed here and carry
-    /// no escapes to strip.
+    /// resolution, orchestration and speed lines are composed here and
+    /// carry no escapes to strip.
     pub line: String,
 }
 
@@ -100,7 +103,7 @@ pub struct DownloadResponse {
 /// what gets saved, then spawns the downloader with the chosen
 /// destination directory. `on_progress` is invoked for every line of
 /// the progress stream — resolution reports, a range run's own
-/// per-episode lines, and the tool's stderr alike.
+/// per-episode lines, the tool's stderr and the run's speed alike.
 ///
 /// # Errors
 /// - [`AniError::Config`] when no destination is supplied and the
@@ -178,9 +181,9 @@ where
     // Resolve the stream natively — the same walk, disambiguation
     // and episode mapping as the play path — then hand the master URL
     // to the download tool directly, exactly as 5.0's own download()
-    // would. The one-hour transfer deadline stays: yt-dlp / ffmpeg
-    // keep stderr quiet mid-transfer, so no shorter timeout can be
-    // informed by progress.
+    // would. The one-hour transfer deadline stays a guard on a hung
+    // tool; the progress the tools now report feeds the dock's speed,
+    // not a shorter timeout.
     let quality = args.quality.as_deref().unwrap_or("best");
     // Downloads are always a user waiting at the dock — interactive
     // priority, like the play path's non-prefetch requests.
@@ -2180,7 +2183,8 @@ enum ToolRun {
     Interrupted,
 }
 
-/// Run one download tool to completion, streaming stderr lines.
+/// Run one download tool to completion, streaming its stderr lines and
+/// its speed.
 ///
 /// # Errors
 /// [`AniError::Timeout`] past the deadline, [`AniError::Network`] on
