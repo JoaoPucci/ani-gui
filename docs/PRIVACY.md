@@ -28,10 +28,12 @@ ani-gui keeps the following on your computer only:
 - **Watch history** — a plain-text file in the app's own state
   directory. Lists what you've watched, where you left off and
   when.
-- **Episode positions** — how far into an episode you got, for an
-  episode you left between its first 15 seconds and its last 90, so
-  reopening it resumes there. An episode played to its end is
-  forgotten, and at most the 200 most recently kept are held. Kept in
+- **Episode positions** — how far into an episode you got, so
+  reopening it resumes there: an episode is marked started when it
+  begins playing, a point in its first 15 seconds is kept as its
+  start, and one in its last 90 seconds — or an episode played to its
+  end — is forgotten as finished. At most the 200 most recently kept
+  are held. Kept in
   the app's local browser storage (under your OS user-data directory),
   keyed by the show's Kitsu id and the episode number. Clearing your
   watch history forgets them all. Removing a show from Continue
