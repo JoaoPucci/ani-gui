@@ -7,7 +7,7 @@
 //! each upstream host has a budget with a burst for startup and seeks
 //! and a steady refill after it, and every fetch the proxy makes to the
 //! host on the player's behalf — playlists, segments, mp4 ranges, and
-//! the subtitle tracks the player loads, which wait behind the media —
+//! the subtitle tracks the player loads, which take turns with the media —
 //! is charged to it. hls.js loads one segment at a time and the player
 //! allows it ten seconds for a first byte, so a
 //! wait here of a second or so is absorbed, and the player still
@@ -281,8 +281,8 @@ impl HostBudget {
             let player_waiting = line.try_lock().is_err();
             let wait = self.with_state(host, |state| {
                 let reserve = match (player_waiting, state.turn.background_owed) {
-                    (false, _) => self.reserve,
-                    (true, true) => 0,
+                    (_, true) => 0,
+                    (false, false) => self.reserve,
                     (true, false) => return Some(self.refill),
                 };
                 take_leaving(
@@ -293,9 +293,12 @@ impl HostBudget {
                     reserve,
                 )
             });
+            // Looks again within a refill whatever the wait: a turn
+            // the player owes it, or a player joining the line, changes
+            // what it may take.
             match wait {
                 None => return,
-                Some(wait) => tokio::time::sleep(wait).await,
+                Some(wait) => tokio::time::sleep(wait.min(self.refill)).await,
             }
         }
     }

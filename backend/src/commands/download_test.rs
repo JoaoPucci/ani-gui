@@ -5599,9 +5599,9 @@ const RELAY: &str = "http://127.0.0.1:9/s/relay/master.m3u8";
 
 /// A paced download spent a byte-rate cap on the host's allowance. With
 /// a relay — the app's proxy, which charges the download's requests to
-/// the host's budget behind the player's — it fetches through the
+/// the host's budget in turn with the player's — it fetches through the
 /// relay instead: no byte-rate cap, the referer left to the proxy, and
-/// the patience to wait behind a player filling its buffer.
+/// the patience to wait its turns beside a player filling its buffer.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_paced_download_with_a_relay_fetches_through_it() {
@@ -5650,7 +5650,7 @@ async fn a_paced_download_with_a_relay_fetches_through_it() {
             "--socket-timeout {}",
             crate::commands::download_pacing::RELAYED_SOCKET_TIMEOUT_S
         )),
-        "waits behind the player without giving up: {run}"
+        "waits its turns beside the player without giving up: {run}"
     );
     assert!(
         run.contains(&format!(
@@ -6067,7 +6067,7 @@ async fn a_relayed_runs_tools_never_proxy_the_relays_address() {
 /// A relayed run that fetched everything and only left the wrong
 /// container behind did not fail because of the relay: the fallback
 /// that repackages it reads through the relay while playback is live,
-/// behind the player, not from the host directly.
+/// in turn with the player, not from the host directly.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_repackage_after_a_relayed_run_still_reads_through_the_relay() {
