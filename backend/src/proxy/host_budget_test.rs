@@ -290,3 +290,62 @@ async fn the_apps_budget_keeps_the_players_reserve_from_background_traffic() {
         "the reserve was the player's"
     );
 }
+
+/// A player filling its buffer asks back to back, so the line is never
+/// empty and background traffic that only takes unused tokens took
+/// none for as long as the buffer filled — a download beside a player
+/// that had just started, or just sought, stood still for a minute. A
+/// background fetch that has waited its patience joins the line and
+/// is served in turn with the player.
+#[tokio::test(start_paused = true)]
+async fn background_traffic_is_served_in_turn_once_it_has_waited_its_patience() {
+    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit("cdn.example:443").await;
+    // A player that keeps one request waiting at all times.
+    let player = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move {
+            loop {
+                budget.admit("cdn.example:443").await;
+            }
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let start = tokio::time::Instant::now();
+    budget.admit_background("cdn.example:443").await;
+    let waited = start.elapsed();
+    player.abort();
+    assert!(
+        waited <= BACKGROUND_PATIENCE + Duration::from_millis(500) * 3,
+        "served within its patience and a turn or two: {waited:?}"
+    );
+}
+
+/// Within its patience, background traffic still never goes ahead of
+/// a player's request.
+#[tokio::test(start_paused = true)]
+async fn within_its_patience_background_traffic_still_yields() {
+    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit("cdn.example:443").await;
+    let player = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move {
+            loop {
+                budget.admit("cdn.example:443").await;
+            }
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let waiting = budget.admit_background("cdn.example:443");
+    tokio::pin!(waiting);
+    assert!(
+        tokio::time::timeout(
+            BACKGROUND_PATIENCE - Duration::from_millis(100),
+            waiting.as_mut()
+        )
+        .await
+        .is_err(),
+        "the player kept every token within the patience"
+    );
+    player.abort();
+}
