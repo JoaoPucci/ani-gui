@@ -43,7 +43,9 @@ ani-gui keeps the following on your computer only:
   the mapping was refused or failed to save, expired thirty days after
   the show's last play, was dropped as wrong, or cannot be read — that
   show's positions stay until the history is cleared or they are
-  pushed out by newer ones.
+  pushed out by newer ones. They also stay while another history row
+  for the same show remains — it is still a Continue card — or while
+  a remaining row's show cannot be told.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
