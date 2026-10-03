@@ -75,7 +75,7 @@ fn a_downloads_tracks_are_fetched_one_at_a_time_while_playback_is_live() {
     );
     assert!(
         sidecar_phase_deadline(true) > sidecar_phase_deadline(false),
-        "tracks taking their tokens one at a time behind the player's need the time"
+        "tracks taking their tokens one at a time in turn with the player's need the time"
     );
 }
 
@@ -163,4 +163,17 @@ async fn a_change_before_the_wait_began_is_seen_at_once() {
             .is_ok(),
         "the change was seen at once"
     );
+}
+
+/// The relay holds a fragment's request until its turn at the host, and
+/// while the player's need with a quarter to spare reaches the refill
+/// that turn comes only when the player stops asking — at the end of a
+/// fill that can last minutes while the need is under the refill, and
+/// when playback stops once it is over it. A tool that gave up on the wait would fail
+/// the run, and a failed relayed run is followed by a fallback that
+/// reads the host directly: the request the relay exists to keep from
+/// it. The tool waits as long as a paced run may last.
+#[test]
+fn a_relayed_run_waits_its_turn_as_long_as_a_paced_run_may_last() {
+    assert!(Duration::from_secs(u64::from(RELAYED_SOCKET_TIMEOUT_S)) >= PACED_RUN_CEILING);
 }

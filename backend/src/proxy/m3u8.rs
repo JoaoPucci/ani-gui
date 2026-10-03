@@ -16,8 +16,12 @@
 //!   `EXT-X-STREAM-INF` and `EXT-X-MEDIA` URI, return the new manifest.
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
-//! - [`rewrite_uri`] (private) — resolve a relative URI against a base,
-//!   then build a proxy URL with HMAC token.
+//! - `build_proxy_uri` (private) — resolve a relative URI against a base,
+//!   then build a proxy URL with HMAC token, marked `k=pl` when a master
+//!   names it as a playlist and `k=md` when a media playlist names it.
+//! - [`names_a_playlist`] — whether the segment route is fetching a
+//!   playlist: by that mark, or for an unmarked URL by a lowercase
+//!   `.m3u8` path.
 //!
 //! All functions are pure (no I/O). Property tests target idempotency.
 
@@ -25,10 +29,13 @@ use base64::Engine;
 use url::Url;
 
 use crate::error::{AniError, Result};
+use crate::proxy::host_budget_demand::Stream;
 use crate::proxy::token::{sign_segment, AppSecret, SessionId};
 
 /// How the proxy should render rewritten URIs back into the manifest.
-/// Path style: `/s/<session>/seg?u=<base64-url-encoded-original>&t=<hmac>`
+/// Path style: `/s/<session>/seg?u=<base64-url-encoded-original>&t=<hmac>`,
+/// with `&k=pl` on a URI a master names as a playlist and `&k=md` on
+/// one a media playlist names.
 #[derive(Debug, Clone)]
 pub struct ProxyOrigin {
     /// e.g. `http://127.0.0.1:42337` — no trailing slash.
@@ -56,6 +63,57 @@ impl ProxyOrigin {
             token
         )
     }
+
+    /// Render the URL of a playlist a master names: the segment route,
+    /// told it is fetching a playlist and which kind of stream it
+    /// carries.
+    #[must_use]
+    pub fn playlist_url(
+        &self,
+        session: SessionId,
+        original: &str,
+        token: &str,
+        stream: Stream,
+    ) -> String {
+        format!(
+            "{}&{PLAYLIST_KIND}&s={}",
+            self.segment_url(session, original, token),
+            stream.slot()
+        )
+    }
+}
+
+/// The query pair that marks a proxied URI as a playlist.
+const PLAYLIST_KIND: &str = "k=pl";
+
+/// The query pair that marks a proxied URI as media, a key or an init
+/// segment.
+const MEDIA_KIND: &str = "k=md";
+
+/// Whether the segment route is fetching a playlist. HLS names a
+/// playlist by where it appears, not by its URL, so the rewrite marks
+/// each URI it writes: what a master names is a playlist, whatever its
+/// URL looks like — a rendition may sit at `INDEX.M3U8` or
+/// `playlist?id=720` — and what a media playlist names is media, even
+/// at a path ending in `.M3U8`. Only a URL without either mark goes by
+/// its path, and then by the lowercase `.m3u8` it always matched.
+#[must_use]
+pub fn names_a_playlist(kind: Option<&str>, upstream: &Url) -> bool {
+    match kind {
+        Some("pl") => true,
+        Some("md") => false,
+        _ => upstream.path().ends_with(".m3u8"),
+    }
+}
+
+/// What a rewritten URI points at, which decides how the segment route
+/// serves it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// A playlist carrying a kind of stream, fetched and rewritten.
+    Playlist(Stream),
+    /// Media, a key or an init segment, streamed through.
+    Media,
 }
 
 /// Rewrite a master playlist. Returns the new manifest as a string.
@@ -80,12 +138,19 @@ pub fn rewrite_master(
 
     for v in &mut out.variants {
         let resolved = resolve(master_url, &v.uri)?;
-        v.uri = build_proxy_uri(&resolved, origin, session, secret);
+        v.uri = build_proxy_uri(
+            &resolved,
+            origin,
+            session,
+            secret,
+            Kind::Playlist(Stream::Main),
+        );
     }
     for a in &mut out.alternatives {
+        let stream = alternative_stream(&a.media_type);
         if let Some(uri) = a.uri.as_mut() {
             let resolved = resolve(master_url, uri)?;
-            *uri = build_proxy_uri(&resolved, origin, session, secret);
+            *uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Playlist(stream));
         }
     }
 
@@ -98,7 +163,18 @@ pub fn rewrite_master(
     })
 }
 
-/// Rewrite a media (variant) playlist. Returns the new manifest as a string.
+/// The kind of stream an `EXT-X-MEDIA` rendition carries. An alternate
+/// video rendition replaces the main stream rather than adding to it.
+fn alternative_stream(media_type: &m3u8_rs::AlternativeMediaType) -> Stream {
+    match media_type {
+        m3u8_rs::AlternativeMediaType::Audio => Stream::Audio,
+        m3u8_rs::AlternativeMediaType::Subtitles => Stream::Subtitles,
+        _ => Stream::Main,
+    }
+}
+
+/// Rewrite a media (variant) playlist of the main stream. Returns the
+/// new manifest as a string.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] if the input isn't a valid HLS media
@@ -110,6 +186,22 @@ pub fn rewrite_media(
     session: SessionId,
     secret: &AppSecret,
 ) -> Result<String> {
+    rewrite_media_as(body, media_url, origin, session, secret, Stream::Main)
+}
+
+/// [`rewrite_media`] for a playlist of `stream`: each media segment's
+/// proxied URI names that stream and the segment's duration.
+///
+/// # Errors
+/// As [`rewrite_media`].
+pub fn rewrite_media_as(
+    body: &[u8],
+    media_url: &Url,
+    origin: &ProxyOrigin,
+    session: SessionId,
+    secret: &AppSecret,
+    stream: Stream,
+) -> Result<String> {
     let parsed = m3u8_rs::parse_media_playlist_res(body).map_err(|e| AniError::ParseFailed {
         detail: format!("media parse: {e}"),
     })?;
@@ -117,15 +209,24 @@ pub fn rewrite_media(
 
     for seg in &mut out.segments {
         let resolved = resolve(media_url, &seg.uri)?;
-        seg.uri = build_proxy_uri(&resolved, origin, session, secret);
+        let fresh = !resolved.as_str().starts_with(&origin.base);
+        seg.uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Media);
+        if fresh {
+            // What the fetch of this segment feeds and buys, for the
+            // budget to know what the player needs.
+            let millis = (f64::from(seg.duration) * 1000.0).round();
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let millis = millis.max(0.0) as u64;
+            seg.uri = format!("{}&r={}&d={millis}", seg.uri, stream.slot());
+        }
         if let Some(map) = seg.map.as_mut() {
             let r = resolve(media_url, &map.uri)?;
-            map.uri = build_proxy_uri(&r, origin, session, secret);
+            map.uri = build_proxy_uri(&r, origin, session, secret, Kind::Media);
         }
         if let Some(k) = seg.key.as_mut() {
             if let Some(uri) = k.uri.as_mut() {
                 let r = resolve(media_url, uri)?;
-                *uri = build_proxy_uri(&r, origin, session, secret);
+                *uri = build_proxy_uri(&r, origin, session, secret, Kind::Media);
             }
         }
     }
@@ -153,13 +254,20 @@ fn build_proxy_uri(
     origin: &ProxyOrigin,
     session: SessionId,
     secret: &AppSecret,
+    kind: Kind,
 ) -> String {
     let upstream_str = upstream.as_str();
     if upstream_str.starts_with(&origin.base) {
         return upstream_str.to_string();
     }
     let tok = sign_segment(secret, session, upstream_str);
-    origin.segment_url(session, upstream_str, &tok)
+    match kind {
+        Kind::Playlist(stream) => origin.playlist_url(session, upstream_str, &tok, stream),
+        Kind::Media => format!(
+            "{}&{MEDIA_KIND}",
+            origin.segment_url(session, upstream_str, &tok)
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -172,6 +280,47 @@ mod tests {
 
     fn make_session() -> SessionId {
         SessionId::new()
+    }
+
+    /// A URL the rewrite marked decides by its mark; only an unmarked
+    /// one falls back to its path, and then to the lowercase `.m3u8`
+    /// the segment route always matched.
+    #[test]
+    fn the_mark_decides_and_an_unmarked_url_goes_by_its_lowercase_path() {
+        let upper = Url::parse("https://cdn.example/v/SEG001.M3U8").unwrap();
+        let lower = Url::parse("https://cdn.example/v/index.m3u8").unwrap();
+        assert!(names_a_playlist(Some("pl"), &upper));
+        assert!(!names_a_playlist(Some("md"), &upper));
+        assert!(!names_a_playlist(Some("md"), &lower));
+        assert!(!names_a_playlist(None, &upper));
+        assert!(names_a_playlist(None, &lower));
+    }
+
+    /// Media a media playlist names carries the media mark, whatever
+    /// its path: an uppercase `.M3U8` segment, key or init object is
+    /// streamed through, not parsed as a playlist.
+    #[test]
+    fn a_media_playlists_objects_are_marked_media() {
+        let media = b"#EXTM3U\n#EXT-X-TARGETDURATION:4\n\
+                      #EXT-X-KEY:METHOD=AES-128,URI=\"KEY.M3U8\"\n\
+                      #EXT-X-MAP:URI=\"INIT.M3U8\"\n\
+                      #EXTINF:4.0,\nSEG001.M3U8\n#EXT-X-ENDLIST\n";
+        let base = Url::parse("https://cdn.example/v/index.m3u8").unwrap();
+        let (origin, session, secret) = (make_origin(), make_session(), AppSecret::random());
+        let out = rewrite_media(media, &base, &origin, session, &secret).unwrap();
+        let marks: Vec<String> = out
+            .split(['\n', '"'])
+            .filter(|l| l.starts_with(&origin.base))
+            .map(|l| {
+                Url::parse(l)
+                    .unwrap()
+                    .query_pairs()
+                    .find(|(k, _)| k == "k")
+                    .map(|(_, v)| v.into_owned())
+                    .unwrap_or_default()
+            })
+            .collect();
+        assert_eq!(marks, vec!["md", "md", "md"], "{out}");
     }
 
     #[test]
@@ -250,6 +399,99 @@ mod tests {
         );
     }
 
+    /// The budget keeps a player's demand from the segments it fetches:
+    /// each media segment's proxied URI names the kind of stream it
+    /// feeds — the player plays one of each kind at a time — and its
+    /// duration, so a fetch of it says how much playback it buys. Two
+    /// levels of the main stream are one stream, whatever their URLs;
+    /// an audio rendition is another. An init segment or a key buys
+    /// none.
+    #[test]
+    fn a_media_segment_names_its_stream_and_its_duration() {
+        use crate::proxy::host_budget_demand::Stream;
+        let body = b"#EXTM3U\n\
+                     #EXT-X-TARGETDURATION:6\n\
+                     #EXT-X-MAP:URI=\"init.mp4\"\n\
+                     #EXTINF:5.005,\n\
+                     seg0.m4s\n\
+                     #EXTINF:4.5,\n\
+                     seg1.m4s\n\
+                     #EXT-X-ENDLIST\n";
+        let session = make_session();
+        let secret = AppSecret::random();
+        let origin = make_origin();
+        let segments = |out: &str| -> Vec<String> {
+            out.lines()
+                .filter(|l| l.contains("/seg?u=") && !l.starts_with('#'))
+                .map(str::to_owned)
+                .collect()
+        };
+        let high = Url::parse("https://upstream.example/v/1080/index.m3u8").unwrap();
+        let low = Url::parse("https://upstream.example/v/480/index.m3u8?tok=abc").unwrap();
+        let audio = Url::parse("https://upstream.example/a/en/index.m3u8").unwrap();
+        let out = rewrite_media(body, &high, &origin, session, &secret).unwrap();
+        let main = segments(&out);
+        assert_eq!(main.len(), 2);
+        assert!(main[0].ends_with("&r=main&d=5005"), "{}", main[0]);
+        assert!(main[1].ends_with("&r=main&d=4500"), "{}", main[1]);
+        let other_level = rewrite_media(body, &low, &origin, session, &secret).unwrap();
+        assert!(segments(&other_level)[0].ends_with("&r=main&d=5005"));
+        let map = out
+            .lines()
+            .find(|l| l.starts_with("#EXT-X-MAP"))
+            .expect("map");
+        assert!(!map.contains("&d=") && !map.contains("&r="), "{map}");
+        let out = rewrite_media_as(body, &audio, &origin, session, &secret, Stream::Audio).unwrap();
+        assert!(segments(&out)[0].ends_with("&r=audio&d=5005"));
+    }
+
+    /// The master names each playlist's kind of stream: every variant
+    /// is the main stream, an `EXT-X-MEDIA` rendition the kind its type
+    /// says.
+    #[test]
+    fn a_master_names_each_playlist_by_its_stream() {
+        let body = b"#EXTM3U\n\
+                     #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"en\",URI=\"a/en.m3u8\"\n\
+                     #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"sub\",NAME=\"en\",URI=\"s/en.m3u8\"\n\
+                     #EXT-X-STREAM-INF:BANDWIDTH=1000000,AUDIO=\"aud\",SUBTITLES=\"sub\"\n\
+                     v/1080.m3u8\n\
+                     #EXT-X-STREAM-INF:BANDWIDTH=500000,AUDIO=\"aud\",SUBTITLES=\"sub\"\n\
+                     v/480.m3u8\n";
+        let master_url = Url::parse("https://upstream.example/master.m3u8").unwrap();
+        let out = rewrite_master(
+            body,
+            &master_url,
+            &make_origin(),
+            make_session(),
+            &AppSecret::random(),
+        )
+        .unwrap();
+        let variants: Vec<&str> = out
+            .lines()
+            .filter(|l| l.contains("/seg?u=") && !l.starts_with('#'))
+            .collect();
+        assert_eq!(variants.len(), 2);
+        for v in &variants {
+            assert!(v.ends_with("&k=pl&s=main"), "{v}");
+        }
+        let media = |kind: &str| {
+            out.lines()
+                .find(|l| l.starts_with("#EXT-X-MEDIA") && l.contains(kind))
+                .expect("rendition")
+                .to_owned()
+        };
+        assert!(
+            media("TYPE=AUDIO").contains("&k=pl&s=audio\""),
+            "{}",
+            media("TYPE=AUDIO")
+        );
+        assert!(
+            media("TYPE=SUBTITLES").contains("&k=pl&s=subs\""),
+            "{}",
+            media("TYPE=SUBTITLES")
+        );
+    }
+
     #[test]
     fn rewrite_uri_skips_already_proxied() {
         let session = make_session();
@@ -257,7 +499,7 @@ mod tests {
         let origin = make_origin();
         let already = "http://127.0.0.1:42337/s/abc/seg?u=xxx&t=yyy";
         let url = Url::parse(already).unwrap();
-        let s = build_proxy_uri(&url, &origin, session, &secret);
+        let s = build_proxy_uri(&url, &origin, session, &secret, Kind::Media);
         assert_eq!(s, already, "URIs already on the proxy origin pass through");
     }
 
@@ -271,6 +513,45 @@ mod tests {
     }
 
     proptest::proptest! {
+        // Whatever a variant's path is called, the master rewrite marks
+        // it a playlist and the segment route reads the mark; a media
+        // playlist's segments go unmarked and count as playlists only
+        // when their path ends in `.m3u8`, in any case.
+        #[test]
+        fn a_masters_renditions_are_playlists_whatever_their_path(
+            name in "[A-Za-z0-9_-]{1,12}",
+            ext in proptest::option::of("(m3u8|M3U8|M3u8|ts|m4s|mp4|php)"),
+            query in proptest::option::of("[a-z]{1,4}=[0-9]{1,4}"),
+        ) {
+            let mut uri = name.clone();
+            if let Some(ext) = &ext {
+                uri = format!("{uri}.{ext}");
+            }
+            if let Some(query) = &query {
+                uri = format!("{uri}?{query}");
+            }
+            let master = format!("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n{uri}\n");
+            let media = format!("#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\n{uri}\n#EXT-X-ENDLIST\n");
+            let base = Url::parse("https://cdn.example/v/master.m3u8").unwrap();
+            let (origin, session, secret) = (make_origin(), make_session(), AppSecret::random());
+            let kinds = |out: &str| -> Vec<bool> {
+                out.lines()
+                    .filter(|l| l.starts_with(&origin.base))
+                    .map(|l| {
+                        let url = Url::parse(l).unwrap();
+                        let k = url.query_pairs().find(|(k, _)| k == "k").map(|(_, v)| v.into_owned());
+                        names_a_playlist(k.as_deref(), &base.join(&uri).unwrap())
+                    })
+                    .collect()
+            };
+            let rewritten = rewrite_master(master.as_bytes(), &base, &origin, session, &secret).unwrap();
+            proptest::prop_assert_eq!(kinds(&rewritten), vec![true]);
+            // What a media playlist names is media, a key or an init
+            // segment, whatever its path says.
+            let rewritten = rewrite_media(media.as_bytes(), &base, &origin, session, &secret).unwrap();
+            proptest::prop_assert_eq!(kinds(&rewritten), vec![false]);
+        }
+
         // Idempotency property for the master playlist rewrite. The
         // hand-coded test above pins one input; this fuzzes over an
         // arbitrary mix of variant counts + URI shapes so a future

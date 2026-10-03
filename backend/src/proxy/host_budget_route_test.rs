@@ -155,21 +155,24 @@ async fn a_subtitle_track_fetch_spends_the_budget_too() {
         origin: ProxyOrigin::new("127.0.0.1", 1),
         host_budget: host_budget::HostBudget::fresh(),
     });
+    // A track is background traffic: it takes the burst down to the
+    // player's reserve and no further, and the track after that waits
+    // a refill.
     let uri = format!("/s/{}/sub/0.vtt", id.as_string());
     let start = tokio::time::Instant::now();
-    for _ in 0..host_budget::SEGMENT_BURST {
+    for _ in 0..(host_budget::SEGMENT_BURST - host_budget::BACKGROUND_RESERVE) {
         assert_eq!(get(router.clone(), &uri).await, StatusCode::OK);
     }
     let burst_done = tokio::time::Instant::now();
     assert!(
         burst_done - start < host_budget::SEGMENT_REFILL,
-        "the burst is served without waiting"
+        "the burst above the reserve is served without waiting"
     );
     assert_eq!(get(router.clone(), &uri).await, StatusCode::OK);
     assert!(
         tokio::time::Instant::now() - start
             >= host_budget::SEGMENT_REFILL - Duration::from_millis(100),
-        "the track fetch past the burst waited a refill"
+        "the track fetch that would take the reserve waited a refill"
     );
 }
 
@@ -325,4 +328,368 @@ async fn a_subtitle_track_the_player_loads_waits_behind_its_media() {
         media_admitted < track_done,
         "the media request, arriving later, was admitted before the track was fetched"
     );
+}
+
+/// A session the app opens for its own download, not for the player.
+fn background_proxy(
+    master: &str,
+    budget: std::sync::Arc<host_budget::HostBudget>,
+) -> (Router, SessionTable, SessionId, AppSecret) {
+    background_proxy_of(master, MediaKind::Hls, budget)
+}
+
+fn background_proxy_of(
+    master: &str,
+    kind: MediaKind,
+    budget: std::sync::Arc<host_budget::HostBudget>,
+) -> (Router, SessionTable, SessionId, AppSecret) {
+    let secret = AppSecret::from_bytes([7u8; 32]);
+    let sessions = SessionTable::new();
+    let session = StreamSession::background(
+        url::Url::parse(master).expect("master url"),
+        kind,
+        String::new(),
+        Duration::from_secs(60),
+    );
+    let id = session.id;
+    sessions.insert(session);
+    let router = build_router(ProxyState {
+        sessions: sessions.clone(),
+        secret: secret.clone(),
+        client: upstream::build_client().expect("client builds"),
+        origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: budget,
+    });
+    (router, sessions, id, secret)
+}
+
+#[tokio::test]
+async fn a_downloads_fetches_through_the_proxy_are_not_playback() {
+    // The download fetches through the proxy while an episode plays;
+    // its playlists and segments are not the player's, and marking
+    // playback live on them would keep the download paced — by its
+    // own requests — long after the player stopped.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/master.m3u8"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:4,\nseg.ts\n"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"payload".to_vec()))
+        .mount(&server)
+        .await;
+    let (router, sessions, id, secret) = background_proxy(
+        &format!("{}/master.m3u8", server.uri()),
+        host_budget::HostBudget::fresh(),
+    );
+    assert_eq!(
+        get(
+            router.clone(),
+            &format!("/s/{}/master.m3u8", id.as_string())
+        )
+        .await,
+        StatusCode::OK
+    );
+    let seg = format!("{}/seg.ts", server.uri());
+    let token = sign_segment(&secret, id, &seg);
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(seg.as_bytes());
+    assert_eq!(
+        get(
+            router,
+            &format!("/s/{}/seg?u={encoded}&t={token}", id.as_string())
+        )
+        .await,
+        StatusCode::OK
+    );
+    assert!(
+        !sessions.playback_live(Duration::from_secs(30)),
+        "the download's own fetches did not mark playback live"
+    );
+}
+
+#[tokio::test]
+async fn a_downloads_segment_through_the_proxy_waits_behind_the_player() {
+    // The download's requests are background traffic at the budget: a
+    // segment it asked for first, with the budget spent, reaches the
+    // host after a player's request that arrived later.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"payload".to_vec()))
+        .mount(&server)
+        .await;
+    let seg = format!("{}/seg.ts", server.uri());
+    let key = host_budget::host_key(&url::Url::parse(&seg).expect("url"));
+    let budget = std::sync::Arc::new(host_budget::HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit(&key).await;
+    let (router, _sessions, id, secret) = background_proxy(
+        "https://cdn.example/master.m3u8",
+        std::sync::Arc::clone(&budget),
+    );
+    let token = sign_segment(&secret, id, &seg);
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(seg.as_bytes());
+    let uri = format!("/s/{}/seg?u={encoded}&t={token}", id.as_string());
+    let download = async {
+        let status = get(router, &uri).await;
+        (status, tokio::time::Instant::now())
+    };
+    let player = async {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        budget.admit(&key).await;
+        tokio::time::Instant::now()
+    };
+    let ((status, download_done), player_admitted) = tokio::join!(download, player);
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        player_admitted < download_done,
+        "the player's request, arriving later, was admitted before the download's segment"
+    );
+}
+
+#[test]
+fn a_downloads_session_lives_as_long_as_it_is_given() {
+    // A download fetching through the proxy can run far longer than a
+    // player's session is kept: its session lives for the time the
+    // download is given.
+    let long = Duration::from_secs(24 * 60 * 60);
+    let session = StreamSession::background(
+        url::Url::parse("https://cdn.example/master.m3u8").expect("url"),
+        MediaKind::Hls,
+        String::new(),
+        long,
+    );
+    let left = session
+        .expires_at
+        .duration_since(std::time::SystemTime::now())
+        .expect("in the future");
+    assert!(left > long - Duration::from_secs(5), "{left:?}");
+    assert!(session.background);
+}
+
+/// The response's status once its whole body has been read — the
+/// streaming routes note media chunk by chunk as the body is read.
+async fn get_drained(router: Router, uri: &str) -> StatusCode {
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(uri)
+                .body(axum::body::Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("router responds");
+    let status = resp.status();
+    axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .expect("body read");
+    status
+}
+
+fn seg_uri(secret: &AppSecret, id: SessionId, upstream: &str) -> String {
+    let token = sign_segment(secret, id, upstream);
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(upstream.as_bytes());
+    format!("/s/{}/seg?u={encoded}&t={token}", id.as_string())
+}
+
+#[tokio::test]
+async fn a_downloads_media_playlist_and_segment_bodies_are_not_playback() {
+    // Every path a download's fetch takes through the segment route —
+    // a media playlist, and a segment whose body is read to its end —
+    // leaves playback as it was.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/v/index.m3u8"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:4,\nseg.ts\n"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/v/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![7u8; 64 * 1024]))
+        .mount(&server)
+        .await;
+    let (router, sessions, id, secret) = background_proxy(
+        &format!("{}/master.m3u8", server.uri()),
+        host_budget::HostBudget::fresh(),
+    );
+    let playlist = format!("{}/v/index.m3u8", server.uri());
+    assert_eq!(
+        get_drained(router.clone(), &seg_uri(&secret, id, &playlist)).await,
+        StatusCode::OK
+    );
+    let seg = format!("{}/v/seg.ts", server.uri());
+    assert_eq!(
+        get_drained(router, &seg_uri(&secret, id, &seg)).await,
+        StatusCode::OK
+    );
+    assert!(
+        !sessions.playback_live(Duration::from_secs(30)),
+        "the download's playlist and segment bodies did not mark playback live"
+    );
+}
+
+#[tokio::test]
+async fn a_downloads_mp4_body_is_not_playback() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/episode.mp4"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![7u8; 64 * 1024]))
+        .mount(&server)
+        .await;
+    let (router, sessions, id, _secret) = background_proxy_of(
+        &format!("{}/episode.mp4", server.uri()),
+        MediaKind::Mp4,
+        host_budget::HostBudget::fresh(),
+    );
+    assert_eq!(
+        get_drained(router, &format!("/s/{}/file.mp4", id.as_string())).await,
+        StatusCode::OK
+    );
+    assert!(
+        !sessions.playback_live(Duration::from_secs(30)),
+        "the download's mp4 body did not mark playback live"
+    );
+}
+
+#[tokio::test]
+async fn a_players_drained_segment_does_mark_playback() {
+    // The same drained segment through a player's session marks
+    // playback live — the cases above hold because the session is the
+    // download's, not because a drained body notes nothing.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/v/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![7u8; 64 * 1024]))
+        .mount(&server)
+        .await;
+    let secret = AppSecret::from_bytes([7u8; 32]);
+    let sessions = SessionTable::new();
+    let session = StreamSession::new_with_kind(
+        url::Url::parse(&format!("{}/master.m3u8", server.uri())).expect("url"),
+        MediaKind::Hls,
+        String::new(),
+    );
+    let id = session.id;
+    sessions.insert(session);
+    let router = build_router(ProxyState {
+        sessions: sessions.clone(),
+        secret: secret.clone(),
+        client: upstream::build_client().expect("client builds"),
+        origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
+    });
+    let seg = format!("{}/v/seg.ts", server.uri());
+    assert_eq!(
+        get_drained(router, &seg_uri(&secret, id, &seg)).await,
+        StatusCode::OK
+    );
+    assert!(sessions.playback_live(Duration::from_secs(30)));
+}
+
+/// A player's segment fetch tells the budget what the player needs: the
+/// rendition it feeds and the playback it buys, from the segment's own
+/// proxied URI. A download's segment through the proxy tells it
+/// nothing — the download is not what has to keep pace.
+#[tokio::test]
+async fn a_players_segment_fetch_notes_its_rendition_and_a_downloads_does_not() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"payload".to_vec()))
+        .mount(&server)
+        .await;
+    let host = host_budget::host_key(&url::Url::parse(&server.uri()).expect("server url"));
+    let seg = format!("{}/seg.ts", server.uri());
+
+    let player_budget = host_budget::HostBudget::fresh();
+    let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", player_budget.clone());
+    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
+    assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
+    assert!(
+        (player_budget.player_demand(&host) - 0.2).abs() < 1e-9,
+        "a five-second segment every five seconds"
+    );
+
+    let download_budget = host_budget::HostBudget::fresh();
+    let (router, _sessions, id, secret) =
+        background_proxy("https://cdn.example/master.m3u8", download_budget.clone());
+    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
+    assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
+    assert_eq!(download_budget.player_demand(&host), 0.0);
+}
+
+/// A segment the CDN redirects to an edge is a request the edge counts:
+/// the player's need is noted at every host a hop of its fetch lands
+/// on, so the edge leaves the player its share as well.
+#[tokio::test]
+async fn a_redirected_segment_notes_the_players_need_at_the_host_it_lands_on() {
+    let origin = MockServer::start().await;
+    let edge = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/seg.ts", edge.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"payload".to_vec()))
+        .mount(&edge)
+        .await;
+    let budget = host_budget::HostBudget::fresh();
+    let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", budget.clone());
+    let seg = format!("{}/seg.ts", origin.uri());
+    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
+    assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
+    let edge_host = host_budget::host_key(&url::Url::parse(&edge.uri()).expect("edge url"));
+    assert!(
+        (budget.player_demand(&edge_host) - 0.2).abs() < 1e-9,
+        "the edge knows the player's need"
+    );
+}
+
+/// A rendition playlist the master named as audio comes back with its
+/// segments named as audio, whatever its URL: the stream kind travels
+/// from the master to every segment.
+#[tokio::test]
+async fn a_rendition_playlist_names_its_segments_by_the_stream_the_master_gave_it() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/a/en.m3u8"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:5\n#EXTINF:5.0,\nseg.aac\n#EXT-X-ENDLIST\n",
+        ))
+        .mount(&server)
+        .await;
+    let (router, id, secret) = proxy_on("https://cdn.example/master.m3u8");
+    let playlist = format!("{}/a/en.m3u8", server.uri());
+    let uri = format!("{}&k=pl&s=audio", seg_uri(&secret, id, &playlist));
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(uri)
+                .body(axum::body::Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("router responds");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let body = String::from_utf8(body.to_vec()).expect("utf8");
+    let segment = body
+        .lines()
+        .find(|l| l.contains("/seg?u="))
+        .expect("a segment");
+    assert!(segment.contains("&r=audio&d=5000"), "{segment}");
 }

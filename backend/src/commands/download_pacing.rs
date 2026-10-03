@@ -3,21 +3,26 @@
 //! from that burst spends the address's request budget at the host,
 //! which refuses the player's next segment within seconds. While the
 //! proxy has served media recently — playback is live — a download
-//! runs one fragment at a time at a limited byte rate instead. yt-dlp cannot change its
-//! concurrency mid-run, so when playback starts or stops under a
+//! fetches through the proxy instead, on a background session whose
+//! requests the host's budget admits one at a time, taking turns with
+//! the player's while it waits and never from the player's reserve
+//! while it does not; without that relay it runs one fragment
+//! at a time at a limited byte rate. yt-dlp cannot change its source
+//! or concurrency mid-run, so when playback starts or stops under a
 //! running download the supervisor takes the tool down and starts it
 //! again on the same output, which yt-dlp resumes from the fragments
 //! it already has ([`super::download::spawn_download_tool_paced`]).
 //!
-//! The allowance is one fragment beside the player for the whole app,
-//! not one per download: paced runs take [`PACED_LANE`] in turn, so
-//! two episodes downloading during playback put one yt-dlp against
-//! the host at a time, and the other waits for it or for playback to
-//! stop, whichever comes first. The ffmpeg fallback is one connection
-//! whose rate is set at its start — the stream's own while playback is
-//! live, full speed otherwise, kept to its end either way — and that
-//! cannot be resumed, so it holds the lane from its start regardless
-//! of playback.
+//! Paced runs take [`PACED_LANE`] in turn, one download for the whole
+//! app, so two episodes downloading during playback put one yt-dlp
+//! beside the player at a time, and the other waits for it or for
+//! playback to stop, whichever comes first. The ffmpeg fallback is one
+//! connection whose source is set at its start — through the relay
+//! while playback is live, or at the stream's own rate when there is
+//! none or a relayed run has just failed through it, the host
+//! directly otherwise, kept to its end either way — and
+//! that cannot be resumed, so it holds the lane from its start
+//! regardless of playback.
 
 use std::time::Duration;
 
@@ -26,14 +31,14 @@ use tokio::sync::{Semaphore, SemaphorePermit};
 /// Fragments in flight when nothing is playing: v5's `-N 16`.
 pub(crate) const FAST_FRAGMENTS: u32 = 16;
 
-/// Fragments in flight while playback is live: one, the floor a
-/// download can pace to and still move. How much of the address's
-/// request budget that one fragment spends is set by the byte-rate
-/// limit beside it.
+/// Fragments in flight while playback is live and the run has no
+/// relay: one, the floor a download can pace to and still move. How
+/// much of the address's request budget that one fragment spends is
+/// set by the byte-rate limit beside it.
 pub(crate) const PACED_FRAGMENTS: u32 = 1;
 
 /// The sidecar phase's deadline while playback is live: the tracks
-/// take their tokens one at a time behind the player's, sharing one
+/// take their tokens one at a time in turn with the player's, sharing one
 /// lane with every other download's, and a listing at the track cap
 /// needs the time.
 pub(crate) const SIDECAR_PHASE_DEADLINE_LIVE: Duration = Duration::from_secs(4 * 60);
@@ -66,7 +71,29 @@ pub(crate) fn sidecar_phase_deadline(playback_live: bool) -> Duration {
     }
 }
 
-/// The byte rate a paced run is held to, in yt-dlp's `--limit-rate`
+/// Fragments a relayed run keeps in flight. The proxy admits each as
+/// background traffic, so how many are in flight does not decide how
+/// many reach the host; a few keep one ready whenever the player
+/// leaves a token or a turn comes.
+pub(crate) const RELAYED_FRAGMENTS: u32 = 4;
+
+/// How long a relayed run's tool waits on a request, in seconds: as
+/// long as a paced run may last ([`PACED_RUN_CEILING`]). The proxy
+/// holds a background request until its turn, and background requests
+/// take their turns one at a time — a fragment waits behind the others
+/// in flight and a download's subtitle tracks, and while the player's
+/// need with a quarter to spare reaches the refill — about 32 of its
+/// 40 requests a minute — until the player stops asking: at the end of
+/// a fill, which can last minutes, while that need is under the refill
+/// itself, and when playback stops once it is over it. A tool that
+/// gave up on the wait would fail the run, and the fallback after a
+/// failed relayed run reads the host directly, the request the relay
+/// exists to keep from it. Waiting is all a relayed request can be
+/// doing that long: the proxy bounds its own fetch from the host, and
+/// fails the request back to the tool when that fetch hangs.
+pub(crate) const RELAYED_SOCKET_TIMEOUT_S: u32 = 24 * 60 * 60;
+
+/// The byte rate a paced run without a relay is held to, in yt-dlp's `--limit-rate`
 /// spelling. The host counts requests per address, and one fragment
 /// at a time against small segments is still several requests a
 /// second; at this rate a megabyte segment takes about two seconds,
@@ -78,8 +105,9 @@ pub(crate) const PACED_RATE_LIMIT: &str = "512K";
 /// hung tool, and a paced run is slow by design and ends the moment
 /// playback stops — so it runs under this one instead, and the time it
 /// took is added to the transfer's ceiling for what follows. An ffmpeg
-/// fallback started while playback is live runs under it too: it
-/// reads at the stream's rate to its end, as long as the stream plays.
+/// fallback started while playback is live runs under it too: through
+/// the relay at the pace the budget leaves it, or at the stream's rate,
+/// it can take as long as the stream plays.
 pub(crate) const PACED_RUN_CEILING: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// How long after the last media fetch playback counts as live: a
@@ -106,12 +134,11 @@ static NEVER_LANE: Semaphore = Semaphore::const_new(Semaphore::MAX_PERMITS);
 
 /// The sidecar fetches' lane while playback is live: one in flight at
 /// a time across every download, whatever concurrency each
-/// download's phase chose, so the idle tokens the player leaves go to
-/// one track at a time. None of them waits in the host's line ahead
-/// of the player — they are background traffic at the host's budget
-/// ([`crate::proxy::host_budget::HostBudget::admit_background`]),
+/// download's phase chose, so the turns background traffic gets go to
+/// one track at a time. They are background traffic at the host's
+/// budget ([`crate::proxy::host_budget::HostBudget::admit_background`]),
 /// including a fetch that asked before playback went live and is past
-/// the gate already.
+/// the gate already: in turn with the player.
 pub(crate) static SIDECAR_LANE: Semaphore = Semaphore::const_new(1);
 
 /// What a sidecar fetch asks before it goes to the host: whether
@@ -179,6 +206,7 @@ pub(crate) struct Pacing<'a> {
     is_live: &'a (dyn Fn() -> bool + Sync),
     poll: Duration,
     lane: &'a Semaphore,
+    relay: Option<&'a (dyn Fn() -> Option<String> + Sync)>,
     noted: Option<&'a tokio::sync::Notify>,
 }
 
@@ -192,6 +220,7 @@ impl<'a> Pacing<'a> {
             is_live,
             poll,
             lane,
+            relay: None,
             noted: None,
         }
     }
@@ -205,6 +234,23 @@ impl<'a> Pacing<'a> {
             noted: Some(noted),
             ..self
         }
+    }
+
+    /// The same pacing with a relay: where the transfer fetches from
+    /// while playback is live — the app's proxy, which charges the
+    /// download's requests to the host's budget in turn with the player's —
+    /// in place of a byte-rate cap.
+    #[must_use]
+    pub(crate) fn with_relay(self, relay: &'a (dyn Fn() -> Option<String> + Sync)) -> Self {
+        Self {
+            relay: Some(relay),
+            ..self
+        }
+    }
+
+    /// The relay's URL for this transfer, when it has one.
+    pub(crate) fn relay_url(&self) -> Option<String> {
+        self.relay.and_then(|relay| relay())
     }
 
     /// The gate this transfer's sidecar fetches ask: the same view of
@@ -226,6 +272,7 @@ impl<'a> Pacing<'a> {
             is_live: &|| false,
             poll: Duration::from_secs(3600),
             lane: &NEVER_LANE,
+            relay: None,
             noted: None,
         }
     }
