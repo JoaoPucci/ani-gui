@@ -75,7 +75,7 @@ fn a_downloads_tracks_are_fetched_one_at_a_time_while_playback_is_live() {
     );
     assert!(
         sidecar_phase_deadline(true) > sidecar_phase_deadline(false),
-        "tracks taking their tokens one at a time behind the player's need the time"
+        "tracks taking their tokens one at a time in turn with the player's need the time"
     );
 }
 
