@@ -563,6 +563,10 @@ mod empty_referer_tests;
 mod redirected_playlist_tests;
 
 #[cfg(test)]
+#[path = "opaque_rendition_test.rs"]
+mod opaque_rendition_tests;
+
+#[cfg(test)]
 #[path = "subtitle_test.rs"]
 mod subtitle_tests;
 
