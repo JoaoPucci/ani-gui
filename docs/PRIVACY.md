@@ -29,8 +29,8 @@ ani-gui keeps the following on your computer only:
   directory. Lists what you've watched, where you left off and
   when.
 - **Episode positions** — how far into an episode you got, so
-  reopening it resumes there: an episode is marked started when it
-  begins playing, a point in its first 15 seconds is kept as its
+  reopening it resumes there: an episode is marked started when its
+  stream starts loading, a point in its first 15 seconds is kept as its
   start, and one in its last 90 seconds — or an episode played to its
   end — is forgotten as finished. At most the 200 most recently kept
   are held. Kept in
