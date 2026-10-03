@@ -376,6 +376,9 @@ struct SegmentQuery {
     u: String,
     /// HMAC signature.
     t: String,
+    /// `pl` when the manifest that named the URL named a playlist.
+    #[serde(default)]
+    k: Option<String>,
 }
 
 async fn handle_seg(
@@ -400,10 +403,9 @@ async fn handle_seg(
         return error_response(StatusCode::FORBIDDEN, "invalid segment token");
     }
 
-    // For .m3u8 sub-playlists, fetch + rewrite. For raw segments (mp4/ts/m4s),
+    // For sub-playlists, fetch + rewrite. For raw segments (mp4/ts/m4s),
     // stream bytes through with the Range header preserved.
-    let path = upstream_url.path();
-    let is_manifest = path.ends_with(".m3u8");
+    let is_manifest = m3u8::names_a_playlist(q.k.as_deref(), &upstream_url);
 
     // Media playlists and segments alike: both are the player
     // fetching, and a segment every few seconds is what a download
