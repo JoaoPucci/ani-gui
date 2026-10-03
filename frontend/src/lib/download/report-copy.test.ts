@@ -23,6 +23,7 @@ function item(over: Partial<DownloadItem>): DownloadItem {
 		rangeTotal: null,
 		currentEp: null,
 		progressStatus: null,
+		speed: null,
 		...over
 	};
 }
