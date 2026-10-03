@@ -81,9 +81,11 @@ pub(crate) const RELAYED_FRAGMENTS: u32 = 4;
 /// long as a paced run may last ([`PACED_RUN_CEILING`]). The proxy
 /// holds a background request until its turn, and background requests
 /// take their turns one at a time — a fragment waits behind the others
-/// in flight and a download's subtitle tracks, and while the player
-/// needs every token the host gives, until the player stops asking:
-/// after a fill, which can last minutes, or with playback. A tool that
+/// in flight and a download's subtitle tracks, and while the player's
+/// need with a quarter to spare reaches the refill — about 32 of its
+/// 40 requests a minute — until the player stops asking: at the end of
+/// a fill, which can last minutes, while that need is under the refill
+/// itself, and when playback stops once it is over it. A tool that
 /// gave up on the wait would fail the run, and the fallback after a
 /// failed relayed run reads the host directly, the request the relay
 /// exists to keep from it. Waiting is all a relayed request can be
