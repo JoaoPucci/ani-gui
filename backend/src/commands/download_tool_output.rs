@@ -46,7 +46,8 @@ where
                     lines_open = false;
                     continue;
                 };
-                // Defense in depth behind the environment above:
+                // Defense in depth behind the TERM=dumb and
+                // NO_COLOR=1 run_tool_until spawns the tool with:
                 // the dock's DownloadProgress promises stripped
                 // text, and a tool that colorizes anyway must not
                 // reach it.
@@ -55,8 +56,8 @@ where
                 // it left MPEG-TS under the .mp4 name: how it ends
                 // stops mattering (exit 0 included), and stopping
                 // now spares the rest of a transfer whose output
-                // is already wrong. The armed guard takes the tool
-                // down on return.
+                // is already wrong. run_tool_until's TreeKillChild
+                // takes the tool down when this returns.
                 if crate::commands::download_tool::yt_dlp_could_not_repackage(&line) {
                     *repackage_failed = true;
                     return Err(AniError::FfmpegMissing);
@@ -84,4 +85,25 @@ where
         }
     }
     Ok(())
+}
+
+/// Log one line of a download's progress stream as the tool's output,
+/// unless it is a speed report: those arrive once a second for as long
+/// as a transfer runs and are the dock's, not the log's.
+pub(crate) fn log_progress_line(line: &str) {
+    if !line.starts_with(super::download_progress::RATE_STATUS) {
+        tracing::info!(line = %line, "download.tool.stderr");
+    }
+}
+
+/// Report zero to `on_line` if the run reported a speed: called once
+/// the run is over, however it ended, so the indicators do not go on
+/// showing its last speed while nothing moves.
+pub(crate) fn report_end<F>(measured: &std::sync::atomic::AtomicBool, on_line: &mut F)
+where
+    F: FnMut(&str) + Send,
+{
+    if measured.load(std::sync::atomic::Ordering::Relaxed) {
+        on_line(&super::download_progress::rate_report(0.0));
+    }
 }
