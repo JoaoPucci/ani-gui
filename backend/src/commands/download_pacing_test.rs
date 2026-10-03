@@ -164,3 +164,15 @@ async fn a_change_before_the_wait_began_is_seen_at_once() {
         "the change was seen at once"
     );
 }
+
+/// The relay holds a fragment's request until its turn at the host, and
+/// while the player needs every token the host gives that turn comes
+/// only when the player stops asking — after a fill that can last
+/// minutes, or with playback. A tool that gave up on the wait would fail
+/// the run, and a failed relayed run is followed by a fallback that
+/// reads the host directly: the request the relay exists to keep from
+/// it. The tool waits as long as a paced run may last.
+#[test]
+fn a_relayed_run_waits_its_turn_as_long_as_a_paced_run_may_last() {
+    assert!(Duration::from_secs(u64::from(RELAYED_SOCKET_TIMEOUT_S)) >= PACED_RUN_CEILING);
+}
