@@ -8,7 +8,8 @@
  *
  * Sequencing contract (pinned by start-resume.test.ts):
  *   guard busy/title → busy on → settings → episode resolution
- *   (probed cap as-is; otherwise ONE interactive lookup) → cap
+ *   (probed cap as-is; otherwise ONE interactive lookup; the last
+ *   watched episode again when it was left part-way) → cap
  *   write-back → play resolution → watched + tracker fan-out
  *   (fire-and-forget) → navigate. Busy stays set on
  *   success — navigation unmounts the page; failure clears busy and
@@ -17,6 +18,7 @@
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { resolveResumeEpisode } from './resume-episode';
+import { resumeOr } from '$lib/play/next-episode';
 
 export interface ResumePlayArgs {
 	match: KitsuAnimeRef;
@@ -65,6 +67,9 @@ export interface StartResumeDeps {
 		seriesFinished: boolean
 	) => Promise<void>;
 	navigateToSession: (kitsuId: string, session: { session_id: string }, episode: number) => void;
+	/** Whether `episode` of `kitsuId` was left part-way, its position
+	 *  kept. Omitted, nothing was. */
+	leftPartWay?: (kitsuId: string, episode: number) => boolean;
 }
 
 export function makeStartResume(
@@ -84,7 +89,7 @@ export function makeStartResume(
 
 		const { mode, quality } = await deps.getSettings();
 		const lastWatchedRaw = parseInt(entry.ep_no, 10);
-		const { episode, count, approximate } = await resolveResumeEpisode(
+		const resolved = await resolveResumeEpisode(
 			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
 			deps.getPlayableCount(entry.id),
 			match.episode_count ?? null,
@@ -98,6 +103,15 @@ export function makeStartResume(
 				approximate: deps.isPlayableCountApproximate?.(entry.id) ?? false
 			}),
 			deps.isPlayableCountApproximate?.(entry.id) ?? false
+		);
+		const { count, approximate } = resolved;
+		// The last watched episode was left part-way: going back to it,
+		// not on to the next, is what Continue means.
+		const last = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
+		const episode = resumeOr(
+			last,
+			resolved.episode,
+			last !== null && (deps.leftPartWay?.(match.id, last) ?? false)
 		);
 		if (typeof count === 'number') {
 			deps.setPlayableCount(entry.id, count, approximate);

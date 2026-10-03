@@ -97,7 +97,8 @@
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
-	import { pickNextEpisode } from '$lib/play/next-episode';
+	import { pickResumeEpisode } from '$lib/play/next-episode';
+	import { readPosition } from '$lib/play/watch-position';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -174,6 +175,9 @@
 	// background probe then carries that value instead of its own
 	// (which may be an approximate breaker fallback).
 	const capAuthority = createCapAuthority();
+	// An episode left part-way keeps its position; the Continue card
+	// goes back to it rather than on to the next one.
+	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
@@ -185,7 +189,8 @@
 		},
 		setEpisode: (id, ep) => {
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
-		}
+		},
+		leftPartWay
 	});
 
 	/**
@@ -640,6 +645,7 @@
 		kitsu_id: a.match.id
 	});
 	const startResume = makeStartResume({
+		leftPartWay,
 		isBusy: () => !!resumeBusy,
 		onBusy: (id) => {
 			resumeBusy = id;
@@ -901,9 +907,10 @@
 			)}
 			{@const playableCount = historyPlayableCounts[entry.id]}
 			{@const lastWatched = parseInt(entry.ep_no, 10)}
-			{@const nextEpisode = pickNextEpisode(
+			{@const nextEpisode = pickResumeEpisode(
 				Number.isFinite(lastWatched) ? lastWatched : null,
-				playableCount ?? match?.episode_count ?? null
+				playableCount ?? match?.episode_count ?? null,
+				!!match && Number.isFinite(lastWatched) && leftPartWay(match.id, lastWatched)
 			)}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,

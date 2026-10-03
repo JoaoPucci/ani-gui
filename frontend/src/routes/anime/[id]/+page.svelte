@@ -61,7 +61,8 @@
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
-	import { pickNextEpisode } from '$lib/play/next-episode';
+	import { pickResumeEpisode } from '$lib/play/next-episode';
+	import { readPosition } from '$lib/play/watch-position';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
@@ -1153,7 +1154,13 @@
 		// last aired one instead of Continue into an unaired episode
 		// (Codex P2 #3565649454).
 		const last = resumeEntry ? parseInt(resumeEntry.ep_no, 10) : null;
-		return pickNextEpisode(last, airedCap(episodeCap, airing));
+		return pickResumeEpisode(last, airedCap(episodeCap, airing), leftPartWay(last));
+	}
+
+	/** Whether the last watched episode was left part-way, its position
+	 *  kept: Play goes back to it instead of on to the next. */
+	function leftPartWay(last: number | null): boolean {
+		return last !== null && Number.isFinite(last) && readPosition(id, last) !== null;
 	}
 
 	/** Label for the primary action button. Five-state machine
@@ -1167,7 +1174,8 @@
 		const state = computePlayLabel({
 			isSingleVideo: singleVideo,
 			resumeEntry,
-			defaultEpisode: defaultEpisode()
+			defaultEpisode: defaultEpisode(),
+			leftPartWay: leftPartWay(resumeEntry ? parseInt(resumeEntry.ep_no, 10) : null)
 		});
 		switch (state.kind) {
 			case 'watch':
@@ -1180,6 +1188,8 @@
 				return m.detail_play_button_resume({ episode: String(state.episode) });
 			case 'replay':
 				return m.detail_play_button_replay({ episode: String(state.episode) });
+			case 'continue':
+				return m.detail_play_button_continue();
 		}
 	});
 

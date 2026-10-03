@@ -1,6 +1,6 @@
 import type { HistoryEntry, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 import { EPISODES_KITSU_PAGE_SIZE } from './resolve';
-import { pickNextEpisode } from '$lib/play/next-episode';
+import { pickResumeEpisode } from '$lib/play/next-episode';
 
 export interface ContinueRowReadyDeps {
 	/** Snapshot of the current history list, keyed by entry id. The
@@ -21,6 +21,10 @@ export interface ContinueRowReadyDeps {
 	setMatch: (entryId: string, match: KitsuAnimeRef | null) => void;
 	setPlayableCount: (entryId: string, count: number) => void;
 	setEpisode: (entryId: string, episode: KitsuEpisode | null) => void;
+	/** Whether `episode` of `kitsuId` was left part-way, its position
+	 *  kept — the card then shows that episode, which its click plays.
+	 *  Omitted, nothing was. */
+	leftPartWay?: (kitsuId: string, episode: number) => boolean;
 }
 
 /**
@@ -37,9 +41,10 @@ export interface ContinueRowReadyDeps {
  *   2. Decide which Kitsu episode to fetch metadata for. Mirrors the
  *      template's cap rule — `playableCount ?? match.episode_count`
  *      — so the badge thumbnail and canonical title belong to the
- *      episode the click would actually play (pickNextEpisode of
- *      the watched ep against that cap), not the episode the user
- *      just finished. Cour-split shows are routed through
+ *      episode the click would actually play (pickResumeEpisode:
+ *      the watched ep again when it was left part-way, else the
+ *      next one against that cap), not an episode the user
+ *      finished. Cour-split shows are routed through
  *      resolveHistoryEntry so the page index resolves to the parent
  *      Kitsu show's per-cour numbering.
  *
@@ -96,7 +101,12 @@ export function makeContinueRowReadyHandler(
 		// here so both Continue surfaces agree on the malformed row.
 		const lastWatched = parseInt(entry.ep_no, 10);
 		const cap = playableCount ?? match.episode_count ?? null;
-		const nextEpisode = pickNextEpisode(Number.isFinite(lastWatched) ? lastWatched : null, cap);
+		const last = Number.isFinite(lastWatched) ? lastWatched : null;
+		const nextEpisode = pickResumeEpisode(
+			last,
+			cap,
+			last !== null && (deps.leftPartWay?.(match.id, last) ?? false)
+		);
 		const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
 		const target = `${match.id}|${kitsuPage}|${nextEpisode}`;
 		if (inFlight.get(entryId)?.target === target) return;
