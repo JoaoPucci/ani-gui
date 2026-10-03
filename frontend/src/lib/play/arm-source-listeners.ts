@@ -23,6 +23,14 @@ import {
 /** How far playback moves between two writes of its position. */
 const SAVE_EVERY_S = 5;
 
+/** What the page tells the stream's listeners. */
+export interface SourceListeners {
+	/** The viewer moved the playhead through the page's controls: a
+	 *  resume still waiting for the stream's length is dropped, and the
+	 *  position is the viewer's from then on. */
+	viewerMoved(): void;
+}
+
 export function armSourceScopedListeners(input: {
 	video: HTMLVideoElement;
 	showId: string;
@@ -31,7 +39,7 @@ export function armSourceScopedListeners(input: {
 	/** Where positions are kept; the renderer's local storage when
 	 *  omitted. */
 	positions?: PositionStorage;
-}): void {
+}): SourceListeners {
 	const { video, showId, episode, scope, positions } = input;
 	// A recovery's point resumes the stream the viewer was watching a
 	// moment ago, wherever it falls. A kept point was saved on an
@@ -63,23 +71,21 @@ export function armSourceScopedListeners(input: {
 		}
 		// The length is not known yet — hls.js sets it from the playlist,
 		// and a playlist without an end grows it — so the kept point
-		// cannot be judged. Wait for the first known length; a seek by
-		// the viewer or playback starting first makes the stream theirs.
+		// cannot be judged. Wait for the first known length. The element
+		// autoplays and the engine seeks it on its own, so neither its
+		// `playing` nor its `seeking` is the viewer: only a move the page
+		// reports makes the stream theirs. Until then nothing is written,
+		// and a length that never becomes known writes nothing at all.
+		waiting = true;
 		video.addEventListener('durationchange', onDuration);
-		video.addEventListener('seeking', letGo);
-		video.addEventListener('playing', letGo);
 	};
+	let waiting = false;
 	const stopWaiting = () => {
+		waiting = false;
 		video.removeEventListener('durationchange', onDuration);
-		video.removeEventListener('seeking', letGo);
-		video.removeEventListener('playing', letGo);
 	};
 	const onDuration = () => {
 		if (Number.isFinite(video.duration)) resumeKept();
-	};
-	const letGo = () => {
-		stopWaiting();
-		opened = true;
 	};
 	// Seeks to the kept point unless the known length puts it in the
 	// last 90 seconds, where it is forgotten instead. Decided once.
@@ -112,4 +118,11 @@ export function armSourceScopedListeners(input: {
 	video.addEventListener('timeupdate', onTime);
 	video.addEventListener('pause', save);
 	video.addEventListener('ended', onEnded);
+	return {
+		viewerMoved: () => {
+			if (!waiting) return;
+			stopWaiting();
+			opened = true;
+		}
+	};
 }

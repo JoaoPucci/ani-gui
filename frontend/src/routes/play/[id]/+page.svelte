@@ -97,7 +97,7 @@
 		stallNudgeToast,
 		stallRecoveryToast
 	} from '$lib/play/stall-notice';
-	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
+	import { armSourceScopedListeners, type SourceListeners } from '$lib/play/arm-source-listeners';
 	import { bufferAheadSeconds } from '$lib/play/buffer-ahead';
 	import { scheduleHeldRetry } from '$lib/play/held-retry';
 	import { runwaySeconds } from '$lib/play/stale-stream';
@@ -209,6 +209,9 @@
 	// The URL the element's stream was attached from; hls.js gives the
 	// element a blob: URL of its own, so the element cannot say.
 	let attachedUrl: string | null = null;
+	// The attached stream's listeners, told when the viewer moves the
+	// playhead through the page's controls.
+	let sourceListeners: SourceListeners | null = null;
 
 	// Settings-driven: whether to use our custom controls bar in
 	// place of Chromium's native one. Custom gives the timeline
@@ -359,6 +362,7 @@
 
 	function onSkipClick() {
 		if (!videoEl || !activeSkip) return;
+		sourceListeners?.viewerMoved();
 		// Tiny offset past `end_time` so the playhead is unambiguously
 		// out of the interval — otherwise the same `timeupdate` could
 		// re-evaluate `pickActiveSkip` and the button blinks back.
@@ -574,6 +578,8 @@
 
 	function seekToFraction(fraction: number) {
 		if (!videoEl || !duration) return;
+		// Every scrubber and keyboard seek lands here: the viewer moving.
+		sourceListeners?.viewerMoved();
 		videoEl.currentTime = Math.max(0, Math.min(duration, fraction * duration));
 	}
 
@@ -1475,7 +1481,7 @@
 		// marking and the position kept for the next visit — belong to
 		// the stream attaching here; the module owns the arrangement.
 		// Armed AFTER the flush, which retires the previous source's.
-		armSourceScopedListeners({
+		sourceListeners = armSourceScopedListeners({
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
