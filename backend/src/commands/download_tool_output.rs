@@ -15,7 +15,8 @@ use crate::error::{AniError, Result};
 /// MPEG-TS under the .mp4 name, which sets `repackage_failed` and ends
 /// the read. Progress on stdout feeds the meter, and once a second,
 /// from the first progress the tool gives, the run's speed is handed to
-/// `on_line` as a rate report.
+/// `on_line` as a rate report; `measured` records that it did, so the
+/// runner can report zero when the run ends.
 ///
 /// # Errors
 /// [`AniError::FfmpegMissing`] when yt-dlp reports the repackage failed.
@@ -24,6 +25,7 @@ pub(crate) async fn read_tool_output<F>(
     stdout: ChildStdout,
     on_line: &mut F,
     repackage_failed: &mut bool,
+    measured: &std::sync::atomic::AtomicBool,
 ) -> Result<()>
 where
     F: FnMut(&str) + Send,
@@ -34,7 +36,6 @@ where
     // The run's speed, reported to the dock once a second from the
     // first progress the tool gives.
     let mut meter = RateMeter::default();
-    let mut measured = false;
     let mut report = tokio::time::interval(RATE_REPORT_EVERY);
     report.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     report.tick().await;
@@ -72,11 +73,11 @@ where
                 let line = crate::spawn::strip_ansi(raw.as_bytes());
                 if let Some(bytes) = progress_bytes(&line) {
                     meter.observe(bytes, tokio::time::Instant::now());
-                    measured = true;
+                    measured.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
             }
             _ = report.tick() => {
-                if measured {
+                if measured.load(std::sync::atomic::Ordering::Relaxed) {
                     on_line(&rate_report(meter.rate_at(tokio::time::Instant::now())));
                 }
             }

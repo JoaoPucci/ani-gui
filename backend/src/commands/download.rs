@@ -2257,9 +2257,19 @@ where
     let mut child = crate::spawn::TreeKillChild::new(child);
     let stderr = child.child_mut().stderr.take().ok_or(AniError::Io)?;
     let stdout = child.child_mut().stdout.take().ok_or(AniError::Io)?;
+    // Whether the run reported a speed: if it did, it reports zero as
+    // it ends, however it ends, so the indicators do not go on showing
+    // its last speed while nothing moves.
+    let measured = std::sync::atomic::AtomicBool::new(false);
     let drive = async {
-        super::download_tool_output::read_tool_output(stderr, stdout, on_line, repackage_failed)
-            .await?;
+        super::download_tool_output::read_tool_output(
+            stderr,
+            stdout,
+            on_line,
+            repackage_failed,
+            &measured,
+        )
+        .await?;
         child.child_mut().wait().await.map_err(|_| AniError::Io)
     };
     // Whichever resolves first: the tool running to its end (or the
@@ -2270,6 +2280,9 @@ where
         run = tokio::time::timeout_at(deadline, drive) => Some(run),
         () = stop => None,
     };
+    if measured.load(std::sync::atomic::Ordering::Relaxed) {
+        on_line(&super::download_progress::rate_report(0.0));
+    }
     let Some(run) = outcome else {
         return Ok(ToolRun::Interrupted);
     };
