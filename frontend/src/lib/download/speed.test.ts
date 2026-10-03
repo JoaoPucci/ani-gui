@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { speedParts, totalSpeed } from './speed';
+import { formatSpeed, speedParts, totalSpeed } from './speed';
+import { m } from '$lib/paraglide/messages';
+import { getLocale, overwriteGetLocale } from '$lib/paraglide/runtime';
 
 const MIB = 1024 * 1024;
 
@@ -49,5 +51,29 @@ describe('totalSpeed', () => {
 		expect(totalSpeed([])).toBeNull();
 		expect(totalSpeed([{ status: 'error', speed: 4000 }])).toBeNull();
 		expect(totalSpeed([{ status: 'done', speed: 4000 }])).toBeNull();
+	});
+});
+
+describe('formatSpeed', () => {
+	const initialLocale = getLocale();
+	afterEach(() => overwriteGetLocale(() => initialLocale));
+
+	it('reads whole kilobytes under a mebibyte a second', () => {
+		overwriteGetLocale(() => 'en');
+		expect(formatSpeed(512 * 1024)).toBe(m.download_speed_kbps({ value: '512' }));
+		expect(formatSpeed(0)).toBe(m.download_speed_kbps({ value: '0' }));
+	});
+
+	it('reads megabytes to one decimal from a mebibyte a second up', () => {
+		overwriteGetLocale(() => 'en');
+		expect(formatSpeed(1.5 * 1024 * 1024)).toBe(m.download_speed_mbps({ value: '1.5' }));
+		expect(formatSpeed(2 * 1024 * 1024)).toBe(m.download_speed_mbps({ value: '2' }));
+	});
+
+	it("writes the number in the reader's locale", () => {
+		overwriteGetLocale(() => 'pt-BR');
+		expect(formatSpeed(1.5 * 1024 * 1024)).toBe(m.download_speed_mbps({ value: '1,5' }));
+		overwriteGetLocale(() => 'en');
+		expect(formatSpeed(2048 * 1024 * 1024)).toBe(m.download_speed_mbps({ value: '2,048' }));
 	});
 });
