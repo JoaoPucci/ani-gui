@@ -2128,6 +2128,12 @@ fn ytdlp_command(
     }
     cmd.args(ytdlp_referer_args(referer))
         .arg(master_url)
+        // Every download is a finished episode. yt-dlp guesses live
+        // from the first variant it checks, and a stream it takes for
+        // live gets no progress line and can be handed to an ffmpeg
+        // run without the extension option the relay's addresses need.
+        .arg("--extractor-args")
+        .arg("generic:is_live=false")
         // A progress line of the app's shape, one per update, which
         // the run's meter reads for its speed.
         .arg("--newline")
