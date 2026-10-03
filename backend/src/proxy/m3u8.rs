@@ -311,11 +311,15 @@ mod tests {
     }
 
     /// The budget keeps a player's demand from the segments it fetches:
-    /// each media segment's proxied URI names its rendition and its
-    /// duration, so a fetch of it says which stream it feeds and how
-    /// much playback it buys. An init segment or a key buys none.
+    /// each media segment's proxied URI names the kind of stream it
+    /// feeds — the player plays one of each kind at a time — and its
+    /// duration, so a fetch of it says how much playback it buys. Two
+    /// levels of the main stream are one stream, whatever their URLs;
+    /// an audio rendition is another. An init segment or a key buys
+    /// none.
     #[test]
-    fn a_media_segment_names_its_rendition_and_its_duration() {
+    fn a_media_segment_names_its_stream_and_its_duration() {
+        use crate::proxy::host_budget_demand::Stream;
         let body = b"#EXTM3U\n\
                      #EXT-X-TARGETDURATION:6\n\
                      #EXT-X-MAP:URI=\"init.mp4\"\n\
@@ -327,34 +331,76 @@ mod tests {
         let session = make_session();
         let secret = AppSecret::random();
         let origin = make_origin();
-        let video = Url::parse("https://upstream.example/v/1080/index.m3u8").unwrap();
-        let audio = Url::parse("https://upstream.example/a/en/index.m3u8").unwrap();
-        let out = rewrite_media(body, &video, &origin, session, &secret).unwrap();
-        let segments: Vec<&str> = out
-            .lines()
-            .filter(|l| l.contains("/seg?u=") && !l.starts_with('#'))
-            .collect();
-        assert_eq!(segments.len(), 2);
-        assert!(segments[0].contains("&d=5005"), "{}", segments[0]);
-        assert!(segments[1].contains("&d=4500"), "{}", segments[1]);
-        let rendition = |uri: &str| {
-            uri.split('&')
-                .find_map(|p| p.strip_prefix("r="))
+        let segments = |out: &str| -> Vec<String> {
+            out.lines()
+                .filter(|l| l.contains("/seg?u=") && !l.starts_with('#'))
                 .map(str::to_owned)
+                .collect()
         };
-        let video_id = rendition(segments[0]).expect("a rendition");
-        assert_eq!(rendition(segments[1]).as_deref(), Some(video_id.as_str()));
+        let high = Url::parse("https://upstream.example/v/1080/index.m3u8").unwrap();
+        let low = Url::parse("https://upstream.example/v/480/index.m3u8?tok=abc").unwrap();
+        let audio = Url::parse("https://upstream.example/a/en/index.m3u8").unwrap();
+        let out = rewrite_media(body, &high, &origin, session, &secret).unwrap();
+        let main = segments(&out);
+        assert_eq!(main.len(), 2);
+        assert!(main[0].ends_with("&r=main&d=5005"), "{}", main[0]);
+        assert!(main[1].ends_with("&r=main&d=4500"), "{}", main[1]);
+        let other_level = rewrite_media(body, &low, &origin, session, &secret).unwrap();
+        assert!(segments(&other_level)[0].ends_with("&r=main&d=5005"));
         let map = out
             .lines()
             .find(|l| l.starts_with("#EXT-X-MAP"))
             .expect("map");
         assert!(!map.contains("&d=") && !map.contains("&r="), "{map}");
-        let other = rewrite_media(body, &audio, &origin, session, &secret).unwrap();
-        let other_seg = other
+        let out = rewrite_media_as(body, &audio, &origin, session, &secret, Stream::Audio).unwrap();
+        assert!(segments(&out)[0].ends_with("&r=audio&d=5005"));
+    }
+
+    /// The master names each playlist's kind of stream: every variant
+    /// is the main stream, an `EXT-X-MEDIA` rendition the kind its type
+    /// says.
+    #[test]
+    fn a_master_names_each_playlist_by_its_stream() {
+        let body = b"#EXTM3U\n\
+                     #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"en\",URI=\"a/en.m3u8\"\n\
+                     #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"sub\",NAME=\"en\",URI=\"s/en.m3u8\"\n\
+                     #EXT-X-STREAM-INF:BANDWIDTH=1000000,AUDIO=\"aud\",SUBTITLES=\"sub\"\n\
+                     v/1080.m3u8\n\
+                     #EXT-X-STREAM-INF:BANDWIDTH=500000,AUDIO=\"aud\",SUBTITLES=\"sub\"\n\
+                     v/480.m3u8\n";
+        let master_url = Url::parse("https://upstream.example/master.m3u8").unwrap();
+        let out = rewrite_master(
+            body,
+            &master_url,
+            &make_origin(),
+            make_session(),
+            &AppSecret::random(),
+        )
+        .unwrap();
+        let variants: Vec<&str> = out
             .lines()
-            .find(|l| l.contains("/seg?u=") && !l.starts_with('#'))
-            .unwrap();
-        assert_ne!(rendition(other_seg).as_deref(), Some(video_id.as_str()));
+            .filter(|l| l.contains("/seg?u=") && !l.starts_with('#'))
+            .collect();
+        assert_eq!(variants.len(), 2);
+        for v in &variants {
+            assert!(v.ends_with("&k=pl&s=main"), "{v}");
+        }
+        let media = |kind: &str| {
+            out.lines()
+                .find(|l| l.starts_with("#EXT-X-MEDIA") && l.contains(kind))
+                .expect("rendition")
+                .to_owned()
+        };
+        assert!(
+            media("TYPE=AUDIO").contains("&k=pl&s=audio\""),
+            "{}",
+            media("TYPE=AUDIO")
+        );
+        assert!(
+            media("TYPE=SUBTITLES").contains("&k=pl&s=subs\""),
+            "{}",
+            media("TYPE=SUBTITLES")
+        );
     }
 
     #[test]
