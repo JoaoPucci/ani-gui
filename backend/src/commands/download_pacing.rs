@@ -77,15 +77,19 @@ pub(crate) fn sidecar_phase_deadline(playback_live: bool) -> Duration {
 /// leaves a token or a turn comes.
 pub(crate) const RELAYED_FRAGMENTS: u32 = 4;
 
-/// How long a relayed run's tool waits for a request's first byte, in
-/// seconds. The proxy holds a background request until its turn, and
-/// background requests take their turns one at a time — while the
-/// player fills its buffer, only what its renditions' need leaves of
-/// the refill, and none while they need all of it — so a fragment can
-/// wait behind the others in flight and a download's subtitle tracks,
-/// or for the whole fill; the tool's default of twenty seconds would
-/// give up on requests that are only waiting their turn.
-pub(crate) const RELAYED_SOCKET_TIMEOUT_S: u32 = 300;
+/// How long a relayed run's tool waits on a request, in seconds: as
+/// long as a paced run may last ([`PACED_RUN_CEILING`]). The proxy
+/// holds a background request until its turn, and background requests
+/// take their turns one at a time — a fragment waits behind the others
+/// in flight and a download's subtitle tracks, and while the player
+/// needs every token the host gives, until the player stops asking:
+/// after a fill, which can last minutes, or with playback. A tool that
+/// gave up on the wait would fail the run, and the fallback after a
+/// failed relayed run reads the host directly, the request the relay
+/// exists to keep from it. Waiting is all a relayed request can be
+/// doing that long: the proxy bounds its own fetch from the host, and
+/// fails the request back to the tool when that fetch hangs.
+pub(crate) const RELAYED_SOCKET_TIMEOUT_S: u32 = 24 * 60 * 60;
 
 /// The byte rate a paced run without a relay is held to, in yt-dlp's `--limit-rate`
 /// spelling. The host counts requests per address, and one fragment
