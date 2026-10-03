@@ -41,6 +41,7 @@
 	"bar_cancel_confirm_single": "Cancelar o download de \"{title}\"?",
 	"bar_cancel_confirm_multi": "Cancelar {count} downloads ativos?",
 	"dock_active_label": "{count} download(s) em andamento",
+	"dock_active_speed_label": "{count} download(s) em andamento, {speed}",
 	"dock_unseen_label": "{count} download(s) concluído(s)",
 	"dock_idle_label": "Downloads",
 	"dock_title": "Downloads",
