@@ -16,6 +16,9 @@ export interface ConfirmDeleteDeps {
 	/** Forgets where a removed show's episodes were left, once its
 	 *  rows are gone. */
 	forgetPositions?: (kitsuId: string) => void;
+	/** The Kitsu id a play stamped for a row's show id — for a row
+	 *  whose match never resolved. */
+	kitsuIdOf?: (showId: string) => Promise<string | null>;
 }
 
 export interface ConfirmDeleteResult {
@@ -51,11 +54,22 @@ export async function executeKitsuGroupDelete(
 	for (const id of groupIds) {
 		await deps.historyDelete(id);
 	}
-	const shows = new Set(groupIds.map((id) => deps.matches[id]?.id).filter((k) => !!k));
-	for (const kitsuId of shows) deps.forgetPositions?.(kitsuId as string);
+	for (const kitsuId of await removedShows(groupIds, deps)) deps.forgetPositions?.(kitsuId);
 	const removed = new Set(groupIds);
 	return {
 		removedIds: groupIds,
 		remainingHistory: deps.history.filter((e) => !removed.has(e.id))
 	};
+}
+
+/** The Kitsu ids of the removed rows' shows: each row's resolved
+ *  match, or, for a row whose match never resolved, the mapping its
+ *  plays stamped. A mapping that cannot be read names nothing. */
+async function removedShows(ids: string[], deps: ConfirmDeleteDeps): Promise<Set<string>> {
+	const shows = new Set<string>();
+	for (const id of ids) {
+		const kitsuId = deps.matches[id]?.id ?? (await deps.kitsuIdOf?.(id).catch(() => null)) ?? null;
+		if (kitsuId) shows.add(kitsuId);
+	}
+	return shows;
 }

@@ -39,6 +39,7 @@
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import {
+		allmangaKitsuMapGet,
 		altTitlesFromKitsu,
 		checkAvailability,
 		yearFromKitsuRef,
@@ -263,7 +264,8 @@
 				history: history ?? [],
 				matches: historyMatches,
 				historyDelete,
-				forgetPositions: clearShowPositions
+				forgetPositions: clearShowPositions,
+				kitsuIdOf: allmangaKitsuMapGet
 			});
 			// Open the gate IMMEDIATELY before the optimistic mutation
 			// so the 350ms auto-close window starts when Svelte's
