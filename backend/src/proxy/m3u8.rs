@@ -17,7 +17,10 @@
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
 //! - [`rewrite_uri`] (private) — resolve a relative URI against a base,
-//!   then build a proxy URL with HMAC token.
+//!   then build a proxy URL with HMAC token, marked `k=pl` when the
+//!   manifest names it as a playlist.
+//! - [`names_a_playlist`] — whether the segment route is fetching a
+//!   playlist, by that mark or a `.m3u8` path.
 //!
 //! All functions are pure (no I/O). Property tests target idempotency.
 
@@ -309,6 +312,44 @@ mod tests {
     }
 
     proptest::proptest! {
+        // Whatever a variant's path is called, the master rewrite marks
+        // it a playlist and the segment route reads the mark; a media
+        // playlist's segments go unmarked and count as playlists only
+        // when their path ends in `.m3u8`, in any case.
+        #[test]
+        fn a_masters_renditions_are_playlists_whatever_their_path(
+            name in "[A-Za-z0-9_-]{1,12}",
+            ext in proptest::option::of("(m3u8|M3U8|M3u8|ts|m4s|mp4|php)"),
+            query in proptest::option::of("[a-z]{1,4}=[0-9]{1,4}"),
+        ) {
+            let mut uri = name.clone();
+            if let Some(ext) = &ext {
+                uri = format!("{uri}.{ext}");
+            }
+            if let Some(query) = &query {
+                uri = format!("{uri}?{query}");
+            }
+            let master = format!("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n{uri}\n");
+            let media = format!("#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4.0,\n{uri}\n#EXT-X-ENDLIST\n");
+            let base = Url::parse("https://cdn.example/v/master.m3u8").unwrap();
+            let (origin, session, secret) = (make_origin(), make_session(), AppSecret::random());
+            let kinds = |out: &str| -> Vec<bool> {
+                out.lines()
+                    .filter(|l| l.starts_with(&origin.base))
+                    .map(|l| {
+                        let url = Url::parse(l).unwrap();
+                        let k = url.query_pairs().find(|(k, _)| k == "k").map(|(_, v)| v.into_owned());
+                        names_a_playlist(k.as_deref(), &base.join(&uri).unwrap())
+                    })
+                    .collect()
+            };
+            let rewritten = rewrite_master(master.as_bytes(), &base, &origin, session, &secret).unwrap();
+            proptest::prop_assert_eq!(kinds(&rewritten), vec![true]);
+            let by_path = ext.as_deref().is_some_and(|e| e.eq_ignore_ascii_case("m3u8"));
+            let rewritten = rewrite_media(media.as_bytes(), &base, &origin, session, &secret).unwrap();
+            proptest::prop_assert_eq!(kinds(&rewritten), vec![by_path]);
+        }
+
         // Idempotency property for the master playlist rewrite. The
         // hand-coded test above pins one input; this fuzzes over an
         // arbitrary mix of variant counts + URI shapes so a future
