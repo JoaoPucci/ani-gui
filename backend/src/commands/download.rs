@@ -320,11 +320,7 @@ where
         path_env,
         std::time::Duration::from_secs(60 * 60),
         &mut |line| {
-            // The once-a-second speed reports are the dock's, not the
-            // log's: an hour's transfer would write thousands of them.
-            if !line.starts_with(super::download_progress::RATE_STATUS) {
-                tracing::info!(line = %line, "download.tool.stderr");
-            }
+            super::download_tool_output::log_progress_line(line);
             on_progress(DownloadProgress {
                 line: line.to_string(),
             });
@@ -2345,9 +2341,7 @@ where
         run = tokio::time::timeout_at(deadline, drive) => Some(run),
         () = stop => None,
     };
-    if measured.load(std::sync::atomic::Ordering::Relaxed) {
-        on_line(&super::download_progress::rate_report(0.0));
-    }
+    super::download_tool_output::report_end(&measured, on_line);
     // However the run ended, the tree is taken down before anything
     // follows it: when the tool is still running, and for helpers still
     // in it when the tool exited by itself. A tree that outlives the
