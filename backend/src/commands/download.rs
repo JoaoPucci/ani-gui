@@ -1826,7 +1826,11 @@ where
         }
         cmd.arg("-loglevel")
             .arg("error")
-            .arg("-stats")
+            .arg("-nostats")
+            // Its key=value progress, one per line on stdout, which
+            // the run's meter reads for its speed.
+            .arg("-progress")
+            .arg("pipe:1")
             .args(ffmpeg_referer_args(input_referer))
             .args(ffmpeg_pace_args(live && relayed.is_none()))
             .arg("-i")
@@ -2121,6 +2125,14 @@ fn ytdlp_command(
     }
     cmd.args(ytdlp_referer_args(referer))
         .arg(master_url)
+        // A progress line of the app's shape, one per update, which
+        // the run's meter reads for its speed.
+        .arg("--newline")
+        .arg("--progress-template")
+        .arg(format!(
+            "download:{} %(progress.downloaded_bytes)s",
+            super::download_progress::YTDLP_PROGRESS_MARK
+        ))
         .arg("--no-skip-unavailable-fragments")
         .arg("--fragment-retries")
         .arg("infinite")
@@ -2210,7 +2222,9 @@ where
     cmd.env("TERM", "dumb")
         .env("NO_COLOR", "1")
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
+        // The tools' progress — yt-dlp's template line, ffmpeg's
+        // key=value report — comes on stdout.
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
     // Own process group, so cancellation can address the tool's
@@ -2243,23 +2257,62 @@ where
     // stands down by itself.
     let mut child = crate::spawn::TreeKillChild::new(child);
     let stderr = child.child_mut().stderr.take().ok_or(AniError::Io)?;
+    let stdout = child.child_mut().stdout.take().ok_or(AniError::Io)?;
     let drive = async {
+        use super::download_progress::{progress_bytes, rate_report, RateMeter, RATE_REPORT_EVERY};
         let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(raw)) = lines.next_line().await {
-            // Defense in depth behind the environment above: the
-            // dock's DownloadProgress promises stripped text, and a
-            // tool that colorizes anyway must not reach it.
-            let line = crate::spawn::strip_ansi(raw.as_bytes());
-            // The run is condemned the moment yt-dlp reports it left
-            // MPEG-TS under the .mp4 name: how it ends stops
-            // mattering (exit 0 included), and stopping now spares
-            // the rest of a transfer whose output is already wrong.
-            // The armed guard takes the tool down on return.
-            if crate::commands::download_tool::yt_dlp_could_not_repackage(&line) {
-                *repackage_failed = true;
-                return Err(AniError::FfmpegMissing);
+        let mut progress = BufReader::new(stdout).lines();
+        let (mut lines_open, mut progress_open) = (true, true);
+        // The run's speed, reported to the dock once a second from the
+        // first progress the tool gives.
+        let mut meter = RateMeter::default();
+        let mut measured = false;
+        let mut report = tokio::time::interval(RATE_REPORT_EVERY);
+        report.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        report.tick().await;
+        while lines_open || progress_open {
+            tokio::select! {
+                next = lines.next_line(), if lines_open => {
+                    let Ok(Some(raw)) = next else {
+                        lines_open = false;
+                        continue;
+                    };
+                    // Defense in depth behind the environment above:
+                    // the dock's DownloadProgress promises stripped
+                    // text, and a tool that colorizes anyway must not
+                    // reach it.
+                    let line = crate::spawn::strip_ansi(raw.as_bytes());
+                    // The run is condemned the moment yt-dlp reports
+                    // it left MPEG-TS under the .mp4 name: how it ends
+                    // stops mattering (exit 0 included), and stopping
+                    // now spares the rest of a transfer whose output
+                    // is already wrong. The armed guard takes the tool
+                    // down on return.
+                    if crate::commands::download_tool::yt_dlp_could_not_repackage(&line) {
+                        *repackage_failed = true;
+                        return Err(AniError::FfmpegMissing);
+                    }
+                    on_line(&line);
+                }
+                next = progress.next_line(), if progress_open => {
+                    let Ok(Some(raw)) = next else {
+                        progress_open = false;
+                        continue;
+                    };
+                    // Progress is the meter's, not the dock's text;
+                    // anything else on stdout is the tool's chatter.
+                    let line = crate::spawn::strip_ansi(raw.as_bytes());
+                    if let Some(bytes) = progress_bytes(&line) {
+                        meter.observe(bytes, tokio::time::Instant::now());
+                        measured = true;
+                    }
+                }
+                _ = report.tick() => {
+                    if measured {
+                        on_line(&rate_report(meter.rate_at(tokio::time::Instant::now())));
+                    }
+                }
             }
-            on_line(&line);
         }
         child.child_mut().wait().await.map_err(|_| AniError::Io)
     };

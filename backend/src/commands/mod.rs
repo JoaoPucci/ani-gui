@@ -25,6 +25,7 @@ mod download_names;
 #[path = "download_lock_prop_test.rs"]
 mod download_lock_prop_tests;
 mod download_pacing;
+mod download_progress;
 mod download_range;
 pub(crate) mod download_tool;
 mod download_transfer;
