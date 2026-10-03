@@ -96,3 +96,68 @@ test('a file already open to more keeps what it had', () => {
 		fs.rmSync(root, { recursive: true, force: true });
 	}
 });
+
+// The repack once skipped an image whose AppRun already carried the
+// patch, before it opened the tree: rerun over an image a previous
+// repacker had produced, it left that image's directories closed.
+// Preparing a tree patches AppRun when it needs it and opens the tree
+// either way.
+const { prepareTree } = require('./appimage-tree.cjs');
+
+const TEMPLATE = [
+	'#!/bin/bash',
+	'if [ -z "$APPIMAGE" ]; then',
+	'  exec "$BIN"',
+	'else',
+	'  exec "$BIN" "${args[@]}"',
+	'fi',
+	'',
+].join('\n');
+
+function withAppRun(contents) {
+	const tree = extractLike();
+	fs.writeFileSync(path.join(tree.app, 'AppRun'), contents, { mode: 0o700 });
+	fs.chmodSync(path.join(tree.app, 'AppRun'), 0o700);
+	fs.chmodSync(tree.app, 0o700);
+	return tree;
+}
+
+test('a tree whose AppRun was patched before is still opened', () => {
+	const patched = TEMPLATE.replace('exec "$BIN"\n', 'exec "$BIN" --no-sandbox\n').replace(
+		'exec "$BIN" "${args[@]}"',
+		'exec "$BIN" --no-sandbox "${args[@]}"'
+	);
+	const { root, app } = withAppRun(patched);
+	try {
+		assert.equal(prepareTree(app), false, 'AppRun needed no patch');
+		assert.equal(fs.readFileSync(path.join(app, 'AppRun'), 'utf8'), patched);
+		assert.equal(mode(app), 0o755);
+		assert.equal(mode(path.join(app, 'resources')), 0o755);
+		assert.equal(mode(path.join(app, 'AppRun')), 0o755);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a fresh tree's AppRun is patched and the tree opened", () => {
+	const { root, app } = withAppRun(TEMPLATE);
+	try {
+		assert.equal(prepareTree(app), true, 'AppRun was patched');
+		const appRun = fs.readFileSync(path.join(app, 'AppRun'), 'utf8');
+		assert.match(appRun, /^\s*exec "\$BIN" --no-sandbox$/m);
+		assert.match(appRun, /^\s*exec "\$BIN" --no-sandbox "\$\{args\[@\]\}"$/m);
+		assert.equal(mode(app), 0o755);
+		assert.equal(mode(path.join(app, 'AppRun')), 0o755);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('an AppRun the patch does not recognise stops the repack', () => {
+	const { root, app } = withAppRun('#!/bin/sh\nexec ./other\n');
+	try {
+		assert.throws(() => prepareTree(app), /AppRun patch matched nothing/);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
