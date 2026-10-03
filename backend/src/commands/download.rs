@@ -1664,8 +1664,9 @@ where
             // when there is one: the proxy charges its requests to the
             // host's budget in turn with the player's, so it takes
             // whatever the player leaves, and while the player waits
-            // what its renditions' need leaves of the refill, uncapped. Without one it is paced by
-            // concurrency and byte rate instead.
+            // what its streams' need leaves of the refill, uncapped.
+            // Without one it is paced by concurrency and byte rate
+            // instead.
             let relayed = if live { pacing.relay_url() } else { None };
             let (source_url, run_referer, fragments, rate) = match &relayed {
                 Some(relay) => (
