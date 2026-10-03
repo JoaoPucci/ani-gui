@@ -17,14 +17,11 @@ export function speedParts(bytesPerSecond: number): { unit: 'kbps' | 'mbps'; val
 	return { unit: 'kbps', value: Math.round(bps / 1024) };
 }
 
-/** The total speed of the downloads still running; null while none of
- *  them has reported one. */
+/** The total speed of the downloads still running, a download that
+ *  has not reported yet counting as zero; null while none is running. */
 export function totalSpeed(items: Pick<DownloadItem, 'status' | 'speed'>[]): number | null {
-	const reported = items
-		.filter((i) => i.status === 'pending' || i.status === 'active')
-		.map((i) => i.speed)
-		.filter((s): s is number => s !== null);
-	return reported.length > 0 ? reported.reduce((a, b) => a + b, 0) : null;
+	const running = items.filter((i) => i.status === 'pending' || i.status === 'active');
+	return running.length > 0 ? running.reduce((sum, i) => sum + (i.speed ?? 0), 0) : null;
 }
 
 /** A speed as text in the reader's language: `1.5 MB/s`, `512 KB/s`. */
