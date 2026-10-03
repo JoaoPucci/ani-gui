@@ -291,40 +291,50 @@ async fn the_apps_budget_keeps_the_players_reserve_from_background_traffic() {
     );
 }
 
-/// A player filling its buffer asks back to back, so the line is never
-/// empty and background traffic that only takes unused tokens took
-/// none for as long as the buffer filled — a download beside a player
-/// that had just started, or just sought, stood still for a minute. A
-/// background fetch that has waited its patience joins the line and
-/// is served in turn with the player.
-#[tokio::test(start_paused = true)]
-async fn background_traffic_is_served_in_turn_once_it_has_waited_its_patience() {
-    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
-    budget.admit("cdn.example:443").await;
-    // A player that keeps one request waiting at all times.
-    let player = {
-        let budget = Arc::clone(&budget);
-        tokio::spawn(async move {
+/// Counts the tokens a player that keeps one request waiting at all
+/// times and `background` concurrent background fetchers take at one
+/// host over `span`.
+async fn shares(budget: Arc<HostBudget>, background: usize, span: Duration) -> (usize, usize) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let player_tokens = Arc::new(AtomicUsize::new(0));
+    let background_tokens = Arc::new(AtomicUsize::new(0));
+    let mut tasks = Vec::new();
+    {
+        let (budget, count) = (Arc::clone(&budget), Arc::clone(&player_tokens));
+        tasks.push(tokio::spawn(async move {
             loop {
                 budget.admit("cdn.example:443").await;
+                count.fetch_add(1, Ordering::SeqCst);
             }
-        })
-    };
+        }));
+    }
     tokio::time::sleep(Duration::from_millis(10)).await;
-    let start = tokio::time::Instant::now();
-    budget.admit_background("cdn.example:443").await;
-    let waited = start.elapsed();
-    player.abort();
-    assert!(
-        waited <= BACKGROUND_PATIENCE + Duration::from_millis(500) * 3,
-        "served within its patience and a turn or two: {waited:?}"
-    );
+    for _ in 0..background {
+        let (budget, count) = (Arc::clone(&budget), Arc::clone(&background_tokens));
+        tasks.push(tokio::spawn(async move {
+            loop {
+                budget.admit_background("cdn.example:443").await;
+                count.fetch_add(1, Ordering::SeqCst);
+            }
+        }));
+    }
+    tokio::time::sleep(span).await;
+    for task in &tasks {
+        task.abort();
+    }
+    (
+        player_tokens.load(Ordering::SeqCst),
+        background_tokens.load(Ordering::SeqCst),
+    )
 }
 
-/// Within its patience, background traffic still never goes ahead of
-/// a player's request.
+/// A player filling its buffer asks back to back, so the line is never
+/// empty, and background traffic that only took unused tokens took
+/// none for as long as the buffer filled — a download beside a player
+/// that had just started, or just sought, stood still for a minute.
+/// Background traffic waiting beside it is served at the next turn.
 #[tokio::test(start_paused = true)]
-async fn within_its_patience_background_traffic_still_yields() {
+async fn background_traffic_beside_a_waiting_player_is_served_at_the_next_turn() {
     let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
     budget.admit("cdn.example:443").await;
     let player = {
@@ -336,16 +346,90 @@ async fn within_its_patience_background_traffic_still_yields() {
         })
     };
     tokio::time::sleep(Duration::from_millis(10)).await;
-    let waiting = budget.admit_background("cdn.example:443");
-    tokio::pin!(waiting);
-    assert!(
-        tokio::time::timeout(
-            BACKGROUND_PATIENCE - Duration::from_millis(100),
-            waiting.as_mut()
-        )
-        .await
-        .is_err(),
-        "the player kept every token within the patience"
-    );
+    let served = tokio::time::timeout(
+        Duration::from_millis(500) * 3,
+        budget.admit_background("cdn.example:443"),
+    )
+    .await;
     player.abort();
+    assert!(served.is_ok(), "served after the player's next token");
+}
+
+/// While both wait, the player and background traffic take turns, and
+/// however many background fetches are in flight they share the one
+/// turn: a download running four fragments at once takes no more of
+/// the host than one running one.
+#[tokio::test(start_paused = true)]
+async fn beside_a_waiting_player_background_traffic_takes_every_other_token() {
+    for background in [1, 4] {
+        let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+        budget.admit("cdn.example:443").await;
+        let (player, taken) = shares(budget, background, Duration::from_secs(30)).await;
+        assert!(
+            taken > 0 && taken.abs_diff(player) <= 2,
+            "{background} background fetchers: the player took {player}, background {taken}"
+        );
+    }
+}
+
+/// With no player request waiting, background traffic still leaves the
+/// reserve: however many background fetches are in flight, a player
+/// asking now and then is served at once.
+#[tokio::test(start_paused = true)]
+async fn many_background_fetches_leave_the_reserve_to_a_player_asking_now_and_then() {
+    let budget = HostBudget::fresh();
+    let fetchers: Vec<_> = (0..4)
+        .map(|_| {
+            let budget = Arc::clone(&budget);
+            tokio::spawn(async move {
+                loop {
+                    budget.admit_background("cdn.example:443").await;
+                }
+            })
+        })
+        .collect();
+    for request in 0..20 {
+        tokio::time::sleep(Duration::from_secs(6)).await;
+        let start = tokio::time::Instant::now();
+        budget.admit("cdn.example:443").await;
+        assert_eq!(
+            start.elapsed(),
+            Duration::ZERO,
+            "the player's request {request} waited"
+        );
+    }
+    for fetcher in &fetchers {
+        fetcher.abort();
+    }
+}
+
+/// A background fetch given up while it waits — its request dropped —
+/// leaves no turn behind it: the player goes on at the refill rate.
+#[tokio::test(start_paused = true)]
+async fn a_background_fetch_given_up_while_waiting_holds_no_turn() {
+    let budget = Arc::new(HostBudget::new(1, Duration::from_millis(500)));
+    budget.admit("cdn.example:443").await;
+    let player = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move {
+            loop {
+                budget.admit("cdn.example:443").await;
+            }
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let _ = tokio::time::timeout(
+        Duration::from_millis(700),
+        budget.admit_background("cdn.example:443"),
+    )
+    .await;
+    player.abort();
+    let start = tokio::time::Instant::now();
+    tokio::time::timeout(Duration::from_millis(1100), async {
+        budget.admit("cdn.example:443").await;
+        budget.admit("cdn.example:443").await;
+    })
+    .await
+    .expect("two refills' worth of player requests in two refills");
+    assert!(start.elapsed() >= Duration::from_millis(500));
 }
