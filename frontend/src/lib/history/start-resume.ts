@@ -64,13 +64,7 @@ export interface StartResumeDeps {
 		seriesTotal: number | null,
 		seriesFinished: boolean
 	) => Promise<void>;
-	navigateToSession: (
-		kitsuId: string,
-		session: { session_id: string },
-		episode: number,
-		quality: string,
-		mode: 'sub' | 'dub'
-	) => void;
+	navigateToSession: (kitsuId: string, session: { session_id: string }, episode: number) => void;
 }
 
 export function makeStartResume(
@@ -114,7 +108,7 @@ export function makeStartResume(
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
 			void deps.markWatched(args).catch(() => {});
 			void deps.syncTrackers(match.id, episode, seriesTotal, seriesFinished).catch(() => {});
-			deps.navigateToSession(match.id, session, episode, quality, mode);
+			deps.navigateToSession(match.id, session, episode);
 		} catch (e) {
 			deps.onBusy(null);
 			deps.onProgress(null);

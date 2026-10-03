@@ -1916,7 +1916,7 @@
 			// /anime/[id], not to the previously-watched episode.
 			// Episode navigation already lives in the player's prev/
 			// next controls; the back button is for leaving the show.
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp, quality, mode), {
+			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
 				replaceState: true
 			});
 			/* eslint-enable svelte/no-navigation-without-resolve */

@@ -684,11 +684,10 @@
 		// (mode-independent), NOT the dub/sub playable cap, and only
 		// for a finished series — see /play/[id] for the rationale.
 		syncTrackers: (id, ep, total, finished) => syncWatchedToTrackers(id, ep, total, finished),
-		navigateToSession: (id, session, ep, quality, mode) => {
+		navigateToSession: (id, session, ep) => {
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(
-				resolve('/play/[id]', { id }) +
-					buildPlayQuery(session as CreateSessionResponse, ep, quality, mode)
+				resolve('/play/[id]', { id }) + buildPlayQuery(session as CreateSessionResponse, ep)
 			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		}
