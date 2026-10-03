@@ -166,9 +166,10 @@ async fn a_change_before_the_wait_began_is_seen_at_once() {
 }
 
 /// The relay holds a fragment's request until its turn at the host, and
-/// while the player needs every token the host gives that turn comes
-/// only when the player stops asking — after a fill that can last
-/// minutes, or with playback. A tool that gave up on the wait would fail
+/// while the player's need with a quarter to spare reaches the refill
+/// that turn comes only when the player stops asking — at the end of a
+/// fill that can last minutes while the need is under the refill, and
+/// when playback stops once it is over it. A tool that gave up on the wait would fail
 /// the run, and a failed relayed run is followed by a fallback that
 /// reads the host directly: the request the relay exists to keep from
 /// it. The tool waits as long as a paced run may last.
