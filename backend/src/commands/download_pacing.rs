@@ -125,11 +125,11 @@ static NEVER_LANE: Semaphore = Semaphore::const_new(Semaphore::MAX_PERMITS);
 /// The sidecar fetches' lane while playback is live: one in flight at
 /// a time across every download, whatever concurrency each
 /// download's phase chose, so the idle tokens the player leaves go to
-/// one track at a time. None of them waits in the host's line ahead
-/// of the player — they are background traffic at the host's budget
-/// ([`crate::proxy::host_budget::HostBudget::admit_background`]),
+/// one track at a time. They are background traffic at the host's
+/// budget ([`crate::proxy::host_budget::HostBudget::admit_background`]),
 /// including a fetch that asked before playback went live and is past
-/// the gate already.
+/// the gate already: behind the player for their patience, then in
+/// turn with it.
 pub(crate) static SIDECAR_LANE: Semaphore = Semaphore::const_new(1);
 
 /// What a sidecar fetch asks before it goes to the host: whether
