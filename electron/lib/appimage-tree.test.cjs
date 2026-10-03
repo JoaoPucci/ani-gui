@@ -69,3 +69,30 @@ test('a symlink is left as it is, and its target is opened once, as a file', () 
 		fs.rmSync(root, { recursive: true, force: true });
 	}
 });
+
+test('a symlink is never followed out of the tree', () => {
+	const { root, app } = extractLike();
+	try {
+		const outside = path.join(root, 'outside');
+		fs.mkdirSync(outside, { mode: 0o700 });
+		fs.chmodSync(outside, 0o700);
+		fs.symlinkSync(outside, path.join(app, 'resources', 'away'));
+		openTreeToAll(app);
+		assert.equal(mode(outside), 0o700);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('a file already open to more keeps what it had', () => {
+	const { root, app } = extractLike();
+	try {
+		const shared = path.join(app, 'resources', 'shared.dat');
+		fs.writeFileSync(shared, 'data');
+		fs.chmodSync(shared, 0o664);
+		openTreeToAll(app);
+		assert.equal(mode(shared), 0o664);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
