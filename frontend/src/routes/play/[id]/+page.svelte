@@ -1866,6 +1866,10 @@
 					switchProgress = progressLabel(p);
 				}
 			);
+			// The viewer left while the session was on its way: nothing
+			// below is theirs any more, least of all a navigation back
+			// into the player.
+			if (gone) return;
 			// Reset the one-shot auto-retry budget only on a real episode
 			// switch — Next/Prev/pick are distinct session-classes, so
 			// each gets its own shot. Resetting on a same-episode landing
@@ -1986,6 +1990,9 @@
 		// is broader than needed (drops sibling episodes too) but the
 		// sibling prefetches are warming work; losing them costs only
 		// the next slow play, which is acceptable for the retry.
+		// The viewer left while the eviction was out: a fresh resolve
+		// would only navigate them back.
+		if (gone) return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
 	}
