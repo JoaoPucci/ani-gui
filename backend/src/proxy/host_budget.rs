@@ -20,8 +20,10 @@
 //! and, while playback is live, its own fetches through the proxy,
 //! since the host counts them all against the one address — as
 //! background traffic, which takes a token only while no one waits for
-//! one and never takes the last [`BACKGROUND_RESERVE`] of the bucket,
-//! so the player's next requests find them there. The bucket is per
+//! one until it has waited [`BACKGROUND_PATIENCE`], when it is served in
+//! turn with the player, and which never takes the last
+//! [`BACKGROUND_RESERVE`] of the bucket, so the player's next requests
+//! find them there. The bucket is per
 //! host: a download from a different host than the player's has a
 //! bucket of its own, and the two meet only if the host counts them
 //! together. Of the app's own fetches, not charged: a cached
@@ -55,6 +57,13 @@ pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 /// request and a seek's few are served from them at once, however much
 /// background traffic has been taking what the player was not using.
 pub(crate) const BACKGROUND_RESERVE: u32 = 5;
+
+/// How long background traffic yields to the player before it joins
+/// the host's line and is served in turn. A player filling its buffer
+/// keeps a request waiting at all times, for a minute after a start or
+/// a seek; without a limit a download beside it would take nothing for
+/// all that time.
+pub(crate) const BACKGROUND_PATIENCE: Duration = Duration::from_millis(4500);
 
 /// One host's budget: the tokens on hand and when they were last
 /// topped up.
@@ -197,16 +206,20 @@ impl HostBudget {
 
     /// A token for `host` for background traffic — subtitle tracks,
     /// the player's and a download's, which playback can wait for —
-    /// which never takes a place in the host's line:
+    /// which within its patience takes no place in the host's line:
     /// it takes a token only while no one is waiting for one, and
     /// otherwise waits a refill and looks again. Whoever is in the
-    /// line is served first, however long the background fetch has
-    /// been waiting; with the line empty it waits for its token like
-    /// any other. It never takes the budget's reserve
+    /// line is served first while the background fetch is within its
+    /// patience; with the line empty it waits for its token like any
+    /// other. It never takes the budget's reserve
     /// ([`BACKGROUND_RESERVE`] in the app's budget), which is left for
-    /// the player's next requests.
+    /// the player's next requests. Once it has waited
+    /// [`BACKGROUND_PATIENCE`] it stops yielding and joins the line,
+    /// served in turn with the player, so a player filling its buffer
+    /// cannot keep it waiting for the whole fill.
     pub(crate) async fn admit_background(&self, host: &str) {
         let line = self.line(host);
+        let out_of_patience = Instant::now() + BACKGROUND_PATIENCE;
         loop {
             let wait = match line.try_lock() {
                 Ok(_nobody_waiting) => match self.take_for(host, self.reserve) {
@@ -215,8 +228,15 @@ impl HostBudget {
                 },
                 Err(_someone_waiting) => self.refill,
             };
-            tokio::time::sleep(wait).await;
+            let now = Instant::now();
+            if now >= out_of_patience {
+                break;
+            }
+            tokio::time::sleep(wait.min(out_of_patience - now)).await;
         }
+        // Waited its patience: it joins the line and is served in turn
+        // with the player.
+        self.admit(host).await;
     }
 
     /// The line of requests waiting at `host`.
