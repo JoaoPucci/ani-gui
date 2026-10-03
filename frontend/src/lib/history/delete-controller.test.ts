@@ -104,3 +104,52 @@ describe('executeKitsuGroupDelete — kept positions', () => {
 		expect(forgetPositions).not.toHaveBeenCalled();
 	});
 });
+
+describe('executeKitsuGroupDelete — kept positions of a card without its match', () => {
+	// Positions are keyed by the Kitsu id the play page had, and a play
+	// stamps the row's show id → Kitsu id mapping. A card deleted before
+	// its match resolved still has that mapping to forget by.
+	test('forgets by the stamped mapping when the match never resolved', async () => {
+		const history = [h('aa-1')];
+		const historyDelete = vi.fn().mockResolvedValue(undefined);
+		const forgetPositions = vi.fn();
+		const kitsuIdOf = vi.fn(async (showId: string) => (showId === 'aa-1' ? 'k-9' : null));
+
+		await executeKitsuGroupDelete('aa-1', {
+			history,
+			matches: { 'aa-1': undefined },
+			historyDelete,
+			forgetPositions,
+			kitsuIdOf
+		});
+
+		expect(forgetPositions).toHaveBeenCalledWith('k-9');
+	});
+
+	test('asks for no mapping when the match resolved', async () => {
+		const kitsuIdOf = vi.fn();
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1')],
+			matches: { 'aa-1': m('k-1') },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions,
+			kitsuIdOf
+		});
+		expect(kitsuIdOf).not.toHaveBeenCalled();
+		expect(forgetPositions).toHaveBeenCalledWith('k-1');
+	});
+
+	test('a mapping that cannot be read forgets nothing and fails nothing', async () => {
+		const forgetPositions = vi.fn();
+		const result = await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1')],
+			matches: { 'aa-1': null },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions,
+			kitsuIdOf: vi.fn().mockRejectedValue(new Error('down'))
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+		expect(result.removedIds).toEqual(['aa-1']);
+	});
+});
