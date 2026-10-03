@@ -6358,6 +6358,45 @@ async fn a_yt_dlp_run_reports_its_speed_to_the_dock() {
     );
 }
 
+/// A user's yt-dlp configuration applies to every run it does not
+/// override, and a run's progress line is only one of what it can
+/// change: `--no-progress` or `--quiet` in a configuration file
+/// silenced the line the meter reads, so the indicators read zero for
+/// the whole download, and a configured downloader silenced it even
+/// past `--progress`. Every run is told to load no configuration, so
+/// it is the run the app built.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_yt_dlp_run_loads_no_user_configuration() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2\nexit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(
+        run.split_whitespace().any(|a| a == "--ignore-config"),
+        "the run loads no user configuration: {run}"
+    );
+}
+
 /// ffmpeg's -stats line is one carriage-return-separated run the app
 /// read whole at the end. The fallback asks for its key=value progress
 /// on stdout instead and reports the speed the same way.
