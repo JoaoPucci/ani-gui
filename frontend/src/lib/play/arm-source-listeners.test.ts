@@ -170,4 +170,48 @@ describe('armSourceScopedListeners', () => {
 		video.dispatchEvent(new Event('pause'));
 		expect(readPosition('show-a', 6, positions)).toBe(300);
 	});
+
+	describe('a kept point saved while the length was unknown', () => {
+		// A point saved while the stream's length was not known escapes
+		// the finished cutoff. The visit that learns the length is the
+		// first that can apply it: a point in the last 90 seconds is
+		// finished, so it is forgotten and not sought to.
+		function metadataWith(duration: number) {
+			Object.defineProperty(video, 'duration', { configurable: true, get: () => duration });
+			video.currentTime = 0;
+			video.dispatchEvent(new Event('loadedmetadata'));
+		}
+
+		it('is forgotten, not sought to, once the length shows it in the last 90 seconds', () => {
+			savePosition('show-a', 6, 1400, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(1420);
+			expect(video.currentTime).toBe(0);
+			expect(readPosition('show-a', 6, positions)).toBeNull();
+		});
+
+		it('is sought to when the length shows it short of the end', () => {
+			savePosition('show-a', 6, 600, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(1420);
+			expect(video.currentTime).toBe(600);
+			expect(readPosition('show-a', 6, positions)).toBe(600);
+		});
+
+		it('is sought to while the length is still unknown', () => {
+			savePosition('show-a', 6, 1400, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(Number.POSITIVE_INFINITY);
+			expect(video.currentTime).toBe(1400);
+		});
+
+		it("a pending recovery's point is sought to wherever it falls", () => {
+			// A recovery resumes the stream the viewer was watching a
+			// moment ago; the cutoff is about what a later visit opens.
+			recoveryResume.capture('show-a', 6, 1400);
+			arm('show-a', 6);
+			metadataWith(1420);
+			expect(video.currentTime).toBe(1400);
+		});
+	});
 });
