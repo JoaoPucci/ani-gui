@@ -22,8 +22,9 @@
 //! background traffic, one request at a time, which while no one waits
 //! takes a token only above the last [`BACKGROUND_RESERVE`] of the
 //! bucket, so the player's next requests find them there, and while the
-//! player waits takes every other token with it, so a player filling
-//! its buffer neither starves it nor is starved. The bucket is per
+//! player waits takes a turn once the player has taken what its
+//! renditions need with room to spare ([`player_turns`]), so a player
+//! filling its buffer neither starves it nor is starved. The bucket is per
 //! host: a download from a different host than the player's has a
 //! bucket of its own, and the two meet only if the host counts them
 //! together. Of the app's own fetches, not charged: a cached
@@ -48,10 +49,11 @@ use url::Url;
 pub(crate) const SEGMENT_BURST: u32 = 20;
 
 /// The steady rate once the burst is spent: one request per this
-/// interval, forty a minute. A segment plays for about five seconds,
-/// so the buffer still grows three times faster than playback drains
-/// it, and over one and a half times as fast while background traffic
-/// takes every other token.
+/// interval, forty a minute. One muxed stream of five-second segments
+/// needs twelve, so its buffer grows over three times faster than
+/// playback drains it, and still well ahead while background traffic
+/// takes every other token; video and audio as two renditions need
+/// twenty-four, which [`player_turns`] leaves the player with room.
 pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 
 /// Tokens background traffic leaves in the bucket: the player's next
