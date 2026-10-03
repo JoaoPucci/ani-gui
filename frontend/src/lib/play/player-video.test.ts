@@ -5,7 +5,12 @@
 // the listener's volume and mute, as it did when one element served
 // every page.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { __resetPlayerAudioForTests, createPlayerVideo, releasePlayerVideo } from './player-video';
+import {
+	__resetPlayerAudioForTests,
+	createPlayerVideo,
+	placePlayerVideo,
+	releasePlayerVideo
+} from './player-video';
 
 afterEach(() => {
 	__resetPlayerAudioForTests();
@@ -33,6 +38,28 @@ describe('createPlayerVideo', () => {
 		const next = createPlayerVideo();
 		expect(next.volume).toBeCloseTo(0.35);
 		expect(next.muted).toBe(true);
+	});
+});
+
+describe('placePlayerVideo', () => {
+	it('puts the element in the slot, and a slot that holds it keeps it as it is', () => {
+		const slot = document.createElement('div');
+		const v = createPlayerVideo();
+		expect(placePlayerVideo(v, slot)).toBe(v);
+		expect(v.parentElement).toBe(slot);
+		const append = vi.spyOn(slot, 'appendChild');
+		placePlayerVideo(v, slot);
+		expect(append).not.toHaveBeenCalled();
+	});
+
+	it('moves the element to a slot rendered again', () => {
+		const first = document.createElement('div');
+		const again = document.createElement('div');
+		const v = createPlayerVideo();
+		placePlayerVideo(v, first);
+		placePlayerVideo(v, again);
+		expect(v.parentElement).toBe(again);
+		expect(first.children).toHaveLength(0);
 	});
 });
 
