@@ -267,6 +267,47 @@ mod tests {
         SessionId::new()
     }
 
+    /// A URL the rewrite marked decides by its mark; only an unmarked
+    /// one falls back to its path, and then to the lowercase `.m3u8`
+    /// the segment route always matched.
+    #[test]
+    fn the_mark_decides_and_an_unmarked_url_goes_by_its_lowercase_path() {
+        let upper = Url::parse("https://cdn.example/v/SEG001.M3U8").unwrap();
+        let lower = Url::parse("https://cdn.example/v/index.m3u8").unwrap();
+        assert!(names_a_playlist(Some("pl"), &upper));
+        assert!(!names_a_playlist(Some("md"), &upper));
+        assert!(!names_a_playlist(Some("md"), &lower));
+        assert!(!names_a_playlist(None, &upper));
+        assert!(names_a_playlist(None, &lower));
+    }
+
+    /// Media a media playlist names carries the media mark, whatever
+    /// its path: an uppercase `.M3U8` segment, key or init object is
+    /// streamed through, not parsed as a playlist.
+    #[test]
+    fn a_media_playlists_objects_are_marked_media() {
+        let media = b"#EXTM3U\n#EXT-X-TARGETDURATION:4\n\
+                      #EXT-X-KEY:METHOD=AES-128,URI=\"KEY.M3U8\"\n\
+                      #EXT-X-MAP:URI=\"INIT.M3U8\"\n\
+                      #EXTINF:4.0,\nSEG001.M3U8\n#EXT-X-ENDLIST\n";
+        let base = Url::parse("https://cdn.example/v/index.m3u8").unwrap();
+        let (origin, session, secret) = (make_origin(), make_session(), AppSecret::random());
+        let out = rewrite_media(media, &base, &origin, session, &secret).unwrap();
+        let marks: Vec<String> = out
+            .split(|c| c == '\n' || c == '"')
+            .filter(|l| l.starts_with(&origin.base))
+            .map(|l| {
+                Url::parse(l)
+                    .unwrap()
+                    .query_pairs()
+                    .find(|(k, _)| k == "k")
+                    .map(|(_, v)| v.into_owned())
+                    .unwrap_or_default()
+            })
+            .collect();
+        assert_eq!(marks, vec!["md", "md", "md"], "{out}");
+    }
+
     #[test]
     fn rewrite_master_with_relative_variants() {
         let body = b"#EXTM3U\n\
@@ -490,9 +531,10 @@ mod tests {
             };
             let rewritten = rewrite_master(master.as_bytes(), &base, &origin, session, &secret).unwrap();
             proptest::prop_assert_eq!(kinds(&rewritten), vec![true]);
-            let by_path = ext.as_deref().is_some_and(|e| e.eq_ignore_ascii_case("m3u8"));
+            // What a media playlist names is media, a key or an init
+            // segment, whatever its path says.
             let rewritten = rewrite_media(media.as_bytes(), &base, &origin, session, &secret).unwrap();
-            proptest::prop_assert_eq!(kinds(&rewritten), vec![by_path]);
+            proptest::prop_assert_eq!(kinds(&rewritten), vec![false]);
         }
 
         // Idempotency property for the master playlist rewrite. The
