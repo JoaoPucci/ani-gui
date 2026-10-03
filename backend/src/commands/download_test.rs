@@ -6203,6 +6203,23 @@ mod download_rate {
         assert!(rate > 0.0 && rate <= 1_000.0 + 1.0, "{rate}");
     }
 
+    #[test]
+    fn a_recount_carries_the_speed_on_rather_than_flashing_zero() {
+        // yt-dlp's own count can step back — a fragment retried counts
+        // its bytes again. The speed carries on from the bytes gained
+        // since, rather than reading zero until the window refills.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(1_000_000, start + Duration::from_secs(1));
+        meter.observe(2_000_000, start + Duration::from_secs(2));
+        meter.observe(1_500_000, start + Duration::from_secs(3));
+        assert!(
+            meter.rate_at(start + Duration::from_secs(3)) > 0.0,
+            "the speed carried on through the recount"
+        );
+    }
+
     proptest! {
         /// Whatever the tool reports and whenever it is asked, the rate
         /// is never negative and never more than the bytes it has seen
@@ -6342,4 +6359,49 @@ async fn an_ffmpeg_run_reports_its_speed_to_the_dock() {
             .any(|l| l.starts_with("total_size=") || l.starts_with("progress=")),
         "the progress lines are not the dock's text: {lines:?}"
     );
+}
+
+/// A run that reported a speed reports zero when it ends, however it
+/// ends: between runs — the next episode resolving, a paced run
+/// waiting for the lane, the fallback starting — nothing is moving, and
+/// the indicators must not keep showing the last speed.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_run_that_measured_reports_zero_when_it_ends() {
+    for exit in ["exit 0", "exit 1"] {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        stage_tool(
+            bin.path(),
+            "yt-dlp",
+            &format!(
+                "for b in 0 1048576 2097152 3145728; do echo \"ani-gui-progress $b\"; sleep 0.4; done\n{exit}"
+            ),
+        );
+        let mut lines = Vec::new();
+        let _ = spawn_download_tool(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_secs(10),
+            &mut |l: &str| lines.push(l.to_string()),
+        )
+        .await;
+        let rates = reported_rates(&lines);
+        assert!(
+            rates.iter().any(|&r| r > 0),
+            "{exit}: a speed was reported: {lines:?}"
+        );
+        assert_eq!(
+            rates.last(),
+            Some(&0),
+            "{exit}: the run ended on zero: {lines:?}"
+        );
+    }
 }
