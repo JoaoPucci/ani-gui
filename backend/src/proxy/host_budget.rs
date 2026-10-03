@@ -59,6 +59,54 @@ pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 /// background traffic has been taking what the player was not using.
 pub(crate) const BACKGROUND_RESERVE: u32 = 5;
 
+/// How much more than its renditions need the player's share of a
+/// waiting line has to be: the room a player behind its own playback
+/// has to catch up in, and a buffer still filling has to grow in.
+pub(crate) const PLAYER_HEADROOM: f64 = 1.25;
+
+/// How many tokens the player waited for go before a waiting background
+/// request gets one, given what the player's renditions need — a
+/// request per rendition per segment, as requests a second. One while
+/// alternating leaves the player its need with room; more while it
+/// needs more of the refill, enough that its share covers the need with
+/// [`PLAYER_HEADROOM`]; `None` while that need is the whole refill or
+/// more, when background traffic gets no turn while the player waits
+/// and takes only what the player leaves.
+#[must_use]
+pub(crate) fn player_turns(demand: f64, refill: Duration) -> Option<u32> {
+    let rate = 1.0 / refill.as_secs_f64();
+    let need = demand.max(0.0) * PLAYER_HEADROOM;
+    if need <= rate / 2.0 {
+        return Some(1);
+    }
+    if need >= rate {
+        return None;
+    }
+    // k / (k + 1) of the refill covers the need once k reaches it.
+    let turns = (need / (rate - need) - 1e-9).ceil();
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Some((turns as u32).max(1))
+}
+
+/// A rendition the player is playing: the playback each of its segments
+/// buys, and when the player last fetched one.
+#[derive(Debug, Clone, Copy)]
+struct Rendition {
+    segment: Duration,
+    fetched_at: Instant,
+}
+
+impl Rendition {
+    /// Whether the player still plays it: a segment fetched within a few
+    /// segments' worth of playback, or half a minute for short ones. A
+    /// player that fell behind fetches each rendition at least that
+    /// often; one it switched away from or left stops counting.
+    fn playing(&self, now: Instant) -> bool {
+        now.saturating_duration_since(self.fetched_at)
+            <= (self.segment * 4).max(Duration::from_secs(30))
+    }
+}
+
 /// One host's budget: the tokens on hand and when they were last
 /// topped up.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -138,17 +186,33 @@ pub(crate) fn take_leaving(
 struct Turn {
     /// A background request is waiting for a token.
     background_waiting: bool,
-    /// The player has been served a token it waited for since the
-    /// waiting background request arrived, so the next is the
+    /// Tokens the player waited for since the waiting background
+    /// request arrived.
+    player_taken: u32,
+    /// The player has taken its turns, so the next token is the
     /// background request's.
     background_owed: bool,
 }
 
-/// One host's tokens and turn.
+/// One host's tokens, turn, and the renditions the player plays from
+/// it.
 #[derive(Debug)]
 struct HostState {
     bucket: Bucket,
     turn: Turn,
+    renditions: HashMap<String, Rendition>,
+}
+
+impl HostState {
+    /// What the player's renditions at this host need, as requests a
+    /// second; renditions it no longer plays are forgotten.
+    fn player_demand(&mut self, now: Instant) -> f64 {
+        self.renditions.retain(|_, r| r.playing(now));
+        self.renditions
+            .values()
+            .map(|r| 1.0 / r.segment.as_secs_f64())
+            .sum()
+    }
 }
 
 /// Clears the waiting background request's turn when it is served or
@@ -214,15 +278,39 @@ impl HostBudget {
             .map(|state| state.bucket.tokens())
     }
 
+    /// The player fetched a segment of `rendition` from `host`, buying
+    /// `segment` of playback: the rendition counts toward what the
+    /// player needs from the host while it keeps fetching.
+    pub(crate) fn note_player_segment(&self, host: &str, rendition: &str, segment: Duration) {
+        let segment = segment.clamp(Duration::from_millis(500), Duration::from_secs(60));
+        self.with_state(host, |state| {
+            state.renditions.insert(
+                rendition.to_owned(),
+                Rendition {
+                    segment,
+                    fetched_at: Instant::now(),
+                },
+            );
+        });
+    }
+
+    /// What the player's renditions at `host` need, as requests a
+    /// second.
+    #[cfg(test)]
+    pub(crate) fn player_demand(&self, host: &str) -> f64 {
+        self.with_state(host, |state| state.player_demand(Instant::now()))
+    }
+
     /// A token for `host`, waiting for one while the burst is spent.
     /// Waiters are served in the order they arrived: each takes its
     /// place in the host's line and keeps it until it has its token,
     /// so a request arriving as a token matures does not take it from
     /// one that has waited for it, and a few requests arriving at once
     /// cannot keep taking the tokens ahead of the one that has waited
-    /// longest. A token it had to wait for while background traffic
-    /// waits gives the next one to the background request, and while
-    /// that one is owed the line yields it.
+    /// longest. While background traffic waits, the tokens the player
+    /// had to wait for count toward its turns ([`player_turns`]); once
+    /// it has taken them the next token is the background request's,
+    /// and while that one is owed the line yields it.
     pub(crate) async fn admit(&self, host: &str) {
         let line = self.line(host);
         let _place = line.lock().await;
@@ -240,7 +328,10 @@ impl HostBudget {
                     0,
                 );
                 if wait.is_none() && waited && state.turn.background_waiting {
-                    state.turn.background_owed = true;
+                    state.turn.player_taken += 1;
+                    let demand = state.player_demand(Instant::now());
+                    state.turn.background_owed = player_turns(demand, self.refill)
+                        .is_some_and(|turns| state.turn.player_taken >= turns);
                 }
                 wait
             });
@@ -267,10 +358,11 @@ impl HostBudget {
     /// only while more than the budget's reserve
     /// ([`BACKGROUND_RESERVE`] in the app's budget) is on hand, so the
     /// player's next requests find the reserve there. With the player
-    /// waiting in the line it yields until the player has been served
-    /// a token it waited for, and then takes the next: while both
-    /// wait, they take every other token, and a player filling its
-    /// buffer cannot keep it waiting for the whole fill.
+    /// waiting in the line it yields until the player has taken its
+    /// turns ([`player_turns`]) and then takes the next: while both
+    /// wait, the player gets what its renditions need with room, the
+    /// background request the rest of the refill, and a player filling
+    /// its buffer cannot keep it waiting for the whole fill.
     pub(crate) async fn admit_background(&self, host: &str) {
         let lane = self.lane(host);
         let _turn = lane.lock().await;
@@ -322,6 +414,7 @@ impl HostBudget {
         let state = states.entry(host.to_owned()).or_insert_with(|| HostState {
             bucket: Bucket::full(self.burst, Instant::now()),
             turn: Turn::default(),
+            renditions: HashMap::new(),
         });
         f(state)
     }
