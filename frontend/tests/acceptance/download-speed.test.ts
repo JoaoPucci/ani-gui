@@ -89,10 +89,15 @@ describe('download speed', () => {
 			destDir: '/dl'
 		});
 		downloadStore.markActive(id, new AbortController());
+		apps.push(mount(DownloadDock, { target }));
 		apps.push(mount(DownloadBar, { target }));
 		flushSync();
-		expect(target.querySelector('.dl-bar-speed')?.textContent).toContain(
-			m.download_speed_kbps({ value: '0' })
+		const zero = m.download_speed_kbps({ value: '0' });
+		expect(target.querySelector('.dl-bar-speed')?.textContent).toContain(zero);
+		const trigger = target.querySelector('button[aria-haspopup="menu"]');
+		expect(trigger?.textContent).toContain(zero);
+		expect(trigger?.getAttribute('aria-label')).toBe(
+			m.download_dock_active_speed_label({ count: 1, speed: zero })
 		);
 	});
 });
