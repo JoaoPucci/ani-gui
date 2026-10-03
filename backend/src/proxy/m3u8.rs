@@ -17,10 +17,11 @@
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
 //! - `build_proxy_uri` (private) — resolve a relative URI against a base,
-//!   then build a proxy URL with HMAC token, marked `k=pl` when the
-//!   manifest names it as a playlist.
+//!   then build a proxy URL with HMAC token, marked `k=pl` when a master
+//!   names it as a playlist and `k=md` when a media playlist names it.
 //! - [`names_a_playlist`] — whether the segment route is fetching a
-//!   playlist, by that mark or a `.m3u8` path.
+//!   playlist: by that mark, or for an unmarked URL by a lowercase
+//!   `.m3u8` path.
 //!
 //! All functions are pure (no I/O). Property tests target idempotency.
 
@@ -33,7 +34,8 @@ use crate::proxy::token::{sign_segment, AppSecret, SessionId};
 
 /// How the proxy should render rewritten URIs back into the manifest.
 /// Path style: `/s/<session>/seg?u=<base64-url-encoded-original>&t=<hmac>`,
-/// with `&k=pl` on a URI the manifest names as a playlist.
+/// with `&k=pl` on a URI a master names as a playlist and `&k=md` on
+/// one a media playlist names.
 #[derive(Debug, Clone)]
 pub struct ProxyOrigin {
     /// e.g. `http://127.0.0.1:42337` — no trailing slash.
