@@ -84,14 +84,24 @@ impl ProxyOrigin {
 /// The query pair that marks a proxied URI as a playlist.
 const PLAYLIST_KIND: &str = "k=pl";
 
-/// Whether the segment route is fetching a playlist: one the master
-/// named as a playlist, whatever its URL looks like — HLS names a
-/// playlist by where it appears, and a rendition may sit at
-/// `INDEX.M3U8` or `playlist?id=720` — or, for a URL rewritten without
-/// the mark, one whose path ends in `.m3u8` in any case.
+/// The query pair that marks a proxied URI as media, a key or an init
+/// segment.
+const MEDIA_KIND: &str = "k=md";
+
+/// Whether the segment route is fetching a playlist. HLS names a
+/// playlist by where it appears, not by its URL, so the rewrite marks
+/// each URI it writes: what a master names is a playlist, whatever its
+/// URL looks like — a rendition may sit at `INDEX.M3U8` or
+/// `playlist?id=720` — and what a media playlist names is media, even
+/// at a path ending in `.M3U8`. Only a URL without either mark goes by
+/// its path, and then by the lowercase `.m3u8` it always matched.
 #[must_use]
 pub fn names_a_playlist(kind: Option<&str>, upstream: &Url) -> bool {
-    kind == Some("pl") || upstream.path().to_ascii_lowercase().ends_with(".m3u8")
+    match kind {
+        Some("pl") => true,
+        Some("md") => false,
+        _ => upstream.path().ends_with(".m3u8"),
+    }
 }
 
 /// What a rewritten URI points at, which decides how the segment route
@@ -251,7 +261,10 @@ fn build_proxy_uri(
     let tok = sign_segment(secret, session, upstream_str);
     match kind {
         Kind::Playlist(stream) => origin.playlist_url(session, upstream_str, &tok, stream),
-        Kind::Media => origin.segment_url(session, upstream_str, &tok),
+        Kind::Media => format!(
+            "{}&{MEDIA_KIND}",
+            origin.segment_url(session, upstream_str, &tok)
+        ),
     }
 }
 
@@ -294,7 +307,7 @@ mod tests {
         let (origin, session, secret) = (make_origin(), make_session(), AppSecret::random());
         let out = rewrite_media(media, &base, &origin, session, &secret).unwrap();
         let marks: Vec<String> = out
-            .split(|c| c == '\n' || c == '"')
+            .split(['\n', '"'])
             .filter(|l| l.starts_with(&origin.base))
             .map(|l| {
                 Url::parse(l)
