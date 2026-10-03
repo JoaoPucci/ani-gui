@@ -148,7 +148,9 @@ The player surfaces "Skip Opening" / "Skip Outro" buttons during their respectiv
 
 The play page makes its own `<video>` element and releases it when the page goes: the stream's engine is destroyed, the element unloads and leaves the page, and Picture-in-Picture — which shows that element — closes with it. Picture-in-Picture is available from the player while the player is open; it does not follow the viewer to other pages. An episode swap on the same show keeps the page and its element, and swaps the stream in place. The volume and mute carry from one visit's element to the next.
 
-Each episode's position is kept in the renderer's local storage as it plays, when it pauses and when its stream is replaced or the page leaves. Opening the episode again loads it fresh and seeks there once its metadata is in, unless a stale-stream recovery's position is pending for it, which is fresher. A position in an episode's first seconds or last minutes is not kept, and an episode played to its end is forgotten.
+Each episode's position is kept in the renderer's local storage (`ani-gui.watch-positions`, the 200 most recent episodes) as it plays, when it pauses and when its stream is replaced or the page leaves. Opening the episode again loads it fresh and seeks there once its metadata is in, unless a stale-stream recovery's position is pending for it, which is fresher. A position under 15 seconds in, or within an episode's last 90 seconds, is not kept, and an episode played to its end is forgotten.
+
+An episode's watched mark is written when it starts, so the last watched episode is the one the viewer was in when they left. When that episode has a kept position, the Continue Watching card and the detail page's Play button go back to it — the card shows its number, and the button reads "Continue · Episode N" (or "Continue" for a movie) rather than Replay; otherwise they go on to the next episode as before. Only the last watched episode is asked about: a position kept for an older one does not pull Continue back. Removing a show's Continue card forgets its kept positions, and clearing the history forgets them all.
 
 ### Episode prefetching
 
@@ -175,7 +177,7 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 | `auto_play_next` | `false` | When the current episode ends, automatically resolve and play the next one. |
 | `auto_skip_op` | `false` | When aniskip has an OP interval, jump past it automatically. |
 | `auto_skip_ed` | `false` | Same as above, for the ED. |
-| `use_custom_player_controls` | `false` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. |
+| `use_custom_player_controls` | `true` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. |
 | `download_bottom_bar_enabled` | `true` | Show the per-download progress dock at the bottom of the window when downloads are active. |
 
 ## Localization

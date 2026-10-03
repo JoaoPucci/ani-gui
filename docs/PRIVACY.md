@@ -28,6 +28,12 @@ ani-gui keeps the following on your computer only:
 - **Watch history** — a plain-text file in the app's own state
   directory. Lists what you've watched, where you left off and
   when.
+- **Episode positions** — how far into each of your 200 most recently
+  played episodes you got, so reopening one resumes there. Kept in the
+  app's local browser storage (under your OS user-data directory),
+  keyed by show and episode. Removing a show from Continue Watching
+  forgets its positions; clearing your watch history forgets them
+  all.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
