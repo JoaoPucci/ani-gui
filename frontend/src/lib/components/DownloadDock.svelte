@@ -89,12 +89,10 @@
 			aria-haspopup="menu"
 			aria-expanded={open}
 			aria-label={activeCount > 0
-				? speed !== null
-					? m.download_dock_active_speed_label({
-							count: activeCount,
-							speed: formatSpeed(speed)
-						})
-					: m.download_dock_active_label({ count: activeCount })
+				? m.download_dock_active_speed_label({
+						count: activeCount,
+						speed: formatSpeed(speed ?? 0)
+					})
 				: unseenCount > 0
 					? m.download_dock_unseen_label({ count: unseenCount })
 					: m.download_dock_idle_label()}
