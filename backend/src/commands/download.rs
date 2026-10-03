@@ -1738,30 +1738,41 @@ where
         .await
         .map_err(|_| AniError::Timeout)?;
     let live = pacing.is_live();
-    let mut cmd = tokio::process::Command::new(exe);
-    if let Some(p) = &child_path {
-        cmd.env("PATH", p);
-    }
-    // `-y` unconditionally, and it is no longer a decision. The output
-    // is a name this run invented and nothing else can hold, so there
-    // is never a user's file behind it to protect — the flag only
-    // stops ffmpeg asking a question on a stdin that will answer EOF.
-    // What the download does to an episode already on disk is settled
-    // at publication instead, where it can tell a file the user
-    // already had from one that arrived mid-transfer.
-    cmd.arg("-y");
-    cmd.arg("-extension_picky")
-        .arg("0")
-        .arg("-loglevel")
-        .arg("error")
-        .arg("-stats")
-        .args(ffmpeg_referer_args(referer))
-        .args(ffmpeg_pace_args(live))
-        .arg("-i")
-        .arg(master_url)
-        .arg("-c")
-        .arg("copy")
-        .arg(&scratch.path);
+    let command = |extension_check_off: bool| {
+        let mut cmd = tokio::process::Command::new(&exe);
+        if let Some(p) = &child_path {
+            cmd.env("PATH", p);
+        }
+        // `-y` unconditionally, and it is no longer a decision. The
+        // output is a name this run invented and nothing else can
+        // hold, so there is never a user's file behind it to protect
+        // — the flag only stops ffmpeg asking a question on a stdin
+        // that will answer EOF. What the download does to an episode
+        // already on disk is settled at publication instead, where it
+        // can tell a file the user already had from one that arrived
+        // mid-transfer.
+        cmd.arg("-y");
+        // Newer ffmpeg builds' hls demuxer refuses segments whose
+        // names do not end in an extension it expects, which the
+        // providers' do not, so the check is turned off; a build
+        // without the check has no such option, and rejects the whole
+        // command for it — Ubuntu 24.04's 6.1 is one — so it gets the
+        // command again without the option.
+        if extension_check_off {
+            cmd.arg("-extension_picky").arg("0");
+        }
+        cmd.arg("-loglevel")
+            .arg("error")
+            .arg("-stats")
+            .args(ffmpeg_referer_args(referer))
+            .args(ffmpeg_pace_args(live))
+            .arg("-i")
+            .arg(master_url)
+            .arg("-c")
+            .arg("copy")
+            .arg(&scratch.path);
+        cmd
+    };
     // A fallback reading at the stream's rate takes as long as the
     // stream plays; like a paced run it has a ceiling of its own, not
     // the transfer's, which is sized for a tool running free.
@@ -1771,7 +1782,24 @@ where
         deadline
     };
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
-    match run_tool(cmd, run_deadline, on_line, &mut false).await {
+    let mut rejected_the_option = false;
+    let run = {
+        let mut watch = |line: &str| {
+            if super::download_tool::ffmpeg_rejected_extension_picky(line) {
+                rejected_the_option = true;
+            }
+            on_line(line);
+        };
+        run_tool(command(true), run_deadline, &mut watch, &mut false).await
+    };
+    let run = match run {
+        Err(_) if rejected_the_option => {
+            tracing::info!("download: ffmpeg does not know -extension_picky, running without it");
+            run_tool(command(false), run_deadline, on_line, &mut false).await
+        }
+        run => run,
+    };
+    match run {
         Ok(()) => finish(&scratch, &target, on_line).await,
         Err(e) => Err(e),
     }

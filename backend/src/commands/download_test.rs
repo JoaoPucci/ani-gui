@@ -5433,3 +5433,159 @@ async fn a_sidecar_fetch_queued_first_still_waits_behind_the_player() {
         "the player's request, arriving later, was admitted before the track was fetched"
     );
 }
+
+/// Newer ffmpeg builds' hls demuxer refuses segments whose names do
+/// not end in an extension it expects, which the providers' do not,
+/// so the fallback turns that check off. A build without the check —
+/// Ubuntu 24.04's 6.1, which the `.deb` recommends — has no such
+/// option, and rejects the whole command for it: such a build gets
+/// the command again without the option.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_that_rejects_the_extension_option_gets_the_command_without_it() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2\nfor a in \"$@\"; do if [ \"$a\" = \"-extension_picky\" ]; then echo \"Unrecognized option 'extension_picky'.\" >&2; echo \"Error splitting the argument list: Option not found\" >&2; exit 8; fi; done\nexit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the fallback succeeds on the second command");
+    let runs: Vec<&String> = lines.iter().filter(|l| l.starts_with("ffmpeg ")).collect();
+    assert_eq!(
+        runs.len(),
+        2,
+        "one run with the option, one without: {lines:?}"
+    );
+    assert!(
+        runs[0].contains("-extension_picky 0"),
+        "the first run turns the check off"
+    );
+    assert!(
+        !runs[1].contains("-extension_picky"),
+        "the second run carries no option the build does not know: {}",
+        runs[1]
+    );
+}
+
+/// A build that takes the option runs once.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_that_takes_the_extension_option_runs_once() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the fallback succeeds");
+    assert_eq!(
+        lines.iter().filter(|l| l.starts_with("ffmpeg ")).count(),
+        1,
+        "one run: {lines:?}"
+    );
+}
+
+/// An ffmpeg that fails for any other reason is not run again: only
+/// the line naming the option as unknown is the older build's.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_that_fails_otherwise_is_not_run_again() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2; echo \"Server returned 403 Forbidden\" >&2; exit 1",
+    );
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "the failure surfaces");
+    assert_eq!(
+        lines.iter().filter(|l| l.starts_with("ffmpeg ")).count(),
+        1,
+        "one run: {lines:?}"
+    );
+}
+
+#[test]
+fn the_older_builds_rejection_is_the_line_naming_the_option_as_unknown() {
+    use crate::commands::download_tool::ffmpeg_rejected_extension_picky;
+    assert!(ffmpeg_rejected_extension_picky(
+        "Unrecognized option 'extension_picky'."
+    ));
+    assert!(!ffmpeg_rejected_extension_picky(
+        "Error splitting the argument list: Option not found"
+    ));
+    assert!(!ffmpeg_rejected_extension_picky(
+        "Unrecognized option 'readrate'."
+    ));
+    assert!(!ffmpeg_rejected_extension_picky(
+        "[hls @ 0x1] Filename extension of 'seg.jpg' is not a common multimedia extension, blocked for security reasons."
+    ));
+}
+
+mod extension_option_props {
+    use proptest::prelude::*;
+
+    proptest! {
+    /// Any line naming the option as unknown is the rejection, and
+    /// no line without that phrase is — whatever else the line says.
+    #[test]
+    fn the_rejection_is_decided_by_the_phrase_alone(
+        before in "[ -~]{0,40}",
+        after in "[ -~]{0,40}",
+        other in "[ -~]{0,80}",
+    ) {
+        use crate::commands::download_tool::ffmpeg_rejected_extension_picky;
+        let phrase = "Unrecognized option 'extension_picky'";
+        let with_phrase = format!("{before}{phrase}{after}");
+        prop_assert!(ffmpeg_rejected_extension_picky(&with_phrase));
+        prop_assume!(!other.contains(phrase));
+        prop_assert!(!ffmpeg_rejected_extension_picky(&other));
+    }
+    }
+}
