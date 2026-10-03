@@ -4,9 +4,13 @@
 //!
 //! - `GET /healthz` — liveness probe used by the frontend bootstrap.
 //! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master.
-//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl]` — proxy a
-//!   segment, or fetch + rewrite + return a rendition playlist when the
-//!   master marked it `k=pl` or its path ends in `.m3u8`.
+//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>]`
+//!   — fetch + rewrite + return a rendition playlist when the master
+//!   marked it `k=pl` (with its kind of stream, `s=`) or its path ends
+//!   in `.m3u8`.
+//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&r=<stream>&d=<ms>]`
+//!   — proxy a segment; a media segment names its kind of stream and
+//!   its duration, which the player's fetch of it notes to the budget.
 //!
 //! Every fetch upstream uses the [`StreamSession`]'s stored `Referer:`
 //! header, when the session stores one — an empty stored referer is a

@@ -22,9 +22,11 @@
 //! background traffic, one request at a time, which while no one waits
 //! takes a token only above the last [`BACKGROUND_RESERVE`] of the
 //! bucket, so the player's next requests find them there, and while the
-//! player waits takes a turn once the player has taken what its
-//! renditions need with room to spare ([`player_turns`]), so a player
-//! filling its buffer neither starves it nor is starved. The bucket is per
+//! player waits takes a turn only once the player has taken what its
+//! streams need with room to spare ([`player_turns`]) — none while
+//! that need with its room is the whole refill or more, when it waits
+//! for the player to stop asking — so the player keeps pace and the download takes the rest.
+//! The bucket is per
 //! host: a download from a different host than the player's has a
 //! bucket of its own, and the two meet only if the host counts them
 //! together. Of the app's own fetches, not charged: a cached
@@ -57,7 +59,9 @@ pub(crate) const SEGMENT_BURST: u32 = 20;
 /// needs twelve, so its buffer grows over three times faster than
 /// playback drains it, and still well ahead while background traffic
 /// takes every other token; video and audio as two renditions need
-/// twenty-four, which [`player_turns`] leaves the player with room.
+/// twenty-four, which [`player_turns`] leaves the player with room;
+/// two streams at two-second segments need sixty, more than the refill
+/// gives, and keep every token while the player waits.
 pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 
 /// Tokens background traffic leaves in the bucket: the player's next
@@ -135,11 +139,13 @@ pub(crate) fn take_leaving(
 }
 
 /// Whose turn the next contended token at a host is. A player filling
-/// its buffer keeps a request waiting at all times, for a minute after
-/// a start or a seek; background traffic that took only the tokens no
-/// one waited for took nothing for all that time. So while background
-/// traffic waits beside a waiting player, a token the player had to
-/// wait for gives the next one to the background request.
+/// its buffer keeps a request waiting at all times, for as long as the
+/// fill lasts, which can be minutes after a start or a seek; background
+/// traffic that took only the tokens no one waited for took nothing for
+/// all that time. So while background traffic waits beside a waiting
+/// player, the tokens the player had to wait for count toward its turns
+/// ([`player_turns`]), and once it has taken them the next token is the
+/// background request's.
 #[derive(Debug, Default)]
 struct Turn {
     /// A background request is waiting for a token.
@@ -297,9 +303,10 @@ impl HostBudget {
     /// player's next requests find the reserve there. With the player
     /// waiting in the line it yields until the player has taken its
     /// turns ([`player_turns`]) and then takes the next: while both
-    /// wait, the player gets what its renditions need with room, the
-    /// background request the rest of the refill, and a player filling
-    /// its buffer cannot keep it waiting for the whole fill.
+    /// wait, the player gets what its streams need with room and the
+    /// background request the rest of the refill. While the player's
+    /// need with its room is the whole refill or more there is no rest,
+    /// and the background request waits until the player stops asking.
     pub(crate) async fn admit_background(&self, host: &str) {
         let lane = self.lane(host);
         let _turn = lane.lock().await;
