@@ -6191,7 +6191,7 @@ mod download_rate {
     }
 
     #[test]
-    fn a_count_that_starts_over_starts_the_meter_over() {
+    fn a_count_that_falls_is_not_a_negative_speed() {
         // A count that falls — yt-dlp counting again from a lower
         // figure — is not a negative speed.
         let start = Instant::now();
