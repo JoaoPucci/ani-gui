@@ -632,3 +632,104 @@ async fn a_player_filling_then_playing_steadily_beside_background_traffic() {
     );
     assert_eq!(steady_longest, Duration::ZERO, "a steady request waited");
 }
+
+/// A player whose renditions arrive demuxed — video and an
+/// `EXT-X-MEDIA` audio rendition from the same host — needs a request
+/// per rendition per segment: two every five seconds, twenty-four a
+/// minute. Every other token of a refill of a second and a half is
+/// twenty, so a player sharing turns evenly with a download fell
+/// behind its own playback once the burst was spent, and stalled. Each
+/// rendition here notes the segments it plays, fills its buffer a
+/// minute ahead and then keeps it there; beside four background
+/// fetches neither may ever run dry.
+#[tokio::test(start_paused = true)]
+async fn a_player_with_demuxed_audio_keeps_pace_beside_background_traffic() {
+    let budget = HostBudget::fresh();
+    let fetchers = background_fetchers(&budget, 4);
+    let start = tokio::time::Instant::now();
+    let rendition = |name: &'static str| {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move {
+            let segment = Duration::from_secs(5);
+            let mut buffered = Duration::ZERO;
+            while start.elapsed() < Duration::from_secs(900) {
+                let ahead = buffered.saturating_sub(start.elapsed());
+                if ahead > Duration::from_secs(60) {
+                    tokio::time::sleep(ahead - Duration::from_secs(60)).await;
+                }
+                budget.note_player_segment("cdn.example:443", name, segment);
+                tokio::time::timeout(SEGMENT_REFILL * 8, budget.admit("cdn.example:443"))
+                    .await
+                    .expect("the request was admitted");
+                // Played up to now: the buffer runs dry once playback
+                // passes what has been fetched.
+                assert!(
+                    buffered == Duration::ZERO || buffered >= start.elapsed(),
+                    "{name} ran dry {:?} into playback",
+                    start.elapsed()
+                );
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                buffered += segment;
+            }
+        })
+    };
+    let (video, audio) = (rendition("video"), rendition("audio"));
+    let (video, audio) = (video.await, audio.await);
+    for fetcher in &fetchers {
+        fetcher.abort();
+    }
+    video.expect("video kept pace");
+    audio.expect("audio kept pace");
+}
+
+/// How many tokens the player waited for go before a waiting background
+/// request gets one: alternate while the player's own segments leave
+/// room, more while they need more of the refill, none while they need
+/// all of it.
+#[test]
+fn the_players_turns_follow_what_its_renditions_need() {
+    let per = |segments: f64, seconds: f64| segments / seconds;
+    // One muxed rendition, five-second segments: alternation is room.
+    assert_eq!(player_turns(per(1.0, 5.0), SEGMENT_REFILL), Some(1));
+    // Video and audio, five-second segments: three turns to one.
+    assert_eq!(player_turns(per(2.0, 5.0), SEGMENT_REFILL), Some(3));
+    // Video and audio at two seconds need more than the refill gives.
+    assert_eq!(player_turns(per(2.0, 2.0), SEGMENT_REFILL), None);
+    // Nothing known: alternate, as before.
+    assert_eq!(player_turns(0.0, SEGMENT_REFILL), Some(1));
+}
+
+proptest! {
+    /// Whatever the renditions need, the player's share of a waiting
+    /// line covers it with room to spare, or background traffic gets no
+    /// turn while the player waits.
+    #[test]
+    fn the_players_share_covers_its_need_with_room(demand in 0.0f64..2.0) {
+        let refill_rate = 1.0 / SEGMENT_REFILL.as_secs_f64();
+        if let Some(turns) = player_turns(demand, SEGMENT_REFILL) {
+            let share = f64::from(turns) / f64::from(turns + 1) * refill_rate;
+            prop_assert!(turns >= 1);
+            prop_assert!(share >= demand * PLAYER_HEADROOM - 1e-9);
+        } else {
+            prop_assert!(demand * PLAYER_HEADROOM > refill_rate / 2.0);
+        }
+    }
+}
+
+/// A rendition counts toward what the player needs while its segments
+/// keep coming: one the player stopped fetching — a level it switched
+/// away from, a stream it left — stops counting a few segments later.
+#[tokio::test(start_paused = true)]
+async fn a_rendition_the_player_stopped_fetching_stops_counting() {
+    let budget = HostBudget::fresh();
+    budget.note_player_segment("cdn.example:443", "video", Duration::from_secs(5));
+    budget.note_player_segment("cdn.example:443", "audio", Duration::from_secs(5));
+    assert!((budget.player_demand("cdn.example:443") - 0.4).abs() < 1e-9);
+    tokio::time::sleep(Duration::from_secs(20)).await;
+    budget.note_player_segment("cdn.example:443", "audio", Duration::from_secs(5));
+    tokio::time::sleep(Duration::from_secs(20)).await;
+    assert!(
+        (budget.player_demand("cdn.example:443") - 0.2).abs() < 1e-9,
+        "the video rendition stopped counting, the audio one did not"
+    );
+}
