@@ -6192,8 +6192,8 @@ mod download_rate {
 
     #[test]
     fn a_count_that_starts_over_starts_the_meter_over() {
-        // A run restarted at the other pace reports bytes from its own
-        // start; the drop is not a negative speed.
+        // A count that falls — yt-dlp counting again from a lower
+        // figure — is not a negative speed.
         let start = Instant::now();
         let mut meter = RateMeter::default();
         meter.observe(10_000_000, start);
@@ -6221,11 +6221,61 @@ mod download_rate {
     }
 
     proptest! {
-        /// Whatever the tool reports and whenever it is asked, the rate
-        /// is never negative and never more than the bytes it has seen
-        /// over the time it has seen them.
+        /// For a count that only grows, the speed is the bytes gained
+        /// since the newest count before the window, or the oldest
+        /// within it, over the time since — never below a second.
         #[test]
-        fn the_rate_is_never_negative_and_never_more_than_was_seen(
+        fn a_growing_count_reads_as_the_window_formula(
+            steps in proptest::collection::vec((0u64..5_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut bytes = 0u64;
+            let mut seen = Vec::new();
+            for (gain, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                bytes += gain;
+                meter.observe(bytes, at);
+                seen.push((at, bytes));
+            }
+            let now = at + Duration::from_millis(asked_after_ms);
+            let cutoff = now.checked_sub(RATE_WINDOW).unwrap_or(now);
+            let (since, from) = seen
+                .iter()
+                .rev()
+                .find(|(t, _)| *t < cutoff)
+                .or_else(|| seen.first())
+                .copied()
+                .expect("a count");
+            let elapsed = now.saturating_duration_since(since).max(Duration::from_secs(1));
+            let expected = (bytes - from) as f64 / elapsed.as_secs_f64();
+            prop_assert!((meter.rate_at(now) - expected).abs() < 1e-6);
+        }
+
+        /// Asked more than a window after the count last grew, the
+        /// speed is zero, whatever came before.
+        #[test]
+        fn a_whole_window_without_growth_reads_as_zero(
+            steps in proptest::collection::vec((0u64..50_000_000, 1u64..3_000), 1..30),
+            beyond_ms in 1u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            for (bytes, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                meter.observe(*bytes, at);
+            }
+            let now = at + RATE_WINDOW + Duration::from_millis(beyond_ms);
+            prop_assert_eq!(meter.rate_at(now), 0.0);
+        }
+
+        /// Whatever the tool reports, the speed is never negative and
+        /// never more than the largest step it saw over a second.
+        #[test]
+        fn the_rate_is_never_negative_nor_more_than_a_second_of_the_largest_count(
             steps in proptest::collection::vec((0u64..50_000_000, 1u64..3_000), 1..30),
             asked_after_ms in 0u64..20_000,
         ) {
@@ -6238,11 +6288,9 @@ mod download_rate {
                 meter.observe(*bytes, at);
                 most = most.max(*bytes);
             }
-            let now = at + Duration::from_millis(asked_after_ms);
-            let rate = meter.rate_at(now);
-            prop_assert!(rate >= 0.0);
-            prop_assert!(rate.is_finite());
-            prop_assert!(rate <= most as f64 / 0.001);
+            let rate = meter.rate_at(at + Duration::from_millis(asked_after_ms));
+            prop_assert!(rate >= 0.0 && rate.is_finite());
+            prop_assert!(rate <= most as f64);
         }
     }
 }
