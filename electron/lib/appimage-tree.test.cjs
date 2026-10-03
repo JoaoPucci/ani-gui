@@ -1,0 +1,163 @@
+// The permissions the AppImage's tree is packed with.
+//
+// The tree the repack extracts reaches mksquashfs with its directories
+// at 0700, and `-all-root` makes them root's: every directory of every
+// repacked release came out root-owned and closed to everyone else.
+// The AppImage runtime mounts the image as the user who starts it, so
+// a plain launch never noticed; anything that mounts it as root and
+// runs the app as a user — a firejail sandbox, the AppImage catalog's
+// test, a system-wide install — was refused at the root directory,
+// `AppRun: Permission denied`. The repack opens the tree first.
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const { openTreeToAll } = require('./appimage-tree.cjs');
+
+const mode = (p) => fs.lstatSync(p).mode & 0o777;
+
+/** A tree shaped like an extract: closed directories, an executable,
+ *  a data file and a symlink. */
+function extractLike() {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'appimage-tree-'));
+	const app = path.join(root, 'squashfs-root');
+	fs.mkdirSync(path.join(app, 'resources', 'bin'), { recursive: true, mode: 0o700 });
+	fs.writeFileSync(path.join(app, 'AppRun'), '#!/bin/sh\n', { mode: 0o700 });
+	fs.writeFileSync(path.join(app, 'resources', 'app.asar'), 'data', { mode: 0o600 });
+	fs.symlinkSync('app.asar', path.join(app, 'resources', 'link'));
+	for (const dir of [app, path.join(app, 'resources'), path.join(app, 'resources', 'bin')]) {
+		fs.chmodSync(dir, 0o700);
+	}
+	return { root, app };
+}
+
+test('every directory, the tree root included, opens to everyone', () => {
+	const { root, app } = extractLike();
+	try {
+		openTreeToAll(app);
+		for (const dir of [app, path.join(app, 'resources'), path.join(app, 'resources', 'bin')]) {
+			assert.equal(mode(dir), 0o755, dir);
+		}
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('every file is readable by everyone, and an executable runnable by everyone', () => {
+	const { root, app } = extractLike();
+	try {
+		openTreeToAll(app);
+		assert.equal(mode(path.join(app, 'AppRun')), 0o755);
+		assert.equal(mode(path.join(app, 'resources', 'app.asar')), 0o644);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('a symlink is left as it is, and its target is opened once, as a file', () => {
+	const { root, app } = extractLike();
+	try {
+		const link = path.join(app, 'resources', 'link');
+		openTreeToAll(app);
+		assert.equal(fs.readlinkSync(link), 'app.asar');
+		assert.ok(fs.lstatSync(link).isSymbolicLink());
+		assert.equal(mode(path.join(app, 'resources', 'app.asar')), 0o644);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('a symlink is never followed out of the tree', () => {
+	const { root, app } = extractLike();
+	try {
+		const outside = path.join(root, 'outside');
+		fs.mkdirSync(outside, { mode: 0o700 });
+		fs.chmodSync(outside, 0o700);
+		fs.symlinkSync(outside, path.join(app, 'resources', 'away'));
+		openTreeToAll(app);
+		assert.equal(mode(outside), 0o700);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('a file already open to more keeps what it had', () => {
+	const { root, app } = extractLike();
+	try {
+		const shared = path.join(app, 'resources', 'shared.dat');
+		fs.writeFileSync(shared, 'data');
+		fs.chmodSync(shared, 0o664);
+		openTreeToAll(app);
+		assert.equal(mode(shared), 0o664);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+// The repack once skipped an image whose AppRun already carried the
+// patch, before it opened the tree: rerun over an image a previous
+// repacker had produced, it left that image's directories closed.
+// Preparing a tree patches AppRun when it needs it and opens the tree
+// either way.
+const { prepareTree } = require('./appimage-tree.cjs');
+
+const TEMPLATE = [
+	'#!/bin/bash',
+	'if [ -z "$APPIMAGE" ]; then',
+	'  exec "$BIN"',
+	'else',
+	'  exec "$BIN" "${args[@]}"',
+	'fi',
+	'',
+].join('\n');
+
+function withAppRun(contents) {
+	const tree = extractLike();
+	fs.writeFileSync(path.join(tree.app, 'AppRun'), contents, { mode: 0o700 });
+	fs.chmodSync(path.join(tree.app, 'AppRun'), 0o700);
+	fs.chmodSync(tree.app, 0o700);
+	return tree;
+}
+
+test('a tree whose AppRun was patched before is still opened', () => {
+	const patched = TEMPLATE.replace('exec "$BIN"\n', 'exec "$BIN" --no-sandbox\n').replace(
+		'exec "$BIN" "${args[@]}"',
+		'exec "$BIN" --no-sandbox "${args[@]}"'
+	);
+	const { root, app } = withAppRun(patched);
+	try {
+		assert.equal(prepareTree(app), false, 'AppRun needed no patch');
+		assert.equal(fs.readFileSync(path.join(app, 'AppRun'), 'utf8'), patched);
+		assert.equal(mode(app), 0o755);
+		assert.equal(mode(path.join(app, 'resources')), 0o755);
+		assert.equal(mode(path.join(app, 'AppRun')), 0o755);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a fresh tree's AppRun is patched and the tree opened", () => {
+	const { root, app } = withAppRun(TEMPLATE);
+	try {
+		assert.equal(prepareTree(app), true, 'AppRun was patched');
+		const appRun = fs.readFileSync(path.join(app, 'AppRun'), 'utf8');
+		assert.match(appRun, /^\s*exec "\$BIN" --no-sandbox$/m);
+		assert.match(appRun, /^\s*exec "\$BIN" --no-sandbox "\$\{args\[@\]\}"$/m);
+		assert.equal(mode(app), 0o755);
+		assert.equal(mode(path.join(app, 'AppRun')), 0o755);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test('an AppRun the patch does not recognise stops the repack', () => {
+	const { root, app } = withAppRun('#!/bin/sh\nexec ./other\n');
+	try {
+		assert.throws(() => prepareTree(app), /AppRun patch matched nothing/);
+	} finally {
+		fs.rmSync(root, { recursive: true, force: true });
+	}
+});

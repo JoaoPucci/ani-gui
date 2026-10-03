@@ -91,6 +91,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - if: needs.filter.outputs.relevant == 'true'
+        name: Electron build and launch helpers (node --test)
+        # The helpers under electron/lib — dependency staging, the
+        # AppImage tree's permissions, the launch decisions — run at
+        # build or launch time, where nothing else would catch them.
+        working-directory: electron
+        run: pnpm test
+
+      - if: needs.filter.outputs.relevant == 'true'
         name: Build Rust backend (release)
         working-directory: electron
         run: pnpm run build:backend
