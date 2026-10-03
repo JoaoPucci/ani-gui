@@ -23,14 +23,6 @@ import {
 /** How far playback moves between two writes of its position. */
 const SAVE_EVERY_S = 5;
 
-/** What the page tells the stream's listeners. */
-export interface SourceListeners {
-	/** The viewer moved the playhead through the page's controls: a
-	 *  resume still waiting for the stream's length is dropped, and the
-	 *  position is the viewer's from then on. */
-	viewerMoved(): void;
-}
-
 export function armSourceScopedListeners(input: {
 	video: HTMLVideoElement;
 	showId: string;
@@ -39,7 +31,7 @@ export function armSourceScopedListeners(input: {
 	/** Where positions are kept; the renderer's local storage when
 	 *  omitted. */
 	positions?: PositionStorage;
-}): SourceListeners {
+}): void {
 	const { video, showId, episode, scope, positions } = input;
 	// A recovery's point resumes the stream the viewer was watching a
 	// moment ago, wherever it falls. A kept point was saved on an
@@ -73,15 +65,12 @@ export function armSourceScopedListeners(input: {
 		// and a playlist without an end grows it — so the kept point
 		// cannot be judged. Wait for the first known length. The element
 		// autoplays and the engine seeks it on its own, so neither its
-		// `playing` nor its `seeking` is the viewer: only a move the page
-		// reports makes the stream theirs. Until then nothing is written,
-		// and a length that never becomes known writes nothing at all.
-		waiting = true;
+		// `playing` nor its `seeking` drops the wait; the player's own
+		// seek controls need a known length, so nothing the viewer does
+		// through them can either. Until then nothing is written.
 		video.addEventListener('durationchange', onDuration);
 	};
-	let waiting = false;
 	const stopWaiting = () => {
-		waiting = false;
 		video.removeEventListener('durationchange', onDuration);
 	};
 	const onDuration = () => {
@@ -118,11 +107,4 @@ export function armSourceScopedListeners(input: {
 	video.addEventListener('timeupdate', onTime);
 	video.addEventListener('pause', save);
 	video.addEventListener('ended', onEnded);
-	return {
-		viewerMoved: () => {
-			if (!waiting) return;
-			stopWaiting();
-			opened = true;
-		}
-	};
 }
