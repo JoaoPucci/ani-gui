@@ -15,7 +15,7 @@
 //!
 //! Paced runs take [`PACED_LANE`] in turn, one download for the whole
 //! app, so two episodes downloading during playback put one yt-dlp
-//! behind the player at a time, and the other waits for it or for
+//! beside the player at a time, and the other waits for it or for
 //! playback to stop, whichever comes first. The ffmpeg fallback is one
 //! connection whose source is set at its start — through the relay
 //! while playback is live, or at the stream's own rate when there is
