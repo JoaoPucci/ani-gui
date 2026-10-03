@@ -28,7 +28,8 @@ use crate::error::{AniError, Result};
 use crate::proxy::token::{sign_segment, AppSecret, SessionId};
 
 /// How the proxy should render rewritten URIs back into the manifest.
-/// Path style: `/s/<session>/seg?u=<base64-url-encoded-original>&t=<hmac>`
+/// Path style: `/s/<session>/seg?u=<base64-url-encoded-original>&t=<hmac>`,
+/// with `&k=pl` on a URI the manifest names as a playlist.
 #[derive(Debug, Clone)]
 pub struct ProxyOrigin {
     /// e.g. `http://127.0.0.1:42337` — no trailing slash.
@@ -56,6 +57,39 @@ impl ProxyOrigin {
             token
         )
     }
+
+    /// Render the URL of a playlist a master names: the segment route,
+    /// told it is fetching a playlist.
+    #[must_use]
+    pub fn playlist_url(&self, session: SessionId, original: &str, token: &str) -> String {
+        format!(
+            "{}&{PLAYLIST_KIND}",
+            self.segment_url(session, original, token)
+        )
+    }
+}
+
+/// The query pair that marks a proxied URI as a playlist.
+const PLAYLIST_KIND: &str = "k=pl";
+
+/// Whether the segment route is fetching a playlist: one the master
+/// named as a playlist, whatever its URL looks like — HLS names a
+/// playlist by where it appears, and a rendition may sit at
+/// `INDEX.M3U8` or `playlist?id=720` — or, for a URL rewritten without
+/// the mark, one whose path ends in `.m3u8` in any case.
+#[must_use]
+pub fn names_a_playlist(kind: Option<&str>, upstream: &Url) -> bool {
+    kind == Some("pl") || upstream.path().to_ascii_lowercase().ends_with(".m3u8")
+}
+
+/// What a rewritten URI points at, which decides how the segment route
+/// serves it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// A playlist, fetched and rewritten.
+    Playlist,
+    /// Media, a key or an init segment, streamed through.
+    Media,
 }
 
 /// Rewrite a master playlist. Returns the new manifest as a string.
@@ -80,12 +114,12 @@ pub fn rewrite_master(
 
     for v in &mut out.variants {
         let resolved = resolve(master_url, &v.uri)?;
-        v.uri = build_proxy_uri(&resolved, origin, session, secret);
+        v.uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Playlist);
     }
     for a in &mut out.alternatives {
         if let Some(uri) = a.uri.as_mut() {
             let resolved = resolve(master_url, uri)?;
-            *uri = build_proxy_uri(&resolved, origin, session, secret);
+            *uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Playlist);
         }
     }
 
@@ -117,15 +151,15 @@ pub fn rewrite_media(
 
     for seg in &mut out.segments {
         let resolved = resolve(media_url, &seg.uri)?;
-        seg.uri = build_proxy_uri(&resolved, origin, session, secret);
+        seg.uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Media);
         if let Some(map) = seg.map.as_mut() {
             let r = resolve(media_url, &map.uri)?;
-            map.uri = build_proxy_uri(&r, origin, session, secret);
+            map.uri = build_proxy_uri(&r, origin, session, secret, Kind::Media);
         }
         if let Some(k) = seg.key.as_mut() {
             if let Some(uri) = k.uri.as_mut() {
                 let r = resolve(media_url, uri)?;
-                *uri = build_proxy_uri(&r, origin, session, secret);
+                *uri = build_proxy_uri(&r, origin, session, secret, Kind::Media);
             }
         }
     }
@@ -153,13 +187,17 @@ fn build_proxy_uri(
     origin: &ProxyOrigin,
     session: SessionId,
     secret: &AppSecret,
+    kind: Kind,
 ) -> String {
     let upstream_str = upstream.as_str();
     if upstream_str.starts_with(&origin.base) {
         return upstream_str.to_string();
     }
     let tok = sign_segment(secret, session, upstream_str);
-    origin.segment_url(session, upstream_str, &tok)
+    match kind {
+        Kind::Playlist => origin.playlist_url(session, upstream_str, &tok),
+        Kind::Media => origin.segment_url(session, upstream_str, &tok),
+    }
 }
 
 #[cfg(test)]
@@ -257,7 +295,7 @@ mod tests {
         let origin = make_origin();
         let already = "http://127.0.0.1:42337/s/abc/seg?u=xxx&t=yyy";
         let url = Url::parse(already).unwrap();
-        let s = build_proxy_uri(&url, &origin, session, &secret);
+        let s = build_proxy_uri(&url, &origin, session, &secret, Kind::Media);
         assert_eq!(s, already, "URIs already on the proxy origin pass through");
     }
 
