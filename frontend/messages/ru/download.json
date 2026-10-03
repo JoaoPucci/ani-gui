@@ -40,7 +40,7 @@
 	"bar_cancel_all_title": "Отменить все загрузки",
 	"bar_cancel_confirm_single": "Отменить загрузку «{title}»?",
 	"bar_cancel_confirm_multi": "Отменить {count} активных загрузок?",
-	"dock_active_label": "{count} загрузок в процессе",
+	"dock_active_speed_label": "{count} загрузок в процессе, {speed}",
 	"dock_unseen_label": "{count} загрузок завершено",
 	"dock_idle_label": "Загрузки",
 	"dock_title": "Загрузки",
@@ -63,5 +63,7 @@
 	"status_abandoned_claim": "Прерванная загрузка оставила пустой файл: {path}; удалите его и попробуйте снова.",
 	"status_claim_pending": "Другая загрузка ещё записывает {path}; попробуйте снова чуть позже.",
 	"status_repackage_retry": "yt-dlp не смог переупаковать поток; повторная попытка через ffmpeg.",
-	"status_retry_ffmpeg": "yt-dlp завершился с ошибкой; повторная попытка через ffmpeg."
+	"status_retry_ffmpeg": "yt-dlp завершился с ошибкой; повторная попытка через ffmpeg.",
+	"speed_kbps": "{value} КБ/с",
+	"speed_mbps": "{value} МБ/с"
 }
