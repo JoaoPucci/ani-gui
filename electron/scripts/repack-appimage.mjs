@@ -1,4 +1,4 @@
-// Post-build step: rebuild electron-builder's AppImage with two
+// Post-build step: rebuild electron-builder's AppImage with three
 // changes the published bundle wants but the upstream toolchain
 // doesn't make easy:
 //
@@ -15,13 +15,18 @@
 //      is too late, the check fires before main.js runs. The .deb
 //      doesn't need this (its postinst sets the SUID bit on the
 //      installed chrome-sandbox).
+//   3. Open the tree to every user before packing it. The extract's
+//      directories arrive at 0700 and the pack makes them root's, so
+//      anything that mounts the image as root and runs the app as a
+//      user — a firejail sandbox, a system-wide install — was refused
+//      at the root directory.
 //
 // We don't try to patch the runtime ELF or splice into the existing
 // squashfs in place. Instead we extract the squashfs, edit AppRun,
-// re-pack with mksquashfs, then concatenate the modern runtime
-// header with the new squashfs payload. Same end shape as before:
+// open the tree, re-pack with mksquashfs, then concatenate the modern
+// runtime header with the new squashfs payload. Same end shape as before:
 //
-//   new.AppImage = new-runtime-elf || mksquashfs(extract(old) + AppRun patch)
+//   new.AppImage = new-runtime-elf || mksquashfs(open(extract(old) + AppRun patch))
 
 import fs from 'node:fs';
 import path from 'node:path';
