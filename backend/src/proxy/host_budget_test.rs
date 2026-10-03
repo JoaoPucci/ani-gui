@@ -587,8 +587,8 @@ async fn a_player_asking_faster_than_the_refill_never_waits_long_beside_backgrou
 
 /// A player as hls.js runs one: it fills its buffer — a minute ahead
 /// here; hls.js may go much further, up to several minutes for a
-/// low-bitrate stream — one five-second segment at a time, then asks once a segment's worth
-/// of playback, while four background fetches wait beside it. During
+/// low-bitrate stream — one five-second segment at a time, then asks
+/// once a segment's worth of playback, while four background fetches wait beside it. During
 /// the fill no request waits more than a couple of refills; a minute
 /// into steady play, once what it leaves of each refill has rebuilt the
 /// reserve, it finds a token on hand every time, because a turn owed is
@@ -688,8 +688,8 @@ async fn a_player_with_demuxed_audio_keeps_pace_beside_background_traffic() {
 
 /// How many tokens the player waited for go before a waiting background
 /// request gets one: alternate while the player's own segments leave
-/// room, more while they need more of the refill, none while they need
-/// all of it.
+/// room, more while they need more of the refill, none once their need
+/// with a quarter to spare reaches the refill.
 #[test]
 fn the_players_turns_follow_what_its_renditions_need() {
     let per = |segments: f64, seconds: f64| segments / seconds;
@@ -807,9 +807,11 @@ async fn a_segment_too_short_to_trust_is_not_counted() {
     assert_eq!(budget.player_demand("cdn.example:443"), 0.0);
 }
 
-/// A player that needs every token the host gives keeps them all, and a
-/// background request beside it waits — it is never refused — until
-/// the player stops asking.
+/// A player whose need with a quarter to spare reaches the refill —
+/// here video and audio at two seconds, sixty requests a minute
+/// against forty — keeps every token while it waits, and a background
+/// request beside it waits — it is never refused — until the player
+/// stops asking.
 #[tokio::test(start_paused = true)]
 async fn background_traffic_waits_out_a_player_that_needs_every_token() {
     let budget = HostBudget::fresh();
