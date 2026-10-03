@@ -19,11 +19,11 @@
 //! download charges the subtitle tracks it stages beside its transfer
 //! and, while playback is live, its own fetches through the proxy,
 //! since the host counts them all against the one address — as
-//! background traffic, which takes a token only while no one waits for
-//! one until it has waited [`BACKGROUND_PATIENCE`], when it is served in
-//! turn with the player, and which never takes the last
-//! [`BACKGROUND_RESERVE`] of the bucket, so the player's next requests
-//! find them there. The bucket is per
+//! background traffic, one request at a time, which while no one waits
+//! takes a token only above the last [`BACKGROUND_RESERVE`] of the
+//! bucket, so the player's next requests find them there, and while the
+//! player waits takes every other token with it, so a player filling
+//! its buffer neither starves it nor is starved. The bucket is per
 //! host: a download from a different host than the player's has a
 //! bucket of its own, and the two meet only if the host counts them
 //! together. Of the app's own fetches, not charged: a cached
@@ -50,7 +50,8 @@ pub(crate) const SEGMENT_BURST: u32 = 20;
 /// The steady rate once the burst is spent: one request per this
 /// interval, forty a minute. A segment plays for about five seconds,
 /// so the buffer still grows three times faster than playback drains
-/// it.
+/// it, and over one and a half times as fast while background traffic
+/// takes every other token.
 pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 
 /// Tokens background traffic leaves in the bucket: the player's next
