@@ -63,5 +63,7 @@
 	"status_abandoned_claim": "Um download interrompido deixou um arquivo vazio em {path}; exclua-o e tente novamente.",
 	"status_claim_pending": "Outro download está publicando {path} e ainda não terminou; tente novamente em instantes.",
 	"status_repackage_retry": "O yt-dlp não conseguiu reempacotar o stream; tentando novamente com o ffmpeg.",
-	"status_retry_ffmpeg": "O yt-dlp falhou; tentando novamente com o ffmpeg."
+	"status_retry_ffmpeg": "O yt-dlp falhou; tentando novamente com o ffmpeg.",
+	"speed_kbps": "{value} KB/s",
+	"speed_mbps": "{value} MB/s"
 }

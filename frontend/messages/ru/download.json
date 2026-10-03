@@ -63,5 +63,7 @@
 	"status_abandoned_claim": "Прерванная загрузка оставила пустой файл: {path}; удалите его и попробуйте снова.",
 	"status_claim_pending": "Другая загрузка ещё записывает {path}; попробуйте снова чуть позже.",
 	"status_repackage_retry": "yt-dlp не смог переупаковать поток; повторная попытка через ffmpeg.",
-	"status_retry_ffmpeg": "yt-dlp завершился с ошибкой; повторная попытка через ffmpeg."
+	"status_retry_ffmpeg": "yt-dlp завершился с ошибкой; повторная попытка через ffmpeg.",
+	"speed_kbps": "{value} КБ/с",
+	"speed_mbps": "{value} МБ/с"
 }

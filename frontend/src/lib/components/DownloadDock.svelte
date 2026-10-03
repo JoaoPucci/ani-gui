@@ -16,6 +16,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
 	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
+	import { formatSpeed, totalSpeed } from '$lib/download/speed';
 	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
@@ -23,6 +24,7 @@
 
 	const itemsView = $derived(downloadStore.items as DownloadItem[]);
 	const activeCount = $derived(downloadStore.active.length);
+	const speed = $derived(totalSpeed(itemsView));
 	const unseenCount = $derived(downloadStore.unseenCount);
 	// Hide the dock entirely when there are no downloads — the icon
 	// only earns space in the topbar when there's something to surface.
@@ -81,6 +83,7 @@
 			class="dl-dock-trigger"
 			class:has-active={activeCount > 0}
 			class:has-unseen={activeCount === 0 && unseenCount > 0}
+			class:has-speed={speed !== null}
 			class:open
 			onclick={() => (open = !open)}
 			aria-haspopup="menu"
@@ -92,20 +95,27 @@
 					: m.download_dock_idle_label()}
 			title={m.download_dock_title()}
 		>
-			<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-				<path
-					d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2.25"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				/>
-			</svg>
-			{#if activeCount > 0}
-				<span class="dl-badge" aria-hidden="true">{activeCount}</span>
-			{:else if unseenCount > 0}
-				<span class="dl-dot" aria-hidden="true"></span>
+			<!-- The badge and the dot sit on the icon's corner, so a trigger
+			     widened by the speed beside it keeps them on the icon. -->
+			<span class="dl-icon">
+				<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+					<path
+						d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.25"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+				</svg>
+				{#if activeCount > 0}
+					<span class="dl-badge" aria-hidden="true">{activeCount}</span>
+				{:else if unseenCount > 0}
+					<span class="dl-dot" aria-hidden="true"></span>
+				{/if}
+			</span>
+			{#if speed !== null}
+				<span class="dl-speed">{formatSpeed(speed)}</span>
 			{/if}
 		</button>
 
@@ -276,18 +286,38 @@
 	   dot = "ready for you". */
 	.dl-dot {
 		position: absolute;
-		inset-block-start: 4px;
-		inset-inline-end: 4px;
+		inset-block-start: -5px;
+		inset-inline-end: -5px;
 		inline-size: 8px;
 		block-size: 8px;
 		background: var(--accent);
 		border-radius: 50%;
 		box-shadow: 0 0 0 2px var(--ink-000);
 	}
+	.dl-icon {
+		position: relative;
+		display: inline-flex;
+	}
+	/* With a speed beside the icon the trigger grows to hold it, the
+	   icon keeping the inset it has in the square. */
+	.dl-dock-trigger.has-speed {
+		inline-size: auto;
+		padding-inline: 9px 10px;
+	}
+	/* How fast the running downloads are going, beside the icon. Mono
+	   tabular figures so the width does not jitter as the number moves. */
+	.dl-speed {
+		margin-inline-start: 0.375rem;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		color: var(--accent);
+	}
 	.dl-badge {
 		position: absolute;
-		inset-block-start: 2px;
-		inset-inline-end: 2px;
+		inset-block-start: -7px;
+		inset-inline-end: -7px;
 		min-inline-size: 1rem;
 		block-size: 1rem;
 		padding: 0 4px;
