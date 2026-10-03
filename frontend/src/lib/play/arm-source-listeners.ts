@@ -15,6 +15,7 @@ import type { SourceScope } from '$lib/play/source-scope';
 import {
 	clearPosition,
 	isFinishedAt,
+	markStarted,
 	readPosition,
 	savePosition,
 	type PositionStorage
@@ -39,6 +40,9 @@ export function armSourceScopedListeners(input: {
 	// it is checked against the length once the metadata brings it.
 	const recovered = recoveryResume.consume(showId, episode);
 	const kept = recovered === null ? readPosition(showId, episode, positions) : null;
+	// The episode is started from here: a play that never gets past
+	// opening still leaves Continue on it.
+	markStarted(showId, episode, positions);
 	// Progress means frames actually rendered — the `playing` event —
 	// never a bare timeupdate: the resume seek below emits one at the
 	// old timestamp before the fresh source has delivered anything.
@@ -80,7 +84,9 @@ export function armSourceScopedListeners(input: {
 	// last 90 seconds, where it is forgotten instead. Decided once.
 	const resumeKept = () => {
 		stopWaiting();
-		if (recovered === null && kept !== null) {
+		// A started mark, at zero, opens from the start and is never
+		// judged finished: the episode was barely begun.
+		if (recovered === null && kept !== null && kept > 0) {
 			if (isFinishedAt(kept, video.duration)) clearPosition(showId, episode, positions);
 			else video.currentTime = kept;
 		}

@@ -1,12 +1,12 @@
 /**
  * Where each episode was left, so opening it again resumes there.
  * Kept in the renderer's local storage under one key, for the most
- * recent episodes only. An episode left in its first seconds or its
- * last minutes has nothing to resume: the first is a start over, the
- * second is finished.
+ * recent episodes only. An episode left in its first seconds is kept
+ * at zero — started, to start over — so Continue still goes back to
+ * it; one left in its last minutes is finished and forgotten.
  */
 
-/** Below this, an episode resumes from its start. */
+/** Below this, an episode is kept as started, at zero. */
 export const RESUME_MIN_S = 15;
 /** With this little left, an episode counts as finished. */
 export const FINISHED_REMAINING_S = 90;
@@ -52,8 +52,9 @@ function store(storage: PositionStorage | null, positions: Positions): void {
 
 const keyOf = (showId: string, episode: number) => `${showId}:${episode}`;
 
-/** Records `seconds` into `episode` of `showId`, or forgets the
- *  episode when that is its start or, by `duration`, its end. */
+/** Records `seconds` into `episode` of `showId` — zero, a started
+ *  mark, when that is its start — or forgets the episode when
+ *  `duration` puts it at its end. */
 export function savePosition(
 	showId: string,
 	episode: number,
@@ -63,11 +64,23 @@ export function savePosition(
 ): void {
 	const key = keyOf(showId, episode);
 	const rest = load(storage).filter(([k]) => k !== key);
-	if (seconds < RESUME_MIN_S || isFinishedAt(seconds, duration)) {
+	if (isFinishedAt(seconds, duration)) {
 		store(storage, rest);
 		return;
 	}
-	store(storage, [...rest, [key, seconds]]);
+	store(storage, [...rest, [key, seconds < RESUME_MIN_S ? 0 : seconds]]);
+}
+
+/** Marks `episode` of `showId` started, at zero, unless a point is
+ *  already kept for it. */
+export function markStarted(
+	showId: string,
+	episode: number,
+	storage: PositionStorage | null = defaultStorage()
+): void {
+	if (readPosition(showId, episode, storage) === null) {
+		savePosition(showId, episode, 0, Number.NaN, storage);
+	}
 }
 
 /** Whether `seconds` is in an episode's last minutes, by `duration`.
