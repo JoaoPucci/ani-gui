@@ -22,10 +22,10 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **Embedded player** | HLS / MP4, quality switch, native or custom controls — no `mpv` window. |
 | **Subtitles** | Tracks inside the stream's playlist, and the sidecar `.vtt` tracks a provider lists beside it — served through the local proxy, written beside downloads, handed to external players. |
 | **OP / ED skip** | aniskip intervals — one-click or fully automatic. |
-| **Picture-in-Picture** | Persists across navigation. |
+| **Picture-in-Picture** | Pop the player out while it is open. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
 | **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
-| **Watch history** | Continue Watching picks up where you left off. Remove a single card or clear the lot from the rail. |
+| **Watch history** | Continue Watching — and a show's Play button — takes you back to the last episode you watched — resuming where you left it, or from its start if you left in its first 15 seconds — unless you finished it (its last 90 seconds, or to its end), when it goes on to the next episode. It also goes on when the app has no record of that episode: points are kept for the 200 most recently played episodes, in local storage that can be unavailable. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
 | **Trackers** | Connect AniList or MyAnimeList — a Watch Later rail on the home page, and your progress synced back automatically as you watch. |
@@ -160,7 +160,6 @@ User settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Settings page 
 - auto-play next episode
 - auto-skip OP / ED
 - custom-vs-native player controls
-- whether to enter PiP automatically when you navigate away from a playing video
 - the download progress bar
 - whether the update check includes pre-releases
 - remembering resolved streams for quicker replays (off by default)
@@ -171,7 +170,7 @@ Full table with defaults and effects is in [`docs/architecture.md`](./docs/archi
 
 A two-line summary: a Rust sidecar embedded inside an Electron shell speaks to Kitsu / AniList / aniskip and resolves streams from the providers itself — anidb.app first, hianime when the walk moves on from anidb.app (unreachable, refusing or rate-limiting, a page the app cannot read, a background request its gate turned away, or an answer that settles nothing — the show found with nothing said about the audio asked for, or a denial of a show a live record remembers it carrying), and, for a show found on hianime, hianime first while the app still remembers that (about a day from the last resolve that found the show there — a play, a download, a hand-off, or the background warm a page runs as it follows what is in view: the detail page for the episode its Play button targets, the play page for the next episode, or with resolution caching on for every aired episode in view, again as the grid or strip is paged — or, for a show a probe alone found and nothing resolved since, a day for an ongoing one and thirty days for a finished one; a play, hand-off or page warm served from the resolution cache leaves that memory as it is while it lasts and starts a day of it again once it has lapsed, while a download always resolves afresh). A streaming proxy in the sidecar carries the `Referer:` a provider's CDN checks for — hianime's wants the embed page's origin, anidb.app's wants none — and rewrites HLS playlists so the embedded `<video>` element can play upstream content without CORS or referer issues. SQLite caches metadata; the filesystem caches images.
 
-For the long version — diagrams, cache TTLs, the title-resolution bridge, the PiP architecture — see [`docs/architecture.md`](./docs/architecture.md), [`docs/title-resolution.md`](./docs/title-resolution.md), and the rest of [`docs/`](./docs/).
+For the long version — diagrams, cache TTLs, the title-resolution bridge, the player — see [`docs/architecture.md`](./docs/architecture.md), [`docs/title-resolution.md`](./docs/title-resolution.md), and the rest of [`docs/`](./docs/).
 
 ## Contributing
 

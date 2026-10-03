@@ -30,7 +30,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { beforeNavigate, goto } from '$app/navigation';
+	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import Hls from 'hls.js';
 	import { settle } from '$lib/transitions/settle';
@@ -86,16 +86,9 @@
 		FULLSCREEN_IDLE_HIDE_MS
 	} from '$lib/play/fullscreen-idle';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
-	import {
-		addSourceScopedCleanup,
-		attachGlobalVideoTo,
-		flushSourceScopedCleanups,
-		detachGlobalVideo,
-		getGlobalVideo,
-		setCurrentSession
-	} from '$lib/play/global-video';
+	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
+	import { createSourceScope } from '$lib/play/source-scope';
 	import { armSidecarTracks } from '$lib/play/sidecar-tracks';
-	import { decideNavigateAction } from '$lib/play/navigate-decision';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
 	import {
@@ -114,13 +107,6 @@
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
 	import { createEpisodePageCache, resetEpisodePageCache } from '$lib/detail/episode-page-cache';
-	import {
-		decideOnDestroyPrefetch,
-		decideOnPipCloseOrphanedPrefetch,
-		fireDeferredCancelsExcept,
-		registerDeferredCancel,
-		unregisterDeferredCancel
-	} from '$lib/play/prefetch-lifecycle';
 	import { formatTime, progressLabel, skipLabel } from '$lib/play/format';
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
@@ -160,14 +146,6 @@
 	const mediaKind = $derived<MediaKind>(
 		page.url.searchParams.get('kind') === 'mp4' ? 'mp4' : 'hls'
 	);
-	// The quality + mode this session was resolved at, carried in the URL
-	// by whoever navigated here. Recorded onto the session pointer so the
-	// reuse shortcut compares the TRUE resolved setting — read from the
-	// URL (changes only on navigation), never from mutable `config`, so a
-	// settings change can't retro-stamp a live session or re-run the
-	// media effect and replay paused video. (Codex P2)
-	const resolvedQuality = $derived(page.url.searchParams.get('q') ?? '');
-	const resolvedMode = $derived(page.url.searchParams.get('md') ?? '');
 	// Tracks whether the page has already burned its one-shot auto-
 	// recovery for the current session. Reset in switchToEpisode (a
 	// fresh session means a fresh shot). See $lib/play/stale-stream for
@@ -216,14 +194,21 @@
 	let switchBusy = $state(false);
 	let switchProgress = $state<string | null>(null);
 
-	// Singleton-backed video element, owned by lib/play/global-video.
-	// Survives /play/[id] route destroys so PiP keeps showing.
-	// Cast through `as any` because Svelte expects the optional
-	// $state form; the singleton is available synchronously after
-	// our onMount attaches it to the player frame.
+	// The page's own video element: made with the page, put in the
+	// player frame's slot whenever the slot is there, and released —
+	// stopped, unloaded, out of picture-in-picture — when the page
+	// leaves. `videoEl` is set once the slot holds it.
+	const ownVideo = createPlayerVideo();
 	let videoEl: HTMLVideoElement | undefined = $state();
 	let frameTargetEl = $state<HTMLDivElement | undefined>();
 	let hls: Hls | null = null;
+	// What the attached stream owns — its engine, listeners and
+	// tracks — retired when the next stream attaches or the page
+	// leaves.
+	const sourceScope = createSourceScope();
+	// The URL the element's stream was attached from; hls.js gives the
+	// element a blob: URL of its own, so the element cannot say.
+	let attachedUrl: string | null = null;
 
 	// Settings-driven: whether to use our custom controls bar in
 	// place of Chromium's native one. Custom gives the timeline
@@ -244,7 +229,7 @@
 	let videoVolume = $state(1);
 	let isMuted = $state(false);
 	// Captions selector for the custom controls. Reads the live
-	// TextTrackList off the singleton video so the menu reflects
+	// TextTrackList off the page's video so the menu reflects
 	// whatever the current session has attached (today: 0 or 1
 	// track; multi-language sessions land later). `textTracksTick`
 	// is the reactivity dependency — every addtrack / removetrack /
@@ -1342,30 +1327,28 @@
 	});
 
 	function teardown() {
-		// The engine's destroy rides the source-scoped flush (it must
-		// outlive this component for PiP); here the local handle just
-		// drops so the hls branch below builds a fresh one.
+		// The engine's destroy rides the source scope's flush; here the
+		// local handle just drops so the hls branch below builds a
+		// fresh one.
 		hls = null;
+		attachedUrl = null;
 		if (videoEl) {
 			videoEl.removeAttribute('src');
 			videoEl.load();
 		}
 	}
 
-	// Mount the singleton video into the frame slot when it
-	// appears, wire up reactive listeners so the page's state vars
-	// stay in sync (replacing what bind: used to do), and detach
-	// the video back to the hidden host on destroy so PiP can
-	// outlive route navigation.
+	// Put the page's video into the frame slot when it appears, and
+	// wire up reactive listeners so the page's state vars stay in sync
+	// (replacing what bind: used to do).
 	$effect(() => {
 		if (!frameTargetEl) return;
-		const v = attachGlobalVideoTo(frameTargetEl);
+		const v = placePlayerVideo(ownVideo, frameTargetEl);
 		v.controls = !USE_CUSTOM_PLAYER_CONTROLS;
 		videoEl = v;
 
-		// Sync initial state from whatever the singleton is doing
-		// right now (it may already be playing from a prior page
-		// or PiP session).
+		// Sync initial state from the element: the slot can come back
+		// (after an error overlay) with the stream already playing.
 		currentTime = v.currentTime;
 		duration = isFinite(v.duration) ? v.duration : 0;
 		isPaused = v.paused;
@@ -1461,71 +1444,43 @@
 			v.textTracks.removeEventListener('addtrack', onTextTracksMutate);
 			v.textTracks.removeEventListener('removetrack', onTextTracksMutate);
 			v.textTracks.removeEventListener('change', onTextTracksMutate);
-			detachGlobalVideo();
 		};
 	});
 
 	// Reactively swap the controls type when the user flips the
 	// settings toggle; the listeners above don't re-run for that.
 	$effect(() => {
-		const v = getGlobalVideo();
-		v.controls = !USE_CUSTOM_PLAYER_CONTROLS;
+		ownVideo.controls = !USE_CUSTOM_PLAYER_CONTROLS;
 	});
 
 	$effect(() => {
 		if (!videoEl || !mediaUrl) return;
-		// If the singleton is already loaded with this exact
-		// mediaUrl (i.e. the user navigated away into PiP and came
-		// back), skip the teardown + re-attach — it would restart
-		// playback from 0 and tear down a working HLS pipeline for
-		// no reason. We still update the session pointer so the
-		// PiP-leave navigation knows where to land next time.
-		//
-		// Checked BEFORE the resume-seek arms: an already-loaded
-		// source keeps playing and may never emit loadedmetadata
-		// again, and this path returns without the effect's cleanup —
-		// a listener armed here would survive until an unrelated
-		// later attach and seek it to the old position. It must also
-		// not consume the pending capture: a recovery in flight lands
-		// on a NEW session URL, and that landing is what the capture
-		// is for.
-		const same = videoEl.src === mediaUrl || videoEl.currentSrc === mediaUrl;
-		if (same) {
-			setCurrentSession({
-				kitsu_id: id,
-				episode: episodeNum,
-				session_id: sessionId,
-				media_url: mediaUrl,
-				media_kind: mediaKind,
-				// Record what this session was resolved at (from the URL,
-				// not current settings) so the reuse shortcut re-resolves
-				// after a quality / sub-dub change.
-				quality: resolvedQuality,
-				mode: resolvedMode
-			});
-			// User came back to a session that was paused on navigate-
-			// away (auto-PiP off path). Their click *was* a play
-			// gesture — resume rather than leaving them staring at a
-			// frozen frame.
-			if (videoEl.paused) void videoEl.play().catch(() => {});
-			return;
-		}
+		// The stream already attached from this URL keeps playing: the
+		// effect can run again without its source changing, and
+		// re-attaching would restart playback from 0. A recovery lands
+		// on a NEW session URL, so it re-attaches.
+		if (attachedUrl === mediaUrl) return;
 
 		// A new media source is attaching — whatever burst state the
 		// previous stream accumulated is its own. Runs on every real
 		// re-attach, so history and direct-URL navigation get fresh
 		// budgets exactly like switchToEpisode and the recovery flow.
 		// The flush retires the previous source's listeners AND its
-		// engine, whichever mount created them — teardown can only
-		// reach this mount's own handle.
+		// engine.
 		stallMachine.reset();
-		flushSourceScopedCleanups();
+		sourceScope.flush();
 		teardown();
-		// Source-scoped listeners — the resume seek and the progress
-		// marking — belong to the stream attaching here, which outlives
-		// this component in PiP; the module owns the arrangement. Armed
-		// AFTER the flush, which retires the previous source's.
-		armSourceScopedListeners({ video: videoEl, showId: id, episode: episodeNum });
+		attachedUrl = mediaUrl;
+		// Source-scoped listeners — the resume seek, the progress
+		// marking and the position kept for the next visit — belong to
+		// the stream attaching here; the module owns the arrangement.
+		// Armed AFTER the flush, which retires the previous source's.
+		armSourceScopedListeners({
+			video: videoEl,
+			showId: id,
+			episode: episodeNum,
+			scope: sourceScope
+		});
 		playerError = null;
 
 		// One held retry pending per source: a second failure inside
@@ -1539,7 +1494,7 @@
 			cancelHeldRetry?.();
 			cancelHeldRetry = null;
 		};
-		addSourceScopedCleanup(dropHeldRetry);
+		sourceScope.add(dropHeldRetry);
 
 		// Native <video> error events fire for HTTP 4xx/5xx and codec
 		// failures alike. Wire one listener that covers both the MP4
@@ -1581,7 +1536,9 @@
 				exhaustedStallOverlayMessage({ source: 'video', code }, hasAutoRetried) ??
 				`Playback error: ${reason}`;
 		};
-		videoEl.addEventListener('error', onVideoError);
+		const errorTarget = videoEl;
+		errorTarget.addEventListener('error', onVideoError);
+		sourceScope.add(() => errorTarget.removeEventListener('error', onVideoError));
 
 		// MP4 sessions stream from the local proxy with byte-range
 		// support; the <video> element handles seek natively, no need
@@ -1595,11 +1552,10 @@
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
 			hls = new Hls({ lowLatencyMode: false, ...HLS_STALL_LOAD_POLICY });
-			// The engine retires with its source: a route unmount keeps
-			// it alive for PiP, so its destruction belongs to the next
-			// attach's flush, not to any component's lifetime.
+			// The engine retires with its source: the next attach's
+			// flush, or the page leaving.
 			const engine = hls;
-			addSourceScopedCleanup(() => {
+			sourceScope.add(() => {
 				engine.destroy();
 			});
 			hls.loadSource(mediaUrl);
@@ -1694,114 +1650,23 @@
 		}
 
 		// Sidecar subtitle tracks: the session lists them at the media
-		// URL's origin, one <track> per listing on the singleton, removed
+		// URL's origin, one <track> per listing on the video, removed
 		// with the source like the engine is.
 		if (sourceAttached) {
-			addSourceScopedCleanup(armSidecarTracks(videoEl, mediaUrl, sessionId));
+			sourceScope.add(armSidecarTracks(videoEl, mediaUrl, sessionId));
 		}
-
-		// Stamp the session so the layout's PiP-leave handler knows
-		// where to navigate back when the user closes the floating
-		// PiP window from off-route.
-		setCurrentSession({
-			kitsu_id: id,
-			episode: episodeNum,
-			session_id: sessionId,
-			media_url: mediaUrl,
-			media_kind: mediaKind,
-			// Record what this session was resolved at (from the URL, not
-			// current settings) so the reuse shortcut re-resolves after a
-			// quality / sub-dub change.
-			quality: resolvedQuality,
-			mode: resolvedMode
-		});
-
-		return () => {
-			videoEl?.removeEventListener('error', onVideoError);
-		};
 	});
 
 	onDestroy(() => {
-		if (!id) return;
-		// Two paths for cancelling in-flight prefetches; see
-		// $lib/play/prefetch-lifecycle for the policy.
-		//
-		//   • PiP not active: cancel immediately like before. Without
-		//     this, abandoned resolves keep streaming SSE events
-		//     to a closed page and holding the provider rate-limit slots.
-		//
-		//   • PiP active: defer. The user is still engaged with this
-		//     show via the floating thumbnail; killing the prefetches
-		//     now would mean auto-play-next stutters at the episode
-		//     boundary. Register a deferred cancel that fires on
-		//     leavepictureinpicture (or earlier, if a different show's
-		//     play page mounts and flushes us via
-		//     fireDeferredCancelsExcept).
-		//
-		// We deliberately DO NOT teardown() the singleton on destroy.
-		// The video element survives in $lib/play/global-video so PiP
-		// keeps playing across navigation. Teardown only runs when a
-		// different mediaUrl arrives (the effect below).
-		const v = getGlobalVideo();
-		const isInPip = document.pictureInPictureElement === v;
-		const action = decideOnDestroyPrefetch({ videoIsInPip: isInPip });
-		const showId = id;
-		if (action === 'clear-now') {
-			clearForShow(showId);
-			return;
-		}
-		// Defer path. The cancel function is the canonical clear plus
-		// listener teardown; both fireDeferredCancelsExcept and the
-		// onLeave handler invoke it.
-		const cancel = () => {
-			v.removeEventListener('leavepictureinpicture', onLeave);
-			unregisterDeferredCancel(showId);
-			clearForShow(showId);
-		};
-		const onLeave = () => {
-			v.removeEventListener('leavepictureinpicture', onLeave);
-			unregisterDeferredCancel(showId);
-			const decision = decideOnPipCloseOrphanedPrefetch({
-				destroyedShowId: showId,
-				currentRouteId: page.route?.id ?? '',
-				currentShowId: page.params?.id ?? ''
-			});
-			if (decision === 'clear') clearForShow(showId);
-		};
-		v.addEventListener('leavepictureinpicture', onLeave);
-		registerDeferredCancel(showId, cancel);
-	});
-
-	// Navigation handler for the singleton. Two responsibilities:
-	//
-	//   • Same-show episode swap → leave the video alone. The
-	//     singleton stays attached to the play frame and the new
-	//     page's load effect will swap its src in place.
-	//
-	//   • Anything else (different show, /, /anime/[id], /search,
-	//     …) → request PiP by default so the user keeps watching
-	//     while they browse. If they opted out via
-	//     disable_auto_pip_on_leave, pause instead — without the
-	//     explicit pause the singleton survives in the 1×1 hidden
-	//     host and keeps streaming audio off-screen.
-	beforeNavigate(({ to }) => {
-		if (!videoEl) return;
-		const action = decideNavigateAction({
-			targetRoute: to?.route?.id ?? '',
-			targetShowId: to?.params?.id ?? '',
-			currentShowId: id,
-			videoPaused: videoEl.paused,
-			alreadyInPip: document.pictureInPictureElement === videoEl,
-			disableAutoPip: !!config?.disable_auto_pip_on_leave
-		});
-		if (action === 'noop') return;
-		if (action === 'pause') {
-			videoEl.pause();
-			return;
-		}
-		void videoEl.requestPictureInPicture().catch(() => {
-			if (videoEl) videoEl.pause();
-		});
+		// Leaving the page ends playback: the stream's engine and
+		// listeners retire, the element unloads and leaves the page,
+		// and picture-in-picture, which shows it, closes. Abandoned
+		// resolves would otherwise keep streaming events to a closed
+		// page and hold the provider's rate-limit slots.
+		sourceScope.flush();
+		teardown();
+		releasePlayerVideo(ownVideo);
+		if (id) clearForShow(id);
 	});
 
 	// describeError / describePlayFailure live in $lib/play/error-copy
@@ -1833,14 +1698,6 @@
 			detailError = 'Missing show id in URL.';
 			return;
 		}
-		// If a previous play page deferred its prefetch cancel
-		// (because PiP was keeping its show alive) and the user is
-		// now mounting a *different* show's player, flush the old
-		// show's prefetches now. Otherwise we'd run two shows'
-		// prefetches concurrently against the provider rate limit
-		// until PiP eventually closes. Same-show remounts are kept;
-		// the new component will take ownership.
-		fireDeferredCancelsExcept(id);
 		void kitsuAnimeDetail(id)
 			.then((d) => {
 				detail = d;
@@ -2009,6 +1866,10 @@
 					switchProgress = progressLabel(p);
 				}
 			);
+			// The viewer left while the session was on its way: nothing
+			// below is theirs any more, least of all a navigation back
+			// into the player.
+			if (gone) return;
 			// Reset the one-shot auto-retry budget only on a real episode
 			// switch — Next/Prev/pick are distinct session-classes, so
 			// each gets its own shot. Resetting on a same-episode landing
@@ -2059,7 +1920,7 @@
 			// /anime/[id], not to the previously-watched episode.
 			// Episode navigation already lives in the player's prev/
 			// next controls; the back button is for leaving the show.
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp, quality, mode), {
+			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
 				replaceState: true
 			});
 			/* eslint-enable svelte/no-navigation-without-resolve */
@@ -2129,6 +1990,9 @@
 		// is broader than needed (drops sibling episodes too) but the
 		// sibling prefetches are warming work; losing them costs only
 		// the next slow play, which is acceptable for the retry.
+		// The viewer left while the eviction was out: a fresh resolve
+		// would only navigate them back.
+		if (gone) return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
 	}
@@ -2498,11 +2362,9 @@
 				<p class="player-error-detail">{playerError}</p>
 			</div>
 		{:else}
-			<!-- Target slot for the singleton video. The actual
-			     <video> lives in $lib/play/global-video and gets
-			     appendChild'd here on mount; on destroy it goes
-			     back to a hidden host so PiP survives navigation.
-			     Width/height fill the frame so the singleton's
+			<!-- Slot for the page's video, made in $lib/play/player-video
+			     and appended here whenever the slot is rendered.
+			     Width/height fill the frame so the element's
 			     100%/100% sizing letterboxes within. -->
 			<div class="player-video-slot" bind:this={frameTargetEl}></div>
 
@@ -2630,7 +2492,7 @@
 							</button>
 						</div>
 
-						<!-- Captions selector. Only renders when the singleton
+						<!-- Captions selector. Only renders when the page's
 						     video has at least one subtitles / captions track
 						     attached. Click toggles a popover listing each
 						     available track plus an explicit "Off"; the
@@ -3948,10 +3810,9 @@
 		box-shadow: none;
 	}
 
-	/* The singleton video lives in the global host (lib/play/
-	   global-video) and gets appendChild'd into .player-video-slot
-	   on mount. Style targets are :global() because the element
-	   isn't owned by this Svelte component. */
+	/* The page's video is made in lib/play/player-video and appended
+	   into .player-video-slot, not rendered by this component's
+	   markup, so style targets are :global(). */
 	:global(.player-frame video) {
 		inline-size: 100%;
 		block-size: 100%;

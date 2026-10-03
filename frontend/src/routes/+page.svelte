@@ -39,6 +39,7 @@
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import {
+		allmangaKitsuMapGet,
 		altTitlesFromKitsu,
 		checkAvailability,
 		yearFromKitsuRef,
@@ -78,7 +79,6 @@
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
 	import { resolveResumeSettings } from '$lib/history/resume-settings';
 	import { createCapAuthority } from '$lib/history/cap-authority';
-	import type { VideoSession } from '$lib/play/global-video';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
@@ -90,7 +90,6 @@
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
-	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
@@ -99,7 +98,8 @@
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
-	import { pickNextEpisode } from '$lib/play/next-episode';
+	import { pickResumeEpisode } from '$lib/play/next-episode';
+	import { clearShowPositions, readPosition } from '$lib/play/watch-position';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -176,6 +176,9 @@
 	// background probe then carries that value instead of its own
 	// (which may be an approximate breaker fallback).
 	const capAuthority = createCapAuthority();
+	// An episode left part-way keeps its position; the Continue card
+	// goes back to it rather than on to the next one.
+	const leftPartWay = (kitsuId: string, episode: number) => readPosition(kitsuId, episode) !== null;
 	const rowReady = makeContinueRowReadyHandler({
 		historyById,
 		fetchKitsuEpisodes: kitsuEpisodes,
@@ -187,7 +190,8 @@
 		},
 		setEpisode: (id, ep) => {
 			historyEpisodes = { ...historyEpisodes, [id]: ep };
-		}
+		},
+		leftPartWay
 	});
 
 	/**
@@ -259,7 +263,9 @@
 			const result = await executeKitsuGroupDelete(deleteCandidate.entry.id, {
 				history: history ?? [],
 				matches: historyMatches,
-				historyDelete
+				historyDelete,
+				forgetPositions: clearShowPositions,
+				kitsuIdOf: allmangaKitsuMapGet
 			});
 			// Open the gate IMMEDIATELY before the optimistic mutation
 			// so the 350ms auto-close window starts when Svelte's
@@ -642,6 +648,7 @@
 		kitsu_id: a.match.id
 	});
 	const startResume = makeStartResume({
+		leftPartWay,
 		isBusy: () => !!resumeBusy,
 		onBusy: (id) => {
 			resumeBusy = id;
@@ -653,7 +660,6 @@
 			resumeFailure = { title, message: describePlayFailure(e) };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
-		settingsLoaded: () => config !== null,
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
 		isPlayableCountApproximate: (id) => historyApproximateCaps[id] === true,
 		setPlayableCount: (id, c, approximate) => {
@@ -676,11 +682,6 @@
 				count: r?.episode_count ?? null,
 				approximate: r?.episode_count_approximate === true
 			})),
-		// Persistent-PiP short-circuit: reuse the live session for the
-		// exact (show, ep, quality, mode); quality/mode stay undefined
-		// while settings are unloaded so a live PiP session at a
-		// non-default setting isn't torn down.
-		reuseSession: (id, ep, quality, mode) => reuseSessionIfMatching(id, ep, quality, mode),
 		resolvePlay: (a, onProgress) =>
 			getOrFire(
 				makeKey(a.match.id, a.episode, a.mode, a.quality),
@@ -692,26 +693,10 @@
 		// (mode-independent), NOT the dub/sub playable cap, and only
 		// for a finished series — see /play/[id] for the rationale.
 		syncTrackers: (id, ep, total, finished) => syncWatchedToTrackers(id, ep, total, finished),
-		navigateToCached: (id, cached) => {
-			const c = cached as VideoSession;
-			const parts = [
-				`session=${encodeURIComponent(c.session_id)}`,
-				`episode=${c.episode}`,
-				`kind=${c.media_kind}`
-			];
-			// Carry the session's resolved quality/mode so /play records
-			// the true setting (and a later switch re-resolves).
-			if (c.quality) parts.push(`q=${encodeURIComponent(c.quality)}`);
-			if (c.mode) parts.push(`md=${encodeURIComponent(c.mode)}`);
-			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id }) + `?${parts.join('&')}`);
-			/* eslint-enable svelte/no-navigation-without-resolve */
-		},
-		navigateToSession: (id, session, ep, quality, mode) => {
+		navigateToSession: (id, session, ep) => {
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(
-				resolve('/play/[id]', { id }) +
-					buildPlayQuery(session as CreateSessionResponse, ep, quality, mode)
+				resolve('/play/[id]', { id }) + buildPlayQuery(session as CreateSessionResponse, ep)
 			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		}
@@ -925,9 +910,10 @@
 			)}
 			{@const playableCount = historyPlayableCounts[entry.id]}
 			{@const lastWatched = parseInt(entry.ep_no, 10)}
-			{@const nextEpisode = pickNextEpisode(
+			{@const nextEpisode = pickResumeEpisode(
 				Number.isFinite(lastWatched) ? lastWatched : null,
-				playableCount ?? match?.episode_count ?? null
+				playableCount ?? match?.episode_count ?? null,
+				!!match && Number.isFinite(lastWatched) && leftPartWay(match.id, lastWatched)
 			)}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,

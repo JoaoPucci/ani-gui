@@ -36,7 +36,7 @@ vi.mock('$app/navigation', () => ({
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { getGlobalVideo } from '../../src/lib/play/global-video';
+import { playerVideo, playerVideoInSlot } from './player-video';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -135,11 +135,8 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
 
-		const video = getGlobalVideo();
-		await until(
-			() => video.parentElement?.classList.contains('player-video-slot') === true,
-			'the video in its slot'
-		);
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		const video = playerVideo();
 		// The show detail must have landed before the recovery can run;
 		// the episode-nav cluster renders once it has.
 		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
@@ -187,11 +184,11 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 	});
 
 	it('the captured position survives a play-page remount', async () => {
-		// A recovery can begin while the route is unmounted — PiP keeps
-		// the singleton video and its callbacks alive — and the landing
-		// then navigates back into a FRESH play-page mount. The pending
-		// position rides the singleton's side, not the destroyed
-		// component, so the remounted attach still seeks back.
+		// A recovery captures the position, and the viewer leaves
+		// before it lands; coming back to the episode is a FRESH
+		// play-page mount with a fresh video. The pending position
+		// rides the recovery's carrier, not the destroyed component,
+		// so the remounted attach still seeks back.
 		server.use(
 			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
 			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
@@ -217,11 +214,8 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
-		const video = getGlobalVideo();
-		await until(
-			() => video.parentElement?.classList.contains('player-video-slot') === true,
-			'the video in its slot'
-		);
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		const video = playerVideo();
 		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 
 		// The stream dies twelve minutes in; the recovery captures the
@@ -235,84 +229,22 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 			'the recovery resolve stream'
 		);
 
-		// …and the page is gone before the landing (the PiP shape).
+		// …and the page is gone before the landing.
 		unmount(app);
 		app = null;
 
-		// The landing navigates back into a fresh mount.
+		// Coming back is a fresh mount with its own video.
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
-		await until(() => video.src.includes('session-2'), 'the fresh mount to attach');
-		video.currentTime = 0;
-		video.dispatchEvent(new Event('loadedmetadata'));
-		await until(() => video.currentTime === 720, 'playback to resume where it stalled');
-	});
-
-	it('the armed seek survives a route unmount and fires off-route', async () => {
-		// The recovered source attaches, the viewer navigates away for
-		// PiP before its metadata lands, and metadata then arrives
-		// off-route. The unmount is not a source replacement — the
-		// singleton keeps this exact stream — so the armed seek still
-		// belongs to it and must fire.
-		server.use(
-			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
-			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
-			),
-			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-			),
-			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-			http.post(`${API_BASE}/api/availability`, () =>
-				HttpResponse.json({
-					available: true,
-					episode_count: 12,
-					extra_episodes: [],
-					episode_count_approximate: false
-				})
-			),
-			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
-			http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
-		);
-
-		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
-		app = mount(PlayPage, { target });
-		const video = getGlobalVideo();
 		await until(
-			() => video.parentElement?.classList.contains('player-video-slot') === true,
-			'the video in its slot'
+			() => playerVideoInSlot() && playerVideo().src.includes('session-2'),
+			'the fresh mount to attach'
 		);
-		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
-
-		video.currentTime = 720;
-		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
-		const streamsBefore = FakeEventSource.instances.length;
-		video.dispatchEvent(new Event('error'));
-		await until(
-			() => FakeEventSource.instances.length > streamsBefore,
-			'the recovery resolve stream'
-		);
-		FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch(
-			'done',
-			JSON.stringify({
-				id: 'session-2',
-				kind: 'mp4',
-				has_subtitles: false,
-				quality: '1080',
-				mode: 'sub'
-			})
-		);
-		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '1', kind: 'mp4' });
-		await until(() => video.src.includes('session-2'), 'the recovered session to attach');
-
-		// Away for PiP before metadata lands.
-		unmount(app!);
-		app = null;
-		video.currentTime = 0;
-		video.dispatchEvent(new Event('loadedmetadata'));
-		await until(() => video.currentTime === 720, 'the off-route seek to fire');
+		const fresh = playerVideo();
+		expect(fresh).not.toBe(video);
+		fresh.currentTime = 0;
+		fresh.dispatchEvent(new Event('loadedmetadata'));
+		await until(() => fresh.currentTime === 720, 'playback to resume where it stalled');
 	});
 
 	it('a provider 503 on a play click names the source as down', async () => {
@@ -344,9 +276,7 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
 		);
 
-		// A session id no other case uses: leaving the singleton on a
-		// shared URL would hand the NEXT mount the same-URL shortcut
-		// and skip its re-attach.
+		// A session id no other case uses, so the case reads alone.
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-down', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
 		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
@@ -411,11 +341,8 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
 
-		const video = getGlobalVideo();
-		await until(
-			() => video.parentElement?.classList.contains('player-video-slot') === true,
-			'the video in its slot'
-		);
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		const video = playerVideo();
 		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 
 		// A recovery captures the position and its fresh session

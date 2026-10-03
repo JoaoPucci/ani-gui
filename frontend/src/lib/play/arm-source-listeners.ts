@@ -1,42 +1,118 @@
 /**
- * Source-scoped listener orchestration for a media attach: consume
- * any pending recovery position for this (show, episode), arm the
- * seek-back and the progress marking on the singleton video, and
- * register their removal with the source-scoped cleanups — the
- * attach path flushes the registry before arming, so they die when
- * the NEXT source attaches (which is also what cancels a superseded
- * attach's pending seek) and survive route unmounts,
- * where PiP keeps this exact stream playing. The play page's attach
- * path is one call into here (AGENTS.md §2).
+ * Source-scoped listener orchestration for a media attach: seek to
+ * where the episode should resume — a pending recovery's position, or
+ * else where the episode was last left — mark progress for the stall
+ * machine, and keep the episode's position as it plays. Everything is
+ * registered with the page's source scope, which the page flushes
+ * when the next stream attaches (which is also what cancels a
+ * superseded attach's pending seek) and when it leaves. The play
+ * page's attach path is one call into here (AGENTS.md §2).
  */
 
 import { recoveryResume } from '$lib/play/resume-after-recovery';
 import { stallMachine } from '$lib/play/stall-machine';
-import { addSourceScopedCleanup } from '$lib/play/global-video';
+import type { SourceScope } from '$lib/play/source-scope';
+import {
+	clearPosition,
+	isFinishedAt,
+	markStarted,
+	readPosition,
+	savePosition,
+	type PositionStorage
+} from './watch-position';
+
+/** How far playback moves between two writes of its position. */
+const SAVE_EVERY_S = 5;
 
 export function armSourceScopedListeners(input: {
 	video: HTMLVideoElement;
 	showId: string;
 	episode: number;
+	scope: SourceScope;
+	/** Where positions are kept; the renderer's local storage when
+	 *  omitted. */
+	positions?: PositionStorage;
 }): void {
-	const { video } = input;
-	const resumeAt = recoveryResume.consume(input.showId, input.episode);
+	const { video, showId, episode, scope, positions } = input;
+	// A recovery's point resumes the stream the viewer was watching a
+	// moment ago, wherever it falls. A kept point was saved on an
+	// earlier visit, perhaps before the stream's length was known, so
+	// it is checked against the length once the metadata brings it.
+	const recovered = recoveryResume.consume(showId, episode);
+	const kept = recovered === null ? readPosition(showId, episode, positions) : null;
+	// The episode is started from here: a play that never gets past
+	// opening still leaves Continue on it.
+	markStarted(showId, episode, positions);
 	// Progress means frames actually rendered — the `playing` event —
 	// never a bare timeupdate: the resume seek below emits one at the
 	// old timestamp before the fresh source has delivered anything.
 	const markProgress = () => {
 		stallMachine.progressed();
 	};
-	const seekBack =
-		resumeAt !== null
-			? () => {
-					video.currentTime = resumeAt;
-				}
-			: null;
-	addSourceScopedCleanup(() => {
+	// The position is only the stream's once its metadata is in: an
+	// element still opening reads zero, and writing that would forget
+	// where the episode was left.
+	let opened = false;
+	let savedAt = Number.NEGATIVE_INFINITY;
+	const save = () => {
+		if (!opened) return;
+		savedAt = video.currentTime;
+		savePosition(showId, episode, video.currentTime, video.duration, positions);
+	};
+	const onMetadata = () => {
+		if (recovered !== null) video.currentTime = recovered;
+		// A started mark, at zero, has nothing to judge, so only a point
+		// past it waits for the length.
+		if (recovered !== null || !kept || Number.isFinite(video.duration)) {
+			resumeKept();
+			return;
+		}
+		// The length is not known yet — hls.js sets it from the playlist,
+		// and a playlist without an end grows it — so the kept point
+		// cannot be judged. Wait for the first known length. The element
+		// autoplays and the engine seeks it on its own, so neither its
+		// `playing` nor its `seeking` drops the wait; the player's own
+		// seek controls need a known length, so nothing the viewer does
+		// through them can either. Until then nothing is written.
+		video.addEventListener('durationchange', onDuration);
+	};
+	const stopWaiting = () => {
+		video.removeEventListener('durationchange', onDuration);
+	};
+	const onDuration = () => {
+		if (Number.isFinite(video.duration)) resumeKept();
+	};
+	// Seeks to the kept point unless the known length puts it in the
+	// last 90 seconds, where it is forgotten instead. Decided once.
+	const resumeKept = () => {
+		stopWaiting();
+		// A started mark, at zero, opens from the start and is never
+		// judged finished: the episode was barely begun.
+		if (recovered === null && kept !== null && kept > 0) {
+			if (isFinishedAt(kept, video.duration)) clearPosition(showId, episode, positions);
+			else video.currentTime = kept;
+		}
+		opened = true;
+	};
+	const onTime = () => {
+		if (Math.abs(video.currentTime - savedAt) >= SAVE_EVERY_S) save();
+	};
+	const onEnded = () => {
+		clearPosition(showId, episode, positions);
+	};
+	scope.add(() => {
+		save();
+		stopWaiting();
+		opened = false;
 		video.removeEventListener('playing', markProgress);
-		if (seekBack) video.removeEventListener('loadedmetadata', seekBack);
+		video.removeEventListener('loadedmetadata', onMetadata);
+		video.removeEventListener('timeupdate', onTime);
+		video.removeEventListener('pause', save);
+		video.removeEventListener('ended', onEnded);
 	});
 	video.addEventListener('playing', markProgress);
-	if (seekBack) video.addEventListener('loadedmetadata', seekBack, { once: true });
+	video.addEventListener('loadedmetadata', onMetadata, { once: true });
+	video.addEventListener('timeupdate', onTime);
+	video.addEventListener('pause', save);
+	video.addEventListener('ended', onEnded);
 }
