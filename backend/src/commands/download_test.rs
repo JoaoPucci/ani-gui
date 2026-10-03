@@ -6135,3 +6135,97 @@ mod relay_exception_props {
         }
     }
 }
+
+mod download_rate {
+    use crate::commands::download_progress::{
+        ffmpeg_progress_bytes, ytdlp_progress_bytes, RateMeter, RATE_WINDOW,
+    };
+    use proptest::prelude::*;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    #[test]
+    fn yt_dlps_progress_line_reads_as_the_bytes_downloaded() {
+        assert_eq!(
+            ytdlp_progress_bytes("ani-gui-progress 1048576"),
+            Some(1_048_576)
+        );
+        // yt-dlp prints NA before it knows.
+        assert_eq!(ytdlp_progress_bytes("ani-gui-progress NA"), None);
+        assert_eq!(ytdlp_progress_bytes("[download]  12.0% of 300MiB"), None);
+        assert_eq!(ytdlp_progress_bytes("WARNING: something"), None);
+    }
+
+    #[test]
+    fn ffmpegs_progress_lines_read_as_the_bytes_written() {
+        assert_eq!(ffmpeg_progress_bytes("total_size=2097152"), Some(2_097_152));
+        assert_eq!(ffmpeg_progress_bytes("total_size=N/A"), None);
+        assert_eq!(ffmpeg_progress_bytes("out_time_us=1000000"), None);
+        assert_eq!(ffmpeg_progress_bytes("progress=continue"), None);
+    }
+
+    #[test]
+    fn the_rate_is_the_bytes_gained_over_the_window() {
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(5 * 1024 * 1024, start + RATE_WINDOW);
+        let rate = meter.rate_at(start + RATE_WINDOW);
+        let expected = 5.0 * 1024.0 * 1024.0 / RATE_WINDOW.as_secs_f64();
+        assert!((rate - expected).abs() < 1.0, "{rate} vs {expected}");
+    }
+
+    #[test]
+    fn a_stalled_download_decays_to_zero() {
+        // Nothing gained for a whole window: the rate is zero, not the
+        // last speed seen.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(1_000_000, start + Duration::from_secs(1));
+        assert!(meter.rate_at(start + Duration::from_secs(1)) > 0.0);
+        assert_eq!(
+            meter.rate_at(start + Duration::from_secs(1) + RATE_WINDOW + Duration::from_millis(1)),
+            0.0
+        );
+    }
+
+    #[test]
+    fn a_count_that_starts_over_starts_the_meter_over() {
+        // A run restarted at the other pace reports bytes from its own
+        // start; the drop is not a negative speed.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(10_000_000, start);
+        meter.observe(100, start + Duration::from_secs(1));
+        meter.observe(1_100, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!(rate > 0.0 && rate <= 1_000.0 + 1.0, "{rate}");
+    }
+
+    proptest! {
+        /// Whatever the tool reports and whenever it is asked, the rate
+        /// is never negative and never more than the bytes it has seen
+        /// over the time it has seen them.
+        #[test]
+        fn the_rate_is_never_negative_and_never_more_than_was_seen(
+            steps in proptest::collection::vec((0u64..50_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut most = 0u64;
+            for (bytes, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                meter.observe(*bytes, at);
+                most = most.max(*bytes);
+            }
+            let now = at + Duration::from_millis(asked_after_ms);
+            let rate = meter.rate_at(now);
+            prop_assert!(rate >= 0.0);
+            prop_assert!(rate.is_finite());
+            prop_assert!(rate <= most as f64 / 0.001);
+        }
+    }
+}
