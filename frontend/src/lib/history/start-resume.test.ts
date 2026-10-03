@@ -199,3 +199,40 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		expect(h.failures).toEqual([]);
 	});
 });
+
+describe('makeStartResume — an episode left part-way', () => {
+	it('goes back to the last watched episode when it was left part-way', async () => {
+		const leftPartWay = vi.fn((kitsuId: string, ep: number) => kitsuId === 'k1' && ep === 5);
+		const h = makeHarness({ getPlayableCount: () => 12, leftPartWay });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 5 }),
+			expect.any(Function)
+		);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith('k1', { session_id: 's1' }, 5);
+	});
+
+	it('goes on to the next episode when only an older one was left part-way', async () => {
+		const h = makeHarness({
+			getPlayableCount: () => 12,
+			leftPartWay: (_k, ep) => ep === 4
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 6 }),
+			expect.any(Function)
+		);
+	});
+
+	it("goes back to a series' last episode left part-way", async () => {
+		const h = makeHarness({ getPlayableCount: () => 12, leftPartWay: () => true });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '12', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 12 }),
+			expect.any(Function)
+		);
+	});
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickNextEpisode } from './next-episode';
+import { pickNextEpisode, pickResumeEpisode } from './next-episode';
 
 /** Episode the player should jump to when the user clicks Continue.
  *
@@ -54,5 +54,29 @@ describe('pickNextEpisode', () => {
 		// land on a failure the lazy click path surfaces normally.
 		// Match the detail page's existing behaviour.
 		expect(pickNextEpisode(5, null)).toBe(6);
+	});
+});
+
+describe('pickResumeEpisode', () => {
+	// The episode a Continue click plays. Leaving an episode part-way
+	// keeps its position, and coming back means going back to it — not
+	// to the next one, which is where the watched mark, written when
+	// the episode started, would otherwise send the viewer.
+	it('returns the last watched episode when it was left part-way', () => {
+		expect(pickResumeEpisode(5, 12, true)).toBe(5);
+	});
+
+	it('returns the next episode when the last one was not left part-way', () => {
+		expect(pickResumeEpisode(5, 12, false)).toBe(6);
+	});
+
+	it("returns a series' last episode, left part-way, as itself", () => {
+		expect(pickResumeEpisode(12, 12, true)).toBe(12);
+	});
+
+	it('returns episode 1 without history, whatever the flag says', () => {
+		expect(pickResumeEpisode(null, 12, true)).toBe(1);
+		expect(pickResumeEpisode(Number.NaN, 12, true)).toBe(1);
+		expect(pickResumeEpisode(0, 12, true)).toBe(1);
 	});
 });

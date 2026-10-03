@@ -31,6 +31,7 @@ vi.mock('$app/navigation', () => ({
 
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { savePosition } from '../../src/lib/play/watch-position';
 
 function ref(id: string, title: string, episodeCount: number) {
 	return {
@@ -167,5 +168,53 @@ describe('home Continue Watching', () => {
 		// configured mode. An ungated loader reads the 'sub' fallback,
 		// so its probes fail this whenever they are issued.
 		expect(probedModes.every((m) => m === 'dub')).toBe(true);
+	});
+
+	describe('an episode left part-way', () => {
+		function useHomeHandlers() {
+			server.use(
+				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(config('sub'))),
+				http.get(`${API_BASE}/api/history`, () =>
+					HttpResponse.json([{ ep_no: '3', id: 'allanime-1', title: 'Cowboy Bebop' }])
+				),
+				http.post(`${API_BASE}/api/kitsu/search`, () =>
+					HttpResponse.json([ref('1', 'Cowboy Bebop', 26)])
+				),
+				http.post(`${API_BASE}/api/availability`, () =>
+					HttpResponse.json({ available: true, episode_count: 26, approximate: false })
+				),
+				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
+				http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+				http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
+				http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
+				http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+				http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
+				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+			);
+		}
+		const cardEpisode = () =>
+			resumeButton()?.querySelector('.resume-ep-num')?.textContent?.trim() ?? null;
+
+		beforeEach(() => {
+			window.localStorage.clear();
+		});
+
+		it('the card offers the episode left part-way, not the next one', async () => {
+			// The watched mark is written when an episode starts, so the
+			// last watched episode is the one the viewer left; with its
+			// position kept, going back means going back to it.
+			savePosition('1', 3, 600, 1420);
+			useHomeHandlers();
+			app = mount(HomePage, { target });
+			await until(() => cardEpisode() !== null, 'the resolved card');
+			expect(cardEpisode()).toBe('3');
+		});
+
+		it('the card offers the next episode when nothing was left part-way', async () => {
+			useHomeHandlers();
+			app = mount(HomePage, { target });
+			await until(() => cardEpisode() !== null, 'the resolved card');
+			expect(cardEpisode()).toBe('4');
+		});
 	});
 });
