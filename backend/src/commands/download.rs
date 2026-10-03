@@ -312,7 +312,11 @@ where
         path_env,
         std::time::Duration::from_secs(60 * 60),
         &mut |line| {
-            tracing::info!(line = %line, "download.tool.stderr");
+            // The once-a-second speed reports are the dock's, not the
+            // log's: an hour's transfer would write thousands of them.
+            if !line.starts_with(super::download_progress::RATE_STATUS) {
+                tracing::info!(line = %line, "download.tool.stderr");
+            }
             on_progress(DownloadProgress {
                 line: line.to_string(),
             });
