@@ -2127,7 +2127,11 @@ fn ytdlp_command(
     if let Some(p) = child_path {
         cmd.env("PATH", p);
     }
-    cmd.args(ytdlp_referer_args(referer))
+    // The run the app built, not one a user's configuration file
+    // reshapes: a configured --no-progress, --quiet or downloader
+    // silences the progress line the meter reads.
+    cmd.arg("--ignore-config")
+        .args(ytdlp_referer_args(referer))
         .arg(master_url)
         // Every download is a finished episode. yt-dlp guesses live
         // from the first variant it checks, and a stream it takes for
