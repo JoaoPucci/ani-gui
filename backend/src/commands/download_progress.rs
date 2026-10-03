@@ -55,8 +55,8 @@ pub(crate) fn ffmpeg_progress_bytes(line: &str) -> Option<u64> {
 
 /// The speed of a transfer from the byte counts its tool reports: the
 /// bytes gained since the oldest count within [`RATE_WINDOW`], over the
-/// time since that count. A count lower than the last starts the meter
-/// over — the tool was restarted and counts from its own start.
+/// time since that count. A count lower than the last moves the older
+/// counts down by the step, so the speed carries on through it.
 #[derive(Debug, Default)]
 pub(crate) struct RateMeter {
     samples: VecDeque<(Instant, u64)>,
@@ -65,8 +65,17 @@ pub(crate) struct RateMeter {
 impl RateMeter {
     /// Record that the tool had `bytes` at `at`.
     pub(crate) fn observe(&mut self, bytes: u64, at: Instant) {
-        if self.samples.back().is_some_and(|&(_, last)| bytes < last) {
-            self.samples.clear();
+        // A count that steps back — yt-dlp counting a retried
+        // fragment again — moves the older counts down by the step, so
+        // the speed carries on from the bytes gained since rather than
+        // reading zero until the window refills.
+        if let Some(&(_, last)) = self.samples.back() {
+            if bytes < last {
+                let step = last - bytes;
+                for sample in &mut self.samples {
+                    sample.1 = sample.1.saturating_sub(step);
+                }
+            }
         }
         self.samples.push_back((at, bytes));
         // Keep the window, and the newest count before it as the
