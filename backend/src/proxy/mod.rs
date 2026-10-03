@@ -54,7 +54,7 @@ pub struct ProxyState {
     /// The per-host budget every fetch to a host on the player's behalf
     /// is charged to, hop by hop, by the fetch itself
     /// ([`upstream::send_paced_as`]): media as the player's traffic,
-    /// subtitle tracks as background traffic behind it.
+    /// subtitle tracks as background traffic taking turns with it.
     pub host_budget: Arc<host_budget::HostBudget>,
 }
 

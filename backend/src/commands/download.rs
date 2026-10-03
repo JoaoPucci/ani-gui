@@ -1167,8 +1167,8 @@ async fn fetch_sidecar_track(
     if let Some(v) = referer.and_then(crate::proxy::upstream::referer_header) {
         headers.insert(reqwest::header::REFERER, v);
     }
-    // Background traffic: the track never waits in the host's line
-    // ahead of the player's next request.
+    // Background traffic: the track takes turns with the player's
+    // requests and leaves the reserve to them.
     match send_paced_as(
         client,
         budget,
@@ -1492,7 +1492,7 @@ where
 /// starts it again at the other pace on the same output, which yt-dlp
 /// resumes from the fragments it already has. A paced run fetches
 /// through the pacing's relay when it has one — the proxy, charging
-/// the run's requests to the host's budget behind the player's — and
+/// the run's requests to the host's budget in turn with the player's — and
 /// is otherwise held to one fragment at a limited byte rate; it has a
 /// ceiling of its own, and the time it took extends the transfer's.
 /// The ffmpeg fallback is a single connection: it holds the paced lane
@@ -1665,8 +1665,9 @@ where
             };
             // While playback is live the run fetches through the relay
             // when there is one: the proxy charges its requests to the
-            // host's budget behind the player's, so it takes whatever
-            // the player leaves, uncapped. Without one it is paced by
+            // host's budget in turn with the player's, so it takes
+            // whatever the player leaves and half while it waits,
+            // uncapped. Without one it is paced by
             // concurrency and byte rate instead.
             let relayed = if live { pacing.relay_url() } else { None };
             let (source_url, run_referer, fragments, rate) = match &relayed {
@@ -1843,7 +1844,7 @@ where
             .arg(&scratch.path);
         cmd
     };
-    // A fallback started live — through the relay behind the player,
+    // A fallback started live — through the relay in turn with the player,
     // or at the stream's rate — can take as long as the stream plays;
     // like a paced run it has a ceiling of its own, not the
     // transfer's, which is sized for a tool running free.
