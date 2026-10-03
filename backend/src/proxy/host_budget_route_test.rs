@@ -592,3 +592,35 @@ async fn a_players_drained_segment_does_mark_playback() {
     );
     assert!(sessions.playback_live(Duration::from_secs(30)));
 }
+
+/// A player's segment fetch tells the budget what the player needs: the
+/// rendition it feeds and the playback it buys, from the segment's own
+/// proxied URI. A download's segment through the proxy tells it
+/// nothing — the download is not what has to keep pace.
+#[tokio::test]
+async fn a_players_segment_fetch_notes_its_rendition_and_a_downloads_does_not() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"payload".to_vec()))
+        .mount(&server)
+        .await;
+    let host = host_budget::host_key(&url::Url::parse(&server.uri()).expect("server url"));
+    let seg = format!("{}/seg.ts", server.uri());
+
+    let player_budget = host_budget::HostBudget::fresh();
+    let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", player_budget.clone());
+    let uri = format!("{}&r=video&d=5000", seg_uri(&secret, id, &seg));
+    assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
+    assert!(
+        (player_budget.player_demand(&host) - 0.2).abs() < 1e-9,
+        "a five-second segment every five seconds"
+    );
+
+    let download_budget = host_budget::HostBudget::fresh();
+    let (router, _sessions, id, secret) =
+        background_proxy("https://cdn.example/master.m3u8", download_budget.clone());
+    let uri = format!("{}&r=video&d=5000", seg_uri(&secret, id, &seg));
+    assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
+    assert_eq!(download_budget.player_demand(&host), 0.0);
+}

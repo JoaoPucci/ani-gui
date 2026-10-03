@@ -291,6 +291,53 @@ mod tests {
         );
     }
 
+    /// The budget keeps a player's demand from the segments it fetches:
+    /// each media segment's proxied URI names its rendition and its
+    /// duration, so a fetch of it says which stream it feeds and how
+    /// much playback it buys. An init segment or a key buys none.
+    #[test]
+    fn a_media_segment_names_its_rendition_and_its_duration() {
+        let body = b"#EXTM3U\n\
+                     #EXT-X-TARGETDURATION:6\n\
+                     #EXT-X-MAP:URI=\"init.mp4\"\n\
+                     #EXTINF:5.005,\n\
+                     seg0.m4s\n\
+                     #EXTINF:4.5,\n\
+                     seg1.m4s\n\
+                     #EXT-X-ENDLIST\n";
+        let session = make_session();
+        let secret = AppSecret::random();
+        let origin = make_origin();
+        let video = Url::parse("https://upstream.example/v/1080/index.m3u8").unwrap();
+        let audio = Url::parse("https://upstream.example/a/en/index.m3u8").unwrap();
+        let out = rewrite_media(body, &video, &origin, session, &secret).unwrap();
+        let segments: Vec<&str> = out
+            .lines()
+            .filter(|l| l.contains("/seg?u=") && !l.starts_with('#'))
+            .collect();
+        assert_eq!(segments.len(), 2);
+        assert!(segments[0].contains("&d=5005"), "{}", segments[0]);
+        assert!(segments[1].contains("&d=4500"), "{}", segments[1]);
+        let rendition = |uri: &str| {
+            uri.split('&')
+                .find_map(|p| p.strip_prefix("r="))
+                .map(str::to_owned)
+        };
+        let video_id = rendition(segments[0]).expect("a rendition");
+        assert_eq!(rendition(segments[1]).as_deref(), Some(video_id.as_str()));
+        let map = out
+            .lines()
+            .find(|l| l.starts_with("#EXT-X-MAP"))
+            .expect("map");
+        assert!(!map.contains("&d=") && !map.contains("&r="), "{map}");
+        let other = rewrite_media(body, &audio, &origin, session, &secret).unwrap();
+        let other_seg = other
+            .lines()
+            .find(|l| l.contains("/seg?u=") && !l.starts_with('#'))
+            .unwrap();
+        assert_ne!(rendition(other_seg).as_deref(), Some(video_id.as_str()));
+    }
+
     #[test]
     fn rewrite_uri_skips_already_proxied() {
         let session = make_session();
