@@ -6229,3 +6229,117 @@ mod download_rate {
         }
     }
 }
+
+/// The rates a run reported to the dock, in bytes a second.
+#[cfg(unix)]
+fn reported_rates(lines: &[String]) -> Vec<u64> {
+    lines
+        .iter()
+        .filter_map(|l| l.strip_prefix("status.download.rate "))
+        .filter_map(|r| r.parse().ok())
+        .collect()
+}
+
+/// yt-dlp prints its progress on stdout, which the app threw away, so
+/// the dock never had a speed. It is asked for a progress line of the
+/// app's shape on stdout, the app reads it, and reports the run's speed
+/// to the dock once a second — the progress lines themselves are not
+/// the dock's to show.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_yt_dlp_run_reports_its_speed_to_the_dock() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "echo \"yt-dlp $*\" >&2\n\
+         for b in 0 1048576 2097152 3145728 4194304; do echo \"ani-gui-progress $b\"; sleep 0.4; done\n\
+         exit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(run.contains("--newline"), "{run}");
+    assert!(
+        run.contains("--progress-template download:ani-gui-progress %(progress.downloaded_bytes)s"),
+        "{run}"
+    );
+    let rates = reported_rates(&lines);
+    assert!(
+        rates.iter().any(|&r| r > 0),
+        "a speed was reported: {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.starts_with("ani-gui-progress")),
+        "the progress lines are not the dock's text: {lines:?}"
+    );
+}
+
+/// ffmpeg's -stats line is one carriage-return-separated run the app
+/// read whole at the end. The fallback asks for its key=value progress
+/// on stdout instead and reports the speed the same way.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_run_reports_its_speed_to_the_dock() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2\n\
+         for b in 0 1048576 2097152 3145728 4194304; do echo \"total_size=$b\"; echo progress=continue; sleep 0.4; done\n\
+         exit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ran");
+    assert!(run.contains("-progress pipe:1"), "{run}");
+    assert!(run.contains("-nostats"), "{run}");
+    assert!(!run.contains(" -stats"), "{run}");
+    let rates = reported_rates(&lines);
+    assert!(
+        rates.iter().any(|&r| r > 0),
+        "a speed was reported: {lines:?}"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.starts_with("total_size=") || l.starts_with("progress=")),
+        "the progress lines are not the dock's text: {lines:?}"
+    );
+}
