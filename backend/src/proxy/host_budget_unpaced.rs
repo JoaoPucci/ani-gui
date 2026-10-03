@@ -43,14 +43,10 @@ pub(crate) struct UnpacedRun<'a> {
 impl Drop for UnpacedRun<'_> {
     fn drop(&mut self) {
         let now = Instant::now();
-        // Buckets first, then the run count, the order `take_for`
-        // takes them in: no admission sees the run ended before every
-        // bucket is held.
-        let mut buckets = self
-            .budget
-            .buckets
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        // Hosts first, then the run count, the order admissions take
+        // them in: no admission sees the run ended before every bucket
+        // is held.
+        let mut states = self.budget.states.lock().unwrap_or_else(|e| e.into_inner());
         // Every host was held to what all the runs going leave, this
         // one's requests and any other's, so that is where it ends.
         let most = {
@@ -67,8 +63,14 @@ impl Drop for UnpacedRun<'_> {
             hold_to(untouched, now, self.budget.burst, self.budget.refill, most);
             most
         };
-        for bucket in buckets.values_mut() {
-            hold_to(bucket, now, self.budget.burst, self.budget.refill, most);
+        for state in states.values_mut() {
+            hold_to(
+                &mut state.bucket,
+                now,
+                self.budget.burst,
+                self.budget.refill,
+                most,
+            );
         }
     }
 }

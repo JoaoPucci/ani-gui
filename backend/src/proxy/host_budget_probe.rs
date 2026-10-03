@@ -5,6 +5,8 @@
 //! row's probes; and background traffic yields to a probe while it
 //! waits, so downloads never starve it.
 
+use tokio::time::Instant;
+
 use super::HostBudget;
 
 /// Counts a probe as waiting at its host for as long as it waits, so
@@ -49,10 +51,15 @@ impl HostBudget {
         let _waiting = ProbeWaiting::new(self, host);
         loop {
             let wait = match line.try_lock() {
-                Ok(_nobody_waiting) => match self.take_for(host, 0) {
-                    None => return,
-                    Some(wait) => wait,
-                },
+                Ok(_nobody_waiting) => {
+                    let (burst, refill) = (self.burst, self.refill);
+                    match self.with_state(host, |state| {
+                        super::take_leaving(&mut state.bucket, Instant::now(), burst, refill, 0)
+                    }) {
+                        None => return,
+                        Some(wait) => wait,
+                    }
+                }
                 Err(_player_waiting) => self.refill,
             };
             tokio::time::sleep(wait).await;

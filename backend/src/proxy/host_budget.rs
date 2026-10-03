@@ -35,9 +35,8 @@
 //! hold left it, one not yet fetched from included ([`UnpacedRun`]).
 //! Not charged: the resolver's fetches of a playlist through the
 //! impersonating transport, one or two requests ahead of the player's
-//! own, and an external player the
-//! app hands a stream to, which fetches from the host on its own,
-//! outside the app entirely.
+//! own, and an external player the app hands a stream to, which fetches
+//! from the host on its own, outside the app entirely.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -67,13 +66,6 @@ pub(crate) use unpaced::UnpacedRun;
 /// request and a seek's few are served from them at once, however much
 /// background traffic has been taking what the player was not using.
 pub(crate) const BACKGROUND_RESERVE: u32 = 5;
-
-/// How long background traffic yields to the player before it joins
-/// the host's line and is served in turn. A player filling its buffer
-/// keeps a request waiting at all times, for a minute after a start or
-/// a seek; without a limit a download beside it would take nothing for
-/// all that time.
-pub(crate) const BACKGROUND_PATIENCE: Duration = Duration::from_millis(4500);
 
 /// One host's budget: the tokens on hand and when they were last
 /// topped up.
@@ -144,12 +136,53 @@ pub(crate) fn take_leaving(
     }
 }
 
+/// Whose turn the next contended token at a host is. A player filling
+/// its buffer keeps a request waiting at all times, for a minute after
+/// a start or a seek; background traffic that took only the tokens no
+/// one waited for took nothing for all that time. So while background
+/// traffic waits beside a waiting player, a token the player had to
+/// wait for gives the next one to the background request.
+#[derive(Debug, Default)]
+struct Turn {
+    /// A background request is waiting for a token.
+    background_waiting: bool,
+    /// The player has been served a token it waited for since the
+    /// waiting background request arrived, so the next is the
+    /// background request's.
+    background_owed: bool,
+}
+
+/// One host's tokens and turn.
+#[derive(Debug)]
+struct HostState {
+    bucket: Bucket,
+    turn: Turn,
+}
+
+/// Clears the waiting background request's turn when it is served or
+/// given up, so a request dropped while it waits leaves no turn behind
+/// it for the player to yield to.
+struct BackgroundWaiting<'a> {
+    budget: &'a HostBudget,
+    host: &'a str,
+}
+
+impl Drop for BackgroundWaiting<'_> {
+    fn drop(&mut self) {
+        self.budget
+            .with_state(self.host, |state| state.turn = Turn::default());
+    }
+}
+
 /// The budgets of every host fetched from, the line of requests
-/// waiting at each, and the unpaced downloads running against each.
+/// waiting at each, and the lane background requests take their turn
+/// from one at a time.
 pub struct HostBudget {
-    buckets: Mutex<HashMap<String, Bucket>>,
+    states: Mutex<HashMap<String, HostState>>,
     lines: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-    /// The unpaced downloads running, and when the last one ended.
+    lanes: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// The unpaced downloads running, and where they left a host not
+    /// yet fetched from.
     unpaced: Mutex<Unpaced>,
     /// The cached-row probes waiting at each host, which background
     /// traffic yields to ([`Self::admit_probe`]).
@@ -163,8 +196,9 @@ impl HostBudget {
     #[must_use]
     pub(crate) fn new(burst: u32, refill: Duration) -> Self {
         Self {
-            buckets: Mutex::new(HashMap::new()),
+            states: Mutex::new(HashMap::new()),
             lines: Mutex::new(HashMap::new()),
+            lanes: Mutex::new(HashMap::new()),
             unpaced: Mutex::new(Unpaced::default()),
             probes: Mutex::new(HashMap::new()),
             burst,
@@ -189,11 +223,11 @@ impl HostBudget {
     /// to see what a fetch spent; `None` for a host never fetched from.
     #[cfg(test)]
     pub(crate) fn on_hand(&self, host: &str) -> Option<f64> {
-        self.buckets
+        self.states
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get(host)
-            .map(Bucket::tokens)
+            .map(|state| state.bucket.tokens())
     }
 
     /// A token for `host`, waiting for one while the burst is spent: the
@@ -203,12 +237,31 @@ impl HostBudget {
     /// so a request arriving as a token matures does not take it from
     /// one that has waited for it, and a few requests arriving at once
     /// cannot keep taking the tokens ahead of the one that has waited
-    /// longest.
+    /// longest. A token it had to wait for while background traffic
+    /// waits gives the next one to the background request, and while
+    /// that one is owed the line yields it.
     pub(crate) async fn admit(&self, host: &str) {
         let line = self.line(host);
         let _place = line.lock().await;
+        let mut waited = false;
         loop {
-            match self.take_for(host, 0) {
+            let wait = self.with_state(host, |state| {
+                if state.turn.background_owed {
+                    return Some(self.refill);
+                }
+                let wait = take_leaving(
+                    &mut state.bucket,
+                    Instant::now(),
+                    self.burst,
+                    self.refill,
+                    0,
+                );
+                if wait.is_none() && waited && state.turn.background_waiting {
+                    state.turn.background_owed = true;
+                }
+                wait
+            });
+            match wait {
                 None => return,
                 Some(wait) => {
                     tracing::debug!(
@@ -216,6 +269,7 @@ impl HostBudget {
                         wait_ms = wait.as_millis(),
                         "budget: pacing a fetch to the host's budget",
                     );
+                    waited = true;
                     tokio::time::sleep(wait).await;
                 }
             }
@@ -223,41 +277,50 @@ impl HostBudget {
     }
 
     /// A token for `host` for background traffic — subtitle tracks,
-    /// the player's and a download's, which playback can wait for —
-    /// which within its patience takes no place in the host's line:
-    /// it takes a token only while no one is waiting for one, and
-    /// otherwise waits a refill and looks again. Whoever is in the
-    /// line is served first while the background fetch is within its
-    /// patience, and so is a cached row's probe waiting at the host
-    /// ([`Self::admit_probe`]); with neither, it waits for its token like
-    /// any other. It never takes the budget's reserve
-    /// ([`BACKGROUND_RESERVE`] in the app's budget), which is left for
-    /// the player's next requests. Once it has waited
-    /// [`BACKGROUND_PATIENCE`] it stops yielding and joins the line,
-    /// served in turn with the player, so a player filling its buffer
-    /// cannot keep it waiting for the whole fill.
+    /// the player's and a download's, and a download's fetches through
+    /// the proxy. Background requests take their turn one at a time,
+    /// in the order they arrived, however many are in flight. With no
+    /// one in the host's line, the one whose turn it is takes a token
+    /// only while more than the budget's reserve
+    /// ([`BACKGROUND_RESERVE`] in the app's budget) is on hand, so the
+    /// player's next requests find the reserve there. With the player
+    /// waiting in the line it yields until the player has been served
+    /// a token it waited for, and then takes the next: while both
+    /// wait, they take every other token, and a player filling its
+    /// buffer cannot keep it waiting for the whole fill. A cached row's
+    /// probe waiting at the host ([`Self::admit_probe`]) is served
+    /// first: background traffic waits while one does.
     pub(crate) async fn admit_background(&self, host: &str) {
+        let lane = self.lane(host);
+        let _turn = lane.lock().await;
         let line = self.line(host);
-        let out_of_patience = Instant::now() + BACKGROUND_PATIENCE;
+        let _waiting = BackgroundWaiting { budget: self, host };
+        self.with_state(host, |state| state.turn.background_waiting = true);
         loop {
-            let wait = match line.try_lock() {
-                Ok(_nobody_waiting) if !self.probes_waiting(host) => {
-                    match self.take_for(host, self.reserve) {
-                        None => return,
-                        Some(wait) => wait,
-                    }
-                }
-                _someone_waiting => self.refill,
-            };
-            let now = Instant::now();
-            if now >= out_of_patience {
-                break;
+            if self.probes_waiting(host) {
+                tokio::time::sleep(self.refill).await;
+                continue;
             }
-            tokio::time::sleep(wait.min(out_of_patience - now)).await;
+            let player_waiting = line.try_lock().is_err();
+            let wait = self.with_state(host, |state| {
+                let reserve = match (player_waiting, state.turn.background_owed) {
+                    (false, _) => self.reserve,
+                    (true, true) => 0,
+                    (true, false) => return Some(self.refill),
+                };
+                take_leaving(
+                    &mut state.bucket,
+                    Instant::now(),
+                    self.burst,
+                    self.refill,
+                    reserve,
+                )
+            });
+            match wait {
+                None => return,
+                Some(wait) => tokio::time::sleep(wait).await,
+            }
         }
-        // Waited its patience: it joins the line and is served in turn
-        // with the player.
-        self.admit(host).await;
     }
 
     /// The line of requests waiting at `host`.
@@ -266,16 +329,23 @@ impl HostBudget {
         Arc::clone(lines.entry(host.to_owned()).or_default())
     }
 
-    /// Takes a token for `host` now, leaving `reserve` behind, or says
-    /// how long until it can.
-    fn take_for(&self, host: &str, reserve: u32) -> Option<Duration> {
-        let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
-        let now = Instant::now();
-        let bucket = buckets
-            .entry(host.to_owned())
-            .or_insert_with(|| self.new_bucket(now));
-        self.hold_to_unpaced(bucket, now);
-        take_leaving(bucket, now, self.burst, self.refill, reserve)
+    /// The lane background requests to `host` take their turn from.
+    fn lane(&self, host: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut lanes = self.lanes.lock().unwrap_or_else(|e| e.into_inner());
+        Arc::clone(lanes.entry(host.to_owned()).or_default())
+    }
+
+    /// Runs `f` over `host`'s tokens and turn, a full bucket for a host
+    /// never fetched from, held to what unpaced downloads there leave
+    /// of it.
+    fn with_state<T>(&self, host: &str, f: impl FnOnce(&mut HostState) -> T) -> T {
+        let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        let state = states.entry(host.to_owned()).or_insert_with(|| HostState {
+            bucket: self.new_bucket(Instant::now()),
+            turn: Turn::default(),
+        });
+        self.hold_to_unpaced(&mut state.bucket, Instant::now());
+        f(state)
     }
 }
 
