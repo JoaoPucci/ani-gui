@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
 	FINISHED_REMAINING_S,
 	MAX_POSITIONS,
@@ -78,5 +78,34 @@ describe('watch position', () => {
 		expect(readPosition('42', 3, garbage)).toBeNull();
 		savePosition('42', 3, 612.4, 1420, garbage);
 		expect(readPosition('42', 3, garbage)).toBe(612.4);
+	});
+
+	describe('the default store', () => {
+		const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+		afterEach(() => {
+			if (original) Object.defineProperty(globalThis, 'localStorage', original);
+			else Reflect.deleteProperty(globalThis, 'localStorage');
+		});
+
+		it("is the renderer's local storage", () => {
+			const s = memory();
+			Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: s });
+			savePosition('42', 3, 612.4, 1420);
+			expect(readPosition('42', 3)).toBe(612.4);
+			expect(readPosition('42', 3, s)).toBe(612.4);
+			clearPosition('42', 3);
+			expect(readPosition('42', 3, s)).toBeNull();
+		});
+
+		it('a storage the renderer refuses to hand over reads as nothing', () => {
+			Object.defineProperty(globalThis, 'localStorage', {
+				configurable: true,
+				get: () => {
+					throw new Error('denied');
+				}
+			});
+			expect(() => savePosition('42', 3, 612.4, 1420)).not.toThrow();
+			expect(readPosition('42', 3)).toBeNull();
+		});
 	});
 });

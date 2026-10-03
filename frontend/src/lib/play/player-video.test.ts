@@ -98,6 +98,31 @@ describe('releasePlayerVideo', () => {
 		}
 	});
 
+	it('a picture-in-picture window that refuses to close does not stop the release', async () => {
+		const v = createPlayerVideo();
+		document.body.appendChild(v);
+		const exit = vi.fn(async () => {
+			throw new Error('not in picture-in-picture');
+		});
+		Object.defineProperty(document, 'pictureInPictureElement', {
+			configurable: true,
+			get: () => v
+		});
+		Object.defineProperty(document, 'exitPictureInPicture', {
+			configurable: true,
+			value: exit
+		});
+		try {
+			releasePlayerVideo(v);
+			await Promise.resolve();
+			expect(exit).toHaveBeenCalledTimes(1);
+			expect(v.isConnected).toBe(false);
+		} finally {
+			Reflect.deleteProperty(document, 'pictureInPictureElement');
+			Reflect.deleteProperty(document, 'exitPictureInPicture');
+		}
+	});
+
 	it('leaves another element in picture-in-picture alone', () => {
 		const v = createPlayerVideo();
 		const other = document.createElement('video');
