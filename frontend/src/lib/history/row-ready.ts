@@ -1,6 +1,6 @@
 import type { HistoryEntry, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 import { EPISODES_KITSU_PAGE_SIZE } from './resolve';
-import { pickResumeEpisode } from '$lib/play/next-episode';
+import { pickResumeEpisodeFor } from '$lib/play/next-episode';
 
 export interface ContinueRowReadyDeps {
 	/** Snapshot of the current history list, keyed by entry id. The
@@ -101,11 +101,11 @@ export function makeContinueRowReadyHandler(
 		// here so both Continue surfaces agree on the malformed row.
 		const lastWatched = parseInt(entry.ep_no, 10);
 		const cap = playableCount ?? match.episode_count ?? null;
-		const last = Number.isFinite(lastWatched) ? lastWatched : null;
-		const nextEpisode = pickResumeEpisode(
-			last,
+		const nextEpisode = pickResumeEpisodeFor(
+			match.id,
+			Number.isFinite(lastWatched) ? lastWatched : null,
 			cap,
-			last !== null && (deps.leftPartWay?.(match.id, last) ?? false)
+			deps.leftPartWay
 		);
 		const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
 		const target = `${match.id}|${kitsuPage}|${nextEpisode}`;

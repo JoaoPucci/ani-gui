@@ -47,6 +47,19 @@ export function pickResumeEpisode(
 	return resumeOr(lastWatched, pickNextEpisode(lastWatched, episodeCap), leftPartWay);
 }
 
+/** {@link pickResumeEpisode}, asking `leftPartWay` about the last
+ *  watched episode of `kitsuId` — only when there is one. Omitted,
+ *  nothing was left part-way. */
+export function pickResumeEpisodeFor(
+	kitsuId: string,
+	lastWatched: number | null,
+	episodeCap: number | null,
+	leftPartWay?: (kitsuId: string, episode: number) => boolean
+): number {
+	const asked = lastWatched !== null && leftPartWay !== undefined;
+	return pickResumeEpisode(lastWatched, episodeCap, asked && leftPartWay(kitsuId, lastWatched));
+}
+
 /** `lastWatched` when it was left part-way and is an episode at all,
  *  else `next` — for a caller that already picked the next episode. */
 export function resumeOr(lastWatched: number | null, next: number, leftPartWay: boolean): number {
