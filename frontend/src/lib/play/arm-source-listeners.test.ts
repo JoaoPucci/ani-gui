@@ -110,7 +110,7 @@ describe('armSourceScopedListeners', () => {
 	it('seeks to where the episode was left when no recovery is pending', () => {
 		savePosition('show-a', 6, 612.5, 1420, positions);
 		arm('show-a', 6);
-		video.currentTime = 0;
+		playAt(0);
 		video.dispatchEvent(new Event('loadedmetadata'));
 		expect(video.currentTime).toBe(612.5);
 	});
@@ -198,11 +198,76 @@ describe('armSourceScopedListeners', () => {
 			expect(readPosition('show-a', 6, positions)).toBe(600);
 		});
 
-		it('is sought to while the length is still unknown', () => {
+		function durationBecomes(duration: number) {
+			Object.defineProperty(video, 'duration', { configurable: true, get: () => duration });
+			video.dispatchEvent(new Event('durationchange'));
+		}
+
+		it('waits for a known length before seeking, then seeks to a point short of the end', () => {
+			savePosition('show-a', 6, 600, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(Number.POSITIVE_INFINITY);
+			expect(video.currentTime).toBe(0);
+			durationBecomes(Number.NaN);
+			expect(video.currentTime).toBe(0);
+			durationBecomes(1420);
+			expect(video.currentTime).toBe(600);
+		});
+
+		it('waits for a known length, then forgets a point in the last 90 seconds', () => {
 			savePosition('show-a', 6, 1400, Number.NaN, positions);
 			arm('show-a', 6);
 			metadataWith(Number.POSITIVE_INFINITY);
-			expect(video.currentTime).toBe(1400);
+			expect(video.currentTime).toBe(0);
+			durationBecomes(1420);
+			expect(video.currentTime).toBe(0);
+			expect(readPosition('show-a', 6, positions)).toBeNull();
+		});
+
+		it('decides once: a later length change moves nothing', () => {
+			savePosition('show-a', 6, 600, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(1420);
+			video.currentTime = 700;
+			durationBecomes(1425);
+			expect(video.currentTime).toBe(700);
+		});
+
+		it('a seek by the viewer while waiting drops the pending resume', () => {
+			savePosition('show-a', 6, 600, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(Number.POSITIVE_INFINITY);
+			video.currentTime = 200;
+			video.dispatchEvent(new Event('seeking'));
+			durationBecomes(1420);
+			expect(video.currentTime).toBe(200);
+		});
+
+		it('playback starting while waiting drops the pending resume', () => {
+			savePosition('show-a', 6, 600, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(Number.POSITIVE_INFINITY);
+			video.dispatchEvent(new Event('playing'));
+			durationBecomes(1420);
+			expect(video.currentTime).toBe(0);
+		});
+
+		it('leaving while waiting keeps the kept point', () => {
+			// The element is still at zero while it waits; writing that
+			// would forget where the episode was left.
+			savePosition('show-a', 6, 600, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(Number.POSITIVE_INFINITY);
+			scope.flush();
+			expect(readPosition('show-a', 6, positions)).toBe(600);
+		});
+
+		it('a length that never becomes known never seeks', () => {
+			savePosition('show-a', 6, 1400, Number.NaN, positions);
+			arm('show-a', 6);
+			metadataWith(Number.POSITIVE_INFINITY);
+			expect(video.currentTime).toBe(0);
+			expect(readPosition('show-a', 6, positions)).toBe(1400);
 		});
 
 		it("a pending recovery's point is sought to wherever it falls", () => {

@@ -193,6 +193,9 @@ describe('play route — the page owns its video', () => {
 		expect(again.hls).not.toBe(first.hls);
 		expect(again.video).not.toBe(first.video);
 		expect(again.hls.sources).toHaveLength(1);
+		// A browser knows the stream's length by its metadata; happy-dom
+		// reports none, so the case gives the element one.
+		Object.defineProperty(again.video, 'duration', { configurable: true, get: () => 1420 });
 		again.video.currentTime = 0;
 		again.video.dispatchEvent(new Event('loadedmetadata'));
 		expect(again.video.currentTime).toBe(612.5);
