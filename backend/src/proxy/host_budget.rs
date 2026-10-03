@@ -25,22 +25,22 @@
 //! player waits takes a turn only once the player has taken what its
 //! streams need with room to spare ([`player_turns`]) — none while
 //! that need with its room is the whole refill or more, when it waits
-//! for the player to stop asking — so the player keeps pace and the download takes the rest.
-//! The bucket is per
-//! host: a download from a different host than the player's has a
-//! bucket of its own, and the two meet only if the host counts them
-//! together. What reaches the host past the budget is charged to it
-//! too: a cached resolution's liveness check spends a token per request
-//! without waiting — it runs before the player starts, under a deadline
-//! of seconds — and while a download tool runs, every host's tokens are
-//! held to what the tool's requests in flight leave of the burst, never
-//! below one: its fragments go wherever its playlists send them, which
-//! the app does not see. When it ends, every host is left where the
-//! hold left it, one not yet fetched from included ([`UnpacedRun`]).
-//! Not charged: the resolver's fetches of a playlist through the
-//! impersonating transport, one or two requests ahead of the player's
-//! own, and an external player the app hands a stream to, which fetches
-//! from the host on its own, outside the app entirely.
+//! for the player to stop asking — so the player keeps pace and the
+//! download takes the rest. The bucket is per host: a download from a
+//! different host than the player's has a bucket of its own, and the
+//! two meet only if the host counts them together. What reaches the
+//! host past the budget is charged to it too: a cached resolution's
+//! liveness check spends a token per request without waiting — it runs
+//! before the player starts, under a deadline of seconds — and while a
+//! download tool runs, every host's tokens are held to what the tool's
+//! requests in flight leave of the burst, never below one: its
+//! fragments go wherever its playlists send them, which the app does
+//! not see. When it ends, every host is left where the hold left it,
+//! one not yet fetched from included ([`UnpacedRun`]). Not charged: the
+//! resolver's fetches of a playlist through the impersonating
+//! transport, one or two requests ahead of the player's own, and an
+//! external player the app hands a stream to, which fetches from the
+//! host on its own, outside the app entirely.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
