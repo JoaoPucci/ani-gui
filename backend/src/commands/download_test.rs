@@ -6453,3 +6453,41 @@ async fn a_run_that_measured_reports_zero_when_it_ends() {
         );
     }
 }
+
+/// Every download is a finished episode, never a live broadcast, but
+/// yt-dlp guesses live from the first variant it checks — a guess the
+/// relay's episodes met — and a live stream gets no progress line and
+/// can be handed to an ffmpeg run without the app's extension option,
+/// which the relay's addresses fail. yt-dlp is told the stream is not
+/// live, on every run.
+#[cfg(unix)]
+#[tokio::test]
+async fn yt_dlp_is_told_the_episode_is_not_live() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(
+        run.contains("--extractor-args generic:is_live=false"),
+        "{run}"
+    );
+}
