@@ -12,7 +12,13 @@
 import { recoveryResume } from '$lib/play/resume-after-recovery';
 import { stallMachine } from '$lib/play/stall-machine';
 import type { SourceScope } from '$lib/play/source-scope';
-import { clearPosition, readPosition, savePosition, type PositionStorage } from './watch-position';
+import {
+	clearPosition,
+	isFinishedAt,
+	readPosition,
+	savePosition,
+	type PositionStorage
+} from './watch-position';
 
 /** How far playback moves between two writes of its position. */
 const SAVE_EVERY_S = 5;
@@ -27,8 +33,12 @@ export function armSourceScopedListeners(input: {
 	positions?: PositionStorage;
 }): void {
 	const { video, showId, episode, scope, positions } = input;
-	const resumeAt =
-		recoveryResume.consume(showId, episode) ?? readPosition(showId, episode, positions);
+	// A recovery's point resumes the stream the viewer was watching a
+	// moment ago, wherever it falls. A kept point was saved on an
+	// earlier visit, perhaps before the stream's length was known, so
+	// it is checked against the length once the metadata brings it.
+	const recovered = recoveryResume.consume(showId, episode);
+	const kept = recovered === null ? readPosition(showId, episode, positions) : null;
 	// Progress means frames actually rendered — the `playing` event —
 	// never a bare timeupdate: the resume seek below emits one at the
 	// old timestamp before the fresh source has delivered anything.
@@ -46,8 +56,14 @@ export function armSourceScopedListeners(input: {
 		savePosition(showId, episode, video.currentTime, video.duration, positions);
 	};
 	const onMetadata = () => {
+		const resumeAt = recovered ?? keptUnlessFinished(kept);
 		if (resumeAt !== null) video.currentTime = resumeAt;
 		opened = true;
+	};
+	const keptUnlessFinished = (point: number | null): number | null => {
+		if (point === null || !isFinishedAt(point, video.duration)) return point;
+		clearPosition(showId, episode, positions);
+		return null;
 	};
 	const onTime = () => {
 		if (Math.abs(video.currentTime - savedAt) >= SAVE_EVERY_S) save();

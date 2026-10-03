@@ -63,12 +63,19 @@ export function savePosition(
 ): void {
 	const key = keyOf(showId, episode);
 	const rest = load(storage).filter(([k]) => k !== key);
-	const finished = Number.isFinite(duration) && duration - seconds <= FINISHED_REMAINING_S;
-	if (seconds < RESUME_MIN_S || finished) {
+	if (seconds < RESUME_MIN_S || isFinishedAt(seconds, duration)) {
 		store(storage, rest);
 		return;
 	}
 	store(storage, [...rest, [key, seconds]]);
+}
+
+/** Whether `seconds` is in an episode's last minutes, by `duration`.
+ *  A length not known yet decides nothing: the point is not finished
+ *  as far as anyone can tell, and the first visit that learns the
+ *  length asks again. */
+export function isFinishedAt(seconds: number, duration: number): boolean {
+	return Number.isFinite(duration) && duration - seconds <= FINISHED_REMAINING_S;
 }
 
 /** Where `episode` of `showId` was left, or null. */
