@@ -322,4 +322,19 @@ describe('armSourceScopedListeners', () => {
 			expect(readPosition('show-a', 6, positions)).toBe(0);
 		});
 	});
+
+	it('a started mark does not wait for the length: the position is written as it plays', () => {
+		// A mark at zero has nothing to judge, so a stream whose length is
+		// not known keeps its position like any other.
+		savePosition('show-a', 6, 0, Number.NaN, positions);
+		arm('show-a', 6);
+		Object.defineProperty(video, 'duration', {
+			configurable: true,
+			get: () => Number.POSITIVE_INFINITY
+		});
+		video.dispatchEvent(new Event('loadedmetadata'));
+		video.currentTime = 600;
+		video.dispatchEvent(new Event('pause'));
+		expect(readPosition('show-a', 6, positions)).toBe(600);
+	});
 });

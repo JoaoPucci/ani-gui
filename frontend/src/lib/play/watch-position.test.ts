@@ -39,6 +39,14 @@ describe('watch position', () => {
 		expect(readPosition('42', 3, s)).toBe(0);
 	});
 
+	it('keeps a point in the first seconds of a short stream as started, not finished', () => {
+		// A 60-second stream left at 5 s is within 90 s of its end, but
+		// a point in the first seconds is a start over, never a finish.
+		const s = memory();
+		savePosition('42', 3, 5, 60, s);
+		expect(readPosition('42', 3, s)).toBe(0);
+	});
+
 	it('marks an episode started without moving a point already kept', () => {
 		const s = memory();
 		markStarted('42', 3, s);
