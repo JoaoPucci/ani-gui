@@ -25,11 +25,10 @@
 //! player waits takes a turn only once the player has taken what its
 //! streams need with room to spare ([`player_turns`]) — none while
 //! that need with its room is the whole refill or more, when it waits
-//! for the player to stop asking — so the player keeps pace and the download takes the rest.
-//! The bucket is per
-//! host: a download from a different host than the player's has a
-//! bucket of its own, and the two meet only if the host counts them
-//! together. Of the app's own fetches, not charged: a cached
+//! for the player to stop asking — so the player keeps pace and the
+//! download takes the rest. The bucket is per host: a download from a
+//! different host than the player's has a bucket of its own, and the
+//! two meet only if the host counts them together. Of the app's own fetches, not charged: a cached
 //! resolution's liveness check — a ping and a read of each track, at
 //! most a track cap's worth at once, before the player starts, under a
 //! deadline of seconds that waiting for tokens would spend — and what
