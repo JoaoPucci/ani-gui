@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { pickNextEpisode, pickResumeEpisode } from './next-episode';
+import { describe, expect, it, vi } from 'vitest';
+import { pickNextEpisode, pickResumeEpisode, pickResumeEpisodeFor } from './next-episode';
 
 /** Episode the player should jump to when the user clicks Continue.
  *
@@ -78,5 +78,27 @@ describe('pickResumeEpisode', () => {
 		expect(pickResumeEpisode(null, 12, true)).toBe(1);
 		expect(pickResumeEpisode(Number.NaN, 12, true)).toBe(1);
 		expect(pickResumeEpisode(0, 12, true)).toBe(1);
+	});
+});
+
+describe('pickResumeEpisodeFor', () => {
+	it('asks about the last watched episode of the show, and goes back to it when left part-way', () => {
+		const asked: [string, number][] = [];
+		const ask = (k: string, ep: number) => {
+			asked.push([k, ep]);
+			return true;
+		};
+		expect(pickResumeEpisodeFor('k1', 5, 12, ask)).toBe(5);
+		expect(asked).toEqual([['k1', 5]]);
+	});
+
+	it('goes on to the next episode when nothing can be asked', () => {
+		expect(pickResumeEpisodeFor('k1', 5, 12)).toBe(6);
+	});
+
+	it('asks nothing without history', () => {
+		const ask = vi.fn(() => true);
+		expect(pickResumeEpisodeFor('k1', null, 12, ask)).toBe(1);
+		expect(ask).not.toHaveBeenCalled();
 	});
 });
