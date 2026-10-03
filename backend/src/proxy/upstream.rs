@@ -112,9 +112,10 @@ pub(crate) async fn send_paced(
 pub enum Admission {
     /// The player's traffic: waits its turn in the host's line.
     Player,
-    /// Background traffic: one request at a time, every other token
-    /// while the player waits, and above the budget's reserve while it
-    /// does not.
+    /// Background traffic: one request at a time; while the player
+    /// waits, a turn once the player has taken what its renditions need
+    /// ([`crate::proxy::host_budget::player_turns`]), and above the
+    /// budget's reserve while it does not.
     Background,
 }
 

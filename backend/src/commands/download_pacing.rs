@@ -80,10 +80,11 @@ pub(crate) const RELAYED_FRAGMENTS: u32 = 4;
 /// How long a relayed run's tool waits for a request's first byte, in
 /// seconds. The proxy holds a background request until its turn, and
 /// background requests take their turns one at a time — while the
-/// player fills its buffer, every other token — so a fragment can wait
-/// behind the others in flight and a download's subtitle tracks; the
-/// tool's default of twenty seconds would give up on requests that
-/// are only waiting their turn.
+/// player fills its buffer, only what its renditions' need leaves of
+/// the refill, and none while they need all of it — so a fragment can
+/// wait behind the others in flight and a download's subtitle tracks,
+/// or for the whole fill; the tool's default of twenty seconds would
+/// give up on requests that are only waiting their turn.
 pub(crate) const RELAYED_SOCKET_TIMEOUT_S: u32 = 300;
 
 /// The byte rate a paced run without a relay is held to, in yt-dlp's `--limit-rate`
