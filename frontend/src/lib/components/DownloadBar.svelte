@@ -202,6 +202,10 @@
 	   bar does not shift as the number moves. */
 	.dl-bar-speed {
 		flex-shrink: 0;
+		/* Wide enough for the longest reading, so the bar keeps one
+		   layout while the number changes. */
+		min-inline-size: 10ch;
+		text-align: end;
 		white-space: nowrap;
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;

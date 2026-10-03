@@ -89,7 +89,12 @@
 			aria-haspopup="menu"
 			aria-expanded={open}
 			aria-label={activeCount > 0
-				? m.download_dock_active_label({ count: activeCount })
+				? speed !== null
+					? m.download_dock_active_speed_label({
+							count: activeCount,
+							speed: formatSpeed(speed)
+						})
+					: m.download_dock_active_label({ count: activeCount })
 				: unseenCount > 0
 					? m.download_dock_unseen_label({ count: unseenCount })
 					: m.download_dock_idle_label()}
@@ -308,6 +313,10 @@
 	   tabular figures so the width does not jitter as the number moves. */
 	.dl-speed {
 		margin-inline-start: 0.375rem;
+		/* Wide enough for the longest reading ("123.4 MB/s"), so the
+		   trigger keeps one width while the number changes. */
+		min-inline-size: 10ch;
+		text-align: end;
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		font-variant-numeric: tabular-nums;
