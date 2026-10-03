@@ -112,8 +112,9 @@ pub(crate) async fn send_paced(
 pub enum Admission {
     /// The player's traffic: waits its turn in the host's line.
     Player,
-    /// Background traffic: never takes a place in the line, and
-    /// leaves the budget's reserve to the player.
+    /// Background traffic: yields its place in the line for its
+    /// patience, then is served in turn, and leaves the budget's
+    /// reserve to the player.
     Background,
 }
 
