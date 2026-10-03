@@ -10,7 +10,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
-import { savePosition } from '../../src/lib/play/watch-position';
+import { readPosition, savePosition } from '../../src/lib/play/watch-position';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -153,6 +153,17 @@ async function mountHls(): Promise<{ hls: FakeHlsT; video: HTMLVideoElement }> {
 	return { hls: hlsInstances()[hlsInstances().length - 1], video };
 }
 
+/** A browser's `load()` puts the element back at zero; happy-dom's
+ *  does not, so a case that depends on what is read before the unload
+ *  makes the element behave as Chromium's does. */
+function resetsOnLoad(video: HTMLVideoElement) {
+	const load = video.load.bind(video);
+	video.load = () => {
+		video.currentTime = 0;
+		load();
+	};
+}
+
 function leave() {
 	for (const hook of leaveHooks) {
 		hook({ to: { route: { id: '/' }, params: {}, url: new URL('http://localhost/') } });
@@ -185,5 +196,30 @@ describe('play route — the page owns its video', () => {
 		again.video.currentTime = 0;
 		again.video.dispatchEvent(new Event('loadedmetadata'));
 		expect(again.video.currentTime).toBe(612.5);
+	});
+
+	it('leaving keeps where the episode was left', async () => {
+		// The page writes the position before it unloads the element;
+		// unloading first would leave it reading zero.
+		const { video } = await mountHls();
+		resetsOnLoad(video);
+		video.dispatchEvent(new Event('loadedmetadata'));
+		video.currentTime = 600;
+		leave();
+		expect(readPosition(KITSU_ID, 1)).toBe(600);
+	});
+
+	it('switching episodes keeps where the previous one was left', async () => {
+		// The attach for the next episode writes the previous one's
+		// position before it tears the old stream down.
+		const { video } = await mountHls();
+		resetsOnLoad(video);
+		video.dispatchEvent(new Event('loadedmetadata'));
+		video.currentTime = 600;
+		const before = hlsInstances().length;
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'hls' });
+		await until(() => hlsInstances().length > before, 'the next episode to attach');
+		expect(readPosition(KITSU_ID, 1)).toBe(600);
+		expect(readPosition(KITSU_ID, 2)).toBeNull();
 	});
 });
