@@ -291,4 +291,35 @@ describe('armSourceScopedListeners', () => {
 			expect(video.currentTime).toBe(1400);
 		});
 	});
+
+	describe('an episode started but barely watched', () => {
+		it('is marked started when its stream attaches, so a load that never opened still comes back to it', () => {
+			arm('show-a', 6);
+			expect(readPosition('show-a', 6, positions)).toBe(0);
+		});
+
+		it('attaching does not move a point already kept', () => {
+			savePosition('show-a', 6, 600, 1420, positions);
+			arm('show-a', 6);
+			expect(readPosition('show-a', 6, positions)).toBe(600);
+		});
+
+		it('left in its first seconds, it stays started', () => {
+			arm('show-a', 6);
+			video.dispatchEvent(new Event('loadedmetadata'));
+			playAt(5);
+			scope.flush();
+			expect(readPosition('show-a', 6, positions)).toBe(0);
+		});
+
+		it('a started mark opens from the start and is not judged finished, however short the stream', () => {
+			savePosition('show-a', 6, 5, 60, positions);
+			arm('show-a', 6);
+			Object.defineProperty(video, 'duration', { configurable: true, get: () => 60 });
+			video.currentTime = 0;
+			video.dispatchEvent(new Event('loadedmetadata'));
+			expect(video.currentTime).toBe(0);
+			expect(readPosition('show-a', 6, positions)).toBe(0);
+		});
+	});
 });

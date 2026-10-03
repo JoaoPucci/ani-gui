@@ -6,6 +6,7 @@ import {
 	clearAllPositions,
 	clearPosition,
 	clearShowPositions,
+	markStarted,
 	readPosition,
 	savePosition,
 	type PositionStorage
@@ -29,11 +30,22 @@ describe('watch position', () => {
 		expect(readPosition('7', 3, s)).toBeNull();
 	});
 
-	it('forgets an episode left at its start', () => {
+	it('keeps an episode left at its start as started, to start over', () => {
+		// Its watched mark is already written, so forgetting it would
+		// make Continue skip the episode the viewer barely began.
 		const s = memory();
 		savePosition('42', 3, 612.4, 1420, s);
 		savePosition('42', 3, RESUME_MIN_S - 1, 1420, s);
-		expect(readPosition('42', 3, s)).toBeNull();
+		expect(readPosition('42', 3, s)).toBe(0);
+	});
+
+	it('marks an episode started without moving a point already kept', () => {
+		const s = memory();
+		markStarted('42', 3, s);
+		expect(readPosition('42', 3, s)).toBe(0);
+		savePosition('42', 4, 612.4, 1420, s);
+		markStarted('42', 4, s);
+		expect(readPosition('42', 4, s)).toBe(612.4);
 	});
 
 	it('forgets an episode left in its last minutes, as finished', () => {

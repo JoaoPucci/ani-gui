@@ -223,7 +223,8 @@ describe('play route — the page owns its video', () => {
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'hls' });
 		await until(() => hlsInstances().length > before, 'the next episode to attach');
 		expect(readPosition(KITSU_ID, 1)).toBe(600);
-		expect(readPosition(KITSU_ID, 2)).toBeNull();
+		// The next episode is started, not yet anywhere.
+		expect(readPosition(KITSU_ID, 2)).toBe(0);
 	});
 
 	it('an autoplaying stream whose length arrives late still resumes where it was left', async () => {

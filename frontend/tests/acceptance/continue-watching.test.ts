@@ -210,6 +210,22 @@ describe('home Continue Watching', () => {
 			expect(cardEpisode()).toBe('3');
 		});
 
+		it('the card offers an episode left in its first seconds, not the next one', async () => {
+			savePosition('1', 3, 5, 1420);
+			useHomeHandlers();
+			app = mount(HomePage, { target });
+			await until(() => cardEpisode() !== null, 'the resolved card');
+			expect(cardEpisode()).toBe('3');
+		});
+
+		it('the card offers the next episode once the last one was finished', async () => {
+			savePosition('1', 3, 1400, 1420);
+			useHomeHandlers();
+			app = mount(HomePage, { target });
+			await until(() => cardEpisode() !== null, 'the resolved card');
+			expect(cardEpisode()).toBe('4');
+		});
+
 		it('the card offers the next episode when nothing was left part-way', async () => {
 			useHomeHandlers();
 			app = mount(HomePage, { target });
