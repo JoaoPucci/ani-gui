@@ -106,15 +106,15 @@ pub(crate) async fn send_paced(
 }
 
 /// Whose traffic a paced fetch is: the player's, which waits its
-/// turn in the host's line, or background traffic, which never takes
-/// a place in it ([`HostBudget::admit_background`]).
+/// turn in the host's line, or background traffic, which takes turns
+/// with it ([`HostBudget::admit_background`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Admission {
     /// The player's traffic: waits its turn in the host's line.
     Player,
-    /// Background traffic: yields its place in the line for its
-    /// patience, then is served in turn, and leaves the budget's
-    /// reserve to the player.
+    /// Background traffic: one request at a time, every other token
+    /// while the player waits, and above the budget's reserve while it
+    /// does not.
     Background,
 }
 
@@ -273,7 +273,7 @@ pub async fn fetch_subtitle(
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
     // A track is not what keeps playback going: it is background
-    // traffic, served after any media request waiting for a token.
+    // traffic, taking turns with the media requests waiting for tokens.
     let resp = send_paced_as(
         client,
         budget,

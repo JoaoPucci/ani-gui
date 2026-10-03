@@ -4,8 +4,9 @@
 //! which refuses the player's next segment within seconds. While the
 //! proxy has served media recently — playback is live — a download
 //! fetches through the proxy instead, on a background session whose
-//! requests the host's budget admits behind the player's and never
-//! from the player's reserve; without that relay it runs one fragment
+//! requests the host's budget admits one at a time, taking turns with
+//! the player's while it waits and never from the player's reserve
+//! while it does not; without that relay it runs one fragment
 //! at a time at a limited byte rate. yt-dlp cannot change its source
 //! or concurrency mid-run, so when playback starts or stops under a
 //! running download the supervisor takes the tool down and starts it
@@ -37,7 +38,7 @@ pub(crate) const FAST_FRAGMENTS: u32 = 16;
 pub(crate) const PACED_FRAGMENTS: u32 = 1;
 
 /// The sidecar phase's deadline while playback is live: the tracks
-/// take their tokens one at a time behind the player's, sharing one
+/// take their tokens one at a time in turn with the player's, sharing one
 /// lane with every other download's, and a listing at the track cap
 /// needs the time.
 pub(crate) const SIDECAR_PHASE_DEADLINE_LIVE: Duration = Duration::from_secs(4 * 60);
@@ -73,14 +74,16 @@ pub(crate) fn sidecar_phase_deadline(playback_live: bool) -> Duration {
 /// Fragments a relayed run keeps in flight. The proxy admits each as
 /// background traffic, so how many are in flight does not decide how
 /// many reach the host; a few keep one ready whenever the player
-/// leaves a token.
+/// leaves a token or a turn comes.
 pub(crate) const RELAYED_FRAGMENTS: u32 = 4;
 
 /// How long a relayed run's tool waits for a request's first byte, in
-/// seconds. The proxy holds a background request until the player
-/// leaves a token, which while the player fills its buffer can be a
-/// minute or more; the tool's default of twenty seconds would give up
-/// on requests that are only waiting their turn.
+/// seconds. The proxy holds a background request until its turn, and
+/// background requests take their turns one at a time — while the
+/// player fills its buffer, every other token — so a fragment can wait
+/// behind the others in flight and a download's subtitle tracks; the
+/// tool's default of twenty seconds would give up on requests that
+/// are only waiting their turn.
 pub(crate) const RELAYED_SOCKET_TIMEOUT_S: u32 = 300;
 
 /// The byte rate a paced run without a relay is held to, in yt-dlp's `--limit-rate`
@@ -124,12 +127,11 @@ static NEVER_LANE: Semaphore = Semaphore::const_new(Semaphore::MAX_PERMITS);
 
 /// The sidecar fetches' lane while playback is live: one in flight at
 /// a time across every download, whatever concurrency each
-/// download's phase chose, so the idle tokens the player leaves go to
+/// download's phase chose, so the turns background traffic gets go to
 /// one track at a time. They are background traffic at the host's
 /// budget ([`crate::proxy::host_budget::HostBudget::admit_background`]),
 /// including a fetch that asked before playback went live and is past
-/// the gate already: behind the player for their patience, then in
-/// turn with it.
+/// the gate already: in turn with the player.
 pub(crate) static SIDECAR_LANE: Semaphore = Semaphore::const_new(1);
 
 /// What a sidecar fetch asks before it goes to the host: whether
@@ -229,7 +231,7 @@ impl<'a> Pacing<'a> {
 
     /// The same pacing with a relay: where the transfer fetches from
     /// while playback is live — the app's proxy, which charges the
-    /// download's requests to the host's budget behind the player's —
+    /// download's requests to the host's budget in turn with the player's —
     /// in place of a byte-rate cap.
     #[must_use]
     pub(crate) fn with_relay(self, relay: &'a (dyn Fn() -> Option<String> + Sync)) -> Self {
