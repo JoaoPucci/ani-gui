@@ -37,10 +37,11 @@ ani-gui keeps the following on your computer only:
   watch history forgets them all. Removing a show from Continue
   Watching forgets that show's positions — found by the card's
   matched show, or, for a card whose match never loaded, by the show
-  id → Kitsu id mapping a play records. Where neither is available (a
-  play whose mapping was refused or failed to save, or a mapping that
-  cannot be read), that show's positions stay until the history is
-  cleared or they are pushed out by newer ones.
+  id → Kitsu id mapping a play records. Where neither is available —
+  the mapping was refused or failed to save, expired thirty days after
+  the show's last play, was dropped as wrong, or cannot be read — that
+  show's positions stay until the history is cleared or they are
+  pushed out by newer ones.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
