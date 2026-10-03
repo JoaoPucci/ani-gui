@@ -94,6 +94,14 @@ impl TreeKillChild {
         return self.child.stderr();
     }
 
+    /// The child's stdout, for the caller to read.
+    pub(crate) fn stdout_mut(&mut self) -> &mut Option<tokio::process::ChildStdout> {
+        #[cfg(unix)]
+        return &mut self.child.stdout;
+        #[cfg(windows)]
+        return self.child.stdout();
+    }
+
     /// Wait for the child itself to exit, not the rest of its tree.
     pub(crate) async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
         #[cfg(unix)]
