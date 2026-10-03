@@ -153,3 +153,58 @@ describe('executeKitsuGroupDelete — kept positions of a card without its match
 		expect(result.removedIds).toEqual(['aa-1']);
 	});
 });
+
+describe('executeKitsuGroupDelete — a show that still has a row', () => {
+	// Positions belong to the show, and a surviving row of the same show
+	// is still a Continue card whose resume point they are.
+	test('an unresolved card forgets nothing while a resolved row of its show remains', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), h('bb-1')],
+			matches: { 'aa-1': undefined, 'bb-1': m('k-9') },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions,
+			kitsuIdOf: async (id) => (id === 'aa-1' ? 'k-9' : null)
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+
+	test('a resolved card forgets nothing while an unresolved row maps to its show', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), h('bb-1')],
+			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions,
+			kitsuIdOf: async (id) => (id === 'bb-1' ? 'k-9' : null)
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+
+	test("a remaining row of another show does not keep this show's positions", async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), h('bb-1'), h('cc-1')],
+			matches: { 'aa-1': undefined, 'bb-1': m('k-2'), 'cc-1': undefined },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions,
+			kitsuIdOf: async (id) => (id === 'aa-1' ? 'k-9' : id === 'cc-1' ? 'k-3' : null)
+		});
+		expect(forgetPositions).toHaveBeenCalledWith('k-9');
+	});
+
+	test("a remaining row whose show cannot be told keeps the removed show's positions", async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), h('bb-1')],
+			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions,
+			kitsuIdOf: async (id) => {
+				if (id === 'bb-1') throw new Error('down');
+				return null;
+			}
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+});
