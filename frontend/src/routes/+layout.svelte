@@ -63,8 +63,6 @@
 		parseStoredRecents,
 		shouldRenderDropdown
 	} from '$lib/topbar/dropdown';
-	import { getCurrentSession, getGlobalVideo } from '$lib/play/global-video';
-	import { decideLeavePipAction } from '$lib/play/leave-pip-decision';
 
 	let { children } = $props();
 
@@ -205,61 +203,6 @@
 		// hour (Codex P2 #3412673586, #3416668464).
 		accountStore.hydrate();
 
-		// Persistent PiP — distinguish two ways the PiP window can
-		// close:
-		//
-		//   • X button: the W3C spec has the UA pause the video as
-		//     part of close. We see paused=true AND a `pause` event
-		//     fired within milliseconds of leave.
-		//
-		//   • Return-to-tab: the spec keeps playback state intact.
-		//     Either the video is still playing, or it was paused
-		//     manually by the user well before clicking the button —
-		//     in which case the most recent pause event is far
-		//     older than the X-close window.
-		//
-		// We defer one short tick before reading state so any UA
-		// pause has had a chance to settle. See decideLeavePipAction
-		// for the policy.
-		const v = getGlobalVideo();
-		let lastPauseAtMs = Number.NEGATIVE_INFINITY;
-		const onPause = () => {
-			lastPauseAtMs = Date.now();
-		};
-		const onLeave = () => {
-			setTimeout(() => {
-				const now = Date.now();
-				const action = decideLeavePipAction({
-					videoPaused: v.paused,
-					msSincePauseEvent: now - lastPauseAtMs
-				});
-				if (action === 'stay') return;
-				const sess = getCurrentSession();
-				if (!sess) return;
-				const onPlayPage = page.route?.id === '/play/[id]';
-				if (onPlayPage) return;
-				// Build the play URL inline — buildPlayQuery wants a
-				// full CreateSessionResponse and we only kept the
-				// load-bearing fields. The query shape is stable, so
-				// reproducing it here is fine.
-				const parts = [
-					`session=${encodeURIComponent(sess.session_id)}`,
-					`episode=${sess.episode}`,
-					`kind=${sess.media_kind}`
-				];
-				// Carry the session's resolved quality/mode so the player
-				// records the true setting after a PiP re-dock.
-				if (sess.quality) parts.push(`q=${encodeURIComponent(sess.quality)}`);
-				if (sess.mode) parts.push(`md=${encodeURIComponent(sess.mode)}`);
-				const target = resolve('/play/[id]', { id: sess.kitsu_id }) + `?${parts.join('&')}`;
-				/* eslint-disable svelte/no-navigation-without-resolve */
-				void goto(target);
-				/* eslint-enable svelte/no-navigation-without-resolve */
-			}, 50);
-		};
-		v.addEventListener('pause', onPause);
-		v.addEventListener('leavepictureinpicture', onLeave);
-
 		// Update notifier — one-shot check on app open. Routes
 		// through the local backend (`/api/update-check`); the
 		// renderer never hits api.github.com directly because the
@@ -281,11 +224,6 @@
 				)
 				.then((release) => updateStore.setAvailable(release));
 		}
-
-		return () => {
-			v.removeEventListener('pause', onPause);
-			v.removeEventListener('leavepictureinpicture', onLeave);
-		};
 	});
 
 	function persistRecents(q: string) {

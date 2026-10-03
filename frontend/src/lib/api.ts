@@ -299,7 +299,6 @@ export interface Config {
 	auto_skip_op: boolean;
 	auto_skip_ed: boolean;
 	use_custom_player_controls: boolean;
-	disable_auto_pip_on_leave: boolean;
 	update_include_prereleases: boolean;
 	/** Chosen lead tracker (`"anilist"` | `"mal"`); empty = no choice
 	 *  (UI falls back to AniList-first). Drives the topbar chip + the

@@ -1,16 +1,16 @@
 /**
  * The Continue Watching click controller. Owns the whole resume
  * workflow — busy state, the shared settings await, the click-time
- * cap resolution, PiP session reuse, play resolution, the
- * watched/tracker fan-out, and error handling — so the home
+ * cap resolution, play resolution, the watched/tracker fan-out, and
+ * error handling — so the home
  * component's handler is a thin state/navigation adapter and the
  * sequencing is unit-testable (AGENTS.md §3).
  *
  * Sequencing contract (pinned by start-resume.test.ts):
  *   guard busy/title → busy on → settings → episode resolution
  *   (probed cap as-is; otherwise ONE interactive lookup) → cap
- *   write-back → PiP reuse shortcut OR play resolution → watched +
- *   tracker fan-out (fire-and-forget) → navigate. Busy stays set on
+ *   write-back → play resolution → watched + tracker fan-out
+ *   (fire-and-forget) → navigate. Busy stays set on
  *   success — navigation unmounts the page; failure clears busy and
  *   reports through onFailure.
  */
@@ -33,11 +33,6 @@ export interface StartResumeDeps {
 	onFailure: (title: string, error: unknown) => void;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
-	/** Whether settings have actually landed — gates whether reuse
-	 *  gets the resolved quality/mode or must match on (id, episode)
-	 *  only, so a live PiP session at a non-default setting isn't
-	 *  torn down on a config-less click. */
-	settingsLoaded: () => boolean;
 	getPlayableCount: (entryId: string) => number | null;
 	/** Whether the stored cap came from the search hit rather than the
 	 *  detail fetch. An approximate cap is revalidated before use —
@@ -57,13 +52,6 @@ export interface StartResumeDeps {
 		match: KitsuAnimeRef,
 		mode: 'sub' | 'dub'
 	) => Promise<{ count: number | null; approximate: boolean }>;
-	/** Persistent-PiP session reuse (reuseSessionIfMatching). */
-	reuseSession: (
-		kitsuId: string,
-		episode: number,
-		quality?: string,
-		mode?: 'sub' | 'dub'
-	) => { session_id: string; episode: number; media_kind: string } | null;
 	/** getOrFire + playStream, reporting progress labels. */
 	resolvePlay: (
 		args: ResumePlayArgs,
@@ -76,10 +64,6 @@ export interface StartResumeDeps {
 		seriesTotal: number | null,
 		seriesFinished: boolean
 	) => Promise<void>;
-	navigateToCached: (
-		kitsuId: string,
-		cached: NonNullable<ReturnType<StartResumeDeps['reuseSession']>>
-	) => void;
 	navigateToSession: (
 		kitsuId: string,
 		session: { session_id: string },
@@ -123,18 +107,6 @@ export function makeStartResume(
 		);
 		if (typeof count === 'number') {
 			deps.setPlayableCount(entry.id, count, approximate);
-		}
-
-		const loaded = deps.settingsLoaded();
-		const cached = deps.reuseSession(
-			match.id,
-			episode,
-			loaded ? quality : undefined,
-			loaded ? mode : undefined
-		);
-		if (cached) {
-			deps.navigateToCached(match.id, cached);
-			return;
 		}
 
 		const args: ResumePlayArgs = { match, title, episode, mode, quality };

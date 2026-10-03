@@ -1,42 +1,72 @@
 /**
- * Source-scoped listener orchestration for a media attach: consume
- * any pending recovery position for this (show, episode), arm the
- * seek-back and the progress marking on the singleton video, and
- * register their removal with the source-scoped cleanups — the
- * attach path flushes the registry before arming, so they die when
- * the NEXT source attaches (which is also what cancels a superseded
- * attach's pending seek) and survive route unmounts,
- * where PiP keeps this exact stream playing. The play page's attach
- * path is one call into here (AGENTS.md §2).
+ * Source-scoped listener orchestration for a media attach: seek to
+ * where the episode should resume — a pending recovery's position, or
+ * else where the episode was last left — mark progress for the stall
+ * machine, and keep the episode's position as it plays. Everything is
+ * registered with the page's source scope, which the page flushes
+ * when the next stream attaches (which is also what cancels a
+ * superseded attach's pending seek) and when it leaves. The play
+ * page's attach path is one call into here (AGENTS.md §2).
  */
 
 import { recoveryResume } from '$lib/play/resume-after-recovery';
 import { stallMachine } from '$lib/play/stall-machine';
-import { addSourceScopedCleanup } from '$lib/play/global-video';
+import type { SourceScope } from '$lib/play/source-scope';
+import { clearPosition, readPosition, savePosition, type PositionStorage } from './watch-position';
+
+/** How far playback moves between two writes of its position. */
+const SAVE_EVERY_S = 5;
 
 export function armSourceScopedListeners(input: {
 	video: HTMLVideoElement;
 	showId: string;
 	episode: number;
+	scope: SourceScope;
+	/** Where positions are kept; the renderer's local storage when
+	 *  omitted. */
+	positions?: PositionStorage;
 }): void {
-	const { video } = input;
-	const resumeAt = recoveryResume.consume(input.showId, input.episode);
+	const { video, showId, episode, scope, positions } = input;
+	const resumeAt =
+		recoveryResume.consume(showId, episode) ?? readPosition(showId, episode, positions);
 	// Progress means frames actually rendered — the `playing` event —
 	// never a bare timeupdate: the resume seek below emits one at the
 	// old timestamp before the fresh source has delivered anything.
 	const markProgress = () => {
 		stallMachine.progressed();
 	};
-	const seekBack =
-		resumeAt !== null
-			? () => {
-					video.currentTime = resumeAt;
-				}
-			: null;
-	addSourceScopedCleanup(() => {
+	// The position is only the stream's once its metadata is in: an
+	// element still opening reads zero, and writing that would forget
+	// where the episode was left.
+	let opened = false;
+	let savedAt = Number.NEGATIVE_INFINITY;
+	const save = () => {
+		if (!opened) return;
+		savedAt = video.currentTime;
+		savePosition(showId, episode, video.currentTime, video.duration, positions);
+	};
+	const onMetadata = () => {
+		if (resumeAt !== null) video.currentTime = resumeAt;
+		opened = true;
+	};
+	const onTime = () => {
+		if (Math.abs(video.currentTime - savedAt) >= SAVE_EVERY_S) save();
+	};
+	const onEnded = () => {
+		clearPosition(showId, episode, positions);
+	};
+	scope.add(() => {
+		save();
+		opened = false;
 		video.removeEventListener('playing', markProgress);
-		if (seekBack) video.removeEventListener('loadedmetadata', seekBack);
+		video.removeEventListener('loadedmetadata', onMetadata);
+		video.removeEventListener('timeupdate', onTime);
+		video.removeEventListener('pause', save);
+		video.removeEventListener('ended', onEnded);
 	});
 	video.addEventListener('playing', markProgress);
-	if (seekBack) video.addEventListener('loadedmetadata', seekBack, { once: true });
+	video.addEventListener('loadedmetadata', onMetadata, { once: true });
+	video.addEventListener('timeupdate', onTime);
+	video.addEventListener('pause', save);
+	video.addEventListener('ended', onEnded);
 }

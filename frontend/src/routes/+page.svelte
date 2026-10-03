@@ -78,7 +78,6 @@
 	import { makeFetchAvailability } from '$lib/history/availability-from-match';
 	import { resolveResumeSettings } from '$lib/history/resume-settings';
 	import { createCapAuthority } from '$lib/history/cap-authority';
-	import type { VideoSession } from '$lib/play/global-video';
 	import { makeStartResume, type ResumePlayArgs } from '$lib/history/start-resume';
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
@@ -90,7 +89,6 @@
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
-	import { reuseSessionIfMatching } from '$lib/play/global-video';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import Strip from '$lib/components/Strip.svelte';
@@ -653,7 +651,6 @@
 			resumeFailure = { title, message: describePlayFailure(e) };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
-		settingsLoaded: () => config !== null,
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
 		isPlayableCountApproximate: (id) => historyApproximateCaps[id] === true,
 		setPlayableCount: (id, c, approximate) => {
@@ -676,11 +673,6 @@
 				count: r?.episode_count ?? null,
 				approximate: r?.episode_count_approximate === true
 			})),
-		// Persistent-PiP short-circuit: reuse the live session for the
-		// exact (show, ep, quality, mode); quality/mode stay undefined
-		// while settings are unloaded so a live PiP session at a
-		// non-default setting isn't torn down.
-		reuseSession: (id, ep, quality, mode) => reuseSessionIfMatching(id, ep, quality, mode),
 		resolvePlay: (a, onProgress) =>
 			getOrFire(
 				makeKey(a.match.id, a.episode, a.mode, a.quality),
@@ -692,21 +684,6 @@
 		// (mode-independent), NOT the dub/sub playable cap, and only
 		// for a finished series — see /play/[id] for the rationale.
 		syncTrackers: (id, ep, total, finished) => syncWatchedToTrackers(id, ep, total, finished),
-		navigateToCached: (id, cached) => {
-			const c = cached as VideoSession;
-			const parts = [
-				`session=${encodeURIComponent(c.session_id)}`,
-				`episode=${c.episode}`,
-				`kind=${c.media_kind}`
-			];
-			// Carry the session's resolved quality/mode so /play records
-			// the true setting (and a later switch re-resolves).
-			if (c.quality) parts.push(`q=${encodeURIComponent(c.quality)}`);
-			if (c.mode) parts.push(`md=${encodeURIComponent(c.mode)}`);
-			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id }) + `?${parts.join('&')}`);
-			/* eslint-enable svelte/no-navigation-without-resolve */
-		},
 		navigateToSession: (id, session, ep, quality, mode) => {
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(
