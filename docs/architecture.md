@@ -144,26 +144,11 @@ An "Open in external player" button on the player chrome launches the user's `mp
 
 The player surfaces "Skip Opening" / "Skip Outro" buttons during their respective intervals. The skip times come from [aniskip.com](https://aniskip.com)'s community-submitted database, keyed by MyAnimeList id rather than Kitsu. The backend bridges Kitsu → MAL using Kitsu's mappings endpoint, then asks aniskip for `(mal_id, episode)` skip intervals and caches the response for 7 days (skip times stabilize quickly once submitted). When auto-skip is enabled in settings, the player jumps the playhead past the interval automatically; otherwise it just shows the button.
 
-### Persistent Picture-in-Picture across navigation
+### Leaving the player
 
-The Fullscreen and Picture-in-Picture APIs both bind to a specific `HTMLVideoElement` instance: removing the element from the DOM closes the PiP window. SvelteKit destroys page components on route change, which would otherwise kill PiP every time the user clicked away from the player.
+The play page makes its own `<video>` element and releases it when the page goes: the stream's engine is destroyed, the element unloads and leaves the page, and Picture-in-Picture — which shows that element — closes with it. Picture-in-Picture is available from the player while the player is open; it does not follow the viewer to other pages. An episode swap on the same show keeps the page and its element, and swaps the stream in place. The volume and mute carry from one visit's element to the next.
 
-The app sidesteps that by parking the `<video>` element in a hidden 1×1 host attached to `document.body` — body lives outside Svelte's reactive tree, so the element survives any number of route changes. The play page is a "controller" for that singleton: on mount it moves the element into its player frame; on destroy it moves it back to the hidden host. PiP keeps drawing throughout.
-
-Navigation away from the player branches three ways:
-
-1. **Episode swap on the same show** — the singleton stays attached to the play frame; the new page's load effect swaps its `src` in place. No PiP, no teardown.
-2. **Different route or different show**, auto-PiP enabled (default) — the page calls `requestPictureInPicture()` from the navigation hook, the floating window appears, the user keeps watching while they browse. A paused video also pops out into PiP so the user keeps the floating thumbnail and can resume from there.
-3. **Different route or different show**, auto-PiP disabled — the page pauses the singleton instead of requesting PiP. Without an explicit pause the off-screen element would keep streaming audio in the background.
-
-The PiP window itself has two close paths, and the app distinguishes them:
-
-- **X button (close in place)** — the platform's PiP UI pauses the video as part of the close path. The app reads this signal (a `pause` event lands within milliseconds of `leavepictureinpicture`) and does nothing else; the user dismissed the floating thumbnail and stays where they are.
-- **Return-to-tab** — the platform keeps playback state intact. The app interprets that as an explicit request to come back to the player and navigates to `/play/[id]` so the stream surfaces inline again.
-
-The discriminator is "did a `pause` event fire within ~100 ms of `leavepictureinpicture`?". The edge case (user manually pauses then immediately clicks return-to-tab inside the 100 ms window) misclassifies as X-close; this is accepted to keep the common cases right.
-
-Clicking back into the same episode reuses the live session: the play page's load effect detects that the singleton already has the right `src` loaded and skips re-attaching, so playback resumes at its current timestamp instead of restarting from zero.
+Each episode's position is kept in the renderer's local storage as it plays, when it pauses and when its stream is replaced or the page leaves. Opening the episode again loads it fresh and seeks there once its metadata is in, unless a stale-stream recovery's position is pending for it, which is fresher. A position in an episode's first seconds or last minutes is not kept, and an episode played to its end is forgotten.
 
 ### Episode prefetching
 
@@ -174,22 +159,7 @@ Two prefetch surfaces warm play data ahead of demand so episode boundaries don't
 
 Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + quality — which dedupes concurrent calls and keeps a 4-hour TTL. Cancellation goes through `clearForShow(showId)`, which aborts every in-flight prefetch for that show.
 
-The cancellation policy is PiP-aware. On play-page destroy:
-
-| Situation                                        | Action                                                                                  |
-|--------------------------------------------------|-----------------------------------------------------------------------------------------|
-| No PiP active                                    | `clearForShow` immediately — the user truly left the show.                              |
-| PiP active                                       | **Defer.** Register a one-shot `leavepictureinpicture` listener and a deferred-cancel registry entry keyed on the show id. The user is still engaged with the show via the floating thumbnail. |
-
-The deferred entry can be discharged in three ways:
-
-1. **PiP closes elsewhere** — the listener fires `clearForShow(showId)` and self-removes. User truly disengaged.
-2. **PiP closes while the user is back on `/play/[id]` for the same show** — listener noops; the new mount has already taken ownership of the prefetches.
-3. **A different show's `/play/[id]` mounts during PiP** — the new mount calls `fireDeferredCancelsExcept(currentShowId)`, which flushes every deferred cancel whose id differs from the current one. Without this, two shows' prefetches would run concurrently against the provider's rate limit until PiP eventually closed.
-
-Closing PiP via X **while still on `/play/[id]`** doesn't kill prefetch — the page never unmounted, no listener was registered, and `onDestroy` hasn't run.
-
-The pure decision helpers and the registry live in [`frontend/src/lib/play/prefetch-lifecycle.ts`](../frontend/src/lib/play/prefetch-lifecycle.ts) and are unit-tested next to the file.
+When the play page goes, it clears the show's in-flight prefetches.
 
 ## User settings
 
@@ -206,7 +176,6 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 | `auto_skip_op` | `false` | When aniskip has an OP interval, jump past it automatically. |
 | `auto_skip_ed` | `false` | Same as above, for the ED. |
 | `use_custom_player_controls` | `false` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. |
-| `disable_auto_pip_on_leave` | `false` | When set, navigating away from the player pauses playback instead of entering PiP. |
 | `download_bottom_bar_enabled` | `true` | Show the per-download progress dock at the bottom of the window when downloads are active. |
 
 ## Localization
