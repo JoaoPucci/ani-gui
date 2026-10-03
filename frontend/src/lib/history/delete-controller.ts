@@ -54,12 +54,50 @@ export async function executeKitsuGroupDelete(
 	for (const id of groupIds) {
 		await deps.historyDelete(id);
 	}
-	for (const kitsuId of await removedShows(groupIds, deps)) deps.forgetPositions?.(kitsuId);
 	const removed = new Set(groupIds);
-	return {
-		removedIds: groupIds,
-		remainingHistory: deps.history.filter((e) => !removed.has(e.id))
-	};
+	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
+	await forgetShowsLeftWithoutRows(groupIds, remainingHistory, deps);
+	return { removedIds: groupIds, remainingHistory };
+}
+
+/** Forgets the positions of each removed row's show that no remaining
+ *  row maps to. Positions belong to the show, and a surviving row of
+ *  it is still a Continue card. When a remaining row's show cannot be
+ *  told, nothing is forgotten. */
+async function forgetShowsLeftWithoutRows(
+	removedIds: string[],
+	remaining: HistoryEntry[],
+	deps: ConfirmDeleteDeps
+): Promise<void> {
+	const shows = await removedShows(removedIds, deps);
+	if (shows.size === 0) return;
+	const still = await remainingShows(remaining, deps);
+	if (still === null) return;
+	for (const kitsuId of shows) if (!still.has(kitsuId)) deps.forgetPositions?.(kitsuId);
+}
+
+/** The shows the remaining rows map to — each row's resolved match,
+ *  else its stamped mapping — or null when a row's cannot be told. */
+async function remainingShows(
+	rows: HistoryEntry[],
+	deps: ConfirmDeleteDeps
+): Promise<Set<string> | null> {
+	const shows = new Set<string>();
+	for (const row of rows) {
+		const resolved = deps.matches[row.id]?.id;
+		if (resolved) {
+			shows.add(resolved);
+			continue;
+		}
+		if (!deps.kitsuIdOf) return null;
+		const mapped = await deps.kitsuIdOf(row.id).then(
+			(k) => ({ k }),
+			() => null
+		);
+		if (mapped === null) return null;
+		if (mapped.k) shows.add(mapped.k);
+	}
+	return shows;
 }
 
 /** The Kitsu ids of the removed rows' shows: each row's resolved
