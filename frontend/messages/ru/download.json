@@ -41,6 +41,7 @@
 	"bar_cancel_confirm_single": "Отменить загрузку «{title}»?",
 	"bar_cancel_confirm_multi": "Отменить {count} активных загрузок?",
 	"dock_active_label": "{count} загрузок в процессе",
+	"dock_active_speed_label": "{count} загрузок в процессе, {speed}",
 	"dock_unseen_label": "{count} загрузок завершено",
 	"dock_idle_label": "Загрузки",
 	"dock_title": "Загрузки",
