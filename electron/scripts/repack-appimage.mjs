@@ -29,6 +29,9 @@ import { fileURLToPath } from 'node:url';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+
+const { openTreeToAll } = createRequire(import.meta.url)('../lib/appimage-tree.cjs');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
@@ -142,7 +145,13 @@ async function repack(appimage) {
 	}
 	console.log(`[repack] patched AppRun: --no-sandbox added to exec lines`);
 
-	// 3. Repack with mksquashfs. type2-runtime only links zlib + zstd
+	// 3. Open the tree to every user. The extract's directories
+	//    arrive at 0700, and `-all-root` below makes them root's:
+	//    packed as they are, nothing that mounts the image as root and
+	//    runs the app as a user gets past the root directory.
+	openTreeToAll(appDir);
+
+	// 4. Repack with mksquashfs. type2-runtime only links zlib + zstd
 	//    decompressors; xz (mksquashfs' default) errors out at mount
 	//    time with "uses xz compression, this version supports only
 	//    zlib, zstd." zstd matches what AppImageKit ships these days
@@ -163,7 +172,7 @@ async function repack(appimage) {
 		'-quiet'
 	]);
 
-	// 4. Final AppImage = modern runtime || new squashfs.
+	// 5. Final AppImage = modern runtime || new squashfs.
 	const tmpFinal = appimage + '.repack-tmp';
 	const out = fs.createWriteStream(tmpFinal);
 	out.write(fs.readFileSync(runtimePath));
@@ -172,7 +181,7 @@ async function repack(appimage) {
 	fs.chmodSync(tmpFinal, 0o755);
 	fs.renameSync(tmpFinal, appimage);
 
-	// 5. Cleanup the extract scratch.
+	// 6. Cleanup the extract scratch.
 	fs.rmSync(tmpRoot, { recursive: true, force: true });
 
 	const finalSize = fs.statSync(appimage).size;
