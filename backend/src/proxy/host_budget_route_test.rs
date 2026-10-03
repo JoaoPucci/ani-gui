@@ -610,7 +610,7 @@ async fn a_players_segment_fetch_notes_its_rendition_and_a_downloads_does_not() 
 
     let player_budget = host_budget::HostBudget::fresh();
     let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", player_budget.clone());
-    let uri = format!("{}&r=video&d=5000", seg_uri(&secret, id, &seg));
+    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
     assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
     assert!(
         (player_budget.player_demand(&host) - 0.2).abs() < 1e-9,
@@ -620,7 +620,76 @@ async fn a_players_segment_fetch_notes_its_rendition_and_a_downloads_does_not() 
     let download_budget = host_budget::HostBudget::fresh();
     let (router, _sessions, id, secret) =
         background_proxy("https://cdn.example/master.m3u8", download_budget.clone());
-    let uri = format!("{}&r=video&d=5000", seg_uri(&secret, id, &seg));
+    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
     assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
     assert_eq!(download_budget.player_demand(&host), 0.0);
+}
+
+/// A segment the CDN redirects to an edge is a request the edge counts:
+/// the player's need is noted at every host a hop of its fetch lands
+/// on, so the edge leaves the player its share as well.
+#[tokio::test]
+async fn a_redirected_segment_notes_the_players_need_at_the_host_it_lands_on() {
+    let origin = MockServer::start().await;
+    let edge = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/seg.ts", edge.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/seg.ts"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"payload".to_vec()))
+        .mount(&edge)
+        .await;
+    let budget = host_budget::HostBudget::fresh();
+    let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", budget.clone());
+    let seg = format!("{}/seg.ts", origin.uri());
+    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
+    assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
+    let edge_host = host_budget::host_key(&url::Url::parse(&edge.uri()).expect("edge url"));
+    assert!(
+        (budget.player_demand(&edge_host) - 0.2).abs() < 1e-9,
+        "the edge knows the player's need"
+    );
+}
+
+/// A rendition playlist the master named as audio comes back with its
+/// segments named as audio, whatever its URL: the stream kind travels
+/// from the master to every segment.
+#[tokio::test]
+async fn a_rendition_playlist_names_its_segments_by_the_stream_the_master_gave_it() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/a/en.m3u8"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:5\n#EXTINF:5.0,\nseg.aac\n#EXT-X-ENDLIST\n",
+        ))
+        .mount(&server)
+        .await;
+    let (router, id, secret) = proxy_on("https://cdn.example/master.m3u8");
+    let playlist = format!("{}/a/en.m3u8", server.uri());
+    let uri = format!("{}&k=pl&s=audio", seg_uri(&secret, id, &playlist));
+    let resp = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(uri)
+                .body(axum::body::Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("router responds");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .expect("body");
+    let body = String::from_utf8(body.to_vec()).expect("utf8");
+    let segment = body
+        .lines()
+        .find(|l| l.contains("/seg?u="))
+        .expect("a segment");
+    assert!(segment.contains("&r=audio&d=5000"), "{segment}");
 }

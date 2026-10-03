@@ -585,8 +585,9 @@ async fn a_player_asking_faster_than_the_refill_never_waits_long_beside_backgrou
     );
 }
 
-/// A player as hls.js runs one: it fills its buffer a minute ahead,
-/// one five-second segment at a time, then asks once a segment's worth
+/// A player as hls.js runs one: it fills its buffer — a minute ahead
+/// here; hls.js may go much further, up to several minutes for a
+/// low-bitrate stream — one five-second segment at a time, then asks once a segment's worth
 /// of playback, while four background fetches wait beside it. During
 /// the fill no request waits more than a couple of refills; a minute
 /// into steady play, once what it leaves of each refill has rebuilt the
@@ -647,7 +648,7 @@ async fn a_player_with_demuxed_audio_keeps_pace_beside_background_traffic() {
     let budget = HostBudget::fresh();
     let fetchers = background_fetchers(&budget, 4);
     let start = tokio::time::Instant::now();
-    let rendition = |name: &'static str| {
+    let rendition = |name: &'static str, stream: Stream| {
         let budget = Arc::clone(&budget);
         tokio::spawn(async move {
             let segment = Duration::from_secs(5);
@@ -657,7 +658,7 @@ async fn a_player_with_demuxed_audio_keeps_pace_beside_background_traffic() {
                 if ahead > Duration::from_secs(60) {
                     tokio::time::sleep(ahead - Duration::from_secs(60)).await;
                 }
-                budget.note_player_segment("cdn.example:443", name, segment);
+                budget.note_player_segment("cdn.example:443", stream, segment);
                 tokio::time::timeout(SEGMENT_REFILL * 8, budget.admit("cdn.example:443"))
                     .await
                     .expect("the request was admitted");
@@ -673,7 +674,10 @@ async fn a_player_with_demuxed_audio_keeps_pace_beside_background_traffic() {
             }
         })
     };
-    let (video, audio) = (rendition("video"), rendition("audio"));
+    let (video, audio) = (
+        rendition("video", Stream::Main),
+        rendition("audio", Stream::Audio),
+    );
     let (video, audio) = (video.await, audio.await);
     for fetcher in &fetchers {
         fetcher.abort();
@@ -711,7 +715,7 @@ proptest! {
             prop_assert!(turns >= 1);
             prop_assert!(share >= demand * PLAYER_HEADROOM - 1e-9);
         } else {
-            prop_assert!(demand * PLAYER_HEADROOM > refill_rate / 2.0);
+            prop_assert!(demand * PLAYER_HEADROOM >= refill_rate - 1e-9);
         }
     }
 }
@@ -722,14 +726,120 @@ proptest! {
 #[tokio::test(start_paused = true)]
 async fn a_rendition_the_player_stopped_fetching_stops_counting() {
     let budget = HostBudget::fresh();
-    budget.note_player_segment("cdn.example:443", "video", Duration::from_secs(5));
-    budget.note_player_segment("cdn.example:443", "audio", Duration::from_secs(5));
+    budget.note_player_segment("cdn.example:443", Stream::Main, Duration::from_secs(5));
+    budget.note_player_segment("cdn.example:443", Stream::Audio, Duration::from_secs(5));
     assert!((budget.player_demand("cdn.example:443") - 0.4).abs() < 1e-9);
     tokio::time::sleep(Duration::from_secs(20)).await;
-    budget.note_player_segment("cdn.example:443", "audio", Duration::from_secs(5));
+    budget.note_player_segment("cdn.example:443", Stream::Audio, Duration::from_secs(5));
     tokio::time::sleep(Duration::from_secs(20)).await;
     assert!(
         (budget.player_demand("cdn.example:443") - 0.2).abs() < 1e-9,
         "the video rendition stopped counting, the audio one did not"
     );
+}
+
+/// The player plays one stream of each kind at a time: one main stream,
+/// one audio rendition, one subtitle rendition. A level switch, or an
+/// audio track switch, replaces the stream of its kind rather than
+/// adding one — two of a kind counted at once would ask background
+/// traffic to leave room for a stream nobody plays.
+#[tokio::test(start_paused = true)]
+async fn a_level_switch_replaces_the_stream_rather_than_adding_one() {
+    let budget = HostBudget::fresh();
+    budget.note_player_segment("cdn.example:443", Stream::Main, Duration::from_secs(5));
+    budget.note_player_segment("cdn.example:443", Stream::Main, Duration::from_secs(4));
+    assert!(
+        (budget.player_demand("cdn.example:443") - 0.25).abs() < 1e-9,
+        "the stream switched to replaced the one switched from"
+    );
+}
+
+/// A player switching levels mid-fill, one muxed stream throughout,
+/// still shares the host with background traffic as one stream does.
+#[tokio::test(start_paused = true)]
+async fn a_level_switch_mid_fill_keeps_background_turns() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let budget = HostBudget::fresh();
+    let taken = Arc::new(AtomicUsize::new(0));
+    let fetchers: Vec<_> = (0..4)
+        .map(|_| {
+            let (budget, taken) = (Arc::clone(&budget), Arc::clone(&taken));
+            tokio::spawn(async move {
+                loop {
+                    budget.admit_background("cdn.example:443").await;
+                    taken.fetch_add(1, Ordering::SeqCst);
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                }
+            })
+        })
+        .collect();
+    for request in 0..60u32 {
+        // Every few segments the player moves to the other level.
+        let segment = if (request / 4) % 2 == 0 { 5 } else { 6 };
+        budget.note_player_segment(
+            "cdn.example:443",
+            Stream::Main,
+            Duration::from_secs(segment),
+        );
+        tokio::time::timeout(SEGMENT_REFILL * 8, budget.admit("cdn.example:443"))
+            .await
+            .expect("the request was admitted");
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    for fetcher in &fetchers {
+        fetcher.abort();
+    }
+    let taken = taken.load(Ordering::SeqCst);
+    assert!(
+        taken >= 40,
+        "background took {taken} beside the player's 60"
+    );
+}
+
+/// A segment shorter than half a second says nothing the budget can
+/// trust about the player's pace — a tiny trailing segment, a broken
+/// duration — and is not counted, rather than counted as a stream
+/// asking twice a second.
+#[tokio::test(start_paused = true)]
+async fn a_segment_too_short_to_trust_is_not_counted() {
+    let budget = HostBudget::fresh();
+    budget.note_player_segment("cdn.example:443", Stream::Main, Duration::from_millis(100));
+    assert_eq!(budget.player_demand("cdn.example:443"), 0.0);
+}
+
+/// A player that needs every token the host gives keeps them all, and a
+/// background request beside it waits — it is never refused — until
+/// the player stops asking.
+#[tokio::test(start_paused = true)]
+async fn background_traffic_waits_out_a_player_that_needs_every_token() {
+    let budget = HostBudget::fresh();
+    let player = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move {
+            let start = tokio::time::Instant::now();
+            while start.elapsed() < Duration::from_secs(600) {
+                budget.note_player_segment("cdn.example:443", Stream::Main, Duration::from_secs(2));
+                budget.note_player_segment(
+                    "cdn.example:443",
+                    Stream::Audio,
+                    Duration::from_secs(2),
+                );
+                budget.admit("cdn.example:443").await;
+            }
+        })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    let asked = tokio::time::Instant::now();
+    tokio::time::timeout(
+        Duration::from_secs(700),
+        budget.admit_background("cdn.example:443"),
+    )
+    .await
+    .expect("admitted once the player stopped");
+    assert!(
+        asked.elapsed() >= Duration::from_secs(590),
+        "it waited for the player: {:?}",
+        asked.elapsed()
+    );
+    player.await.expect("player");
 }
