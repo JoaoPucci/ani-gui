@@ -381,6 +381,12 @@ struct SegmentQuery {
     /// `pl` when the manifest that named the URL named a playlist.
     #[serde(default)]
     k: Option<String>,
+    /// The rendition a media segment belongs to.
+    #[serde(default)]
+    r: Option<String>,
+    /// The playback a media segment buys, in milliseconds.
+    #[serde(default)]
+    d: Option<u64>,
 }
 
 async fn handle_seg(
@@ -454,6 +460,17 @@ async fn handle_seg(
             HeaderValue::from_static("no-store"),
         );
         return (StatusCode::OK, headers, rewritten).into_response();
+    }
+
+    // A player's segment says which rendition it feeds and how much
+    // playback it buys: what the player needs from the host, which the
+    // budget leaves it while background traffic waits beside it.
+    if let (false, Some(rendition), Some(ms)) = (sess.background, q.r.as_deref(), q.d) {
+        state.host_budget.note_player_segment(
+            &host_budget::host_key(&upstream_url),
+            rendition,
+            std::time::Duration::from_millis(ms),
+        );
     }
 
     // Raw segment: stream bytes through. Pass any Range header from the
