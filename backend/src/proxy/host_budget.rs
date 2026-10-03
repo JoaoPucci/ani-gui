@@ -20,8 +20,10 @@
 //! and, while playback is live, its own fetches through the proxy,
 //! since the host counts them all against the one address — as
 //! background traffic, which takes a token only while no one waits for
-//! one and never takes the last [`BACKGROUND_RESERVE`] of the bucket,
-//! so the player's next requests find them there. The bucket is per
+//! one until it has waited [`BACKGROUND_PATIENCE`], when it is served in
+//! turn with the player, and which never takes the last
+//! [`BACKGROUND_RESERVE`] of the bucket, so the player's next requests
+//! find them there. The bucket is per
 //! host: a download from a different host than the player's has a
 //! bucket of its own, and the two meet only if the host counts them
 //! together. Of the app's own fetches, not charged: a cached
@@ -204,7 +206,7 @@ impl HostBudget {
 
     /// A token for `host` for background traffic — subtitle tracks,
     /// the player's and a download's, which playback can wait for —
-    /// which never takes a place in the host's line:
+    /// which within its patience takes no place in the host's line:
     /// it takes a token only while no one is waiting for one, and
     /// otherwise waits a refill and looks again. Whoever is in the
     /// line is served first while the background fetch is within its
