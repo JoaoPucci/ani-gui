@@ -47,18 +47,23 @@ fn use_custom_player_controls_defaults_to_true() {
 }
 
 #[test]
-fn disable_auto_pip_on_leave_defaults_to_true() {
-    // Auto-PiP-on-navigate is surprising default behaviour: the
-    // user clicks back, the video doesn't stop, and a small floating
-    // window follows them around the OS. The discoverability of
-    // PiP isn't worth the surprise — most users hit Back expecting
-    // playback to halt. Flip the default ON so a fresh install
-    // pauses on navigate; users who actively want PiP can toggle
-    // it back off in settings. Existing users who already wrote
-    // `disable_auto_pip_on_leave = false` keep that — serde's
-    // deserializer respects the file, this default only covers the
-    // absent-field case.
-    assert!(Config::default().disable_auto_pip_on_leave);
+fn a_written_config_carries_no_auto_pip_setting() {
+    // Leaving the player stops and unloads its video, so there is no
+    // choice left between pausing it and popping it out into
+    // picture-in-picture on the way out, and nothing to write down.
+    let body = toml::to_string_pretty(&Config::default()).expect("serialize");
+    assert!(!body.contains("disable_auto_pip_on_leave"), "{body}");
+}
+
+#[test]
+fn a_config_written_with_the_auto_pip_setting_still_loads() {
+    // Every install that ever saved Settings has the key on disk; it
+    // must read as a config like any other, keeping what else it says.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "mode = \"dub\"\ndisable_auto_pip_on_leave = false\n").unwrap();
+    let c = read_config(&path).expect("an obsolete key is not an error");
+    assert_eq!(c.mode, "dub");
 }
 
 #[test]

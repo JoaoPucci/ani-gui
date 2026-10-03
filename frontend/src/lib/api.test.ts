@@ -1100,7 +1100,6 @@ describe('settingsGet', () => {
 			auto_skip_op: false,
 			auto_skip_ed: false,
 			use_custom_player_controls: false,
-			disable_auto_pip_on_leave: false,
 			update_include_prereleases: true,
 			primary_account: ''
 		};
@@ -1129,7 +1128,6 @@ describe('settingsPut', () => {
 			auto_skip_op: true,
 			auto_skip_ed: true,
 			use_custom_player_controls: true,
-			disable_auto_pip_on_leave: true,
 			update_include_prereleases: false,
 			primary_account: 'mal'
 		};

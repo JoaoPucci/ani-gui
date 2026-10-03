@@ -63,7 +63,7 @@ vi.mock('hls.js', () => {
 import Hls from 'hls.js';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { getGlobalVideo } from '../../src/lib/play/global-video';
+import { playerVideo, playerVideoInSlot } from './player-video';
 
 type FakeHlsT = InstanceType<typeof Hls> & {
 	startLoadCalls: number;
@@ -179,11 +179,8 @@ async function mountPlayingHls(): Promise<FakeHlsT> {
 	useShowHandlers();
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
 	app = mount(PlayPage, { target });
-	const video = getGlobalVideo();
-	await until(
-		() => video.parentElement?.classList.contains('player-video-slot') === true,
-		'the video in its slot'
-	);
+	await until(() => playerVideoInSlot(), 'the video in its slot');
+	const video = playerVideo();
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 	await until(() => hlsInstances().length > 0, 'the hls engine to attach');
 	video.dispatchEvent(new Event('playing'));
@@ -196,7 +193,7 @@ const HOST_SLOW_FATAL = { fatal: true, type: 'networkError', details: 'fragLoadT
 describe('play route — a network failure with buffered media in hand is held', () => {
 	it('shows nothing, swaps nothing, and asks the engine to load again after a delay', async () => {
 		const hls = await mountPlayingHls();
-		bufferedTo(getGlobalVideo(), 300, 10);
+		bufferedTo(playerVideo(), 300, 10);
 		const toastsBefore = toastStore.items.length;
 		const streamsBefore = FakeEventSource.instances.length;
 
@@ -216,7 +213,7 @@ describe('play route — a network failure with buffered media in hand is held',
 		// pending; one startLoad() covers both, since the engine's
 		// startLoad begins by stopping what is loading.
 		const hls = await mountPlayingHls();
-		bufferedTo(getGlobalVideo(), 300, 10);
+		bufferedTo(playerVideo(), 300, 10);
 
 		hls.emit(ERROR, { ...NETWORK_FATAL, frag: { type: 'main' } });
 		hls.emit(ERROR, { ...NETWORK_FATAL, frag: { type: 'audio' } });
@@ -230,7 +227,7 @@ describe('play route — a network failure with buffered media in hand is held',
 		// the buffer nearly out and takes the recovery. The old retry
 		// must not start the engine the recovery is replacing.
 		const hls = await mountPlayingHls();
-		const video = getGlobalVideo();
+		const video = playerVideo();
 		bufferedTo(video, 300, 10);
 		hls.emit(ERROR, NETWORK_FATAL);
 		expect(hls.startLoadCalls).toBe(0);
@@ -252,7 +249,7 @@ describe('play route — a network failure with buffered media in hand is held',
 		// could start would play, so it must not start the engine
 		// under the surface.
 		const hls = await mountPlayingHls();
-		const video = getGlobalVideo();
+		const video = playerVideo();
 		bufferedTo(video, 300, 10);
 		hls.emit(ERROR, NETWORK_FATAL);
 		expect(hls.startLoadCalls).toBe(0);
@@ -268,7 +265,7 @@ describe('play route — a network failure with buffered media in hand is held',
 		// of the buffer leaves less than the margin, and the retry
 		// fires within a tick instead of sixteen seconds later.
 		const hls = await mountPlayingHls();
-		const video = getGlobalVideo();
+		const video = playerVideo();
 		bufferedTo(video, 300, 10);
 		for (let i = 0; i < HOLD_DELAYS_MS.length; i++) hls.emit(ERROR, NETWORK_FATAL);
 		expect(hls.startLoadCalls).toBe(0);
@@ -279,7 +276,7 @@ describe('play route — a network failure with buffered media in hand is held',
 
 	it('holds a host-slow timeout too, without the nudge notice', async () => {
 		const hls = await mountPlayingHls();
-		bufferedTo(getGlobalVideo(), 300, 10);
+		bufferedTo(playerVideo(), 300, 10);
 		const toastsBefore = toastStore.items.length;
 
 		hls.emit(ERROR, HOST_SLOW_FATAL);
@@ -290,7 +287,7 @@ describe('play route — a network failure with buffered media in hand is held',
 
 	it('takes the recovery once the buffer is nearly out', async () => {
 		const hls = await mountPlayingHls();
-		bufferedTo(getGlobalVideo(), 14, 10);
+		bufferedTo(playerVideo(), 14, 10);
 		const streamsBefore = FakeEventSource.instances.length;
 
 		hls.emit(ERROR, NETWORK_FATAL);

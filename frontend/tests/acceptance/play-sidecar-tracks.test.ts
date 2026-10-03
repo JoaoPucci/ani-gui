@@ -4,7 +4,7 @@
 // a sub stream is raw video unless the page attaches them. The page
 // keeps only the session id across navigation, so it asks the proxy
 // for the session's tracks and appends one <track> per listing to the
-// singleton video — where the browser renders them natively and the
+// page's video — where the browser renders them natively and the
 // captions picker already lists them. Switching sessions replaces the
 // tracks; a session with none attaches none.
 //
@@ -18,7 +18,7 @@ import { server, API_BASE } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
 import { kitsuRef, appConfig } from './home-handlers';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { getGlobalVideo } from '../../src/lib/play/global-video';
+import { playerVideo, playerVideoInSlot } from './player-video';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 
 vi.mock('$app/state', () => ({
@@ -114,7 +114,8 @@ describe('sidecar subtitle tracks', () => {
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
 
-		const video = getGlobalVideo();
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		const video = playerVideo();
 		await until(() => video.querySelectorAll('track').length === 2, 'both tracks attached');
 		expect(tracksOf(video)).toEqual([
 			{
@@ -132,7 +133,7 @@ describe('sidecar subtitle tracks', () => {
 		]);
 
 		// The next episode resolved to a session with no tracks: the
-		// old ones must not linger on the singleton.
+		// old ones must not linger on the video.
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'mp4' });
 		await until(() => video.src.includes('session-2'), 'the second session attached');
 		await until(

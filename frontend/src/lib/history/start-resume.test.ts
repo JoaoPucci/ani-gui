@@ -45,21 +45,18 @@ function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 			log.push('settings');
 			return { mode: 'sub' as const, quality: 'best' };
 		}),
-		settingsLoaded: () => true,
 		getPlayableCount: () => null,
 		setPlayableCount: (id, c) => counts.push([id, c]),
 		fetchInteractiveCount: vi.fn().mockImplementation(async () => {
 			log.push('interactive-count');
 			return { count: 12, approximate: false };
 		}),
-		reuseSession: vi.fn().mockReturnValue(null),
 		resolvePlay: vi.fn().mockImplementation(async () => {
 			log.push('resolve-play');
 			return { session_id: 's1' };
 		}),
 		markWatched: vi.fn().mockResolvedValue(undefined),
 		syncTrackers: vi.fn().mockResolvedValue(undefined),
-		navigateToCached: vi.fn().mockImplementation(() => log.push('nav-cached')),
 		navigateToSession: vi.fn().mockImplementation(() => log.push('nav-session')),
 		...overrides
 	};
@@ -108,22 +105,15 @@ describe('makeStartResume (click orchestration)', () => {
 		);
 	});
 
-	it('takes the cached-session shortcut without resolving a new play', async () => {
-		const cached = { session_id: 'pip', episode: 6, media_kind: 'Hls' };
-		const h = makeHarness({ reuseSession: vi.fn().mockReturnValue(cached) });
+	it('always resolves the episode: there is no player left behind to take back', async () => {
+		// Leaving the play page unloads its video, so a click on the
+		// episode just left resolves it like any other and the page
+		// resumes from where it was left.
+		const h = makeHarness();
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
-		expect(h.deps.navigateToCached).toHaveBeenCalledWith('k1', cached);
-		expect(h.deps.resolvePlay).not.toHaveBeenCalled();
-		expect(h.deps.markWatched).not.toHaveBeenCalled();
-	});
-
-	it('passes undefined quality/mode to session reuse when settings never loaded', async () => {
-		const reuseSession = vi.fn().mockReturnValue(null);
-		const h = makeHarness({ settingsLoaded: () => false, reuseSession });
-		const start = makeStartResume(h.deps);
-		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
-		expect(reuseSession).toHaveBeenCalledWith('k1', expect.any(Number), undefined, undefined);
+		expect(h.deps.resolvePlay).toHaveBeenCalledTimes(1);
+		expect(h.deps.navigateToSession).toHaveBeenCalledTimes(1);
 	});
 
 	it('fires markWatched and tracker sync on success', async () => {

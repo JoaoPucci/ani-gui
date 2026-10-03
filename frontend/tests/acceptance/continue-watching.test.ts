@@ -64,7 +64,6 @@ function config(mode: 'sub' | 'dub') {
 		auto_skip_op: false,
 		auto_skip_ed: false,
 		use_custom_player_controls: true,
-		disable_auto_pip_on_leave: false,
 		auto_update_anicli: false,
 		update_include_prereleases: false,
 		primary_account: ''
