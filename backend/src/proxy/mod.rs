@@ -15,6 +15,7 @@
 //! the proxy verifies before issuing the upstream fetch.
 
 pub mod host_budget;
+pub mod host_budget_demand;
 pub mod m3u8;
 pub mod token;
 pub mod upstream;
@@ -35,11 +36,13 @@ use url::Url;
 
 use crate::error::AniError;
 
-pub use m3u8::{rewrite_master, rewrite_media, ProxyOrigin};
+use host_budget_demand::Stream;
+pub use m3u8::{rewrite_master, rewrite_media, rewrite_media_as, ProxyOrigin};
 pub use token::{
     sign_segment, verify_segment, AppSecret, MediaKind, SessionId, SessionSubtitle, SessionTable,
     StreamSession,
 };
+use upstream::Admission;
 
 /// Shared state every proxy route reads.
 #[derive(Clone)]
@@ -372,6 +375,20 @@ async fn handle_mp4(
     (status, out_headers, body).into_response()
 }
 
+/// How a segment fetch is admitted: a player's media segment that
+/// names its stream and duration is noted at every host it reaches, so
+/// each host leaves the player what its streams need; anything else is
+/// admitted as the session's traffic.
+fn segment_admission(session: Admission, q: &SegmentQuery) -> Admission {
+    match (session, q.r.as_deref().and_then(Stream::from_slot), q.d) {
+        (Admission::Player, Some(stream), Some(ms)) => Admission::PlayerSegment {
+            stream,
+            segment: std::time::Duration::from_millis(ms),
+        },
+        _ => session,
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct SegmentQuery {
     /// base64url-encoded original (upstream) URL.
@@ -381,7 +398,10 @@ struct SegmentQuery {
     /// `pl` when the manifest that named the URL named a playlist.
     #[serde(default)]
     k: Option<String>,
-    /// The rendition a media segment belongs to.
+    /// The kind of stream a playlist the master named carries.
+    #[serde(default)]
+    s: Option<String>,
+    /// The kind of stream a media segment feeds.
     #[serde(default)]
     r: Option<String>,
     /// The playback a media segment buys, in milliseconds.
@@ -422,6 +442,13 @@ async fn handle_seg(
         state.sessions.note_media_fetch();
     }
     if is_manifest {
+        // The kind of stream the master named this playlist as, which
+        // its segments carry on to the budget; a playlist it did not
+        // name is the main stream.
+        let stream =
+            q.s.as_deref()
+                .and_then(Stream::from_slot)
+                .unwrap_or(Stream::Main);
         let (body, served_from) = match upstream::fetch_text(
             &state.client,
             &state.host_budget,
@@ -440,16 +467,22 @@ async fn handle_seg(
             }
             Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
         };
-        let rewritten =
-            match rewrite_media(&body, &served_from, &state.origin, session, &state.secret) {
-                Ok(s) => s,
-                Err(_) => {
-                    return error_response(
-                        StatusCode::BAD_GATEWAY,
-                        "upstream media playlist unparseable",
-                    );
-                }
-            };
+        let rewritten = match rewrite_media_as(
+            &body,
+            &served_from,
+            &state.origin,
+            session,
+            &state.secret,
+            stream,
+        ) {
+            Ok(s) => s,
+            Err(_) => {
+                return error_response(
+                    StatusCode::BAD_GATEWAY,
+                    "upstream media playlist unparseable",
+                );
+            }
+        };
         let mut headers = HeaderMap::new();
         headers.insert(
             HeaderName::from_static("content-type"),
@@ -460,17 +493,6 @@ async fn handle_seg(
             HeaderValue::from_static("no-store"),
         );
         return (StatusCode::OK, headers, rewritten).into_response();
-    }
-
-    // A player's segment says which rendition it feeds and how much
-    // playback it buys: what the player needs from the host, which the
-    // budget leaves it while background traffic waits beside it.
-    if let (false, Some(rendition), Some(ms)) = (sess.background, q.r.as_deref(), q.d) {
-        state.host_budget.note_player_segment(
-            &host_budget::host_key(&upstream_url),
-            rendition,
-            std::time::Duration::from_millis(ms),
-        );
     }
 
     // Raw segment: stream bytes through. Pass any Range header from the
@@ -491,7 +513,7 @@ async fn handle_seg(
     let resp = match upstream::send_paced_as(
         &state.client,
         &state.host_budget,
-        sess.admission(),
+        segment_admission(sess.admission(), &q),
         reqwest::Method::GET,
         &upstream_url,
         headers,

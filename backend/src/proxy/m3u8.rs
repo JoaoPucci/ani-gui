@@ -28,6 +28,7 @@ use base64::Engine;
 use url::Url;
 
 use crate::error::{AniError, Result};
+use crate::proxy::host_budget_demand::Stream;
 use crate::proxy::token::{sign_segment, AppSecret, SessionId};
 
 /// How the proxy should render rewritten URIs back into the manifest.
@@ -62,12 +63,20 @@ impl ProxyOrigin {
     }
 
     /// Render the URL of a playlist a master names: the segment route,
-    /// told it is fetching a playlist.
+    /// told it is fetching a playlist and which kind of stream it
+    /// carries.
     #[must_use]
-    pub fn playlist_url(&self, session: SessionId, original: &str, token: &str) -> String {
+    pub fn playlist_url(
+        &self,
+        session: SessionId,
+        original: &str,
+        token: &str,
+        stream: Stream,
+    ) -> String {
         format!(
-            "{}&{PLAYLIST_KIND}",
-            self.segment_url(session, original, token)
+            "{}&{PLAYLIST_KIND}&s={}",
+            self.segment_url(session, original, token),
+            stream.slot()
         )
     }
 }
@@ -89,8 +98,8 @@ pub fn names_a_playlist(kind: Option<&str>, upstream: &Url) -> bool {
 /// serves it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
-    /// A playlist, fetched and rewritten.
-    Playlist,
+    /// A playlist carrying a kind of stream, fetched and rewritten.
+    Playlist(Stream),
     /// Media, a key or an init segment, streamed through.
     Media,
 }
@@ -117,12 +126,19 @@ pub fn rewrite_master(
 
     for v in &mut out.variants {
         let resolved = resolve(master_url, &v.uri)?;
-        v.uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Playlist);
+        v.uri = build_proxy_uri(
+            &resolved,
+            origin,
+            session,
+            secret,
+            Kind::Playlist(Stream::Main),
+        );
     }
     for a in &mut out.alternatives {
+        let stream = alternative_stream(&a.media_type);
         if let Some(uri) = a.uri.as_mut() {
             let resolved = resolve(master_url, uri)?;
-            *uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Playlist);
+            *uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Playlist(stream));
         }
     }
 
@@ -135,7 +151,18 @@ pub fn rewrite_master(
     })
 }
 
-/// Rewrite a media (variant) playlist. Returns the new manifest as a string.
+/// The kind of stream an `EXT-X-MEDIA` rendition carries. An alternate
+/// video rendition replaces the main stream rather than adding to it.
+fn alternative_stream(media_type: &m3u8_rs::AlternativeMediaType) -> Stream {
+    match media_type {
+        m3u8_rs::AlternativeMediaType::Audio => Stream::Audio,
+        m3u8_rs::AlternativeMediaType::Subtitles => Stream::Subtitles,
+        _ => Stream::Main,
+    }
+}
+
+/// Rewrite a media (variant) playlist of the main stream. Returns the
+/// new manifest as a string.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] if the input isn't a valid HLS media
@@ -147,11 +174,26 @@ pub fn rewrite_media(
     session: SessionId,
     secret: &AppSecret,
 ) -> Result<String> {
+    rewrite_media_as(body, media_url, origin, session, secret, Stream::Main)
+}
+
+/// [`rewrite_media`] for a playlist of `stream`: each media segment's
+/// proxied URI names that stream and the segment's duration.
+///
+/// # Errors
+/// As [`rewrite_media`].
+pub fn rewrite_media_as(
+    body: &[u8],
+    media_url: &Url,
+    origin: &ProxyOrigin,
+    session: SessionId,
+    secret: &AppSecret,
+    stream: Stream,
+) -> Result<String> {
     let parsed = m3u8_rs::parse_media_playlist_res(body).map_err(|e| AniError::ParseFailed {
         detail: format!("media parse: {e}"),
     })?;
     let mut out = parsed;
-    let rendition = rendition_id(media_url);
 
     for seg in &mut out.segments {
         let resolved = resolve(media_url, &seg.uri)?;
@@ -163,7 +205,7 @@ pub fn rewrite_media(
             let millis = (f64::from(seg.duration) * 1000.0).round();
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let millis = millis.max(0.0) as u64;
-            seg.uri = format!("{}&r={rendition}&d={millis}", seg.uri);
+            seg.uri = format!("{}&r={}&d={millis}", seg.uri, stream.slot());
         }
         if let Some(map) = seg.map.as_mut() {
             let r = resolve(media_url, &map.uri)?;
@@ -184,15 +226,6 @@ pub fn rewrite_media(
     String::from_utf8(buf).map_err(|e| AniError::ParseFailed {
         detail: format!("media utf8: {e}"),
     })
-}
-
-/// A short name for the rendition a media playlist describes, the same
-/// for every segment of it and different from another playlist's.
-fn rendition_id(media_url: &Url) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    media_url.as_str().hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
 }
 
 /// Resolve a URI string (absolute or relative) against a base URL.
@@ -217,7 +250,7 @@ fn build_proxy_uri(
     }
     let tok = sign_segment(secret, session, upstream_str);
     match kind {
-        Kind::Playlist => origin.playlist_url(session, upstream_str, &tok),
+        Kind::Playlist(stream) => origin.playlist_url(session, upstream_str, &tok, stream),
         Kind::Media => origin.segment_url(session, upstream_str, &tok),
     }
 }

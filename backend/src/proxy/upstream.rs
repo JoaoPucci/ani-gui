@@ -112,6 +112,16 @@ pub(crate) async fn send_paced(
 pub enum Admission {
     /// The player's traffic: waits its turn in the host's line.
     Player,
+    /// The player's fetch of a media segment of `stream`, buying
+    /// `segment` of playback: the player's traffic, and noted at every
+    /// host a hop of it reaches, so each leaves the player what its
+    /// streams need.
+    PlayerSegment {
+        /// The kind of stream the segment feeds.
+        stream: crate::proxy::host_budget_demand::Stream,
+        /// The playback the segment buys.
+        segment: std::time::Duration,
+    },
     /// Background traffic: one request at a time; while the player
     /// waits, a turn once the player has taken what its renditions need
     /// ([`crate::proxy::host_budget::player_turns`]), and above the
@@ -136,6 +146,10 @@ pub(crate) async fn send_paced_as(
         let host = host_key(&url);
         match admission {
             Admission::Player => budget.admit(&host).await,
+            Admission::PlayerSegment { stream, segment } => {
+                budget.note_player_segment(&host, stream, segment);
+                budget.admit(&host).await;
+            }
             Admission::Background => budget.admit_background(&host).await,
         }
         let resp = client
