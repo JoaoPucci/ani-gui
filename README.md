@@ -25,7 +25,7 @@ See [`docs/architecture.md`](./docs/architecture.md) for the full picture.
 | **Picture-in-Picture** | Pop the player out while it is open. |
 | **Background prefetch** | Adjacent episodes warm in advance. |
 | **Downloads** | Per-episode or ranged, progress dock. yt-dlp bundled; ffmpeg sourced per platform (apt `Recommends:` on `.deb`, installer-time fetch on Windows, system PATH on AppImage). |
-| **Watch history** | Continue Watching — and a show's Play button — takes you back to an episode you left part-way, at the point you left it, or on to the next one when you finished it. Remove a single card or clear the lot from the rail. |
+| **Watch history** | Continue Watching — and a show's Play button — takes you back to the last episode you watched when the app kept the point you left it at, and resumes there; otherwise it goes on to the next episode. A point is kept for an episode left between its first 15 seconds and its last 90, for the 200 most recently kept episodes. Remove a single card or clear the lot from the rail. |
 | **External player** | One click to mpv / VLC / IINA / custom. |
 | **Watch together** | Hand the current stream to [Syncplay](https://syncplay.pl/) for a watch party. |
 | **Trackers** | Connect AniList or MyAnimeList — a Watch Later rail on the home page, and your progress synced back automatically as you watch. |

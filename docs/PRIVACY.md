@@ -28,12 +28,19 @@ ani-gui keeps the following on your computer only:
 - **Watch history** — a plain-text file in the app's own state
   directory. Lists what you've watched, where you left off and
   when.
-- **Episode positions** — how far into each of your 200 most recently
-  played episodes you got, so reopening one resumes there. Kept in the
-  app's local browser storage (under your OS user-data directory),
-  keyed by show and episode. Removing a show from Continue Watching
-  forgets its positions; clearing your watch history forgets them
-  all.
+- **Episode positions** — how far into an episode you got, for an
+  episode you left between its first 15 seconds and its last 90, so
+  reopening it resumes there. An episode played to its end is
+  forgotten, and at most the 200 most recently kept are held. Kept in
+  the app's local browser storage (under your OS user-data directory),
+  keyed by the show's Kitsu id and the episode number. Clearing your
+  watch history forgets them all. Removing a show from Continue
+  Watching forgets that show's positions — found by the card's
+  matched show, or, for a card whose match never loaded, by the show
+  id → Kitsu id mapping a play records. Where neither is available (a
+  play whose mapping was refused or failed to save, or a mapping that
+  cannot be read), that show's positions stay until the history is
+  cleared or they are pushed out by newer ones.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
