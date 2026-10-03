@@ -151,10 +151,20 @@ pub fn rewrite_media(
         detail: format!("media parse: {e}"),
     })?;
     let mut out = parsed;
+    let rendition = rendition_id(media_url);
 
     for seg in &mut out.segments {
         let resolved = resolve(media_url, &seg.uri)?;
+        let fresh = !resolved.as_str().starts_with(&origin.base);
         seg.uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Media);
+        if fresh {
+            // What the fetch of this segment feeds and buys, for the
+            // budget to know what the player needs.
+            let millis = (f64::from(seg.duration) * 1000.0).round();
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let millis = millis.max(0.0) as u64;
+            seg.uri = format!("{}&r={rendition}&d={millis}", seg.uri);
+        }
         if let Some(map) = seg.map.as_mut() {
             let r = resolve(media_url, &map.uri)?;
             map.uri = build_proxy_uri(&r, origin, session, secret, Kind::Media);
@@ -174,6 +184,15 @@ pub fn rewrite_media(
     String::from_utf8(buf).map_err(|e| AniError::ParseFailed {
         detail: format!("media utf8: {e}"),
     })
+}
+
+/// A short name for the rendition a media playlist describes, the same
+/// for every segment of it and different from another playlist's.
+fn rendition_id(media_url: &Url) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    media_url.as_str().hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 /// Resolve a URI string (absolute or relative) against a base URL.
