@@ -123,7 +123,7 @@ pub enum Admission {
         segment: std::time::Duration,
     },
     /// Background traffic: one request at a time; while the player
-    /// waits, a turn once the player has taken what its renditions need
+    /// waits, a turn once the player has taken what its streams need
     /// ([`crate::proxy::host_budget::player_turns`]), and above the
     /// budget's reserve while it does not.
     Background,
