@@ -51,4 +51,13 @@ async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
   return { child, ...ready };
 }
 
-module.exports = { backendSpawnOptions, launchBackend };
+/**
+ * Whether the tree kill has a backend to stop: one that started (a
+ * spawn the OS refused has no pid) and that it has not stopped
+ * already.
+ */
+function stoppable(child) {
+  return Boolean(child && !child.killed && child.pid);
+}
+
+module.exports = { backendSpawnOptions, launchBackend, stoppable };

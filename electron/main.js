@@ -39,7 +39,7 @@ const {
   HANDSHAKE_TIMEOUT_MS,
   awaitHandshake,
 } = require("./lib/backend-handshake.cjs");
-const { launchBackend } = require("./lib/backend-spawn.cjs");
+const { launchBackend, stoppable } = require("./lib/backend-spawn.cjs");
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
@@ -289,7 +289,7 @@ function killBackendTree() {
 
 /** Stop `child` and every process it spawned. See killBackendTree. */
 function killTree(child) {
-  if (!child || child.killed || !child.pid) return;
+  if (!stoppable(child)) return;
   if (process.platform === "win32") {
     // /F = force, /T = include child processes. Fire-and-forget;
     // we don't await it because the close path is already winding
