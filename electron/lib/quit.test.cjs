@@ -21,6 +21,14 @@ test("a quit that goes ahead stops the backend", () => {
   assert.equal(stopped, 1);
 });
 
+// The boot needs to know a quit is under way: a quit during the
+// backend's handshake stops the backend, which fails the handshake, and
+// that failure is the quit's doing, not a broken install.
+test("before-quit says whether the quit goes ahead", () => {
+  assert.equal(handleBeforeQuit({ promptOnClose: () => true, stopBackend: () => {} }), false);
+  assert.equal(handleBeforeQuit({ promptOnClose: () => false, stopBackend: () => {} }), true);
+});
+
 // The prompt itself. It is the main process's, not the renderer's —
 // it has to be synchronous for the close to be preventable — and so
 // it never went through the renderer's messages: an app running in

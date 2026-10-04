@@ -449,6 +449,27 @@ test("a quit asked for while the failure is being reported still exits as a fail
   assert.deepEqual(events, ["stop", "exit:1"]);
 });
 
+// A quit asked for during the handshake stops the backend, and the
+// backend's exit then fails the handshake. That boot did not fail; it
+// was quit. It ends as the quit does — no failure logged, no dialog,
+// and the quit's own exit code rather than 1.
+test("a boot failed by a quit already under way ends as that quit", async () => {
+  const events = [];
+  await bootApp({
+    spawnBackend: async () => {
+      throw new Error("backend exited before handshake (code=null, signal=SIGTERM)");
+    },
+    createWindow: async () => events.push("window"),
+    stopBackend: () => events.push("stop"),
+    reportFailure: async () => events.push("report"),
+    onQuitAsked: () => events.push("listen"),
+    quitting: () => true,
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => events.push("log"),
+  });
+  assert.deepEqual(events, []);
+});
+
 test("a boot that succeeds never asks to hear about a quit", async () => {
   let asked = 0;
   await bootApp({
