@@ -1264,6 +1264,10 @@ mod backed_tests;
 mod stamp_race_tests;
 
 #[cfg(test)]
+#[path = "availability_positive_ttl_test.rs"]
+mod positive_ttl_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

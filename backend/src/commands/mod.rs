@@ -15,6 +15,7 @@ pub mod app_info;
 pub mod availability;
 mod availability_mode;
 pub mod availability_refresh;
+pub(crate) mod availability_ttl;
 pub mod cour;
 mod cour_keyword_form;
 mod cour_ordinal_form;
