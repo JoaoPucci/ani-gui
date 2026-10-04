@@ -121,11 +121,17 @@ impl Watch {
 /// guard, otherwise after the guard's one Kitsu read, whose verdict
 /// settles both the mapping and the row's id ([`settle_refused_id`],
 /// [`add_accepted_id`]).
+///
+/// The frontend does not wait for a recording, so the show can be
+/// removed from history while the guard is still reading Kitsu. What
+/// the recording writes after that read — the mapping, the id on the
+/// row — it writes only if the show was not removed since the row went
+/// down ([`crate::history::guard`]): a removal wins over a watch begun
+/// before it.
 pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
     if watch.show_id.is_empty() {
         return;
     }
-    let begun = crate::history::guard::epoch(&state.history_path);
     let given = kitsu_id.filter(|k| !k.is_empty());
     let previous = recorded_id(state, &watch.show_id);
     let judged = judged_by_cache(state, watch, given);
@@ -140,15 +146,26 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
         watched_at: Some(now),
         kitsu_id: judged.clone(),
     };
-    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
-        tracing::warn!(
-            show_id = %watch.show_id,
-            error = ?e,
-            "history write failed after handoff; the watch is not stamped",
-        );
-        return;
-    }
-    stamp_watched_at(state, &watch.show_id, now);
+    // The row, its stamp and the moment the recording begins are one
+    // step with the history held: a removal runs wholly before it, and
+    // the watch is new, or wholly after it, and takes the row and the
+    // stamp together.
+    let recorded = crate::history::guard::hold(&state.history_path, |held| {
+        held.upsert(entry)?;
+        stamp_watched_at(state, &watch.show_id, now);
+        Ok::<_, crate::error::AniError>(held.epoch())
+    });
+    let begun = match recorded {
+        Ok(begun) => begun,
+        Err(e) => {
+            tracing::warn!(
+                show_id = %watch.show_id,
+                error = ?e,
+                "history write failed after handoff; the watch is not stamped",
+            );
+            return;
+        }
+    };
     let Some(kid) = given else {
         return;
     };

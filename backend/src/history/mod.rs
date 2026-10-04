@@ -292,28 +292,23 @@ pub fn write_atomic(path: &Path, entries: &[HistoryEntry]) -> Result<()> {
     Ok(())
 }
 
-/// Convenience: read + upsert + write_atomic in one call. Pure error
+/// Convenience: read + upsert + write_atomic in one call, with the
+/// file held so that two writers take turns ([`guard`]). Pure error
 /// propagation; the on-disk file is mutated in-place.
 ///
 /// # Errors
 /// Returns [`AniError::Io`] on read or write failure.
 pub fn upsert_and_write(path: &Path, new: HistoryEntry) -> Result<()> {
-    let mut entries = read_all(path)?;
-    upsert(&mut entries, new);
-    write_atomic(path, &entries)
+    guard::hold(path, |held| held.upsert(new))
 }
 
-/// Set the Kitsu id the row for `id` records, `None` clearing it. A
-/// missing row is left missing.
+/// Set the Kitsu id the row for `id` records, `None` clearing it, with
+/// the file held ([`guard`]). A missing row is left missing.
 ///
 /// # Errors
 /// Returns [`AniError::Io`] on read or write failure.
 pub fn set_kitsu_id(path: &Path, id: &str, kitsu_id: Option<String>) -> Result<()> {
-    let mut entries = read_all(path)?;
-    for entry in entries.iter_mut().filter(|e| e.id == id) {
-        entry.kitsu_id.clone_from(&kitsu_id);
-    }
-    write_atomic(path, &entries)
+    guard::hold(path, |held| held.set_kitsu_id(id, kitsu_id))
 }
 
 #[cfg(test)]

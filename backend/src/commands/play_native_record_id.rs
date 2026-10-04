@@ -24,11 +24,11 @@ pub(super) fn judged_by_cache(
 
 /// Put an id the guard accepted on the row, once the guard has read
 /// Kitsu for it. An id that is not digits is not recorded.
-pub(super) fn add_accepted_id(state: &AppState, watch: &Watch, accepted: &str, _begun: Epoch) {
+pub(super) fn add_accepted_id(state: &AppState, watch: &Watch, accepted: &str, begun: Epoch) {
     let Some(id) = crate::history::kitsu_id_of(accepted) else {
         return;
     };
-    if let Err(e) = crate::history::set_kitsu_id(&state.history_path, &watch.show_id, Some(id)) {
+    if let Err(e) = patch_id(state, watch, Some(id), begun) {
         tracing::warn!(
             show_id = %watch.show_id,
             error = ?e,
@@ -60,7 +60,7 @@ pub(super) async fn settle_refused_id(
     watch: &Watch,
     refused: &str,
     previous: Option<String>,
-    _begun: Epoch,
+    begun: Epoch,
 ) {
     let keep = match previous {
         Some(p)
@@ -72,11 +72,28 @@ pub(super) async fn settle_refused_id(
         }
         _ => None,
     };
-    if let Err(e) = crate::history::set_kitsu_id(&state.history_path, &watch.show_id, keep) {
+    if let Err(e) = patch_id(state, watch, keep, begun) {
         tracing::warn!(
             show_id = %watch.show_id,
             error = ?e,
             "history id write failed after a refused pairing",
         );
     }
+}
+
+/// Set the id on the watch's row, unless the show was removed from
+/// history since the recording began: its row is gone, and a row a
+/// later watch wrote is that watch's to settle.
+fn patch_id(
+    state: &AppState,
+    watch: &Watch,
+    kitsu_id: Option<String>,
+    begun: Epoch,
+) -> crate::error::Result<()> {
+    crate::history::guard::hold(&state.history_path, |held| {
+        if held.show_removed_since(begun, &watch.show_id) {
+            return Ok(());
+        }
+        held.set_kitsu_id(&watch.show_id, kitsu_id)
+    })
 }

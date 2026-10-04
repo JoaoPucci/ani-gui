@@ -570,14 +570,18 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
 ///
 /// Returns whether the guard accepted the pairing, so the caller can
 /// settle the history row's id on the same verdict rather than asking
-/// the guard again. `_begun` is the moment the caller's recording
-/// began ([`crate::history::guard`]).
+/// the guard again.
+///
+/// `begun` is the moment the caller's recording began. The guard waits
+/// on Kitsu, and the show can be removed from history meanwhile; a
+/// show removed since `begun` is not mapped again, the removal having
+/// taken the mapping with the row ([`crate::history::guard`]).
 pub async fn try_put_allmanga_kitsu_mapping(
     state: &AppState,
     show_id: &str,
     show_title: &str,
     kitsu_id: &str,
-    _begun: crate::history::guard::Epoch,
+    begun: crate::history::guard::Epoch,
 ) -> bool {
     // Every provider's ids are guarded. The resolve carries no
     // identity the guard could defer to — no Kitsu or MyAnimeList
@@ -596,7 +600,13 @@ pub async fn try_put_allmanga_kitsu_mapping(
         drop_mapping_the_title_disagrees_with(state, show_id, show_title).await;
         return false;
     }
-    if let Err(e) = allmanga_kitsu_put(state, show_id, kitsu_id) {
+    let stored = crate::history::guard::hold(&state.history_path, |held| {
+        if held.show_removed_since(begun, show_id) {
+            return Ok(());
+        }
+        allmanga_kitsu_put(state, show_id, kitsu_id)
+    });
+    if let Err(e) = stored {
         tracing::warn!(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
