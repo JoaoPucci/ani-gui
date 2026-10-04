@@ -37,7 +37,7 @@ const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
 const { awaitHandshake } = require("./lib/backend-handshake.cjs");
 const { backendSpawnOptions } = require("./lib/backend-spawn.cjs");
-const { handleBeforeQuit } = require("./lib/quit.cjs");
+const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
 const {
@@ -866,16 +866,10 @@ function maybePromptOnClose(win, event) {
   if (confirmedQuit) return false;
   if (activeDownloadCount <= 0) return false;
   event.preventDefault();
-  const plural = activeDownloadCount === 1 ? "" : "s";
-  const choice = dialog.showMessageBoxSync(win, {
-    type: "question",
-    buttons: ["Cancel", "Quit anyway"],
-    defaultId: 0,
-    cancelId: 0,
-    title: "Active downloads",
-    message: `${activeDownloadCount} download${plural} in progress.`,
-    detail: "They will be cancelled if you quit. Continue?",
-  });
+  const choice = dialog.showMessageBoxSync(
+    win,
+    closePromptOptions({ locale: mainLocale(), count: activeDownloadCount }),
+  );
   if (choice === 1) {
     confirmedQuit = true;
     // Re-trigger the close path. The flag above makes this no-op

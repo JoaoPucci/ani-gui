@@ -3,6 +3,8 @@
 // The app's before-quit decision, lifted out of main.js so it can be
 // exercised without Electron.
 
+const { messagesFor } = require("./main-messages.cjs");
+
 /**
  * Run the close prompt; stop the backend tree only when the quit goes
  * ahead. `promptOnClose` returns whether it prevented this quit — the
@@ -15,19 +17,21 @@ function handleBeforeQuit({ promptOnClose, stopBackend }) {
 }
 
 /**
- * The options for the prompt a quit with downloads running shows. As
- * main.js had it: English, whatever language the app is in.
+ * The options for the prompt a quit with downloads running shows, in
+ * `locale` (see lib/main-messages.cjs). Cancel comes first and is
+ * both the default and what Escape picks: the prompt exists to stop
+ * an accidental quit, so the accident must land on the safe button.
  */
-function closePromptOptions({ count }) {
-  const plural = count === 1 ? "" : "s";
+function closePromptOptions({ locale, count }) {
+  const messages = messagesFor(locale);
   return {
     type: "question",
-    buttons: ["Cancel", "Quit anyway"],
+    buttons: [messages.cancel, messages.quitAnyway],
     defaultId: 0,
     cancelId: 0,
-    title: "Active downloads",
-    message: `${count} download${plural} in progress.`,
-    detail: "They will be cancelled if you quit. Continue?",
+    title: messages.downloadsTitle,
+    message: messages.downloadsInProgress(count),
+    detail: messages.downloadsQuitDetail,
   };
 }
 
