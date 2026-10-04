@@ -20,6 +20,13 @@
 //! asks the same. A backend run by hand is asked by Ctrl+C, or by its
 //! terminal closing.
 //!
+//! The watch is armed before startup, which can take a while on a
+//! first run (it creates the cache and runs every migration). A parent
+//! gone in that time finds nothing started that needs winding down,
+//! so the backend just exits, with status 0. A quit's SIGTERM in that
+//! time kills it outright, for the same reason: the handlers that turn
+//! the signal into a request go in only once startup is done.
+//!
 //! Either way the server winds down and `main` tears the runtime
 //! down, dropping every task still running; both steps are bounded.
 //! That teardown is what stops a running download's yt-dlp or ffmpeg:
