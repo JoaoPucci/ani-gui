@@ -56,10 +56,14 @@ jobs:
 
       - if: needs.filter.outputs.relevant == 'true'
         uses: dtolnay/rust-toolchain@stable
-        with:
-          # The Linux packages carry a backend linked statically
-          # against musl, so it runs on systems older than the runner.
-          targets: x86_64-unknown-linux-musl
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Rust musl target for the pinned toolchain
+        # The Linux packages carry a backend linked statically against
+        # musl, so it runs on systems older than the runner. The target
+        # goes on the toolchain rust-toolchain.toml pins, which cargo
+        # uses here; the action above installs targets only for the
+        # toolchain it selects.
+        run: rustup target add x86_64-unknown-linux-musl
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
