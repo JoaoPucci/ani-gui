@@ -194,6 +194,74 @@ mod tests {
         assert_eq!(v[0].start_time, 5.0);
     }
 
+    /// A state whose history lives under `dir`, holding one row for
+    /// One Piece that records Kitsu id 12.
+    fn state_with_a_row_in(dir: &std::path::Path) -> AppState {
+        let state = AppState {
+            history_path: dir.join("history"),
+            ..state_with_kitsu_at("http://unused")
+        };
+        crate::history::upsert_and_write(
+            &state.history_path,
+            crate::history::HistoryEntry {
+                ep_no: "1".into(),
+                id: "one-piece-69".into(),
+                title: "One Piece".into(),
+                watched_at: None,
+                kitsu_id: Some("12".into()),
+            },
+        )
+        .expect("seed row");
+        state
+    }
+
+    fn stored(state: &AppState, key: &str) -> bool {
+        crate::cache::meta_cache_get(&state.cache_pool, key)
+            .expect("cache")
+            .is_some()
+    }
+
+    /// A lookup waits on Kitsu and on aniskip before it caches. Skip
+    /// times it fetched for a show removed from history meanwhile are
+    /// not cached: the removal took the show's skip times, and these
+    /// would bring them back. A lookup begun after the removal is the
+    /// player open on the show again, and caches as any does.
+    #[test]
+    fn skip_times_fetched_for_a_show_removed_meanwhile_are_not_cached() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = state_with_a_row_in(tmp.path());
+        let begun = crate::history::guard::epoch(&state.history_path);
+        assert!(crate::commands::history::history_delete(&state, "one-piece-69").expect("delete"));
+
+        store_skip_times(&state, begun, "12", "aniskip:v2:12:21:1", &[]);
+        assert!(
+            !stored(&state, "aniskip:v2:12:21:1"),
+            "begun before the delete"
+        );
+
+        store_skip_times(&state, begun, "49877", "aniskip:v2:49877:5:1", &[]);
+        assert!(stored(&state, "aniskip:v2:49877:5:1"), "another show's");
+
+        let after = crate::history::guard::epoch(&state.history_path);
+        store_skip_times(&state, after, "12", "aniskip:v2:12:21:2", &[]);
+        assert!(
+            stored(&state, "aniskip:v2:12:21:2"),
+            "begun after the delete"
+        );
+    }
+
+    #[test]
+    fn skip_times_fetched_while_the_history_was_cleared_are_not_cached() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = state_with_a_row_in(tmp.path());
+        let begun = crate::history::guard::epoch(&state.history_path);
+        crate::commands::history::history_clear(&state).expect("clear");
+
+        store_skip_times(&state, begun, "49877", "aniskip:v2:49877:5:1", &[]);
+
+        assert!(!stored(&state, "aniskip:v2:49877:5:1"));
+    }
+
     #[test]
     fn cache_key_includes_kitsu_mal_and_episode() {
         // Stable key shape — the lookup chain depends on it, and

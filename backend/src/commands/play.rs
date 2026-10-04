@@ -2167,6 +2167,9 @@ pub(crate) mod tests {
 #[path = "play_affinity_test.rs"]
 mod affinity_tests;
 #[cfg(test)]
+#[path = "play_after_removal_test.rs"]
+mod after_removal_tests;
+#[cfg(test)]
 #[path = "play_referer_prop_test.rs"]
 mod referer_prop_tests;
 #[cfg(test)]
