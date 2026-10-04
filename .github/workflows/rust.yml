@@ -46,7 +46,7 @@ jobs:
           # gets killed by SIGPIPE, the pipeline exits non-zero, and the
           # if-condition wrongly takes the else branch on relevant PRs.
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(backend/|rust-toolchain\.toml$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
+          if grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
