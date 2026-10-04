@@ -119,6 +119,16 @@ function awaitFirstShow(win, { timeoutMs }) {
 }
 
 /**
+ * Load the window's first page and show the window once it is ready
+ * to be shown. As main.js composes the two: the show follows
+ * ready-to-show, whatever has become of the load.
+ */
+async function openFirstPage(win, url, { timeoutMs, logError }) {
+  const shown = awaitFirstShow(win, { timeoutMs }).then(() => win.show());
+  await Promise.all([loadFirstPage(win, url, logError), shown]);
+}
+
+/**
  * Spawn the backend, then open the window against it. A failure ends
  * the process with code 1, in this order:
  *
@@ -153,4 +163,10 @@ async function bootApp({
   }
 }
 
-module.exports = { awaitFirstShow, bootApp, firstShowTimeoutMs, loadFirstPage };
+module.exports = {
+  awaitFirstShow,
+  bootApp,
+  firstShowTimeoutMs,
+  loadFirstPage,
+  openFirstPage,
+};

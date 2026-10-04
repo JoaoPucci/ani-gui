@@ -22,6 +22,7 @@ const {
   bootApp,
   firstShowTimeoutMs,
   loadFirstPage,
+  openFirstPage,
 } = require("./startup.cjs");
 
 // Electron's loadURL rejections carry the net error name as `code`.
@@ -170,6 +171,56 @@ test("a renderer that dies after the first show is not the guard's business", as
   await shown;
   win.webContents.emit("render-process-gone", {}, { reason: "crashed", exitCode: 139 });
   assert.equal(win.webContents.listenerCount("render-process-gone"), 0);
+});
+
+// openFirstPage: the load and the guard together, and the one call
+// that shows the window. A failed first page and a late first paint
+// can arrive in either order — an error page still paints — and the
+// boot's report hides the failed window before its dialog goes up. A
+// show that lands after that puts the failed window back on screen
+// under the dialog.
+
+/** A window that counts its `show()` calls. */
+const showableWindow = (load) => {
+  const win = pageWindow(load);
+  win.shows = 0;
+  win.show = () => (win.shows += 1);
+  return win;
+};
+
+test("the window is shown when it is ready, without waiting for the page to finish", async () => {
+  let finish;
+  const win = showableWindow(async (w, url) => {
+    await answers(200)(w, url);
+    await new Promise((resolve) => (finish = resolve));
+  });
+  const opened = openFirstPage(win, "app://localhost/", { timeoutMs: 1_000, logError: () => {} });
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.shows, 1);
+  finish();
+  await opened;
+  assert.equal(win.shows, 1);
+});
+
+test("a window whose first page failed is not shown when it paints afterwards", async () => {
+  const win = showableWindow(answers(404));
+  await assert.rejects(
+    openFirstPage(win, "app://localhost/", { timeoutMs: 1_000, logError: () => {} }),
+    /first page answered 404/,
+  );
+  // The error page's first paint, arriving after the load was judged.
+  win.emit("ready-to-show");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(win.shows, 0);
+});
+
+test("a window that failed its first show fails the boot even if the page loaded", async () => {
+  const win = showableWindow(answers(200));
+  const opened = openFirstPage(win, "app://localhost/", { timeoutMs: 1_000, logError: () => {} });
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed", exitCode: 139 });
+  await assert.rejects(opened, /crashed/);
+  assert.equal(win.shows, 0);
 });
 
 test("a window that cannot be created stops the backend before the app exits", async () => {
