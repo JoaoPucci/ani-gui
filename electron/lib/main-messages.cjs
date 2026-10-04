@@ -3,12 +3,16 @@
 // The main process's own user-visible text.
 //
 // Nearly everything the user reads is the renderer's and goes through
-// Paraglide. The main process speaks only where the renderer cannot:
-// a boot that failed before a page existed, and the prompt on a quit
-// with downloads running, which has to be synchronous for the close
-// to be preventable. It cannot reach the renderer's compiled messages
-// from there, so it carries this table: one entry per locale the app
-// ships, the same keys in each. lib/main-messages.test.cjs holds the list to the renderer's
+// Paraglide. The main process shows two dialogs itself, at moments
+// the renderer cannot: a boot that failed before a page existed, and
+// the prompt on a quit with downloads running, which has to be
+// synchronous for the close to be preventable. It cannot reach the
+// renderer's compiled messages from there, so it carries this table:
+// one entry per locale the app ships, the same keys in each.
+//
+// The table is those two dialogs and no more. The pages the OAuth
+// callback server answers the browser with (oauth-server.js) are the
+// main process's text too, and are still English. lib/main-messages.test.cjs holds the list to the renderer's
 // (frontend/project.inlang/settings.json), so adding a locale there
 // turns this red until it is added here.
 

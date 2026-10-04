@@ -1,13 +1,13 @@
 // The main process's own user-visible text.
 //
 // Nearly everything the user reads is the renderer's and goes through
-// Paraglide. The main process speaks only when there is no renderer to
-// speak for it — a boot that failed before a page existed — and has no
-// access to the renderer's compiled messages, so it carries a small
-// table of its own. That table has to cover the locales the app ships
-// and pick among them the way the renderer does, or the one dialog a
-// user sees on a broken install is in a language the app itself would
-// not have used.
+// Paraglide. The main process shows two dialogs itself — a boot that
+// failed before a page existed, and the prompt on a quit with
+// downloads running — and has no access to the renderer's compiled
+// messages, so it carries a small table of its own. That table has
+// to cover the locales the app ships and pick among them the way the
+// renderer does, or the dialog a user sees on a broken install is in
+// a language the app itself would not have used.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");

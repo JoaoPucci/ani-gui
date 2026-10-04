@@ -167,7 +167,9 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
  * the process with code 1, in this order:
  *
  *   1. The backend tree is stopped. `app.exit` skips `before-quit`,
- *      which is where a normal quit stops it, and nothing else would.
+ *      which is where a normal quit stops it, and the backend's own
+ *      watch only acts once this process is gone — which, with a
+ *      dialog to show, may be a minute away.
  *   2. The failure is reported to the user — `reportFailure`, a dialog
  *      where there is someone to read it (lib/boot-failure.cjs). After
  *      the stop, so nothing is left running behind the dialog; awaited,

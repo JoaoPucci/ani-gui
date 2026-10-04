@@ -444,11 +444,13 @@ async function createWindow(apiBase, internalSecret) {
   // → setOpacity(1), but the maximize animation is on the window
   // frame (compositor-rendered), which Electron cannot suppress.
   win.maximize();
-  // The window is shown on ready-to-show, by openFirstPage further
-  // down, which also holds the first load and the first-show guard.
-  // It is already on screen here — maximize() above shows a hidden
-  // window — but blank and frameless: the titlebar and its close
-  // button are the renderer's to draw.
+  // That call also puts the window on screen — maximizing a hidden
+  // window shows it — and emits a first `show` before the listener
+  // below exists. The `show` Step 2 waits for is the next one: the
+  // show() openFirstPage makes at ready-to-show, further down, where
+  // the first load and the first-show guard are held too. Until the
+  // renderer paints, what is on screen is blank and frameless: the
+  // titlebar and its close button are the renderer's to draw.
   win.once("show", () => {
     if (!win.isMaximized()) win.maximize();
   });

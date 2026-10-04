@@ -3,19 +3,22 @@
 //! spawns this as a sidecar and reads its stdout to learn the bound
 //! port.
 //!
-//! Stdout protocol: a single line of the form
+//! Stdout protocol: two lines,
 //!     ANI_GUI_LISTENING http://127.0.0.1:<port>
-//! is printed once the axum server is accepting connections. The
-//! Electron main process matches that prefix, parses the URL, and
-//! injects it into the renderer via the preload script's
-//! `window.aniGui.apiBase`.
+//!     ANI_GUI_INTERNAL_SECRET <hex>
+//! printed once the listener is bound and the state is built. The
+//! Electron main process matches the prefixes and hands both to the
+//! renderer through the preload script: `window.aniGui.apiBase` and
+//! the renderer-only secret.
 //!
 //! After printing, this binary serves until it is asked to stop (see
-//! `ani_gui::shutdown`). Two things ask. Electron's quit sends SIGTERM
-//! to the backend's process group on Linux and macOS. And because a
-//! quit is not the only way Electron ends, the backend watches for its
-//! parent being gone (see `ani_gui::parent_watch`): when Electron sets
-//! `ANI_GUI_PARENT_STDIN=1`, end of file on stdin asks the same.
+//! `ani_gui::shutdown`). Electron asks in two ways. Its quit sends
+//! SIGTERM to the backend's process group on Linux and macOS. And
+//! because a quit is not the only way Electron ends, the backend
+//! watches for its parent being gone (see `ani_gui::parent_watch`):
+//! when Electron sets `ANI_GUI_PARENT_STDIN=1`, end of file on stdin
+//! asks the same. A backend run by hand is asked by Ctrl+C, or by its
+//! terminal closing.
 //!
 //! Either way the server winds down and `main` tears the runtime
 //! down, dropping every task still running; both steps are bounded.
@@ -105,9 +108,9 @@ fn main() -> std::process::ExitCode {
         let api_router = api::build_api_router(state.clone());
         let router = proxy_router.merge(api_router);
 
-        // Listening for a stop starts before the handshake announces
-        // the backend: from the moment Electron knows it is up, a quit
-        // is a request rather than a kill.
+        // The signal handlers go in before the handshake announces the
+        // backend: from the moment Electron knows it is up, a quit's
+        // SIGTERM is a request rather than a kill.
         let stop = shutdown::requested();
 
         // The handshake: the URL the Electron main process is waiting

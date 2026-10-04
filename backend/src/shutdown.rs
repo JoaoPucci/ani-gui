@@ -62,14 +62,18 @@ pub enum Reason {
 
 /// A future that resolves with the first request to stop.
 ///
-/// The signal handlers are installed by this call, not by the future's
-/// first poll, so a caller that makes it before announcing the backend
-/// is up leaves no window in which a quit would still kill outright.
-/// Call it inside the runtime: installing a handler needs its reactor.
+/// On Unix the signal handlers are installed by this call, not by the
+/// future's first poll, so a caller that makes it before announcing
+/// the backend is up leaves no window in which a quit would still
+/// kill outright. Call it inside the runtime: installing a handler
+/// needs its reactor.
 ///
-/// Windows has no SIGTERM. A quit there runs `taskkill /F /T` against
-/// the backend, which ends its whole tree by parent pid — tools
-/// included — without asking, so there is nothing to handle.
+/// Windows has no SIGTERM, and a quit there asks nothing: it runs
+/// `taskkill /F /T` against the backend, which ends its whole tree by
+/// parent pid, tools included. The one signal handled is Ctrl+C in a
+/// console, for a backend run by hand; its handler, like the parent
+/// watch on every platform, starts when the future is first polled,
+/// which serving does at once.
 pub fn requested() -> impl Future<Output = Reason> + Send + 'static {
     let signalled = signalled();
     async move {
