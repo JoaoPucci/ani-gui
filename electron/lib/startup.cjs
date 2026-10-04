@@ -46,13 +46,21 @@ async function loadFirstPage(win, url, logError) {
   }
 }
 
-// How long a packaged launch gives its window to reach ready-to-show.
-// The first paint of the local bundle lands in well under a second on
-// a desktop and within a few seconds on a heavily loaded CI runner;
-// fifteen leaves a wide margin for a cold disk while a launch that is
-// never going to paint still ends, instead of leaving a blank window
-// with no controls on screen.
-const FIRST_SHOW_TIMEOUT_MS = 15_000;
+// How long a packaged launch gives its window to reach ready-to-show:
+// two minutes, the handshake's budget, for the handshake's reason
+// (lib/backend-handshake.cjs).
+//
+// The deadline is for a window that will never paint. One that is
+// lost for a reason the boot can see does not wait for it: a renderer
+// that dies and a first page that fails to load fail the boot when
+// they happen. What is left is a renderer alive and stuck, which is
+// rare, against a first paint that is merely slow, which is not — it
+// waits on a renderer starting and the bundle being read from the
+// same disk that made the backend's first start take 24 s, and on a
+// machine rendering in software it waits on that too. A deadline that
+// calls slow "failed" costs a working install its launch; one that is
+// long only delays the report of a window that was never coming.
+const FIRST_SHOW_TIMEOUT_MS = 120_000;
 
 /**
  * How long a launch gives its window to reach ready-to-show, or
