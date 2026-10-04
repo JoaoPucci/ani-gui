@@ -81,23 +81,38 @@ test("a failed handshake leaves the backend tracked for the boot's stop", async 
   assert.deepEqual(launch.tracked, [child]);
 });
 
-// The tree kill acts on a pid. Once the backend has exited, its pid is
-// free for the OS to hand to something else, and `taskkill /T` on it —
-// or a signal to a group of that id — would stop whatever has it now.
-// Tracking the backend from its spawn means the boot's stop reaches
-// backends that exited during startup, so the kill has to know them.
+// The tree kill acts on ids the OS hands out again. On Windows it is
+// `taskkill /T` on the backend's pid, which is free once the backend
+// has exited and may by then be someone else's, so an exited backend
+// is left alone. Elsewhere it signals the backend's process group, and
+// a group id is not reused while anyone is left in the group — the
+// transports the backend ran in it among them — while an empty group
+// just answers ESRCH. So there the group is signalled whatever became
+// of the backend: skipping it would leave a crashed backend's
+// transports running past the quit.
 
-test("a running backend is stopped", () => {
-  assert.equal(stoppable({ pid: 4242, killed: false, exitCode: null, signalCode: null }), true);
+const running = { pid: 4242, killed: false, exitCode: null, signalCode: null };
+
+for (const platform of ["linux", "darwin", "win32"]) {
+  test(`a running backend is stopped (${platform})`, () => {
+    assert.equal(stoppable(running, platform), true);
+  });
+
+  test(`a backend that never started, or was already stopped, is left alone (${platform})`, () => {
+    assert.equal(stoppable(null, platform), false);
+    assert.equal(stoppable({ ...running, pid: undefined }, platform), false);
+    assert.equal(stoppable({ ...running, killed: true }, platform), false);
+  });
+}
+
+test("on Windows a backend that has exited is left alone: its pid may be someone else's", () => {
+  assert.equal(stoppable({ ...running, exitCode: 1 }, "win32"), false);
+  assert.equal(stoppable({ ...running, signalCode: "SIGKILL" }, "win32"), false);
 });
 
-test("a backend that never started, or was already stopped, is left alone", () => {
-  assert.equal(stoppable(null), false);
-  assert.equal(stoppable({ pid: undefined, killed: false, exitCode: null, signalCode: null }), false);
-  assert.equal(stoppable({ pid: 4242, killed: true, exitCode: null, signalCode: null }), false);
-});
-
-test("a backend that has exited is left alone: its pid may be someone else's", () => {
-  assert.equal(stoppable({ pid: 4242, killed: false, exitCode: 1, signalCode: null }), false);
-  assert.equal(stoppable({ pid: 4242, killed: false, exitCode: null, signalCode: "SIGKILL" }), false);
+test("elsewhere the group of a backend that has exited is still signalled", () => {
+  for (const platform of ["linux", "darwin"]) {
+    assert.equal(stoppable({ ...running, exitCode: 1 }, platform), true, platform);
+    assert.equal(stoppable({ ...running, signalCode: "SIGKILL" }, platform), true, platform);
+  }
 });
