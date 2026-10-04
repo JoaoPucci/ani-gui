@@ -1,7 +1,7 @@
 //! aniskip command — bridges Kitsu id → MAL id → aniskip skip
-//! times. The intervals are cached by MAL id and episode, so a repeat
-//! visit skips the aniskip request; the Kitsu mappings lookup that
-//! finds the MAL id still runs every time.
+//! times. The intervals are cached by Kitsu id, MAL id and episode, so
+//! a repeat visit skips the aniskip request; the Kitsu mappings lookup
+//! that finds the MAL id still runs every time.
 //!
 //! The frontend player uses this on `loadedmetadata` to learn
 //! when to render the Skip OP / Skip Outro overlay buttons.
@@ -44,7 +44,7 @@ pub async fn aniskip_get(
         Err(e) => return Err(e),
     };
 
-    let key = cache_key(mal_id, episode);
+    let key = cache_key(kitsu_id, mal_id, episode);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(intervals) = serde_json::from_str::<Vec<SkipInterval>>(&body) {
             return Ok(intervals);
@@ -67,9 +67,12 @@ pub async fn aniskip_get(
     Ok(intervals)
 }
 
-/// Cache key for `(mal_id, episode)` lookups. Schema v1.
-fn cache_key(mal_id: u32, episode: &str) -> String {
-    format!("aniskip:v1:{mal_id}:{episode}")
+/// Cache key for `(mal_id, episode)` lookups, led by the Kitsu id the
+/// player asked with so removing a show from history can find its
+/// rows without asking Kitsu for the MAL id. Schema v2; v1 keys carried
+/// the MAL id alone and are no longer read.
+fn cache_key(kitsu_id: &str, mal_id: u32, episode: &str) -> String {
+    format!("aniskip:v2:{kitsu_id}:{mal_id}:{episode}")
 }
 
 #[cfg(test)]

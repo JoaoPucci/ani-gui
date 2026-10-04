@@ -8,15 +8,16 @@ use crate::error::Result;
 use crate::scraper::provider::ShowKey;
 
 /// Delete the title-match rows, every version and cour, stored for
-/// the row `id` titled `title`.
+/// the row `id` titled `title`, and return the Kitsu ids they named.
 ///
 /// # Errors
 /// Cache failures propagate.
-pub(crate) fn forget_title_matches(state: &AppState, id: &str, title: &str) -> Result<()> {
+pub(crate) fn forget_title_matches(state: &AppState, id: &str, title: &str) -> Result<Vec<String>> {
+    let mut named = Vec::new();
     for prefix in title_match_prefixes(id, title) {
-        forget_cours(state, &prefix)?;
+        named.extend(forget_cours(state, &prefix)?);
     }
-    Ok(())
+    Ok(named)
 }
 
 /// The key prefixes of the row's title-match rows, every cour to
@@ -38,14 +39,17 @@ fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
 
 /// Delete the keys under `prefix` whose remainder is a cour number.
 /// The prefix ends where the cour starts, so a title that starts
-/// another's ("Re", "Re:Creators") shares it.
-fn forget_cours(state: &AppState, prefix: &str) -> Result<()> {
-    for (key, _) in meta_cache_entries_prefix(&state.cache_pool, prefix)? {
+/// another's ("Re", "Re:Creators") shares it. Returns the deleted
+/// rows' Kitsu ids.
+fn forget_cours(state: &AppState, prefix: &str) -> Result<Vec<String>> {
+    let mut named = Vec::new();
+    for (key, body) in meta_cache_entries_prefix(&state.cache_pool, prefix)? {
         if all_digits(&key[prefix.len()..]) {
             meta_cache_delete(&state.cache_pool, &key)?;
+            named.push(body);
         }
     }
-    Ok(())
+    Ok(named)
 }
 
 /// `title` less a trailing `(N episodes)`, itself optionally followed

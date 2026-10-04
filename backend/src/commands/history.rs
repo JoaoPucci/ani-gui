@@ -160,10 +160,10 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         return Ok(false);
     }
     let mut entries = read_all(&state.history_path)?;
-    let titles: Vec<String> = entries
+    let removed: Vec<(String, Option<String>)> = entries
         .iter()
         .filter(|e| e.id == id)
-        .map(|e| e.title.clone())
+        .map(|e| (e.title.clone(), e.kitsu_id.clone()))
         .collect();
     if !remove_by_id(&mut entries, id) {
         return Ok(false);
@@ -172,8 +172,8 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
     // the row still there to retry, rather than reporting a failure for
     // a row already gone. The offsets last, once the row is gone, so no
     // failure leaves a row without its offset.
-    for title in &titles {
-        super::history_forget::forget_show(state, id, title)?;
+    for (title, recorded) in &removed {
+        super::history_forget::forget_show(state, id, title, recorded.as_deref())?;
     }
     write_atomic(&state.history_path, &entries)?;
     super::history_forget::sweep_offsets(state, &[id]);
