@@ -21,6 +21,14 @@
 //! ([`Held::show_removed_since`]). A removal wins over work begun
 //! before it; work begun after it is new.
 //!
+//! A later watch is the other thing a watch's deferred writes must not
+//! undo: a second watch of the show can write its row, and settle its
+//! id and mapping, while the first still waits on Kitsu. So a write
+//! that gives a row its watch moment or its Kitsu id moves the moment
+//! on as well, and a watch's deferred writes ask whether the row was
+//! changed since — removed, or written by another watch
+//! ([`Held::show_changed_since`]).
+//!
 //! A show is removed under its row's key, and not everything that
 //! would write of it has that key: skip times are cached under the
 //! Kitsu id of the page they were fetched from, and a play resolves
@@ -46,7 +54,7 @@ use std::sync::{Mutex, PoisonError};
 use super::{read_all, upsert, write_atomic, HistoryEntry};
 use crate::error::Result;
 
-/// A moment in a history's removals.
+/// A moment in a history's removals and watches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Epoch(u64);
 
@@ -75,12 +83,16 @@ impl<'a> Asked<'a> {
 /// What has been removed from one history, and when.
 #[derive(Default)]
 struct Removals {
-    /// Moves on with every removal.
+    /// Moves on with every removal, and every write of a row's watch
+    /// moment or Kitsu id.
     moment: u64,
     /// The moment the history was last cleared.
     cleared: u64,
     /// The moment each show was last removed, since the last clear.
     shows: HashMap<String, u64>,
+    /// The moment each show's row was last given a watch moment or a
+    /// Kitsu id, since the last clear.
+    watched: HashMap<String, u64>,
     /// The moment a show known by each Kitsu id was last removed, with
     /// no remaining row still claiming the id, since the last clear.
     kitsu: HashMap<String, u64>,
@@ -146,10 +158,23 @@ impl Held<'_> {
     ///
     /// # Errors
     /// The file cannot be read or written.
-    pub fn upsert(&self, new: HistoryEntry) -> Result<()> {
+    pub fn upsert(&mut self, new: HistoryEntry) -> Result<()> {
         let mut entries = self.rows()?;
+        let id = new.id.clone();
+        let watch = new.watched_at.is_some() || new.kitsu_id.is_some();
         upsert(&mut entries, new);
-        self.write(&entries)
+        self.write(&entries)?;
+        if watch {
+            self.watched(&id);
+        }
+        Ok(())
+    }
+
+    /// Note that the row for `id` was given a watch moment or a Kitsu id.
+    fn watched(&mut self, id: &str) {
+        self.removals.moment += 1;
+        let now = self.removals.moment;
+        self.removals.watched.insert(id.to_owned(), now);
     }
 
     /// Set the Kitsu id the row for `id` records, `None` clearing it.
@@ -157,12 +182,14 @@ impl Held<'_> {
     ///
     /// # Errors
     /// The file cannot be read or written.
-    pub fn set_kitsu_id(&self, id: &str, kitsu_id: Option<String>) -> Result<()> {
+    pub fn set_kitsu_id(&mut self, id: &str, kitsu_id: Option<String>) -> Result<()> {
         let mut entries = self.rows()?;
         for entry in entries.iter_mut().filter(|e| e.id == id) {
             entry.kitsu_id.clone_from(&kitsu_id);
         }
-        self.write(&entries)
+        self.write(&entries)?;
+        self.watched(id);
+        Ok(())
     }
 
     /// Note that the show `id` was played from the Kitsu page `page`.
@@ -193,6 +220,7 @@ impl Held<'_> {
         self.removals.moment += 1;
         let now = self.removals.moment;
         self.removals.shows.insert(id.to_owned(), now);
+        self.removals.watched.remove(id);
         self.removals.pages.remove(id);
         for kitsu_id in kitsu_ids {
             self.removals.kitsu.insert(kitsu_id.clone(), now);
@@ -205,6 +233,7 @@ impl Held<'_> {
         self.removals.cleared = self.removals.moment;
         // The clear stands for everything removed before it.
         self.removals.shows.clear();
+        self.removals.watched.clear();
         self.removals.kitsu.clear();
         self.removals.pages.clear();
     }
@@ -215,6 +244,16 @@ impl Held<'_> {
     pub fn show_removed_since(&self, begun: Epoch, id: &str) -> bool {
         let removed = self.removals.shows.get(id).copied().unwrap_or(0);
         removed.max(self.removals.cleared) > begun.0
+    }
+
+    /// Whether the show `id`'s row changed since `begun`: the show was
+    /// removed, or the history cleared, or another write gave the row
+    /// its watch moment or Kitsu id. A watch takes `begun` just after
+    /// writing its row, so its own write is not a change.
+    #[must_use]
+    pub fn show_changed_since(&self, begun: Epoch, id: &str) -> bool {
+        self.show_removed_since(begun, id)
+            || self.removals.watched.get(id).copied().unwrap_or(0) > begun.0
     }
 
     /// Whether what the play `asked` for would write under the show

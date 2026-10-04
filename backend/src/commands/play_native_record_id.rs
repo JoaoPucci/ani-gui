@@ -81,9 +81,9 @@ pub(super) async fn settle_refused_id(
     }
 }
 
-/// Set the id on the watch's row, unless the show was removed from
-/// history since the recording began: its row is gone, and a row a
-/// later watch wrote is that watch's to settle.
+/// Set the id on the watch's row, unless the row changed since the
+/// recording wrote it: a removed row is gone, and a row a later watch
+/// wrote is that watch's to settle.
 fn patch_id(
     state: &AppState,
     watch: &Watch,
@@ -91,7 +91,7 @@ fn patch_id(
     begun: Epoch,
 ) -> crate::error::Result<()> {
     crate::history::guard::hold(&state.history_path, |held| {
-        if held.show_removed_since(begun, &watch.show_id) {
+        if held.show_changed_since(begun, &watch.show_id) {
             return Ok(());
         }
         held.set_kitsu_id(&watch.show_id, kitsu_id)

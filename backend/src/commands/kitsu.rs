@@ -573,9 +573,10 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
 /// the guard again.
 ///
 /// `begun` is the moment the caller's recording began. The guard waits
-/// on Kitsu, and the show can be removed from history meanwhile; a
-/// show removed since `begun` is not mapped again, the removal having
-/// taken the mapping with the row ([`crate::history::guard`]).
+/// on Kitsu, and the row can change meanwhile; a show removed since
+/// `begun` is not mapped again, the removal having taken the mapping
+/// with the row, and a row a later watch wrote since keeps the mapping
+/// that watch stores ([`crate::history::guard`]).
 pub async fn try_put_allmanga_kitsu_mapping(
     state: &AppState,
     show_id: &str,
@@ -601,7 +602,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
         return false;
     }
     let stored = crate::history::guard::hold(&state.history_path, |held| {
-        if held.show_removed_since(begun, show_id) {
+        if held.show_changed_since(begun, show_id) {
             return Ok(());
         }
         allmanga_kitsu_put(state, show_id, kitsu_id)
