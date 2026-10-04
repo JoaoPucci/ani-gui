@@ -48,15 +48,42 @@ fn chain_from(cands: &[PartCandidate<'_>], lead: usize) -> Vec<usize> {
     chain
 }
 
-/// Whether candidate `lead` may head a chain at all. Signatures only
-/// for the single-candidate case: the behaviour lands with the change
-/// its tests describe.
+/// Whether candidate `lead` may head a chain at all.
 ///
 /// Never when it is numbered cumulatively: played alone, its key holds
 /// that offset and its history rows speak those numbers, and a stitched
 /// play would restamp the key at zero and misread them.
-fn lead_may_stitch(lead: &PartCandidate<'_>, single_fits: bool) -> bool {
-    lead.offset == 0 && !single_fits
+///
+/// Nor, where some single candidate fits (`single_fits`), when the lead
+/// is itself one inside the tolerance: a bare title that fits is the
+/// entry (a cour and its same-year sequel, 12 + 1 against 13), however
+/// well the sum fits.
+fn lead_may_stitch(
+    lead: &PartCandidate<'_>,
+    expected: u32,
+    tolerance: u32,
+    single_fits: bool,
+) -> bool {
+    lead.offset == 0 && (!single_fits || lead.count.abs_diff(expected) > tolerance)
+}
+
+/// Whether a chain prefix may be stitched over the best single
+/// candidate. With none inside the tolerance there is no near miss to
+/// protect. With one, the count cannot tell a finished split (1 + 11
+/// against 12) from a cour and its sequel (12 + 1 against 13); which
+/// candidate is the near miss can: the chain stands over it only when
+/// the near miss is one of the chain's later parts.
+fn stands_over_single(
+    cands: &[PartCandidate<'_>],
+    later: &[usize],
+    expected: u32,
+    best_single: u32,
+    single_fits: bool,
+) -> bool {
+    !single_fits
+        || later
+            .iter()
+            .any(|&i| cands[i].count.abs_diff(expected) == best_single)
 }
 
 /// The candidates, in part order, that together make up the expected
@@ -82,7 +109,7 @@ pub(crate) fn split_chain(
     let mut best: Option<(u32, Vec<usize>)> = None;
     let leads = (0..cands.len()).filter(|&i| {
         let c = &cands[i];
-        c.confirmed && c.count > 0 && lead_may_stitch(c, single_fits)
+        c.confirmed && c.count > 0 && lead_may_stitch(c, expected, tolerance, single_fits)
     });
     for lead in leads {
         let chain = chain_from(cands, lead);
@@ -90,7 +117,10 @@ pub(crate) fn split_chain(
             let sum: u32 = chain[..len].iter().map(|&i| cands[i].count).sum();
             let dist = sum.abs_diff(expected);
             let fits = dist <= tolerance || sum < expected;
-            if fits && dist < best_single && best.as_ref().is_none_or(|(d, _)| dist < *d) {
+            let stands =
+                stands_over_single(cands, &chain[1..len], expected, best_single, single_fits);
+            if fits && stands && dist < best_single && best.as_ref().is_none_or(|(d, _)| dist < *d)
+            {
                 best = Some((dist, chain[..len].to_vec()));
             }
         }
