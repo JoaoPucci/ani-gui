@@ -35,7 +35,7 @@ const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
-const { bootApp, loadFirstPage } = require("./lib/startup.cjs");
+const { awaitFirstShow, bootApp, loadFirstPage } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
@@ -344,6 +344,14 @@ function killBackendTree() {
   }
 }
 
+// How long a new window may take to reach ready-to-show before the
+// boot gives up on it. The first paint of the local bundle lands in
+// well under a second on a desktop and within a few seconds on a
+// heavily loaded CI runner; fifteen leaves a wide margin for a cold
+// disk while a launch that is not going to produce a window still
+// ends instead of leaving a hidden one behind.
+const FIRST_SHOW_TIMEOUT_MS = 15_000;
+
 async function createWindow(apiBase, internalSecret) {
   // Pre-compute the work area so the window opens at the maximized
   // size in one shot. Setting the constructor width/height to the
@@ -471,9 +479,13 @@ async function createWindow(apiBase, internalSecret) {
   // → setOpacity(1), but the maximize animation is on the window
   // frame (compositor-rendered), which Electron cannot suppress.
   win.maximize();
-  win.once("ready-to-show", () => {
-    win.show();
-  });
+  // Shown on ready-to-show, through the first-show guard: a window
+  // that never gets there would stay hidden forever, so missing it —
+  // a renderer gone, or no first paint within FIRST_SHOW_TIMEOUT_MS —
+  // fails the boot instead (see lib/startup.cjs).
+  const firstShow = awaitFirstShow(win, { timeoutMs: FIRST_SHOW_TIMEOUT_MS }).then(
+    () => win.show(),
+  );
   win.once("show", () => {
     if (!win.isMaximized()) win.maximize();
   });
@@ -497,7 +509,7 @@ async function createWindow(apiBase, internalSecret) {
 
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
-    await loadFirstPage(win, VITE_DEV_URL, console.error);
+    await Promise.all([loadFirstPage(win, VITE_DEV_URL, console.error), firstShow]);
   } else {
     // Packaged static SvelteKit bundle, served via the custom
     // `app://` scheme registered above. The bundle's chunks do
@@ -508,7 +520,10 @@ async function createWindow(apiBase, internalSecret) {
     // router reads `location.pathname` and treats `/index.html`
     // as a non-route (the app has no `routes/index.html` page).
     // The protocol handler maps `/` to the index.html file.
-    await loadFirstPage(win, `${APP_ORIGIN}/`, console.error);
+    await Promise.all([
+      loadFirstPage(win, `${APP_ORIGIN}/`, console.error),
+      firstShow,
+    ]);
   }
   return win;
 }

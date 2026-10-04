@@ -6,20 +6,60 @@
 /**
  * Load the window's first page.
  *
- * A rejection here is not a startup failure. Electron rejects
- * `loadURL` with ERR_ABORTED whenever another main-frame navigation
- * starts before the first page finishes loading, and a window whose
- * first load was superseded is still a working window. A load that
- * genuinely fails also leaves the window open — the `did-fail-load`
- * listener has already logged it, and quitting would only turn a
- * visible failure into a window that vanishes.
+ * Only a superseded load is survivable. Electron rejects `loadURL`
+ * with ERR_ABORTED whenever another main-frame navigation starts
+ * before the first page finishes loading, and the window that
+ * navigation lands in still works, so that rejection is logged and
+ * dropped. Every other rejection — a missing bundle, a refused
+ * connection, a renderer that crashed mid-load (ERR_FAILED) — leaves a
+ * blank or never-shown window the user cannot do anything with, so it
+ * propagates and fails the boot.
  */
 async function loadFirstPage(win, url, logError) {
   try {
     await win.loadURL(url);
   } catch (err) {
-    logError("[main] first page did not finish loading:", err);
+    if (!err || err.code !== "ERR_ABORTED") throw err;
+    logError("[main] first page superseded before it finished loading:", err);
   }
+}
+
+/**
+ * Resolve when the window reaches `ready-to-show`; reject when its
+ * renderer dies first, or when it has not got there within
+ * `timeoutMs`. The window is created hidden and shown only on
+ * `ready-to-show`, so a window that never gets there is invisible —
+ * nothing for the user to close, and the app would otherwise sit with
+ * its backend running and no way out. After the first show the guard
+ * lets go: a later renderer crash is not a boot failure.
+ */
+function awaitFirstShow(win, { timeoutMs }) {
+  return new Promise((resolve, reject) => {
+    const settle = (fn, value) => {
+      clearTimeout(timer);
+      win.removeListener("ready-to-show", onShow);
+      win.webContents.removeListener("render-process-gone", onGone);
+      fn(value);
+    };
+    const onShow = () => settle(resolve);
+    const onGone = (_event, details) =>
+      settle(
+        reject,
+        new Error(
+          `renderer gone before the first show (${details && details.reason})`,
+        ),
+      );
+    const timer = setTimeout(
+      () =>
+        settle(
+          reject,
+          new Error(`window did not reach ready-to-show within ${timeoutMs} ms`),
+        ),
+      timeoutMs,
+    );
+    win.once("ready-to-show", onShow);
+    win.webContents.on("render-process-gone", onGone);
+  });
 }
 
 /**
@@ -39,8 +79,5 @@ async function bootApp({ spawnBackend, createWindow, stopBackend, exit, logError
     exit(1);
   }
 }
-
-/** Placeholder until the first-show guard exists. */
-async function awaitFirstShow() {}
 
 module.exports = { awaitFirstShow, bootApp, loadFirstPage };
