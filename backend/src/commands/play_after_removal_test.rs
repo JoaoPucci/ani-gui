@@ -504,8 +504,8 @@ fn other_key_leftovers(state: &AppState) {
 }
 
 /// A resolution row from before rows recorded their page survives the
-/// removal, and can still be played from the cache: the key it names
-/// keeps the numbering that play would write its row through.
+/// delete: the key it names keeps the numbering a play served from that
+/// row would write its row through.
 #[test]
 fn a_key_a_surviving_resolution_row_names_keeps_its_numbering() {
     let tmp = tempfile::tempdir().unwrap();
@@ -551,11 +551,13 @@ fn a_clear_takes_the_numbering_its_shows_pages_resolved_under_another_key() {
     );
 }
 
-/// A delete whose history write fails has already forgotten the
-/// resolution rows that named the other key. The retry that removes
-/// the row must not find the key's numbering beyond its reach.
+/// A delete whose history write fails, while the offsets file beside
+/// it can still be written, has already forgotten the resolution rows
+/// that named the other key. The retry that removes the row must not
+/// find the key's numbering beyond its reach. (A state directory that
+/// refuses both writes leaves that numbering behind: the docs say so.)
 #[test]
-fn a_retried_delete_still_takes_the_other_keys_numbering() {
+fn a_delete_retried_after_its_history_write_failed_takes_the_other_keys_numbering() {
     let tmp = tempfile::tempdir().unwrap();
     let state = state_in(tmp.path());
     other_key_leftovers(&state);
