@@ -66,3 +66,7 @@ pub(crate) fn store_guess(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
         crate::commands::kitsu::allmanga_kitsu_put(state, show_id, kitsu_id)
     })
 }
+
+#[cfg(test)]
+#[path = "kitsu_played_test.rs"]
+mod tests;
