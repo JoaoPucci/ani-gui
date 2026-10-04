@@ -35,6 +35,7 @@ const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
+const { awaitHandshake } = require("./lib/backend-handshake.cjs");
 const { awaitFirstShow, bootApp, loadFirstPage } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
@@ -216,92 +217,47 @@ function readConfigLocale() {
   return extractLocaleFromToml(text);
 }
 
+// How long the backend may take to print its handshake before the boot
+// gives up on it. Before the handshake it only binds a loopback port,
+// opens its SQLite cache (running any pending migrations) and sweeps a
+// legacy file, which takes milliseconds. Fifteen seconds covers a cold
+// disk and an antivirus scan of a first exec on Windows, while a
+// backend that is not going to answer still ends the boot instead of
+// leaving the app with no window and no exit.
+const BACKEND_HANDSHAKE_TIMEOUT_MS = 15_000;
+
 /**
- * Spawn the backend and resolve once it prints its listening URL.
- * Rejects if the process exits before the URL is observed (so the
- * Electron main process doesn't sit indefinitely on a broken sidecar).
+ * Spawn the backend and resolve once it has printed its handshake
+ * (see lib/backend-handshake.cjs). Rejects — after stopping the
+ * backend if it is running — when the spawn fails, the backend exits
+ * first, or the handshake does not arrive within
+ * BACKEND_HANDSHAKE_TIMEOUT_MS, so bootApp can end the boot.
  */
-function spawnBackend() {
-  return new Promise((resolve, reject) => {
-    const bin = resolveBackendBinary();
-    // `detached: true` puts the backend in its own process group on
-    // POSIX so we can kill the entire group (backend + the transport
-    // it spawns per request + yt-dlp + ffmpeg) at quit time
-    // via `process.kill(-pid, …)`.
-    // Without it, only the Rust process gets the signal and the
-    // download grandchildren get reparented to init and keep
-    // running. Windows has no process groups; the tree-kill path
-    // shells out to taskkill /T instead — see killBackendTree().
-    const child = spawn(bin, [], {
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    });
-    let buf = "";
-    let resolved = false;
-
-    // Backend prints the renderer-only secret on a separate handshake
-    // line right after ANI_GUI_LISTENING. We may see either order on
-    // the stdout buffer, so cache one while waiting for the other and
-    // only resolve once both are in hand. Used to gate the disconnect-
-    // after-expiry cache wipe (Codex P2 #3370011855).
-    let pendingApiBase = null;
-    let pendingInternalSecret = null;
-    const maybeResolve = () => {
-      if (resolved) return;
-      if (pendingApiBase && pendingInternalSecret) {
-        resolved = true;
-        resolve({
-          child,
-          apiBase: pendingApiBase,
-          internalSecret: pendingInternalSecret,
-        });
-      }
-    };
-
-    const onLine = (line) => {
-      if (resolved) {
-        // After handshake, downstream stdout becomes log output;
-        // just echo it through so we can see it in dev.
-        process.stdout.write(`[backend] ${line}\n`);
-        return;
-      }
-      const apiMatch = line.match(/^ANI_GUI_LISTENING\s+(\S+)/);
-      if (apiMatch) {
-        pendingApiBase = apiMatch[1];
-        maybeResolve();
-        return;
-      }
-      const secretMatch = line.match(/^ANI_GUI_INTERNAL_SECRET\s+(\S+)/);
-      if (secretMatch) {
-        pendingInternalSecret = secretMatch[1];
-        maybeResolve();
-      }
-    };
-
-    child.stdout.on("data", (chunk) => {
-      buf += chunk.toString("utf-8");
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        onLine(line);
-      }
-    });
-    child.stderr.on("data", (chunk) => {
-      process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
-    });
-    child.on("exit", (code, signal) => {
-      if (!resolved) {
-        reject(
-          new Error(
-            `backend exited before handshake (code=${code}, signal=${signal})`,
-          ),
-        );
-      } else {
-        console.error(`[backend] exited (code=${code}, signal=${signal})`);
-      }
-    });
+async function spawnBackend() {
+  const bin = resolveBackendBinary();
+  // `detached: true` puts the backend in its own process group on
+  // POSIX so we can kill the entire group (backend + the transport
+  // it spawns per request + yt-dlp + ffmpeg) at quit time
+  // via `process.kill(-pid, …)`.
+  // Without it, only the Rust process gets the signal and the
+  // download grandchildren get reparented to init and keep
+  // running. Windows has no process groups; the tree-kill path
+  // shells out to taskkill /T instead — see killTree().
+  const child = spawn(bin, [], {
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
+  child.stderr.on("data", (chunk) => {
+    process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
+  });
+  // After the handshake, downstream stdout becomes log output; it is
+  // echoed through so we can see it in dev.
+  const { apiBase, internalSecret } = await awaitHandshake(child, {
+    timeoutMs: BACKEND_HANDSHAKE_TIMEOUT_MS,
+    stopChild: killTree,
+    log: (line) => process.stdout.write(`${line}\n`),
+  });
+  return { child, apiBase, internalSecret };
 }
 
 let backendChild = null;
@@ -317,13 +273,18 @@ let backendChild = null;
  * Idempotent — safe to call when the backend has already exited.
  */
 function killBackendTree() {
-  if (!backendChild || backendChild.killed) return;
+  killTree(backendChild);
+}
+
+/** Stop `child` and every process it spawned. See killBackendTree. */
+function killTree(child) {
+  if (!child || child.killed || !child.pid) return;
   if (process.platform === "win32") {
     // /F = force, /T = include child processes. Fire-and-forget;
     // we don't await it because the close path is already winding
     // down and a stuck taskkill shouldn't block the quit.
     try {
-      spawn("taskkill", ["/F", "/T", "/PID", String(backendChild.pid)], {
+      spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
         stdio: "ignore",
         windowsHide: true,
       });
@@ -336,11 +297,11 @@ function killBackendTree() {
     // Negative pid = process group. SIGTERM gives the children a
     // chance to clean up; if any survives, the OS reaper will
     // eventually SIGKILL on app shutdown.
-    process.kill(-backendChild.pid, "SIGTERM");
+    process.kill(-child.pid, "SIGTERM");
   } catch (e) {
     // ESRCH: group already gone (backend exited first). Anything
     // else is unexpected and worth logging.
-    if (e && e.code !== "ESRCH") console.error("[main] killBackendTree:", e);
+    if (e && e.code !== "ESRCH") console.error("[main] killTree:", e);
   }
 }
 
