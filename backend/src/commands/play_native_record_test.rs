@@ -475,3 +475,44 @@ async fn a_later_watch_keeps_its_row_from_an_earlier_watchs_verdict() {
         "the mapping keeps the later watch's id"
     );
 }
+
+/// The refusal side of the same overlap: A's pairing is refused after
+/// B has settled the row with a mapping B's own guard accepted. A's
+/// verdict is about a row that is no longer its, so it does not drop
+/// B's mapping, whatever A's title says of it.
+#[tokio::test]
+async fn a_later_watchs_mapping_survives_an_earlier_watchs_refusal() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(state_at(td.path(), &kitsu.uri()));
+    // A, from a page whose slug names no part: refused for Part 2.
+    serve_detail(
+        &kitsu,
+        "45412",
+        "jojo-no-kimyou-na-bouken-stone-ocean",
+        Duration::from_secs(1),
+    )
+    .await;
+    let a = {
+        let state = Arc::clone(&state);
+        tokio::spawn(async move { record_watch(&state, &part_two(), Some("45412")).await })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    // B, under a title that names no part, from a page the cache knows.
+    cache_detail(&state, "45413", "jojo-no-kimyou-na-bouken-stone-ocean");
+    let b = Watch {
+        title: "Stone Ocean".into(),
+        ..part_two()
+    };
+    record_watch(&state, &b, Some("45413")).await;
+    let mapping =
+        || crate::commands::kitsu::allmanga_kitsu_get(&state, &part_two().show_id).expect("read");
+    assert_eq!(mapping().as_deref(), Some("45413"));
+    a.await.expect("recording");
+
+    assert_eq!(
+        mapping().as_deref(),
+        Some("45413"),
+        "the later watch's mapping stands"
+    );
+}
