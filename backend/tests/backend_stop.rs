@@ -96,6 +96,14 @@ fn gone_within(pids: &[u32], wait: Duration) -> bool {
     false
 }
 
+fn signal(name: &str, pid: u32) {
+    let sent = Command::new("kill")
+        .args([name, &pid.to_string()])
+        .status()
+        .expect("kill");
+    assert!(sent.success(), "kill {name} {pid}");
+}
+
 #[test]
 fn a_terminate_signal_stops_the_tools_a_running_download_spawned() {
     // Under the target directory rather than the system's temporary
@@ -146,11 +154,7 @@ fn a_terminate_signal_stops_the_tools_a_running_download_spawned() {
     // What a quit delivers. To the backend alone: the tool's group is
     // its own, so the signal Electron sends the backend's group never
     // reaches it.
-    let term = Command::new("kill")
-        .args(["-TERM", &backend.child.id().to_string()])
-        .status()
-        .expect("kill");
-    assert!(term.success());
+    signal("-TERM", backend.child.id());
 
     let status = common::exited_within(&mut backend.child, Duration::from_secs(20));
     let stopped = gone_within(&[tool, helper], Duration::from_secs(5));
@@ -170,4 +174,27 @@ fn a_terminate_signal_stops_the_tools_a_running_download_spawned() {
         status.success(),
         "a requested stop is a clean exit: {status:?}"
     );
+}
+
+/// The signals a backend run by hand meets — Ctrl+C, and its terminal
+/// closing — end it the same way, for the same reason: a tool it
+/// started is in a group of its own and neither signal reaches it.
+#[test]
+fn an_interrupt_or_a_hangup_is_a_request_to_stop_as_well() {
+    let home = tempfile::tempdir().expect("tempdir");
+    for name in ["-INT", "-HUP"] {
+        let mut backend = common::start(common::command(
+            Path::new(env!("CARGO_BIN_EXE_ani-gui-backend")),
+            home.path(),
+        ));
+        signal(name, backend.child.id());
+        let status = common::exited_within(&mut backend.child, Duration::from_secs(10));
+        let _ = backend.child.kill();
+        let _ = backend.child.wait();
+        let status = status.expect("the backend exits once it is asked to stop");
+        assert!(
+            status.success(),
+            "{name} is a request the backend honours, not what kills it: {status:?}"
+        );
+    }
 }
