@@ -178,9 +178,7 @@ pub async fn pick_candidate<P: Provider + ?Sized>(
     // was probed, so stitching them costs nothing. Only with every
     // candidate heard — a dead probe may have been one of the parts.
     if !any_transport_failure {
-        if let Some(picked) =
-            super::play_native_split::stitched(&probed_ok, expected, best_dist, search_title)
-        {
+        if let Some(picked) = super::play_native_split::stitched(&probed_ok, expected, best_dist) {
             return Ok(picked);
         }
     }

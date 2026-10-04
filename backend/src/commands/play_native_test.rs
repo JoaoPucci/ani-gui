@@ -1254,3 +1254,30 @@ async fn a_bare_title_inside_the_tolerance_is_not_stitched_to_a_same_year_sequel
     assert_eq!(picked.hit.slug, "x-31");
     assert_eq!(picked.episodes.len(), 12);
 }
+
+#[tokio::test]
+async fn a_finished_split_is_stitched_when_the_provider_spells_it_differently() {
+    // Kitsu searches the romaji title; hianime lists the parts in
+    // English. The 2nd Stage alone is one off — the near miss is a
+    // later part, so the entry is the stitched pair.
+    const EN: &str = "Steel Ball Run: JoJo's Bizarre Adventure";
+    const EN_2ND: &str = "Steel Ball Run: JoJo's Bizarre Adventure 2nd Stage";
+    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 11, Some(2026))]));
+    let hits = [hit("sbr-1st-4", EN), hit("sbr-2nd-10465", EN_2ND)];
+    let picked = pick_candidate(&client, &hits, Some(12), SBR, Some(2026), Some("ONA"))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "sbr-1st-4");
+    assert_eq!(picked.episodes.len(), 12);
+    assert_eq!(picked.episodes[1].id, 10_465_001);
+}
+
+#[tokio::test]
+async fn an_airing_split_does_not_flip_to_its_later_part_mid_season() {
+    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 9, Some(2026))]));
+    let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "sbr-1st-4");
+    assert_eq!(picked.episodes.len(), 10);
+}
