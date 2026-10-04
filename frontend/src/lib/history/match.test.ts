@@ -82,6 +82,49 @@ beforeEach(() => {
 });
 
 describe('resolveKitsuMatch', () => {
+	it('reads the show the row records, with no matching', async () => {
+		// The row records the Kitsu id of the page the user played from.
+		// Continue Watching takes it as given: no stored mapping, title
+		// match, search or enrichment is asked, so nothing can land on
+		// another show (the provider's "There Is Also a Hole in the
+		// Student Organization!" once matched Here is Greenwood).
+		const preliminary = resolveHistoryEntry(
+			{
+				id: 'hianime:there-is-also-a-hole-in-the-student-organization-10497',
+				ep_no: '1',
+				title: 'There Is Also a Hole in the Student Organization!',
+				kitsu_id: '49877'
+			},
+			null
+		);
+		mockedDetail.mockResolvedValue(stubKitsu('49877', 'Seitokai ni mo Ana wa Aru!', 12));
+		mockedAllmangaMap.mockResolvedValue('1623');
+		mockedSearch.mockResolvedValue([stubKitsu('1623', 'Here is Greenwood', 6)]);
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got?.id).toBe('49877');
+		expect(mockedDetail).toHaveBeenCalledWith('49877');
+		expect(mockedAllmangaMap).not.toHaveBeenCalled();
+		expect(mockedGetMatch).not.toHaveBeenCalled();
+		expect(mockedSearch).not.toHaveBeenCalled();
+		expect(mockedResolveAllmanga).not.toHaveBeenCalled();
+	});
+
+	it('answers no show, not a guess, when the recorded show cannot be read', async () => {
+		const preliminary = resolveHistoryEntry(
+			{ id: 'hianime:x-1', ep_no: '1', title: 'X', kitsu_id: '49877' },
+			null
+		);
+		mockedDetail.mockRejectedValue(new Error('offline'));
+		mockedSearch.mockResolvedValue([stubKitsu('1623', 'X', 6)]);
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got).toBeNull();
+		expect(mockedSearch).not.toHaveBeenCalled();
+	});
+
 	it('returns the cached anime detail when the title-match cache hits', async () => {
 		const preliminary = resolveHistoryEntry(entry('Demon Slayer (26 episodes)', '5'), null);
 		mockedGetMatch.mockResolvedValue('cached-id');
