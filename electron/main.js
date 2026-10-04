@@ -35,6 +35,7 @@ const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
+const { claimSingleInstance } = require("./lib/single-instance.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
@@ -72,6 +73,19 @@ if (IS_DEV) {
 const APP_NAME = isDevProfile(process.env) ? "ani-gui-dev" : "ani-gui";
 app.setName(APP_NAME);
 process.title = APP_NAME;
+
+// One running instance per profile (see lib/single-instance.cjs). Taken
+// here — after setName, which places userData and with it the lock on
+// the right profile, and before anything else: a later launch hands over
+// to the running instance and stops at this return, so it never reaches
+// whenReady and never spawns a backend of its own. `mainWindow` is the
+// window a later launch brings forward; it is set once the boot has
+// shown it, so a launch during the boot finds nothing to reveal and the
+// booting instance shows its window as usual.
+let mainWindow = null;
+if (!claimSingleInstance(app, { getWindow: () => mainWindow })) {
+  return;
+}
 
 // Custom scheme used in packaged builds to serve the SvelteKit
 // static bundle. Loading the index.html via plain `file://` works
@@ -475,6 +489,12 @@ async function createWindow(apiBase, internalSecret) {
   });
   win.once("show", () => {
     if (!win.isMaximized()) win.maximize();
+  });
+  win.once("show", () => {
+    mainWindow = win;
+  });
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
   });
 
   // Catch the X-button / window-close path. The before-quit hook
@@ -914,6 +934,8 @@ app.whenReady().then(async () => {
     await createWindow(apiBase, internalSecret);
   } catch (err) {
     console.error("[main] startup failed:", err);
+    // A failed boot has no window worth bringing forward.
+    mainWindow = null;
     app.exit(1);
   }
 });
