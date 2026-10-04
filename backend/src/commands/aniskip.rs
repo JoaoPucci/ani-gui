@@ -167,7 +167,7 @@ mod tests {
             end_time: 90.0,
         }];
         let body = serde_json::to_string(&intervals).expect("serialize");
-        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v1:21:1", &body, 3600).unwrap();
+        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1", &body, 3600).unwrap();
 
         let v = aniskip_get(&state, "12", "1", 1440.0).await.expect("ok");
         assert_eq!(v.len(), 1);
@@ -176,10 +176,12 @@ mod tests {
     }
 
     #[test]
-    fn cache_key_includes_mal_and_episode() {
-        // Stable key shape — the lookup chain depends on it.
-        assert_eq!(cache_key(21, "1"), "aniskip:v1:21:1");
-        assert_eq!(cache_key(59970, "12"), "aniskip:v1:59970:12");
+    fn cache_key_includes_kitsu_mal_and_episode() {
+        // Stable key shape — the lookup chain depends on it, and
+        // removing a show from history finds its rows by the Kitsu id
+        // that leads it.
+        assert_eq!(cache_key("12", 21, "1"), "aniskip:v2:12:21:1");
+        assert_eq!(cache_key("49877", 59970, "12"), "aniskip:v2:49877:59970:12");
     }
 
     /// Cache MISS path: walk the full chain end-to-end. Mocks both
@@ -219,7 +221,7 @@ mod tests {
         // cache row and let the fall-through path run.
         crate::cache::meta_cache_put(
             &state.cache_pool,
-            "aniskip:v1:21:1",
+            "aniskip:v2:12:21:1",
             "{not valid json",
             3600,
         )

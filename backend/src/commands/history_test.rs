@@ -666,3 +666,71 @@ fn removal_keeps_the_offsets_of_shows_without_a_row() {
         "never a row"
     );
 }
+
+/// Skip times are cached per episode played, under the Kitsu id the
+/// player asked with: the row's recorded id, or for an older row the
+/// id its mapping or title match named. Removing the row removes them;
+/// rows keyed the old way, by MAL id alone, are read by nothing and go
+/// with any removal.
+#[test]
+fn delete_removes_the_shows_skip_times() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    let older = HistoryEntry {
+        kitsu_id: None,
+        ..row("hianime:seitokai-10497", "Seitokai")
+    };
+    write_atomic(&path, &[row("one-piece-69", "One Piece"), older]).unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:seitokai-10497", "1555").unwrap();
+    put(&s, "title-match:v3:hianime:seitokai:c1", "1777");
+    for key in [
+        "aniskip:v2:49877:59970:1",
+        "aniskip:v2:1555:111:1",
+        "aniskip:v2:1777:222:2",
+        "aniskip:v2:4987:333:1",
+        "aniskip:v2:12:21:1",
+        "aniskip:v1:21:1",
+    ] {
+        put(&s, key, "[]");
+    }
+
+    assert!(history_delete(&s, "one-piece-69").unwrap());
+    assert_eq!(
+        cached(&s, "aniskip:v2:49877:59970:1"),
+        None,
+        "the recorded id's"
+    );
+    assert_eq!(cached(&s, "aniskip:v1:21:1"), None, "the old key's");
+    assert!(
+        cached(&s, "aniskip:v2:4987:333:1").is_some(),
+        "another id's"
+    );
+
+    assert!(history_delete(&s, "hianime:seitokai-10497").unwrap());
+    assert_eq!(cached(&s, "aniskip:v2:1555:111:1"), None, "the mapped id's");
+    assert_eq!(
+        cached(&s, "aniskip:v2:1777:222:2"),
+        None,
+        "the title match's"
+    );
+    assert!(
+        cached(&s, "aniskip:v2:12:21:1").is_some(),
+        "a show never in history"
+    );
+}
+
+#[test]
+fn clear_removes_every_skip_time() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    put(&s, "aniskip:v2:12:21:1", "[]");
+    put(&s, "aniskip:v1:21:1", "[]");
+
+    history_clear(&s).unwrap();
+
+    assert_eq!(cached(&s, "aniskip:v2:12:21:1"), None);
+    assert_eq!(cached(&s, "aniskip:v1:21:1"), None);
+}
