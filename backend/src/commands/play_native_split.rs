@@ -47,6 +47,34 @@ fn chain_from(cands: &[PartCandidate<'_>], lead: usize) -> Vec<usize> {
     chain
 }
 
+/// Whether candidate `lead` may head a chain at all.
+///
+/// Never when it is numbered cumulatively: played alone, its key holds
+/// that offset and its history rows speak those numbers, and a stitched
+/// play would restamp the key at zero and misread them.
+///
+/// And over a single candidate already inside the tolerance (`single_fits`)
+/// only when the evidence says that candidate is a part rather than the
+/// entry: the lead is the title searched — the entry is named as the
+/// bare stem — and the lead alone does not fit. Count alone cannot tell
+/// a finished split (1 + 11 against 12, the later part one off) from a
+/// cour and its same-year sequel (12 + 1 against 13, the bare title
+/// one off); which one is the near miss can.
+fn lead_may_stitch(
+    lead: &PartCandidate<'_>,
+    expected: u32,
+    tolerance: u32,
+    single_fits: bool,
+    searched: &str,
+) -> bool {
+    if lead.offset != 0 {
+        return false;
+    }
+    !single_fits
+        || (part_ordinal(searched, lead.title) == Some(1)
+            && lead.count.abs_diff(expected) > tolerance)
+}
+
 /// The candidates, in part order, that together make up the expected
 /// entry — or `None` when no such chain explains the expected count
 /// better than the best single candidate (`best_single` is its
@@ -58,6 +86,8 @@ fn chain_from(cands: &[PartCandidate<'_>], lead: usize) -> Vec<usize> {
 /// accepted where it fits the expected count within the picker's
 /// tolerance, or falls short of it — an airing entry, which has not
 /// aired everything Kitsu counts.
+/// A lead must also pass [`lead_may_stitch`]; `searched` is the title
+/// the pool was searched under.
 #[must_use]
 pub(crate) fn split_chain(
     cands: &[PartCandidate<'_>],
@@ -65,10 +95,14 @@ pub(crate) fn split_chain(
     best_single: u32,
     searched: &str,
 ) -> Option<Vec<usize>> {
-    let _ = searched;
     let tolerance = super::play_native::ep_count_threshold(expected);
+    let single_fits = best_single <= tolerance;
     let mut best: Option<(u32, Vec<usize>)> = None;
-    for lead in (0..cands.len()).filter(|&i| cands[i].confirmed && cands[i].count > 0) {
+    let leads = (0..cands.len()).filter(|&i| {
+        let c = &cands[i];
+        c.confirmed && c.count > 0 && lead_may_stitch(c, expected, tolerance, single_fits, searched)
+    });
+    for lead in leads {
         let chain = chain_from(cands, lead);
         for len in 2..=chain.len() {
             let sum: u32 = chain[..len].iter().map(|&i| cands[i].count).sum();
