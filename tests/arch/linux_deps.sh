@@ -38,6 +38,15 @@
 #   - `dist` / `dist:release` scripts must chain `fetch:linux-deps`
 #     so any invocation path (package, dist, e2e) gets the bin
 #     dir populated before electron-builder runs.
+#   - The Linux packages carry a backend built for
+#     `x86_64-unknown-linux-musl`, statically linked, and the scripts
+#     that package them build that one. A backend linked against the
+#     build host's glibc refuses to start on any system with an older
+#     one — v0.14.1, built on a 2026 Ubuntu, asked for glibc 2.39 and
+#     failed on Ubuntu 22.04 and Debian 12 before the window had
+#     anything to show. The rest of the payload asks for 2.25 at most.
+#     The e2e workflow, which builds the Linux package, then runs the
+#     packaged backend's own check that it needs no system C library.
 
 set -eu
 
@@ -105,6 +114,40 @@ if [ -f "$FETCH" ]; then
         fi
     done
 fi
+
+# 6. The Linux packages take the static backend. The entry for it
+#    sits under build.linux.extraResources, and no entry elsewhere
+#    hands Linux the glibc-linked build from target/release (the
+#    Windows entry names the .exe).
+MUSL_BACKEND='"from": *"../backend/target/x86_64-unknown-linux-musl/release/ani-gui-backend"'
+if ! grep -q "$MUSL_BACKEND" "$PKG"; then
+    printf 'arch/linux_deps FAIL: %s does not package the backend built for x86_64-unknown-linux-musl\n' "$PKG" >&2
+    failed=1
+fi
+if grep -q '"from": *"../backend/target/release/ani-gui-backend"' "$PKG"; then
+    printf 'arch/linux_deps FAIL: %s packages the glibc-linked backend from target/release for Linux\n' "$PKG" >&2
+    failed=1
+fi
+
+# 7. Every script that packages for Linux builds that backend first.
+for s in package package:release; do
+    line=$(grep -E "\"$s\"" "$PKG" || true)
+    case "$line" in
+        *build:backend:linux*) ;;
+        *)
+            printf 'arch/linux_deps FAIL: %s "%s" script does not build the static backend (build:backend:linux)\n' "$PKG" "$s" >&2
+            failed=1
+            ;;
+    esac
+done
+line=$(grep -E '"build:backend:linux"' "$PKG" || true)
+case "$line" in
+    *--target\ x86_64-unknown-linux-musl*) ;;
+    *)
+        printf 'arch/linux_deps FAIL: %s "build:backend:linux" does not build for x86_64-unknown-linux-musl\n' "$PKG" >&2
+        failed=1
+        ;;
+esac
 
 if [ "$failed" -ne 0 ]; then
     exit 1
