@@ -9,12 +9,19 @@
 //!
 //! The test makes startup slow without a hook in the backend: it holds
 //! an exclusive lock on the cache database, so the backend's first
-//! migration waits on SQLite's busy timeout.
+//! migration waits on SQLite's busy timeout. That is rusqlite's
+//! default, 5 s, which has to outlast the second the test waits before
+//! closing the pipe plus the 3 s it allows for the exit; without the
+//! fix the backend sits there until the timeout fails its startup.
 //!
-//! Linux only, for where the cache lands: under `XDG_CACHE_HOME`
-//! there, and elsewhere in a platform directory this test cannot
-//! redirect. The watch's behaviour during startup is covered on every
-//! platform by the unit tests in `src/parent_watch_test.rs`.
+//! Linux only, because the test locks the database at a path it spells
+//! out — `<home>/cache/ani-gui-dev/metadata.sqlite`, the Linux layout
+//! under the `XDG_CACHE_HOME` that `common::command` sets. macOS keeps
+//! its caches elsewhere under the home, and Windows resolves the
+//! directory from the known-folder API, so a run there would lock the
+//! real dev profile's database. The watch's behaviour during startup
+//! is covered on every platform by the unit tests in
+//! `src/parent_watch_test.rs`.
 
 #![cfg(target_os = "linux")]
 
