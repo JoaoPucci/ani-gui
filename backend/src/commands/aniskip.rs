@@ -17,9 +17,10 @@ const ANISKIP_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// Fetch the aniskip skip-time list for a given Kitsu id +
 /// episode + episode length (seconds). Resolves the MAL id
-/// transparently via Kitsu's mappings; caches the result keyed
-/// by `(mal_id, episode)` so repeat visits to the same episode
-/// reuse the lookup.
+/// transparently via Kitsu's mappings; caches the result as
+/// `aniskip:v2:<kitsu_id>:<mal_id>:<episode>` so repeat visits to the
+/// same episode reuse the lookup, and removing the show from history
+/// finds the rows by its Kitsu id.
 ///
 /// Returns `Ok(empty Vec)` when:
 ///   - Kitsu has no MAL mapping for this anime, or

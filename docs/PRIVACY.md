@@ -37,13 +37,17 @@ ani-gui keeps the following on your computer only:
   lines up with Kitsu's. Deleting a show from your history deletes
   its row and all of these for that show, including the copies
   earlier versions of the app wrote. Opening and ending times are
-  found by the Kitsu ids the history knows for the show, so times
-  fetched under another id stay until you clear your history.
-  Clearing your history deletes every row, all of these for every
-  show, every cached stream address and every cached opening and
-  ending time, including ones a page resolved ahead for a show you
-  never played. The numbering of a show a page resolved but you never
-  played is not part of your history and stays. Catalogue data
+  found by the Kitsu ids the history knows for the show: times under
+  an id another show still in your history claims stay with that
+  show, and times fetched under an id the history never linked to the
+  show stay until you clear your history. Clearing your history
+  deletes every row, all of these for every show, every cached stream
+  address and every cached opening and ending time, including ones a
+  page resolved ahead for a show you never played. Clearing removes
+  the numbering of the shows in your history at the time; the
+  numbering of a show with no row then stays — a show a page resolved
+  but you never played, or one removed from your history by a version
+  of the app from before removal took its numbering too. Catalogue data
   shared with browsing — anime details, artwork, episode lists and
   which catalogue carries a show — is not part of your history and
   stays in the cache, as it does for shows you only browsed.
