@@ -25,6 +25,9 @@ use crate::error::Result;
 /// [`external_player::open_external_player`] (missing binary,
 /// non-zero spawn status).
 pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
+    // The moment this handoff began: a show removed from history while
+    // its stream resolves is not recorded by the launch that follows.
+    let begun = crate::history::guard::epoch(&state.history_path);
     let cfg = read_config(&state.config_path).unwrap_or_default();
 
     // Long-term cache reuse — same shape as play_with_progress. The
@@ -35,16 +38,26 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
     // path instead of handing mpv a 403.
     if let Some((launch, watch)) = try_launch_args_from_cache(state, args, &cfg).await {
         external_player::open_external_player(&launch)?;
-        crate::commands::play_native_record::record_watch(state, &watch, args.kitsu_id.as_deref())
-            .await;
+        crate::commands::play_native_record::record_watch_requested_at(
+            state,
+            &watch,
+            args.kitsu_id.as_deref(),
+            begun,
+        )
+        .await;
         return Ok(());
     }
 
     let (launch, watch) = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
     external_player::open_external_player(&launch)?;
     // The spawn is the watch: recorded once the player has started.
-    crate::commands::play_native_record::record_watch(state, &watch, args.kitsu_id.as_deref())
-        .await;
+    crate::commands::play_native_record::record_watch_requested_at(
+        state,
+        &watch,
+        args.kitsu_id.as_deref(),
+        begun,
+    )
+    .await;
     Ok(())
 }
 

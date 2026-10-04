@@ -28,6 +28,9 @@ use crate::error::Result;
 /// [`super::syncplay::open_syncplay`] (missing binary, spawn
 /// failure).
 pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
+    // The moment this handoff began: a show removed from history while
+    // its stream resolves is not recorded by the launch that follows.
+    let begun = crate::history::guard::epoch(&state.history_path);
     let cfg = read_config(&state.config_path).unwrap_or_default();
 
     // Reuse the long-term cache the same way play_external does — the
@@ -53,8 +56,13 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             player_kind,
             cfg.external_player,
         ))?;
-        crate::commands::play_native_record::record_watch(state, &watch, args.kitsu_id.as_deref())
-            .await;
+        crate::commands::play_native_record::record_watch_requested_at(
+            state,
+            &watch,
+            args.kitsu_id.as_deref(),
+            begun,
+        )
+        .await;
         return Ok(());
     }
 
@@ -66,8 +74,13 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         cfg.external_player,
     ))?;
     // The spawn is the watch: recorded once Syncplay has started.
-    crate::commands::play_native_record::record_watch(state, &watch, args.kitsu_id.as_deref())
-        .await;
+    crate::commands::play_native_record::record_watch_requested_at(
+        state,
+        &watch,
+        args.kitsu_id.as_deref(),
+        begun,
+    )
+    .await;
     Ok(())
 }
 

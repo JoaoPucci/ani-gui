@@ -142,6 +142,21 @@ impl Watch {
 /// down ([`crate::history::guard`]): a removal wins over a watch begun
 /// before it.
 pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
+    let now = crate::history::guard::epoch(&state.history_path);
+    record_watch_requested_at(state, watch, kitsu_id, now).await;
+}
+
+/// [`record_watch`] for a watch whose request began at `requested`. A
+/// handoff resolves its stream before its player starts, and the show
+/// can be removed from history while it resolves: the player still
+/// opens, and the watch is not recorded — the removal stands, as it
+/// does over everything else a play begun before it would write.
+pub(crate) async fn record_watch_requested_at(
+    state: &AppState,
+    watch: &Watch,
+    kitsu_id: Option<&str>,
+    requested: Epoch,
+) {
     if watch.show_id.is_empty() {
         return;
     }
@@ -164,12 +179,16 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
     // the watch is new, or wholly after it, and takes the row and the
     // stamp together.
     let recorded = crate::history::guard::hold(&state.history_path, |held| {
+        if held.show_removed_since(requested, &watch.show_id) {
+            return Ok(None);
+        }
         held.upsert(entry)?;
         stamp_watched_at(state, &watch.show_id, now);
-        Ok::<_, crate::error::AniError>(held.epoch())
+        Ok::<_, crate::error::AniError>(Some(held.epoch()))
     });
     let begun = match recorded {
-        Ok(begun) => begun,
+        Ok(Some(begun)) => begun,
+        Ok(None) => return,
         Err(e) => {
             tracing::warn!(
                 show_id = %watch.show_id,
