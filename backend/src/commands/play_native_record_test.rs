@@ -438,3 +438,40 @@ async fn a_handoff_whose_show_was_removed_under_another_key_records_nothing() {
 
     assert_eq!(left_behind(&state, "the-show-77"), Vec::<String>::new());
 }
+
+/// Two watches of the same show from different pages overlap: A waits
+/// on the guard's Kitsu read while B, whose verdict the cache already
+/// has, writes and settles the row. The row and the mapping are B's;
+/// A's verdict, landing after, is for a row that is no longer its.
+#[tokio::test]
+async fn a_later_watch_keeps_its_row_from_an_earlier_watchs_verdict() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(state_at(td.path(), &kitsu.uri()));
+    cache_detail(
+        &state,
+        "45413",
+        "jojo-no-kimyou-na-bouken-stone-ocean-part-2",
+    );
+    let a = recording_held_on_kitsu(&state, &kitsu).await;
+
+    record_watch(&state, &part_two(), Some("45413")).await;
+    assert_eq!(
+        row_id(&state, &part_two().show_id).as_deref(),
+        Some("45413")
+    );
+    a.await.expect("recording");
+
+    assert_eq!(
+        row_id(&state, &part_two().show_id).as_deref(),
+        Some("45413"),
+        "the row keeps the later watch's id"
+    );
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &part_two().show_id)
+            .expect("read")
+            .as_deref(),
+        Some("45413"),
+        "the mapping keeps the later watch's id"
+    );
+}
