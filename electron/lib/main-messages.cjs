@@ -72,6 +72,12 @@ const MESSAGES = {
 
 const LOCALES = Object.keys(MESSAGES);
 
+/** The tables as given. As the lookup stands: a locale's table is
+ *  used on its own, so a message it lacks is not there at all. */
+function overBase(tables) {
+  return tables;
+}
+
 /** The shipped locale `tag` names, compared without regard to case. */
 function shippedLocale(tag) {
   if (typeof tag !== "string" || tag === "") return undefined;
@@ -120,4 +126,4 @@ function messagesFor(locale) {
   return MESSAGES[shippedLocale(locale) || BASE_LOCALE];
 }
 
-module.exports = { LOCALES, messagesFor, resolveLocale };
+module.exports = { LOCALES, messagesFor, overBase, resolveLocale };

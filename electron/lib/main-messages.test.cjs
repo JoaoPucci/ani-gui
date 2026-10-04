@@ -14,7 +14,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { LOCALES, messagesFor, resolveLocale } = require("./main-messages.cjs");
+const { LOCALES, messagesFor, overBase, resolveLocale } = require("./main-messages.cjs");
 
 const shipped = JSON.parse(
   fs.readFileSync(
@@ -50,6 +50,28 @@ test("a locale other than the base one is actually translated", () => {
       assert.notEqual(text(value), text(base[key]), `${locale}.${key}`);
     }
   }
+});
+
+// A message one locale lacks. The tests above keep the shipped tables
+// complete, but the lookup must not depend on that: its callers index
+// it blind, and one of them is the quit prompt, which runs after the
+// close has already been prevented. A missing key there is a thrown
+// TypeError and a window that will no longer close. So every table is
+// laid over the base locale's, and what a translation lacks reads as
+// the base locale's text.
+test("a message a locale lacks reads as the base locale's", () => {
+  const tables = {
+    en: { close: "Close", cancel: "Cancel", count: (n) => `${n} left` },
+    xx: { close: "Xx" },
+  };
+  const merged = overBase(tables, "en");
+  assert.equal(merged.xx.close, "Xx");
+  assert.equal(merged.xx.cancel, "Cancel");
+  assert.equal(merged.xx.count(2), "2 left");
+  assert.deepEqual(Object.keys(merged.xx).sort(), Object.keys(tables.en).sort());
+  // The base table is itself, and the tables handed in are untouched.
+  assert.deepEqual(merged.en, tables.en);
+  assert.deepEqual(Object.keys(tables.xx), ["close"]);
 });
 
 test("a locale the table does not carry falls back to the base one", () => {
