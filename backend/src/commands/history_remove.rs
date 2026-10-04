@@ -82,6 +82,7 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         for (title, _) in &removed {
             super::history_forget::forget_finders(state, id, title)?;
         }
+        super::history_forget_titles::forget_title_matches_naming(state, &known_by)?;
         held.write(&entries)?;
         super::history_forget::sweep_offsets(state, &[id]);
         held.removed_show(id, &known_by);

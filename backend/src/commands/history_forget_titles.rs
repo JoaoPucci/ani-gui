@@ -39,6 +39,23 @@ fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
     prefixes
 }
 
+/// Delete every title-match row, under any title, that names one of
+/// `kitsu_ids`: the ones a removed show was known by and no remaining
+/// row claims. A provider can rename a show and the row takes the new
+/// title, so rows stored under an earlier title are found by the entry
+/// they name, not by the title the row has now.
+///
+/// # Errors
+/// Cache failures propagate.
+pub(crate) fn forget_title_matches_naming(state: &AppState, kitsu_ids: &[String]) -> Result<()> {
+    for (key, body) in meta_cache_entries_prefix(&state.cache_pool, "title-match:")? {
+        if kitsu_ids.contains(&body) {
+            meta_cache_delete(&state.cache_pool, &key)?;
+        }
+    }
+    Ok(())
+}
+
 /// The Kitsu ids the title-match rows of the row `id` titled `title`
 /// name, every version and cour, left in place.
 ///
