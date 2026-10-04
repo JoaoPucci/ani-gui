@@ -460,7 +460,10 @@ export function cachedBindingVerdict(
 	// count, cour slug) is a fuzzy guess: a wrong guess there must NOT delete a
 	// possibly-valid binding, so it falls through to 'reresolve' (re-search,
 	// keep the row) instead. A real poison is overwritten by the corrected
-	// mapping on the next resolve; a valid binding survives a transient miss
+	// mapping on the next resolve, unless a play stored it: the show-id
+	// resolve never stores a guess over a play's mapping, which then stands
+	// until the next play of the show or its 30 days run out, passed over on
+	// every read. A valid binding survives a transient miss
 	// (no more deleting "Burichi"→BLEACH and depending on the network alias
 	// walk). titlesPlausiblySameShow still gates TRUST so a poison that shares
 	// only generic tokens ("Movie 2") re-resolves rather than playing wrong.

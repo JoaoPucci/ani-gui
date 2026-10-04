@@ -28,8 +28,9 @@
 //! user played, the page the play was started from, so the rows'
 //! surfaces read the show from it instead of matching the provider's
 //! title back to Kitsu. Unlike the moment it is marked, `kitsu:`
-//! followed by digits and nothing else, so it cannot be read out of a
-//! title; a row without it — one from before the column, or a play no
+//! followed by digits and nothing else, so a title reads as one only
+//! when its last tab-separated part is exactly that, which no provider
+//! title has been seen to be; a row without it — one from before the column, or a play no
 //! page stood behind — reads and writes as before.
 //!
 //! The two never shared a file after the 5.0 CLI re-keyed its history
