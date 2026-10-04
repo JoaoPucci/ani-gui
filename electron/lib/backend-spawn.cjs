@@ -41,7 +41,8 @@ function backendSpawnOptions({ platform, env }) {
  * and the handshake can take minutes on a first run. A quit in that
  * time has to find the backend to stop it. A handshake that fails
  * leaves it tracked, for the boot's own stop, which skips a spawn that
- * failed and a backend that has already exited (see `stoppable`).
+ * failed and, on Windows, a backend that has already exited (see
+ * `stoppable`).
  */
 async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
   const child = spawn(bin, [], backendSpawnOptions({ platform, env }));
@@ -51,16 +52,22 @@ async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
 }
 
 /**
- * Whether the tree kill has a backend to stop: one that started (a
- * spawn the OS refused has no pid), that it has not stopped already,
- * and that has not exited. An exited backend's pid is free for the OS
- * to reuse, and a kill by pid — `taskkill /T` on Windows, a signal to
- * the group of that id elsewhere — would reach whoever holds it now.
+ * Whether the tree kill on `platform` has a backend to stop: one that
+ * started (a spawn the OS refused has no pid) and that it has not
+ * stopped already.
+ *
+ * On Windows, also one that has not exited. The kill there is
+ * `taskkill /T` on the backend's pid, which is free once the backend
+ * has exited and may by then belong to another process, whose tree it
+ * would end. Elsewhere the kill signals the backend's process group,
+ * whatever became of the backend: a group id is not reused while any
+ * process is left in the group — a transport the backend ran there —
+ * and the signal is what stops those; an empty group answers ESRCH.
  */
-function stoppable(child) {
-  return Boolean(
-    child && !child.killed && child.pid && child.exitCode === null && child.signalCode === null,
-  );
+function stoppable(child, platform) {
+  if (!child || child.killed || !child.pid) return false;
+  if (platform !== "win32") return true;
+  return child.exitCode === null && child.signalCode === null;
 }
 
 module.exports = { backendSpawnOptions, launchBackend, stoppable };
