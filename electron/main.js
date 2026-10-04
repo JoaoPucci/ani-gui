@@ -38,6 +38,8 @@ const { isDevProfile } = require("./lib/dev-profile.cjs");
 const { awaitHandshake } = require("./lib/backend-handshake.cjs");
 const { backendSpawnOptions } = require("./lib/backend-spawn.cjs");
 const { handleBeforeQuit } = require("./lib/quit.cjs");
+const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
+const { resolveLocale } = require("./lib/main-messages.cjs");
 const {
   awaitFirstShow,
   bootApp,
@@ -886,6 +888,40 @@ function maybePromptOnClose(win, event) {
   return true;
 }
 
+/**
+ * The locale the main process's own dialogs speak in: the one the
+ * renderer would come up in (see lib/main-messages.cjs). Read when
+ * asked rather than once — a language change in Settings rewrites
+ * config.toml and reloads the renderer while this process runs on.
+ */
+function mainLocale() {
+  return resolveLocale({
+    configured: readConfigLocale(),
+    preferred: app.getPreferredSystemLanguages(),
+  });
+}
+
+/**
+ * Tell the user the boot failed, where there is a user to tell (see
+ * lib/boot-failure.cjs). Resolves when the dialog is dismissed or has
+ * timed out, or at once when none is shown.
+ */
+function reportBootFailure(err) {
+  // What is on screen, if anything, is the window that failed: blank
+  // and frameless. Hidden, not closed — closing the last window would
+  // start a quit of its own, and that one exits with code 0.
+  for (const win of BrowserWindow.getAllWindows()) win.hide();
+  return showBounded(
+    bootFailureDialog({
+      env: process.env,
+      isDev: IS_DEV,
+      locale: mainLocale(),
+      error: err,
+    }),
+    (options) => dialog.showMessageBox(options),
+  );
+}
+
 app.whenReady().then(() =>
   bootApp({
     spawnBackend: async () => {
@@ -902,6 +938,7 @@ app.whenReady().then(() =>
     createWindow: ({ apiBase, internalSecret }) =>
       createWindow(apiBase, internalSecret),
     stopBackend: killBackendTree,
+    reportFailure: reportBootFailure,
     exit: (code) => app.exit(code),
     logError: console.error,
   }),

@@ -101,18 +101,35 @@ function awaitFirstShow(win, { timeoutMs }) {
 
 /**
  * Spawn the backend, then open the window against it. A failure ends
- * the process with code 1, but stops the backend tree first:
- * `app.exit` skips `before-quit`, which is where a normal quit stops
- * it, and the backend runs detached in its own process group, so
- * nothing else would.
+ * the process with code 1, in this order:
+ *
+ *   1. The backend tree is stopped. `app.exit` skips `before-quit`,
+ *      which is where a normal quit stops it, and nothing else would.
+ *   2. The failure is reported to the user — `reportFailure`, a dialog
+ *      where there is someone to read it (lib/boot-failure.cjs). After
+ *      the stop, so nothing is left running behind the dialog; awaited,
+ *      so the exit does not take the dialog down unread.
+ *   3. The app exits — also when the report itself failed.
  */
-async function bootApp({ spawnBackend, createWindow, stopBackend, exit, logError }) {
+async function bootApp({
+  spawnBackend,
+  createWindow,
+  stopBackend,
+  reportFailure = async () => {},
+  exit,
+  logError,
+}) {
   try {
     const backend = await spawnBackend();
     await createWindow(backend);
   } catch (err) {
     logError("[main] startup failed:", err);
     stopBackend();
+    try {
+      await reportFailure(err);
+    } catch (reportErr) {
+      logError("[main] could not report the failed startup:", reportErr);
+    }
     exit(1);
   }
 }
