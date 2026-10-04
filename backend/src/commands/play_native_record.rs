@@ -67,7 +67,8 @@ fn now_ms() -> i64 {
 }
 
 /// Stamp the watch's moment in the cache, beside the show's history
-/// row — the same moment the row itself carries ([`record_watch`]).
+/// row — the same moment the row itself carries
+/// ([`record_watch_requested_at`]).
 ///
 /// The stamp orders Continue Watching and, when two providers have
 /// each left a row for one show, picks the one to resume from. The
@@ -172,9 +173,10 @@ pub(crate) async fn record_watch_requested_at(
         kitsu_id: judged.clone(),
     };
     // The row, its stamp and the moment the recording begins are one
-    // step with the history held: a removal runs wholly before it, and
-    // the watch is new, or wholly after it, and takes the row and the
-    // stamp together.
+    // step with the history held: a removal runs wholly before it —
+    // and the watch is new, unless its request began before that
+    // removal, when nothing is recorded — or wholly after it, and
+    // takes the row and the stamp together.
     let asked = Asked {
         begun: requested,
         page: given,

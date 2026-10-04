@@ -61,7 +61,13 @@ ani-gui keeps the following on your computer only:
   was played from while the app was running: for a show the history
   never linked to a Kitsu entry, opening and ending times still being
   fetched, or a play still resolving that lands on another streaming
-  catalogue's listing of it, are not recognised as that show's.
+  catalogue's listing of it, are not recognised as that show's. One
+  thing already on disk is also missed: a stream address, and the
+  numbering beside it, that a page resolved for the show on the other
+  streaming catalogue under a version of the app from before stream
+  addresses recorded the page they were resolved for. The stream
+  address stays until you clear your history; the numbering stays as
+  that of any show a page resolved and you never played does.
   Catalogue data shared with browsing — anime details, artwork,
   episode lists and which catalogue carries a show — is not part of
   your history and stays in the cache, as it does for shows you only

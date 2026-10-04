@@ -422,8 +422,8 @@ where
     // title, the numbering slot this resolve stamped) — only the
     // REPLAY reads are the user's cache_resolutions call. Every fresh
     // resolve overwriting the row also keeps that metadata current.
-    // The one thing that withholds it is the show's removal from
-    // history since this play began.
+    // From here on, the one thing that withholds it is the show's
+    // removal from history since this play began.
     play_resolution_cache::store(state, asked, &cache_key, &cached_resolution);
 
     let session_args = CreateSessionArgs {

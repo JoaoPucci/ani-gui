@@ -13,7 +13,9 @@
 //!   show resolved under another key, found by the page their value
 //!   carries, with that key's numbering when no row has the key;
 //! - the skip times the player cached for its episodes (`aniskip:`),
-//!   found by every Kitsu id above, with the rows of the key that
+//!   found by every Kitsu id the show is known by — the one its row
+//!   records, the ones its mapping and title match name, the pages
+//!   this process saw it played from — with the rows of the key that
 //!   carried the MAL id alone, which nothing reads any more;
 //! - the show's numbering offsets, in the file beside the history.
 //!   Clearing removes the offsets of the cleared rows' shows, not those

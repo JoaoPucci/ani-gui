@@ -103,8 +103,8 @@ pub struct Held<'a> {
 }
 
 /// Run `work` with the history at `path` held. The work must not ask
-/// for the history again — [`hold`], [`epoch`], or a writer that goes
-/// through them — or it waits on itself.
+/// for the history again — [`hold`], [`epoch`], [`Asked::now`], or a
+/// writer that goes through them — or it waits on itself.
 pub fn hold<T>(path: &Path, work: impl FnOnce(&mut Held<'_>) -> T) -> T {
     // A writer that panicked left the file at its last whole write,
     // which is all the lock protects.
