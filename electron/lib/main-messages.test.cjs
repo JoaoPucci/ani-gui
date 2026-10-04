@@ -29,7 +29,7 @@ test("the table covers exactly the locales the renderer ships", () => {
 
 /** A message's text, whatever its shape: called with a sample
  *  argument when it takes one. */
-const text = (value) => (typeof value === "function" ? value("sample") : value);
+const text = (value) => (typeof value === "function" ? value(3) : value);
 
 test("every locale says everything the base locale says", () => {
   const base = messagesFor(shipped.baseLocale);
@@ -46,7 +46,9 @@ test("every locale says everything the base locale says", () => {
 test("a locale other than the base one is actually translated", () => {
   const base = messagesFor(shipped.baseLocale);
   for (const locale of shipped.locales.filter((l) => l !== shipped.baseLocale)) {
-    assert.notEqual(messagesFor(locale).bootFailed, base.bootFailed, locale);
+    for (const [key, value] of Object.entries(messagesFor(locale))) {
+      assert.notEqual(text(value), text(base[key]), `${locale}.${key}`);
+    }
   }
 });
 

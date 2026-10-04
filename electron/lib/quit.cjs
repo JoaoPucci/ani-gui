@@ -14,4 +14,21 @@ function handleBeforeQuit({ promptOnClose, stopBackend }) {
   stopBackend();
 }
 
-module.exports = { handleBeforeQuit };
+/**
+ * The options for the prompt a quit with downloads running shows. As
+ * main.js had it: English, whatever language the app is in.
+ */
+function closePromptOptions({ count }) {
+  const plural = count === 1 ? "" : "s";
+  return {
+    type: "question",
+    buttons: ["Cancel", "Quit anyway"],
+    defaultId: 0,
+    cancelId: 0,
+    title: "Active downloads",
+    message: `${count} download${plural} in progress.`,
+    detail: "They will be cancelled if you quit. Continue?",
+  };
+}
+
+module.exports = { closePromptOptions, handleBeforeQuit };
