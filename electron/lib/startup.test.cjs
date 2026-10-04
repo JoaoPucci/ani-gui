@@ -385,6 +385,48 @@ test("a report that fails does not keep a failed boot from exiting", async () =>
   assert.deepEqual(events, ["stop", "exit:1"]);
 });
 
+// The dialog can stay up for a minute, and the app can be asked to
+// quit in that minute from outside — a signal, the session ending.
+// Left to run its course that quit exits with code 0, and a boot that
+// failed has reported success to whatever launched it.
+test("a quit asked for while the failure is being reported still exits as a failure", async () => {
+  const events = [];
+  let quitNow = null;
+  const booted = bootApp({
+    spawnBackend: async () => {
+      throw new Error("backend exited before handshake");
+    },
+    createWindow: async () => {},
+    stopBackend: () => events.push("stop"),
+    // A dialog nobody dismisses.
+    reportFailure: () => new Promise(() => {}),
+    onQuitAsked: (ended) => {
+      quitNow = ended;
+    },
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(typeof quitNow, "function", "the failed boot listens for a quit");
+  assert.deepEqual(events, ["stop"]);
+  quitNow();
+  await booted;
+  assert.deepEqual(events, ["stop", "exit:1"]);
+});
+
+test("a boot that succeeds never asks to hear about a quit", async () => {
+  let asked = 0;
+  await bootApp({
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1", internalSecret: "s" }),
+    createWindow: async () => {},
+    stopBackend: () => {},
+    onQuitAsked: () => (asked += 1),
+    exit: () => {},
+    logError: () => {},
+  });
+  assert.equal(asked, 0);
+});
+
 test("a backend that never starts still exits with a failure", async () => {
   const events = [];
   await bootApp({
