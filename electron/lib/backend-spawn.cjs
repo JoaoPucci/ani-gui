@@ -34,13 +34,20 @@ function backendSpawnOptions({ platform, env }) {
  * Spawn the backend at `bin` with `spawn` (node's, in main.js) and
  * resolve with `{ child, apiBase, internalSecret }` once `handshake`
  * — lib/backend-handshake.cjs, wired up by the caller — resolves for
- * it. `track` is handed the child: it is what the app's quit path
- * stops.
+ * it.
+ *
+ * `track` is handed the child as soon as it exists, before the
+ * handshake: it is what the app's quit path and a failed boot stop,
+ * and the handshake can take minutes on a first run. A quit in that
+ * time has to find the backend to stop it. A handshake that fails
+ * leaves it tracked, for the boot's own stop: a spawn that failed has
+ * no pid and is skipped, and the group of a backend that exited
+ * during startup has nobody left in it to signal (main.js killTree).
  */
 async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
   const child = spawn(bin, [], backendSpawnOptions({ platform, env }));
-  const ready = await handshake(child);
   track(child);
+  const ready = await handshake(child);
   return { child, ...ready };
 }
 
