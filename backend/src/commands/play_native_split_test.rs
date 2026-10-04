@@ -173,3 +173,49 @@ proptest::proptest! {
         proptest::prop_assert_eq!(numbers, want);
     }
 }
+
+#[test]
+fn stitched_slots_stay_unique_when_a_part_carries_a_recap() {
+    // A part that lists a recap between two regular episodes: "3.5" in
+    // slot 4, episode "4" in slot 5. Every merged row needs a slot of
+    // its own — the slot is what history stores and what the display
+    // stamp maps back to a tag, so two rows sharing one would show a
+    // real episode as the recap on resume.
+    let first = listing(100, 2);
+    let second = vec![
+        row(201, 1, None),
+        row(202, 2, None),
+        row(203, 3, None),
+        row(204, 4, Some("3.5")),
+        row(205, 5, Some("4")),
+    ];
+    let merged = merge_parts(&[&first, &second]);
+    let mut slots: Vec<u32> = merged.iter().map(|e| e.number).collect();
+    slots.sort_unstable();
+    slots.dedup();
+    assert_eq!(slots.len(), merged.len(), "slots {merged:?}");
+    // Each row keeps its identity in the entry's numbering.
+    let shown: Vec<String> = merged
+        .iter()
+        .map(|e| e.number2.clone().unwrap_or_else(|| e.number.to_string()))
+        .collect();
+    assert_eq!(shown, ["1", "2", "3", "4", "5", "5.5", "6"]);
+    assert_eq!(kitsu_episode_cap(&merged), Some(6));
+    assert_eq!(extra_episode_tags(&merged), vec!["5.5".to_string()]);
+}
+
+#[test]
+fn stitched_slots_count_rows_like_a_single_listing_does() {
+    // A single listing's slot is the row's position; a stitched one is
+    // numbered the same way, across every part, so a slot read back
+    // from history names one row however the listing was assembled.
+    let first = vec![
+        row(101, 1, None),
+        row(102, 2, Some("1.5")),
+        row(103, 3, Some("2")),
+    ];
+    let second = listing(200, 2);
+    let merged = merge_parts(&[&first, &second]);
+    let slots: Vec<u32> = merged.iter().map(|e| e.number).collect();
+    assert_eq!(slots, [1, 2, 3, 4, 5]);
+}
