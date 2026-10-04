@@ -662,3 +662,35 @@ fn a_delete_retried_after_a_resolution_row_failed_takes_the_other_keys_numbering
 
     assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
 }
+
+/// A row from before rows recorded the Kitsu id is known by its
+/// mapping, and the retry finds the show's page through it: a failure
+/// part-way must not have taken the mapping already.
+#[test]
+fn a_retried_delete_still_knows_an_older_rows_page_by_its_mapping() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_row(&state, "hianime:the-show-100");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!(
+            "allmanga2kitsu:v{}:hianime:the-show-100",
+            crate::commands::kitsu::ALLMANGA_KITSU_VERSION
+        ),
+        "77",
+        3600,
+    )
+    .unwrap();
+    let warm = page_77(&state);
+    stamp_numbering(&state, &native(), warm);
+    play_resolution_cache::store(&state, warm, KEY, &cached());
+    seed_skips(&state);
+    refuse_deletes(&state, "aniskip:");
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").is_err());
+    allow_deletes(&state);
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert!(!skips_left(&state), "the page's skip times");
+    assert_eq!(left(&state), (0, 0, false), "the other key's");
+}
