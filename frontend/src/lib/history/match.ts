@@ -35,7 +35,7 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 		return kitsuAnimeDetail(preliminary.recordedKitsuId).catch(() => null);
 	}
 	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id,
-	//    recorded by the backend on every successful play. Wins over
+	//    stored by a play, or by the enrichment step below. Wins over
 	//    title-match because the show_id is deterministic — the title is
 	//    sometimes a typo (the provider's "Nato: Shippuuden" for Naruto
 	//    Shippuuden). The binding is validated before it is accepted
@@ -122,9 +122,11 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    "Nato: Shippuuden" for Naruto Shippuuden). The backend tries
 	//    the show id rather than the name: a provider slug carries its
 	//    title in its own words, so `one-piece-69` searches Kitsu for
-	//    "one piece" and persists the resolved kitsu_id into the
-	//    reverse cache, and subsequent calls short-circuit through
-	//    step 0. A row from the retired provider has no such words and
+	//    "one piece", takes no hit whose titles share none of those
+	//    words, and persists the resolved kitsu_id into the reverse
+	//    cache unless a play's mapping stands there, and subsequent
+	//    calls short-circuit through step 0. A row from the retired
+	//    provider has no such words and
 	//    no alias source left, so a stub name there is not recoverable
 	//    by this step — those rows depend on having been mapped.
 	//
@@ -133,7 +135,7 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    branch entirely (verified by the "skips enrichment" test).
 	if (!match && preliminary.allmangaShowId) {
 		try {
-			// bypassCache: step 0 already read + rejected this show's reverse-cache
+			// bypassCache: step 0 already read + passed over this show's reverse-cache
 			// row (count/music/title guard), so the backend must NOT short-circuit
 			// on it again — re-resolve from the show id instead.
 			match = await kitsuResolveAllmangaShowId(preliminary.allmangaShowId, true);

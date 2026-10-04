@@ -543,10 +543,10 @@ pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
 }
 
 /// Evict a single `provider show_id → kitsu_id` mapping. Used by the
-/// frontend's `resolveKitsuMatch` step 0 slug guard to drop a poisoned
-/// row when the cached kitsu detail's slug disagrees with the history
-/// entry's cour suffix. SQLite errors propagate; a missing row is not
-/// an error (DELETE on no rows is a no-op).
+/// frontend's `resolveKitsuMatch` step 0 to drop a binding to a music
+/// entry, the one binding provably wrong; a binding it merely doubts
+/// is passed over and kept. SQLite errors propagate; a missing row is
+/// not an error (DELETE on no rows is a no-op).
 pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
     crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_key(show_id))
 }
@@ -643,7 +643,7 @@ async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, 
 /// disagrees. Missing evidence (Kitsu fetch failure; a provider
 /// `show_title` without a Part/Cour/Season suffix; a Kitsu detail
 /// with `slug = None` entirely) returns false — step 0's frontend
-/// slug guard heals genuinely cross-cour rows on the next read,
+/// cour check passes over a genuinely cross-cour row on every read,
 /// and persisting is preferable to forfeiting the deterministic
 /// shortcut every sequel reload.
 ///
@@ -692,7 +692,8 @@ fn is_music_subtype(subtype: Option<&str>) -> bool {
 /// Bridge a history-recorded show_id to its Kitsu entry. anidb slug
 /// rows resolve by searching Kitsu with the slug's own words; a match
 /// persists the `(show_id → kitsu_id)` reverse mapping so subsequent
-/// calls short-circuit through `allmanga_kitsu_get`. Legacy allanime
+/// calls short-circuit through `allmanga_kitsu_get`, unless a play
+/// stored the mapping there ([`crate::commands::kitsu_played`]). Legacy allanime
 /// rows resolve only through an already-stamped mapping — their alias
 /// source (allanime's `Show` endpoint) retired with the provider.
 ///

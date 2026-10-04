@@ -694,7 +694,7 @@ async fn get_allmanga_kitsu_map_played(
 }
 
 /// Evict a single reverse-mapping row. Fired by the frontend when
-/// step 0's slug guard catches a cross-cour mapping; the next
+/// step 0 finds the mapping bound to a music entry; the next
 /// successful play rewrites the row through the (guarded) mark-watched
 /// path. 204 on success.
 async fn delete_allmanga_kitsu_map(
@@ -1839,7 +1839,7 @@ mod tests {
     /// carry one, we have no proof the pairing is wrong — only one
     /// side speaks. Persisting the row still wins over re-resolving
     /// every Continue Watching load; if the pairing later turns out
-    /// to be cross-cour, step 0's frontend slug guard catches it.
+    /// to be cross-cour, step 0's frontend cour check passes over it.
     #[tokio::test]
     async fn mark_watched_writes_reverse_mapping_when_only_kitsu_slug_carries_cour() {
         use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};

@@ -1087,12 +1087,10 @@ export function allmangaKitsuMapPlayed(showId: string): Promise<boolean> {
 /**
  * Evict a single `provider show_id → kitsu_id` reverse-mapping row.
  *
- * Fired by `resolveKitsuMatch` step 0 when the cached kitsu detail's
- * slug disagrees with the history entry's cour suffix. The cached
- * mapping is wrong (cross-cour poison from an earlier mark-watched
- * with a sibling-cour show_id); dropping it lets subsequent lookups
- * fall through to the live slug-fetch and the next successful play
- * rewrite the mapping correctly.
+ * Fired by `resolveKitsuMatch` step 0 when the mapping is bound to a
+ * music entry, which no provider show is. Dropping it lets subsequent
+ * lookups re-resolve and the next successful play rewrite the mapping
+ * correctly. A binding step 0 merely doubts is passed over and kept.
  */
 export function allmangaKitsuMapDelete(showId: string): Promise<void> {
 	return deleteJson<void>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}`);

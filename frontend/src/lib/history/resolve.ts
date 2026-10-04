@@ -1,6 +1,11 @@
 /**
  * History → Kitsu resolver.
  *
+ * A history row that records the Kitsu id of the show played needs
+ * none of this: `resolveKitsuMatch` reads that entry and matches
+ * nothing. What follows serves rows written before history recorded
+ * it.
+ *
  * The provider sometimes splits one Kitsu anime across several
  * shows (Stone Ocean Part 1 / Part 2 / Part 3 in the provider, where on
  * Kitsu the structure varies — sometimes one parent, sometimes three
@@ -21,10 +26,11 @@
  * When the history row's own title is too thin to search on, the
  * recovery path lives on the backend at `resolve_allmanga_show_id`,
  * reached from here through the `kitsuResolveAllmangaShowId` IPC as
- * the last step in `resolveKitsuMatch`. It tries three things in
+ * the last step in `resolveKitsuMatch`. It tries two things in
  * order: the stored reverse mapping, then — for rows keyed on a
  * provider slug — a Kitsu search built from the slug's own words,
- * since `one-piece-69` carries the title it needs. Anything else is a
+ * since `one-piece-69` carries the title it needs, taking no hit whose
+ * titles share none of them (title-words.ts). Anything else is a
  * row from the retired provider, and those resolve only from a stored
  * mapping: their alias source went away with the provider, so an
  * unmapped one returns null and Continue Watching renders the bare
@@ -377,12 +383,11 @@ function titleIsInformative(tokens: Set<string>): boolean {
  * plausibly name the same show. Used only to reject a poisoned reverse-map /
  * title-match binding (e.g. the Love Live movie's provider id bound to the
  * YOASOBI "Idol" music video) and fall through to a fresh resolution — never to
- * choose the final match, so a false reject costs one extra resolution. A row
- * keyed on a slug recovers from the slug's own words; a row from the retired
- * provider has only its stored mapping, which is the thing just rejected, so
- * there a false reject costs the binding until a play re-stamps it. Stubs are
- * never judged at all — see the token rule below — which is what keeps that
- * case from arising in practice.
+ * choose the final match, so a false reject costs one extra resolution. A
+ * reverse-map binding a play stored survives a reject on its title alone
+ * (match-stored.ts): a provider title Kitsu does not use rejects the right
+ * binding, and nothing a re-resolution finds is better evidence than the play.
+ * Stubs are never judged at all — see the token rule below.
  *
  * Compares the provider title's tokens against every Kitsu title (canonical +
  * localized variants + de-slugged slug), scoring the best alias by the WEAKER
