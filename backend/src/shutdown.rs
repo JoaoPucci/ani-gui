@@ -175,6 +175,26 @@ pub fn teardown(runtime: tokio::runtime::Runtime, limit: Duration) {
     runtime.shutdown_timeout(limit);
 }
 
+/// The set of signals a process ignores, read off the text of its
+/// `/proc/<pid>/status`. Not wired in yet: nothing asks what the
+/// backend was started ignoring, so this knows nothing.
+#[cfg(target_os = "linux")]
+#[cfg_attr(not(test), allow(dead_code))]
+fn sig_ign_mask(_status: &str) -> Option<u64> {
+    None
+}
+
+/// Whether `mask` has `signal` in it. Not wired in yet; see above.
+#[cfg(unix)]
+#[cfg_attr(not(test), allow(dead_code))]
+fn ignores(_mask: u64, _signal: i32) -> bool {
+    false
+}
+
 #[cfg(test)]
 #[path = "shutdown_test.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "shutdown_prop_test.rs"]
+mod prop_tests;

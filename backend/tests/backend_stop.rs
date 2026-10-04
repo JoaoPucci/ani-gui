@@ -300,3 +300,46 @@ fn an_interrupt_or_a_hangup_is_a_request_to_stop_as_well() {
         );
     }
 }
+
+/// A signal the backend was started ignoring stays ignored. `nohup`
+/// does that for a hangup, and a shell with no job control for an
+/// interrupt on a background job: either way someone has said the
+/// process is to outlive that signal, and the backend's handler must
+/// not take it back as a request to stop.
+///
+/// Linux only: it is where the backend can read what it was started
+/// ignoring.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_signal_the_backend_was_started_ignoring_stays_ignored() {
+    let home = tempfile::tempdir().expect("tempdir");
+    // Ignore, then exec: the ignore survives the exec and the pid is
+    // the backend's.
+    let mut cmd = common::command(Path::new("sh"), home.path());
+    cmd.args([
+        "-c",
+        r#"trap '' HUP INT; exec "$0""#,
+        env!("CARGO_BIN_EXE_ani-gui-backend"),
+    ]);
+    let mut backend = common::start(cmd);
+
+    for name in ["-HUP", "-INT"] {
+        signal(name, backend.child.id());
+        let status = common::exited_within(&mut backend.child, Duration::from_millis(1_500));
+        if status.is_some() {
+            panic!("{name} was ignored when the backend started and stopped it anyway: {status:?}");
+        }
+    }
+
+    // It is still the backend's to stop when asked by a signal nobody
+    // told it to ignore.
+    signal("-TERM", backend.child.id());
+    let status = common::exited_within(&mut backend.child, Duration::from_secs(10));
+    let _ = backend.child.kill();
+    let _ = backend.child.wait();
+    let status = status.expect("the backend exits once it is asked to stop");
+    assert!(
+        status.success(),
+        "a requested stop is a clean exit: {status:?}"
+    );
+}

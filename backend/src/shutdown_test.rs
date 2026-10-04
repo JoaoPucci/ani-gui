@@ -186,3 +186,43 @@ fn teardown_drops_running_tasks_and_does_not_wait_out_a_stuck_blocking_call() {
         "a task still running is dropped, so its guard runs"
     );
 }
+
+// The signals the backend was started ignoring. `nohup` starts a
+// process with SIGHUP ignored, and a shell with no job control starts
+// a background job with SIGINT ignored: both mean the process is to
+// outlive that signal, and a handler installed over the ignore undoes
+// it. The set is read from `/proc/self/status`, where the kernel
+// gives it as a hexadecimal mask with bit `n - 1` standing for
+// signal `n`.
+
+#[cfg(target_os = "linux")]
+#[test]
+fn the_ignored_set_is_read_off_the_status_text() {
+    let status = "Name:\tani-gui-backend\nSigBlk:\t0000000000000000\n\
+                  SigIgn:\t0000000000001003\nSigCgt:\t0000000000004000\n";
+    let mask = sig_ign_mask(status).expect("the status text has the line");
+    assert_eq!(mask, 0x1003);
+    assert!(ignores(mask, 1), "SIGHUP");
+    assert!(ignores(mask, 2), "SIGINT");
+    assert!(ignores(mask, 13), "SIGPIPE, which Rust's runtime ignores");
+    assert!(!ignores(mask, 15), "SIGTERM");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn a_status_text_that_does_not_say_is_not_guessed_at() {
+    assert_eq!(sig_ign_mask(""), None);
+    assert_eq!(sig_ign_mask("Name:\tx\nSigCgt:\t0000000000004000\n"), None);
+    assert_eq!(sig_ign_mask("SigIgn:\tnot-a-mask\n"), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_signal_number_outside_the_mask_is_not_ignored() {
+    assert!(ignores(u64::MAX, 1));
+    assert!(ignores(u64::MAX, 64));
+    assert!(!ignores(u64::MAX, 0));
+    assert!(!ignores(u64::MAX, 65));
+    assert!(!ignores(u64::MAX, -1));
+    assert!(!ignores(0, 1));
+}
