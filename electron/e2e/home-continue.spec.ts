@@ -258,8 +258,14 @@ async function launchAppWithContinueStubsOnce(
 	// finishes loading. Electron then rejects the app's own loadURL
 	// with ERR_ABORTED, which the app logs and survives (see
 	// lib/startup.cjs); the window and this page stay alive.
+	//
+	// The settle wait is bounded: a config whose route never answers
+	// (`matchHang`) keeps a request in flight whenever the first load's
+	// fetches reach the handler, so networkidle never arrives and an
+	// unbounded wait spends Playwright's full 30 s navigation timeout
+	// before the bounce. Settling normally takes one to two seconds.
 	const homeUrl = page.url();
-	await page.waitForLoadState('networkidle').catch(() => {});
+	await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 	await page.goto('about:blank');
 	await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
 	return { app, page, context };
