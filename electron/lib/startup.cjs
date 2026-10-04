@@ -25,6 +25,14 @@ async function loadFirstPage(win, url, logError) {
 }
 
 /**
+ * How long a launch gives its window to reach ready-to-show. As
+ * main.js had it: fifteen seconds, whatever kind of launch it is.
+ */
+function firstShowTimeoutMs(_launch) {
+  return 15_000;
+}
+
+/**
  * Resolve when the window reaches `ready-to-show`; reject when its
  * renderer dies first, or when it has not got there within
  * `timeoutMs`.
@@ -87,4 +95,4 @@ async function bootApp({ spawnBackend, createWindow, stopBackend, exit, logError
   }
 }
 
-module.exports = { awaitFirstShow, bootApp, loadFirstPage };
+module.exports = { awaitFirstShow, bootApp, firstShowTimeoutMs, loadFirstPage };

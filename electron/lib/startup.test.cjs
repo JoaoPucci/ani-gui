@@ -17,7 +17,12 @@ const assert = require("node:assert/strict");
 
 const { EventEmitter } = require("node:events");
 
-const { awaitFirstShow, bootApp, loadFirstPage } = require("./startup.cjs");
+const {
+  awaitFirstShow,
+  bootApp,
+  firstShowTimeoutMs,
+  loadFirstPage,
+} = require("./startup.cjs");
 
 // Electron's loadURL rejections carry the net error name as `code`.
 const loadError = (code, errno, url) =>
@@ -76,6 +81,38 @@ test("a renderer that dies before the first show is a startup failure", async ()
 test("a window that never reaches ready-to-show is a startup failure", async () => {
   const win = fakeWindow();
   await assert.rejects(awaitFirstShow(win, { timeoutMs: 20 }), /ready-to-show/);
+});
+
+// A dev launch loads its first page from Vite, and a cold Vite that is
+// re-optimizing its dependencies can take longer over the first paint
+// than any deadline fit for the packaged bundle. The developer is at
+// the terminal and can see it working; ending `pnpm dev` under them is
+// the launcher getting in the way.
+test("a packaged launch has a first-show deadline and a dev launch has none", () => {
+  assert.equal(firstShowTimeoutMs({ isDev: false }), 15_000);
+  assert.equal(firstShowTimeoutMs({ isDev: true }), null);
+});
+
+test("a window with no deadline waits as long as the first paint takes", async () => {
+  const win = fakeWindow();
+  const shown = awaitFirstShow(win, { timeoutMs: null });
+  const state = await Promise.race([
+    shown.then(
+      () => "shown",
+      () => "failed",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve("waiting"), 100)),
+  ]);
+  assert.equal(state, "waiting");
+  win.emit("ready-to-show");
+  await shown;
+});
+
+test("a window with no deadline still fails when its renderer dies", async () => {
+  const win = fakeWindow();
+  const shown = awaitFirstShow(win, { timeoutMs: null });
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed", exitCode: 139 });
+  await assert.rejects(shown, /crashed/);
 });
 
 test("a renderer that dies after the first show is not the guard's business", async () => {
