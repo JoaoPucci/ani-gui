@@ -12,8 +12,8 @@
  * navigation lands in still works, so that rejection is logged and
  * dropped. Every other rejection — a missing bundle, a refused
  * connection, a renderer that crashed mid-load (ERR_FAILED) — leaves a
- * blank or never-shown window the user cannot do anything with, so it
- * propagates and fails the boot.
+ * blank window the user cannot do anything with, not even close (see
+ * awaitFirstShow), so it propagates and fails the boot.
  */
 async function loadFirstPage(win, url, logError) {
   try {
@@ -27,11 +27,18 @@ async function loadFirstPage(win, url, logError) {
 /**
  * Resolve when the window reaches `ready-to-show`; reject when its
  * renderer dies first, or when it has not got there within
- * `timeoutMs`. The window is created hidden and shown only on
- * `ready-to-show`, so a window that never gets there is invisible —
- * nothing for the user to close, and the app would otherwise sit with
- * its backend running and no way out. After the first show the guard
- * lets go: a later renderer crash is not a boot failure.
+ * `timeoutMs`.
+ *
+ * The window is on screen well before `ready-to-show`: it is created
+ * with `show: false`, but main.js maximizes it straight away, and
+ * maximizing a hidden window shows it. It is also frameless — the
+ * titlebar and its buttons are the renderer's to draw. So a window
+ * that never gets its first paint is a blank rectangle with nothing
+ * to click, the close button included, and the app would otherwise
+ * sit there with its backend running and no way out.
+ *
+ * After the first show the guard lets go: a later renderer crash is
+ * not a boot failure.
  */
 function awaitFirstShow(win, { timeoutMs }) {
   return new Promise((resolve, reject) => {

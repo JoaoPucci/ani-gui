@@ -315,8 +315,8 @@ function killTree(child) {
 // boot gives up on it. The first paint of the local bundle lands in
 // well under a second on a desktop and within a few seconds on a
 // heavily loaded CI runner; fifteen leaves a wide margin for a cold
-// disk while a launch that is not going to produce a window still
-// ends instead of leaving a hidden one behind.
+// disk while a launch that is never going to paint still ends,
+// instead of leaving a blank window with no controls on screen.
 const FIRST_SHOW_TIMEOUT_MS = 15_000;
 
 async function createWindow(apiBase, internalSecret) {
@@ -446,8 +446,10 @@ async function createWindow(apiBase, internalSecret) {
   // → setOpacity(1), but the maximize animation is on the window
   // frame (compositor-rendered), which Electron cannot suppress.
   win.maximize();
-  // Shown on ready-to-show, through the first-show guard: a window
-  // that never gets there would stay hidden forever, so missing it —
+  // ready-to-show goes through the first-show guard. The window is
+  // already on screen here — maximize() above shows a hidden window —
+  // but blank and frameless, so with nothing to close it by until the
+  // renderer has drawn the titlebar. A window that never gets there —
   // a renderer gone, or no first paint within FIRST_SHOW_TIMEOUT_MS —
   // fails the boot instead (see lib/startup.cjs).
   const firstShow = awaitFirstShow(win, { timeoutMs: FIRST_SHOW_TIMEOUT_MS }).then(
