@@ -653,10 +653,11 @@ async fn post_play_mark_watched(
             // cour's provider show_id when episode count and year tie,
             // while the frontend supplies the Kitsu id from the URL it
             // came from; the guard compares the cour suffixes and, when
-            // they disagree, skips the mapping write and takes the id
-            // back off the row. It reads Kitsu detail through its cache,
-            // once, after the row and the stamp are written, so a slow
-            // Kitsu never delays the watch or home ordering.
+            // they disagree, skips the mapping write; the row carries
+            // the id only once the guard accepts it. It reads Kitsu
+            // detail through its cache, once, after the row and the
+            // stamp are written, so a slow Kitsu never delays the watch
+            // or home ordering.
             //
             // The watch is the cached row's, built the way the handoffs
             // build theirs: the row's own slot when it carries one, the

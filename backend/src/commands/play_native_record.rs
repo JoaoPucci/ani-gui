@@ -108,17 +108,29 @@ impl Watch {
 /// ends the recording with a log line, since a stamp advanced for a
 /// watch that never reached the file would make that row the show's
 /// latest and hand the resume its stale episode over another
-/// provider's real one. The row goes down with the id as given, and
-/// the stamp after it, before anything waits on Kitsu.
+/// provider's real one. The row and then the stamp go down before
+/// anything waits on Kitsu.
 ///
-/// The cour guard then reads Kitsu once, and its one verdict settles
-/// both the mapping and the row's id ([`settle_refused_id`]).
+/// The row carries the given Kitsu id only once the cour guard accepts
+/// it: in the same write when the cached detail already answers the
+/// guard, otherwise after the guard's one Kitsu read, whose verdict
+/// settles both the mapping and the row's id ([`settle_refused_id`],
+/// [`add_accepted_id`]).
 pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
     if watch.show_id.is_empty() {
         return;
     }
     let given = kitsu_id.filter(|k| !k.is_empty());
     let previous = recorded_id(state, &watch.show_id);
+    // The id goes on with the row only when the cache can already say
+    // the guard accepts it; otherwise it waits for the guard's verdict
+    // below, so the row never carries an id the guard refuses.
+    let judged = given
+        .filter(|k| {
+            crate::commands::kitsu::cached_cour_pairing_verdict(state, &watch.title, k)
+                == Some(false)
+        })
+        .and_then(crate::history::kitsu_id_of);
     // The watch's moment travels with the row, in the same write, so
     // the recency the resume and the strip rank by is not left to a
     // store the row was not written to; the cache's copy follows.
@@ -128,7 +140,7 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
         id: watch.show_id.clone(),
         title: watch.title.clone(),
         watched_at: Some(now),
-        kitsu_id: given.and_then(crate::history::kitsu_id_of),
+        kitsu_id: judged.clone(),
     };
     if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
         tracing::warn!(
@@ -151,6 +163,23 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
     .await;
     if !accepted {
         settle_refused_id(state, watch, kid, previous).await;
+    } else if judged.is_none() {
+        add_accepted_id(state, watch, kid);
+    }
+}
+
+/// Put an id the guard accepted on the row, once the guard has read
+/// Kitsu for it. An id that is not digits is not recorded.
+fn add_accepted_id(state: &AppState, watch: &Watch, accepted: &str) {
+    let Some(id) = crate::history::kitsu_id_of(accepted) else {
+        return;
+    };
+    if let Err(e) = crate::history::set_kitsu_id(&state.history_path, &watch.show_id, Some(id)) {
+        tracing::warn!(
+            show_id = %watch.show_id,
+            error = ?e,
+            "history id write failed after the guard accepted the pairing",
+        );
     }
 }
 

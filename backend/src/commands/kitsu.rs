@@ -663,7 +663,7 @@ pub(crate) async fn cour_pairing_disagrees(
     show_title: &str,
     kitsu_id: &str,
 ) -> bool {
-    use crate::commands::cour::{cour_from_slug, cour_from_title};
+    use crate::commands::cour::cour_from_title;
     // Without cour evidence on the provider's side there is nothing
     // to disagree with, so Kitsu is not asked at all.
     let Some(provider_cour) = cour_from_title(show_title) else {
@@ -672,15 +672,34 @@ pub(crate) async fn cour_pairing_disagrees(
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    let provider_cour = Some(provider_cour);
-    let kitsu_cour = detail
+    slug_cour_disagrees(provider_cour, &detail)
+}
+
+/// [`cour_pairing_disagrees`] answered from the cache alone: `None`
+/// when the title carries cour evidence and the cache holds no detail
+/// for `kitsu_id`, so only a Kitsu read could judge the pairing.
+pub(crate) fn cached_cour_pairing_verdict(
+    state: &AppState,
+    show_title: &str,
+    kitsu_id: &str,
+) -> Option<bool> {
+    let Some(provider_cour) = crate::commands::cour::cour_from_title(show_title) else {
+        return Some(false);
+    };
+    let body = meta_cache_get(&state.cache_pool, &anime_detail_key(kitsu_id)).ok()??;
+    let detail: KitsuAnimeRef = serde_json::from_str(&body).ok()?;
+    Some(slug_cour_disagrees(provider_cour, &detail))
+}
+
+/// Whether the detail's slug names another cour than `provider_cour`.
+/// Kitsu's slug convention leaves cour 1 unmarked, so a slug without a
+/// suffix is cour 1; a detail without a slug is no evidence.
+fn slug_cour_disagrees(provider_cour: u32, detail: &KitsuAnimeRef) -> bool {
+    detail
         .slug
         .as_deref()
-        .map(|slug| cour_from_slug(slug).unwrap_or(1));
-    match (provider_cour, kitsu_cour) {
-        (Some(a), Some(k)) => a != k,
-        _ => false,
-    }
+        .map(|slug| crate::commands::cour::cour_from_slug(slug).unwrap_or(1))
+        .is_some_and(|kitsu_cour| kitsu_cour != provider_cour)
 }
 
 /// Whether a Kitsu `subtype` is a music video. A provider that indexes
