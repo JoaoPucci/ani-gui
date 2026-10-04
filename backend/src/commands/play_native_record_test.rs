@@ -382,3 +382,59 @@ async fn removing_another_show_leaves_a_pending_recording_whole() {
         Some("45412")
     );
 }
+
+/// While the guard reads Kitsu the watch's row carries no Kitsu id,
+/// but a removal in that window still knows the page the watch was
+/// recorded from: the skip times cached under it go with the row.
+#[tokio::test]
+async fn a_delete_while_the_guard_reads_kitsu_takes_the_pages_skip_times() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(state_at(td.path(), &kitsu.uri()));
+    crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:45412:9:1", "[]", 3600)
+        .expect("seed skip times");
+    let recording = recording_held_on_kitsu(&state, &kitsu).await;
+
+    assert!(crate::commands::history::history_delete(&state, &part_two().show_id).expect("delete"));
+    recording.await.expect("recording");
+
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, "aniskip:v2:45412:9:1").expect("cache"),
+        None
+    );
+}
+
+/// A handoff's resolve can land on another provider's key than the row
+/// the user removes while it runs. The watch recorded after the spawn
+/// names the page it was asked from, and a show known by that page
+/// removed since the request began is not recorded under the new key.
+#[tokio::test]
+async fn a_handoff_whose_show_was_removed_under_another_key_records_nothing() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: "hianime:the-show-100".into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: Some("77".into()),
+        },
+    )
+    .expect("seed row");
+    let requested = crate::history::guard::epoch(&state.history_path);
+    assert!(
+        crate::commands::history::history_delete(&state, "hianime:the-show-100").expect("delete")
+    );
+
+    let watch = Watch {
+        show_id: "the-show-77".into(),
+        title: "The Show".into(),
+        ep_no: "1".into(),
+    };
+    record_watch_requested_at(&state, &watch, Some("77"), requested).await;
+
+    assert_eq!(left_behind(&state, "the-show-77"), Vec::<String>::new());
+}

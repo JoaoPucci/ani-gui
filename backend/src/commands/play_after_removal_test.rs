@@ -83,7 +83,11 @@ fn args() -> PlayArgs {
 /// began at `begun`: the row a fresh resolve writes, the row a cached
 /// stream writes, the show's numbering, and the resolution row.
 fn finish_play(state: &AppState, begun: crate::history::guard::Epoch) {
-    let asked = crate::history::guard::Asked { begun, page: None };
+    finish_asked(state, crate::history::guard::Asked { begun, page: None });
+}
+
+/// [`finish_play`] for a play asked for from a Kitsu page.
+fn finish_asked(state: &AppState, asked: crate::history::guard::Asked<'_>) {
     write_history(state, &native(), "2", asked);
     write_history_on_cache_hit(state, &args(), &cached(), asked);
     stamp_numbering(state, &native(), asked);
@@ -158,4 +162,75 @@ fn removing_another_show_leaves_a_pending_play_whole() {
     finish_play(&state, begun);
 
     assert_eq!(left(&state), (1, 12, true));
+}
+
+/// A row for the show under another provider's key, recording the
+/// Kitsu page it was played from.
+fn seed_row_of_page(state: &AppState, id: &str, page: &str) {
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: id.into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: Some(page.into()),
+        },
+    )
+    .expect("seed row");
+}
+
+/// A play resolves its show under the key of whichever provider
+/// answers — another provider's when the walk fails over. Removing the
+/// show's row, keyed as it was played before, has to stop the play's
+/// writes under the new key too: the play was asked for from the
+/// show's Kitsu page, and the removed row was known by that page.
+#[test]
+fn a_play_that_resolves_under_another_key_loses_to_the_removal_too() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_row_of_page(&state, "hianime:the-show-100", "77");
+    let asked = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+    finish_asked(&state, asked);
+
+    assert_eq!(left(&state), (0, 0, false));
+}
+
+/// While another row still claims the page, the show is still in
+/// history, and a play of it records under whatever key it resolved.
+#[test]
+fn a_page_a_remaining_row_still_claims_keeps_its_play() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_row_of_page(&state, "hianime:the-show-100", "77");
+    seed_row_of_page(&state, "the-show-old-3", "77");
+    let asked = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+    finish_asked(&state, asked);
+
+    assert_eq!(left(&state), (1, 12, true));
+}
+
+/// The row a play writes does not record its Kitsu page — the watch's
+/// verdict does that later — but a removal has to know the page: the
+/// skip times the player fetched are cached under it.
+#[test]
+fn removing_a_row_a_play_just_wrote_takes_the_skip_times_of_its_page() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    finish_asked(
+        &state,
+        crate::history::guard::Asked::now(&state.history_path, Some("77")),
+    );
+    crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:77:5:2", "[]", 3600).unwrap();
+
+    assert!(crate::commands::history::history_delete(&state, SHOW).unwrap());
+
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, "aniskip:v2:77:5:2").unwrap(),
+        None
+    );
 }
