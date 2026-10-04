@@ -41,8 +41,7 @@ function backendSpawnOptions({ platform, env }) {
  * and the handshake can take minutes on a first run. A quit in that
  * time has to find the backend to stop it. A handshake that fails
  * leaves it tracked, for the boot's own stop, which skips a spawn that
- * failed and, on Windows, a backend that has already exited (see
- * `stoppable`).
+ * failed and a backend that has already exited (see `stoppable`).
  */
 async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
   const child = spawn(bin, [], backendSpawnOptions({ platform, env }));
@@ -52,22 +51,47 @@ async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
 }
 
 /**
- * Whether the tree kill on `platform` has a backend to stop: one that
- * started (a spawn the OS refused has no pid) and that it has not
- * stopped already.
+ * Whether the tree kill has a backend to stop: one that started (a
+ * spawn the OS refused has no pid), that it has not stopped already,
+ * and that has not exited.
  *
- * On Windows, also one that has not exited. The kill there is
- * `taskkill /T` on the backend's pid, which is free once the backend
- * has exited and may by then belong to another process, whose tree it
- * would end. Elsewhere the kill signals the backend's process group,
- * whatever became of the backend: a group id is not reused while any
- * process is left in the group — a transport the backend ran there —
- * and the signal is what stops those; an empty group answers ESRCH.
+ * The kill acts on ids the OS hands out again. On Windows it is
+ * `taskkill /T` on the backend's pid, free for reuse once the backend
+ * has exited. Elsewhere it signals the backend's process group, whose
+ * id is that same pid and is free once the backend and everything it
+ * left in the group have exited — possibly long before the app quits.
+ * Either way a kill after the exit could reach an unrelated process,
+ * so an exited backend is never killed here; what it left in its group
+ * is stopped when it exits (see `reapOnExit`).
  */
-function stoppable(child, platform) {
-  if (!child || child.killed || !child.pid) return false;
-  if (platform !== "win32") return true;
-  return child.exitCode === null && child.signalCode === null;
+function stoppable(child) {
+  return Boolean(
+    child && !child.killed && child.pid && child.exitCode === null && child.signalCode === null,
+  );
 }
 
-module.exports = { backendSpawnOptions, launchBackend, stoppable };
+/**
+ * When `child` exits, stop what it left in its process group: on
+ * Linux and macOS, `signalGroup(pid)` once, from the 'exit' handler.
+ *
+ * Node reaps the backend before it reports the exit, and this runs in
+ * the same turn of the event loop. A group id cannot be handed to
+ * anyone else while a member is left in the group, so if the backend
+ * left transports behind, the id is still theirs and the signal stops
+ * them; if it left nothing, the group is gone and the signal answers
+ * ESRCH. After this the id is let go: `stoppable` is false for an
+ * exited child, so no later kill uses it. A quit's kill that came
+ * first means a second SIGTERM to a group already told to stop, which
+ * is harmless.
+ *
+ * Windows has no groups, so nothing is signalled; taskkill /T on a
+ * live backend is what reaches its tree. A spawn that never ran has
+ * no pid and nothing to stop.
+ */
+function reapOnExit(child, { platform, signalGroup }) {
+  child.once("exit", () => {
+    if (platform !== "win32" && child.pid) signalGroup(child.pid);
+  });
+}
+
+module.exports = { backendSpawnOptions, launchBackend, reapOnExit, stoppable };

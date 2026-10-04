@@ -39,7 +39,7 @@ const {
   HANDSHAKE_TIMEOUT_MS,
   awaitHandshake,
 } = require("./lib/backend-handshake.cjs");
-const { launchBackend, stoppable } = require("./lib/backend-spawn.cjs");
+const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
@@ -247,6 +247,7 @@ async function spawnBackend() {
     env: process.env,
     track: (child) => {
       backendChild = child;
+      reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
     },
     handshake: (child) => {
       child.stderr.on("data", (chunk) => {
@@ -281,10 +282,10 @@ let backendChild = null;
  * /F /T ends the backend and every process below it by parent pid,
  * the tools included.
  *
- * Idempotent — safe to call when the backend has already exited: on
- * Windows it is then left alone, since its pid may have been reused;
- * elsewhere its group is still signalled, to reach whatever is left in
- * it (see `stoppable` in lib/backend-spawn.cjs).
+ * Idempotent — safe to call when the backend has already exited,
+ * which it then leaves alone: its ids may have been reused, and what it
+ * left in its group was stopped at its exit (see `stoppable` and
+ * `reapOnExit` in lib/backend-spawn.cjs).
  */
 function killBackendTree() {
   killTree(backendChild);
@@ -292,7 +293,7 @@ function killBackendTree() {
 
 /** Stop `child` and every process it spawned. See killBackendTree. */
 function killTree(child) {
-  if (!stoppable(child, process.platform)) return;
+  if (!stoppable(child)) return;
   if (process.platform === "win32") {
     // /F = force, /T = include child processes. Fire-and-forget;
     // we don't await it because the close path is already winding
@@ -307,14 +308,19 @@ function killTree(child) {
     }
     return;
   }
+  signalBackendGroup(child.pid);
+}
+
+/**
+ * SIGTERM to the process group `pid` leads (POSIX). SIGTERM rather
+ * than SIGKILL: the backend has to run its own wind-down to stop the
+ * download tools, and a kill would skip it.
+ */
+function signalBackendGroup(pid) {
   try {
-    // Negative pid = process group. SIGTERM rather than SIGKILL: the
-    // backend has to run its own wind-down to stop the download
-    // tools, and a kill would skip it.
-    process.kill(-child.pid, "SIGTERM");
+    process.kill(-pid, "SIGTERM");
   } catch (e) {
-    // ESRCH: nobody left in the group (the backend has exited, and so
-    // has everything it ran there). Anything else is unexpected and
+    // ESRCH: nobody left in the group. Anything else is unexpected and
     // worth logging.
     if (e && e.code !== "ESRCH") console.error("[main] killTree:", e);
   }
