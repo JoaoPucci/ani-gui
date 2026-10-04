@@ -16,10 +16,18 @@ use crate::cache::meta_cache_fetched_at;
 use crate::commands::kitsu::{allmanga_kitsu_key, watched_at_get};
 use crate::error::Result;
 
-/// How far apart a watch's stamp and its mapping may be written and
-/// still be one play. The mapping follows the stamp after a Kitsu
-/// detail read that guards the write, so the gap is that read's time.
-const ONE_PLAY_MS: i64 = 60_000;
+/// How long after a watch's stamp its mapping may be written and still
+/// be one play. Builds before the history recorded the Kitsu id —
+/// the only ones whose rows this reads — stamped the watch, then read
+/// the Kitsu entry the play page had already cached to guard the
+/// write, then stored the mapping: seconds apart. A guess a Continue
+/// load stores after a watch that stored no mapping is read as played
+/// only if it lands inside this window.
+const ONE_PLAY_MS: i64 = 10_000;
+
+/// The cache writes in whole seconds, so a mapping written in the same
+/// second as its stamp can read up to a second before it.
+const SECOND_MS: i64 = 1_000;
 
 /// Whether the show's stored mapping was written by a play.
 ///
@@ -33,5 +41,6 @@ pub(crate) fn mapping_played(state: &AppState, show_id: &str) -> Result<bool> {
     else {
         return Ok(false);
     };
-    Ok((mapped_s.saturating_mul(1000) - stamp_ms).abs() <= ONE_PLAY_MS)
+    let gap_ms = mapped_s.saturating_mul(1000) - stamp_ms;
+    Ok((-SECOND_MS..=ONE_PLAY_MS).contains(&gap_ms))
 }

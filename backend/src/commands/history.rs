@@ -168,10 +168,13 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
     if !remove_by_id(&mut entries, id) {
         return Ok(false);
     }
-    write_atomic(&state.history_path, &entries)?;
+    // Forget first: a cache that cannot fails the delete with the row
+    // still there to retry, rather than reporting a failure for a row
+    // already gone.
     for title in &titles {
         super::history_forget::forget_show(state, id, title)?;
     }
+    write_atomic(&state.history_path, &entries)?;
     Ok(true)
 }
 
@@ -183,8 +186,9 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
 /// Returns [`crate::error::AniError::Io`] if the file cannot be written,
 /// and [`crate::error::AniError::Cache`] if the cache cannot be.
 pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
-    write_atomic(&state.history_path, &[])?;
-    super::history_forget::forget_all(state)
+    // Forget first, for the reason history_delete does.
+    super::history_forget::forget_all(state)?;
+    write_atomic(&state.history_path, &[])
 }
 
 #[cfg(test)]

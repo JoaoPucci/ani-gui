@@ -11,7 +11,7 @@
 //! of the app wrote them.
 
 use crate::app::AppState;
-use crate::cache::{meta_cache_delete, meta_cache_delete_prefix};
+use crate::cache::{meta_cache_delete, meta_cache_delete_prefix, meta_cache_keys_prefix};
 use crate::commands::kitsu::{allmanga_kitsu_key, title_match_prefix, watched_at_key};
 use crate::error::Result;
 use crate::scraper::provider::ShowKey;
@@ -32,7 +32,15 @@ pub(crate) fn forget_show(state: &AppState, id: &str, title: &str) -> Result<()>
     meta_cache_delete(pool, &allmanga_kitsu_key(id))?;
     let provider = ShowKey::parse(id).provider;
     for searched in [title, without_episode_tail(title)] {
-        meta_cache_delete_prefix(pool, &title_match_prefix(provider, searched))?;
+        let prefix = title_match_prefix(provider, searched);
+        // The prefix ends where the cour starts, so a title that
+        // starts another's ("Re", "Re:Creators") shares it: only keys
+        // whose remainder is a cour number are this title's.
+        for key in meta_cache_keys_prefix(pool, &prefix)? {
+            if all_digits(&key[prefix.len()..]) {
+                meta_cache_delete(pool, &key)?;
+            }
+        }
     }
     Ok(())
 }
