@@ -20,8 +20,11 @@
  * a bundle with no index.html is answered by the app:// handler with
  * a 404, which loads like any page and leaves the same bare window
  * around the words "not found". The status comes from the
- * navigation's commit; `-1`, a navigation outside HTTP, is nothing to
- * judge.
+ * navigation's commit, and for an app:// page that is the status the
+ * protocol handler answered with: on the Electron this app ships,
+ * `did-navigate` reports the handler's 404 or 500 as sent, not the
+ * `-1` Electron documents for navigations outside HTTP. A `-1`, or no
+ * status at all, is nothing to judge.
  */
 async function loadFirstPage(win, url, logError) {
   // Taken once: a window closed mid-load is destroyed, and reading
