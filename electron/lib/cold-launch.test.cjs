@@ -127,10 +127,18 @@ test('killTree takes a process and a descendant in its own session', { skip: pro
 	const child = Number(
 		await new Promise((resolve) => parent.stdout.once('data', (d) => resolve(String(d).trim()))),
 	);
+	// A killed process whose parent is gone waits as a zombie until PID 1
+	// reaps it, and some container runtimes' PID 1 never does. A zombie
+	// runs nothing and holds no descriptors, so it counts as gone here.
 	const alive = (pid) => {
 		try {
 			process.kill(pid, 0);
-			return true;
+		} catch {
+			return false;
+		}
+		try {
+			const stat = require('node:fs').readFileSync(`/proc/${pid}/stat`, 'utf8');
+			return stat.slice(stat.lastIndexOf(')') + 2)[0] !== 'Z';
 		} catch {
 			return false;
 		}
