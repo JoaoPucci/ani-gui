@@ -171,8 +171,43 @@ test("a window that never reaches ready-to-show is a startup failure", async () 
 // the terminal and can see it working; ending `pnpm dev` under them is
 // the launcher getting in the way.
 test("a packaged launch has a first-show deadline and a dev launch has none", () => {
-  assert.equal(firstShowTimeoutMs({ isDev: false }), 15_000);
+  assert.ok(Number.isFinite(firstShowTimeoutMs({ isDev: false })));
   assert.equal(firstShowTimeoutMs({ isDev: true }), null);
+});
+
+// The packaged deadline is for a window that will never paint, not for
+// one that is slow to. The first paint needs a renderer started and
+// the bundle read off the same disk that can make the backend's first
+// start take 24 s (see lib/backend-handshake.cjs), and on a machine
+// rendering in software it needs that too. A renderer that dies and a
+// page that fails to load do not wait for the deadline; they fail the
+// boot when they happen.
+
+/** Lets the promise callbacks run; setImmediate is not mocked. */
+const settled = () => new Promise((resolve) => setImmediate(resolve));
+
+test("a packaged window a minute and a half from its first paint is slow, not failed", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = fakeWindow();
+  let outcome = "waiting";
+  const shown = awaitFirstShow(win, { timeoutMs: firstShowTimeoutMs({ isDev: false }) });
+  shown.then(
+    () => (outcome = "shown"),
+    () => (outcome = "failed"),
+  );
+  t.mock.timers.tick(90_000);
+  await settled();
+  assert.equal(outcome, "waiting");
+  win.emit("ready-to-show");
+  await shown;
+});
+
+test("a packaged window that never paints still fails the boot, when the deadline runs out", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const win = fakeWindow();
+  const shown = awaitFirstShow(win, { timeoutMs: firstShowTimeoutMs({ isDev: false }) });
+  t.mock.timers.tick(firstShowTimeoutMs({ isDev: false }));
+  await assert.rejects(shown, /did not reach ready-to-show within/);
 });
 
 test("a window with no deadline waits as long as the first paint takes", async () => {
