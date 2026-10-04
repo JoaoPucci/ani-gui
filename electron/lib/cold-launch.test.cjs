@@ -113,3 +113,39 @@ test('a cleanup that never settles is abandoned and the relaunch runs', { timeou
 	assert.equal(got, 'relaunched');
 	assert.equal(attempts, 2);
 });
+
+// The dead app's close() hangs because the backend outlives it: the
+// backend runs in its own session, out of reach of a group kill, and
+// holds descriptors it inherited from the app. Killing the app's
+// whole tree, its own-session descendants included, lets close settle.
+test('killTree takes a process and a descendant in its own session', { skip: process.platform !== 'linux' }, async () => {
+	const { spawn } = require('node:child_process');
+	const { killTree } = require('./cold-launch.cjs');
+	const parent = spawn('sh', ['-c', 'setsid sleep 300 & echo $!; wait'], {
+		stdio: ['ignore', 'pipe', 'ignore'],
+	});
+	const child = Number(
+		await new Promise((resolve) => parent.stdout.once('data', (d) => resolve(String(d).trim()))),
+	);
+	const alive = (pid) => {
+		try {
+			process.kill(pid, 0);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	try {
+		assert.equal(alive(child), true);
+		killTree(parent.pid);
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		assert.equal(alive(parent.pid) && parent.exitCode === null && parent.signalCode === null, false);
+		assert.equal(alive(child), false, 'the own-session descendant is gone');
+	} finally {
+		for (const pid of [child, parent.pid]) {
+			try {
+				process.kill(pid, 'SIGKILL');
+			} catch {}
+		}
+	}
+});
