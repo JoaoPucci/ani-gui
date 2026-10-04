@@ -20,8 +20,16 @@ pub(crate) const GRACE_SECS: u64 = 60 * 60;
 /// [`FLOOR_SECS`] (nor above `base`). No schedule → `base`.
 #[must_use]
 pub(crate) fn bounded_by_next_airing(base: u64, next_airing_at: Option<u64>, now: u64) -> u64 {
-    let _ = (next_airing_at, now);
-    base
+    let Some(at) = next_airing_at else {
+        return base;
+    };
+    let until_listed = at.saturating_sub(now).saturating_add(GRACE_SECS);
+    let cut = if at <= now {
+        FLOOR_SECS
+    } else {
+        until_listed.max(FLOOR_SECS)
+    };
+    cut.min(base)
 }
 
 #[cfg(test)]

@@ -1093,13 +1093,20 @@ pub fn write_cache_full(
         return;
     }
     let key = cache_key(kitsu_id, mode);
-    let ttl = if body.available {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ttl = if body.available && status == Some("finished") {
         positive_ttl_for(status)
+    } else if body.available {
+        // Still airing: the count goes stale at the next drop.
+        crate::commands::availability_ttl::bounded_by_next_airing(
+            positive_ttl_for(status),
+            cached_next_airing_at(state, kitsu_id),
+            now,
+        )
     } else {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
         negative_ttl_for(status, cached_next_airing_at(state, kitsu_id), now)
     };
     if let Ok(serialized) = serde_json::to_string(body) {
