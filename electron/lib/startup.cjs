@@ -10,17 +10,36 @@
  * with ERR_ABORTED whenever another main-frame navigation starts
  * before the first page finishes loading, and the window that
  * navigation lands in still works, so that rejection is logged and
- * dropped. Every other rejection — a missing bundle, a refused
- * connection, a renderer that crashed mid-load (ERR_FAILED) — leaves a
- * blank window the user cannot do anything with, not even close (see
- * awaitFirstShow), so it propagates and fails the boot.
+ * dropped. Every other rejection — a refused connection, a renderer
+ * that crashed mid-load (ERR_FAILED) — leaves a blank window the user
+ * cannot do anything with, not even close (see awaitFirstShow), so it
+ * propagates and fails the boot.
+ *
+ * So does a page that arrives as an error page. `loadURL` resolves
+ * for anything that arrives, and the app serves its own error pages:
+ * a bundle with no index.html is answered by the app:// handler with
+ * a 404, which loads like any page and leaves the same uncloseable
+ * window around the words "not found". The status comes from the
+ * navigation's commit; `-1`, a navigation outside HTTP, is nothing to
+ * judge.
  */
 async function loadFirstPage(win, url, logError) {
+  let status = null;
+  const onNavigate = (_event, _url, httpResponseCode) => {
+    status = httpResponseCode;
+  };
+  win.webContents.once("did-navigate", onNavigate);
   try {
     await win.loadURL(url);
   } catch (err) {
     if (!err || err.code !== "ERR_ABORTED") throw err;
     logError("[main] first page superseded before it finished loading:", err);
+    return;
+  } finally {
+    win.webContents.removeListener("did-navigate", onNavigate);
+  }
+  if (typeof status === "number" && status >= 400) {
+    throw new Error(`first page answered ${status} (${url})`);
   }
 }
 
