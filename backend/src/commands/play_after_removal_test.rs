@@ -724,3 +724,39 @@ fn a_retried_delete_still_stands_against_a_lookup_by_its_mappings_id() {
         held.kitsu_removed_since(begun, "77")
     }));
 }
+
+/// A provider can rename a show, and the row takes the new title. The
+/// title match Continue Watching stored under the old title names the
+/// show's Kitsu entry, and goes with the row.
+#[test]
+fn a_delete_takes_the_title_match_stored_under_the_rows_old_title() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_row_of_page(&state, "hianime:the-show-100", "77");
+    let old = format!(
+        "{}1",
+        crate::commands::kitsu::title_match_prefix(
+            crate::scraper::provider::ProviderId::Hianime,
+            "The Show"
+        )
+    );
+    crate::cache::meta_cache_put(&state.cache_pool, &old, "77", 3600).unwrap();
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "2".into(),
+            id: "hianime:the-show-100".into(),
+            title: "The Show: Renamed".into(),
+            watched_at: None,
+            kitsu_id: None,
+        },
+    )
+    .unwrap();
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, &old).unwrap(),
+        None
+    );
+}
