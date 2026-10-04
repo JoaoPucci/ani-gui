@@ -193,6 +193,18 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
 	});
 
+	it('does not keep a title-doubted mapping when the played read fails', async () => {
+		mockedAllmangaMap.mockResolvedValue('49877');
+		mockedDetail.mockResolvedValue(seitokai());
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
+		mockedSearch.mockResolvedValue([greenwood()]);
+
+		const got = await resolveKitsuMatch(seitokaiRow());
+
+		expect(got).toBeNull();
+		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
+	});
+
 	it('does not keep a title-doubted mapping no play stored', async () => {
 		// A guess an earlier resolve stored: Greenwood for the same row.
 		mockedAllmangaMap.mockResolvedValue('1623');

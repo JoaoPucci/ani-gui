@@ -4,6 +4,7 @@ import {
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
+	allmangaKitsuMapPlayed,
 	altTitlesFromKitsu,
 	airingGet,
 	aniskipGet,
@@ -1090,6 +1091,17 @@ describe('allmangaKitsuMapGet', () => {
 		await allmangaKitsuMapGet('weird/id with spaces');
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/weird%2Fid%20with%20spaces`);
+	});
+});
+
+describe('allmangaKitsuMapPlayed', () => {
+	it('GETs /api/allmanga-kitsu-map/:show_id/played with the id URL-encoded', async () => {
+		const fetchMock = mockFetchOnce(true);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await allmangaKitsuMapPlayed('hianime:seitokai/10497');
+		const { url } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/hianime%3Aseitokai%2F10497/played`);
+		expect(got).toBe(true);
 	});
 });
 
