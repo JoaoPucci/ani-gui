@@ -42,16 +42,20 @@ fn on_a_thread(job: Job) -> std::io::Result<()> {
 }
 
 /// [`until_eof`] with the thread spawn explicit — the seam the tests
-/// use to make it fail. As the watch stood: a spawn that fails
-/// panics, and a thread that ends without reporting counts as the
-/// parent being gone.
+/// use to make it fail.
+///
+/// A watch that cannot watch never resolves. Neither a spawn that
+/// fails nor a thread that ends without reporting says anything about
+/// the parent, which is, as far as anyone knows, alive and using this
+/// backend. Both are logged; the cost is that this backend will not
+/// notice its parent going, which is the lesser one.
 async fn until_eof_with<R, S>(mut reader: R, spawn: S)
 where
     R: Read + Send + 'static,
     S: FnOnce(Job) -> std::io::Result<()>,
 {
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    spawn(Box::new(move || {
+    let started = spawn(Box::new(move || {
         let mut buf = [0_u8; 256];
         loop {
             match reader.read(&mut buf) {
@@ -62,9 +66,17 @@ where
             }
         }
         let _ = tx.send(());
-    }))
-    .expect("spawn the parent-watch thread");
-    let _ = rx.await;
+    }));
+    match started {
+        Err(e) => tracing::error!(error = %e, "parent watch could not start"),
+        Ok(()) => {
+            if rx.await.is_ok() {
+                return;
+            }
+            tracing::error!("parent watch ended without a report");
+        }
+    }
+    std::future::pending::<()>().await;
 }
 
 /// Resolves once the parent is gone, or never when the parent did not
