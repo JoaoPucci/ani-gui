@@ -9,7 +9,7 @@
  * whether that is still true, so it refreshes both past their caches
  * and re-reads the episode from what the page then holds.
  *
- * ONE REFRESH PER SHOW PER INTERVAL. Ten clicks on a greyed tile are
+ * ONE REFRESH PER SHOW PAGE PER INTERVAL. Ten clicks on a greyed tile are
  * one question; the limit lasts the app session (the controller is a
  * module singleton) so leaving and re-opening the page does not reset
  * it. Inside the interval the page's own state is already as fresh as
@@ -43,8 +43,8 @@ export interface UnairedRecheckDeps<T> {
 	now: () => number;
 }
 
-/** What a click asks about. Signature only: the behaviour lands with
- *  the change its tests describe. */
+/** What a click asks about: the show, and the Kitsu page its episode
+ *  sits on — the unit a refresh fetches, joins on and is limited by. */
 export interface UnairedRecheckSubject {
 	show: string;
 	/** The Kitsu episode page the episode sits on. */
@@ -52,8 +52,8 @@ export interface UnairedRecheckSubject {
 }
 
 /** A refresh's result: what it fetched and when it started, or null
- *  when it failed. Untyped here because clicks from different pages of
- *  the same show share one; each page's `apply` knows its own shape. */
+ *  when it failed. Untyped here because clicks from both routes can
+ *  share one; each route's `apply` knows its own shape. */
 type Fetched = { data: unknown; startedAt: number } | null;
 
 export function createUnairedRecheck(intervalMs: number = UNAIRED_RECHECK_INTERVAL_MS): {
@@ -65,8 +65,8 @@ export function createUnairedRecheck(intervalMs: number = UNAIRED_RECHECK_INTERV
 	const refreshedAt = new Map<string, number>();
 	const inFlight = new Map<string, Promise<Fetched>>();
 
-	function refreshOnce<T>(showId: string, deps: UnairedRecheckDeps<T>): Promise<Fetched> {
-		const pending = inFlight.get(showId);
+	function refreshOnce<T>(key: string, deps: UnairedRecheckDeps<T>): Promise<Fetched> {
+		const pending = inFlight.get(key);
 		if (pending) return pending;
 		const startedAt = deps.now();
 		const started = deps
@@ -75,26 +75,28 @@ export function createUnairedRecheck(intervalMs: number = UNAIRED_RECHECK_INTERV
 				(data): Fetched => ({ data, startedAt }),
 				(): Fetched => null
 			)
-			.finally(() => inFlight.delete(showId));
-		inFlight.set(showId, started);
+			.finally(() => inFlight.delete(key));
+		inFlight.set(key, started);
 		return started;
 	}
 
 	return {
 		check: async <T>(subject: UnairedRecheckSubject, deps: UnairedRecheckDeps<T>) => {
-			const showId = subject.show;
+			// Joined and limited per page: each page is its own fetch, so
+			// an answer for one page is no answer for another.
+			const key = `${subject.show}#${subject.page}`;
 			const asked = deps.currentContext();
-			const last = refreshedAt.get(showId);
+			const last = refreshedAt.get(key);
 			const recent = last !== undefined && deps.now() - last < intervalMs;
-			if (recent && !inFlight.has(showId)) return deps.isAired() ? 'aired' : 'unaired';
-			const fetched = await refreshOnce(showId, deps);
+			if (recent && !inFlight.has(key)) return deps.isAired() ? 'aired' : 'unaired';
+			const fetched = await refreshOnce(key, deps);
 			if (deps.currentContext() !== asked) return 'superseded';
 			if (fetched === null) return 'failed';
 			deps.apply(fetched.data as T);
 			// The limit starts once a page holds the answer: until then a
 			// repeat click answered from page state would answer from the
 			// very cache it is questioning.
-			refreshedAt.set(showId, fetched.startedAt);
+			refreshedAt.set(key, fetched.startedAt);
 			return deps.isAired() ? 'aired' : 'unaired';
 		}
 	};
