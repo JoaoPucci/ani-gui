@@ -15,9 +15,14 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { bootApp, loadFirstPage } = require("./startup.cjs");
+const { EventEmitter } = require("node:events");
 
-const aborted = () => new Error("ERR_ABORTED (-3) loading 'about:blank'");
+const { awaitFirstShow, bootApp, loadFirstPage } = require("./startup.cjs");
+
+// Electron's loadURL rejections carry the net error name as `code`.
+const loadError = (code, errno, url) =>
+  Object.assign(new Error(`${code} (${errno}) loading '${url}'`), { code, errno, url });
+const aborted = () => loadError("ERR_ABORTED", -3, "about:blank");
 
 test("a first page superseded by another navigation is not a startup failure", async () => {
   const logged = [];
@@ -33,6 +38,53 @@ test("a first page that loads is loaded once and logs nothing", async () => {
   await loadFirstPage(win, "app://localhost/", (...args) => logged.push(args));
   assert.deepEqual(urls, ["app://localhost/"]);
   assert.equal(logged.length, 0);
+});
+
+for (const [code, errno] of [
+  ["ERR_FILE_NOT_FOUND", -6],
+  ["ERR_CONNECTION_REFUSED", -102],
+  // A renderer that crashes during the first load rejects with this.
+  ["ERR_FAILED", -2],
+]) {
+  test(`a first page that fails for any other reason is a startup failure (${code})`, async () => {
+    const win = { loadURL: async () => Promise.reject(loadError(code, errno, "app://localhost/")) };
+    await assert.rejects(loadFirstPage(win, "app://localhost/", () => {}), (err) => err.code === code);
+  });
+}
+
+// A fake BrowserWindow carrying only what the first-show guard reads.
+const fakeWindow = () => {
+  const win = new EventEmitter();
+  win.webContents = new EventEmitter();
+  return win;
+};
+
+test("a window that reaches ready-to-show passes the first-show guard", async () => {
+  const win = fakeWindow();
+  const shown = awaitFirstShow(win, { timeoutMs: 1_000 });
+  win.emit("ready-to-show");
+  await shown;
+});
+
+test("a renderer that dies before the first show is a startup failure", async () => {
+  const win = fakeWindow();
+  const shown = awaitFirstShow(win, { timeoutMs: 1_000 });
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed", exitCode: 139 });
+  await assert.rejects(shown, /crashed/);
+});
+
+test("a window that never reaches ready-to-show is a startup failure", async () => {
+  const win = fakeWindow();
+  await assert.rejects(awaitFirstShow(win, { timeoutMs: 20 }), /ready-to-show/);
+});
+
+test("a renderer that dies after the first show is not the guard's business", async () => {
+  const win = fakeWindow();
+  const shown = awaitFirstShow(win, { timeoutMs: 1_000 });
+  win.emit("ready-to-show");
+  await shown;
+  win.webContents.emit("render-process-gone", {}, { reason: "crashed", exitCode: 139 });
+  assert.equal(win.webContents.listenerCount("render-process-gone"), 0);
 });
 
 test("a window that cannot be created stops the backend before the app exits", async () => {

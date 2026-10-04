@@ -40,4 +40,7 @@ async function bootApp({ spawnBackend, createWindow, stopBackend, exit, logError
   }
 }
 
-module.exports = { bootApp, loadFirstPage };
+/** Placeholder until the first-show guard exists. */
+async function awaitFirstShow() {}
+
+module.exports = { awaitFirstShow, bootApp, loadFirstPage };
