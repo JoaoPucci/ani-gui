@@ -132,6 +132,21 @@ starting it, and delete it when you find it done.
   writes `COMMIT_EDITMSG` after pre-commit runs, even for `git commit
   -m` — verified with a probe hook. So a gate that skips the tests
   only for a `test(red):` subject has to live in `commit-msg`.
+- **Nothing stops a download tool on Windows under test.** When the
+  shell dies without quitting, the backend stops itself, and the
+  guards on its running downloads kill each tool's tree — on Windows
+  with `taskkill /T`, which finds the tree by parent pid. The test
+  that runs a real download and takes the parent away
+  (`backend/tests/backend_stop.rs`) is Unix-only: its stand-ins for
+  the provider's transport and for yt-dlp are shell scripts, and the
+  backend looks both up as a bare name or an `.exe`, neither of which
+  a script can be on Windows. The Windows leg does run the parent
+  watch and the cases for a dead parent's pipes; what it never does
+  is stop a tool.
+
+  The same goes for what the shell shows on that platform: the
+  failed-startup dialog and the quit prompt have been seen on Linux
+  only, since nothing builds or launches the Windows app in CI.
 
 ## Correctness in the app (continued)
 
@@ -183,6 +198,15 @@ starting it, and delete it when you find it done.
   ascending/descending is absent. Name any further filters wanted
   before starting, rather than reading this as filters being missing.
 - **Update notifier is not resilient to GitHub rate limits.**
+- **Two things still speak English whatever the app's language.** The
+  pages the OAuth callback server answers the browser with after a
+  sign-in — "Connected to ani-gui", "Connection failed" — are written
+  into `electron/oauth-server.js`; the main process has a message
+  table in every shipped locale for its dialogs
+  (`electron/lib/main-messages.cjs`), and they belong in it. And the
+  renderer hands the native pickers English literals: the download
+  folder picker's title, and the file-type names `Executables` and
+  `All files`.
 - **Adopt the `documentPictureInPicture` browser API** for the player's
   pop-out window. Not a request to write documentation — "Document
   Picture-in-Picture" is the W3C API's name.

@@ -13,10 +13,13 @@
 //! transport and for yt-dlp, the way the packages' bundled directory
 //! outranks anything installed.
 //!
-//! Unix only, because the signal is. On Windows a quit runs
-//! `taskkill /F /T` against the backend, which walks the tree by
-//! parent pid and ends the tools itself; no signal is delivered and
-//! the backend has nothing to do.
+//! Unix only. The signals are, and so are the stand-ins: shell
+//! scripts, where Windows runs only what it finds as an `.exe`. A
+//! quit there needs no test of this kind — it runs `taskkill /F /T`
+//! against the backend, which walks the tree by parent pid and ends
+//! the tools itself. A parent that dies does depend on the backend's
+//! wind-down on Windows too, and nothing there exercises it with a
+//! tool to stop; `docs/deferred-work.md` records that.
 
 #![cfg(unix)]
 
