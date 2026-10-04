@@ -349,10 +349,11 @@ fn a_key_with_a_row_of_its_own_keeps_its_numbering() {
 
     assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
 
-    let (rows, offset, _) = left(&state);
+    // The resolution row was resolved from the removed show's page and
+    // goes with it; the remaining row's next play resolves afresh.
     assert_eq!(
-        (rows, offset),
-        (1, 12),
+        left(&state),
+        (1, 12, false),
         "the remaining row and its numbering"
     );
 }
@@ -482,4 +483,87 @@ fn a_clear_forgets_the_noted_pages() {
     delete_show(&state);
 
     assert!(skips_left(&state));
+}
+
+// — the numbering of a key with no row ————————————————————————————————
+//
+// A resolve stamps a key's numbering before the key has a history row,
+// and a cached stream played later writes that row through it. So a
+// rowless key's numbering goes only when nothing can play the key
+// without resolving it again: when no resolution row names it.
+
+const PAGELESS: &str = "play:v14:The Show:sub:best:3:::";
+
+/// The show's row under one key, and what its page resolved under the
+/// other: numbering and a resolution row that records the page.
+fn other_key_leftovers(state: &AppState) {
+    seed_row_of_page(state, "hianime:the-show-100", "77");
+    let warm = page_77(state);
+    stamp_numbering(state, &native(), warm);
+    play_resolution_cache::store(state, warm, KEY, &cached());
+}
+
+/// A resolution row from before rows recorded their page survives the
+/// removal, and can still be played from the cache: the key it names
+/// keeps the numbering that play would write its row through.
+#[test]
+fn a_key_a_surviving_resolution_row_names_keeps_its_numbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    other_key_leftovers(&state);
+    play_resolution_cache::put(&state.cache_pool, PAGELESS, &cached());
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert!(resolution(&state, KEY).is_none(), "the page's row goes");
+    assert!(
+        resolution(&state, PAGELESS).is_some(),
+        "the pageless one stays"
+    );
+    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 12);
+}
+
+/// A clear takes what a delete of each show would: the numbering its
+/// shows' pages resolved under another key goes with the rest. That of
+/// a show only browsed stays, as the numbering of any show a page
+/// resolved and nobody played does.
+#[test]
+fn a_clear_takes_the_numbering_its_shows_pages_resolved_under_another_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    other_key_leftovers(&state);
+    let mut browsed = cached();
+    browsed.show_id = "other-show-9".into();
+    play_resolution_cache::store(
+        &state,
+        crate::history::guard::Asked::now(&state.history_path, Some("88")),
+        "play:v14:Other Show:sub:best:1:::",
+        &browsed,
+    );
+    crate::commands::anidb_offset::put(&state, "other-show-9", 3);
+
+    crate::commands::history::history_clear(&state).unwrap();
+
+    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+    assert_eq!(
+        crate::commands::anidb_offset::get(&state, "other-show-9"),
+        3
+    );
+}
+
+/// A delete whose history write fails has already forgotten the
+/// resolution rows that named the other key. The retry that removes
+/// the row must not find the key's numbering beyond its reach.
+#[test]
+fn a_retried_delete_still_takes_the_other_keys_numbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    other_key_leftovers(&state);
+    std::fs::create_dir(tmp.path().join("history.new")).unwrap();
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").is_err());
+    std::fs::remove_dir(tmp.path().join("history.new")).unwrap();
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
 }
