@@ -2288,6 +2288,79 @@ mod tests {
         assert_eq!(body.trim(), "\"11061\"");
     }
 
+    async fn played_body(state: AppState, show_id: &str) -> String {
+        let router = build_api_router(Arc::new(state));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/allmanga-kitsu-map/{show_id}/played"))
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        body_string(response).await.trim().to_owned()
+    }
+
+    fn now_ms() -> i64 {
+        i64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_millis(),
+        )
+        .expect("ms")
+    }
+
+    /// A watch stamps the show and stores its mapping in the same
+    /// moment, so a mapping written beside the show's stamp is one a
+    /// play stored. Continue Watching keeps such a mapping when only the
+    /// provider's title doubts it.
+    #[tokio::test]
+    async fn a_mapping_stored_beside_the_watch_stamp_reads_as_played() {
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        crate::commands::kitsu::watched_at_put(&state, "hianime:x-1", now_ms()).expect("stamp");
+        crate::commands::kitsu::allmanga_kitsu_put(&state, "hianime:x-1", "49877").expect("put");
+        assert_eq!(played_body(state, "hianime:x-1").await, "true");
+    }
+
+    /// A mapping with no watch stamp, or one written well apart from
+    /// it, was stored by a resolve that guessed: it is not played.
+    #[tokio::test]
+    async fn a_mapping_no_watch_stored_reads_as_not_played() {
+        let td = TempDir::new().expect("tempdir");
+        let unstamped = test_app_state(&td);
+        crate::commands::kitsu::allmanga_kitsu_put(&unstamped, "hianime:x-1", "1623").expect("put");
+        assert_eq!(
+            played_body(unstamped, "hianime:x-1").await,
+            "false",
+            "no stamp"
+        );
+
+        let td = TempDir::new().expect("tempdir");
+        let apart = test_app_state(&td);
+        crate::commands::kitsu::watched_at_put(&apart, "hianime:x-1", now_ms() - 3_600_000)
+            .expect("stamp");
+        crate::commands::kitsu::allmanga_kitsu_put(&apart, "hianime:x-1", "1623").expect("put");
+        assert_eq!(
+            played_body(apart, "hianime:x-1").await,
+            "false",
+            "an hour apart"
+        );
+
+        let td = TempDir::new().expect("tempdir");
+        let unmapped = test_app_state(&td);
+        crate::commands::kitsu::watched_at_put(&unmapped, "hianime:x-1", now_ms()).expect("stamp");
+        assert_eq!(
+            played_body(unmapped, "hianime:x-1").await,
+            "false",
+            "no mapping"
+        );
+    }
+
     /// Evict route is the player's feedback path: a cached URL that
     /// HEAD-validated still 4xxs at playback time, so the renderer drops
     /// the row and retries fresh. Must be idempotent — 204 even when no

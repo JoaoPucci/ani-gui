@@ -443,3 +443,36 @@ async fn the_enrichment_resolve_answers_none_when_no_hit_shares_the_slugs_words(
         "nothing persists under the slug"
     );
 }
+
+/// A mapping a play stored is the show the user played, and a resolve
+/// that guesses from the slug's words does not replace it. Continue
+/// Watching re-resolves a row when it doubts the binding on its count
+/// or its cour, which is fuzzy evidence; a guess stored over the play's
+/// answer would lose it for good.
+#[tokio::test]
+async fn the_enrichment_resolve_never_replaces_a_mapping_a_play_stored() {
+    let mock = MockServer::start().await;
+    serve_search(&mock, "one piece", search_body(&[("12", "one-piece")])).await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock")
+            .as_millis(),
+    )
+    .expect("ms");
+    watched_at_put(&state, "one-piece-69", now).expect("stamp");
+    allmanga_kitsu_put(&state, "one-piece-69", "21").expect("put");
+
+    resolve_allmanga_show_id(&state, "one-piece-69", true)
+        .await
+        .expect("resolve ok");
+
+    assert_eq!(
+        allmanga_kitsu_get(&state, "one-piece-69")
+            .expect("cache read")
+            .as_deref(),
+        Some("21"),
+        "the play's mapping stands"
+    );
+}
