@@ -787,3 +787,14 @@ fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
         "a title-matched id's"
     );
 }
+
+/// An empty Kitsu id names no show, so it finds no row — not even one
+/// recording an empty id would.
+#[test]
+fn by_kitsu_with_an_empty_id_finds_no_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    assert_eq!(history_by_kitsu(&s, "").unwrap(), None);
+}
