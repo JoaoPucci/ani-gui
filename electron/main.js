@@ -35,6 +35,7 @@ const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
+const { bootApp, loadFirstPage } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
@@ -496,7 +497,7 @@ async function createWindow(apiBase, internalSecret) {
 
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
-    await win.loadURL(VITE_DEV_URL);
+    await loadFirstPage(win, VITE_DEV_URL, console.error);
   } else {
     // Packaged static SvelteKit bundle, served via the custom
     // `app://` scheme registered above. The bundle's chunks do
@@ -507,7 +508,7 @@ async function createWindow(apiBase, internalSecret) {
     // router reads `location.pathname` and treats `/index.html`
     // as a non-route (the app has no `routes/index.html` page).
     // The protocol handler maps `/` to the index.html file.
-    await win.loadURL(`${APP_ORIGIN}/`);
+    await loadFirstPage(win, `${APP_ORIGIN}/`, console.error);
   }
   return win;
 }
@@ -901,22 +902,26 @@ function maybePromptOnClose(win, event) {
   }
 }
 
-app.whenReady().then(async () => {
-  try {
-    // Drop Electron's default app menu (File / Edit / View / Window /
-    // Help) — the in-window topbar + rail are the navigation surface;
-    // the platform menu was just adding a strip of system chrome the
-    // app doesn't use.
-    Menu.setApplicationMenu(null);
-    if (!IS_DEV) registerAppProtocol();
-    const { child, apiBase, internalSecret } = await spawnBackend();
-    backendChild = child;
-    await createWindow(apiBase, internalSecret);
-  } catch (err) {
-    console.error("[main] startup failed:", err);
-    app.exit(1);
-  }
-});
+app.whenReady().then(() =>
+  bootApp({
+    spawnBackend: async () => {
+      // Drop Electron's default app menu (File / Edit / View / Window /
+      // Help) — the in-window topbar + rail are the navigation surface;
+      // the platform menu was just adding a strip of system chrome the
+      // app doesn't use.
+      Menu.setApplicationMenu(null);
+      if (!IS_DEV) registerAppProtocol();
+      const backend = await spawnBackend();
+      backendChild = backend.child;
+      return backend;
+    },
+    createWindow: ({ apiBase, internalSecret }) =>
+      createWindow(apiBase, internalSecret),
+    stopBackend: killBackendTree,
+    exit: (code) => app.exit(code),
+    logError: console.error,
+  }),
+);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
