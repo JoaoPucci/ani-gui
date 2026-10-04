@@ -401,3 +401,45 @@ async fn the_enrichment_resolve_takes_the_first_hit_for_a_slug_without_cour_evid
         Some("12")
     );
 }
+
+/// A search hit whose titles share nothing with the slug's words is
+/// not the show, and the resolve answers none rather than storing it.
+/// The provider names Seitokai ni mo Ana wa Aru! "There Is Also a Hole
+/// in the Student Organization!", Kitsu does not return the show for
+/// those words, and its first hit is Here is Greenwood: binding the
+/// slug to it put Greenwood on the Continue card that played it.
+#[tokio::test]
+async fn the_enrichment_resolve_answers_none_when_no_hit_shares_the_slugs_words() {
+    let mock = MockServer::start().await;
+    let fixture: serde_json::Value = serde_json::from_slice(SEARCH_FIXTURE).expect("fixture");
+    let mut greenwood = fixture["data"][0].clone();
+    greenwood["id"] = serde_json::Value::from("1623");
+    greenwood["attributes"]["slug"] = serde_json::Value::from("here-is-greenwood");
+    greenwood["attributes"]["canonicalTitle"] = serde_json::Value::from("Here is Greenwood");
+    greenwood["attributes"]["titles"] = serde_json::json!({
+        "en": "Here is Greenwood",
+        "en_jp": "Koko wa Green Wood",
+        "ja_jp": "ここはグリーン・ウッド"
+    });
+    greenwood["attributes"]["abbreviatedTitles"] = serde_json::json!([]);
+    serve_search(
+        &mock,
+        "there is also a hole in the student organization",
+        serde_json::to_vec(&serde_json::json!({ "data": [greenwood] })).expect("json"),
+    )
+    .await;
+    let state = state_with_kitsu_at(&mock.uri());
+    let id = "hianime:there-is-also-a-hole-in-the-student-organization-10497";
+    let got = resolve_allmanga_show_id(&state, id, true)
+        .await
+        .expect("resolve ok");
+    assert!(
+        got.is_none(),
+        "a hit sharing none of the slug's words is not the show: {got:?}"
+    );
+    assert_eq!(
+        allmanga_kitsu_get(&state, id).expect("cache read"),
+        None,
+        "nothing persists under the slug"
+    );
+}

@@ -111,6 +111,36 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedResolveAllmanga).not.toHaveBeenCalled();
 	});
 
+	it('answers no match for a row without a recorded show rather than a hit its title refutes', async () => {
+		// The provider calls Seitokai ni mo Ana wa Aru! "There Is Also a
+		// Hole in the Student Organization!", and a Kitsu search for those
+		// words does not return the show: its first hit is Here is
+		// Greenwood, which a row without a count once took on the count
+		// alone.
+		const row = resolveHistoryEntry(
+			{
+				id: 'hianime:there-is-also-a-hole-in-the-student-organization-10497',
+				ep_no: '1',
+				title: 'There Is Also a Hole in the Student Organization!'
+			},
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([
+			{ ...stubKitsu('1623', 'Here is Greenwood', 6), slug: 'here-is-greenwood', subtype: 'OVA' },
+			{
+				...stubKitsu('1677', 'Tokyo Majin Gakuen Kenpucho: Tou', 14),
+				slug: 'tokyo-majin-gakuen-kenpucho-tou',
+				subtype: 'TV'
+			}
+		]);
+
+		const got = await resolveKitsuMatch(row);
+
+		expect(got).toBeNull();
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+
 	it('answers no show, not a guess, when the recorded show cannot be read', async () => {
 		const preliminary = resolveHistoryEntry(
 			{ id: 'hianime:x-1', ep_no: '1', title: 'X', kitsu_id: '49877' },
