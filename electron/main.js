@@ -447,8 +447,8 @@ async function createWindow(apiBase, internalSecret) {
   win.maximize();
   // ready-to-show goes through the first-show guard. The window is
   // already on screen here — maximize() above shows a hidden window —
-  // but blank and frameless, so with nothing to close it by until the
-  // renderer has drawn the titlebar. A window that never gets there —
+  // but blank and frameless: the titlebar and its close button are
+  // the renderer's to draw. A window that never gets there —
   // a renderer gone, or, in a packaged build, no first paint within
   // the deadline — fails the boot instead (see lib/startup.cjs).
   const firstShow = awaitFirstShow(win, {

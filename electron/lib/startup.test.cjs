@@ -79,8 +79,8 @@ for (const [code, errno] of [
 // included. A bundle with its index.html missing is answered by the
 // app's own protocol handler with a 404, and that 404 "loads": the
 // window comes up frameless around the words "not found", with no
-// titlebar to close it by. An error status on the first page is the
-// first page failing.
+// titlebar and so no close button. An error status on the first page
+// is the first page failing.
 for (const status of [404, 403, 500]) {
   test(`a first page that arrives as an error page is a startup failure (${status})`, async () => {
     const win = pageWindow(answers(status));

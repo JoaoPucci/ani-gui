@@ -11,15 +11,15 @@
  * before the first page finishes loading, and the window that
  * navigation lands in still works, so that rejection is logged and
  * dropped. Every other rejection — a refused connection, a renderer
- * that crashed mid-load (ERR_FAILED) — leaves a blank window the user
- * cannot do anything with, not even close (see awaitFirstShow), so it
+ * that crashed mid-load (ERR_FAILED) — leaves a blank window with
+ * nothing on it, a close button included (see awaitFirstShow), so it
  * propagates and fails the boot.
  *
  * So does a page that arrives as an error page. `loadURL` resolves
  * for anything that arrives, and the app serves its own error pages:
  * a bundle with no index.html is answered by the app:// handler with
- * a 404, which loads like any page and leaves the same uncloseable
- * window around the words "not found". The status comes from the
+ * a 404, which loads like any page and leaves the same bare window
+ * around the words "not found". The status comes from the
  * navigation's commit; `-1`, a navigation outside HTTP, is nothing to
  * judge.
  */
@@ -78,8 +78,8 @@ function firstShowTimeoutMs({ isDev }) {
  * maximizing a hidden window shows it. It is also frameless — the
  * titlebar and its buttons are the renderer's to draw. So a window
  * that never gets its first paint is a blank rectangle with nothing
- * to click, the close button included, and the app would otherwise
- * sit there with its backend running and no way out.
+ * on it to click, the close button included, and the app would
+ * otherwise sit there with its backend running behind it.
  *
  * After the first show the guard lets go: a later renderer crash is
  * not a boot failure.
