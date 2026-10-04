@@ -437,7 +437,7 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   providers naming different shows identically cannot read or
 ///   overwrite each other's mapping. v2 rows are orphaned rather
 ///   than left answering for another provider.
-const TITLE_MATCH_VERSION: u32 = 3;
+pub(crate) const TITLE_MATCH_VERSION: u32 = 3;
 
 fn title_match_key(
     provider: crate::scraper::provider::ProviderId,
@@ -518,7 +518,7 @@ pub fn title_match_put(
 ///   so one bad row keeps steering a show to the wrong page for its
 ///   whole TTL. Re-keying orphans them; the next successful resolve
 ///   stamps a fresh v3 row.
-const ALLMANGA_KITSU_VERSION: u32 = 3;
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 3;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")

@@ -80,8 +80,38 @@ fn serialize(rows: &[Row]) -> String {
     out
 }
 
-/// The locked read-merge-write every mutation shares.
+/// The locked read-merge-write every put shares.
 pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Option<(u32, String)>) {
+    let merge = |rows: &mut Vec<Row>| match rows.iter_mut().find(|r| r.slug == slug) {
+        Some(row) => {
+            row.offset = offset;
+            // An offset-only put must not erase the display
+            // stamp — every fresh resolve re-stamps the offset,
+            // and the last fractional watch has to stay
+            // translatable until something replaces it.
+            if display.is_some() {
+                row.display = display;
+            }
+        }
+        None => rows.push(Row {
+            slug: slug.to_string(),
+            offset,
+            display,
+        }),
+    };
+    if let Err(e) = rewrite(state, merge) {
+        tracing::warn!(slug, offset, error = ?e, "anidb offset write failed");
+    }
+}
+
+/// Drop every row `forget` picks, under the same locks as a put.
+pub(super) fn remove_rows(state: &AppState, forget: impl Fn(&Row) -> bool) -> std::io::Result<()> {
+    rewrite(state, |rows| rows.retain(|r| !forget(r)))
+}
+
+/// Read the store, apply `change`, and write it back atomically, under
+/// the process mutex and the cross-process file lock.
+fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> std::io::Result<()> {
     let path = store_path(&state.history_path);
     let _guard = PUT_LOCK.lock().expect("offset put lock");
     let write = || -> std::io::Result<()> {
@@ -104,32 +134,14 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
         fs4::FileExt::lock(&lock_file)?;
         let body = std::fs::read_to_string(&path).unwrap_or_default();
         let mut rows = parse(&body);
-        match rows.iter_mut().find(|r| r.slug == slug) {
-            Some(row) => {
-                row.offset = offset;
-                // An offset-only put must not erase the display
-                // stamp — every fresh resolve re-stamps the offset,
-                // and the last fractional watch has to stay
-                // translatable until something replaces it.
-                if display.is_some() {
-                    row.display = display;
-                }
-            }
-            None => rows.push(Row {
-                slug: slug.to_string(),
-                offset,
-                display,
-            }),
-        }
+        change(&mut rows);
         // Atomic like the history writer: a concurrent reader sees
         // the full pre- or post-state, never a half-written file.
         let tmp = path.with_extension("new");
         std::fs::write(&tmp, serialize(&rows))?;
         std::fs::rename(&tmp, &path)
     };
-    if let Err(e) = write() {
-        tracing::warn!(slug, offset, error = ?e, "anidb offset write failed");
-    }
+    write()
 }
 
 /// Serializes every put's read-merge-write sequence within this

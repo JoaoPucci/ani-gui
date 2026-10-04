@@ -228,21 +228,21 @@ fn like_prefix(prefix: &str) -> String {
     format!("{escaped}%")
 }
 
-/// Every meta_cache key under `prefix`, expired or not.
+/// Every (key, body) pair under `prefix`, expired or not.
 ///
 /// # Errors
 /// [`AniError::Cache`] on connection or query failure.
-pub fn meta_cache_keys_prefix(pool: &SqlitePool, prefix: &str) -> Result<Vec<String>> {
+pub fn meta_cache_entries_prefix(pool: &SqlitePool, prefix: &str) -> Result<Vec<(String, String)>> {
     let conn = pool.get().map_err(|_| AniError::Cache)?;
     let mut stmt = conn
-        .prepare("SELECT key FROM meta_cache WHERE key LIKE ?1 ESCAPE '\\'")
+        .prepare("SELECT key, body FROM meta_cache WHERE key LIKE ?1 ESCAPE '\\'")
         .map_err(|_| AniError::Cache)?;
-    let keys = stmt
-        .query_map(params![like_prefix(prefix)], |r| r.get::<_, String>(0))
+    let entries = stmt
+        .query_map(params![like_prefix(prefix)], |r| Ok((r.get(0)?, r.get(1)?)))
         .map_err(|_| AniError::Cache)?
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(|_| AniError::Cache)?;
-    Ok(keys)
+    Ok(entries)
 }
 
 /// Delete every meta_cache entry under `prefix`, expired or not.

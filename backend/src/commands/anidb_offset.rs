@@ -21,7 +21,7 @@ use crate::app::AppState;
 
 #[path = "anidb_offset_store.rs"]
 mod anidb_offset_store;
-use anidb_offset_store::{merge_row, parse, store_path};
+use anidb_offset_store::{merge_row, parse, remove_rows, store_path};
 
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
@@ -37,6 +37,22 @@ pub fn put(state: &AppState, slug: &str, offset: u32) {
 /// it back for display. Last write wins, like the offset.
 pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &str) {
     merge_row(state, slug, offset, Some((slot, tag.to_string())));
+}
+
+/// Drop the slug's row, with the history row it made readable.
+///
+/// # Errors
+/// The store's read or write failure.
+pub fn forget(state: &AppState, slug: &str) -> std::io::Result<()> {
+    remove_rows(state, |r| r.slug == slug)
+}
+
+/// Drop every row, with the history they made readable.
+///
+/// # Errors
+/// The store's read or write failure.
+pub fn forget_all(state: &AppState) -> std::io::Result<()> {
+    remove_rows(state, |_| true)
 }
 
 /// The slug's stamped (slot, display tag) pair, when one exists.
