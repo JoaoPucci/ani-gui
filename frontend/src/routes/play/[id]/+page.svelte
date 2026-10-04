@@ -61,6 +61,7 @@
 		type SkipInterval
 	} from '$lib/api';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
 	import { airedCap, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
 	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
 	import {
@@ -1066,12 +1067,19 @@
 	// page: unaired episodes render greyed instead of not existing,
 	// and every play path (tiles, arrows, auto-next) clamps to the
 	// aired count. null = unknown → nothing gates.
-	let airing = $state<AiringStatus | null>(null);
+	let airingSchedule = $state<AiringStatus | null>(null);
+	// The schedule can map to a different entry than this one (a
+	// premiere split off as its own finished entry), so the episode
+	// rows' own air dates are a floor under its aired count — every
+	// gate below reads this, never the schedule alone.
+	const airing = $derived(
+		withAiredFloor(airingSchedule, datedAired(kitsuPageCache.values(), Date.now()))
+	);
 	let airingResolved = $state(false);
 	$effect(() => {
 		const currentId = id;
 		const status = detail?.status;
-		airing = null;
+		airingSchedule = null;
 		airingResolved = false;
 		if (!currentId || !status) return;
 		if (status === 'finished') {
@@ -1081,7 +1089,7 @@
 		let cancelled = false;
 		void airingGet(currentId)
 			.then((a) => {
-				if (!cancelled) airing = a;
+				if (!cancelled) airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */

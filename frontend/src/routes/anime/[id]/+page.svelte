@@ -40,6 +40,7 @@
 	import { describePlayFailure as sharedDescribePlayFailure } from '$lib/play/error-copy';
 	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
+	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
 	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
 	import {
 		createAvailabilityWriteback,
@@ -340,7 +341,14 @@
 	// doomed source resolution. null = unknown → every tile stays
 	// interactive (epAirState never gates on unknown), so a failed
 	// fetch degrades to today's behavior.
-	let airing = $state<AiringStatus | null>(null);
+	let airingSchedule = $state<AiringStatus | null>(null);
+	// The schedule can map to a different entry than this one (a
+	// premiere split off as its own finished entry), so the episode
+	// rows' own air dates are a floor under its aired count — every
+	// gate below reads this, never the schedule alone.
+	const airing = $derived(
+		withAiredFloor(airingSchedule, datedAired(kitsuPageCache.values(), Date.now()))
+	);
 	// True once the airing question is answered for this show — fetched,
 	// failed (stays unknown/ungated), or skipped for finished shows. The
 	// prefetch warm waits on it so it can't race ahead of the schedule
@@ -349,7 +357,7 @@
 	$effect(() => {
 		const currentId = id;
 		const status = detail?.status;
-		airing = null;
+		airingSchedule = null;
 		airingResolved = false;
 		if (!currentId || !status) return;
 		if (status === 'finished') {
@@ -359,7 +367,7 @@
 		let cancelled = false;
 		void airingGet(currentId)
 			.then((a) => {
-				if (!cancelled) airing = a;
+				if (!cancelled) airingSchedule = a;
 			})
 			.catch(() => {
 				/* unknown airing data → tiles stay ungated */
