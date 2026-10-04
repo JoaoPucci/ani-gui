@@ -90,7 +90,7 @@ When Kitsu's `coverImage` is null (common for shows currently airing — roughly
 |---|---|---|
 | AniList trending row | SQLite `meta_cache` | 1 hour |
 | Kitsu seasonal / top / recent | SQLite `meta_cache` | 6 hours |
-| Per-anime metadata (`/anime/:id`) | SQLite `meta_cache` | 7 days |
+| Per-anime metadata (`/anime/:id`) | SQLite `meta_cache` | 7 days for a finished show; 24 hours for any other status |
 | Availability probe (positive, ongoing show) | SQLite `meta_cache` | 24 hours at most: with the next airing known, until 1 hour after it when that is sooner, and 1 hour when that airing time has already passed |
 | Availability probe (positive, finished show) | SQLite `meta_cache` | 30 days, until a resolve against the show rewrites the row with the ongoing window |
 | Availability probe (negative — a clean miss, or the requested mode absent, from the provider that answered; served while that provider's gate has been seen answering and every gate ahead of it is refusing) — finished show | SQLite `meta_cache` | 7 days when the probe wrote the row; 24 hours at most when a resolve did (below) |
