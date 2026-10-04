@@ -281,15 +281,19 @@
 	async function onUnairedEpisode(n: number) {
 		const showId = id;
 		if (actionBusy || !showId) return;
+		const caption = m.detail_ep_unaired_recheck_busy();
 		actionBusy = true;
-		actionProgress = m.detail_ep_unaired_recheck_busy();
+		actionProgress = caption;
 		const kitsuPage = Math.ceil(n / KITSU_PAGE_SIZE);
 		const outcome = await unairedRecheck.check(showId, {
-			refresh: async () => {
-				const [schedule, eps] = await Promise.all([
+			// Fetch only: the page may be another show's by the time this
+			// lands, and `apply` runs only if it is still this one's.
+			refresh: () =>
+				Promise.all([
 					airingGet(showId, { refresh: true }),
 					kitsuEpisodes(showId, kitsuPage, { refresh: true })
-				]);
+				]),
+			apply: ([schedule, eps]) => {
 				airingSchedule = schedule;
 				kitsuPageCache.set(kitsuPage, eps);
 			},
@@ -298,6 +302,11 @@
 			now: () => Date.now()
 		});
 		const plan = planUnairedClick(outcome, beyondPlayable(n, playableEpisodeCount));
+		// Superseded: the page is another show's now. Let go of the block
+		// only while it is still the one this check raised — its caption
+		// is how it is told apart — so an action the new show started
+		// keeps its own.
+		if (plan === 'none' && actionProgress !== caption) return;
 		actionBusy = false;
 		actionProgress = null;
 		if (plan === 'play') onPickEpisode(n);
