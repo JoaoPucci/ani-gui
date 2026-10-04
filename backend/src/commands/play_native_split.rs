@@ -23,6 +23,11 @@ pub(crate) struct PartCandidate<'a> {
     pub count: u32,
     /// The candidate's own premiere year positively matched Kitsu's.
     pub confirmed: bool,
+    /// The listing's continuation offset ([`numbering_offset`]): above
+    /// zero for a part numbered cumulatively.
+    ///
+    /// [`numbering_offset`]: super::play_native_numbering::numbering_offset
+    pub offset: u32,
 }
 
 /// The parts that follow candidate `lead`, in order, while each next
@@ -58,7 +63,9 @@ pub(crate) fn split_chain(
     cands: &[PartCandidate<'_>],
     expected: u32,
     best_single: u32,
+    searched: &str,
 ) -> Option<Vec<usize>> {
+    let _ = searched;
     let tolerance = super::play_native::ep_count_threshold(expected);
     let mut best: Option<(u32, Vec<usize>)> = None;
     for lead in (0..cands.len()).filter(|&i| cands[i].confirmed && cands[i].count > 0) {
@@ -145,6 +152,7 @@ pub(crate) fn stitched(
     )],
     expected: u32,
     best_single: u32,
+    searched: &str,
 ) -> Option<super::play_native::PickedShow> {
     let cands: Vec<PartCandidate<'_>> = probed
         .iter()
@@ -152,9 +160,10 @@ pub(crate) fn stitched(
             title: &h.title,
             count: super::play_native_numbering::regular_episode_count(eps),
             confirmed: *confirmed,
+            offset: super::play_native_numbering::numbering_offset(eps),
         })
         .collect();
-    let chain = split_chain(&cands, expected, best_single)?;
+    let chain = split_chain(&cands, expected, best_single, searched)?;
     let listings: Vec<&[EpisodeRef]> = chain.iter().map(|&i| probed[i].1.as_slice()).collect();
     Some(super::play_native::PickedShow {
         hit: probed[chain[0]].0.clone(),

@@ -1243,3 +1243,14 @@ async fn a_sibling_from_another_year_is_not_stitched() {
         .expect("picked");
     assert_eq!(numbered(&picked), vec![(1, 4001)]);
 }
+
+#[tokio::test]
+async fn a_bare_title_inside_the_tolerance_is_not_stitched_to_a_same_year_sequel() {
+    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (32, 1, Some(2026))]));
+    let hits = [hit("x-31", "X"), hit("x-part-2-32", "X Part 2")];
+    let picked = pick_candidate(&client, &hits, Some(13), "X", Some(2026), Some("TV"))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "x-31");
+    assert_eq!(picked.episodes.len(), 12);
+}

@@ -24,6 +24,7 @@ fn cand(title: &str, count: u32, confirmed: bool) -> PartCandidate<'_> {
         title,
         count,
         confirmed,
+        offset: 0,
     }
 }
 
@@ -33,7 +34,7 @@ fn an_airing_split_chains_both_parts_in_order() {
     // at the stem.
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(&second, 2, true), cand(SBR, 1, true)];
-    assert_eq!(split_chain(&cands, 12, 10), Some(vec![1, 0]));
+    assert_eq!(split_chain(&cands, 12, 10, SBR), Some(vec![1, 0]));
 }
 
 #[test]
@@ -42,7 +43,7 @@ fn a_finished_split_beats_the_near_miss_single_part() {
     // would otherwise win inside the tolerance.
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(SBR, 1, true), cand(&second, 11, true)];
-    assert_eq!(split_chain(&cands, 12, 1), Some(vec![0, 1]));
+    assert_eq!(split_chain(&cands, 12, 1, SBR), Some(vec![0, 1]));
 }
 
 #[test]
@@ -52,7 +53,7 @@ fn three_parts_chain_in_order() {
         cand("The Show", 4, true),
         cand("The Show Part 2", 4, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 8), Some(vec![1, 2, 0]));
+    assert_eq!(split_chain(&cands, 12, 8, "The Show"), Some(vec![1, 2, 0]));
 }
 
 #[test]
@@ -61,29 +62,29 @@ fn no_chain_where_a_single_part_already_fits() {
         cand("The Show", 12, true),
         cand("The Show 2nd Season", 1, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 0), None);
+    assert_eq!(split_chain(&cands, 12, 0, "The Show"), None);
     // Still none when the chain only ties the single part.
     let cands = [
         cand("The Show", 11, true),
         cand("The Show 2nd Season", 2, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 1), None);
+    assert_eq!(split_chain(&cands, 12, 1, "The Show"), None);
 }
 
 #[test]
 fn no_chain_without_both_years_confirmed() {
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(SBR, 1, true), cand(&second, 2, false)];
-    assert_eq!(split_chain(&cands, 12, 10), None);
+    assert_eq!(split_chain(&cands, 12, 10, SBR), None);
     let cands = [cand(SBR, 1, false), cand(&second, 2, true)];
-    assert_eq!(split_chain(&cands, 12, 10), None);
+    assert_eq!(split_chain(&cands, 12, 10, SBR), None);
 }
 
 #[test]
 fn a_sibling_with_nothing_listed_adds_nothing() {
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(SBR, 1, true), cand(&second, 0, true)];
-    assert_eq!(split_chain(&cands, 12, 11), None);
+    assert_eq!(split_chain(&cands, 12, 11, SBR), None);
 }
 
 #[test]
@@ -92,18 +93,18 @@ fn no_chain_past_the_expected_count_outside_the_tolerance() {
         cand("The Show", 12, true),
         cand("The Show Part 2", 12, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 0), None);
+    assert_eq!(split_chain(&cands, 12, 0, "The Show"), None);
     let cands = [
         cand("The Show", 10, true),
         cand("The Show Part 2", 10, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 2), None);
+    assert_eq!(split_chain(&cands, 12, 2, "The Show"), None);
 }
 
 #[test]
 fn a_gap_in_the_parts_ends_the_chain() {
     let cands = [cand("The Show", 4, true), cand("The Show Part 3", 4, true)];
-    assert_eq!(split_chain(&cands, 12, 8), None);
+    assert_eq!(split_chain(&cands, 12, 8, "The Show"), None);
 }
 
 #[test]
@@ -218,4 +219,54 @@ fn stitched_slots_count_rows_like_a_single_listing_does() {
     let merged = merge_parts(&[&first, &second]);
     let slots: Vec<u32> = merged.iter().map(|e| e.number).collect();
     assert_eq!(slots, [1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn a_bare_title_that_already_fits_is_not_stitched_to_its_sequel() {
+    // Kitsu's cour 1 counts 13; the provider lists the bare title with
+    // 12 and a same-year "Part 2" — its own Kitsu entry — that has
+    // aired one. 12 + 1 hits 13 exactly, but the bare title alone is
+    // inside the tolerance: it is the entry, and stitching would play
+    // Part 2's first episode as episode 13.
+    let cands = [cand("X", 12, true), cand("X Part 2", 1, true)];
+    assert_eq!(split_chain(&cands, 13, 1, "X"), None);
+}
+
+#[test]
+fn a_near_miss_later_part_is_stitched_only_under_the_entrys_own_title() {
+    // The finished split is stitched over a later part that sits one
+    // off because the entry is named as the bare stem. Searched as the
+    // later part's own title, that same pool is the later part's
+    // entry, and its near miss stands.
+    let second = format!("{SBR} 2nd Stage");
+    let cands = [cand(SBR, 1, true), cand(&second, 11, true)];
+    assert_eq!(split_chain(&cands, 12, 1, &second), None);
+    assert_eq!(
+        split_chain(&cands, 12, 1, &SBR.to_lowercase()),
+        Some(vec![0, 1])
+    );
+}
+
+#[test]
+fn an_airing_split_found_through_an_alias_is_still_stitched() {
+    // With no single candidate inside the tolerance there is no
+    // near miss to protect, and the name searched is only an alias.
+    let second = format!("{SBR} 2nd Stage");
+    let cands = [cand(SBR, 1, true), cand(&second, 2, true)];
+    assert_eq!(
+        split_chain(&cands, 12, 10, "JoJo's Bizarre Adventure: Steel Ball Run"),
+        Some(vec![0, 1])
+    );
+}
+
+#[test]
+fn a_lead_numbered_cumulatively_is_never_stitched() {
+    // A lead listed as a continuation (41, 42, ...) was played alone
+    // with that offset stamped under its key, and its history rows
+    // speak those numbers. Stitching would restamp the key at zero
+    // and misread every one of them.
+    let mut lead = cand("The Show", 2, true);
+    lead.offset = 40;
+    let cands = [lead, cand("The Show Part 2", 2, true)];
+    assert_eq!(split_chain(&cands, 12, 10, "The Show"), None);
 }
