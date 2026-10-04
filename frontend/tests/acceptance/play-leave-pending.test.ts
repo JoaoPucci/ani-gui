@@ -32,6 +32,7 @@ import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { playerVideo, playerVideoInSlot } from './player-video';
+import { readPosition } from '../../src/lib/play/watch-position';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -66,6 +67,7 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
+	window.localStorage.clear();
 	vi.mocked(goto).mockClear();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
@@ -191,5 +193,19 @@ describe('play route — a page that has gone sends nobody back to it', () => {
 		await new Promise((r) => setTimeout(r, 100));
 
 		expect(goto).not.toHaveBeenCalled();
+	});
+
+	it('switching episodes marks the next one started before its session lands', async () => {
+		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await until(
+			() => target.querySelector('li[data-ep-num="3"] button') !== null,
+			'the episode strip'
+		);
+		expect(readPosition(KITSU_ID, 3)).toBeNull();
+		(target.querySelector('li[data-ep-num="3"] button') as HTMLButtonElement).click();
+		expect(readPosition(KITSU_ID, 3)).toBe(0);
 	});
 });

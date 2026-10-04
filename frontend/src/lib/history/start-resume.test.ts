@@ -236,3 +236,18 @@ describe('makeStartResume — an episode left part-way', () => {
 		);
 	});
 });
+
+describe('makeStartResume — the episode is marked started before its watch is recorded', () => {
+	// The resolve records the watch, so a click that never reaches the
+	// player — navigation cancelled, the app closed — must still leave
+	// the episode marked started, or Continue reads it as finished.
+	it('marks the episode it is about to play started before resolving it', async () => {
+		const h = makeHarness({
+			getPlayableCount: () => 12,
+			markStarted: (k, ep) => h.log.push(`started:${k}:${ep}`)
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
+		expect(h.log).toEqual(['busy:k1', 'settings', 'started:k1:6', 'resolve-play', 'nav-session']);
+	});
+});

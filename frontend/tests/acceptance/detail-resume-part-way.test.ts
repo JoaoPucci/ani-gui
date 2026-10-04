@@ -32,7 +32,7 @@ vi.mock('$app/navigation', () => ({
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
-import { savePosition } from '../../src/lib/play/watch-position';
+import { readPosition, savePosition } from '../../src/lib/play/watch-position';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -152,5 +152,17 @@ describe('detail route — Play goes back to an episode left part-way', () => {
 
 		playButton(label)!.click();
 		await until(() => clickStreams(LAST + 1).length > 0, 'the click to resolve the next episode');
+	});
+
+	it('marks the episode started as soon as Play is clicked, before the session lands', async () => {
+		// The resolve records the watch; if the viewer never reaches the
+		// player, the mark is what keeps Continue on this episode.
+		useShowHandlers();
+		app = mount(DetailPage, { target });
+		const label = m.detail_play_button_resume({ episode: String(LAST + 1) });
+		await until(() => playButton(label) !== null, 'the Play button');
+		expect(readPosition(KITSU_ID, LAST + 1)).toBeNull();
+		playButton(label)!.click();
+		expect(readPosition(KITSU_ID, LAST + 1)).toBe(0);
 	});
 });
