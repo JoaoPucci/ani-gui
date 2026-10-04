@@ -39,20 +39,14 @@ pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &s
     merge_row(state, slug, offset, Some((slot, tag.to_string())));
 }
 
-/// Drop the slug's row, with the history row it made readable.
+/// Drop the rows of the slugs `removed` names, with the history rows
+/// they made readable. Every other row stays, a show's offset stamped
+/// by a resolve before it has a history row among them.
 ///
 /// # Errors
 /// The store's read or write failure.
-pub fn forget(state: &AppState, slug: &str) -> std::io::Result<()> {
-    remove_rows(state, |r| r.slug == slug)
-}
-
-/// Drop every row, with the history they made readable.
-///
-/// # Errors
-/// The store's read or write failure.
-pub fn forget_all(state: &AppState) -> std::io::Result<()> {
-    remove_rows(state, |_| true)
+pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> std::io::Result<()> {
+    remove_rows(state, |r| removed.contains(r.slug.as_str()))
 }
 
 /// The slug's stamped (slot, display tag) pair, when one exists.

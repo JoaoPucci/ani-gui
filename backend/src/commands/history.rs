@@ -168,13 +168,15 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
     if !remove_by_id(&mut entries, id) {
         return Ok(false);
     }
-    // Forget first: a cache that cannot fails the delete with the row
-    // still there to retry, rather than reporting a failure for a row
-    // already gone.
+    // The cache first: a cache that cannot forget fails the delete with
+    // the row still there to retry, rather than reporting a failure for
+    // a row already gone. The offsets last, once the row is gone, so no
+    // failure leaves a row without its offset.
     for title in &titles {
         super::history_forget::forget_show(state, id, title)?;
     }
     write_atomic(&state.history_path, &entries)?;
+    super::history_forget::sweep_offsets(state, &[id]);
     Ok(true)
 }
 
@@ -186,9 +188,15 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
 /// Returns [`crate::error::AniError::Io`] if the file cannot be written,
 /// and [`crate::error::AniError::Cache`] if the cache cannot be.
 pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
-    // Forget first, for the reason history_delete does.
+    // In history_delete's order, for its reasons.
+    // A history that cannot be read is still cleared; only the offsets
+    // of rows it could name are known to go with them.
+    let cleared = read_all(&state.history_path).unwrap_or_default();
     super::history_forget::forget_all(state)?;
-    write_atomic(&state.history_path, &[])
+    write_atomic(&state.history_path, &[])?;
+    let ids: Vec<&str> = cleared.iter().map(|e| e.id.as_str()).collect();
+    super::history_forget::sweep_offsets(state, &ids);
+    Ok(())
 }
 
 #[cfg(test)]
