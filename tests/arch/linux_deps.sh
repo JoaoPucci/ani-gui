@@ -115,22 +115,29 @@ if [ -f "$FETCH" ]; then
     done
 fi
 
-# 6. The Linux packages take the static backend. The entry for it
-#    sits under build.linux.extraResources, and no entry elsewhere
-#    hands Linux the glibc-linked build from target/release (the
-#    Windows entry names the .exe).
-MUSL_BACKEND='"from": *"../backend/target/x86_64-unknown-linux-musl/release/ani-gui-backend"'
-if ! grep -q "$MUSL_BACKEND" "$PKG"; then
-    printf 'arch/linux_deps FAIL: %s does not package the backend built for x86_64-unknown-linux-musl\n' "$PKG" >&2
-    failed=1
-fi
-if grep -q '"from": *"../backend/target/release/ani-gui-backend"' "$PKG"; then
-    printf 'arch/linux_deps FAIL: %s packages the glibc-linked backend from target/release for Linux\n' "$PKG" >&2
+# 6. The Linux packages take the static backend: package.json is read
+#    with node's JSON parser (a real parser, not a pattern), and
+#    `build.linux.extraResources` must place the musl build at
+#    `ani-gui-backend`, while no entry the Linux packages receive —
+#    the top-level list or the linux one — places anything else there.
+#    electron-builder adds the platform's list to the top-level one.
+if ! node -e '
+const b = require(process.argv[1]).build;
+const musl = "../backend/target/x86_64-unknown-linux-musl/release/ani-gui-backend";
+const linux = [...(b.extraResources || []), ...((b.linux || {}).extraResources || [])];
+const placed = linux.filter((e) => typeof e === "object" && e.to === "ani-gui-backend");
+const ok = placed.length === 1 && placed[0].from === musl
+  && ((b.linux || {}).extraResources || []).includes(placed[0]);
+process.exit(ok ? 0 : 1);
+' "$REPO_ROOT/$PKG"; then
+    printf 'arch/linux_deps FAIL: %s does not place exactly the backend built for x86_64-unknown-linux-musl at ani-gui-backend in the Linux packages\n' "$PKG" >&2
     failed=1
 fi
 
-# 7. Every script that packages for Linux builds that backend first.
-for s in package package:release; do
+# 7. Every script that packages for Linux builds that backend first:
+#    the `package` scripts, and `dist` / `dist:release`, which are run
+#    on their own as well (the e2e workflow runs `dist`).
+for s in package package:release dist dist:release; do
     line=$(grep -E "\"$s\"" "$PKG" || true)
     case "$line" in
         *build:backend:linux*) ;;
