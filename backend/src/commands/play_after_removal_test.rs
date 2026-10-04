@@ -270,3 +270,114 @@ fn a_row_that_failed_to_write_leaves_no_page_behind() {
         "the removed row was never played from that page"
     );
 }
+
+// — what a show's page resolved under another key ——————————————————
+//
+// A page warms its episodes whether or not the show is in history, and
+// a warm that fails over resolves under the other provider's key: a
+// resolution row and a numbering for a key the show's history row does
+// not have. A removal finds those by the page they were resolved from.
+
+fn resolution(state: &AppState, key: &str) -> Option<CachedResolution> {
+    play_resolution_cache::get(&state.cache_pool, key).expect("cache")
+}
+
+#[test]
+fn a_resolution_row_records_the_page_it_was_resolved_from() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+
+    finish_asked(
+        &state,
+        crate::history::guard::Asked::now(&state.history_path, Some("77")),
+    );
+
+    assert_eq!(
+        resolution(&state, KEY).expect("stored").kitsu_id.as_deref(),
+        Some("77")
+    );
+}
+
+#[test]
+fn removing_a_show_takes_what_its_page_resolved_under_another_key() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_row_of_page(&state, "hianime:the-show-100", "77");
+    // A warm of the show's page that resolved under the other key: a
+    // resolution row and a numbering, and no history row.
+    let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    stamp_numbering(&state, &native(), warm);
+    play_resolution_cache::store(&state, warm, KEY, &cached());
+    // Another page's warm, which the removal has no business with.
+    let other_key = "play:v14:Other Show:sub:best:1:::";
+    let mut other = cached();
+    other.show_id = "other-show-9".into();
+    play_resolution_cache::store(
+        &state,
+        crate::history::guard::Asked::now(&state.history_path, Some("88")),
+        other_key,
+        &other,
+    );
+    crate::commands::anidb_offset::put(&state, "other-show-9", 3);
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert_eq!(left(&state), (0, 0, false), "the show's, under either key");
+    assert!(
+        resolution(&state, other_key).is_some(),
+        "another page's stays"
+    );
+    assert_eq!(
+        crate::commands::anidb_offset::get(&state, "other-show-9"),
+        3
+    );
+}
+
+/// A key with a history row of its own keeps its numbering: the row
+/// needs it to be read, whatever page its resolution rows name.
+#[test]
+fn a_key_with_a_row_of_its_own_keeps_its_numbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_row_of_page(&state, "hianime:the-show-100", "77");
+    // A row under the other key that the history never linked to the
+    // page, with the numbering and resolution row a play left it.
+    seed_row(&state, SHOW);
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    stamp_numbering(&state, &native(), play);
+    play_resolution_cache::store(&state, play, KEY, &cached());
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    let (rows, offset, _) = left(&state);
+    assert_eq!(
+        (rows, offset),
+        (1, 12),
+        "the remaining row and its numbering"
+    );
+}
+
+/// An empty id names no page. A removed row whose title match was
+/// stored with an empty id is not thereby known by "the page" of every
+/// resolution row that records none.
+#[test]
+fn a_resolution_row_with_no_page_is_no_removed_shows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_row(&state, "hianime:the-show-100");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "title-match:v3:hianime:the show:c1",
+        "",
+        3600,
+    )
+    .unwrap();
+    let other_key = "play:v14:Other Show:sub:best:1:::";
+    let mut other = cached();
+    other.show_id = "other-show-9".into();
+    play_resolution_cache::put(&state.cache_pool, other_key, &other);
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert!(resolution(&state, other_key).is_some());
+}
