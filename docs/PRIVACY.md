@@ -27,13 +27,19 @@ ani-gui keeps the following on your computer only:
   SQLite database under your OS's cache directory.
 - **Watch history** — a plain-text file in the app's own state
   directory. Lists what you've watched, where you left off and
-  when, and the Kitsu id of the show you played. The metadata cache
-  keeps up to three more entries per show you watch: when you last
-  watched it, the Kitsu entry it maps to, and, for a show watched
-  before the history recorded the Kitsu id, the Kitsu entry its title
-  matched. Deleting a show from your history deletes its row and
-  those entries; clearing your history deletes every row and every
-  such entry.
+  when, and the Kitsu id of the show you played. More about each
+  show you watch is kept beside it: in the metadata cache, when you
+  last watched it, the Kitsu entry it maps to, the Kitsu entry its
+  title matched (for a show watched before the history recorded the
+  Kitsu id), and the stream addresses resolved to play it; and, in a
+  file beside the history, how the show's episode numbering lines up
+  with Kitsu's. Deleting a show from your history deletes its row and
+  all of these for that show, including the copies earlier versions
+  of the app wrote; clearing your history deletes every row, all of
+  these for every show, and every cached stream address, including
+  ones a page resolved ahead for a show you never played. Catalogue data shared with browsing —
+  anime details, artwork, episode lists and which catalogue carries
+  a show — stays in the cache until it expires.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its
