@@ -808,3 +808,7 @@ mod tests {
 #[cfg(test)]
 #[path = "kitsu_column_test.rs"]
 mod kitsu_column_tests;
+
+#[cfg(test)]
+#[path = "guard_test.rs"]
+mod guard_tests;

@@ -255,3 +255,130 @@ async fn a_refused_play_keeps_an_id_the_title_agrees_with() {
 
     assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("45412"));
 }
+
+// — a removal while a watch is still being recorded ————————————————
+//
+// A recorded watch writes its row and stamp at once and the rest after
+// the cour guard has read Kitsu: the mapping, and the id on the row.
+// The frontend does not wait for it, so the user can be back on the
+// home page deleting the row while that read is still out. A removal
+// wins over what a watch begun before it was still going to write.
+
+/// Everything on disk that names `show_id`: its history row, its
+/// numbering offset, and any cache entry whose key or value carries
+/// the id.
+fn left_behind(state: &AppState, show_id: &str) -> Vec<String> {
+    let mut left = Vec::new();
+    let rows = crate::history::read_all(&state.history_path).expect("rows");
+    if rows.iter().any(|r| r.id == show_id) {
+        left.push("history row".to_owned());
+    }
+    let offsets = state.history_path.with_file_name("ani-gui-offsets");
+    if std::fs::read_to_string(offsets)
+        .unwrap_or_default()
+        .contains(show_id)
+    {
+        left.push("numbering offset".to_owned());
+    }
+    for (key, body) in
+        crate::cache::meta_cache_entries_prefix(&state.cache_pool, "").expect("cache")
+    {
+        if key.contains(show_id) || body.contains(show_id) {
+            left.push(key);
+        }
+    }
+    left
+}
+
+/// A watch of Part 2 from its own page, its recording held on the
+/// guard's Kitsu read for a second.
+async fn recording_held_on_kitsu(
+    state: &Arc<AppState>,
+    kitsu: &MockServer,
+) -> tokio::task::JoinHandle<()> {
+    serve_detail(
+        kitsu,
+        "45412",
+        "jojo-no-kimyou-na-bouken-stone-ocean-part-2",
+        Duration::from_secs(1),
+    )
+    .await;
+    let recording = {
+        let state = Arc::clone(state);
+        tokio::spawn(async move { record_watch(&state, &part_two(), Some("45412")).await })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    recording
+}
+
+#[tokio::test]
+async fn a_delete_while_the_guard_reads_kitsu_leaves_nothing_of_the_show() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(state_at(td.path(), &kitsu.uri()));
+    let recording = recording_held_on_kitsu(&state, &kitsu).await;
+
+    assert!(
+        crate::commands::history::history_delete(&state, &part_two().show_id).expect("delete"),
+        "the row was there to delete"
+    );
+    recording.await.expect("recording");
+
+    assert_eq!(
+        left_behind(&state, &part_two().show_id),
+        Vec::<String>::new()
+    );
+}
+
+#[tokio::test]
+async fn a_clear_while_the_guard_reads_kitsu_leaves_nothing_of_the_show() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(state_at(td.path(), &kitsu.uri()));
+    let recording = recording_held_on_kitsu(&state, &kitsu).await;
+
+    crate::commands::history::history_clear(&state).expect("clear");
+    recording.await.expect("recording");
+
+    assert_eq!(
+        left_behind(&state, &part_two().show_id),
+        Vec::<String>::new()
+    );
+}
+
+/// Only the removed show's pending writes are dropped: removing another
+/// show while the guard reads Kitsu leaves this watch recorded whole —
+/// the row with its id, the stamp and the mapping.
+#[tokio::test]
+async fn removing_another_show_leaves_a_pending_recording_whole() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(state_at(td.path(), &kitsu.uri()));
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: "one-piece-69".into(),
+            title: "One Piece".into(),
+            watched_at: None,
+            kitsu_id: None,
+        },
+    )
+    .expect("seed another row");
+    let recording = recording_held_on_kitsu(&state, &kitsu).await;
+
+    assert!(crate::commands::history::history_delete(&state, "one-piece-69").expect("delete"));
+    recording.await.expect("recording");
+
+    let show = part_two().show_id;
+    assert_eq!(row_id(&state, &show).as_deref(), Some("45412"));
+    assert!(crate::commands::kitsu::watched_at_get(&state, &show)
+        .expect("stamp")
+        .is_some());
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &show)
+            .expect("mapping")
+            .as_deref(),
+        Some("45412")
+    );
+}
