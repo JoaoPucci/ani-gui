@@ -36,57 +36,61 @@ ani-gui keeps the following on your computer only:
   beside the history, how the show's episode numbering lines up with
   Kitsu's. Deleting a show from your history deletes its row and all
   of these for that show, including the copies earlier versions of the
-  app wrote. Opening and ending times are found by the Kitsu ids the
-  history knows for the show: times under an id another show still in
-  your history claims stay with that show, and times fetched under an
-  id the history never linked to the show stay until you clear your
-  history. Clearing your history deletes every row, all of these for
-  every show, every cached stream address and every cached opening and
-  ending time, including ones a page resolved ahead for a show you
-  never played. Clearing removes the numbering of the shows in your
-  history at the time, under either streaming catalogue's listing the
-  app linked to them; the numbering of a show with no row then stays —
-  one a page resolved but you never played, or one removed from your
-  history by a version of the app from before removal took its
-  numbering too. A removal also stands against what the app had begun
-  before it and not yet finished writing — a play, or a page resolving
-  a stream ahead, still resolving; a watch still being recorded; the
-  home page still matching the row: none of it is written for the
-  removed show afterwards. Playing the show again after removing it
-  records it again. A removal that fails part-way leaves what it has
-  not yet removed findable, so trying again finishes it, except as
-  below. Six things are not covered. A second copy of the app running
-  on the same profile does not know of the removal, and something it
-  was in the middle of writing can land after it. The app knows a
-  removed show by its row and by the Kitsu entry it linked the row to
-  — the one the row recorded, the ones it was matched to, the page it
-  was played from while the app was running: for a show the history
-  never linked to a Kitsu entry, opening and ending times fetched for
-  it, and a stream address and numbering a page resolved for it on the
-  other streaming catalogue — already stored, or still on their way
-  when you remove it — are not recognised as that show's. A stream
-  address a page resolved on the other streaming catalogue under a
-  version of the app from before stream addresses recorded the page
-  they were resolved for is missed for any show, with the numbering
-  beside it. The app finds the other catalogue's numbering through the
-  stream addresses resolved there, so numbering whose stream address
-  is gone is missed too: one a hand-off to an external player
-  resolved, which keeps no address, when the player never started; one
-  whose address a later resolve of the same episode replaced with an
-  address on a different listing; one whose address stopped working
-  and was dropped. A row of the same show under the other catalogue's
-  listing, written by a play that switched catalogues, is a row of its
-  own: the home page groups and removes it with the show once it has
-  shown it, and otherwise it stays in your history. And when the app
-  cannot write the file that holds the numbering, the numbering is
-  missed: the show's own stays, and so does the other catalogue's,
-  whose stream addresses are removed all the same, so trying again no
-  longer finds it. A stream address that is missed stays until you
-  clear your history; numbering that is missed stays as that of any
-  show a page resolved and you never played does. Catalogue data
-  shared with browsing — anime details, artwork, episode lists and
-  which catalogue carries a show — is not part of your history and
-  stays in the cache, as it does for shows you only browsed.
+  app wrote. If the streaming catalogue renamed the show, the Kitsu
+  entry matched under its old title is found by the entry it names,
+  and stays only if the history never linked that entry to the show or
+  another show still in your history claims it. Opening and ending
+  times are found by the Kitsu ids the history knows for the show:
+  times under an id another show still in your history claims stay
+  with that show, and times fetched under an id the history never
+  linked to the show stay until you clear your history. Clearing your
+  history deletes every row, all of these for every show, every cached
+  stream address and every cached opening and ending time, including
+  ones a page resolved ahead for a show you never played. Clearing
+  removes the numbering of the shows in your history at the time,
+  under either streaming catalogue's listing the app linked to them;
+  the numbering of a show with no row then stays — one a page resolved
+  but you never played, or one removed from your history by a version
+  of the app from before removal took its numbering too. A removal
+  also stands against what the app had begun before it and not yet
+  finished writing — a play, or a page resolving a stream ahead, still
+  resolving; a watch still being recorded; the home page still
+  matching the row: none of it is written for the removed show
+  afterwards. Playing the show again after removing it records it
+  again. A removal that fails part-way leaves what it has not yet
+  removed findable, so trying again finishes it, except as below. Six
+  things are not covered. A second copy of the app running on the same
+  profile does not know of the removal, and something it was in the
+  middle of writing can land after it. The app knows a removed show by
+  its row and by the Kitsu entry it linked the row to — the one the
+  row recorded, the ones it was matched to, the page it was played
+  from while the app was running: for a show the history never linked
+  to a Kitsu entry, opening and ending times fetched for it, and a
+  stream address and numbering a page resolved for it on the other
+  streaming catalogue — already stored, or still on their way when you
+  remove it — are not recognised as that show's. A stream address a
+  page resolved on the other streaming catalogue under a version of
+  the app from before stream addresses recorded the page they were
+  resolved for is missed for any show, with the numbering beside it.
+  The app finds the other catalogue's numbering through the stream
+  addresses resolved there, so numbering whose stream address is gone
+  is missed too: one a hand-off to an external player resolved, which
+  keeps no address, when the player never started; one whose address a
+  later resolve of the same episode replaced with an address on a
+  different listing; one whose address stopped working and was
+  dropped. A row of the same show under the other catalogue's listing,
+  written by a play that switched catalogues, is a row of its own: the
+  home page groups and removes it with the show once it has shown it,
+  and otherwise it stays in your history. And when the app cannot
+  write the file that holds the numbering, the numbering is missed:
+  the show's own stays, and so does the other catalogue's, whose
+  stream addresses are removed all the same, so trying again no longer
+  finds it. A stream address that is missed stays until you clear your
+  history; numbering that is missed stays as that of any show a page
+  resolved and you never played does. Catalogue data shared with
+  browsing — anime details, artwork, episode lists and which catalogue
+  carries a show — is not part of your history and stays in the cache,
+  as it does for shows you only browsed.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its

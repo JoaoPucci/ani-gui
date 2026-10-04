@@ -7,7 +7,8 @@
 //! - its reverse mapping to Kitsu (`allmanga2kitsu:`), under every
 //!   version's key;
 //! - the title-match rows Continue Watching stored for the row's title
-//!   (`title-match:`), under every version's key;
+//!   (`title-match:`), under every version's key, and those under any
+//!   earlier title that name a Kitsu id the show is known by;
 //! - the resolution rows whose stream played the show (`play:`), found
 //!   by the show id their value carries, and the ones a page of the
 //!   show resolved under another key, found by the page their value
