@@ -47,10 +47,18 @@ ani-gui keeps the following on your computer only:
   the numbering of the shows in your history at the time; the
   numbering of a show with no row then stays — a show a page resolved
   but you never played, or one removed from your history by a version
-  of the app from before removal took its numbering too. Catalogue data
-  shared with browsing — anime details, artwork, episode lists and
-  which catalogue carries a show — is not part of your history and
-  stays in the cache, as it does for shows you only browsed.
+  of the app from before removal took its numbering too. A removal
+  also stands against what the app had begun before it and not yet
+  finished writing — a play, or a page resolving a stream ahead, still
+  resolving; a watch still being recorded; the home page still
+  matching the row: none of it is written for the removed show
+  afterwards. Playing the show again after removing it records it
+  again. One case is not covered: a second copy of the app running on
+  the same profile does not know of the removal, and something it was
+  in the middle of writing can land after it. Catalogue data shared
+  with browsing — anime details, artwork, episode lists and which
+  catalogue carries a show — is not part of your history and stays in
+  the cache, as it does for shows you only browsed.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its
