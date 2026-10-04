@@ -23,10 +23,15 @@ function isClosedTargetError(err) {
 /**
  * Run `attempt`; when it dies with the closed-target signature, run
  * `cleanup` (best-effort — a close racing the dead process is
- * expected) and try again, up to `retries` extra times. The last
- * closed-target error surfaces once retries are exhausted.
+ * expected, and so is one that never settles, which is abandoned
+ * after `cleanupTimeoutMs`) and try again, up to `retries` extra
+ * times. The last closed-target error surfaces once retries are
+ * exhausted.
  */
-async function withColdLaunchRetry(attempt, { retries = 1, cleanup } = {}) {
+async function withColdLaunchRetry(
+	attempt,
+	{ retries = 1, cleanup, cleanupTimeoutMs = 5000 } = {},
+) {
 	let lastErr;
 	for (let i = 0; i <= retries; i += 1) {
 		try {
@@ -35,10 +40,18 @@ async function withColdLaunchRetry(attempt, { retries = 1, cleanup } = {}) {
 			if (!isClosedTargetError(err)) throw err;
 			lastErr = err;
 			if (cleanup) {
+				let timer;
 				try {
-					await cleanup(err);
+					await Promise.race([
+						cleanup(err),
+						new Promise((resolve) => {
+							timer = setTimeout(resolve, cleanupTimeoutMs);
+						}),
+					]);
 				} catch {
 					// The dead app may already be gone; the retry is the point.
+				} finally {
+					clearTimeout(timer);
 				}
 			}
 		}
