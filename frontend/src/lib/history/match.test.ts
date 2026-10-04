@@ -149,8 +149,9 @@ describe('resolveKitsuMatch', () => {
 	// A row from before history recorded the show keeps the mapping a
 	// play stored when only the provider's title doubts it: the provider
 	// calls Seitokai ni mo Ana wa Aru! "There Is Also a Hole in the
-	// Student Organization!", which shares no words with any of Kitsu's
-	// titles for it, and a search for those words never returns it.
+	// Student Organization!", which shares only "student" with Kitsu's
+	// English title for it, and a search for those words never returns
+	// it.
 	const seitokai = (): KitsuAnimeRef => ({
 		...stubKitsu('49877', 'Seitokai ni mo Ana wa Aru!', 12),
 		slug: 'seitokai-ni-mo-ana-wa-aru',

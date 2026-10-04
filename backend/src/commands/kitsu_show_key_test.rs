@@ -402,7 +402,7 @@ async fn the_enrichment_resolve_takes_the_first_hit_for_a_slug_without_cour_evid
     );
 }
 
-/// A search hit whose titles share nothing with the slug's words is
+/// A search hit whose titles share too few of the slug's words is
 /// not the show, and the resolve answers none rather than storing it.
 /// The provider names Seitokai ni mo Ana wa Aru! "There Is Also a Hole
 /// in the Student Organization!", Kitsu does not return the show for
@@ -435,7 +435,7 @@ async fn the_enrichment_resolve_answers_none_when_no_hit_shares_the_slugs_words(
         .expect("resolve ok");
     assert!(
         got.is_none(),
-        "a hit sharing none of the slug's words is not the show: {got:?}"
+        "a hit sharing too few of the slug's words is not the show: {got:?}"
     );
     assert_eq!(
         allmanga_kitsu_get(&state, id).expect("cache read"),

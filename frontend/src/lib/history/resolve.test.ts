@@ -914,7 +914,7 @@ describe('a search hit by the words its titles share with the row', () => {
 		expect(isCandidateForRow(row, magical)).toBe(true);
 	});
 
-	it("refuses a hit whose titles share no words with the row's", () => {
+	it("refuses a hit whose titles share too few words with the row's", () => {
 		// A row without a count accepts every count, so the count alone
 		// once handed the provider's "There Is Also a Hole in the Student
 		// Organization!" to Kitsu's first hit for those words.
