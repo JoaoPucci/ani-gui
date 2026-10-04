@@ -43,13 +43,36 @@ fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
 /// rows' Kitsu ids.
 fn forget_cours(state: &AppState, prefix: &str) -> Result<Vec<String>> {
     let mut named = Vec::new();
-    for (key, body) in meta_cache_entries_prefix(&state.cache_pool, prefix)? {
-        if all_digits(&key[prefix.len()..]) {
-            meta_cache_delete(&state.cache_pool, &key)?;
-            named.push(body);
-        }
+    for (key, body) in cour_entries(state, prefix)? {
+        meta_cache_delete(&state.cache_pool, &key)?;
+        named.push(body);
     }
     Ok(named)
+}
+
+/// The Kitsu ids the title-match rows of the row `id` titled `title`
+/// name, every version and cour, left in place.
+///
+/// # Errors
+/// Cache failures propagate.
+pub(crate) fn title_match_ids(state: &AppState, id: &str, title: &str) -> Result<Vec<String>> {
+    let mut named = Vec::new();
+    for prefix in title_match_prefixes(id, title) {
+        named.extend(
+            cour_entries(state, &prefix)?
+                .into_iter()
+                .map(|(_, body)| body),
+        );
+    }
+    Ok(named)
+}
+
+/// The (key, body) pairs under `prefix` whose remainder is a cour.
+fn cour_entries(state: &AppState, prefix: &str) -> Result<Vec<(String, String)>> {
+    Ok(meta_cache_entries_prefix(&state.cache_pool, prefix)?
+        .into_iter()
+        .filter(|(key, _)| all_digits(&key[prefix.len()..]))
+        .collect())
 }
 
 /// `title` less a trailing `(N episodes)`, itself optionally followed

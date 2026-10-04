@@ -38,8 +38,10 @@ const HISTORY_PREFIXES: [&str; 5] = [
 ];
 
 /// Delete what the row for `id`, titled `title`, recording `recorded`
-/// as the show played, left in the cache. The offsets go after the row
-/// ([`sweep_offsets`]).
+/// as the show played, left in the cache. Skip times cached under a
+/// Kitsu id in `claimed` — one a remaining row records, maps to or
+/// matched by title — stay with that row's show. The offsets go after
+/// the row ([`sweep_offsets`]).
 ///
 /// # Errors
 /// Cache write failures propagate.
@@ -48,6 +50,7 @@ pub(crate) fn forget_show(
     id: &str,
     title: &str,
     recorded: Option<&str>,
+    claimed: &std::collections::HashSet<String>,
 ) -> Result<()> {
     let pool = &state.cache_pool;
     meta_cache_delete(pool, &watched_at_key(id))?;
@@ -60,21 +63,19 @@ pub(crate) fn forget_show(
         state, id, title,
     )?);
     forget_resolutions(state, id)?;
+    kitsu_ids.retain(|k| !claimed.contains(k));
     super::history_forget_skips::forget_skip_times(state, &kitsu_ids)
 }
 
 /// Delete the show's reverse mapping under every version's key, and
 /// return the Kitsu ids they named, expired or not.
 fn forget_mappings(state: &AppState, id: &str) -> Result<Vec<String>> {
-    let mut named = Vec::new();
+    let named = super::history_forget_skips::mapping_ids(state, id)?;
     for version in 1..=ALLMANGA_KITSU_VERSION {
-        let key = format!("allmanga2kitsu:v{version}:{id}");
-        for (found, body) in meta_cache_entries_prefix(&state.cache_pool, &key)? {
-            if found == key {
-                named.push(body);
-            }
-        }
-        meta_cache_delete(&state.cache_pool, &key)?;
+        meta_cache_delete(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v{version}:{id}"),
+        )?;
     }
     Ok(named)
 }
