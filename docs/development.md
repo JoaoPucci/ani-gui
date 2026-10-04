@@ -154,6 +154,29 @@ pnpm package          # AppImage only — fast iteration
 pnpm package:release  # AppImage + .deb
 ```
 
+On Linux the packages carry a backend built for
+`x86_64-unknown-linux-musl`, which links its C library into the
+binary instead of borrowing the system's glibc. A backend linked
+against the build machine's glibc refuses to start on any system with
+an older one, and the build machine is usually newer than the
+systems the packages run on. Building it needs the musl target and a
+C compiler for it, once per machine. Run the `rustup` line from inside
+the repository: `rust-toolchain.toml` pins the toolchain cargo uses
+here, and a target added from anywhere else goes on rustup's default
+toolchain instead.
+
+```sh
+rustup target add x86_64-unknown-linux-musl
+sudo apt install musl-tools   # musl-gcc, for the C the backend compiles in (SQLite, ring)
+```
+
+`musl-tools` is the Debian and Ubuntu package; Fedora calls it
+`musl-gcc` and Arch `musl`.
+
+`pnpm package`, `pnpm package:release` and the `dist` scripts build
+that backend themselves (`pnpm run build:backend:linux`). The dev loop
+keeps using the ordinary debug build.
+
 Artifacts land in `electron/dist/`. There is no release-packaging CI —
 no workflow triggers on a tag and nothing publishes installers. (The
 e2e workflow does run `pnpm run dist` on Linux to produce the

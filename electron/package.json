@@ -13,14 +13,15 @@
 		"dev": "node scripts/dev.mjs",
 		"start": "electron .",
 		"build:backend": "cd ../backend && cargo build --bin ani-gui-backend --release",
+		"build:backend:linux": "cd ../backend && cargo build --bin ani-gui-backend --release --target x86_64-unknown-linux-musl",
 		"build:frontend": "cd ../frontend && pnpm build",
 		"fetch:win-deps": "node scripts/fetch-windows-deps.mjs",
 		"fetch:linux-deps": "node scripts/fetch-linux-deps.mjs",
-		"package": "pnpm run build:backend && pnpm run dist",
-		"package:release": "pnpm run build:backend && pnpm run dist:release",
+		"package": "pnpm run build:backend:linux && pnpm run dist",
+		"package:release": "pnpm run build:backend:linux && pnpm run dist:release",
 		"package:win": "pnpm run fetch:win-deps && pnpm run build:backend && pnpm run dist:win",
-		"dist": "pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux AppImage && pnpm run repack-appimage",
-		"dist:release": "pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux AppImage deb && pnpm run repack-appimage",
+		"dist": "pnpm run build:backend:linux && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux AppImage && pnpm run repack-appimage",
+		"dist:release": "pnpm run build:backend:linux && pnpm run build:frontend && pnpm run fetch:linux-deps && electron-builder --linux AppImage deb && pnpm run repack-appimage",
 		"dist:win": "pnpm run build:frontend && pnpm run fetch:win-deps && electron-builder --win nsis",
 		"repack-appimage": "node scripts/repack-appimage.mjs",
 		"e2e": "pnpm run package && playwright test",
@@ -53,10 +54,6 @@
 			{
 				"from": "../frontend/build",
 				"to": "frontend/build"
-			},
-			{
-				"from": "../backend/target/release/ani-gui-backend",
-				"to": "ani-gui-backend"
 			}
 		],
 		"linux": {
@@ -73,6 +70,10 @@
 				"Keywords": "anime;video;streaming;player;"
 			},
 			"extraResources": [
+				{
+					"from": "../backend/target/x86_64-unknown-linux-musl/release/ani-gui-backend",
+					"to": "ani-gui-backend"
+				},
 				{
 					"from": "build-resources/linux/bin",
 					"to": "bin"

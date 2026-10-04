@@ -38,6 +38,15 @@
 #   - `dist` / `dist:release` scripts must chain `fetch:linux-deps`
 #     so any invocation path (package, dist, e2e) gets the bin
 #     dir populated before electron-builder runs.
+#   - The Linux packages carry a backend built for
+#     `x86_64-unknown-linux-musl`, statically linked, and the scripts
+#     that package them build that one. A backend linked against the
+#     build host's glibc refuses to start on any system with an older
+#     one — v0.14.1, built on a 2026 Ubuntu, asked for glibc 2.39 and
+#     failed on Ubuntu 22.04 and Debian 12 before the window had
+#     anything to show. The rest of the payload asks for 2.25 at most.
+#     The e2e workflow, which builds the Linux package, then runs the
+#     packaged backend's own check that it needs no system C library.
 
 set -eu
 
@@ -104,6 +113,45 @@ if [ -f "$FETCH" ]; then
             failed=1
         fi
     done
+fi
+
+# 6. The Linux packages take the static backend: package.json is read
+#    with node's JSON parser (a real parser, not a pattern), and
+#    `build.linux.extraResources` must place the musl build at
+#    `ani-gui-backend`, while no entry the Linux packages receive —
+#    the top-level list or the linux one — places anything else there.
+#    electron-builder adds the platform's list to the top-level one.
+if ! node -e '
+const b = require(process.argv[1]).build;
+const musl = "../backend/target/x86_64-unknown-linux-musl/release/ani-gui-backend";
+const linux = [...(b.extraResources || []), ...((b.linux || {}).extraResources || [])];
+const placed = linux.filter((e) => typeof e === "object" && e.to === "ani-gui-backend");
+const ok = placed.length === 1 && placed[0].from === musl
+  && ((b.linux || {}).extraResources || []).includes(placed[0]);
+process.exit(ok ? 0 : 1);
+' "$REPO_ROOT/$PKG"; then
+    printf 'arch/linux_deps FAIL: %s does not place exactly the backend built for x86_64-unknown-linux-musl at ani-gui-backend in the Linux packages\n' "$PKG" >&2
+    failed=1
+fi
+
+# 7. Every script that packages for Linux builds that backend first:
+#    the `package` scripts, and `dist` / `dist:release`, which are run
+#    on their own as well (the e2e workflow runs `dist`). Asserted on
+#    the parsed scripts as exact text: each one begins with the build
+#    followed by `&&`, so nothing runs before it and a failed build
+#    stops the packaging, and the build script is exactly the musl
+#    build. A reordered or merely mentioning script fails.
+if ! node -e '
+const s = require(process.argv[1]).scripts || {};
+const build = "cd ../backend && cargo build --bin ani-gui-backend --release --target x86_64-unknown-linux-musl";
+const first = "pnpm run build:backend:linux && ";
+const bad = ["package", "package:release", "dist", "dist:release"]
+  .filter((n) => typeof s[n] !== "string" || !s[n].startsWith(first));
+if (s["build:backend:linux"] !== build) bad.push("build:backend:linux");
+if (bad.length) { console.error(bad.join(" ")); process.exit(1); }
+' "$REPO_ROOT/$PKG"; then
+    printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux is not exactly the musl build\n' "$PKG" >&2
+    failed=1
 fi
 
 if [ "$failed" -ne 0 ]; then
