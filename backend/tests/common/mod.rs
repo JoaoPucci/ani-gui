@@ -11,7 +11,7 @@
 
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -45,44 +45,56 @@ pub fn command(exe: &Path, home: &Path) -> Command {
 }
 
 /// Spawn `cmd` and wait for the handshake, so whatever the test does
-/// next is done to a backend that is up and serving.
+/// next is done to a backend that is up and serving. Its output is
+/// drained from then on, so a chatty backend never blocks on a full
+/// pipe.
 ///
 /// # Panics
 /// When the backend exits, or stays silent past [`HANDSHAKE_TIMEOUT`],
 /// before printing both handshake lines — after killing it.
-pub fn start(mut cmd: Command) -> Backend {
+pub fn start(cmd: Command) -> Backend {
+    let (backend, output) = start_keeping_output(cmd);
+    std::thread::spawn(move || for _ in output.lines() {});
+    backend
+}
+
+/// [`start`], handing the backend's output back instead of draining
+/// it — for a test that wants to stop reading it, as a parent that
+/// died does.
+///
+/// # Panics
+/// As [`start`].
+pub fn start_keeping_output(mut cmd: Command) -> (Backend, BufReader<ChildStdout>) {
     let mut child = cmd.spawn().expect("spawn backend");
     let stdout = child.stdout.take().expect("stdout");
-    // A thread owns the read: a blocking read has no timeout of its
-    // own, and it keeps draining afterwards so a chatty backend never
-    // blocks on a full pipe.
-    let (tx, rx) = mpsc::channel::<String>();
+    // A thread owns the read, because a blocking read has no timeout
+    // of its own; it hands the reader back once the handshake is in.
+    let (tx, rx) = mpsc::channel::<(String, BufReader<ChildStdout>)>();
     std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines() {
-            let Ok(line) = line else { break };
-            let _ = tx.send(line);
+        let mut output = BufReader::new(stdout);
+        let mut api_base = None;
+        let mut secret_seen = false;
+        let mut line = String::new();
+        while api_base.is_none() || !secret_seen {
+            line.clear();
+            match output.read_line(&mut line) {
+                Ok(n) if n > 0 => {}
+                _ => return,
+            }
+            if let Some(base) = line.strip_prefix("ANI_GUI_LISTENING ") {
+                api_base = Some(base.trim().to_string());
+            }
+            secret_seen |= line.starts_with("ANI_GUI_INTERNAL_SECRET ");
         }
+        let _ = tx.send((api_base.expect("checked by the loop"), output));
     });
 
-    let deadline = Instant::now() + HANDSHAKE_TIMEOUT;
-    let mut api_base = None;
-    let mut secret_seen = false;
-    while api_base.is_none() || !secret_seen {
-        let left = deadline.saturating_duration_since(Instant::now());
-        let Ok(line) = rx.recv_timeout(left) else {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("the backend did not complete its handshake");
-        };
-        if let Some(base) = line.strip_prefix("ANI_GUI_LISTENING ") {
-            api_base = Some(base.trim().to_string());
-        }
-        secret_seen |= line.starts_with("ANI_GUI_INTERNAL_SECRET ");
-    }
-    Backend {
-        child,
-        api_base: api_base.expect("checked by the loop"),
-    }
+    let Ok((api_base, output)) = rx.recv_timeout(HANDSHAKE_TIMEOUT) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("the backend did not complete its handshake");
+    };
+    (Backend { child, api_base }, output)
 }
 
 /// The child's exit status, if it exits within `wait`.
