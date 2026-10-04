@@ -47,6 +47,8 @@ Three layers, in lockstep:
 - **Backend** — Rust crate inside `backend/`. Spawned as a sidecar by the desktop shell at startup. Resolves streams from the providers, fetches metadata from Kitsu/AniList, reads/writes the watch-history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
 - **External processes** — `curl-impersonate` for provider requests, `yt-dlp` / `ffmpeg` for downloads, and optionally `mpv` for the "Open in external player" escape hatch.
 
+One instance runs per profile. The desktop shell takes a single-instance lock before it does anything else, so a second launch on the same profile spawns no backend: it hands over to the running instance and exits, and the running instance brings its window forward — restored if minimized, shown if hidden, then focused. A launch while the first instance is still booting changes nothing; the booting instance shows its window when it is ready. Without the lock, two backends would share one history file, cache database and numbering, and the history's lock, which belongs to the process, cannot see across processes. The lock lives in the shell's profile directory, so the dev profile has its own and a dev build runs beside an installed one (`electron/lib/single-instance.cjs`).
+
 ## Data flow: searching and playing an episode
 
 1. The user types a query into the search bar.

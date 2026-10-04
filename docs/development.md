@@ -262,6 +262,13 @@ built `--release`, so it uses the real `ani-gui` dirs. Set `ANI_GUI_DEV`
 to force the dev profile from a release build (e.g. to test migrations
 against throwaway data).
 
+Only one instance of the app runs per profile; a second launch on the
+same profile hands over to the running one and exits. The Electron shell
+puts its own profile (and with it that lock) under `ani-gui-dev` when the
+dev launcher's `ELECTRON_DEV=1` or `ANI_GUI_DEV` is set, so `pnpm dev`
+runs beside an installed copy. A bare `electron .` with neither set uses
+the installed app's shell profile, and hands over to it if it is running.
+
 ## Code style
 
 - **Rust**: `cargo fmt` (settings in `rustfmt.toml`); `cargo clippy -D warnings` enforced by CI.
