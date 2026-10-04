@@ -215,6 +215,8 @@ Four MVP locales: English (`en`), Brazilian Portuguese (`pt-BR`), Latin American
 
 The backend never returns localized text. Errors are stable keys (`error.scraper.timeout`, `error.search.no_results`, etc.); the frontend resolves them via Paraglide. Anime titles themselves are not translated by the app — they come from Kitsu/AniList per a user-chosen title-language preference.
 
+The Electron main process shows two dialogs of its own, where no page can: the error a failed startup ends with, and the prompt on a quit with downloads running. Their text lives in `electron/lib/main-messages.cjs`, in the same four locales, chosen the way the renderer chooses its own.
+
 ## The retired CLI
 
 The project spent its first releases as a desktop shell over the vendored `ani-cli` script, then replaced the subprocess with native resolution and, release by release, retired everything that carried the script: the spawn, the packaged copy, the boot-time updater, and finally the vendored file itself. The repository holds only the GUI now. Users who want a terminal flow install upstream's script; the two share an origin and nothing at runtime. What remains in the tree is the boot sweep (`backend/src/legacy_script.rs`) that deletes the copy earlier versions maintained in the user's cache, and reports having done so.
