@@ -122,6 +122,7 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
         id: watch.show_id.clone(),
         title: watch.title.clone(),
         watched_at: Some(now),
+        kitsu_id: None,
     };
     if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
         tracing::warn!(
@@ -160,6 +161,7 @@ pub(crate) fn write_history(state: &AppState, native: &NativeResolved, requested
         // A resolve is not a watch: the row keeps the moment of the
         // watch before it, if any.
         watched_at: None,
+        kitsu_id: None,
     };
     if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
         tracing::warn!(

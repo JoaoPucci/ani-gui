@@ -61,12 +61,14 @@ fn list_translates_provider_numbering_back_to_kitsu() {
                 id: "the-sequel-88".into(),
                 title: "The Sequel".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "5".into(),
                 id: "plain-1".into(),
                 title: "Plain Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -90,6 +92,7 @@ fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
             id: "the-sequel-88".into(),
             title: "The Sequel".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -114,12 +117,14 @@ fn by_kitsu_returns_the_matching_entry() {
                 id: "amA".into(),
                 title: "Show A (10 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "12".into(),
                 id: "amB".into(),
                 title: "Show B (24 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -148,6 +153,7 @@ fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
             id: "amA".into(),
             title: "Show A (10 episodes)".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -184,18 +190,21 @@ fn delete_removes_matching_row_and_preserves_others() {
                 id: "amA".into(),
                 title: "Show A".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "12".into(),
                 id: "amB".into(),
                 title: "Show B".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "3".into(),
                 id: "amC".into(),
                 title: "Show C".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -224,6 +233,7 @@ fn delete_unknown_id_is_idempotent_no_op() {
             id: "amA".into(),
             title: "Show A".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -258,6 +268,7 @@ fn delete_with_empty_id_returns_false() {
             id: "amA".into(),
             title: "Show A".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -280,6 +291,7 @@ fn list_then_clear_round_trip() {
             id: "abc".into(),
             title: "T (10 episodes)".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();

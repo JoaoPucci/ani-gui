@@ -66,6 +66,10 @@ pub struct HistoryEntry {
     /// wrote, or one from before the column existed, carries none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watched_at: Option<i64>,
+    /// The Kitsu id of the show the user played: the page the play was
+    /// started from. Not written yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kitsu_id: Option<String>,
 }
 
 /// Parse the entire history file into a `Vec<HistoryEntry>`.
@@ -102,6 +106,7 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
                 id,
                 title: title.to_string(),
                 watched_at,
+                kitsu_id: None,
             })
         })
         .collect()
@@ -262,6 +267,7 @@ mod tests {
             id: id.into(),
             title: format!("Test ({id})"),
             watched_at: None,
+            kitsu_id: None,
         }
     }
 
@@ -364,6 +370,7 @@ mod tests {
     fn upsert_keeps_a_rows_stamp_unless_the_new_entry_carries_one() {
         let mut entries = vec![HistoryEntry {
             watched_at: Some(1_000),
+            kitsu_id: None,
             ..sample_entry("abc", "3")
         }];
         upsert(&mut entries, sample_entry("abc", "4"));
@@ -377,6 +384,7 @@ mod tests {
             &mut entries,
             HistoryEntry {
                 watched_at: Some(2_000),
+                kitsu_id: None,
                 ..sample_entry("abc", "5")
             },
         );
@@ -463,6 +471,7 @@ mod tests {
             id: "b".into(),
             title: "New Title".into(),
             watched_at: None,
+            kitsu_id: None,
         };
         upsert(&mut v, updated);
         assert_eq!(v.len(), 3);
@@ -518,18 +527,21 @@ mod tests {
                 id: "abc123".into(),
                 title: "Attack on Titan (25 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "3".into(),
                 id: "def456".into(),
                 title: "Demon Slayer (26 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "1".into(),
                 id: "ghi789".into(),
                 title: "Spy x Family (12 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ];
         let our_bytes = serialize(&entries);
@@ -576,6 +588,7 @@ mod tests {
                 id: "a".into(),
                 title: "Test (a)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         )
         .unwrap();
@@ -632,6 +645,7 @@ mod tests {
                 id,
                 title,
                 watched_at,
+                kitsu_id: None,
             })
     }
 
@@ -668,7 +682,7 @@ mod tests {
             // window narrows but cannot close; it is not a claim
             // this property makes.
             prop_assume!(watched_at.is_some() || !tail_reads_as_a_watch(&title));
-            let entry = HistoryEntry { ep_no, id, title, watched_at };
+            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None };
             let parsed = parse(&serialize(std::slice::from_ref(&entry)));
             prop_assert_eq!(parsed, vec![entry]);
         }
