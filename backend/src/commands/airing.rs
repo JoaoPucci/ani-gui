@@ -109,6 +109,26 @@ fn write_airing_row(state: &AppState, kitsu_id: &str, status: &AiringStatus) {
     }
 }
 
+/// [`airing_get`] past the cached row: a user asked whether an
+/// episode the row calls unaired has aired since. Signatures only:
+/// the behaviour lands with the change its tests describe.
+///
+/// # Errors
+/// As [`airing_get`].
+pub async fn airing_refresh(state: &AppState, kitsu_id: &str) -> Result<AiringStatus> {
+    airing_refresh_with_anilist_base(state, kitsu_id, None).await
+}
+
+/// [`airing_refresh`] with the AniList endpoint override exposed for
+/// tests.
+pub(crate) async fn airing_refresh_with_anilist_base(
+    state: &AppState,
+    kitsu_id: &str,
+    anilist_base: Option<&str>,
+) -> Result<AiringStatus> {
+    airing_get_with_anilist_base(state, kitsu_id, anilist_base).await
+}
+
 /// Batch-seed airing rows for many shows: the home-rail warm calls
 /// this once, so its pre-premiere negative writes find their
 /// schedule in the cache instead of paying one AniList request per

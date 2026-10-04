@@ -260,3 +260,41 @@ async fn seed_airing_rows_batch_skips_shows_with_fresh_rows() {
         .expect("recorded")
         .is_empty());
 }
+
+#[tokio::test]
+async fn a_refresh_skips_the_cached_row_and_stores_what_it_fetched() {
+    // The click on an unaired tile: the cached row says one episode is
+    // out, the schedule now says two. The refresh must reach AniList
+    // past the row, and the next plain read must see what it stored.
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/50551"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_ONLY_MAPPING_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(ANILIST_RELEASING_BODY))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:50551",
+        r#"{"aired":1,"next_episode":null,"next_airing_at":null,"upcoming":[]}"#,
+        3600,
+    )
+    .expect("seed");
+    let fresh = airing_refresh_with_anilist_base(&state, "50551", Some(&anilist.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(fresh.aired, Some(2));
+    let stored = airing_get_with_anilist_base(&state, "50551", Some("http://127.0.0.1:1"))
+        .await
+        .expect("served from the row the refresh wrote");
+    assert_eq!(stored.aired, Some(2));
+}

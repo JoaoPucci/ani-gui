@@ -340,6 +340,20 @@ pub async fn kitsu_episodes(
 /// degrades to a Kitsu-only response.
 const ANILIST_ENRICHMENT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
 
+/// [`kitsu_episodes`] past the cached page: a user asked whether an
+/// episode the page leaves undated has aired since. Signatures only:
+/// the behaviour lands with the change its tests describe.
+///
+/// # Errors
+/// As [`kitsu_episodes`].
+pub async fn kitsu_episodes_refresh(
+    state: &AppState,
+    anime_id: &str,
+    page: u32,
+) -> Result<Vec<KitsuEpisode>> {
+    kitsu_episodes(state, anime_id, page).await
+}
+
 async fn kitsu_episodes_fresh(
     state: &AppState,
     anime_id: &str,
@@ -1119,6 +1133,35 @@ mod tests {
         let second = kitsu_episodes(&state, "12", 1).await.expect("ok");
         assert_eq!(first.len(), 12);
         assert_eq!(first, second, "cache hit returns identical body");
+    }
+
+    #[tokio::test]
+    async fn a_refreshed_episode_page_skips_and_rewrites_the_cached_one() {
+        let mock = MockServer::start().await;
+        const EPISODES_FIXTURE: &[u8] =
+            include_bytes!("../../../tests/fixtures/kitsu/episodes_one_piece.json");
+        Mock::given(method("GET"))
+            .and(path("/anime/12/episodes"))
+            .and(query_param("page[offset]", "0"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(EPISODES_FIXTURE.to_vec()),
+            )
+            .expect(1)
+            .mount(&mock)
+            .await;
+        let state = state_with_kitsu_at(&mock.uri());
+        // The page as it was cached before the latest episode was dated.
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:episodes:12:p1", "[]", 3600)
+            .expect("seed");
+        let fresh = kitsu_episodes_refresh(&state, "12", 1).await.expect("ok");
+        assert_eq!(fresh.len(), 12);
+        let stored = kitsu_episodes(&state, "12", 1).await.expect("ok");
+        assert_eq!(
+            stored, fresh,
+            "the plain read serves what the refresh stored"
+        );
     }
 
     #[tokio::test]
