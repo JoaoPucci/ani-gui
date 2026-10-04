@@ -89,13 +89,11 @@ async function remainingShows(
 			shows.add(resolved);
 			continue;
 		}
-		if (!deps.kitsuIdOf) return null;
-		const mapped = await deps.kitsuIdOf(row.id).then(
-			(k) => ({ k }),
-			() => null
-		);
-		if (mapped === null) return null;
-		if (mapped.k) shows.add(mapped.k);
+		// No way to ask, a failed lookup and no stamped mapping all
+		// leave the row's show untold: it may be the removed one.
+		const mapped = await deps.kitsuIdOf?.(row.id).catch(() => null);
+		if (!mapped) return null;
+		shows.add(mapped);
 	}
 	return shows;
 }

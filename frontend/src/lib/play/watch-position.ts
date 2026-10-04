@@ -6,6 +6,8 @@
  * it; one left in its last minutes is finished and forgotten.
  */
 
+import { recoveryResume } from './resume-after-recovery';
+
 /** Below this, an episode is kept as started, at zero. */
 export const RESUME_MIN_S = 15;
 /** With this little left, an episode counts as finished. */
@@ -116,11 +118,13 @@ export function clearPosition(
 	);
 }
 
-/** Forgets every kept episode of `showId` — its history row is gone. */
+/** Forgets every kept episode of `showId` — its history row is gone —
+ *  and a recovery's pending point for it. */
 export function clearShowPositions(
 	showId: string,
 	storage: PositionStorage | null = defaultStorage()
 ): void {
+	recoveryResume.forgetShow(showId);
 	const prefix = `${showId}:`;
 	store(
 		storage,
@@ -128,7 +132,9 @@ export function clearShowPositions(
 	);
 }
 
-/** Forgets every kept episode — the history is cleared. */
+/** Forgets every kept episode — the history is cleared — and any
+ *  recovery's pending point. */
 export function clearAllPositions(storage: PositionStorage | null = defaultStorage()): void {
+	recoveryResume.forgetAll();
 	store(storage, []);
 }

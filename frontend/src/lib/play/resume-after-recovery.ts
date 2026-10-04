@@ -37,6 +37,17 @@ export class RecoveryResume {
 			? pending.at
 			: null;
 	}
+
+	/** Forgets a capture for `showId` — its positions are forgotten
+	 *  with its history row. */
+	forgetShow(showId: string): void {
+		if (this.pending?.showId === showId) this.pending = null;
+	}
+
+	/** Forgets any capture — the history is cleared. */
+	forgetAll(): void {
+		this.pending = null;
+	}
 }
 
 /** The shared carrier, module-level: a recovery can begin, the
