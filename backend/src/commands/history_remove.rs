@@ -73,6 +73,12 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         let rowless: Vec<&str> = rowless.iter().map(String::as_str).collect();
         super::history_forget::sweep_offsets(state, &rowless);
         found.forget(state)?;
+        // The ids the mapping and title match gave are noted as the
+        // show's pages before those go, so a retry after a failure from
+        // here still records the removal against them.
+        for kitsu_id in &known_by {
+            held.played_from(id, Some(kitsu_id));
+        }
         for (title, _) in &removed {
             super::history_forget::forget_finders(state, id, title)?;
         }
