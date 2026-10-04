@@ -29,9 +29,24 @@ const loadError = (code, errno, url) =>
   Object.assign(new Error(`${code} (${errno}) loading '${url}'`), { code, errno, url });
 const aborted = () => loadError("ERR_ABORTED", -3, "about:blank");
 
+// A fake BrowserWindow whose `loadURL` plays `load`, which gets the
+// window so it can emit the navigation events a real load does.
+const pageWindow = (load) => {
+  const win = fakeWindow();
+  win.loadURL = (url) => load(win, url);
+  return win;
+};
+/** A load that arrives: the page commits with `status`, then finishes. */
+const answers = (status) => async (win, url) => {
+  win.webContents.emit("did-navigate", {}, url, status, "");
+};
+const fails = (err) => async () => {
+  throw err;
+};
+
 test("a first page superseded by another navigation is not a startup failure", async () => {
   const logged = [];
-  const win = { loadURL: async () => Promise.reject(aborted()) };
+  const win = pageWindow(fails(aborted()));
   await loadFirstPage(win, "app://localhost/", (...args) => logged.push(args));
   assert.equal(logged.length, 1);
 });
@@ -39,7 +54,10 @@ test("a first page superseded by another navigation is not a startup failure", a
 test("a first page that loads is loaded once and logs nothing", async () => {
   const urls = [];
   const logged = [];
-  const win = { loadURL: async (url) => urls.push(url) };
+  const win = pageWindow(async (w, url) => {
+    urls.push(url);
+    await answers(200)(w, url);
+  });
   await loadFirstPage(win, "app://localhost/", (...args) => logged.push(args));
   assert.deepEqual(urls, ["app://localhost/"]);
   assert.equal(logged.length, 0);
@@ -52,10 +70,40 @@ for (const [code, errno] of [
   ["ERR_FAILED", -2],
 ]) {
   test(`a first page that fails for any other reason is a startup failure (${code})`, async () => {
-    const win = { loadURL: async () => Promise.reject(loadError(code, errno, "app://localhost/")) };
+    const win = pageWindow(fails(loadError(code, errno, "app://localhost/")));
     await assert.rejects(loadFirstPage(win, "app://localhost/", () => {}), (err) => err.code === code);
   });
 }
+
+// `loadURL` resolves for any page that arrives, an error page
+// included. A bundle with its index.html missing is answered by the
+// app's own protocol handler with a 404, and that 404 "loads": the
+// window comes up frameless around the words "not found", with no
+// titlebar to close it by. An error status on the first page is the
+// first page failing.
+for (const status of [404, 403, 500]) {
+  test(`a first page that arrives as an error page is a startup failure (${status})`, async () => {
+    const win = pageWindow(answers(status));
+    await assert.rejects(
+      loadFirstPage(win, "app://localhost/", () => {}),
+      new RegExp(`first page answered ${status}`),
+    );
+  });
+}
+
+test("a first page with no HTTP status to judge counts as loaded", async () => {
+  // -1 is what a navigation outside HTTP reports.
+  await loadFirstPage(pageWindow(answers(-1)), "file:///index.html", () => {});
+  await loadFirstPage(pageWindow(async () => {}), "app://localhost/", () => {});
+});
+
+test("the first load leaves no listener on the window, however it ends", async () => {
+  for (const load of [answers(200), answers(404), fails(aborted()), fails(loadError("ERR_FAILED", -2, "x"))]) {
+    const win = pageWindow(load);
+    await loadFirstPage(win, "app://localhost/", () => {}).catch(() => {});
+    assert.equal(win.webContents.listenerCount("did-navigate"), 0);
+  }
+});
 
 // A fake BrowserWindow carrying only what the first-show guard reads.
 const fakeWindow = () => {
