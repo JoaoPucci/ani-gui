@@ -13,6 +13,7 @@
 //! stdin — a terminal, or `/dev/null` — says nothing about a parent, so
 //! it is not watched.
 
+use std::future::Future;
 use std::io::Read;
 
 /// Environment variable the Electron main process sets on the backend
@@ -20,19 +21,40 @@ use std::io::Read;
 /// The watch runs only when it is `1`.
 pub const PARENT_STDIN_ENV: &str = "ANI_GUI_PARENT_STDIN";
 
-/// Resolves once `reader` reaches end of file or fails. Anything read
-/// before that is discarded — the parent never writes, and a stray
-/// byte is no reason to stop.
-///
-/// The read runs on a plain thread rather than the runtime's blocking
-/// pool: it blocks for the life of the process, and a runtime shutting
-/// down waits for its blocking tasks.
-pub async fn until_eof<R: Read + Send + 'static>(reader: R) {
-    until_eof_with(reader, on_a_thread).await;
-}
-
 /// What the watch runs on its thread.
 type Job = Box<dyn FnOnce() + Send + 'static>;
+
+/// How the watch starts its thread.
+type Spawner = Box<dyn FnOnce(Job) -> std::io::Result<()> + Send + 'static>;
+
+/// A watch on the parent, armed as the backend starts.
+pub struct Watch {
+    start: Option<(Box<dyn Read + Send>, Spawner)>,
+}
+
+/// Arm the watch this process was asked for: on stdin when Electron
+/// set [`PARENT_STDIN_ENV`], otherwise one that never reports (a
+/// backend run by hand). See [`arm`].
+pub fn arm_from_env<F>(during_startup: F) -> Watch
+where
+    F: FnOnce() + Send + 'static,
+{
+    if std::env::var(PARENT_STDIN_ENV).as_deref() != Ok("1") {
+        return Watch { start: None };
+    }
+    arm(std::io::stdin(), during_startup)
+}
+
+/// Arm a watch on `reader`. `during_startup` is what an end of file
+/// before [`Watch::serving`] runs; the one after it resolves the
+/// future `serving` returns.
+pub fn arm<R, F>(reader: R, during_startup: F) -> Watch
+where
+    R: Read + Send + 'static,
+    F: FnOnce() + Send + 'static,
+{
+    arm_with(reader, during_startup, on_a_thread)
+}
 
 fn on_a_thread(job: Job) -> std::io::Result<()> {
     std::thread::Builder::new()
@@ -41,8 +63,41 @@ fn on_a_thread(job: Job) -> std::io::Result<()> {
         .map(drop)
 }
 
-/// [`until_eof`] with the thread spawn explicit — the seam the tests
-/// use to make it fail.
+/// [`arm`] with the thread spawn explicit — the seam the tests use to
+/// make it fail.
+fn arm_with<R, F, S>(reader: R, during_startup: F, spawn: S) -> Watch
+where
+    R: Read + Send + 'static,
+    F: FnOnce() + Send + 'static,
+    S: FnOnce(Job) -> std::io::Result<()> + Send + 'static,
+{
+    drop(during_startup);
+    Watch {
+        start: Some((Box::new(reader), Box::new(spawn))),
+    }
+}
+
+impl Watch {
+    /// The backend is serving. The returned future resolves once the
+    /// parent is gone, and never for a watch that cannot watch.
+    pub fn serving(self) -> impl Future<Output = ()> + Send + 'static {
+        let start = self.start;
+        async move {
+            match start {
+                Some((reader, spawn)) => until_eof_with(reader, spawn).await,
+                None => std::future::pending().await,
+            }
+        }
+    }
+}
+
+/// Resolves once `reader` reaches end of file or fails. Anything read
+/// before that is discarded — the parent never writes, and a stray
+/// byte is no reason to stop.
+///
+/// The read runs on a plain thread rather than the runtime's blocking
+/// pool: it blocks for the life of the process, and a runtime shutting
+/// down waits for its blocking tasks.
 ///
 /// A watch that cannot watch never resolves. Neither a spawn that
 /// fails nor a thread that ends without reporting says anything about
@@ -77,15 +132,6 @@ where
         }
     }
     std::future::pending::<()>().await;
-}
-
-/// Resolves once the parent is gone, or never when the parent did not
-/// ask to be watched (a backend run by hand).
-pub async fn parent_gone() {
-    if std::env::var(PARENT_STDIN_ENV).as_deref() != Ok("1") {
-        return std::future::pending().await;
-    }
-    until_eof(std::io::stdin()).await;
 }
 
 #[cfg(test)]

@@ -11,13 +11,14 @@ async fn reported_within(watch: impl std::future::Future<Output = ()>, wait: Dur
 async fn the_writer_closing_ends_the_watch() {
     let (reader, writer) = std::io::pipe().expect("pipe");
     drop(writer);
-    assert!(reported_within(until_eof(reader), Duration::from_secs(5)).await);
+    let watch = arm(reader, || {}).serving();
+    assert!(reported_within(watch, Duration::from_secs(5)).await);
 }
 
 #[tokio::test]
 async fn bytes_on_a_live_pipe_do_not_end_the_watch() {
     let (reader, mut writer) = std::io::pipe().expect("pipe");
-    let mut watch = std::pin::pin!(until_eof(reader));
+    let mut watch = std::pin::pin!(arm(reader, || {}).serving());
     writer.write_all(b"anything\n").expect("write");
     assert!(!reported_within(&mut watch, Duration::from_millis(300)).await);
     drop(writer);
@@ -33,7 +34,12 @@ async fn bytes_on_a_live_pipe_do_not_end_the_watch() {
 #[tokio::test]
 async fn a_watch_that_cannot_start_is_not_a_report() {
     let (reader, _writer) = std::io::pipe().expect("pipe");
-    let watch = until_eof_with(reader, |_job| Err(std::io::Error::other("no threads left")));
+    let watch = arm_with(
+        reader,
+        || {},
+        |_job| Err(std::io::Error::other("no threads left")),
+    )
+    .serving();
     assert!(!reported_within(watch, Duration::from_millis(300)).await);
 }
 
@@ -41,9 +47,14 @@ async fn a_watch_that_cannot_start_is_not_a_report() {
 async fn a_watch_that_ends_without_reporting_is_not_a_report() {
     let (reader, _writer) = std::io::pipe().expect("pipe");
     // The thread "ran" and is gone, and never got as far as its report.
-    let watch = until_eof_with(reader, |job| {
-        drop(job);
-        Ok(())
-    });
+    let watch = arm_with(
+        reader,
+        || {},
+        |job| {
+            drop(job);
+            Ok(())
+        },
+    )
+    .serving();
     assert!(!reported_within(watch, Duration::from_millis(300)).await);
 }

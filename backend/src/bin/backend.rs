@@ -36,7 +36,7 @@
 
 use std::sync::Arc;
 
-use ani_gui::{api, app, proxy, shutdown, AniError};
+use ani_gui::{api, app, parent_watch, proxy, shutdown, AniError};
 
 /// Print the handshake and flush it — Electron reads it line by line,
 /// so a line left in a buffer would hang the spawn.
@@ -71,6 +71,14 @@ fn main() -> std::process::ExitCode {
         .init();
 
     tracing::info!(version = ani_gui::VERSION, "starting ani-gui-backend");
+
+    // The parent watch is armed first, before anything that can take
+    // time: a parent gone while the backend is still starting up has
+    // nothing to wind down, and the backend just ends.
+    let parent = parent_watch::arm_from_env(|| {
+        tracing::info!("parent gone during startup; exiting");
+        std::process::exit(0);
+    });
 
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -111,7 +119,7 @@ fn main() -> std::process::ExitCode {
         // The signal handlers go in before the handshake announces the
         // backend: from the moment Electron knows it is up, a quit's
         // SIGTERM is a request rather than a kill.
-        let stop = shutdown::requested();
+        let stop = shutdown::requested(parent.serving());
 
         // The handshake: the URL the Electron main process is waiting
         // for, then serve until stopped.

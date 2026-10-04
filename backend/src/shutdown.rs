@@ -60,7 +60,9 @@ pub enum Reason {
     HungUp,
 }
 
-/// A future that resolves with the first request to stop.
+/// A future that resolves with the first request to stop: a signal,
+/// or `parent_gone` resolving — the parent watch's report (see
+/// [`crate::parent_watch::Watch::serving`]).
 ///
 /// On Unix the signal handlers are installed by this call, not by the
 /// future's first poll, so a caller that makes it before announcing
@@ -81,14 +83,16 @@ pub enum Reason {
 /// Windows has no SIGTERM, and a quit there asks nothing: it runs
 /// `taskkill /F /T` against the backend, which ends its whole tree by
 /// parent pid, tools included. The one signal handled is Ctrl+C in a
-/// console, for a backend run by hand; its handler, like the parent
-/// watch on every platform, starts when the future is first polled,
-/// which serving does at once.
-pub fn requested() -> impl Future<Output = Reason> + Send + 'static {
+/// console, for a backend run by hand; its handler starts when the
+/// future is first polled, which serving does at once.
+pub fn requested<P>(parent_gone: P) -> impl Future<Output = Reason> + Send + 'static
+where
+    P: Future<Output = ()> + Send + 'static,
+{
     let signalled = signalled();
     async move {
         tokio::select! {
-            () = crate::parent_watch::parent_gone() => Reason::ParentGone,
+            () = parent_gone => Reason::ParentGone,
             reason = signalled => reason,
         }
     }
