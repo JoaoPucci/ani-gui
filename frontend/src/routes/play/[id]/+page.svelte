@@ -4971,13 +4971,18 @@
 		color: var(--bone-300);
 	}
 
-	/* Unaired tiles: same greyed treatment as the detail page's
-	   episode grid — visibly present (the user can see the season's
-	   shape) but not inviting a doomed click. */
+	/* Unaired cards (and cards of a show the provider does not carry):
+	   the same greyed treatment as the detail page's grid. An unaired
+	   card stays clickable — the schedule is cached, so a click checks
+	   it again — and keeps the pointer; a delisted one is disabled and
+	   keeps the default cursor. */
 	.ep-card-unaired {
 		cursor: default;
 		opacity: 0.45;
 		filter: saturate(0.35);
+	}
+	.ep-card-unaired:not(:disabled) {
+		cursor: pointer;
 	}
 	.ep-card-unaired .ep-card-thumb-play {
 		display: none;

@@ -2705,15 +2705,14 @@
 	}
 
 	/* Unaired episodes: visible so the season's shape stays readable,
-	   but clearly out of reach — dimmer + desaturated, no hover lift,
-	   default cursor (nothing to do here yet). */
+	   and dimmer than a recheck tile — the schedule says the episode is
+	   not out. But the schedule is cached, so a click checks it again:
+	   the tile keeps the pointer and the hover lift, like
+	   `.ep-tile-recheck`. */
 	.ep-tile-unaired {
-		cursor: default;
+		cursor: pointer;
 		opacity: 0.45;
 		filter: saturate(0.35);
-	}
-	.ep-tile:hover.ep-tile-unaired {
-		transform: none;
 	}
 	.ep-unaired-label {
 		font-variant-caps: all-small-caps;
