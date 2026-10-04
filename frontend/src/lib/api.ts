@@ -1048,6 +1048,9 @@ export function kitsuTitleMatchGet(
 /**
  * Persist a `(title, cour) → kitsu_id` mapping resolved by the
  * frontend picker. Idempotent — re-puts overwrite any prior value.
+ * The backend stores it only while a history row carries the title on
+ * that provider: a row removed while its search was out leaves nothing
+ * to match, and the call still succeeds.
  */
 export function kitsuTitleMatchPut(
 	title: string,
@@ -1109,7 +1112,9 @@ export function allmangaKitsuMapDelete(showId: string): Promise<void> {
  * fresh-from-cache-clear renders where the provider's stub `name`
  * (`"1P"` for One Piece, `"Nato: Shippuuden"` for Naruto Shippuuden)
  * has no Kitsu text-search hit. The backend persists the resolved
- * mapping into the reverse cache so subsequent calls short-circuit.
+ * mapping into the reverse cache so subsequent calls short-circuit —
+ * while a history row still carries the show id, and not over a
+ * mapping a play stored; the entry is returned either way.
  */
 export function kitsuResolveAllmangaShowId(
 	showId: string,

@@ -377,7 +377,13 @@ async fn put_title_match(
 ) -> Result<StatusCode, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
-    kitsu_inner::title_match_put(&state, provider, &body.title, body.cour, &body.kitsu_id)?;
+    crate::commands::history_forget_titles::store_title_match(
+        &state,
+        provider,
+        &body.title,
+        body.cour,
+        &body.kitsu_id,
+    )?;
     Ok(StatusCode::NO_CONTENT)
 }
 

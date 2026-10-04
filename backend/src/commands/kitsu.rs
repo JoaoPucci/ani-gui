@@ -729,7 +729,8 @@ fn is_music_subtype(subtype: Option<&str>) -> bool {
 /// rows resolve by searching Kitsu with the slug's own words; a match
 /// persists the `(show_id → kitsu_id)` reverse mapping so subsequent
 /// calls short-circuit through `allmanga_kitsu_get`, unless a play
-/// stored the mapping there ([`crate::commands::kitsu_played`]). Legacy allanime
+/// stored the mapping there or no history row carries the show id any
+/// more ([`crate::commands::kitsu_played::store_guess`]). Legacy allanime
 /// rows resolve only through an already-stamped mapping — their alias
 /// source (allanime's `Show` endpoint) retired with the provider.
 ///
@@ -801,7 +802,10 @@ pub async fn resolve_allmanga_show_id(
 /// Walk `terms` through Kitsu text search and return the first
 /// non-music hit whose cour agrees with the term's, persisting the
 /// `(show_id → kitsu_id)` reverse mapping so subsequent calls
-/// short-circuit through the cache. Used by the slug-derived path.
+/// short-circuit through the cache — for a show a history row still
+/// carries, and not over a mapping a play stored
+/// ([`crate::commands::kitsu_played::store_guess`]). Used by the
+/// slug-derived path.
 ///
 /// A single term's search failure skips to the next term; a cache
 /// write failure is non-fatal — the resolution still succeeds for
@@ -837,15 +841,11 @@ async fn first_kitsu_match(
                 && !crate::commands::cour::hit_cour_disagrees(source_cour, h.slug.as_deref())
                 && crate::commands::kitsu_title_words::shares_words(&[term.as_str()], h)
         }) {
-            // A mapping a play stored is the show the user played; a
-            // guess from the slug's words answers this request and
-            // leaves it standing.
-            let played =
-                crate::commands::kitsu_played::mapping_played(state, show_id).unwrap_or(false);
-            if played {
-                return Some(first);
-            }
-            if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
+            // The guess answers this request; whether it is stored as
+            // the show's mapping is the store's to say — not over a
+            // mapping a play stored, and not for a show no longer in
+            // history.
+            if let Err(e) = crate::commands::kitsu_played::store_guess(state, show_id, &first.id) {
                 tracing::warn!(
                     show_id = show_id,
                     kitsu_id = %first.id,

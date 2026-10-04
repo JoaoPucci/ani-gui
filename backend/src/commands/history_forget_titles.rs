@@ -1,11 +1,47 @@
-//! The title-match rows a history row left, found from its title —
+//! The title-match rows of a history row, found from its title: the
+//! rows a removal takes with it, and the one rule for storing one —
 //! split from `history_forget` for the per-file complexity bar.
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_delete, meta_cache_entries_prefix};
-use crate::commands::kitsu::{title_match_prefix, TITLE_MATCH_VERSION};
+use crate::commands::kitsu::{title_match_prefix, title_match_put, TITLE_MATCH_VERSION};
 use crate::error::Result;
-use crate::scraper::provider::ShowKey;
+use crate::history::HistoryEntry;
+use crate::scraper::provider::{ProviderId, ShowKey};
+
+/// Store a title-match row, with the history held — for a title a
+/// history row carries. Continue Watching stores one when a row's
+/// search settles, and the user can remove the row before it does;
+/// with no row searching that title there is nothing to match, and
+/// storing it would bring back what the removal took.
+///
+/// # Errors
+/// History read and cache write failures propagate.
+pub(crate) fn store_title_match(
+    state: &AppState,
+    provider: ProviderId,
+    title: &str,
+    cour: u32,
+    kitsu_id: &str,
+) -> Result<()> {
+    crate::history::guard::hold(&state.history_path, |held| {
+        if !held.rows()?.iter().any(|e| searches(e, provider, title)) {
+            return Ok(());
+        }
+        title_match_put(state, provider, title, cour, kitsu_id)
+    })
+}
+
+/// Whether Continue Watching searches `title` for the row `entry`: the
+/// row's title as listed or less a legacy episode tail, on the row's
+/// provider, compared the way the cache key folds a title.
+fn searches(entry: &HistoryEntry, provider: ProviderId, title: &str) -> bool {
+    let wanted = title.trim().to_lowercase();
+    ShowKey::parse(&entry.id).provider == provider
+        && [entry.title.as_str(), without_episode_tail(&entry.title)]
+            .iter()
+            .any(|searched| searched.trim().to_lowercase() == wanted)
+}
 
 /// Delete the title-match rows, every version and cour, stored for
 /// the row `id` titled `title`, and return the Kitsu ids they named.

@@ -44,3 +44,25 @@ pub(crate) fn mapping_played(state: &AppState, show_id: &str) -> Result<bool> {
     let gap_ms = mapped_s.saturating_mul(1000) - stamp_ms;
     Ok((-SECOND_MS..=ONE_PLAY_MS).contains(&gap_ms))
 }
+
+/// Store a resolve's guess as the show's mapping, with the history
+/// held. Two things keep it out:
+///
+/// - A mapping a play stored is the show the user played; the guess
+///   answers its request and leaves that mapping standing.
+/// - The guess is for a history row. Continue Watching asks for it
+///   while a row resolves, and the user can remove the row before the
+///   answer is back; with no row for the show there is nothing to map,
+///   and storing it would bring back what the removal took.
+///
+/// # Errors
+/// History read and cache write failures propagate.
+pub(crate) fn store_guess(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
+    crate::history::guard::hold(&state.history_path, |held| {
+        let listed = held.rows()?.iter().any(|e| e.id == show_id);
+        if !listed || mapping_played(state, show_id).unwrap_or(false) {
+            return Ok(());
+        }
+        crate::commands::kitsu::allmanga_kitsu_put(state, show_id, kitsu_id)
+    })
+}
