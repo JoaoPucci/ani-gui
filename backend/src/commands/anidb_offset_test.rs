@@ -288,3 +288,46 @@ proptest::proptest! {
         proptest::prop_assert_eq!(kitsu_ep_no(&provider, offset), per_entry);
     }
 }
+
+/// Make `path` unreadable while its directory stays writable. Returns
+/// false where permissions do not hold (running as root), so the
+/// caller can skip a case the platform cannot stage.
+#[cfg(unix)]
+fn make_unreadable(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).unwrap();
+    std::fs::read(path).is_err()
+}
+
+#[cfg(unix)]
+fn make_readable(path: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap();
+}
+
+/// A store that exists but cannot be read is not an empty one: a put
+/// or a removal that rewrote it from nothing would erase every other
+/// show's offset. Both leave it as it is, and a removal says it failed.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_store_is_never_rewritten_from_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let s = make_state_at(tmp.path().join("history"));
+    put(&s, "one-piece-69", 4);
+    put(&s, "naruto-20", 2);
+    let store = tmp.path().join("ani-gui-offsets");
+    if !make_unreadable(&store) {
+        return;
+    }
+
+    put(&s, "bleach-30", 1);
+    let removed: std::collections::HashSet<&str> = ["one-piece-69"].into_iter().collect();
+    assert!(
+        forget(&s, &removed).is_err(),
+        "the removal reports the read failure"
+    );
+
+    make_readable(&store);
+    assert_eq!(get(&s, "naruto-20"), 2);
+    assert_eq!(get(&s, "one-piece-69"), 4);
+}

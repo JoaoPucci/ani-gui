@@ -798,3 +798,31 @@ fn by_kitsu_with_an_empty_id_finds_no_row() {
     write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
     assert_eq!(history_by_kitsu(&s, "").unwrap(), None);
 }
+
+/// A history that exists but cannot be read cannot be cleared: the
+/// clear could not name the rows whose offsets go with them, so it
+/// fails with the file and the offsets as they were.
+#[cfg(unix)]
+#[test]
+fn a_clear_of_an_unreadable_history_fails_and_changes_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read(&path).is_ok() {
+        return; // permissions do not hold here (root)
+    }
+
+    assert!(history_clear(&s).is_err());
+
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
+    assert_eq!(
+        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        4,
+        "with its offset"
+    );
+}
