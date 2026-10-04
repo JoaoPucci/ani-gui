@@ -136,25 +136,23 @@ fi
 
 # 7. Every script that packages for Linux builds that backend first:
 #    the `package` scripts, and `dist` / `dist:release`, which are run
-#    on their own as well (the e2e workflow runs `dist`).
-for s in package package:release dist dist:release; do
-    line=$(grep -E "\"$s\"" "$PKG" || true)
-    case "$line" in
-        *build:backend:linux*) ;;
-        *)
-            printf 'arch/linux_deps FAIL: %s "%s" script does not build the static backend (build:backend:linux)\n' "$PKG" "$s" >&2
-            failed=1
-            ;;
-    esac
-done
-line=$(grep -E '"build:backend:linux"' "$PKG" || true)
-case "$line" in
-    *--target\ x86_64-unknown-linux-musl*) ;;
-    *)
-        printf 'arch/linux_deps FAIL: %s "build:backend:linux" does not build for x86_64-unknown-linux-musl\n' "$PKG" >&2
-        failed=1
-        ;;
-esac
+#    on their own as well (the e2e workflow runs `dist`). Asserted on
+#    the parsed scripts as exact text: each one begins with the build
+#    followed by `&&`, so nothing runs before it and a failed build
+#    stops the packaging, and the build script is exactly the musl
+#    build. A reordered or merely mentioning script fails.
+if ! node -e '
+const s = require(process.argv[1]).scripts || {};
+const build = "cd ../backend && cargo build --bin ani-gui-backend --release --target x86_64-unknown-linux-musl";
+const first = "pnpm run build:backend:linux && ";
+const bad = ["package", "package:release", "dist", "dist:release"]
+  .filter((n) => typeof s[n] !== "string" || !s[n].startsWith(first));
+if (s["build:backend:linux"] !== build) bad.push("build:backend:linux");
+if (bad.length) { console.error(bad.join(" ")); process.exit(1); }
+' "$REPO_ROOT/$PKG"; then
+    printf 'arch/linux_deps FAIL: %s scripts above do not begin with the static backend build, or build:backend:linux is not exactly the musl build\n' "$PKG" >&2
+    failed=1
+fi
 
 if [ "$failed" -ne 0 ]; then
     exit 1
