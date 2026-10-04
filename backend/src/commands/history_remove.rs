@@ -6,7 +6,8 @@
 //! what its rows leave behind, and it records what it removed, so work
 //! begun before it — a watch still waiting on Kitsu, a play still
 //! resolving, a skip-time lookup still out — writes nothing of the
-//! removed show afterwards.
+//! removed show afterwards: nothing under its row's key, and nothing
+//! under the Kitsu ids the history or this process knew it by.
 
 use crate::error::Result;
 use crate::history::guard::hold;

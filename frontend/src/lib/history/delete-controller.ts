@@ -37,10 +37,13 @@ export interface ConfirmDeleteResult {
  *   1. Expand the clicked id to every history row in the same
  *      Kitsu group, so a dedupe-hidden sibling can't immediately
  *      become the new visible card (Codex P2 #3369138821).
- *   2. Serialize the backend `historyDelete` calls — they
- *      read-modify-write the history file with an atomic rename and no
- *      shared lock, so a parallel `Promise.all` can leave a
- *      sibling behind (Codex P2 #3369156513).
+ *   2. Serialize the backend `historyDelete` calls — each
+ *      read-modify-writes the history file with an atomic rename.
+ *      When this was written nothing made two of them take turns, so
+ *      a parallel `Promise.all` could leave a sibling behind (Codex
+ *      P2 #3369156513); the backend now holds the file across each
+ *      delete, and the calls stay in sequence because nothing is
+ *      gained by racing them.
  *
  * Returning the filtered history (rather than mutating) keeps
  * the function pure and lets the test assert ordering + filter

@@ -123,11 +123,12 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    the show id rather than the name: a provider slug carries its
 	//    title in its own words, so `one-piece-69` searches Kitsu for
 	//    "one piece", takes no hit whose titles share too few of those
-	//    words (title-words.ts), and persists the resolved kitsu_id into the reverse
-	//    cache unless a play's mapping stands there, and subsequent
-	//    calls short-circuit through step 0. A row from the retired
-	//    provider has no such words and
-	//    no alias source left, so a stub name there is not recoverable
+	//    words (title-words.ts), and persists the resolved kitsu_id into
+	//    the reverse cache — unless a play's mapping stands there, and
+	//    only while this row is still in history — so subsequent calls
+	//    short-circuit through step 0. A row from the retired provider
+	//    has no such words and no alias source left, so a stub name
+	//    there is not recoverable
 	//    by this step — those rows depend on having been mapped.
 	//
 	//    Only fires when there's a provider show_id to enrich AND
@@ -146,6 +147,9 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	}
 
 	// 5) Persist on success so the next session bypasses the lookup.
+	//    The backend stores it only while a history row still carries
+	//    this title: a row removed while this resolution was out
+	//    leaves nothing to match.
 	if (match) {
 		try {
 			await kitsuTitleMatchPut(
