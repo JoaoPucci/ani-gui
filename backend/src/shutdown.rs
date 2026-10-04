@@ -58,3 +58,7 @@ where
         }
     }
 }
+
+#[cfg(test)]
+#[path = "shutdown_test.rs"]
+mod tests;
