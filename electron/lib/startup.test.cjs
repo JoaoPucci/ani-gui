@@ -112,21 +112,34 @@ test("the first load leaves no listener on the window, however it ends", async (
 // has been destroyed"), as does `show()`, while a reference to the
 // contents taken earlier keeps its emitter methods and answers
 // `isDestroyed()`.
+//
+// The two go in either order, both measured: `close()` destroys the
+// contents and then emits `closed`; `destroy()` emits `closed` while
+// the contents still answer that they are alive.
 const fakeWindow = () => {
   const win = new EventEmitter();
   const contents = new EventEmitter();
-  let destroyed = false;
-  contents.isDestroyed = () => destroyed;
+  let windowGone = false;
+  let contentsGone = false;
+  win.isDestroyed = () => windowGone;
+  contents.isDestroyed = () => contentsGone;
   Object.defineProperty(win, "webContents", {
     get() {
-      if (destroyed) throw new TypeError("Object has been destroyed");
+      if (windowGone || contentsGone) throw new TypeError("Object has been destroyed");
       return contents;
     },
   });
   win.closeFake = () => {
-    destroyed = true;
+    contentsGone = true;
     contents.emit("destroyed");
+    windowGone = true;
     win.emit("closed");
+  };
+  win.destroyFake = () => {
+    windowGone = true;
+    win.emit("closed");
+    contentsGone = true;
+    contents.emit("destroyed");
   };
   // For assertions after the window is gone.
   win.contents = contents;
@@ -296,6 +309,15 @@ test("a window closed mid-load fails the load with the load's own error", async 
 
 test("a window closed before its first page arrived is not a failed boot", async () => {
   const win = showableWindow(closesMidLoad);
+  await openFirstPage(win, "app://localhost/", { timeoutMs: 1_000, logError: () => {} });
+  assert.equal(win.shows, 0);
+});
+
+test("nor is one destroyed outright, where the window goes before its contents", async () => {
+  const win = showableWindow(async (w) => {
+    w.destroyFake();
+    throw loadError("ERR_FAILED", -2, "app://localhost/");
+  });
   await openFirstPage(win, "app://localhost/", { timeoutMs: 1_000, logError: () => {} });
   assert.equal(win.shows, 0);
 });
