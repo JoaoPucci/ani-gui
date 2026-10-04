@@ -164,12 +164,15 @@ C compiler for it, once per machine:
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
-sudo apt install musl-tools   # musl-gcc, for the SQLite the backend compiles in
+sudo apt install musl-tools   # musl-gcc, for the C the backend compiles in (SQLite, ring)
 ```
 
-`pnpm package` and `pnpm package:release` build that backend
-themselves (`pnpm run build:backend:linux`). The dev loop keeps using
-the ordinary debug build.
+`musl-tools` is the Debian and Ubuntu package; Fedora calls it
+`musl-gcc` and Arch `musl`.
+
+`pnpm package`, `pnpm package:release` and the `dist` scripts build
+that backend themselves (`pnpm run build:backend:linux`). The dev loop
+keeps using the ordinary debug build.
 
 Artifacts land in `electron/dist/`. There is no release-packaging CI —
 no workflow triggers on a tag and nothing publishes installers. (The

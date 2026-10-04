@@ -102,7 +102,7 @@ protocol.registerSchemesAsPrivileged([
 /**
  * Locate the compiled Rust backend binary.
  *
- * In dev we look in the cargo target dir (release first, then debug).
+ * In dev we look in the cargo target dir (debug first, then release).
  * In packaged builds electron-builder copies the binary into
  * `process.resourcesPath/ani-gui-backend` via `extraResources` in
  * `package.json:build`. Throws with a clear message if missing.
