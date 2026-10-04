@@ -694,3 +694,33 @@ fn a_retried_delete_still_knows_an_older_rows_page_by_its_mapping() {
     assert!(!skips_left(&state), "the page's skip times");
     assert_eq!(left(&state), (0, 0, false), "the other key's");
 }
+
+/// The retry of a delete whose history write failed has lost the
+/// mapping an older row's Kitsu id was known by: the removal must still
+/// stand against a skip-time lookup for that id begun before it.
+#[test]
+fn a_retried_delete_still_stands_against_a_lookup_by_its_mappings_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    seed_row(&state, "hianime:the-show-100");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!(
+            "allmanga2kitsu:v{}:hianime:the-show-100",
+            crate::commands::kitsu::ALLMANGA_KITSU_VERSION
+        ),
+        "77",
+        3600,
+    )
+    .unwrap();
+    let begun = epoch(&state.history_path);
+    std::fs::create_dir(tmp.path().join("history.new")).unwrap();
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").is_err());
+    std::fs::remove_dir(tmp.path().join("history.new")).unwrap();
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert!(crate::history::guard::hold(&state.history_path, |held| {
+        held.kitsu_removed_since(begun, "77")
+    }));
+}
