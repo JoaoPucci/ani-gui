@@ -9,7 +9,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { backendSpawnOptions, launchBackend } = require("./backend-spawn.cjs");
+const { backendSpawnOptions, launchBackend, stoppable } = require("./backend-spawn.cjs");
 
 for (const platform of ["linux", "win32", "darwin"]) {
   test(`the backend gets a parent pipe on stdin and the flag to watch it (${platform})`, () => {
@@ -79,4 +79,25 @@ test("a failed handshake leaves the backend tracked for the boot's stop", async 
   launch.fail(new Error("backend did not complete its handshake"));
   await assert.rejects(launch.launched, /handshake/);
   assert.deepEqual(launch.tracked, [child]);
+});
+
+// The tree kill acts on a pid. Once the backend has exited, its pid is
+// free for the OS to hand to something else, and `taskkill /T` on it —
+// or a signal to a group of that id — would stop whatever has it now.
+// Tracking the backend from its spawn means the boot's stop reaches
+// backends that exited during startup, so the kill has to know them.
+
+test("a running backend is stopped", () => {
+  assert.equal(stoppable({ pid: 4242, killed: false, exitCode: null, signalCode: null }), true);
+});
+
+test("a backend that never started, or was already stopped, is left alone", () => {
+  assert.equal(stoppable(null), false);
+  assert.equal(stoppable({ pid: undefined, killed: false, exitCode: null, signalCode: null }), false);
+  assert.equal(stoppable({ pid: 4242, killed: true, exitCode: null, signalCode: null }), false);
+});
+
+test("a backend that has exited is left alone: its pid may be someone else's", () => {
+  assert.equal(stoppable({ pid: 4242, killed: false, exitCode: 1, signalCode: null }), false);
+  assert.equal(stoppable({ pid: 4242, killed: false, exitCode: null, signalCode: "SIGKILL" }), false);
 });
