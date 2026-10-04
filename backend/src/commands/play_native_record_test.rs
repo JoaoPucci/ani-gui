@@ -105,10 +105,13 @@ async fn a_slow_kitsu_does_not_hold_the_row_back() {
     };
     tokio::time::sleep(Duration::from_millis(500)).await;
 
+    let rows = crate::history::read_all(&state.history_path).expect("rows");
+    let row = rows.iter().find(|r| r.id == watch.show_id);
+    assert!(row.is_some(), "the row is on disk while the guard waits");
     assert_eq!(
-        row_id(&state, &watch.show_id).as_deref(),
-        Some("45412"),
-        "the row is on disk while the guard waits"
+        row.and_then(|r| r.kitsu_id.clone()),
+        None,
+        "an id the guard has not judged is not on the row"
     );
     assert!(
         crate::commands::kitsu::watched_at_get(&state, &watch.show_id)
@@ -119,6 +122,81 @@ async fn a_slow_kitsu_does_not_hold_the_row_back() {
     recording.await.expect("recording");
     // A failed read is no evidence against the pairing: the id stands.
     assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("45412"));
+}
+
+/// The Kitsu detail the guard reads, served after `delay`, naming
+/// `slug` as the entry's.
+async fn serve_detail(kitsu: &MockServer, id: &str, slug: &str, delay: Duration) {
+    let mut body: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../tests/fixtures/kitsu/anime_one_piece_detail.json"
+    ))
+    .expect("fixture");
+    body["data"]["id"] = serde_json::Value::from(id);
+    body["data"]["attributes"]["slug"] = serde_json::Value::from(slug);
+    Mock::given(method("GET"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(body)
+                .set_delay(delay),
+        )
+        .mount(kitsu)
+        .await;
+}
+
+/// An id the guard refuses is never on the row, not even while the
+/// guard waits on Kitsu: a Continue load in that window would render
+/// the refused cour.
+#[tokio::test]
+async fn a_refused_id_is_never_on_the_row() {
+    let kitsu = MockServer::start().await;
+    serve_detail(
+        &kitsu,
+        "44294",
+        "jojo-no-kimyou-na-bouken-stone-ocean",
+        Duration::from_secs(1),
+    )
+    .await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(state_at(td.path(), &kitsu.uri()));
+    let watch = part_two();
+
+    let recording = {
+        let state = Arc::clone(&state);
+        let watch = watch.clone();
+        tokio::spawn(async move { record_watch(&state, &watch, Some("44294")).await })
+    };
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        row_id(&state, &watch.show_id),
+        None,
+        "while the guard waits"
+    );
+    recording.await.expect("recording");
+    assert_eq!(row_id(&state, &watch.show_id), None, "once it refused");
+}
+
+/// A pairing the cache can already judge goes on the row in the same
+/// write as the watch.
+#[tokio::test]
+async fn a_pairing_the_cache_accepts_goes_on_with_the_row() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    cache_detail(
+        &state,
+        "45412",
+        "jojo-no-kimyou-na-bouken-stone-ocean-part-2",
+    );
+    let watch = part_two();
+
+    record_watch(&state, &watch, Some("45412")).await;
+
+    assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("45412"));
+    assert!(kitsu
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .is_empty());
 }
 
 /// A play the cour guard refuses records no id, and a stale id the
