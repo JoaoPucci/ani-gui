@@ -47,6 +47,8 @@ Three layers, in lockstep:
 - **Backend** — Rust crate inside `backend/`. Spawned as a sidecar by the desktop shell at startup. Resolves streams from the providers, fetches metadata from Kitsu/AniList, reads/writes the watch-history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
 - **External processes** — `curl-impersonate` for provider requests, `yt-dlp` / `ffmpeg` for downloads, and optionally `mpv` for the "Open in external player" escape hatch.
 
+The shell and the backend end together. A quit stops the backend, and with it the provider requests and download tools it has running. If the shell ends without quitting — a crash, a kill — the backend notices its parent is gone, through a pipe the shell holds open for as long as it lives, and stops itself the same way. A launch that cannot get as far as a working window — the backend does not start, or the first page does not load — ends with an error dialog and exit code 1.
+
 ## Data flow: searching and playing an episode
 
 1. The user types a query into the search bar.
