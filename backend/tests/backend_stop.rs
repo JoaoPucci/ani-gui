@@ -104,8 +104,38 @@ fn signal(name: &str, pid: u32) {
     assert!(sent.success(), "kill {name} {pid}");
 }
 
-#[test]
-fn a_terminate_signal_stops_the_tools_a_running_download_spawned() {
+/// A backend with a download running, up to the point where the tool
+/// and its helper are both alive.
+struct Downloading {
+    /// Holds the stand-ins and everything the backend writes; kept
+    /// for as long as the download is.
+    _dir: tempfile::TempDir,
+    backend: common::Backend,
+    /// The backend's output, until a test stops reading it.
+    output: Option<std::io::BufReader<std::process::ChildStdout>>,
+    /// The download's stream. Open for as long as this is held — the
+    /// harder case, a client that never hangs up.
+    _stream: std::net::TcpStream,
+    tool: u32,
+    helper: u32,
+}
+
+impl Downloading {
+    /// Whether the tool and its helper are gone within `wait`; then
+    /// leave nothing behind whatever the answer.
+    fn tools_gone_within(&mut self, wait: Duration) -> bool {
+        let gone = gone_within(&[self.tool, self.helper], wait);
+        let _ = Command::new("kill")
+            .args(["-9", "--", &format!("-{}", self.tool)])
+            .stderr(std::process::Stdio::null())
+            .status();
+        let _ = self.backend.child.kill();
+        let _ = self.backend.child.wait();
+        gone
+    }
+}
+
+fn start_a_download() -> Downloading {
     // Under the target directory rather than the system's temporary
     // one: the backend is hard-linked in, which needs one filesystem.
     let dir = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("tempdir");
@@ -123,12 +153,14 @@ fn a_terminate_signal_stops_the_tools_a_running_download_spawned() {
     stage(&bin.join("curl_firefox135"), TRANSPORT);
     stage(&bin.join("yt-dlp"), TOOL);
 
+    // Standard error is a pipe nobody reads, like standard output
+    // once a test lets go of it: what a parent that died leaves.
+    let (unread, stderr) = std::io::pipe().expect("pipe");
+    drop(unread);
     let mut cmd = common::command(&exe, root);
-    cmd.env("ANI_GUI_PARENT_STDIN", "1");
-    let mut backend = common::start(cmd);
+    cmd.env("ANI_GUI_PARENT_STDIN", "1").stderr(stderr);
+    let (mut backend, output) = common::start_keeping_output(cmd);
 
-    // Start a download and keep its stream open for the whole test —
-    // the harder case, a client that never hangs up.
     let authority = backend
         .api_base
         .strip_prefix("http://")
@@ -150,29 +182,55 @@ fn a_terminate_signal_stops_the_tools_a_running_download_spawned() {
         panic!("the download never reached its tool: tool={tool:?} helper={helper:?}");
     };
     assert!(alive(tool) && alive(helper), "the tool and its helper run");
+    Downloading {
+        _dir: dir,
+        backend,
+        output: Some(output),
+        _stream: stream,
+        tool,
+        helper,
+    }
+}
+
+#[test]
+fn a_terminate_signal_stops_the_tools_a_running_download_spawned() {
+    let mut download = start_a_download();
 
     // What a quit delivers. To the backend alone: the tool's group is
     // its own, so the signal Electron sends the backend's group never
     // reaches it.
-    signal("-TERM", backend.child.id());
+    signal("-TERM", download.backend.child.id());
 
-    let status = common::exited_within(&mut backend.child, Duration::from_secs(20));
-    let stopped = gone_within(&[tool, helper], Duration::from_secs(5));
-
-    // Leave nothing behind whatever the outcome.
-    let _ = Command::new("kill")
-        .args(["-9", "--", &format!("-{tool}")])
-        .stderr(std::process::Stdio::null())
-        .status();
-    let _ = backend.child.kill();
-    let _ = backend.child.wait();
-    drop(stream);
-
+    let status = common::exited_within(&mut download.backend.child, Duration::from_secs(20));
+    let stopped = download.tools_gone_within(Duration::from_secs(5));
     let status = status.expect("the backend exits once it is asked to stop");
     assert!(stopped, "the tool and its helper are gone with the backend");
     assert!(
         status.success(),
         "a requested stop is a clean exit: {status:?}"
+    );
+}
+
+/// The other way a backend loses its app: the parent dies — a crash, a
+/// kill — and never gets to send anything. The parent watch has to
+/// reach the same wind-down, with every pipe to the parent gone, the
+/// backend's own output among them.
+#[test]
+fn a_parent_that_dies_stops_the_tools_a_running_download_spawned() {
+    let mut download = start_a_download();
+
+    // Everything the parent held, at once: the reader of the backend's
+    // output and the pipe the backend watches.
+    drop(download.output.take());
+    drop(download.backend.child.stdin.take());
+
+    let status = common::exited_within(&mut download.backend.child, Duration::from_secs(20));
+    let stopped = download.tools_gone_within(Duration::from_secs(5));
+    let status = status.expect("the backend exits once its parent is gone");
+    assert!(stopped, "the tool and its helper are gone with the backend");
+    assert!(
+        status.success(),
+        "a parent gone is a clean exit: {status:?}"
     );
 }
 
