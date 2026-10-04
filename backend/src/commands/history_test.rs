@@ -496,3 +496,77 @@ fn delete_that_cannot_forget_the_cache_leaves_the_row() {
     assert!(history_clear(&s).is_err());
     assert_eq!(history_list(&s).unwrap().len(), 1, "the history stays");
 }
+
+/// What older versions left for a row, its numbering offsets and the
+/// resolution rows that played it go with it too; another show's stay.
+#[test]
+fn delete_removes_every_per_show_store_of_every_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    let gone = "hianime:seitokai-10497";
+    let kept = "one-piece-69";
+    write_atomic(&path, &[row(gone, "Seitokai"), row(kept, "One Piece")]).unwrap();
+    for (key, body) in [
+        ("allmanga2kitsu:v2:hianime:seitokai-10497", "1"),
+        ("title-match:v2:seitokai:c1", "1"),
+        ("title-match:v1:seitokai:c1", "1"),
+        (
+            "play:v14:Seitokai:sub:best:1:::",
+            r#"{"show_id":"hianime:seitokai-10497"}"#,
+        ),
+        (
+            "play:v13:Seitokai:sub:best:2:::",
+            r#"{"show_id":"hianime:seitokai-10497"}"#,
+        ),
+        (
+            "play:v14:One Piece:sub:best:1:::",
+            r#"{"show_id":"one-piece-69"}"#,
+        ),
+        ("allmanga2kitsu:v2:one-piece-69", "12"),
+    ] {
+        put(&s, key, body);
+    }
+    crate::commands::anidb_offset::put(&s, gone, 3);
+    crate::commands::anidb_offset::put(&s, kept, 4);
+
+    assert!(history_delete(&s, gone).unwrap());
+
+    for key in [
+        "allmanga2kitsu:v2:hianime:seitokai-10497",
+        "title-match:v2:seitokai:c1",
+        "title-match:v1:seitokai:c1",
+        "play:v14:Seitokai:sub:best:1:::",
+        "play:v13:Seitokai:sub:best:2:::",
+    ] {
+        assert_eq!(cached(&s, key), None, "{key} outlived the row");
+    }
+    assert!(cached(&s, "play:v14:One Piece:sub:best:1:::").is_some());
+    assert!(cached(&s, "allmanga2kitsu:v2:one-piece-69").is_some());
+    let offsets = std::fs::read_to_string(tmp.path().join("ani-gui-offsets")).unwrap();
+    assert!(!offsets.contains(gone), "the row's offset outlived it");
+    assert_eq!(crate::commands::anidb_offset::get(&s, kept), 4);
+}
+
+/// Clearing the history removes every row's offsets and every
+/// resolution row along with the cache entries.
+#[test]
+fn clear_removes_the_offsets_and_the_resolution_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    put(
+        &s,
+        "play:v14:One Piece:sub:best:1:::",
+        r#"{"show_id":"one-piece-69"}"#,
+    );
+    put(&s, "play:v12:Naruto:sub:best:1:::", "{}");
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+
+    history_clear(&s).unwrap();
+
+    assert_eq!(cached(&s, "play:v14:One Piece:sub:best:1:::"), None);
+    assert_eq!(cached(&s, "play:v12:Naruto:sub:best:1:::"), None);
+    assert_eq!(crate::commands::anidb_offset::get(&s, "one-piece-69"), 0);
+}
