@@ -567,3 +567,96 @@ fn a_retried_delete_still_takes_the_other_keys_numbering() {
 
     assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
 }
+
+/// A clear takes every resolution row, so one that names the other key
+/// without recording a page keeps nothing playable: the key's
+/// numbering goes with the clear all the same.
+#[test]
+fn a_clear_takes_the_other_keys_numbering_whatever_else_named_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    other_key_leftovers(&state);
+    play_resolution_cache::put(&state.cache_pool, PAGELESS, &cached());
+
+    crate::commands::history::history_clear(&state).unwrap();
+
+    assert!(resolution(&state, PAGELESS).is_none(), "every row goes");
+    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+}
+
+// A removal that fails part-way is retried, and the retry finds the
+// other key only through the resolution rows that name it. So a
+// failure must not come after those rows are gone and before the
+// key's numbering is.
+
+/// Make the cache refuse to delete any row whose key starts `prefix`.
+fn refuse_deletes(state: &AppState, prefix: &str) {
+    state
+        .cache_pool
+        .get()
+        .unwrap()
+        .execute_batch(&format!(
+            "CREATE TRIGGER refused BEFORE DELETE ON meta_cache \
+             WHEN old.key LIKE '{prefix}%' BEGIN SELECT RAISE(ABORT, 'refused'); END;"
+        ))
+        .unwrap();
+}
+
+fn allow_deletes(state: &AppState) {
+    state
+        .cache_pool
+        .get()
+        .unwrap()
+        .execute_batch("DROP TRIGGER refused;")
+        .unwrap();
+}
+
+#[test]
+fn a_delete_retried_after_the_skip_times_failed_takes_the_other_keys_numbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    other_key_leftovers(&state);
+    seed_skips(&state);
+    refuse_deletes(&state, "aniskip:");
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").is_err());
+    allow_deletes(&state);
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+}
+
+#[test]
+fn a_clear_retried_after_the_skip_times_failed_takes_the_other_keys_numbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    other_key_leftovers(&state);
+    seed_skips(&state);
+    refuse_deletes(&state, "aniskip:");
+    assert!(crate::commands::history::history_clear(&state).is_err());
+    allow_deletes(&state);
+
+    crate::commands::history::history_clear(&state).unwrap();
+
+    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+}
+
+/// The page's rows are deleted one by one: one that refuses, after
+/// another was taken, still leaves the retry the taken row's key.
+#[test]
+fn a_delete_retried_after_a_resolution_row_failed_takes_the_other_keys_numbering() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    other_key_leftovers(&state);
+    let mut third = cached();
+    third.show_id = "third-show-5".into();
+    let refused = "play:v14:The Show:sub:best:9:::";
+    play_resolution_cache::store(&state, page_77(&state), refused, &third);
+    refuse_deletes(&state, refused);
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").is_err());
+    allow_deletes(&state);
+
+    assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
+
+    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+}
