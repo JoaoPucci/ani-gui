@@ -12,7 +12,7 @@
 //!   by the show id their value carries, and the ones a page of the
 //!   show resolved under another key, found by the page their value
 //!   carries — with that key's numbering when no history row has the
-//!   key and no resolution row names it any more
+//!   key and, for a delete, no other resolution row names it
 //!   (`history_forget_resolutions`);
 //! - the skip times the player cached for its episodes (`aniskip:`),
 //!   found by every Kitsu id the show is known by — the one its row
@@ -21,14 +21,17 @@
 //!   carried the MAL id alone, which nothing reads any more;
 //! - the show's numbering offsets, in the file beside the history.
 //!   Clearing removes the offsets of the cleared rows' shows and of
-//!   the keys their pages resolved under, not those of shows a resolve
-//!   stamped that were never in the history.
+//!   the keys their pages resolved under, not those of shows never in
+//!   the history.
 //!
 //! An expired cache row stays on disk until something overwrites it,
 //! so expiry is not removal: deleting a row deletes all of these for
-//! its show, and clearing the history deletes them for every show. The
-//! cache entries go before the history file is rewritten and the
-//! removed rows' own offsets after it ([`sweep_offsets`]).
+//! its show, and clearing the history deletes them for every show.
+//! The order is what a retry needs. The other keys' numbering goes
+//! first, while the resolution rows that name those keys are still
+//! there to find them by; then the cache entries, the resolution rows
+//! last; then the history file; then the removed rows' own offsets
+//! ([`sweep_offsets`]).
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_delete, meta_cache_delete_prefix};
@@ -45,12 +48,14 @@ const HISTORY_PREFIXES: [&str; 5] = [
 ];
 
 /// Delete what the row for `id`, titled `title`, recording `recorded`
-/// as the show played and seen played from `pages`, left in the cache.
-/// Skip times and resolution rows found by a Kitsu id in `claimed` —
-/// one a remaining row records, maps to, matched by title or was seen
-/// played from — stay with that row's show. The offsets go after the row
-/// ([`sweep_offsets`]). Returns what the removal has to act on next
-/// ([`Forgotten`]).
+/// as the show played and seen played from `pages`, left in the cache,
+/// but for its resolution rows, which the removal finds with what this
+/// returns and deletes last
+/// ([`super::history_forget_resolutions::find_resolutions`]). Skip
+/// times found by a Kitsu id in `claimed` — one a remaining row
+/// records, maps to, matched by title or was seen played from — stay
+/// with that row's show. Returns the Kitsu ids the show was known by
+/// that no remaining row claims.
 ///
 /// # Errors
 /// Cache write failures propagate.
@@ -61,7 +66,7 @@ pub(crate) fn forget_show(
     recorded: Option<&str>,
     pages: &[String],
     claimed: &std::collections::HashSet<String>,
-) -> Result<Forgotten> {
+) -> Result<Vec<String>> {
     let pool = &state.cache_pool;
     meta_cache_delete(pool, &watched_at_key(id))?;
     // Every Kitsu id the player could have asked with for this show:
@@ -76,24 +81,8 @@ pub(crate) fn forget_show(
     )?);
     // An empty id — a title match stored without one — names no page.
     kitsu_ids.retain(|k| !k.is_empty() && !claimed.contains(k));
-    let other_keys =
-        super::history_forget_resolutions::forget_resolutions(state, &[id], &kitsu_ids)?;
     super::history_forget_skips::forget_skip_times(state, &kitsu_ids)?;
-    Ok(Forgotten {
-        known_by: kitsu_ids,
-        other_keys,
-    })
-}
-
-/// What forgetting a show found, for the removal to act on.
-pub(crate) struct Forgotten {
-    /// The Kitsu ids the show was known by that no remaining row
-    /// claims — the ones whose skip times and resolution rows went.
-    pub(crate) known_by: Vec<String>,
-    /// The other show keys those ids' resolution rows named, that no
-    /// surviving resolution row names: keys a page of the show resolved
-    /// under, another provider's when its walk failed over.
-    pub(crate) other_keys: Vec<String>,
+    Ok(kitsu_ids)
 }
 
 /// Delete the show's reverse mapping under every version's key, and
@@ -123,18 +112,23 @@ pub(crate) fn forget_all(state: &AppState) -> Result<()> {
 
 /// Drop the numbering offsets of the keys in `removed`: the removed
 /// rows' own, once the history file no longer holds the rows, and the
-/// rowless keys a removed show's page resolved under that no
-/// resolution row names any more.
+/// rowless keys a removed show's page resolved under, before the
+/// resolution rows that name them go.
 ///
 /// For a row's own key the order is what keeps the pair whole: a
 /// history write that fails leaves the rows with their offsets, and an
 /// offsets write that fails leaves only offsets without rows, which
-/// nothing reads. A failure here is logged rather than returned.
+/// nothing reads. A rowless key's numbering goes before the history
+/// write instead, so a retry can still find the key; a removal that
+/// then fails has taken it, and a play already under way that writes
+/// the key's first row afterwards writes it without its numbering
+/// until a resolve stamps it again. A failure here is logged rather
+/// than returned; for a rowless key that leaves its numbering behind,
+/// and once the resolution rows go nothing finds it again.
 ///
 /// Every other rowless offset stays: a resolve stamps one before the
 /// show's first row, and a cached stream played later writes that row
-/// through it — which is why a key a resolution row still names is
-/// never among the ones passed here.
+/// through it.
 pub(crate) fn sweep_offsets(state: &AppState, removed: &[&str]) {
     let removed = removed.iter().copied().collect();
     if let Err(e) = crate::commands::anidb_offset::forget(state, &removed) {

@@ -40,38 +40,39 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         }
         // The cache first: a cache that cannot forget fails the delete
         // with the row still there to retry, rather than reporting a
-        // failure for a row already gone. The offsets last, once the
-        // row is gone, so no failure leaves a row without its offset.
-        // The Kitsu ids the remaining rows claim, and the ones this row
-        // was known by: what the rows and the cache say, and the pages
-        // this process saw each played from — a row records its page
-        // only once its watch's verdict is in.
+        // failure for a row already gone. The removed row's own offset
+        // last, once the row is gone, so no failure leaves it without
+        // its offset. The Kitsu ids the remaining rows claim, and the
+        // ones this row was known by: what the rows and the cache say,
+        // and the pages this process saw each played from — a row
+        // records its page only once its watch's verdict is in.
         let mut claimed = super::history_forget_skips::claimed_ids(state, &entries)?;
         for entry in &entries {
             claimed.extend(held.pages_of(&entry.id));
         }
         let pages = held.pages_of(id);
-        let (mut known_by, mut other_keys) = (Vec::new(), Vec::new());
+        let mut known_by = Vec::new();
         for (title, recorded) in &removed {
-            let forgotten = super::history_forget::forget_show(
+            known_by.extend(super::history_forget::forget_show(
                 state,
                 id,
                 title,
                 recorded.as_deref(),
                 &pages,
                 &claimed,
-            )?;
-            known_by.extend(forgotten.known_by);
-            other_keys.extend(forgotten.other_keys);
+            )?);
         }
-        // The numbering of the keys a page of the show resolved under
-        // goes with the resolution rows that named them, before the
-        // history write: a write that fails would otherwise leave the
-        // retry nothing to find them by. A key a remaining row has
-        // keeps the numbering that row is read through.
-        other_keys.retain(|key| !entries.iter().any(|e| e.id == *key));
-        let rowless: Vec<&str> = other_keys.iter().map(String::as_str).collect();
+        // The numbering of the other keys the show's resolution rows
+        // name goes before those rows do: a retry after any failure
+        // from here finds the keys only through the rows. A key a
+        // remaining row has keeps the numbering that row is read
+        // through.
+        let found = super::history_forget_resolutions::find_resolutions(state, &[id], &known_by)?;
+        let mut rowless = found.only_named();
+        rowless.retain(|key| !entries.iter().any(|e| e.id == *key));
+        let rowless: Vec<&str> = rowless.iter().map(String::as_str).collect();
         super::history_forget::sweep_offsets(state, &rowless);
+        found.forget(state)?;
         held.write(&entries)?;
         super::history_forget::sweep_offsets(state, &[id]);
         held.removed_show(id, &known_by);
@@ -95,18 +96,17 @@ pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
         let cleared = held.rows()?;
         let ids: Vec<&str> = cleared.iter().map(|e| e.id.as_str()).collect();
         // What a delete of each show would take under another key: the
-        // numbering of the keys its pages resolved under. The rows
-        // themselves go with every other resolution row below.
+        // numbering of the keys its pages resolved under, whatever else
+        // names them, since every resolution row goes below.
         let mut known_by = super::history_forget_skips::claimed_ids(state, &cleared)?;
         for entry in &cleared {
             known_by.extend(held.pages_of(&entry.id));
         }
         let known_by: Vec<String> = known_by.into_iter().filter(|k| !k.is_empty()).collect();
-        let other_keys =
-            super::history_forget_resolutions::forget_resolutions(state, &ids, &known_by)?;
-        super::history_forget::forget_all(state)?;
-        let rowless: Vec<&str> = other_keys.iter().map(String::as_str).collect();
+        let found = super::history_forget_resolutions::find_resolutions(state, &ids, &known_by)?;
+        let rowless: Vec<&str> = found.named.iter().map(String::as_str).collect();
         super::history_forget::sweep_offsets(state, &rowless);
+        super::history_forget::forget_all(state)?;
         held.write(&[])?;
         super::history_forget::sweep_offsets(state, &ids);
         held.removed_all();
