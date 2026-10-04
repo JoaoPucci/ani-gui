@@ -289,9 +289,42 @@ pub async fn kitsu_episodes(
     anime_id: &str,
     page: u32,
 ) -> Result<Vec<KitsuEpisode>> {
+    kitsu_episodes_with(state, anime_id, page, false).await
+}
+
+/// [`kitsu_episodes`] past the cached page: a user asked whether an
+/// episode the page leaves undated has aired since. The fetched page
+/// replaces the cached one.
+///
+/// # Errors
+/// As [`kitsu_episodes`].
+pub async fn kitsu_episodes_refresh(
+    state: &AppState,
+    anime_id: &str,
+    page: u32,
+) -> Result<Vec<KitsuEpisode>> {
+    kitsu_episodes_with(state, anime_id, page, true).await
+}
+
+/// [`kitsu_episodes`] or [`kitsu_episodes_refresh`], as the route's
+/// flag says.
+///
+/// # Errors
+/// As [`kitsu_episodes`].
+pub async fn kitsu_episodes_with(
+    state: &AppState,
+    anime_id: &str,
+    page: u32,
+    refresh: bool,
+) -> Result<Vec<KitsuEpisode>> {
     let p = page.max(1);
     let key = format!("kitsu:episodes:{anime_id}:p{p}");
-    let eps = if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
+    let cached = if refresh {
+        None
+    } else {
+        meta_cache_get(&state.cache_pool, &key)?
+    };
+    let eps = if let Some(body) = cached {
         if let Ok(eps) = serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
             warm_signed_image_urls(state, &body);
             eps
@@ -339,20 +372,6 @@ pub async fn kitsu_episodes(
 /// the Kitsu data we already loaded. On budget exhaustion the route
 /// degrades to a Kitsu-only response.
 const ANILIST_ENRICHMENT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
-
-/// [`kitsu_episodes`] past the cached page: a user asked whether an
-/// episode the page leaves undated has aired since. Signatures only:
-/// the behaviour lands with the change its tests describe.
-///
-/// # Errors
-/// As [`kitsu_episodes`].
-pub async fn kitsu_episodes_refresh(
-    state: &AppState,
-    anime_id: &str,
-    page: u32,
-) -> Result<Vec<KitsuEpisode>> {
-    kitsu_episodes(state, anime_id, page).await
-}
 
 async fn kitsu_episodes_fresh(
     state: &AppState,

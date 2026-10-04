@@ -71,7 +71,15 @@ pub(crate) async fn airing_get_with_anilist_base(
         }
         // Corrupt cache row — fall through to refetch.
     }
+    fetch_and_store(state, kitsu_id, anilist_base).await
+}
 
+/// Ask AniList through the Kitsu mappings and cache the answer.
+async fn fetch_and_store(
+    state: &AppState,
+    kitsu_id: &str,
+    anilist_base: Option<&str>,
+) -> Result<AiringStatus> {
     let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await?;
     let status = if ids.anilist.is_none() && ids.mal.is_none() {
         AiringStatus::default()
@@ -110,8 +118,8 @@ fn write_airing_row(state: &AppState, kitsu_id: &str, status: &AiringStatus) {
 }
 
 /// [`airing_get`] past the cached row: a user asked whether an
-/// episode the row calls unaired has aired since. Signatures only:
-/// the behaviour lands with the change its tests describe.
+/// episode the row calls unaired has aired since. The answer replaces
+/// the row, so every later read sees it.
 ///
 /// # Errors
 /// As [`airing_get`].
@@ -126,7 +134,7 @@ pub(crate) async fn airing_refresh_with_anilist_base(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Result<AiringStatus> {
-    airing_get_with_anilist_base(state, kitsu_id, anilist_base).await
+    fetch_and_store(state, kitsu_id, anilist_base).await
 }
 
 /// Batch-seed airing rows for many shows: the home-rail warm calls
