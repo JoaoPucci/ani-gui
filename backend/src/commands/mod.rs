@@ -53,6 +53,7 @@ pub mod play_native_numbering;
 pub mod play_native_outcome;
 pub(crate) mod play_native_record;
 pub mod play_native_resolve;
+mod play_native_split;
 #[cfg(test)]
 pub(crate) mod play_native_test_provider;
 pub mod play_native_walk;

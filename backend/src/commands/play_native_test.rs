@@ -1172,3 +1172,74 @@ async fn a_tv_badge_cannot_carry_a_special_expectation() {
         .expect_err("a TV badge cannot satisfy a special expectation");
     assert!(matches!(err, AniError::NoResults), "got {err:?}");
 }
+
+// One Kitsu entry the provider splits in two. Steel Ball Run is
+// twelve episodes on Kitsu; hianime lists the March premiere as a
+// one-episode show of its own and the weekly run as "... 2nd Stage",
+// numbered from 1. Both parts premiered in Kitsu's year.
+const SBR: &str = "Steel Ball Run: JoJo no Kimyou na Bouken";
+const SBR_2ND: &str = "Steel Ball Run: JoJo no Kimyou na Bouken 2nd Stage";
+
+fn sbr_hits() -> [BrowseHit; 2] {
+    [hit("sbr-1st-4", SBR), hit("sbr-2nd-10465", SBR_2ND)]
+}
+
+/// The (number, id) pairs of a picked listing, in order.
+fn numbered(picked: &PickedShow) -> Vec<(u32, u64)> {
+    picked.episodes.iter().map(|e| (e.number, e.id)).collect()
+}
+
+#[tokio::test]
+async fn an_airing_split_entry_stitches_both_parts_under_the_first() {
+    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 2, Some(2026))]));
+    let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
+        .await
+        .expect("picked");
+    // The first part is the show's identity — the key history and
+    // every cache file the plays under.
+    assert_eq!(picked.hit.slug, "sbr-1st-4");
+    // Kitsu's episode 2 is the 2nd Stage's episode 1.
+    assert_eq!(
+        numbered(&picked),
+        vec![(1, 4001), (2, 10_465_001), (3, 10_465_002)]
+    );
+    assert_eq!(
+        crate::commands::play_native_numbering::kitsu_episode_cap(&picked.episodes),
+        Some(3)
+    );
+}
+
+#[tokio::test]
+async fn a_finished_split_entry_stitches_rather_than_taking_the_near_miss() {
+    // 1 + 11 = 12: the 2nd Stage alone sits one off, inside the
+    // tolerance, and would otherwise win and number every episode one
+    // short.
+    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 11, Some(2026))]));
+    let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "sbr-1st-4");
+    assert_eq!(picked.episodes.len(), 12);
+    assert_eq!(picked.episodes[1].id, 10_465_001);
+}
+
+#[tokio::test]
+async fn a_part_that_already_fits_is_not_stitched_to_its_sequel() {
+    // The reverse shape must not regress: a provider entry that is the
+    // whole Kitsu entry stands alone even with a same-year sequel.
+    let client = AnidbClient::new(YearTable(&[(4, 12, Some(2026)), (10465, 2, Some(2026))]));
+    let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
+        .await
+        .expect("picked");
+    assert_eq!(picked.hit.slug, "sbr-1st-4");
+    assert_eq!(picked.episodes.len(), 12);
+}
+
+#[tokio::test]
+async fn a_sibling_from_another_year_is_not_stitched() {
+    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 2, Some(2029))]));
+    let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
+        .await
+        .expect("picked");
+    assert_eq!(numbered(&picked), vec![(1, 4001)]);
+}
