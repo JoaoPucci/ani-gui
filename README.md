@@ -110,7 +110,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    cd electron
    pnpm dev
    ```
-7. **Build a distributable bundle** — a fresh terminal at the repository root. On an x86_64 Linux host, first run the one-time setup the Linux packages need, `rustup target add x86_64-unknown-linux-musl` and `sudo apt install musl-tools`: they carry a backend that needs no system C library (see [docs/development.md](docs/development.md#build-for-distribution)). Then build the packages; `pnpm package` instead builds only the `.AppImage`, for faster iteration:
+7. **Build a distributable bundle** — a fresh terminal at the repository root. On an x86_64 Linux host, first run the one-time setup the Linux packages need, from inside the repository so the target lands on the pinned toolchain: `rustup target add x86_64-unknown-linux-musl` and `sudo apt install musl-tools`. The Linux packages carry a backend that needs no system C library (see [docs/development.md](docs/development.md#build-for-distribution)). Then build the packages; `pnpm package` instead builds only the `.AppImage`, for faster iteration:
    ```sh
    cd electron
    pnpm package:release

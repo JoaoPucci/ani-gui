@@ -160,7 +160,10 @@ binary instead of borrowing the system's glibc. A backend linked
 against the build machine's glibc refuses to start on any system with
 an older one, and the build machine is usually newer than the
 systems the packages run on. Building it needs the musl target and a
-C compiler for it, once per machine:
+C compiler for it, once per machine. Run the `rustup` line from inside
+the repository: `rust-toolchain.toml` pins the toolchain cargo uses
+here, and a target added from anywhere else goes on rustup's default
+toolchain instead.
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
