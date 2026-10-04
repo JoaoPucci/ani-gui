@@ -9,16 +9,19 @@
 // synchronous for the close to be preventable. It cannot reach the
 // renderer's compiled messages from there, so it carries this table:
 // one entry per locale the app ships, the same keys in each.
+// lib/main-messages.test.cjs holds the list to the renderer's
+// (frontend/project.inlang/settings.json), so adding a locale there
+// turns this red until it is added here.
 //
 // The table is those two dialogs and no more. The pages the OAuth
 // callback server answers the browser with (oauth-server.js) are the
-// main process's text too, and are still English. lib/main-messages.test.cjs holds the list to the renderer's
-// (frontend/project.inlang/settings.json), so adding a locale there
-// turns this red until it is added here.
+// main process's text too, and are still English.
 
 const BASE_LOCALE = "en";
 
-const MESSAGES = {
+// What each locale says, as its translator wrote it. Read through
+// MESSAGES below, never directly.
+const TRANSLATIONS = {
   en: {
     bootFailed: "ani-gui could not start",
     bootFailedDetail: (reason) =>
@@ -70,13 +73,29 @@ const MESSAGES = {
   },
 };
 
-const LOCALES = Object.keys(MESSAGES);
-
-/** The tables as given. As the lookup stands: a locale's table is
- *  used on its own, so a message it lacks is not there at all. */
-function overBase(tables) {
-  return tables;
+/**
+ * Each table laid over the `base` locale's, so that a message a
+ * locale lacks reads as the base locale's text rather than as
+ * `undefined`.
+ *
+ * The tests keep the shipped tables complete; this is what makes the
+ * lookup safe without them. Its callers index it blind, and the quit
+ * prompt does so after the close has already been prevented — a
+ * missing key there would throw and leave a window that no longer
+ * closes.
+ */
+function overBase(tables, base) {
+  return Object.fromEntries(
+    Object.entries(tables).map(([locale, table]) => [
+      locale,
+      { ...tables[base], ...table },
+    ]),
+  );
 }
+
+const MESSAGES = overBase(TRANSLATIONS, BASE_LOCALE);
+
+const LOCALES = Object.keys(MESSAGES);
 
 /** The shipped locale `tag` names, compared without regard to case. */
 function shippedLocale(tag) {
@@ -126,4 +145,4 @@ function messagesFor(locale) {
   return MESSAGES[shippedLocale(locale) || BASE_LOCALE];
 }
 
-module.exports = { LOCALES, messagesFor, overBase, resolveLocale };
+module.exports = { LOCALES, TRANSLATIONS, messagesFor, overBase, resolveLocale };
