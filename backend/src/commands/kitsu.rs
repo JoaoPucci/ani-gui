@@ -825,6 +825,13 @@ fn anime_detail_key(id: &str) -> String {
     format!("kitsu:v3:anime:{id}")
 }
 
+/// How long a detail row is served. Signatures only: the behaviour
+/// lands with the change its tests describe.
+pub(crate) fn anime_detail_ttl(status: Option<&str>) -> u64 {
+    let _ = status;
+    ANIME_DETAIL_TTL.as_secs()
+}
+
 /// Seed [`kitsu_anime_detail`]'s cache with a ref some other lookup
 /// already returned in full. The Watch Later bridge gets one from
 /// Kitsu's mappings sideload, and without this the next load would
@@ -909,6 +916,10 @@ fn normalize_query(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "kitsu_detail_ttl_test.rs"]
+mod detail_ttl_tests;
+
+#[cfg(test)]
 #[path = "kitsu_title_match_test.rs"]
 mod title_match_tests;
 
@@ -932,7 +943,7 @@ mod tests {
     const DETAIL_FIXTURE: &[u8] =
         include_bytes!("../../../tests/fixtures/kitsu/anime_one_piece_detail.json");
 
-    fn state_with_kitsu_at(uri: &str) -> AppState {
+    pub(super) fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
             anidb_base: None,
             secret: AppSecret::random(),

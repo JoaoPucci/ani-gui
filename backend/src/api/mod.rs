@@ -1711,7 +1711,7 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:44294", &body, 60 * 60)
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:44294", &body, 60 * 60)
             .expect("put");
 
         let pool = state.cache_pool.clone();
@@ -1804,7 +1804,7 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:99001", &body, 60 * 60)
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:99001", &body, 60 * 60)
             .expect("put");
 
         let pool = state.cache_pool.clone();
@@ -1888,7 +1888,7 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:99002", &body, 60 * 60)
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:99002", &body, 60 * 60)
             .expect("put");
 
         let pool = state.cache_pool.clone();
