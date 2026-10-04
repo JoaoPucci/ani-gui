@@ -137,6 +137,14 @@ describe('runUnairedClick', () => {
 		expect(r.log[0]).toBe('apply p2');
 	});
 
+	it('reads the wall clock when the route gives it none', async () => {
+		// The routes pass no clock; the limit then runs on Date.now.
+		const r = route({ airsOnRefresh: true });
+		const deps = { ...r.deps };
+		delete deps.now;
+		expect(await runUnairedClick(deps)).toBe('play');
+	});
+
 	describe('a check that lands after the user left', () => {
 		it('applies nothing, acts on nothing, and lets go of its own block', async () => {
 			const r = route({ airsOnRefresh: true });
