@@ -115,6 +115,22 @@ starting it, and delete it when you find it done.
   clear, which also reran candidate selection; nobody captured the
   two master URLs to compare.
 
+- **A page that loads but never mounts leaves a blank window.** The
+  boot counts the first page as there once it arrives with a good
+  status. If the bundle's scripts are then missing, or throw before
+  the app mounts, what is on screen is the frameless window with
+  nothing in it — no titlebar, so no close button — and the backend
+  running behind it. The main process cannot tell: everything it
+  can see says the page loaded.
+
+  It waited because it is not a check the main process can make
+  alone. The renderer has to say it has mounted, and the boot has to
+  give up when it does not — which is one more deadline, with the
+  fault the other two had to be widened for: on a slow disk a working
+  install takes long enough to look like a broken one
+  (`electron/lib/backend-handshake.cjs` has the measurement). Whatever
+  bounds the wait has to be sized for "never", not for "slow".
+
 ## Testing and CI
 
 - **The CRAP ratchet disagrees between CI and local** — 26 against 25 —
