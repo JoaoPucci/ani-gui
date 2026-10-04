@@ -174,6 +174,14 @@ pub async fn pick_candidate<P: Provider + ?Sized>(
             } else {
                 crate::error::AniError::Upstream { status: 404 }
             })?;
+    // One Kitsu entry the provider lists as several shows: every part
+    // was probed, so stitching them costs nothing. Only with every
+    // candidate heard — a dead probe may have been one of the parts.
+    if !any_transport_failure {
+        if let Some(picked) = super::play_native_split::stitched(&probed_ok, expected, best_dist) {
+            return Ok(picked);
+        }
+    }
     if best_dist > ep_count_threshold(expected) {
         // The airing-part rescue: a candidate whose own year matched
         // Kitsu's and whose list is short is what a currently-airing

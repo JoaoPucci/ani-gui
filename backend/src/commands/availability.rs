@@ -544,6 +544,12 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v14: an entry the provider splits into several shows is probed
+    //      against all of them, its cap counted across the parts in
+    //      Kitsu's numbering. A v13 row for such a show carries one
+    //      part's count (Steel Ball Run: the 2nd Stage's 2 where the
+    //      entry has 3) and holds it for the row's lifetime; re-keying
+    //      re-probes on the next page open.
     // v13: a negative row names the provider whose clean miss it is
     //      and is served only while that provider is answering — a
     //      miss does not fail over, so the row is one provider's
@@ -619,7 +625,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v13:{kitsu_id}:{m}")
+    format!("availability:v14:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache

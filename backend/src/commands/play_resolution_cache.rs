@@ -126,7 +126,14 @@ use crate::proxy::MediaKind;
 // stamp, reverse mapping and title match into anidb's namespace and
 // could alias a real anidb row. Bumping re-resolves, and the fresh
 // row stamps the qualified identity.
-const SCHEMA: &str = "v14";
+// v15: an entry the provider splits into several shows (Steel Ball
+// Run's premiere and its 2nd Stage) resolves against all of them,
+// stitched in Kitsu's numbering. A v14 row was resolved against one
+// part alone and can hold the stream of a different episode than its
+// key names — Kitsu's episode 1 cached as the 2nd Stage's first — and
+// nothing in a row says whether its pick was split; bumping
+// re-resolves.
+const SCHEMA: &str = "v15";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
