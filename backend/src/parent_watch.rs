@@ -20,35 +20,51 @@ use std::io::Read;
 /// The watch runs only when it is `1`.
 pub const PARENT_STDIN_ENV: &str = "ANI_GUI_PARENT_STDIN";
 
-/// Read `reader` until end of file or an error, then flip the returned
-/// receiver to `true`. Anything read before that is discarded — the
-/// parent never writes, and a stray byte is no reason to stop.
+/// Resolves once `reader` reaches end of file or fails. Anything read
+/// before that is discarded — the parent never writes, and a stray
+/// byte is no reason to stop.
 ///
 /// The read runs on a plain thread rather than the runtime's blocking
 /// pool: it blocks for the life of the process, and a runtime shutting
 /// down waits for its blocking tasks.
-pub fn watch_for_eof<R: Read + Send + 'static>(
-    mut reader: R,
-) -> tokio::sync::watch::Receiver<bool> {
-    let (tx, rx) = tokio::sync::watch::channel(false);
+pub async fn until_eof<R: Read + Send + 'static>(reader: R) {
+    until_eof_with(reader, on_a_thread).await;
+}
+
+/// What the watch runs on its thread.
+type Job = Box<dyn FnOnce() + Send + 'static>;
+
+fn on_a_thread(job: Job) -> std::io::Result<()> {
     std::thread::Builder::new()
         .name("parent-watch".into())
-        .spawn(move || {
-            let mut buf = [0_u8; 256];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(_) => {}
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                    Err(_) => break,
-                }
+        .spawn(job)
+        .map(drop)
+}
+
+/// [`until_eof`] with the thread spawn explicit — the seam the tests
+/// use to make it fail. As the watch stood: a spawn that fails
+/// panics, and a thread that ends without reporting counts as the
+/// parent being gone.
+async fn until_eof_with<R, S>(mut reader: R, spawn: S)
+where
+    R: Read + Send + 'static,
+    S: FnOnce(Job) -> std::io::Result<()>,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    spawn(Box::new(move || {
+        let mut buf = [0_u8; 256];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(_) => break,
             }
-            // A receiver reads the current value before it looks at
-            // whether the sender is gone, so `true` outlives this thread.
-            let _ = tx.send(true);
-        })
-        .expect("spawn the parent-watch thread");
-    rx
+        }
+        let _ = tx.send(());
+    }))
+    .expect("spawn the parent-watch thread");
+    let _ = rx.await;
 }
 
 /// Resolves once the parent is gone, or never when the parent did not
@@ -57,12 +73,7 @@ pub async fn parent_gone() {
     if std::env::var(PARENT_STDIN_ENV).as_deref() != Ok("1") {
         return std::future::pending().await;
     }
-    let mut rx = watch_for_eof(std::io::stdin());
-    if rx.wait_for(|gone| *gone).await.is_err() {
-        // The watch thread could not report; treat it as gone rather
-        // than leave a backend nobody can reach.
-        tracing::warn!("parent watch ended without a report");
-    }
+    until_eof(std::io::stdin()).await;
 }
 
 #[cfg(test)]

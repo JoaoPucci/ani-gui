@@ -2,29 +2,24 @@ use super::*;
 use std::io::Write;
 use std::time::Duration;
 
-/// Whether the watch reported the parent gone within `wait`. A sender
-/// that vanished without reporting is not a report.
-async fn flipped_within(rx: &mut tokio::sync::watch::Receiver<bool>, wait: Duration) -> bool {
-    matches!(
-        tokio::time::timeout(wait, rx.wait_for(|gone| *gone)).await,
-        Ok(Ok(_))
-    )
+/// Whether `watch` resolved — reported the parent gone — within `wait`.
+async fn reported_within(watch: impl std::future::Future<Output = ()>, wait: Duration) -> bool {
+    tokio::time::timeout(wait, watch).await.is_ok()
 }
 
 #[tokio::test]
-async fn the_writer_closing_flips_the_watch() {
+async fn the_writer_closing_ends_the_watch() {
     let (reader, writer) = std::io::pipe().expect("pipe");
-    let mut rx = watch_for_eof(reader);
     drop(writer);
-    assert!(flipped_within(&mut rx, Duration::from_secs(5)).await);
+    assert!(reported_within(until_eof(reader), Duration::from_secs(5)).await);
 }
 
 #[tokio::test]
-async fn bytes_on_a_live_pipe_do_not_flip_the_watch() {
+async fn bytes_on_a_live_pipe_do_not_end_the_watch() {
     let (reader, mut writer) = std::io::pipe().expect("pipe");
-    let mut rx = watch_for_eof(reader);
+    let mut watch = std::pin::pin!(until_eof(reader));
     writer.write_all(b"anything\n").expect("write");
-    assert!(!flipped_within(&mut rx, Duration::from_millis(300)).await);
+    assert!(!reported_within(&mut watch, Duration::from_millis(300)).await);
     drop(writer);
-    assert!(flipped_within(&mut rx, Duration::from_secs(5)).await);
+    assert!(reported_within(&mut watch, Duration::from_secs(5)).await);
 }
