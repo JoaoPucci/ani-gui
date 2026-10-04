@@ -144,6 +144,7 @@
 	} from '$lib/play/syncplay-toast';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { toastStore } from '$lib/toasts/store.svelte';
+	import { planUnairedClick, unairedRecheck } from '$lib/detail/unaired-recheck';
 	import { breadcrumb } from '$lib/breadcrumb';
 	import { m } from '$lib/paraglide/messages';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
@@ -985,6 +986,40 @@
 			switchBusy = false;
 		}
 	});
+
+	/**
+	 * Card click for an episode the schedule calls unaired: refresh the
+	 * schedule and the episode's page past their caches, then treat the
+	 * episode as the fresh answer says ($lib/detail/unaired-recheck).
+	 */
+	async function onUnairedEpisode(n: number) {
+		const showId = id;
+		if (switchBusy || !showId) return;
+		switchBusy = true;
+		switchProgress = m.detail_ep_unaired_recheck_busy();
+		const kitsuPage = Math.ceil(n / KITSU_PAGE_SIZE);
+		const outcome = await unairedRecheck.check(showId, {
+			refresh: async () => {
+				const [schedule, eps] = await Promise.all([
+					airingGet(showId, { refresh: true }),
+					kitsuEpisodes(showId, kitsuPage, { refresh: true })
+				]);
+				airingSchedule = schedule;
+				kitsuPageCache.set(kitsuPage, eps);
+			},
+			isAired: () => !epAirState(n, airing).unaired,
+			currentContext: () => (gone ? GONE : `${visit}:${showId}`),
+			now: () => Date.now()
+		});
+		const plan = planUnairedClick(outcome, beyondPlayable(n, playableEpisodeCount));
+		switchBusy = false;
+		if (plan === 'play') void switchToEpisode(n);
+		else if (plan === 'recheck-provider') onRecheckEpisode(n);
+		else if (plan === 'still-unaired')
+			toastStore.push({ kind: 'info', message: m.detail_ep_unaired_still() });
+		else if (plan === 'failed')
+			toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() });
+	}
 
 	/** Tile click for an episode the cap is currently hiding. */
 	function onRecheckEpisode(n: number) {
@@ -3435,18 +3470,17 @@
 									class:ep-card-current={isCurrent}
 									class:ep-card-unaired={air.unaired || showListed === false}
 									class:ep-card-recheck={capGated && showListed !== false}
-									disabled={(switchBusy && !isCurrent) ||
-										air.unaired ||
-										airingIsPending ||
-										showListed === false}
+									disabled={(switchBusy && !isCurrent) || airingIsPending || showListed === false}
 									title={air.unaired
-										? m.detail_ep_unaired_tooltip()
+										? m.detail_ep_unaired_recheck_tooltip()
 										: showListed === false
 											? m.detail_ep_disabled_tooltip()
 											: capGated
 												? m.detail_ep_recheck_idle()
 												: undefined}
 									onclick={() => {
+										// Unaired is the schedule's word, and cached: ask again.
+										if (air.unaired) return void onUnairedEpisode(n);
 										// Cap-gated is not "disabled": the count is a
 										// snapshot, so re-ask before refusing.
 										if (capGated) onRecheckEpisode(n);

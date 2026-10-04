@@ -48,6 +48,7 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { toastStore } from '$lib/toasts/store.svelte';
+	import { planUnairedClick, unairedRecheck } from '$lib/detail/unaired-recheck';
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
@@ -271,6 +272,41 @@
 			actionProgress = null;
 		}
 	});
+
+	/**
+	 * Tile click for an episode the schedule calls unaired: refresh the
+	 * schedule and the episode's page past their caches, then treat the
+	 * episode as the fresh answer says ($lib/detail/unaired-recheck).
+	 */
+	async function onUnairedEpisode(n: number) {
+		const showId = id;
+		if (actionBusy || !showId) return;
+		actionBusy = true;
+		actionProgress = m.detail_ep_unaired_recheck_busy();
+		const kitsuPage = Math.ceil(n / KITSU_PAGE_SIZE);
+		const outcome = await unairedRecheck.check(showId, {
+			refresh: async () => {
+				const [schedule, eps] = await Promise.all([
+					airingGet(showId, { refresh: true }),
+					kitsuEpisodes(showId, kitsuPage, { refresh: true })
+				]);
+				airingSchedule = schedule;
+				kitsuPageCache.set(kitsuPage, eps);
+			},
+			isAired: () => !epAirState(n, airing).unaired,
+			currentContext: () => (gone ? GONE : `${visit}:${showId}`),
+			now: () => Date.now()
+		});
+		const plan = planUnairedClick(outcome, beyondPlayable(n, playableEpisodeCount));
+		actionBusy = false;
+		actionProgress = null;
+		if (plan === 'play') onPickEpisode(n);
+		else if (plan === 'recheck-provider') onRecheckEpisode(n);
+		else if (plan === 'still-unaired')
+			toastStore.push({ kind: 'info', message: m.detail_ep_unaired_still() });
+		else if (plan === 'failed')
+			toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() });
+	}
 
 	/** Tile click for an episode the cap is currently hiding. */
 	function onRecheckEpisode(n: number) {
@@ -1838,9 +1874,9 @@
 											class:ep-tile-disabled={availability === false}
 											class:ep-tile-recheck={capGated && availability !== false}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false || air.unaired || airingIsPending}
+											aria-disabled={availability === false || airingIsPending}
 											title={air.unaired
-												? m.detail_ep_unaired_tooltip()
+												? m.detail_ep_unaired_recheck_tooltip()
 												: availability === false
 													? m.detail_ep_disabled_tooltip()
 													: capGated
@@ -1852,7 +1888,9 @@
 												// a count. Without this the re-ask branch below would ask
 												// the provider again about a show it just said it does not have.
 												if (availability === false) return;
-												if (air.unaired || airingIsPending) return;
+												if (airingIsPending) return;
+												// Unaired is the schedule's word, and cached: ask again.
+												if (air.unaired) return void onUnairedEpisode(num ?? 0);
 												// Cap-gated is not "disabled": the count is a
 												// mount-time snapshot, so re-ask before refusing.
 												if (capGated) onRecheckEpisode(num ?? 0);
@@ -1913,9 +1951,9 @@
 											class:ep-tile-disabled={availability === false}
 											class:ep-tile-recheck={capGated && availability !== false}
 											class:ep-tile-unaired={air.unaired}
-											aria-disabled={availability === false || air.unaired || airingIsPending}
+											aria-disabled={availability === false || airingIsPending}
 											title={air.unaired
-												? m.detail_ep_unaired_tooltip()
+												? m.detail_ep_unaired_recheck_tooltip()
 												: availability === false
 													? m.detail_ep_disabled_tooltip()
 													: capGated
@@ -1927,7 +1965,8 @@
 												// a count. Without this the re-ask branch below would ask
 												// the provider again about a show it just said it does not have.
 												if (availability === false) return;
-												if (air.unaired || airingIsPending) return;
+												if (airingIsPending) return;
+												if (air.unaired) return void onUnairedEpisode(n);
 												if (capGated) onRecheckEpisode(n);
 												else onPickEpisode(n);
 											}}
