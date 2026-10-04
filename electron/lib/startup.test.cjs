@@ -106,10 +106,30 @@ test("the first load leaves no listener on the window, however it ends", async (
   }
 });
 
-// A fake BrowserWindow carrying only what the first-show guard reads.
+// A fake BrowserWindow carrying only what the boot reads, with
+// Electron's behaviour once a window is gone: `closeFake` destroys it,
+// after which reading `webContents` off the window throws ("Object
+// has been destroyed"), as does `show()`, while a reference to the
+// contents taken earlier keeps its emitter methods and answers
+// `isDestroyed()`.
 const fakeWindow = () => {
   const win = new EventEmitter();
-  win.webContents = new EventEmitter();
+  const contents = new EventEmitter();
+  let destroyed = false;
+  contents.isDestroyed = () => destroyed;
+  Object.defineProperty(win, "webContents", {
+    get() {
+      if (destroyed) throw new TypeError("Object has been destroyed");
+      return contents;
+    },
+  });
+  win.closeFake = () => {
+    destroyed = true;
+    contents.emit("destroyed");
+    win.emit("closed");
+  };
+  // For assertions after the window is gone.
+  win.contents = contents;
   return win;
 };
 
@@ -164,6 +184,33 @@ test("a window with no deadline still fails when its renderer dies", async () =>
   await assert.rejects(shown, /crashed/);
 });
 
+test("a guard given no deadline at all waits, the same as one given none", async () => {
+  // An omitted deadline must not become a timer of zero.
+  const win = fakeWindow();
+  const shown = awaitFirstShow(win, {});
+  const state = await Promise.race([
+    shown.then(
+      () => "shown",
+      () => "failed",
+    ),
+    new Promise((resolve) => setTimeout(() => resolve("waiting"), 100)),
+  ]);
+  assert.equal(state, "waiting");
+  win.emit("ready-to-show");
+  await shown;
+});
+
+test("a window closed before its first show ends the guard, deadline and all", async () => {
+  const win = fakeWindow();
+  const shown = awaitFirstShow(win, { timeoutMs: 30 });
+  win.closeFake();
+  await assert.rejects(shown, /closed before the first show/);
+  // Nothing is left to fire on a window that no longer exists.
+  assert.equal(win.listenerCount("ready-to-show"), 0);
+  assert.equal(win.contents.listenerCount("render-process-gone"), 0);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+});
+
 test("a renderer that dies after the first show is not the guard's business", async () => {
   const win = fakeWindow();
   const shown = awaitFirstShow(win, { timeoutMs: 1_000 });
@@ -171,6 +218,7 @@ test("a renderer that dies after the first show is not the guard's business", as
   await shown;
   win.webContents.emit("render-process-gone", {}, { reason: "crashed", exitCode: 139 });
   assert.equal(win.webContents.listenerCount("render-process-gone"), 0);
+  assert.equal(win.listenerCount("closed"), 0);
 });
 
 // openFirstPage: the load and the guard together, and the one call
@@ -221,6 +269,43 @@ test("a window that failed its first show fails the boot even if the page loaded
   win.webContents.emit("render-process-gone", {}, { reason: "crashed", exitCode: 139 });
   await assert.rejects(opened, /crashed/);
   assert.equal(win.shows, 0);
+});
+
+// A window closed while it is still loading — the user's doing, by
+// the window manager, on a boot that is taking its time. Electron
+// rejects the load (ERR_FAILED, as for a crashed renderer), and the
+// app is already quitting through window-all-closed. That is a quit,
+// not a boot that failed: reporting it would put "could not start" on
+// screen in answer to the user closing the window.
+
+/** A load cut short by the window closing under it. */
+const closesMidLoad = async (win) => {
+  win.closeFake();
+  throw loadError("ERR_FAILED", -2, "app://localhost/");
+};
+
+test("a window closed mid-load fails the load with the load's own error", async () => {
+  // Not with what reading a destroyed window throws while tidying up.
+  const win = pageWindow(closesMidLoad);
+  await assert.rejects(
+    loadFirstPage(win, "app://localhost/", () => {}),
+    (err) => err.code === "ERR_FAILED",
+  );
+  assert.equal(win.contents.listenerCount("did-navigate"), 0);
+});
+
+test("a window closed before its first page arrived is not a failed boot", async () => {
+  const win = showableWindow(closesMidLoad);
+  await openFirstPage(win, "app://localhost/", { timeoutMs: 1_000, logError: () => {} });
+  assert.equal(win.shows, 0);
+});
+
+test("a renderer that crashed mid-load is still a failed boot: its window is there", async () => {
+  const win = showableWindow(fails(loadError("ERR_FAILED", -2, "app://localhost/")));
+  await assert.rejects(
+    openFirstPage(win, "app://localhost/", { timeoutMs: 1_000, logError: () => {} }),
+    (err) => err.code === "ERR_FAILED",
+  );
 });
 
 test("a window that cannot be created stops the backend before the app exits", async () => {
