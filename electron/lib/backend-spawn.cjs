@@ -30,4 +30,18 @@ function backendSpawnOptions({ platform, env }) {
   };
 }
 
-module.exports = { backendSpawnOptions };
+/**
+ * Spawn the backend at `bin` with `spawn` (node's, in main.js) and
+ * resolve with `{ child, apiBase, internalSecret }` once `handshake`
+ * — lib/backend-handshake.cjs, wired up by the caller — resolves for
+ * it. `track` is handed the child: it is what the app's quit path
+ * stops.
+ */
+async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
+  const child = spawn(bin, [], backendSpawnOptions({ platform, env }));
+  const ready = await handshake(child);
+  track(child);
+  return { child, ...ready };
+}
+
+module.exports = { backendSpawnOptions, launchBackend };

@@ -39,7 +39,7 @@ const {
   HANDSHAKE_TIMEOUT_MS,
   awaitHandshake,
 } = require("./lib/backend-handshake.cjs");
-const { backendSpawnOptions } = require("./lib/backend-spawn.cjs");
+const { launchBackend } = require("./lib/backend-spawn.cjs");
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
@@ -237,26 +237,30 @@ function readConfigLocale() {
  * see the module), so bootApp can end the boot.
  */
 async function spawnBackend() {
-  const bin = resolveBackendBinary();
   // A parent pipe on stdin, the flag to watch it, and its own process
   // group — see lib/backend-spawn.cjs. `child.stdin` is never written
   // to or closed: it stays open exactly as long as this process lives.
-  const child = spawn(
-    bin,
-    [],
-    backendSpawnOptions({ platform: process.platform, env: process.env }),
-  );
-  child.stderr.on("data", (chunk) => {
-    process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
+  return launchBackend({
+    spawn,
+    bin: resolveBackendBinary(),
+    platform: process.platform,
+    env: process.env,
+    track: (child) => {
+      backendChild = child;
+    },
+    handshake: (child) => {
+      child.stderr.on("data", (chunk) => {
+        process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
+      });
+      // After the handshake, downstream stdout becomes log output; it
+      // is echoed through so we can see it in dev.
+      return awaitHandshake(child, {
+        timeoutMs: HANDSHAKE_TIMEOUT_MS,
+        stopChild: killTree,
+        log: (line) => process.stdout.write(`${line}\n`),
+      });
+    },
   });
-  // After the handshake, downstream stdout becomes log output; it is
-  // echoed through so we can see it in dev.
-  const { apiBase, internalSecret } = await awaitHandshake(child, {
-    timeoutMs: HANDSHAKE_TIMEOUT_MS,
-    stopChild: killTree,
-    log: (line) => process.stdout.write(`${line}\n`),
-  });
-  return { child, apiBase, internalSecret };
 }
 
 let backendChild = null;
@@ -922,9 +926,7 @@ app.whenReady().then(() =>
       // app doesn't use.
       Menu.setApplicationMenu(null);
       if (!IS_DEV) registerAppProtocol();
-      const backend = await spawnBackend();
-      backendChild = backend.child;
-      return backend;
+      return spawnBackend();
     },
     createWindow: ({ apiBase, internalSecret }) =>
       createWindow(apiBase, internalSecret),
