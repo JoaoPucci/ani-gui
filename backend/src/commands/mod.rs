@@ -49,6 +49,7 @@ pub mod play_native;
 mod play_native_choice;
 pub mod play_native_episode;
 pub mod play_native_format;
+mod play_native_merge;
 pub mod play_native_numbering;
 pub mod play_native_outcome;
 mod play_native_part_title;
