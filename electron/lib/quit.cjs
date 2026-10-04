@@ -10,10 +10,15 @@ const { messagesFor } = require("./main-messages.cjs");
  * ahead. `promptOnClose` returns whether it prevented this quit — the
  * user cancelled, or confirmed and a fresh close is already on its
  * way, whose own before-quit stops the backend.
+ *
+ * Returns whether the quit goes ahead: a boot whose backend this stop
+ * cuts off mid-handshake ends as the quit, not as a failure (see
+ * bootApp in lib/startup.cjs).
  */
 function handleBeforeQuit({ promptOnClose, stopBackend }) {
-  if (promptOnClose()) return;
+  if (promptOnClose()) return false;
   stopBackend();
+  return true;
 }
 
 /**

@@ -192,6 +192,12 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
  *      is asked to quit, and has to keep that quit from running its
  *      own course, which would exit with code 0. It is only called
  *      once the boot has failed.
+ *
+ * Except a failure that a quit already under way caused — `quitting`
+ * says so. The quit stops the backend, and a backend stopped during
+ * its handshake fails it; that boot was quit, not broken, so it is
+ * left to end as the quit does, with nothing logged or shown and the
+ * quit's own exit code.
  */
 async function bootApp({
   spawnBackend,
@@ -199,6 +205,7 @@ async function bootApp({
   stopBackend,
   reportFailure = async () => {},
   onQuitAsked = () => {},
+  quitting = () => false,
   exit,
   logError,
 }) {
@@ -206,6 +213,7 @@ async function bootApp({
     const backend = await spawnBackend();
     await createWindow(backend);
   } catch (err) {
+    if (quitting()) return;
     logError("[main] startup failed:", err);
     stopBackend();
     const quitAsked = new Promise((resolve) => onQuitAsked(resolve));

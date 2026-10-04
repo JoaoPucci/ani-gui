@@ -940,6 +940,7 @@ app.whenReady().then(() =>
         event.preventDefault();
         ended();
       }),
+    quitting: () => quitGoingAhead,
     exit: (code) => app.exit(code),
     logError: console.error,
   }),
@@ -948,6 +949,10 @@ app.whenReady().then(() =>
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+// Set once a quit has gone past its prompt: a boot cut short by that
+// quit's stop ends as the quit (see bootApp in lib/startup.cjs).
+let quitGoingAhead = false;
 
 app.on("before-quit", (e) => {
   // Prompt on Cmd+Q / dock-quit / OS-shutdown if downloads are
@@ -958,10 +963,14 @@ app.on("before-quit", (e) => {
   // Stop the backend and what it spawned (see killBackendTree) —
   // only when the quit goes ahead: a quit cancelled at the prompt
   // keeps the app, and so its backend (see lib/quit.cjs).
-  handleBeforeQuit({
-    promptOnClose: () => (win ? maybePromptOnClose(win, e) : false),
-    stopBackend: killBackendTree,
-  });
+  if (
+    handleBeforeQuit({
+      promptOnClose: () => (win ? maybePromptOnClose(win, e) : false),
+      stopBackend: killBackendTree,
+    })
+  ) {
+    quitGoingAhead = true;
+  }
 });
 
 // Re-create a window if the user clicks the dock icon on macOS while
