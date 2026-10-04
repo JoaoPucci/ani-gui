@@ -41,10 +41,9 @@ const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
 const {
-  awaitFirstShow,
   bootApp,
   firstShowTimeoutMs,
-  loadFirstPage,
+  openFirstPage,
 } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
@@ -445,15 +444,11 @@ async function createWindow(apiBase, internalSecret) {
   // → setOpacity(1), but the maximize animation is on the window
   // frame (compositor-rendered), which Electron cannot suppress.
   win.maximize();
-  // ready-to-show goes through the first-show guard. The window is
-  // already on screen here — maximize() above shows a hidden window —
-  // but blank and frameless: the titlebar and its close button are
-  // the renderer's to draw. A window that never gets there —
-  // a renderer gone, or, in a packaged build, no first paint within
-  // the deadline — fails the boot instead (see lib/startup.cjs).
-  const firstShow = awaitFirstShow(win, {
-    timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
-  }).then(() => win.show());
+  // The window is shown on ready-to-show, by openFirstPage further
+  // down, which also holds the first load and the first-show guard.
+  // It is already on screen here — maximize() above shows a hidden
+  // window — but blank and frameless: the titlebar and its close
+  // button are the renderer's to draw.
   win.once("show", () => {
     if (!win.isMaximized()) win.maximize();
   });
@@ -475,9 +470,16 @@ async function createWindow(apiBase, internalSecret) {
   win.on("maximize", sendMaxState);
   win.on("unmaximize", sendMaxState);
 
+  // A window that never gets its first page — a load that fails, an
+  // error page, a renderer gone, or, in a packaged build, no first
+  // paint within the deadline — fails the boot (see lib/startup.cjs).
+  const firstPage = {
+    timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
+    logError: console.error,
+  };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
-    await Promise.all([loadFirstPage(win, VITE_DEV_URL, console.error), firstShow]);
+    await openFirstPage(win, VITE_DEV_URL, firstPage);
   } else {
     // Packaged static SvelteKit bundle, served via the custom
     // `app://` scheme registered above. The bundle's chunks do
@@ -488,10 +490,7 @@ async function createWindow(apiBase, internalSecret) {
     // router reads `location.pathname` and treats `/index.html`
     // as a non-route (the app has no `routes/index.html` page).
     // The protocol handler maps `/` to the index.html file.
-    await Promise.all([
-      loadFirstPage(win, `${APP_ORIGIN}/`, console.error),
-      firstShow,
-    ]);
+    await openFirstPage(win, `${APP_ORIGIN}/`, firstPage);
   }
   return win;
 }

@@ -119,13 +119,27 @@ function awaitFirstShow(win, { timeoutMs }) {
 }
 
 /**
- * Load the window's first page and show the window once it is ready
- * to be shown. As main.js composes the two: the show follows
- * ready-to-show, whatever has become of the load.
+ * Load the window's first page, and show the window once it is ready
+ * to be shown — the one place it is shown. Rejects when either the
+ * load (loadFirstPage) or the guard (awaitFirstShow) fails.
+ *
+ * The show follows ready-to-show and does not wait for the load. The
+ * two finish in either order — an error page paints like any other —
+ * so once the open has failed, the show is off: the boot's report
+ * hides the failed window, and a first paint arriving afterwards must
+ * not put it back on screen.
  */
 async function openFirstPage(win, url, { timeoutMs, logError }) {
-  const shown = awaitFirstShow(win, { timeoutMs }).then(() => win.show());
-  await Promise.all([loadFirstPage(win, url, logError), shown]);
+  let failed = false;
+  const shown = awaitFirstShow(win, { timeoutMs }).then(() => {
+    if (!failed) win.show();
+  });
+  try {
+    await Promise.all([loadFirstPage(win, url, logError), shown]);
+  } catch (err) {
+    failed = true;
+    throw err;
+  }
 }
 
 /**
