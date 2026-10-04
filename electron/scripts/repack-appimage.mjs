@@ -1,4 +1,4 @@
-// Post-build step: rebuild electron-builder's AppImage with two
+// Post-build step: rebuild electron-builder's AppImage with three
 // changes the published bundle wants but the upstream toolchain
 // doesn't make easy:
 //
@@ -15,13 +15,18 @@
 //      is too late, the check fires before main.js runs. The .deb
 //      doesn't need this (its postinst sets the SUID bit on the
 //      installed chrome-sandbox).
+//   3. Open the tree to every user before packing it. The extract's
+//      directories arrive at 0700 and the pack makes them root's, so
+//      anything that mounts the image as root and runs the app as a
+//      user — a firejail sandbox, a system-wide install — was refused
+//      at the root directory.
 //
 // We don't try to patch the runtime ELF or splice into the existing
 // squashfs in place. Instead we extract the squashfs, edit AppRun,
-// re-pack with mksquashfs, then concatenate the modern runtime
-// header with the new squashfs payload. Same end shape as before:
+// open the tree, re-pack with mksquashfs, then concatenate the modern
+// runtime header with the new squashfs payload. Same end shape as before:
 //
-//   new.AppImage = new-runtime-elf || mksquashfs(extract(old) + AppRun patch)
+//   new.AppImage = new-runtime-elf || mksquashfs(open(extract(old) + AppRun patch))
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,6 +34,9 @@ import { fileURLToPath } from 'node:url';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+
+const { prepareTree } = createRequire(import.meta.url)('../lib/appimage-tree.cjs');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const electronDir = path.resolve(__dirname, '..');
@@ -73,45 +81,9 @@ function run(cmd, args, opts = {}) {
 }
 
 /**
- * Patch the AppRun script in-place. electron-builder generates an
- * AppRun whose two exec lines are exactly:
- *
- *   exec "$BIN"
- *   exec "$BIN" "${args[@]}"
- *
- * Inject `--no-sandbox` between the binary and the user's args on
- * both branches. Returns true when the file was modified, false when
- * the patch was already present (idempotent — a stale AppImage left
- * over in dist/ from a prior build can be picked up and skipped
- * without crashing the whole script). Throws only when none of the
- * patterns match AND `--no-sandbox` isn't already present — that
- * means electron-builder's template actually drifted and the script
- * needs an update.
- */
-function patchAppRun(appRunPath) {
-	const original = fs.readFileSync(appRunPath, 'utf8');
-	// Already-patched short-circuit. The patched form is unique enough
-	// (`exec "$BIN" --no-sandbox`) that finding it once means both
-	// exec lines were rewritten on a prior pass.
-	if (original.includes('exec "$BIN" --no-sandbox')) {
-		return false;
-	}
-	const patched = original
-		.replace(/^(\s*)exec "\$BIN"$/m, '$1exec "$BIN" --no-sandbox')
-		.replace(/^(\s*)exec "\$BIN" "\$\{args\[@\]\}"$/m, '$1exec "$BIN" --no-sandbox "${args[@]}"');
-	if (patched === original) {
-		throw new Error(
-			`AppRun patch matched nothing — has electron-builder's template changed? ${appRunPath}`
-		);
-	}
-	fs.writeFileSync(appRunPath, patched, { mode: 0o755 });
-	return true;
-}
-
-/**
  * Repack one AppImage: extract via `--appimage-extract` (uses the
- * file's own runtime to read its squashfs), patch AppRun, mksquashfs
- * the result, then prepend the modern runtime header.
+ * file's own runtime to read its squashfs), patch AppRun and open the
+ * tree, mksquashfs the result, then prepend the modern runtime header.
  */
 async function repack(appimage) {
 	const tmpRoot = path.join(distDir, '.repack-tmp-' + path.basename(appimage));
@@ -125,22 +97,17 @@ async function repack(appimage) {
 	await run(appimage, ['--appimage-extract'], { cwd: tmpRoot });
 	const appDir = path.join(tmpRoot, 'squashfs-root');
 
-	// 2. Patch AppRun. If the AppImage was already repacked on a prior
-	//    build (stale dist/ artifact), short-circuit before the costly
-	//    mksquashfs + runtime-swap steps — saves ~30s per stale file
-	//    and matches electron-builder's "this rebuild has nothing new
-	//    for me" idempotency.
-	const appRunPath = path.join(appDir, 'AppRun');
-	if (!fs.existsSync(appRunPath)) {
-		throw new Error(`expected AppRun at ${appRunPath} after extract`);
-	}
-	const patched = patchAppRun(appRunPath);
-	if (!patched) {
-		console.log(`[repack] skip already-repacked: ${path.basename(appimage)}`);
-		fs.rmSync(tmpRoot, { recursive: true, force: true });
-		return;
-	}
-	console.log(`[repack] patched AppRun: --no-sandbox added to exec lines`);
+	// 2. Patch AppRun and open the tree to every user. An image a
+	//    previous repack produced already carries the patch, but its
+	//    directories may still be closed — the extract's directories
+	//    arrive at 0700 and `-all-root` below makes them root's — so
+	//    every image goes through the whole repack, stale ones too.
+	const patched = prepareTree(appDir);
+	console.log(
+		patched
+			? `[repack] patched AppRun: --no-sandbox added to exec lines`
+			: `[repack] AppRun already patched: ${path.basename(appimage)}`
+	);
 
 	// 3. Repack with mksquashfs. type2-runtime only links zlib + zstd
 	//    decompressors; xz (mksquashfs' default) errors out at mount

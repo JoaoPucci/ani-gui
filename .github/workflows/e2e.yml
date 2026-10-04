@@ -57,6 +57,14 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: dtolnay/rust-toolchain@stable
       - if: needs.filter.outputs.relevant == 'true'
+        name: Rust musl target for the pinned toolchain
+        # The Linux packages carry a backend linked statically against
+        # musl, so it runs on systems older than the runner. The target
+        # goes on the toolchain rust-toolchain.toml pins, which cargo
+        # uses here; the action above installs targets only for the
+        # toolchain it selects.
+        run: rustup target add x86_64-unknown-linux-musl
+      - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
@@ -80,6 +88,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            musl-tools \
             xvfb \
             libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 \
             libcups2t64 libdrm2 libxkbcommon0 libxcomposite1 \
@@ -91,9 +100,17 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - if: needs.filter.outputs.relevant == 'true'
-        name: Build Rust backend (release)
+        name: Electron build and launch helpers (node --test)
+        # The helpers under electron/lib — dependency staging, the
+        # AppImage tree's permissions, the launch decisions — run at
+        # build or launch time, where nothing else would catch them.
         working-directory: electron
-        run: pnpm run build:backend
+        run: pnpm test
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: Build Rust backend (release, static for Linux)
+        working-directory: electron
+        run: pnpm run build:backend:linux
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Build SvelteKit static bundle
@@ -104,6 +121,33 @@ jobs:
         name: Package the Electron app (produces dist/linux-unpacked/)
         working-directory: electron
         run: pnpm run dist
+
+      - if: needs.filter.outputs.relevant == 'true'
+        name: The packaged backend needs no system C library
+        # A backend linked against the runner's glibc would refuse to
+        # start on any system with an older one. The musl build is a
+        # static-pie binary: it keeps a dynamic section to relocate
+        # itself, but names no shared library and no loader.
+        working-directory: electron
+        run: |
+          set -euo pipefail
+          backend=dist/linux-unpacked/resources/ani-gui-backend
+          test -f "$backend"
+          kind=$(file -b "$backend")
+          echo "$kind"
+          case "$kind" in
+            *"static-pie linked"* | *"statically linked"*) ;;
+            *)
+              echo "the packaged backend is not statically linked" >&2
+              exit 1
+              ;;
+          esac
+          dynamic=$(readelf -d "$backend")
+          if grep -q NEEDED <<<"$dynamic"; then
+            grep NEEDED <<<"$dynamic"
+            echo "the packaged backend needs shared libraries" >&2
+            exit 1
+          fi
 
       - if: needs.filter.outputs.relevant == 'true'
         name: Run Playwright tests under Xvfb
