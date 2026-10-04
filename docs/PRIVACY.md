@@ -31,15 +31,22 @@ ani-gui keeps the following on your computer only:
   show you watch is kept beside it: in the metadata cache, when you
   last watched it, the Kitsu entry it maps to, the Kitsu entry its
   title matched (for a show watched before the history recorded the
-  Kitsu id), and the stream addresses resolved to play it; and, in a
-  file beside the history, how the show's episode numbering lines up
-  with Kitsu's. Deleting a show from your history deletes its row and
-  all of these for that show, including the copies earlier versions
-  of the app wrote; clearing your history deletes every row, all of
-  these for every show, and every cached stream address, including
-  ones a page resolved ahead for a show you never played. Catalogue data shared with browsing —
-  anime details, artwork, episode lists and which catalogue carries
-  a show — stays in the cache until it expires.
+  Kitsu id), the stream addresses resolved to play it, and the
+  opening and ending times fetched for the episodes you played; and,
+  in a file beside the history, how the show's episode numbering
+  lines up with Kitsu's. Deleting a show from your history deletes
+  its row and all of these for that show, including the copies
+  earlier versions of the app wrote. Opening and ending times are
+  found by the Kitsu ids the history knows for the show, so times
+  fetched under another id stay until you clear your history.
+  Clearing your history deletes every row, all of these for every
+  show, every cached stream address and every cached opening and
+  ending time, including ones a page resolved ahead for a show you
+  never played. The numbering of a show a page resolved but you never
+  played is not part of your history and stays. Catalogue data
+  shared with browsing — anime details, artwork, episode lists and
+  which catalogue carries a show — is not part of your history and
+  stays in the cache, as it does for shows you only browsed.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its

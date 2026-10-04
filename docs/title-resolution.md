@@ -80,7 +80,7 @@ The picked show's episode list arrives with the probe, so the availability cap i
 
 The Kitsu API exposes its known third-party ids on the `mappings` relationship of an anime resource. The backend queries `GET /anime/:id?include=mappings` and walks the `included` documents for the ones whose `attributes.externalSite` is `"myanimelist/anime"` or `"anilist/anime"`; their `attributes.externalId` values are the MAL and AniList ids.
 
-The mappings response is not cached on its own. The detail row with its backfilled banner and the episode-thumbnail map are keyed by the Kitsu id, so a hit skips the mappings round-trip along with the AniList lookup it fed, and the row stays unambiguous whichever id space that lookup used. aniskip caches its intervals by MAL id and episode, so it reads the mappings on every request.
+The mappings response is not cached on its own. The detail row with its backfilled banner and the episode-thumbnail map are keyed by the Kitsu id, so a hit skips the mappings round-trip along with the AniList lookup it fed, and the row stays unambiguous whichever id space that lookup used. aniskip caches its intervals by Kitsu id, MAL id and episode, and needs the MAL id to form that key, so it reads the mappings on every request.
 
 ## What this enables
 
