@@ -51,6 +51,20 @@ pub fn watch_for_eof<R: Read + Send + 'static>(
     rx
 }
 
+/// Resolves once the parent is gone, or never when the parent did not
+/// ask to be watched (a backend run by hand).
+pub async fn parent_gone() {
+    if std::env::var(PARENT_STDIN_ENV).as_deref() != Ok("1") {
+        return std::future::pending().await;
+    }
+    let mut rx = watch_for_eof(std::io::stdin());
+    if rx.wait_for(|gone| *gone).await.is_err() {
+        // The watch thread could not report; treat it as gone rather
+        // than leave a backend nobody can reach.
+        tracing::warn!("parent watch ended without a report");
+    }
+}
+
 #[cfg(test)]
 #[path = "parent_watch_test.rs"]
 mod tests;

@@ -33,6 +33,7 @@ pub mod meta;
 pub mod parent_watch;
 pub mod proxy;
 pub mod scraper;
+pub mod shutdown;
 pub mod spawn;
 
 pub use error::{AniError, Result};
