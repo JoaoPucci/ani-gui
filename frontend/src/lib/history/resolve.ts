@@ -37,6 +37,7 @@
  */
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+import { sharesWords } from './title-words';
 
 /** UI tile count per page in /anime/[id]'s episode grid. Must match
  *  the `UI_PAGE_SIZE` used in that route — the resolver computes
@@ -549,9 +550,11 @@ export function isEpisodeCountCompatible(
 /**
  * Whether a search hit may stand as a candidate for this history row.
  *
- * Two of the three tests here reject on evidence the hit itself
- * carries — a music video is never a provider show, and a count far
- * from the user's is a different show. The third exists because the
+ * Three of the four tests here reject on evidence the hit itself
+ * carries — a music video is never a provider show, a hit whose
+ * titles share no words with the row's is a different show
+ * (title-words.ts), and a count far from the user's is a different
+ * show. The fourth exists because the
  * countless-airing lane accepts on no count evidence at all: it only
  * says a broadcasting show legitimately has no announced total, which
  * says nothing about WHICH broadcasting show. Above the threshold,
@@ -566,6 +569,12 @@ export function isEpisodeCountCompatible(
  */
 export function isCandidateForRow(preliminary: ResumeTarget, hit: KitsuAnimeRef): boolean {
 	if (isMusicSubtype(hit.subtype)) return false;
+	// A hit whose titles share nothing with the row's is not the row's
+	// show, whatever its count: a text search answers with its closest
+	// words, and a row without a count accepts every count, so the count
+	// alone once handed "There Is Also a Hole in the Student
+	// Organization!" to Here is Greenwood (title-words.ts).
+	if (!sharesWords([preliminary.searchTitle], hit)) return false;
 	if (!isEpisodeCountCompatible(preliminary.courSize, hit.episode_count, hit.status)) return false;
 	if (!acceptedOnAiringStatusAlone(preliminary, hit)) return true;
 	// 'proven', not merely not-refuted: this lane has no count
@@ -595,7 +604,9 @@ export function pickKitsuMatch(
 
 	// Drop hits that can't be the user's show:
 	//  - music videos (subtype `music`) never exist on the provider, so the
-	//    YOASOBI "Idol" MV must never win over a real entry; and
+	//    YOASOBI "Idol" MV must never win over a real entry;
+	//  - hits whose titles share no words with the row's (Here is
+	//    Greenwood for "There Is Also a Hole in the Student Organization!");
 	//  - hits whose episode_count is incompatible with the history record
 	//    (Burichi 366 → Doraemon Movie 14 (1 ep), fuzzy-matched on "Buriki").
 	// When nothing survives, surface null so resolveKitsuMatch falls through

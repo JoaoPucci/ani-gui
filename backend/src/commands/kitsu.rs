@@ -762,7 +762,11 @@ pub async fn resolve_allmanga_show_id(
 /// write failure is non-fatal — the resolution still succeeds for
 /// this request, the next call just searches again. Music-video hits
 /// are skipped so a "music" alias (the YOASOBI "Idol" MV) is never
-/// returned or persisted. So is a hit whose slug disagrees with
+/// returned or persisted. So is a hit whose titles share no words with
+/// the term ([`kitsu_title_words`](crate::commands::kitsu_title_words)):
+/// Kitsu answers words it does not carry with its closest entry, and
+/// "there is also a hole in the student organization" brings back Here
+/// is Greenwood. So is a hit whose slug disagrees with
 /// `source_cour`, the cour the source carries
 /// ([`cour::hit_cour_disagrees`]) — read off the stored slug by the
 /// caller, since a slug's cour forms include a bare number the
@@ -785,6 +789,7 @@ async fn first_kitsu_match(
         if let Some(first) = hits.into_iter().find(|h| {
             !is_music_subtype(h.subtype.as_deref())
                 && !crate::commands::cour::hit_cour_disagrees(source_cour, h.slug.as_deref())
+                && crate::commands::kitsu_title_words::shares_words(&[term.as_str()], h)
         }) {
             if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
                 tracing::warn!(
