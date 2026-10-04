@@ -15,12 +15,19 @@ function page(opts: { airsOnRefresh?: boolean; fails?: boolean } = {}) {
 	let context = 'visit-1';
 	let release: (() => void) | null = null;
 	let hold = false;
-	const deps: UnairedRecheckDeps = {
+	let applied = 0;
+	const deps: UnairedRecheckDeps<boolean> = {
+		// The refresh only fetches; what it fetched reaches the page
+		// through `apply`, and only while the page is the one that asked.
 		refresh: async () => {
 			refreshes += 1;
 			if (hold) await new Promise<void>((r) => (release = r));
 			if (opts.fails) throw new Error('network');
-			if (opts.airsOnRefresh) aired = true;
+			return opts.airsOnRefresh === true;
+		},
+		apply: (airsNow) => {
+			applied += 1;
+			aired = airsNow;
 		},
 		isAired: () => aired,
 		currentContext: () => context,
@@ -29,6 +36,8 @@ function page(opts: { airsOnRefresh?: boolean; fails?: boolean } = {}) {
 	return {
 		deps,
 		refreshes: () => refreshes,
+		applied: () => applied,
+		aired: () => aired,
 		advance: (ms: number) => (clock += ms),
 		leave: () => (context = 'visit-2'),
 		holdRefresh: () => (hold = true),
@@ -92,7 +101,10 @@ describe('createUnairedRecheck', () => {
 		expect(p.refreshes()).toBe(2);
 	});
 
-	it('says nothing about a page the user has left', async () => {
+	it('says nothing about a page the user has left, and writes nothing into it', async () => {
+		// The route component outlives the show: whatever the refresh
+		// fetched for the show the user left must not land in the page
+		// that now shows another one.
 		const recheck = createUnairedRecheck();
 		const p = page({ airsOnRefresh: true });
 		p.holdRefresh();
@@ -101,6 +113,24 @@ describe('createUnairedRecheck', () => {
 		p.leave();
 		p.releaseRefresh();
 		expect(await pending).toBe('superseded');
+		expect(p.applied()).toBe(0);
+		expect(p.aired()).toBe(false);
+	});
+
+	it('does not start the limit for a refresh nobody applied', async () => {
+		// The user left before the answer landed, so no page holds it;
+		// answering the next click from page state would answer from the
+		// stale cache the click is questioning.
+		const recheck = createUnairedRecheck();
+		const p = page();
+		p.holdRefresh();
+		const pending = recheck.check('49847', p.deps);
+		await Promise.resolve();
+		p.leave();
+		p.releaseRefresh();
+		await pending;
+		await recheck.check('49847', p.deps);
+		expect(p.refreshes()).toBe(2);
 	});
 });
 

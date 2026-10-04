@@ -60,16 +60,21 @@ let played: { episode?: string; prefetch?: boolean }[];
  * the third has aired. `airsOnRefresh: false` keeps the fresh answer
  * the same as the cached one.
  */
-function serve(kitsuId: string, opts: { airsOnRefresh: boolean }) {
+function serve(
+	kitsuId: string,
+	opts: { airsOnRefresh: boolean; aired?: number; hold?: Promise<void> }
+) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${kitsuId}`, () =>
 			HttpResponse.json({ ...kitsuRef(kitsuId, 'Weekly Show', 12), status: 'current' })
 		),
-		http.get(`${API_BASE}/api/kitsu/airing/${kitsuId}`, ({ request }) => {
+		http.get(`${API_BASE}/api/kitsu/airing/${kitsuId}`, async ({ request }) => {
 			const fresh = new URL(request.url).searchParams.get('refresh') === 'true';
 			if (fresh) refreshes.push('airing');
-			const aired = fresh && opts.airsOnRefresh ? 3 : 2;
+			if (fresh && opts.hold) await opts.hold;
+			const cached = opts.aired ?? 2;
+			const aired = fresh && opts.airsOnRefresh ? 3 : cached;
 			return HttpResponse.json({
 				aired,
 				next_episode: aired + 1,
@@ -77,15 +82,15 @@ function serve(kitsuId: string, opts: { airsOnRefresh: boolean }) {
 				upcoming: []
 			});
 		}),
-		http.get(`${API_BASE}/api/kitsu/episodes/:id`, ({ request }) => {
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, async ({ request, params }) => {
+			// Several shows can be served at once; each answers for its own.
+			if (params.id !== kitsuId) return;
 			const fresh = new URL(request.url).searchParams.get('refresh') === 'true';
 			if (fresh) refreshes.push('episodes');
+			if (fresh && opts.hold) await opts.hold;
 			const third = fresh && opts.airsOnRefresh ? '2026-01-15' : null;
-			return HttpResponse.json([
-				episode(1, '2026-01-01'),
-				episode(2, '2026-01-08'),
-				episode(3, third)
-			]);
+			const second = (opts.aired ?? 2) >= 2 ? '2026-01-08' : null;
+			return HttpResponse.json([episode(1, '2026-01-01'), episode(2, second), episode(3, third)]);
 		}),
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/availability`, () =>
@@ -172,6 +177,41 @@ describe('detail route — clicking an episode the page calls unaired', () => {
 		tile(3)!.click();
 		await new Promise((r) => setTimeout(r, 100));
 		expect(refreshes).toHaveLength(2);
+		expect(playedEpisode(3)).toBe(false);
+	});
+});
+
+describe('leaving the show while the check is out', () => {
+	it('writes nothing about the show left behind into the one now on screen', async () => {
+		// The route component is reused across shows. A check for show A
+		// that lands after the user moved to show B must not paint A's
+		// schedule and episode list into B's tiles — B's episodes two and
+		// three are still to come.
+		let release!: () => void;
+		const hold = new Promise<void>((r) => (release = r));
+		setParams({ id: '7004' });
+		serve('7004', { airsOnRefresh: true, hold });
+		serve('7005', { airsOnRefresh: false, aired: 1 });
+		app = mount(DetailPage, { target });
+		await until(() => tile(3)?.classList.contains('ep-tile-unaired') === true, 'tile 3 unaired');
+
+		tile(3)!.click();
+		await until(() => refreshes.length === 2, 'the check to go out');
+
+		setParams({ id: '7005' });
+		await until(
+			() => tile(2)?.classList.contains('ep-tile-unaired') === true,
+			"show B's own strip, episode 2 still to come"
+		);
+
+		release();
+		await until(
+			() => target.querySelector('[role="status"].backdrop') === null,
+			'the page let go once the check for the show left behind settled'
+		);
+		await new Promise((r) => setTimeout(r, 100));
+		expect(tile(2)?.classList.contains('ep-tile-unaired')).toBe(true);
+		expect(tile(3)?.classList.contains('ep-tile-unaired')).toBe(true);
 		expect(playedEpisode(3)).toBe(false);
 	});
 });

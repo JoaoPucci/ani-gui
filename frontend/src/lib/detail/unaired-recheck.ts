@@ -22,10 +22,13 @@ export const UNAIRED_RECHECK_INTERVAL_MS = 5 * 60_000;
 
 export type UnairedRecheckOutcome = 'aired' | 'unaired' | 'failed' | 'superseded';
 
-export interface UnairedRecheckDeps {
+export interface UnairedRecheckDeps<T = void> {
 	/** Refetch the schedule and the episode's page past their caches,
 	 *  and store both where the page derives its tiles from. */
-	refresh: () => Promise<void>;
+	refresh: () => Promise<T>;
+	/** Signature only: the behaviour lands with the change its tests
+	 *  describe. */
+	apply?: (fresh: T) => void;
 	/** Whether the episode reads as aired from what the page holds. */
 	isAired: () => boolean;
 	/** What the answer is about — compared when it lands, so an answer
@@ -35,12 +38,12 @@ export interface UnairedRecheckDeps {
 }
 
 export function createUnairedRecheck(intervalMs: number = UNAIRED_RECHECK_INTERVAL_MS): {
-	check: (showId: string, deps: UnairedRecheckDeps) => Promise<UnairedRecheckOutcome>;
+	check: <T>(showId: string, deps: UnairedRecheckDeps<T>) => Promise<UnairedRecheckOutcome>;
 } {
 	const refreshedAt = new Map<string, number>();
 	const inFlight = new Map<string, Promise<boolean>>();
 
-	function refreshOnce(showId: string, deps: UnairedRecheckDeps): Promise<boolean> {
+	function refreshOnce<T>(showId: string, deps: UnairedRecheckDeps<T>): Promise<boolean> {
 		const pending = inFlight.get(showId);
 		if (pending) return pending;
 		const startedAt = deps.now();
