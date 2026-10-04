@@ -31,6 +31,7 @@ pub(crate) mod download_tool;
 mod download_transfer;
 pub mod external_player;
 pub mod history;
+pub(crate) mod history_forget;
 mod history_resume;
 pub mod kitsu;
 pub(crate) mod kitsu_played;

@@ -216,6 +216,32 @@ pub fn meta_cache_delete(pool: &SqlitePool, key: &str) -> Result<()> {
     Ok(())
 }
 
+/// A SQL LIKE pattern matching every key under `prefix`. The literal
+/// `%` and `_` chars in the prefix are escaped so a key prefix like
+/// `play:v2:` doesn't accidentally match other underscore patterns;
+/// queries pass `ESCAPE '\\'` to mark them.
+fn like_prefix(prefix: &str) -> String {
+    let escaped = prefix
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("{escaped}%")
+}
+
+/// Delete every meta_cache entry under `prefix`, expired or not.
+///
+/// # Errors
+/// [`AniError::Cache`] on write failure.
+pub fn meta_cache_delete_prefix(pool: &SqlitePool, prefix: &str) -> Result<()> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    conn.execute(
+        "DELETE FROM meta_cache WHERE key LIKE ?1 ESCAPE '\\'",
+        params![like_prefix(prefix)],
+    )
+    .map_err(|_| AniError::Cache)?;
+    Ok(())
+}
+
 /// List every (key, body) pair under `prefix`, dropping expired rows.
 /// Used by the watched-at endpoint to return the full per-show stamp
 /// map in one query rather than N round-trips.
@@ -224,14 +250,7 @@ pub fn meta_cache_delete(pool: &SqlitePool, key: &str) -> Result<()> {
 /// [`AniError::Cache`] on connection or query failure.
 pub fn meta_cache_list_prefix(pool: &SqlitePool, prefix: &str) -> Result<Vec<(String, String)>> {
     let conn = pool.get().map_err(|_| AniError::Cache)?;
-    // SQL LIKE: escape the literal `%` and `_` chars in the caller's
-    // prefix so a key prefix like `play:v2:` doesn't accidentally
-    // match other underscore patterns. ESCAPE '\\' lets us mark them.
-    let escaped = prefix
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_");
-    let pattern = format!("{escaped}%");
+    let pattern = like_prefix(prefix);
     let mut stmt = conn
         .prepare(
             "SELECT key, body, fetched_at, ttl_seconds FROM meta_cache \

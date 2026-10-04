@@ -148,29 +148,43 @@ pub fn watched_at_all(
 /// was removed, `false` for a no-op (id not in file, file missing,
 /// empty id). The rewrite is atomic (`.new` + rename) so a concurrent
 /// reader sees either the full pre-state or the full post-state,
-/// never a half-written file.
+/// never a half-written file. What the row left in the cache goes with
+/// it ([`super::history_forget::forget_show`]).
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] when the file exists and
-/// cannot be read or written.
+/// cannot be read or written, and [`crate::error::AniError::Cache`]
+/// when the cache cannot be.
 pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
     if id.is_empty() {
         return Ok(false);
     }
     let mut entries = read_all(&state.history_path)?;
+    let titles: Vec<String> = entries
+        .iter()
+        .filter(|e| e.id == id)
+        .map(|e| e.title.clone())
+        .collect();
     if !remove_by_id(&mut entries, id) {
         return Ok(false);
     }
     write_atomic(&state.history_path, &entries)?;
+    for title in &titles {
+        super::history_forget::forget_show(state, id, title)?;
+    }
     Ok(true)
 }
 
 /// Truncate the history file to zero length. Mirrors the script's `-D`.
+/// What the rows left in the cache goes with them
+/// ([`super::history_forget::forget_all`]).
 ///
 /// # Errors
-/// Returns [`crate::error::AniError::Io`] if the file cannot be written.
+/// Returns [`crate::error::AniError::Io`] if the file cannot be written,
+/// and [`crate::error::AniError::Cache`] if the cache cannot be.
 pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
-    write_atomic(&state.history_path, &[])
+    write_atomic(&state.history_path, &[])?;
+    super::history_forget::forget_all(state)
 }
 
 #[cfg(test)]

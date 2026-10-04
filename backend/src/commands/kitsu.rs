@@ -444,9 +444,17 @@ fn title_match_key(
     title: &str,
     cour: u32,
 ) -> String {
+    format!("{}{cour}", title_match_prefix(provider, title))
+}
+
+/// The key every cour of `title`'s title-match rows starts with.
+pub(crate) fn title_match_prefix(
+    provider: crate::scraper::provider::ProviderId,
+    title: &str,
+) -> String {
     let normalized = title.trim().to_lowercase();
     format!(
-        "title-match:v{TITLE_MATCH_VERSION}:{}:{normalized}:c{cour}",
+        "title-match:v{TITLE_MATCH_VERSION}:{}:{normalized}:c",
         provider.label()
     )
 }
@@ -823,7 +831,7 @@ async fn first_kitsu_match(
 /// (still rendered, just demoted).
 const WATCHED_AT_PREFIX: &str = "watched-at:v1:";
 
-fn watched_at_key(show_id: &str) -> String {
+pub(crate) fn watched_at_key(show_id: &str) -> String {
     format!("{WATCHED_AT_PREFIX}{show_id}")
 }
 
