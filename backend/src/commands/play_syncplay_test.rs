@@ -282,3 +282,67 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
         "the spawn persists the show's reverse mapping"
     );
 }
+
+/// Syncplay's handoff resolves before it launches, like the external
+/// player's: a show removed from history while it resolves is not
+/// recorded by the launch that follows.
+#[tokio::test]
+async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
+    let mock = MockServer::start().await;
+    // Hold the resolve on its first request, ahead of the plain stub.
+    Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>")
+                .set_delay(std::time::Duration::from_millis(700)),
+        )
+        .with_priority(1)
+        .mount(&mock)
+        .await;
+    stub_provider(&mock, "the show").await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (binary, argv_file) = stage_recorder(dir.path());
+    let state = std::sync::Arc::new(state_for(dir.path(), &mock.uri()));
+    std::fs::write(
+        &state.config_path,
+        format!("syncplay_binary = \"{}\"\n", binary.display()),
+    )
+    .expect("write config");
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: "the-show-77".into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+        },
+    )
+    .expect("seed row");
+
+    let launch = {
+        let state = std::sync::Arc::clone(&state);
+        tokio::spawn(async move { play_syncplay(&state, &play_args()).await })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    launch.await.expect("join").expect("launches");
+    for _ in 0..100 {
+        if std::fs::read_to_string(&argv_file).is_ok_and(|s| !s.is_empty()) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    assert!(
+        crate::history::read_all(&state.history_path)
+            .expect("rows")
+            .is_empty(),
+        "the removed show has no row"
+    );
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp"),
+        None
+    );
+}

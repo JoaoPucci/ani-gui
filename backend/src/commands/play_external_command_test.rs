@@ -530,3 +530,65 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
         Some("K42")
     );
 }
+
+/// A handoff resolves its stream before its player starts, and the
+/// user can remove the show from history while it resolves. The player
+/// still opens — it was asked for — but the removal stands: the play
+/// records no row, no stamp and no numbering for the show.
+#[tokio::test]
+async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
+    let mock = MockServer::start().await;
+    // Hold the resolve on its first request, ahead of the plain stub.
+    Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>")
+                .set_delay(std::time::Duration::from_millis(700)),
+        )
+        .with_priority(1)
+        .mount(&mock)
+        .await;
+    stub_provider(&mock, "the show").await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = std::sync::Arc::new(state_for(dir.path(), &mock.uri()));
+    std::fs::write(
+        &state.config_path,
+        format!("external_player = \"{}\"\n", player.display()),
+    )
+    .expect("write config");
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: "the-show-77".into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+        },
+    )
+    .expect("seed row");
+
+    let play = {
+        let state = std::sync::Arc::clone(&state);
+        tokio::spawn(async move { play_external(&state, &play_args()).await })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    play.await.expect("join").expect("plays");
+    wait_for(&argv_file).await;
+
+    assert!(
+        crate::history::read_all(&state.history_path)
+            .expect("rows")
+            .is_empty(),
+        "the removed show has no row"
+    );
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp"),
+        None
+    );
+    let offsets = std::fs::read_to_string(dir.path().join("ani-gui-offsets")).unwrap_or_default();
+    assert!(!offsets.contains("the-show-77"), "nor numbering: {offsets}");
+}
