@@ -1,7 +1,7 @@
 //! Reader and writer for the app's watch-history file.
 //!
 //! Format (TSV, one record per line):
-//!     <ep_no>\t<id>\t<title>[\t<watched_at_ms>]
+//!     <ep_no>\t<id>\t<title>[\t<watched_at_ms>][\tkitsu:<kitsu_id>]
 //!
 //! The first three columns are the ones the CLI's `update_history`
 //! used, and so are the atomic semantics: write to `path.new`, then
@@ -23,6 +23,14 @@
 //! the exact decimal the writer emits. `Mobile Suit\t0080` stays
 //! one title; `\t1700000000000` is a moment. The limit of that is
 //! written out at [`split_moment`], which holds the rule.
+//!
+//! The fifth column is the app's too: the Kitsu id of the show the
+//! user played, the page the play was started from, so the rows'
+//! surfaces read the show from it instead of matching the provider's
+//! title back to Kitsu. Unlike the moment it is marked, `kitsu:`
+//! followed by digits and nothing else, so it cannot be read out of a
+//! title; a row without it — one from before the column, or a play no
+//! page stood behind — reads and writes as before.
 //!
 //! The two never shared a file after the 5.0 CLI re-keyed its history
 //! onto provider slugs; the app keeps its own under its state dir.
@@ -67,7 +75,8 @@ pub struct HistoryEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watched_at: Option<i64>,
     /// The Kitsu id of the show the user played: the page the play was
-    /// started from. Not written yet.
+    /// started from. A write without one keeps the row's; a row from
+    /// before the column, or a play no page stood behind, has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kitsu_id: Option<String>,
 }
@@ -100,13 +109,14 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
             if ep_no.is_empty() || id.is_empty() {
                 return None;
             }
+            let (rest, kitsu_id) = split_kitsu_id(rest);
             let (title, watched_at) = split_moment(rest);
             Some(HistoryEntry {
                 ep_no,
                 id,
                 title: title.to_string(),
                 watched_at,
-                kitsu_id: None,
+                kitsu_id,
             })
         })
         .collect()
@@ -122,6 +132,31 @@ const WATCHED_AT_FLOOR_MS: i64 = 1_577_836_800_000;
 /// The far end of the same window: 2100-01-01T00:00:00Z in
 /// milliseconds. Nothing this app writes reaches it either.
 const WATCHED_AT_CEILING_MS: i64 = 4_102_444_800_000;
+
+/// The marker the fifth column starts with.
+const KITSU_MARK: &str = "kitsu:";
+
+/// A Kitsu id as the row may record it: digits and nothing else, once
+/// surrounding whitespace is trimmed. Anything else is not one.
+#[must_use]
+pub fn kitsu_id_of(raw: &str) -> Option<String> {
+    let id = raw.trim();
+    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then(|| id.to_owned())
+}
+
+/// Split the row's Kitsu id off what follows the id column, when the
+/// last tab-separated value is `kitsu:` and digits.
+fn split_kitsu_id(rest: &str) -> (&str, Option<String>) {
+    let Some((before, tail)) = rest.rsplit_once('\t') else {
+        return (rest, None);
+    };
+    match tail.strip_prefix(KITSU_MARK) {
+        Some(digits) if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) => {
+            (before, Some(digits.to_owned()))
+        }
+        _ => (rest, None),
+    }
+}
 
 /// Split what follows the id into the title and, when the row
 /// carries one, the watch's moment.
@@ -173,6 +208,11 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
             out.push('\t');
             out.push_str(&at.to_string());
         }
+        if let Some(id) = &e.kitsu_id {
+            out.push('\t');
+            out.push_str(KITSU_MARK);
+            out.push_str(id);
+        }
         out.push('\n');
     }
     out
@@ -180,7 +220,7 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
 
 /// Insert or update an entry, matching by `id`. If `id` is already in the
 /// vector, that entry's `ep_no` and `title` are replaced, and its
-/// watched-at moment when the new entry carries one — a plain
+/// watched-at moment and Kitsu id when the new entry carries them — a plain
 /// resolve rewrites a row without unwriting the watch before it;
 /// otherwise the new entry is appended. The vector is mutated in
 /// place. Mirrors `update_history`'s semantics from the script.
@@ -190,6 +230,9 @@ pub fn upsert(entries: &mut Vec<HistoryEntry>, new: HistoryEntry) {
         existing.title = new.title;
         if new.watched_at.is_some() {
             existing.watched_at = new.watched_at;
+        }
+        if new.kitsu_id.is_some() {
+            existing.kitsu_id = new.kitsu_id;
         }
     } else {
         entries.push(new);

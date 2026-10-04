@@ -645,7 +645,11 @@ async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, 
 /// POSITIVE evidence (cour 1), not missing evidence — that's the
 /// signal that catches the original Stone Ocean Part 2 → Part 1
 /// poison. Only an absent `slug` field counts as no evidence.
-async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &str) -> bool {
+pub(crate) async fn cour_pairing_disagrees(
+    state: &AppState,
+    show_title: &str,
+    kitsu_id: &str,
+) -> bool {
     use crate::commands::cour::{cour_from_slug, cour_from_title};
     // Without cour evidence on the provider's side there is nothing
     // to disagree with, so Kitsu is not asked at all.

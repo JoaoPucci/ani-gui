@@ -37,8 +37,10 @@ pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
         .collect())
 }
 
-/// Find the history entry (if any) whose show id maps to the supplied
-/// `kitsu_id`. Walks the on-disk TSV, resolving each entry's `id` —
+/// Find the history entry (if any) for the supplied `kitsu_id`: a row
+/// that records it as the show played, or, for a row that records
+/// none, one whose show id maps to it. Walks the on-disk TSV,
+/// resolving each such entry's `id` —
 /// a provider slug on rows written since the migration — through the
 /// `(show id → kitsu_id)` reverse cache a successful play stamps.
 /// Of two rows that map to the entry, the one the user watched last
@@ -89,8 +91,14 @@ pub fn history_by_kitsu(
     // leaves the row ranked as the watch it was.
     let mut best: Option<(HistoryEntry, Option<i64>)> = None;
     for entry in entries {
-        let Some(mapped) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)? else {
-            continue;
+        // The id the row records is the show the user played; the
+        // reverse mapping stands in only for a row without one.
+        let mapped = match &entry.kitsu_id {
+            Some(id) => id.clone(),
+            None => match crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)? {
+                Some(mapped) => mapped,
+                None => continue,
+            },
         };
         if mapped != kitsu_id {
             continue;

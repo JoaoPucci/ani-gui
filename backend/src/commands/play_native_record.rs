@@ -93,6 +93,24 @@ impl Watch {
     }
 }
 
+/// The Kitsu id the row records for a watch: the page the play was
+/// started from, when it is digits and the cour guard accepts pairing
+/// it with the provider show played. A pairing the guard refuses is
+/// the poison it exists for — a Part 2 stream played from the cour-1
+/// page — and recorded on the row it would steer Continue Watching to
+/// the wrong entry, so the row records none and keeps any it had.
+async fn played_kitsu_id(
+    state: &AppState,
+    watch: &Watch,
+    kitsu_id: Option<&str>,
+) -> Option<String> {
+    let id = kitsu_id.and_then(crate::history::kitsu_id_of)?;
+    if crate::commands::kitsu::cour_pairing_disagrees(state, &watch.title, &id).await {
+        return None;
+    }
+    Some(id)
+}
+
 /// Record a watch: the history row, the watched-at stamp and, when
 /// the caller knows the Kitsu id, the show's reverse mapping. A
 /// handoff records once its player has started — the spawn is the
@@ -122,7 +140,7 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
         id: watch.show_id.clone(),
         title: watch.title.clone(),
         watched_at: Some(now),
-        kitsu_id: None,
+        kitsu_id: played_kitsu_id(state, watch, kitsu_id).await,
     };
     if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
         tracing::warn!(
