@@ -88,6 +88,32 @@ async fn a_request_in_flight_gets_its_answer_before_the_server_stops() {
 }
 
 #[tokio::test]
+async fn a_request_whose_client_has_hung_up_does_not_hold_the_stop() {
+    use tokio::io::AsyncWriteExt;
+    // What a quit and a dead parent both look like from here: the
+    // renderer is gone, so its connections are closed. The grace is
+    // far longer than the test waits.
+    let served = serve(Duration::from_secs(60)).await;
+    let authority = served.base.strip_prefix("http://").expect("origin");
+    let mut client = tokio::net::TcpStream::connect(authority)
+        .await
+        .expect("connect");
+    client
+        .write_all(format!("GET /held HTTP/1.1\r\nHost: {authority}\r\n\r\n").as_bytes())
+        .await
+        .expect("request");
+    served.entered.notified().await;
+    drop(client);
+
+    served.stop.send(()).expect("stop");
+    tokio::time::timeout(Duration::from_secs(5), served.done)
+        .await
+        .expect("a request nobody is waiting for is dropped, not waited out")
+        .expect("join")
+        .expect("served");
+}
+
+#[tokio::test]
 async fn a_request_that_never_finishes_holds_the_stop_for_the_grace_and_no_longer() {
     let grace = Duration::from_millis(400);
     let served = serve(grace).await;
