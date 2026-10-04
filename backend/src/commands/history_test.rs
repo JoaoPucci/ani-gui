@@ -345,3 +345,116 @@ fn by_kitsu_reads_the_kitsu_id_the_row_records() {
         "the mapping does not pull the other row in"
     );
 }
+
+// — what a row leaves in the cache ————————————————————————————————
+//
+// A row records the Kitsu id of the show played, and the cache holds
+// the same answer three more ways: the show's watch stamp, its
+// reverse mapping, and the title-match rows Continue Watching stored
+// for its title. Removing the row removes those with it; clearing the
+// history removes all of them, whichever version wrote them.
+
+fn row(id: &str, title: &str) -> HistoryEntry {
+    HistoryEntry {
+        ep_no: "1".into(),
+        id: id.into(),
+        title: title.into(),
+        watched_at: None,
+        kitsu_id: Some("49877".into()),
+    }
+}
+
+fn cached(s: &AppState, key: &str) -> Option<String> {
+    crate::cache::meta_cache_get(&s.cache_pool, key).unwrap()
+}
+
+fn put(s: &AppState, key: &str, body: &str) {
+    crate::cache::meta_cache_put(&s.cache_pool, key, body, 86_400).unwrap();
+}
+
+#[test]
+fn delete_removes_what_the_row_left_in_the_cache() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    let gone = "hianime:there-is-also-a-hole-10497";
+    let kept = "hianime:one-piece-100";
+    write_atomic(
+        &path,
+        &[
+            row(gone, "There Is Also a Hole (12 episodes)"),
+            row(kept, "One Piece"),
+        ],
+    )
+    .unwrap();
+    for id in [gone, kept] {
+        crate::commands::kitsu::watched_at_put(&s, id, 1_790_000_000_000).unwrap();
+        crate::commands::kitsu::allmanga_kitsu_put(&s, id, "49877").unwrap();
+    }
+    put(
+        &s,
+        "title-match:v3:hianime:there is also a hole:c1",
+        "49877",
+    );
+    put(
+        &s,
+        "title-match:v3:hianime:there is also a hole:c2",
+        "49878",
+    );
+    put(&s, "title-match:v3:hianime:one piece:c1", "12");
+
+    assert!(history_delete(&s, gone).unwrap());
+
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&s, gone).unwrap(),
+        None
+    );
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&s, gone).unwrap(),
+        None
+    );
+    assert_eq!(
+        cached(&s, "title-match:v3:hianime:there is also a hole:c1"),
+        None
+    );
+    assert_eq!(
+        cached(&s, "title-match:v3:hianime:there is also a hole:c2"),
+        None
+    );
+    assert!(crate::commands::kitsu::watched_at_get(&s, kept)
+        .unwrap()
+        .is_some());
+    assert!(crate::commands::kitsu::allmanga_kitsu_get(&s, kept)
+        .unwrap()
+        .is_some());
+    assert!(cached(&s, "title-match:v3:hianime:one piece:c1").is_some());
+}
+
+#[test]
+fn clear_removes_what_every_row_left_in_the_cache() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("abc", "T")]).unwrap();
+    let history_keys = [
+        "watched-at:v1:abc",
+        "allmanga2kitsu:v3:abc",
+        "allmanga2kitsu:v2:abc",
+        "title-match:v3:anidb:t:c1",
+        "title-match:v2:t:c1",
+    ];
+    for key in history_keys {
+        put(&s, key, "1");
+    }
+    put(&s, "kitsu:v5:anime:49877", "{}");
+
+    history_clear(&s).unwrap();
+
+    for key in history_keys {
+        assert_eq!(cached(&s, key), None, "{key} outlived the history");
+    }
+    assert!(
+        cached(&s, "kitsu:v5:anime:49877").is_some(),
+        "the catalogue cache is not history"
+    );
+}
