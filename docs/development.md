@@ -154,6 +154,23 @@ pnpm package          # AppImage only — fast iteration
 pnpm package:release  # AppImage + .deb
 ```
 
+On Linux the packages carry a backend built for
+`x86_64-unknown-linux-musl`, which links its C library into the
+binary instead of borrowing the system's glibc. A backend linked
+against the build machine's glibc refuses to start on any system with
+an older one, and the build machine is usually newer than the
+systems the packages run on. Building it needs the musl target and a
+C compiler for it, once per machine:
+
+```sh
+rustup target add x86_64-unknown-linux-musl
+sudo apt install musl-tools   # musl-gcc, for the SQLite the backend compiles in
+```
+
+`pnpm package` and `pnpm package:release` build that backend
+themselves (`pnpm run build:backend:linux`). The dev loop keeps using
+the ordinary debug build.
+
 Artifacts land in `electron/dist/`. There is no release-packaging CI —
 no workflow triggers on a tag and nothing publishes installers. (The
 e2e workflow does run `pnpm run dist` on Linux to produce the

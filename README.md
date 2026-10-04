@@ -47,7 +47,7 @@ Platform support tiers:
 <details>
 <summary><strong>Linux</strong> — tier 1 (tested on Ubuntu)</summary>
 
-- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
+- **AppImage** — download from the [releases page](https://github.com/JoaoPucci/ani-gui/releases), `chmod +x`, double-click. Its backend carries its own C library, so the AppImage does not need a distribution as new as the one it was built on. Install `ffmpeg` from your distro if you want downloads: the AppImage carries yt-dlp but not ffmpeg, and yt-dlp hands off to it whenever a stream arrives as MPEG-TS and has to be repackaged as MP4. Playback itself needs neither. The bundle launches with Chromium's setuid sandbox disabled (AppImage's read-only FUSE mount can't carry the SUID bit `chrome-sandbox` requires); the localhost-only architecture means the sandbox isn't load-bearing for the threat model. If you'd rather keep the sandbox, install the `.deb` instead.
 - **Debian / Ubuntu (`.deb`)** — `sudo apt install ./ani-gui_<version>_amd64.deb`. apt pulls in the recommended `ffmpeg` package (needed for the download feature) along the way; the post-install script sets the `chrome-sandbox` SUID bit Electron needs, so the sandbox stays on. `sudo dpkg -i …` still works but won't auto-install ffmpeg — drop into `apt --fix-broken install` or run `sudo apt install ffmpeg` separately if you used dpkg directly.
 
 </details>
@@ -110,7 +110,7 @@ Tested on Linux and Windows. The dev loop (steps 5–6) runs on both: the Electr
    cd electron
    pnpm dev
    ```
-7. **Build a distributable bundle** — a fresh terminal at the repository root. On an x86_64 Linux host (`pnpm package` instead builds only the `.AppImage`, for faster iteration):
+7. **Build a distributable bundle** — a fresh terminal at the repository root. On an x86_64 Linux host, after a one-time `rustup target add x86_64-unknown-linux-musl` and `sudo apt install musl-tools` (the Linux packages carry a backend that needs no system C library; see [docs/development.md](docs/development.md#build-for-distribution)), and with `pnpm package` instead building only the `.AppImage`, for faster iteration:
    ```sh
    cd electron
    pnpm package:release

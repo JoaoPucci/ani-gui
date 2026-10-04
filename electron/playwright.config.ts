@@ -7,7 +7,8 @@
  *
  * Pre-test setup is the responsibility of a global setup hook (or the
  * `pnpm package` script run beforehand): the Rust backend binary at
- * `../backend/target/release/ani-gui-backend` and the SvelteKit static
+ * `../backend/target/x86_64-unknown-linux-musl/release/ani-gui-backend`
+ * (`pnpm run build:backend:linux`) and the SvelteKit static
  * bundle at `../frontend/build/index.html` must both exist.
  */
 import { defineConfig } from '@playwright/test';
