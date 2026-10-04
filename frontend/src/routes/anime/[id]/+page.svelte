@@ -285,22 +285,25 @@
 		actionBusy = true;
 		actionProgress = caption;
 		const kitsuPage = Math.ceil(n / KITSU_PAGE_SIZE);
-		const outcome = await unairedRecheck.check(showId, {
-			// Fetch only: the page may be another show's by the time this
-			// lands, and `apply` runs only if it is still this one's.
-			refresh: () =>
-				Promise.all([
-					airingGet(showId, { refresh: true }),
-					kitsuEpisodes(showId, kitsuPage, { refresh: true })
-				]),
-			apply: ([schedule, eps]) => {
-				airingSchedule = schedule;
-				kitsuPageCache.set(kitsuPage, eps);
-			},
-			isAired: () => !epAirState(n, airing).unaired,
-			currentContext: () => (gone ? GONE : `${visit}:${showId}`),
-			now: () => Date.now()
-		});
+		const outcome = await unairedRecheck.check(
+			{ show: showId, page: kitsuPage },
+			{
+				// Fetch only: the page may be another show's by the time this
+				// lands, and `apply` runs only if it is still this one's.
+				refresh: () =>
+					Promise.all([
+						airingGet(showId, { refresh: true }),
+						kitsuEpisodes(showId, kitsuPage, { refresh: true })
+					]),
+				apply: ([schedule, eps]) => {
+					airingSchedule = schedule;
+					kitsuPageCache.set(kitsuPage, eps);
+				},
+				isAired: () => !epAirState(n, airing).unaired,
+				currentContext: () => (gone ? GONE : `${visit}:${showId}`),
+				now: () => Date.now()
+			}
+		);
 		const plan = planUnairedClick(outcome, beyondPlayable(n, playableEpisodeCount));
 		// Superseded: the page is another show's now. Let go of the block
 		// only while it is still the one this check raised — its caption

@@ -43,13 +43,24 @@ export interface UnairedRecheckDeps<T> {
 	now: () => number;
 }
 
+/** What a click asks about. Signature only: the behaviour lands with
+ *  the change its tests describe. */
+export interface UnairedRecheckSubject {
+	show: string;
+	/** The Kitsu episode page the episode sits on. */
+	page: number;
+}
+
 /** A refresh's result: what it fetched and when it started, or null
  *  when it failed. Untyped here because clicks from different pages of
  *  the same show share one; each page's `apply` knows its own shape. */
 type Fetched = { data: unknown; startedAt: number } | null;
 
 export function createUnairedRecheck(intervalMs: number = UNAIRED_RECHECK_INTERVAL_MS): {
-	check: <T>(showId: string, deps: UnairedRecheckDeps<T>) => Promise<UnairedRecheckOutcome>;
+	check: <T>(
+		subject: UnairedRecheckSubject,
+		deps: UnairedRecheckDeps<T>
+	) => Promise<UnairedRecheckOutcome>;
 } {
 	const refreshedAt = new Map<string, number>();
 	const inFlight = new Map<string, Promise<Fetched>>();
@@ -70,7 +81,8 @@ export function createUnairedRecheck(intervalMs: number = UNAIRED_RECHECK_INTERV
 	}
 
 	return {
-		check: async <T>(showId: string, deps: UnairedRecheckDeps<T>) => {
+		check: async <T>(subject: UnairedRecheckSubject, deps: UnairedRecheckDeps<T>) => {
+			const showId = subject.show;
 			const asked = deps.currentContext();
 			const last = refreshedAt.get(showId);
 			const recent = last !== undefined && deps.now() - last < intervalMs;

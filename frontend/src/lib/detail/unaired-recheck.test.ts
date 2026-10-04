@@ -50,34 +50,67 @@ describe('createUnairedRecheck', () => {
 	it('refreshes the schedule and reports the episode aired when it now is', async () => {
 		const recheck = createUnairedRecheck();
 		const p = page({ airsOnRefresh: true });
-		expect(await recheck.check('49847', p.deps)).toBe('aired');
+		expect(await recheck.check({ show: '49847', page: 1 }, p.deps)).toBe('aired');
 		expect(p.refreshes()).toBe(1);
 	});
 
 	it('reports it still unaired when the refreshed schedule agrees', async () => {
 		const recheck = createUnairedRecheck();
 		const p = page();
-		expect(await recheck.check('49847', p.deps)).toBe('unaired');
+		expect(await recheck.check({ show: '49847', page: 1 }, p.deps)).toBe('unaired');
 		expect(p.refreshes()).toBe(1);
 	});
 
 	it('answers a repeat click from what the page holds until the interval passes', async () => {
 		const recheck = createUnairedRecheck();
 		const p = page();
-		await recheck.check('49847', p.deps);
+		await recheck.check({ show: '49847', page: 1 }, p.deps);
 		p.advance(UNAIRED_RECHECK_INTERVAL_MS - 1);
-		expect(await recheck.check('49847', p.deps)).toBe('unaired');
+		expect(await recheck.check({ show: '49847', page: 1 }, p.deps)).toBe('unaired');
 		expect(p.refreshes()).toBe(1);
 		p.advance(1);
-		await recheck.check('49847', p.deps);
+		await recheck.check({ show: '49847', page: 1 }, p.deps);
 		expect(p.refreshes()).toBe(2);
 	});
 
 	it('limits each show on its own', async () => {
 		const recheck = createUnairedRecheck();
 		const p = page();
-		await recheck.check('49847', p.deps);
-		await recheck.check('50551', p.deps);
+		await recheck.check({ show: '49847', page: 1 }, p.deps);
+		await recheck.check({ show: '50551', page: 1 }, p.deps);
+		expect(p.refreshes()).toBe(2);
+	});
+
+	it('asks again for another page of the same show, and gives each page its own answer', async () => {
+		// The controller is app-wide and a show's pages are separate
+		// fetches: a click for page 1 joining a refresh out for page 2
+		// would write page 2's episodes in as page 1's.
+		const recheck = createUnairedRecheck();
+		const applied: string[] = [];
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		const deps = (page: string): UnairedRecheckDeps<string> => ({
+			refresh: async () => {
+				await held;
+				return page;
+			},
+			apply: (fetched) => applied.push(`${page}<-${fetched}`),
+			isAired: () => false,
+			currentContext: () => 'visit-1',
+			now: () => 1_000_000
+		});
+		const two = recheck.check({ show: '49847', page: 2 }, deps('p2'));
+		const one = recheck.check({ show: '49847', page: 1 }, deps('p1'));
+		release();
+		await Promise.all([one, two]);
+		expect(applied.sort()).toEqual(['p1<-p1', 'p2<-p2']);
+	});
+
+	it('limits each page of a show on its own', async () => {
+		const recheck = createUnairedRecheck();
+		const p = page();
+		await recheck.check({ show: '49847', page: 1 }, p.deps);
+		await recheck.check({ show: '49847', page: 2 }, p.deps);
 		expect(p.refreshes()).toBe(2);
 	});
 
@@ -85,8 +118,8 @@ describe('createUnairedRecheck', () => {
 		const recheck = createUnairedRecheck();
 		const p = page({ airsOnRefresh: true });
 		p.holdRefresh();
-		const first = recheck.check('49847', p.deps);
-		const second = recheck.check('49847', p.deps);
+		const first = recheck.check({ show: '49847', page: 1 }, p.deps);
+		const second = recheck.check({ show: '49847', page: 1 }, p.deps);
 		await Promise.resolve();
 		p.releaseRefresh();
 		expect(await first).toBe('aired');
@@ -97,8 +130,8 @@ describe('createUnairedRecheck', () => {
 	it('reports a failed refresh, and does not hold the next click back for it', async () => {
 		const recheck = createUnairedRecheck();
 		const p = page({ fails: true });
-		expect(await recheck.check('49847', p.deps)).toBe('failed');
-		await recheck.check('49847', p.deps);
+		expect(await recheck.check({ show: '49847', page: 1 }, p.deps)).toBe('failed');
+		await recheck.check({ show: '49847', page: 1 }, p.deps);
 		expect(p.refreshes()).toBe(2);
 	});
 
@@ -109,7 +142,7 @@ describe('createUnairedRecheck', () => {
 		const recheck = createUnairedRecheck();
 		const p = page({ airsOnRefresh: true });
 		p.holdRefresh();
-		const pending = recheck.check('49847', p.deps);
+		const pending = recheck.check({ show: '49847', page: 1 }, p.deps);
 		await Promise.resolve();
 		p.leave();
 		p.releaseRefresh();
@@ -125,13 +158,13 @@ describe('createUnairedRecheck', () => {
 		const recheck = createUnairedRecheck();
 		const p = page();
 		p.holdRefresh();
-		const pending = recheck.check('49847', p.deps);
+		const pending = recheck.check({ show: '49847', page: 1 }, p.deps);
 		await Promise.resolve();
 		p.leave();
 		p.releaseRefresh();
 		await pending;
 		p.stopHolding();
-		await recheck.check('49847', p.deps);
+		await recheck.check({ show: '49847', page: 1 }, p.deps);
 		expect(p.refreshes()).toBe(2);
 	});
 });
