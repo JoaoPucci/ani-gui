@@ -115,23 +115,6 @@ starting it, and delete it when you find it done.
   clear, which also reran candidate selection; nobody captured the
   two master URLs to compare.
 
-- **The backend outlives an Electron main process that dies without
-  quitting.** `electron/main.js` spawns the backend detached, in its
-  own process group, so the quit path can stop the whole tree
-  (transport, yt-dlp, ffmpeg) — and stops it only from `before-quit`,
-  plus the failed-boot path in `electron/lib/startup.cjs`. A main
-  process that crashes or is killed runs neither, and nothing tells
-  the backend its parent is gone, so it keeps running with its port,
-  its database and any downloads. A parent-death signal the backend
-  watches for would close it — on Windows too, where there is no
-  process group and `taskkill /T` is the only tree stop.
-
-  Surprising part: Playwright's `ElectronApplication.close()` does not
-  return while that orphan runs, even though the Electron process has
-  exited — killing the orphan releases it at once. That is how a
-  failed boot became a 25-second hang in the e2e suite before the boot
-  stopped the backend itself.
-
 ## Testing and CI
 
 - **The CRAP ratchet disagrees between CI and local** — 26 against 25 —

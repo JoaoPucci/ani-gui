@@ -36,6 +36,7 @@ const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
 const { awaitHandshake } = require("./lib/backend-handshake.cjs");
+const { backendSpawnOptions } = require("./lib/backend-spawn.cjs");
 const { handleBeforeQuit } = require("./lib/quit.cjs");
 const { awaitFirstShow, bootApp, loadFirstPage } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
@@ -236,18 +237,14 @@ const BACKEND_HANDSHAKE_TIMEOUT_MS = 15_000;
  */
 async function spawnBackend() {
   const bin = resolveBackendBinary();
-  // `detached: true` puts the backend in its own process group on
-  // POSIX so we can kill the entire group (backend + the transport
-  // it spawns per request + yt-dlp + ffmpeg) at quit time
-  // via `process.kill(-pid, …)`.
-  // Without it, only the Rust process gets the signal and the
-  // download grandchildren get reparented to init and keep
-  // running. Windows has no process groups; the tree-kill path
-  // shells out to taskkill /T instead — see killTree().
-  const child = spawn(bin, [], {
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: process.platform !== "win32",
-  });
+  // A parent pipe on stdin, the flag to watch it, and its own process
+  // group — see lib/backend-spawn.cjs. `child.stdin` is never written
+  // to or closed: it stays open exactly as long as this process lives.
+  const child = spawn(
+    bin,
+    [],
+    backendSpawnOptions({ platform: process.platform, env: process.env }),
+  );
   child.stderr.on("data", (chunk) => {
     process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
   });
