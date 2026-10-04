@@ -12,6 +12,25 @@ const SEARCH_FIXTURE: &[u8] = include_bytes!("../../../tests/fixtures/kitsu/sear
 const DETAIL_FIXTURE: &[u8] =
     include_bytes!("../../../tests/fixtures/kitsu/anime_one_piece_detail.json");
 
+/// `state` with its history under `dir`, listing a row for `show_id`:
+/// the row Continue Watching is resolving when it asks for the show's
+/// Kitsu entry.
+pub(super) fn listing(mut state: AppState, dir: &std::path::Path, show_id: &str) -> AppState {
+    state.history_path = dir.join("history");
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: show_id.into(),
+            title: "One Piece".into(),
+            watched_at: None,
+            kitsu_id: None,
+        },
+    )
+    .expect("seed row");
+    state
+}
+
 /// The moment a recording on `state`'s history begins.
 fn begun(state: &AppState) -> crate::history::guard::Epoch {
     crate::history::guard::epoch(&state.history_path)
@@ -59,7 +78,12 @@ async fn a_qualified_id_resolves_through_its_slugs_words() {
         )
         .mount(&mock)
         .await;
-    let state = state_with_kitsu_at(&mock.uri());
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = listing(
+        state_with_kitsu_at(&mock.uri()),
+        td.path(),
+        "hianime:one-piece-100",
+    );
     let got = resolve_allmanga_show_id(&state, "hianime:one-piece-100", false)
         .await
         .expect("resolve ok");
@@ -299,7 +323,12 @@ async fn the_enrichment_resolve_passes_over_a_hit_whose_cour_disagrees_with_the_
         search_body(&[("12", "one-piece"), ("13", "one-piece-part-2")]),
     )
     .await;
-    let state = state_with_kitsu_at(&mock.uri());
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = listing(
+        state_with_kitsu_at(&mock.uri()),
+        td.path(),
+        "hianime:one-piece-part-2-100",
+    );
     let got = resolve_allmanga_show_id(&state, "hianime:one-piece-part-2-100", true)
         .await
         .expect("resolve ok");
@@ -358,7 +387,12 @@ async fn the_enrichment_resolve_reads_the_cour_of_an_ordinal_kitsu_slug() {
         search_body(&[("12", "one-piece"), ("13", "one-piece-2nd-season")]),
     )
     .await;
-    let state = state_with_kitsu_at(&mock.uri());
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = listing(
+        state_with_kitsu_at(&mock.uri()),
+        td.path(),
+        "hianime:one-piece-season-2-100",
+    );
     let got = resolve_allmanga_show_id(&state, "hianime:one-piece-season-2-100", true)
         .await
         .expect("resolve ok");
@@ -437,7 +471,8 @@ async fn the_enrichment_resolve_takes_the_first_hit_for_a_slug_without_cour_evid
         search_body(&[("12", "one-piece"), ("13", "one-piece-part-2")]),
     )
     .await;
-    let state = state_with_kitsu_at(&mock.uri());
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = listing(state_with_kitsu_at(&mock.uri()), td.path(), "one-piece-69");
     let got = resolve_allmanga_show_id(&state, "one-piece-69", true)
         .await
         .expect("resolve ok");
@@ -522,5 +557,30 @@ async fn the_enrichment_resolve_never_replaces_a_mapping_a_play_stored() {
             .as_deref(),
         Some("21"),
         "the play's mapping stands"
+    );
+}
+
+/// The resolve's guess is for a history row: Continue Watching asks for
+/// it while a row resolves, and the user can remove the row before the
+/// answer is back. With no row for the show, the resolve still answers
+/// its request and stores nothing — a mapping stored then would bring
+/// back what the removal took.
+#[tokio::test]
+async fn the_enrichment_resolve_stores_nothing_for_a_show_with_no_history_row() {
+    let mock = MockServer::start().await;
+    serve_search(&mock, "one piece", search_body(&[("12", "one-piece")])).await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = state_with_kitsu_at(&mock.uri());
+    state.history_path = td.path().join("history");
+
+    let got = resolve_allmanga_show_id(&state, "one-piece-69", true)
+        .await
+        .expect("resolve ok");
+
+    assert_eq!(got.expect("still answers").id, "12");
+    assert_eq!(
+        allmanga_kitsu_get(&state, "one-piece-69").expect("cache read"),
+        None,
+        "nothing is mapped for a show not in history"
     );
 }

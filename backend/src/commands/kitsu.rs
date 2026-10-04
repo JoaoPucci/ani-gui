@@ -1684,7 +1684,12 @@ mod tests {
             )
             .mount(&mock)
             .await;
-        let state = state_with_kitsu_at(&mock.uri());
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = super::show_key_tests::listing(
+            state_with_kitsu_at(&mock.uri()),
+            td.path(),
+            "one-piece-69",
+        );
 
         let got = resolve_allmanga_show_id(&state, "one-piece-69", false)
             .await
@@ -1744,7 +1749,12 @@ mod tests {
             )
             .mount(&mock)
             .await;
-        let state = state_with_kitsu_at(&mock.uri());
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = super::show_key_tests::listing(
+            state_with_kitsu_at(&mock.uri()),
+            td.path(),
+            "hianime:foo-2-season-123",
+        );
 
         let got = resolve_allmanga_show_id(&state, "hianime:foo-2-season-123", false)
             .await

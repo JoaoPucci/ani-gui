@@ -1051,10 +1051,111 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
     }
 
+    /// A history row for `title` under the show id `id`.
+    fn list_row(state: &AppState, id: &str, title: &str) {
+        crate::history::upsert_and_write(
+            &state.history_path,
+            crate::history::HistoryEntry {
+                ep_no: "1".into(),
+                id: id.into(),
+                title: title.into(),
+                watched_at: None,
+                kitsu_id: None,
+            },
+        )
+        .expect("seed row");
+    }
+
+    async fn put_title_match(router: &Router, body: &'static str) -> StatusCode {
+        router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/title-match")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot")
+            .status()
+    }
+
+    async fn get_title_match(router: &Router, query: &str) -> String {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/title-match?{query}"))
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        body_string(response).await.trim().to_owned()
+    }
+
+    /// A title match is stored for a title a history row carries.
+    /// Continue Watching stores one when a row's search settles, and
+    /// the user can remove the row before it does: with no row
+    /// searching that title, the request is answered and nothing is
+    /// stored — a row stored then would bring back what the removal
+    /// took. The row's provider is part of what it searches.
+    #[tokio::test]
+    async fn a_title_match_for_a_title_no_history_row_carries_is_not_stored() {
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        list_row(&state, "hianime:naruto-20", "Naruto");
+        let router = build_api_router(Arc::new(state));
+
+        let unlisted = r#"{"title":"Stone Ocean Part 2","cour":2,"kitsu_id":"46010"}"#;
+        assert_eq!(
+            put_title_match(&router, unlisted).await,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            get_title_match(&router, "title=Stone+Ocean+Part+2&cour=2").await,
+            "null"
+        );
+
+        // The row is hianime's; a request without a provider is anidb's.
+        let other_provider = r#"{"title":"Naruto","cour":1,"kitsu_id":"11"}"#;
+        assert_eq!(
+            put_title_match(&router, other_provider).await,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            get_title_match(&router, "title=Naruto&cour=1").await,
+            "null"
+        );
+
+        let listed = r#"{"title":"Naruto","cour":1,"kitsu_id":"11","provider":"hianime"}"#;
+        assert_eq!(
+            put_title_match(&router, listed).await,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            get_title_match(&router, "title=Naruto&cour=1&provider=hianime").await,
+            "\"11\""
+        );
+    }
+
     #[tokio::test]
     async fn put_then_get_title_match_round_trips() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let state = test_app_state(&td);
+        // The row whose search this match settles; a row from before
+        // the provider migration carries an episode tail the search
+        // leaves out.
+        list_row(
+            &state,
+            "stone-ocean-part-2-77",
+            "Stone Ocean Part 2 (12 episodes)",
+        );
+        let router = build_api_router(Arc::new(state));
         let put = router
             .clone()
             .oneshot(
