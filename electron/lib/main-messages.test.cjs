@@ -14,7 +14,13 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { LOCALES, messagesFor, overBase, resolveLocale } = require("./main-messages.cjs");
+const {
+  LOCALES,
+  TRANSLATIONS,
+  messagesFor,
+  overBase,
+  resolveLocale,
+} = require("./main-messages.cjs");
 
 const shipped = JSON.parse(
   fs.readFileSync(
@@ -31,10 +37,13 @@ test("the table covers exactly the locales the renderer ships", () => {
  *  argument when it takes one. */
 const text = (value) => (typeof value === "function" ? value(3) : value);
 
+// Asked of the translations as written, not of the lookup: the lookup
+// fills a missing message from the base locale, which would make this
+// pass for a locale that says nothing at all.
 test("every locale says everything the base locale says", () => {
-  const base = messagesFor(shipped.baseLocale);
+  const base = TRANSLATIONS[shipped.baseLocale];
   for (const locale of shipped.locales) {
-    const table = messagesFor(locale);
+    const table = TRANSLATIONS[locale];
     assert.deepEqual(Object.keys(table).sort(), Object.keys(base).sort(), locale);
     for (const [key, value] of Object.entries(table)) {
       assert.equal(typeof value, typeof base[key], `${locale}.${key}`);
@@ -72,6 +81,13 @@ test("a message a locale lacks reads as the base locale's", () => {
   // The base table is itself, and the tables handed in are untouched.
   assert.deepEqual(merged.en, tables.en);
   assert.deepEqual(Object.keys(tables.xx), ["close"]);
+});
+
+test("the lookup serves the tables laid over the base", () => {
+  const merged = overBase(TRANSLATIONS, shipped.baseLocale);
+  for (const locale of shipped.locales) {
+    assert.deepEqual(Object.keys(messagesFor(locale)), Object.keys(merged[locale]), locale);
+  }
 });
 
 test("a locale the table does not carry falls back to the base one", () => {
