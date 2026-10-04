@@ -69,3 +69,17 @@ fn the_warm_writes_a_current_show_for_a_day() {
     assert_eq!(stored_ttl(&state, "1"), DAY);
     assert_eq!(stored_ttl(&state, "2"), 7 * DAY);
 }
+
+proptest::proptest! {
+    /// Only the exact `finished` status earns the week: any other
+    /// string Kitsu might send, or none, is kept a day.
+    #[test]
+    fn only_a_finished_show_keeps_the_week(status in proptest::option::of("\\PC{0,12}")) {
+        let ttl = anime_detail_ttl(status.as_deref());
+        if status.as_deref() == Some("finished") {
+            proptest::prop_assert_eq!(ttl, 7 * DAY);
+        } else {
+            proptest::prop_assert_eq!(ttl, DAY);
+        }
+    }
+}

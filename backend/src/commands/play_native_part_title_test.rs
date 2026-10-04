@@ -31,3 +31,102 @@ fn anything_else_is_not_a_part() {
         None
     );
 }
+
+/// A stem the marker forms can follow: ASCII words, ending in a letter
+/// so the marker is a separate word.
+fn stem() -> impl proptest::strategy::Strategy<Value = String> {
+    "[A-Za-z][A-Za-z: ]{0,24}[A-Za-z]"
+}
+
+/// The ordinal suffix English writes after `n`.
+fn suffixed(n: u32) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
+}
+
+/// Random letter case and runs of whitespace — neither may change the
+/// answer.
+fn scrambled(s: &str, upper: &[bool], spaces: usize) -> String {
+    s.chars()
+        .zip(upper.iter().cycle())
+        .map(|(c, up)| {
+            if c == ' ' {
+                " ".repeat(spaces)
+            } else if *up {
+                c.to_ascii_uppercase().to_string()
+            } else {
+                c.to_ascii_lowercase().to_string()
+            }
+        })
+        .collect()
+}
+
+proptest::proptest! {
+    #[test]
+    fn a_title_is_the_first_part_of_itself_whatever_its_case_and_spacing(
+        s in stem(),
+        upper in proptest::collection::vec(proptest::bool::ANY, 1..8),
+        spaces in 1usize..4,
+    ) {
+        proptest::prop_assert_eq!(part_ordinal(&s, &scrambled(&s, &upper, spaces)), Some(1));
+    }
+
+    #[test]
+    fn every_recognised_marker_form_names_its_ordinal(
+        s in stem(),
+        n in 2u32..200,
+        form in 0usize..6,
+        upper in proptest::collection::vec(proptest::bool::ANY, 1..8),
+        spaces in 1usize..4,
+    ) {
+        let marker = match form {
+            0 => format!("{} Stage", suffixed(n)),
+            1 => format!("Part {n}"),
+            2 => format!(": Season {n}"),
+            3 => format!(" - {} Cour", suffixed(n)),
+            4 => format!("Stage {n}"),
+            _ => format!("{} Season", suffixed(n)),
+        };
+        let title = scrambled(&format!("{s} {marker}"), &upper, spaces);
+        proptest::prop_assert_eq!(part_ordinal(&s, &title), Some(n));
+    }
+
+    #[test]
+    fn a_title_that_does_not_start_with_the_stem_is_no_part_of_it(
+        s in stem(),
+        other in "[A-Za-z ]{0,30}",
+        n in 2u32..50,
+    ) {
+        let title = format!("{other} Part {n}");
+        let starts = title.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
+            .starts_with(&s.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" "));
+        proptest::prop_assume!(!starts);
+        proptest::prop_assert_eq!(part_ordinal(&s, &title), None);
+    }
+
+    #[test]
+    fn any_text_at_all_reads_as_no_part_or_a_positive_one(
+        s in "\\PC{0,30}",
+        t in "\\PC{0,40}",
+    ) {
+        // Arbitrary Unicode: never a panic, and never a part zero.
+        match part_ordinal(&s, &t) {
+            None => {}
+            Some(k) => proptest::prop_assert!(k >= 1),
+        }
+    }
+
+    #[test]
+    fn a_later_part_is_never_the_first(s in stem(), t in "\\PC{0,40}") {
+        // Some(1) means the two titles are the same title.
+        if part_ordinal(&s, &t) == Some(1) {
+            proptest::prop_assert_eq!(normalized(&s), normalized(&t));
+        }
+    }
+}
