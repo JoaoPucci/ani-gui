@@ -133,6 +133,35 @@ fn gone_within(pids: &[u32], wait: Duration) -> bool {
     false
 }
 
+/// Whether this test process ignores signal `number`, which a backend
+/// it starts then inherits — and, on Linux, rightly goes on ignoring.
+/// A test run under `nohup`, or in the background of a script, is in
+/// that position, and a test that sends such a signal expecting a stop
+/// would fail for the environment's reason rather than the code's.
+#[cfg(target_os = "linux")]
+fn ignored_here(number: u32) -> bool {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            let mask = status
+                .lines()
+                .find_map(|line| line.strip_prefix("SigIgn:"))?;
+            u64::from_str_radix(mask.trim(), 16).ok()
+        })
+        .is_some_and(|mask| mask & (1 << (number - 1)) != 0)
+}
+
+/// Elsewhere the backend cannot tell either, and handles the signal
+/// whatever it inherited.
+#[cfg(not(target_os = "linux"))]
+fn ignored_here(_number: u32) -> bool {
+    false
+}
+
+const SIGHUP: u32 = 1;
+const SIGINT: u32 = 2;
+const SIGTERM: u32 = 15;
+
 fn signal(name: &str, pid: u32) {
     let sent = Command::new("kill")
         .args([name, &pid.to_string()])
@@ -238,6 +267,10 @@ fn start_a_download() -> Downloading {
 
 #[test]
 fn a_terminate_signal_stops_the_tools_a_running_download_spawned() {
+    if ignored_here(SIGTERM) {
+        eprintln!("skipped: SIGTERM is ignored in this environment");
+        return;
+    }
     let mut download = start_a_download();
 
     // What a quit delivers. To the backend alone: the tool's group is
@@ -284,7 +317,11 @@ fn a_parent_that_dies_stops_the_tools_a_running_download_spawned() {
 #[test]
 fn an_interrupt_or_a_hangup_is_a_request_to_stop_as_well() {
     let home = tempfile::tempdir().expect("tempdir");
-    for name in ["-INT", "-HUP"] {
+    for (name, number) in [("-INT", SIGINT), ("-HUP", SIGHUP)] {
+        if ignored_here(number) {
+            eprintln!("skipped {name}: ignored in this environment");
+            continue;
+        }
         let mut backend = common::start(common::command(
             Path::new(env!("CARGO_BIN_EXE_ani-gui-backend")),
             home.path(),
@@ -333,6 +370,12 @@ fn a_signal_the_backend_was_started_ignoring_stays_ignored() {
 
     // It is still the backend's to stop when asked by a signal nobody
     // told it to ignore.
+    if ignored_here(SIGTERM) {
+        eprintln!("the stop by SIGTERM was skipped: ignored in this environment");
+        let _ = backend.child.kill();
+        let _ = backend.child.wait();
+        return;
+    }
     signal("-TERM", backend.child.id());
     let status = common::exited_within(&mut backend.child, Duration::from_secs(10));
     let _ = backend.child.kill();
