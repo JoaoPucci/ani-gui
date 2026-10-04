@@ -567,12 +567,16 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
 /// detail page would resume the wrong episode. Dropping it costs one
 /// deterministic shortcut: the next reverse resolve re-derives the
 /// mapping from the slug.
+///
+/// Returns whether the guard accepted the pairing, so the caller can
+/// settle the history row's id on the same verdict rather than asking
+/// the guard again.
 pub async fn try_put_allmanga_kitsu_mapping(
     state: &AppState,
     show_id: &str,
     show_title: &str,
     kitsu_id: &str,
-) {
+) -> bool {
     // Every provider's ids are guarded. The resolve carries no
     // identity the guard could defer to — no Kitsu or MyAnimeList
     // id, only the title, year and count the picker scored — so a
@@ -588,7 +592,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             "play: provider→kitsu mapping rejected (cross-cour mismatch)",
         );
         drop_mapping_the_title_disagrees_with(state, show_id, show_title).await;
-        return;
+        return false;
     }
     if let Err(e) = allmanga_kitsu_put(state, show_id, kitsu_id) {
         tracing::warn!(
@@ -598,6 +602,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             "play: provider→kitsu mapping write failed",
         );
     }
+    true
 }
 
 /// Drop the key's stored mapping when the title's cour disagrees

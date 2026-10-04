@@ -291,6 +291,19 @@ pub fn upsert_and_write(path: &Path, new: HistoryEntry) -> Result<()> {
     write_atomic(path, &entries)
 }
 
+/// Set the Kitsu id the row for `id` records, `None` clearing it. A
+/// missing row is left missing.
+///
+/// # Errors
+/// Returns [`AniError::Io`] on read or write failure.
+pub fn set_kitsu_id(path: &Path, id: &str, kitsu_id: Option<String>) -> Result<()> {
+    let mut entries = read_all(path)?;
+    for entry in entries.iter_mut().filter(|e| e.id == id) {
+        entry.kitsu_id.clone_from(&kitsu_id);
+    }
+    write_atomic(path, &entries)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

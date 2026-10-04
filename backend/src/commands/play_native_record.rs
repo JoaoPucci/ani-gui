@@ -93,32 +93,14 @@ impl Watch {
     }
 }
 
-/// The Kitsu id the row records for a watch: the page the play was
-/// started from, when it is digits and the cour guard accepts pairing
-/// it with the provider show played. A pairing the guard refuses is
-/// the poison it exists for — a Part 2 stream played from the cour-1
-/// page — and recorded on the row it would steer Continue Watching to
-/// the wrong entry, so the row records none and keeps any it had.
-async fn played_kitsu_id(
-    state: &AppState,
-    watch: &Watch,
-    kitsu_id: Option<&str>,
-) -> Option<String> {
-    let id = kitsu_id.and_then(crate::history::kitsu_id_of)?;
-    if crate::commands::kitsu::cour_pairing_disagrees(state, &watch.title, &id).await {
-        return None;
-    }
-    Some(id)
-}
-
 /// Record a watch: the history row, the watched-at stamp and, when
-/// the caller knows the Kitsu id, the show's reverse mapping. A
-/// handoff records once its player has started — the spawn is the
-/// watch, and a player that failed to start leaves nothing behind;
-/// the embedded player records on mark-watched, once playback has
-/// reported progress. The mapping is what lets the row be found by
-/// the Kitsu id, and what puts its stamp in the running when two
-/// providers have each left a row. A watch without a show id (a
+/// the caller knows the Kitsu id, the id on the row and the show's
+/// reverse mapping. A handoff records once its player has started —
+/// the spawn is the watch, and a player that failed to start leaves
+/// nothing behind; the embedded player records on mark-watched, once
+/// playback has reported progress. The mapping is what lets the row be
+/// found by the Kitsu id, and what puts its stamp in the running when
+/// two providers have each left a row. A watch without a show id (a
 /// cached row from before the field) records nothing.
 ///
 /// The row leads and the rest follow: a history write that fails —
@@ -126,11 +108,17 @@ async fn played_kitsu_id(
 /// ends the recording with a log line, since a stamp advanced for a
 /// watch that never reached the file would make that row the show's
 /// latest and hand the resume its stale episode over another
-/// provider's real one.
+/// provider's real one. The row goes down with the id as given, and
+/// the stamp after it, before anything waits on Kitsu.
+///
+/// The cour guard then reads Kitsu once, and its one verdict settles
+/// both the mapping and the row's id ([`settle_refused_id`]).
 pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
     if watch.show_id.is_empty() {
         return;
     }
+    let given = kitsu_id.filter(|k| !k.is_empty());
+    let previous = recorded_id(state, &watch.show_id);
     // The watch's moment travels with the row, in the same write, so
     // the recency the resume and the strip rank by is not left to a
     // store the row was not written to; the cache's copy follows.
@@ -140,7 +128,7 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
         id: watch.show_id.clone(),
         title: watch.title.clone(),
         watched_at: Some(now),
-        kitsu_id: played_kitsu_id(state, watch, kitsu_id).await,
+        kitsu_id: given.and_then(crate::history::kitsu_id_of),
     };
     if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
         tracing::warn!(
@@ -151,14 +139,61 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
         return;
     }
     stamp_watched_at(state, &watch.show_id, now);
-    if let Some(kid) = kitsu_id.filter(|k| !k.is_empty()) {
-        crate::commands::kitsu::try_put_allmanga_kitsu_mapping(
-            state,
-            &watch.show_id,
-            &watch.title,
-            kid,
-        )
-        .await;
+    let Some(kid) = given else {
+        return;
+    };
+    let accepted = crate::commands::kitsu::try_put_allmanga_kitsu_mapping(
+        state,
+        &watch.show_id,
+        &watch.title,
+        kid,
+    )
+    .await;
+    if !accepted {
+        settle_refused_id(state, watch, kid, previous).await;
+    }
+}
+
+/// The Kitsu id the show's row records now, if any. A history that
+/// cannot be read has none to keep.
+fn recorded_id(state: &AppState, show_id: &str) -> Option<String> {
+    crate::history::read_all(&state.history_path)
+        .ok()?
+        .into_iter()
+        .find(|e| e.id == show_id)
+        .and_then(|e| e.kitsu_id)
+}
+
+/// The row's id once the cour guard refused pairing the watch with
+/// `refused`. A refused pairing is the poison the guard exists for — a
+/// Part 2 stream played from the cour-1 page — and on the row it would
+/// steer Continue Watching and the detail page's resume to the wrong
+/// entry, so the row does not keep it. An id the row held before is
+/// judged the same way, as the refused mapping write judges the
+/// mapping already stored: kept when the title agrees with it, cleared
+/// when the title disagrees with it too.
+async fn settle_refused_id(
+    state: &AppState,
+    watch: &Watch,
+    refused: &str,
+    previous: Option<String>,
+) {
+    let keep = match previous {
+        Some(p)
+            if p != refused
+                && !crate::commands::kitsu::cour_pairing_disagrees(state, &watch.title, &p)
+                    .await =>
+        {
+            Some(p)
+        }
+        _ => None,
+    };
+    if let Err(e) = crate::history::set_kitsu_id(&state.history_path, &watch.show_id, keep) {
+        tracing::warn!(
+            show_id = %watch.show_id,
+            error = ?e,
+            "history id write failed after a refused pairing",
+        );
     }
 }
 

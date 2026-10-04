@@ -648,14 +648,15 @@ async fn post_play_mark_watched(
             // watch that never reached the file would make this
             // provider's stale row the show's latest.
             //
-            // The mapping carries the cross-cour integrity guard: the
-            // play picker can land on a sibling cour's provider
-            // show_id when episode count and year tie, while the
-            // frontend supplies the Kitsu id from the URL it came from;
-            // the guard compares the cour suffixes and skips the write
-            // when they disagree. It reads Kitsu detail through its
-            // cache and runs after the stamp, so a slow Kitsu never
-            // delays home ordering.
+            // The mapping and the row's Kitsu id carry the cross-cour
+            // integrity guard: the play picker can land on a sibling
+            // cour's provider show_id when episode count and year tie,
+            // while the frontend supplies the Kitsu id from the URL it
+            // came from; the guard compares the cour suffixes and, when
+            // they disagree, skips the mapping write and takes the id
+            // back off the row. It reads Kitsu detail through its cache,
+            // once, after the row and the stamp are written, so a slow
+            // Kitsu never delays the watch or home ordering.
             //
             // The watch is the cached row's, built the way the handoffs
             // build theirs: the row's own slot when it carries one, the
