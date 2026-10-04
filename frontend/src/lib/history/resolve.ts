@@ -97,6 +97,12 @@ export interface ResumeTarget {
 	 *  `(show_id → kitsu_id)` reverse-mapping cache, which beats
 	 *  fuzzy-text-searching the (sometimes typo'd) provider title. */
 	allmangaShowId: string;
+
+	/** Kitsu id the history row recorded for the show the user played.
+	 *  When present it is the answer: Continue Watching reads that entry
+	 *  and matches nothing. Null for rows written before history
+	 *  recorded it, which keep the matching fallback. */
+	recordedKitsuId: string | null;
 }
 
 /** Matches a `Part N` / `Cour N` / `Season N` token at the *end* of
@@ -220,7 +226,8 @@ export function resolveHistoryEntry(
 		kitsuEpisode,
 		uiPage,
 		mappingNote,
-		allmangaShowId: entry.id
+		allmangaShowId: entry.id,
+		recordedKitsuId: entry.kitsu_id ?? null
 	};
 }
 

@@ -199,6 +199,9 @@ export interface HistoryEntry {
 	ep_no: string;
 	id: string;
 	title: string;
+	/** Kitsu id of the show the user played, recorded with the watch.
+	 *  Absent on rows written before history recorded it. */
+	kitsu_id?: string;
 }
 
 /** Input to `cmd_create_session`. */

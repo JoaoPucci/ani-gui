@@ -1,4 +1,8 @@
 /**
+ * A row that recorded the Kitsu id of the show played resolves to that
+ * entry and nothing else. Rows written before history recorded it fall
+ * back to matching:
+ *
  * Resolves a `ResumeTarget`'s kitsu match against the title-match
  * cache before falling back to a live `kitsuSearch` + `pickKitsuMatch`
  * round-trip. Cache hit → one IPC call (`kitsuAnimeDetail`, also
@@ -25,6 +29,12 @@ import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
+	// The row recorded the show the user played: read that entry and
+	// match nothing. A failed read answers no show rather than a guess
+	// that could land on another one.
+	if (preliminary.recordedKitsuId) {
+		return kitsuAnimeDetail(preliminary.recordedKitsuId).catch(() => null);
+	}
 	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id. Recorded
 	//    by the backend on every successful play, so once the user
 	//    has played a show through the GUI the home-page strip can
