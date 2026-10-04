@@ -62,12 +62,46 @@ fn stage(path: &Path, script: &str) {
     std::fs::set_permissions(path, perms).expect("chmod");
 }
 
+/// Whether `pid` is a process still running. Asked of `ps` for its
+/// state rather than of `kill -0`, which also answers yes for a
+/// process that has died and not been reaped — and where nothing reaps
+/// orphans, a container with no init, a killed tool would stay "alive"
+/// that way for good.
 fn alive(pid: u32) -> bool {
-    Command::new("kill")
-        .args(["-0", &pid.to_string()])
+    let Ok(out) = Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
         .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+        .output()
+    else {
+        return false;
+    };
+    let state = String::from_utf8_lossy(&out.stdout);
+    let state = state.trim();
+    !state.is_empty() && !state.starts_with('Z')
+}
+
+/// `path` as it can go into a query string: everything but the
+/// unreserved characters percent-encoded, so a checkout under a
+/// directory with a space or an ampersand in its name still makes one
+/// well-formed request.
+fn query_value(path: &Path) -> String {
+    let mut out = String::new();
+    for byte in path.to_string_lossy().bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// Kill a tool's whole process group, for cleaning up after a test.
+fn kill_group(leader: u32) {
+    let _ = Command::new("kill")
+        .args(["-9", "--", &format!("-{leader}")])
+        .stderr(std::process::Stdio::null())
+        .status();
 }
 
 /// The pid a stand-in wrote to `file`, once it has.
@@ -125,10 +159,11 @@ impl Downloading {
     /// leave nothing behind whatever the answer.
     fn tools_gone_within(&mut self, wait: Duration) -> bool {
         let gone = gone_within(&[self.tool, self.helper], wait);
-        let _ = Command::new("kill")
-            .args(["-9", "--", &format!("-{}", self.tool)])
-            .stderr(std::process::Stdio::null())
-            .status();
+        // Only if they are still there: once gone, the pid may be
+        // someone else's.
+        if !gone {
+            kill_group(self.tool);
+        }
         let _ = self.backend.child.kill();
         let _ = self.backend.child.wait();
         gone
@@ -171,14 +206,20 @@ fn start_a_download() -> Downloading {
     write!(
         stream,
         "GET /api/download/stream?title=test&episode=1&mode=sub&quality=best&episode_count=2&download_dir={} HTTP/1.1\r\nHost: {authority}\r\nAccept: text/event-stream\r\n\r\n",
-        downloads.display()
+        query_value(&downloads)
     )
     .expect("request");
 
     let tool = pid_from(&root.join("tool.pid"), Duration::from_secs(60));
     let helper = pid_from(&root.join("helper.pid"), Duration::from_secs(5));
     let (Some(tool), Some(helper)) = (tool, helper) else {
+        // Killing the backend skips its guards, so a tool that did
+        // start is this test's to clean up.
+        if let Some(tool) = tool {
+            kill_group(tool);
+        }
         let _ = backend.child.kill();
+        let _ = backend.child.wait();
         panic!("the download never reached its tool: tool={tool:?} helper={helper:?}");
     };
     assert!(alive(tool) && alive(helper), "the tool and its helper run");

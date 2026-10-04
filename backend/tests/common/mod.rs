@@ -28,8 +28,9 @@ pub struct Backend {
 }
 
 /// A command for the backend at `exe`, its data under `home`, stdin a
-/// pipe the test holds the way Electron does. Whether the backend
-/// watches that pipe is the caller's to set.
+/// pipe the test holds the way Electron does, logging at the level it
+/// ships with. Whether the backend watches that pipe is the caller's
+/// to set.
 pub fn command(exe: &Path, home: &Path) -> Command {
     let mut cmd = Command::new(exe);
     cmd.stdin(Stdio::piped())
@@ -40,6 +41,10 @@ pub fn command(exe: &Path, home: &Path) -> Command {
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_STATE_HOME", home.join("state"))
         .env("XDG_DATA_HOME", home.join("data"))
+        // Pinned, not inherited: tests that close the backend's output
+        // rely on it logging at its default level — quieter and they
+        // prove nothing, louder and an unread pipe can fill.
+        .env("RUST_LOG", "ani_gui=info")
         .env_remove("ANI_GUI_PARENT_STDIN");
     cmd
 }
