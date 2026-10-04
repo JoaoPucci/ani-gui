@@ -131,6 +131,10 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             get(get_allmanga_kitsu_map).delete(delete_allmanga_kitsu_map),
         )
         .route(
+            "/api/allmanga-kitsu-map/:show_id/played",
+            get(get_allmanga_kitsu_map_played),
+        )
+        .route(
             "/api/kitsu/resolve-allmanga/:show_id",
             get(get_kitsu_resolve_allmanga),
         )
@@ -674,6 +678,19 @@ async fn get_allmanga_kitsu_map(
     Path(show_id): Path<String>,
 ) -> Result<Json<Option<String>>, AniError> {
     Ok(Json(kitsu_inner::allmanga_kitsu_get(&state, &show_id)?))
+}
+
+/// Whether a play stored the show's reverse mapping
+/// ([`crate::commands::kitsu_played::mapping_played`]). Continue
+/// Watching keeps such a mapping when only the provider's title doubts
+/// it.
+async fn get_allmanga_kitsu_map_played(
+    State(state): State<Arc<AppState>>,
+    Path(show_id): Path<String>,
+) -> Result<Json<bool>, AniError> {
+    Ok(Json(crate::commands::kitsu_played::mapping_played(
+        &state, &show_id,
+    )?))
 }
 
 /// Evict a single reverse-mapping row. Fired by the frontend when

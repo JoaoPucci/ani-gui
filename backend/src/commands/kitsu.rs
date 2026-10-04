@@ -512,7 +512,7 @@ pub fn title_match_put(
 ///   stamps a fresh v3 row.
 const ALLMANGA_KITSU_VERSION: u32 = 3;
 
-fn allmanga_kitsu_key(show_id: &str) -> String {
+pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
 }
 
@@ -791,6 +791,14 @@ async fn first_kitsu_match(
                 && !crate::commands::cour::hit_cour_disagrees(source_cour, h.slug.as_deref())
                 && crate::commands::kitsu_title_words::shares_words(&[term.as_str()], h)
         }) {
+            // A mapping a play stored is the show the user played; a
+            // guess from the slug's words answers this request and
+            // leaves it standing.
+            let played =
+                crate::commands::kitsu_played::mapping_played(state, show_id).unwrap_or(false);
+            if played {
+                return Some(first);
+            }
             if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
                 tracing::warn!(
                     show_id = show_id,

@@ -33,6 +33,7 @@ pub mod external_player;
 pub mod history;
 mod history_resume;
 pub mod kitsu;
+pub(crate) mod kitsu_played;
 pub(crate) mod kitsu_title_words;
 pub mod kitsu_warm;
 pub mod play;

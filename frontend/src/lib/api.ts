@@ -1076,6 +1076,15 @@ export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
 }
 
 /**
+ * Whether a play stored the show's reverse mapping, rather than a
+ * resolve that guessed. Continue Watching keeps a played mapping when
+ * only the provider's title doubts it.
+ */
+export function allmangaKitsuMapPlayed(showId: string): Promise<boolean> {
+	return getJson<boolean>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}/played`);
+}
+
+/**
  * Evict a single `provider show_id → kitsu_id` reverse-mapping row.
  *
  * Fired by `resolveKitsuMatch` step 0 when the cached kitsu detail's

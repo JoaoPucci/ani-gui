@@ -15,8 +15,6 @@
  */
 
 import {
-	allmangaKitsuMapDelete,
-	allmangaKitsuMapGet,
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuResolveAllmangaShowId,
@@ -27,6 +25,7 @@ import {
 } from '$lib/api';
 import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
+import { storedBinding } from './match-stored';
 
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
 	// The row recorded the show the user played: read that entry and
@@ -35,46 +34,15 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	if (preliminary.recordedKitsuId) {
 		return kitsuAnimeDetail(preliminary.recordedKitsuId).catch(() => null);
 	}
-	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id. Recorded
-	//    by the backend on every successful play, so once the user
-	//    has played a show through the GUI the home-page strip can
-	//    skip every other path. Wins over title-match because the
-	//    show_id is deterministic — the title is sometimes a typo
-	//    (the provider's "Nato: Shippuuden" for Naruto Shippuuden).
-	//
-	//    Validate the cached detail's episode_count against the
-	//    user's history courSize before accepting — older sessions
-	//    may have persisted a wrong mapping (e.g. Burichi/Buriki
-	//    fuzzy-matched to Doraemon Movie 14). When the count is
-	//    incompatible, fall through to a fresh resolution path.
-	if (preliminary.allmangaShowId) {
-		try {
-			const kitsuId = await allmangaKitsuMapGet(preliminary.allmangaShowId);
-			if (kitsuId) {
-				try {
-					const cached = await kitsuAnimeDetail(kitsuId);
-					const verdict = cachedBindingVerdict(cached, preliminary, true);
-					if (verdict === 'trust') return cached;
-					if (verdict === 'evict') {
-						// Provably wrong reverse-map row — a music entry, a gross title
-						// mismatch (the Love Live movie's show_id poisoned to the YOASOBI
-						// "Idol" MV), or a cross-cour slug mismatch. Self-heal: drop it so
-						// it re-resolves on every install without a manual cache wipe.
-						// Awaited (not fire-and-forget): the step-4 enrichment endpoint
-						// reads this same reverse cache first, so the DELETE must commit
-						// before we fall through or a typo title whose search misses gets
-						// the just-rejected id straight back. Tolerate a failing delete.
-						await allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
-					}
-					// 'evict' / 'reresolve' both fall through to the title-search path.
-				} catch {
-					// Stale id — fall through to the title-search path.
-				}
-			}
-		} catch {
-			// Endpoint unavailable — fall through.
-		}
-	}
+	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id,
+	//    recorded by the backend on every successful play. Wins over
+	//    title-match because the show_id is deterministic — the title is
+	//    sometimes a typo (the provider's "Nato: Shippuuden" for Naruto
+	//    Shippuuden). The binding is validated before it is accepted
+	//    (match-stored.ts): older sessions may have persisted a wrong
+	//    mapping (Burichi/Buriki fuzzy-matched to Doraemon Movie 14).
+	const stored = await storedBinding(preliminary);
+	if (stored) return stored;
 
 	// 1) Cache lookup. If we've resolved this title→id before, fetch
 	//    the (cached, 7d-TTL) detail and short-circuit.

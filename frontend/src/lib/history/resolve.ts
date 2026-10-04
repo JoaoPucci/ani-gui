@@ -470,6 +470,23 @@ export function cachedBindingVerdict(
 	return 'trust';
 }
 
+/** Whether a binding's only doubt is its title: its count and its cour
+ *  pass, and the title test alone refutes it. A provider title Kitsu
+ *  does not use doubts the right binding this way. */
+export function onlyTitleInDoubt(
+	cached: KitsuAnimeRef,
+	preliminary: ResumeTarget,
+	trustOnAbsentSlug: boolean
+): boolean {
+	if (isMusicSubtype(cached.subtype)) return false;
+	if (titlesPlausiblySameShow(preliminary.searchTitle, cached)) return false;
+	// The verdict with the title taken out: an empty title is never
+	// judged, so what is left is the count and the cour.
+	return (
+		cachedBindingVerdict(cached, { ...preliminary, searchTitle: '' }, trustOnAbsentSlug) === 'trust'
+	);
+}
+
 /** Threshold above which courSize is treated as a "definitively
  *  finished long show" — null Kitsu counts get rejected at this size
  *  because long shows almost always have finalized counts in Kitsu.

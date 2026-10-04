@@ -91,6 +91,26 @@ pub fn meta_cache_get(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
     }))
 }
 
+/// When an unexpired meta_cache entry was written, in seconds since the
+/// epoch.
+///
+/// # Errors
+/// [`AniError::Cache`] on connection or query failure.
+pub fn meta_cache_fetched_at(pool: &SqlitePool, key: &str) -> Result<Option<i64>> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    let row: Option<(i64, i64)> = conn
+        .query_row(
+            "SELECT fetched_at, ttl_seconds FROM meta_cache WHERE key = ?1",
+            params![key],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|_| AniError::Cache)?;
+    Ok(row.and_then(|(fetched_at, ttl)| {
+        (now_secs().saturating_sub(fetched_at) < ttl).then_some(fetched_at)
+    }))
+}
+
 /// Insert or replace a meta_cache entry. `ttl_seconds` controls the
 /// freshness window enforced by [`meta_cache_get`].
 ///
