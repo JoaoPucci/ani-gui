@@ -64,14 +64,16 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
             known_by.extend(forgotten.known_by);
             other_keys.extend(forgotten.other_keys);
         }
-        held.write(&entries)?;
-        // The row's numbering, and that of the keys a page of the show
-        // resolved under without a row of their own: a key a remaining
-        // row has keeps the numbering that row is read through.
+        // The numbering of the keys a page of the show resolved under
+        // goes with the resolution rows that named them, before the
+        // history write: a write that fails would otherwise leave the
+        // retry nothing to find them by. A key a remaining row has
+        // keeps the numbering that row is read through.
         other_keys.retain(|key| !entries.iter().any(|e| e.id == *key));
-        let mut swept: Vec<&str> = other_keys.iter().map(String::as_str).collect();
-        swept.push(id);
-        super::history_forget::sweep_offsets(state, &swept);
+        let rowless: Vec<&str> = other_keys.iter().map(String::as_str).collect();
+        super::history_forget::sweep_offsets(state, &rowless);
+        held.write(&entries)?;
+        super::history_forget::sweep_offsets(state, &[id]);
         held.removed_show(id, &known_by);
         Ok(true)
     })
@@ -91,9 +93,21 @@ pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
         // A history that exists but cannot be read fails the clear: the
         // rows it holds name the offsets that go with them.
         let cleared = held.rows()?;
-        super::history_forget::forget_all(state)?;
-        held.write(&[])?;
         let ids: Vec<&str> = cleared.iter().map(|e| e.id.as_str()).collect();
+        // What a delete of each show would take under another key: the
+        // numbering of the keys its pages resolved under. The rows
+        // themselves go with every other resolution row below.
+        let mut known_by = super::history_forget_skips::claimed_ids(state, &cleared)?;
+        for entry in &cleared {
+            known_by.extend(held.pages_of(&entry.id));
+        }
+        let known_by: Vec<String> = known_by.into_iter().filter(|k| !k.is_empty()).collect();
+        let other_keys =
+            super::history_forget_resolutions::forget_resolutions(state, &ids, &known_by)?;
+        super::history_forget::forget_all(state)?;
+        let rowless: Vec<&str> = other_keys.iter().map(String::as_str).collect();
+        super::history_forget::sweep_offsets(state, &rowless);
+        held.write(&[])?;
         super::history_forget::sweep_offsets(state, &ids);
         held.removed_all();
         Ok(())
