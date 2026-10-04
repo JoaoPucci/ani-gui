@@ -13,12 +13,14 @@
  * itself down (backend/src/parent_watch.rs). Nothing else covers a
  * main process that dies without running its quit path.
  *
- * `detached: true` puts the backend in its own process group on POSIX
- * so the quit path can kill the entire group (backend + the transport
- * it spawns per request + yt-dlp + ffmpeg) via `process.kill(-pid, …)`.
- * Without it, only the Rust process gets the signal and the download
- * grandchildren get reparented to init and keep running. Windows has
- * no process groups; the tree kill shells out to taskkill /T instead.
+ * `detached: true` makes the backend the leader of a process group of
+ * its own on POSIX, which gives the quit path a group to signal: the
+ * backend and the transports it spawns per request, via
+ * `process.kill(-pid, …)`. The download tools are not in that group —
+ * the backend runs yt-dlp and ffmpeg in groups of their own and stops
+ * them itself when it is asked to stop. Windows has no process
+ * groups; the tree kill shells out to taskkill /T instead, which
+ * reaches the tools directly.
  */
 function backendSpawnOptions({ platform, env }) {
   return {

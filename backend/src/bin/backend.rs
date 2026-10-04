@@ -10,17 +10,23 @@
 //! injects it into the renderer via the preload script's
 //! `window.aniGui.apiBase`.
 //!
-//! After printing, this binary serves until it is stopped. Electron
-//! sends SIGTERM to the process group on app quit; the OS reaps us
-//! cleanly because all threads are tokio's, none owning external
-//! resources beyond the SQLite pool (closed on drop) and reqwest
-//! sockets (closed on drop).
+//! After printing, this binary serves until it is asked to stop (see
+//! `ani_gui::shutdown`). Two things ask. Electron's quit sends SIGTERM
+//! to the backend's process group on Linux and macOS. And because a
+//! quit is not the only way Electron ends, the backend watches for its
+//! parent being gone (see `ani_gui::parent_watch`): when Electron sets
+//! `ANI_GUI_PARENT_STDIN=1`, end of file on stdin asks the same.
 //!
-//! A quit is not the only way Electron ends, so the backend also
-//! watches for its parent being gone (see `ani_gui::parent_watch`):
-//! when Electron sets `ANI_GUI_PARENT_STDIN=1`, end of file on stdin
-//! shuts the server down gracefully (see `ani_gui::shutdown`), and the
-//! runtime's teardown then stops any download trees.
+//! Either way the server winds down and `main` returns, which tears
+//! the runtime down and drops every task still running. That teardown
+//! is what stops a running download's yt-dlp or ffmpeg: they run in
+//! process groups of their own, which the signal sent to the backend's
+//! group never reaches, and only the guard that owns each one kills
+//! it. Dying on the signal instead would leave them running.
+//!
+//! On Windows a quit runs `taskkill /F /T`, which ends the backend and
+//! everything below it by parent pid; nothing is asked and nothing
+//! needs to wind down.
 
 #![forbid(unsafe_code)]
 
@@ -75,8 +81,13 @@ fn main() -> std::process::ExitCode {
         let api_router = api::build_api_router(state.clone());
         let router = proxy_router.merge(api_router);
 
+        // Listening for a stop starts before the handshake announces
+        // the backend: from the moment Electron knows it is up, a quit
+        // is a request rather than a kill.
+        let stop = shutdown::requested();
+
         // The handshake: print the URL the Electron main process is
-        // waiting for, then run forever. Flushing stdout matters —
+        // waiting for, then serve until stopped. Flushing stdout matters —
         // Electron may buffer line-by-line, so any partial line could
         // hang the spawn.
         println!("ANI_GUI_LISTENING {}", origin.base);
@@ -91,7 +102,6 @@ fn main() -> std::process::ExitCode {
         let _ = std::io::stdout().flush();
         tracing::info!(addr = %addr, "ani-gui-backend ready");
 
-        let stop = shutdown::requested();
         shutdown::serve_until(
             listener,
             router,

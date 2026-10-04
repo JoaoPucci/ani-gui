@@ -261,12 +261,20 @@ async function spawnBackend() {
 let backendChild = null;
 
 /**
- * Kill the backend AND every grandchild it spawned — the
- * impersonating transport, yt-dlp and ffmpeg. On POSIX we
- * negate the pid to
- * signal the backend's process group — spawnBackend uses
- * `detached: true` so the cascade works. On Windows there are no
- * process groups, so we shell out to taskkill with /T (kill tree).
+ * Stop the backend and everything it spawned — the impersonating
+ * transport, yt-dlp and ffmpeg.
+ *
+ * On POSIX this signals the backend's process group (spawnBackend
+ * uses `detached: true`, so the group is the backend's own). SIGTERM
+ * reaches the backend and the transports it runs in that group. The
+ * download tools are not in it: the backend runs each in a group of
+ * its own and stops them itself, by treating the signal as a request
+ * and winding down (backend/src/shutdown.rs). The backend therefore
+ * outlives this call by a moment; nothing here waits for it.
+ *
+ * On Windows there are no process groups and no SIGTERM: taskkill
+ * /F /T ends the backend and every process below it by parent pid,
+ * the tools included.
  *
  * Idempotent — safe to call when the backend has already exited.
  */
@@ -292,9 +300,9 @@ function killTree(child) {
     return;
   }
   try {
-    // Negative pid = process group. SIGTERM gives the children a
-    // chance to clean up; if any survives, the OS reaper will
-    // eventually SIGKILL on app shutdown.
+    // Negative pid = process group. SIGTERM rather than SIGKILL: the
+    // backend has to run its own wind-down to stop the download
+    // tools, and a kill would skip it.
     process.kill(-child.pid, "SIGTERM");
   } catch (e) {
     // ESRCH: group already gone (backend exited first). Anything
@@ -910,11 +918,9 @@ app.on("before-quit", (e) => {
   // X-button path; both reuse the same guard.
   const focused = BrowserWindow.getFocusedWindow();
   const win = focused || BrowserWindow.getAllWindows()[0];
-  // Tree-kill so the transport + yt-dlp + ffmpeg actually
-  // stop. A bare backendChild.kill() only signals the Rust process
-  // and orphans the grandchildren to init. Only when the quit goes
-  // ahead: a quit cancelled at the prompt keeps the app, and so its
-  // backend (see lib/quit.cjs).
+  // Stop the backend and what it spawned (see killBackendTree) —
+  // only when the quit goes ahead: a quit cancelled at the prompt
+  // keeps the app, and so its backend (see lib/quit.cjs).
   handleBeforeQuit({
     promptOnClose: () => (win ? maybePromptOnClose(win, e) : false),
     stopBackend: killBackendTree,
