@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-26_
+_Last updated: 2026-10-04_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -27,7 +27,13 @@ ani-gui keeps the following on your computer only:
   SQLite database under your OS's cache directory.
 - **Watch history** — a plain-text file in the app's own state
   directory. Lists what you've watched, where you left off and
-  when.
+  when, and the Kitsu id of the show you played. The metadata cache
+  keeps up to three more entries per show you watch: when you last
+  watched it, the Kitsu entry it maps to, and, for a show watched
+  before the history recorded the Kitsu id, the Kitsu entry its title
+  matched. Deleting a show from your history deletes its row and
+  those entries; clearing your history deletes every row and every
+  such entry.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its
