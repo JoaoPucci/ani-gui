@@ -122,8 +122,8 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    "Nato: Shippuuden" for Naruto Shippuuden). The backend tries
 	//    the show id rather than the name: a provider slug carries its
 	//    title in its own words, so `one-piece-69` searches Kitsu for
-	//    "one piece", takes no hit whose titles share none of those
-	//    words, and persists the resolved kitsu_id into the reverse
+	//    "one piece", takes no hit whose titles share too few of those
+	//    words (title-words.ts), and persists the resolved kitsu_id into the reverse
 	//    cache unless a play's mapping stands there, and subsequent
 	//    calls short-circuit through step 0. A row from the retired
 	//    provider has no such words and

@@ -30,8 +30,18 @@
 //! title back to Kitsu. Unlike the moment it is marked, `kitsu:`
 //! followed by digits and nothing else, so a title reads as one only
 //! when its last tab-separated part is exactly that, which no provider
-//! title has been seen to be; a row without it — one from before the column, or a play no
-//! page stood behind — reads and writes as before.
+//! title has been seen to be; a row without it — one from before the
+//! column, or a play no page stood behind — reads and writes as
+//! before.
+//!
+//! A build from before the column reads a row that carries it as a
+//! three-column row: its moment split finds `kitsu:<id>` where it
+//! looks for the moment, so the title runs on to the end of the line,
+//! `<title>\t<moment>\tkitsu:<id>`. That build shows the moment and the
+//! mark as part of the title and ranks the row without its moment. It
+//! writes a line it did not touch back as it read it, which a build
+//! with the column reads back into its title, moment and id; a play it
+//! records rewrites the line in its own format, without the mark.
 //!
 //! The two never shared a file after the 5.0 CLI re-keyed its history
 //! onto provider slugs; the app keeps its own under its state dir.

@@ -38,26 +38,26 @@ pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
 }
 
 /// Find the history entry (if any) for the supplied `kitsu_id`: a row
-/// that records it as the show played, or, for a row that records
-/// none, one whose show id maps to it. Walks the on-disk TSV,
-/// resolving each such entry's `id` —
-/// a provider slug on rows written since the migration — through the
-/// `(show id → kitsu_id)` reverse cache a successful play stamps.
+/// that records it as the show played, matched with no mapping at
+/// all, or, for a row that records none, one whose show id maps to it
+/// — resolving that row's `id`, a provider slug on rows written since
+/// the migration, through the `(show id → kitsu_id)` reverse cache a
+/// successful play stamps.
 /// Of two rows that map to the entry, the one the user watched last
 /// is returned — the latest watched-at stamp, a stamped row over an
 /// unstamped one, then the further progress, then file order — the
 /// rule the Continue Watching strip applies to the same rows, so
 /// the two surfaces name one episode. Returns `None` when:
 ///   - The history file is missing or empty.
-///   - No entry's show id has a cached mapping.
-///   - None of the cached mappings equal `kitsu_id`.
+///   - No entry records `kitsu_id`, and no entry that records none has
+///     a cached mapping equal to it.
 ///
-/// The reverse cache is the same surface Continue Watching uses. A row
-/// can be in the file without being in it: a play that had no Kitsu id
-/// to record, a mapping the cross-cour guard refused, or a row older
-/// than the mapping itself. Those rows are skipped here and show no
-/// Resume affordance until a play stamps them — by design, since the
-/// alternative is a Kitsu search per row.
+/// A row that records no id can be in the file without being in the
+/// reverse cache: a play that had no Kitsu id to record, a pairing the
+/// cross-cour guard refused, or a row older than the mapping itself.
+/// Those rows are skipped here and show no Resume affordance until a
+/// play records them — by design, since the alternative is a Kitsu
+/// search per row.
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] when the history file

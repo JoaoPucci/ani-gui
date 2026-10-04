@@ -2,8 +2,9 @@
 //! the words its titles share with them. Kitsu's text search answers a
 //! title it does not carry with its closest words whatever they are:
 //! "There Is Also a Hole in the Student Organization!" brings back Here
-//! is Greenwood. A resolve that stores its answer as a show's mapping
-//! refuses a hit that shares no words with the row first.
+//! is Greenwood, which shares only "is" with it. A resolve that stores
+//! its answer as a show's mapping first refuses a hit that shares too
+//! few words with the row, by the rule below.
 //!
 //! The frontend's Continue resolution applies the same rule
 //! (`frontend/src/lib/history/title-words.ts`); both run the vectors in

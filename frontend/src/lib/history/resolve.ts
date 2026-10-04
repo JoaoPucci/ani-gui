@@ -30,7 +30,7 @@
  * order: the stored reverse mapping, then — for rows keyed on a
  * provider slug — a Kitsu search built from the slug's own words,
  * since `one-piece-69` carries the title it needs, taking no hit whose
- * titles share none of them (title-words.ts). Anything else is a
+ * titles share too few of them (title-words.ts). Anything else is a
  * row from the retired provider, and those resolve only from a stored
  * mapping: their alias source went away with the provider, so an
  * unmapped one returns null and Continue Watching renders the bare
@@ -577,8 +577,8 @@ export function isEpisodeCountCompatible(
  *
  * Three of the four tests here reject on evidence the hit itself
  * carries — a music video is never a provider show, a hit whose
- * titles share no words with the row's is a different show
- * (title-words.ts), and a count far from the user's is a different
+ * titles share too few words with the row's is a different show
+ * (title-words.ts holds the rule), and a count far from the user's is a different
  * show. The fourth exists because the
  * countless-airing lane accepts on no count evidence at all: it only
  * says a broadcasting show legitimately has no announced total, which
@@ -594,8 +594,9 @@ export function isEpisodeCountCompatible(
  */
 export function isCandidateForRow(preliminary: ResumeTarget, hit: KitsuAnimeRef): boolean {
 	if (isMusicSubtype(hit.subtype)) return false;
-	// A hit whose titles share nothing with the row's is not the row's
-	// show, whatever its count: a text search answers with its closest
+	// A hit whose titles share too few words with the row's — under a
+	// third of either side's, neither's all in the other — is not the
+	// row's show, whatever its count: a text search answers with its closest
 	// words, and a row without a count accepts every count, so the count
 	// alone once handed "There Is Also a Hole in the Student
 	// Organization!" to Here is Greenwood (title-words.ts).
@@ -630,8 +631,9 @@ export function pickKitsuMatch(
 	// Drop hits that can't be the user's show:
 	//  - music videos (subtype `music`) never exist on the provider, so the
 	//    YOASOBI "Idol" MV must never win over a real entry;
-	//  - hits whose titles share no words with the row's (Here is
-	//    Greenwood for "There Is Also a Hole in the Student Organization!");
+	//  - hits whose titles share too few words with the row's (Here is
+	//    Greenwood, sharing only "is" with "There Is Also a Hole in the
+	//    Student Organization!");
 	//  - hits whose episode_count is incompatible with the history record
 	//    (Burichi 366 → Doraemon Movie 14 (1 ep), fuzzy-matched on "Buriki").
 	// When nothing survives, surface null so resolveKitsuMatch falls through

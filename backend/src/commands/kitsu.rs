@@ -776,8 +776,9 @@ pub async fn resolve_allmanga_show_id(
 /// write failure is non-fatal — the resolution still succeeds for
 /// this request, the next call just searches again. Music-video hits
 /// are skipped so a "music" alias (the YOASOBI "Idol" MV) is never
-/// returned or persisted. So is a hit whose titles share no words with
-/// the term ([`kitsu_title_words`](crate::commands::kitsu_title_words)):
+/// returned or persisted. So is a hit whose titles share too few words
+/// with the term — under a third of either side's, with neither's all
+/// in the other ([`kitsu_title_words`](crate::commands::kitsu_title_words)):
 /// Kitsu answers words it does not carry with its closest entry, and
 /// "there is also a hole in the student organization" brings back Here
 /// is Greenwood. So is a hit whose slug disagrees with

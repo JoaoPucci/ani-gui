@@ -2,8 +2,9 @@
 // words its titles share with the row's. Kitsu answers a title it does
 // not carry with its closest words whatever they are — the provider's
 // "There Is Also a Hole in the Student Organization!" brings back Here
-// is Greenwood — so a hit sharing nothing with the row's title is
-// refused before the episode count, which a row without a count never
+// is Greenwood, which shares only "is" with it — so a hit sharing too
+// few words with the row's title, by the rule below, is refused before
+// the episode count, which a row without a count never
 // refuses, can take it. Only rows that did not record the show played
 // get this far: a row that recorded it is never matched.
 //
