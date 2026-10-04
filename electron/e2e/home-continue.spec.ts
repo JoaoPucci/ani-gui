@@ -112,7 +112,11 @@ async function launchAppWithContinueStubsOnce(
 		XDG_STATE_HOME: path.join(tmp, 'state'),
 		XDG_CONFIG_HOME: path.join(tmp, 'config'),
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
-		XDG_DATA_HOME: path.join(tmp, 'data')
+		XDG_DATA_HOME: path.join(tmp, 'data'),
+		// Nobody is here to read a dialog: a boot that fails must end
+		// the process at once, which is what the cold-launch retry
+		// below relies on. See lib/boot-failure.cjs.
+		ANI_GUI_UNATTENDED: '1'
 	};
 
 	const app = await electron.launch({
