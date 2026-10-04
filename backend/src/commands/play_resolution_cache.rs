@@ -170,6 +170,10 @@ pub struct CachedResolution {
     /// offers the same tracks a fresh resolve did.
     #[serde(default)]
     pub subtitles: Vec<crate::scraper::provider::SubtitleTrack>,
+    /// The Kitsu id of the page the resolve was asked from, when the
+    /// request named one. Absent on rows written before the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kitsu_id: Option<String>,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the
@@ -353,6 +357,7 @@ mod tests {
             show_title: "Naruto: Shippuuden (500 episodes)".into(),
             resolved_slot: None,
             subtitles: Vec::new(),
+            kitsu_id: None,
         }
     }
 

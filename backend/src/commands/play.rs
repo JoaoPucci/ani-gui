@@ -449,6 +449,7 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
         subtitles: native.subtitles.clone(),
+        kitsu_id: None,
     }
 }
 
@@ -999,6 +1000,7 @@ pub(crate) mod tests {
             show_title: String::new(),
             resolved_slot: None,
             subtitles: Vec::new(),
+            kitsu_id: None,
         }
     }
 
@@ -1317,6 +1319,7 @@ pub(crate) mod tests {
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: Some(1),
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
     }
@@ -1362,6 +1365,7 @@ pub(crate) mod tests {
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles,
+                kitsu_id: None,
             },
         );
     }
@@ -1743,6 +1747,7 @@ pub(crate) mod tests {
                 show_title: "Fast4 (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let cfg = external_cfg();

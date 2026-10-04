@@ -1532,6 +1532,7 @@ mod tests {
                 show_title: String::new(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1577,6 +1578,7 @@ mod tests {
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1641,6 +1643,7 @@ mod tests {
                 show_title: "The Show".into(),
                 resolved_slot: Some(5),
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // A later resolve moved the display stamp to its own row.
@@ -1693,6 +1696,7 @@ mod tests {
                 show_title: "The Show".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // The stamp names display 4 as slot 5.
@@ -1749,6 +1753,7 @@ mod tests {
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1803,6 +1808,7 @@ mod tests {
                     show_title: title.into(),
                     resolved_slot: Some(1),
                     subtitles: Vec::new(),
+                    kitsu_id: None,
                 },
             );
         }
@@ -1885,6 +1891,7 @@ mod tests {
                     .into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -1985,6 +1992,7 @@ mod tests {
                 show_title: "Some Sequel (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -2074,6 +2082,7 @@ mod tests {
                 show_title: "Some Sequel Part 2 (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -2174,6 +2183,7 @@ mod tests {
                     .into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
 
@@ -2281,6 +2291,7 @@ mod tests {
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2333,6 +2344,7 @@ mod tests {
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2548,6 +2560,7 @@ mod tests {
                 show_title: "Some Show (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let pool = state.cache_pool.clone();

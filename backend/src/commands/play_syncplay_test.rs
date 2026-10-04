@@ -186,6 +186,7 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
+            kitsu_id: None,
         },
     );
 
@@ -263,6 +264,7 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
+            kitsu_id: None,
         },
     );
 
