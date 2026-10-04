@@ -27,11 +27,12 @@
 //! An expired cache row stays on disk until something overwrites it,
 //! so expiry is not removal: deleting a row deletes all of these for
 //! its show, and clearing the history deletes them for every show.
-//! The order is what a retry needs. The other keys' numbering goes
-//! first, while the resolution rows that name those keys are still
-//! there to find them by; then the cache entries, the resolution rows
-//! last; then the history file; then the removed rows' own offsets
-//! ([`sweep_offsets`]).
+//! The order is what a retry needs: nothing goes before what the
+//! retry would find it by. The watch stamp and skip times; the other
+//! keys' numbering, while the resolution rows that name those keys are
+//! still there; the resolution rows; the mappings and title matches the
+//! show's Kitsu ids are found by; then the history file; then the
+//! removed rows' own offsets ([`sweep_offsets`]).
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_delete, meta_cache_delete_prefix};
@@ -49,9 +50,11 @@ const HISTORY_PREFIXES: [&str; 5] = [
 
 /// Delete what the row for `id`, titled `title`, recording `recorded`
 /// as the show played and seen played from `pages`, left in the cache,
-/// but for its resolution rows, which the removal finds with what this
-/// returns and deletes last
-/// ([`super::history_forget_resolutions::find_resolutions`]). Skip
+/// but for what the removal finds things by, which goes after the rest:
+/// the resolution rows, which the removal finds with what this returns
+/// ([`super::history_forget_resolutions::find_resolutions`]), and then
+/// the mapping and title matches this finds the show's Kitsu ids by
+/// ([`forget_finders`]). Skip
 /// times found by a Kitsu id in `claimed` — one a remaining row
 /// records, maps to, matched by title or was seen played from — stay
 /// with that row's show. Returns the Kitsu ids the show was known by
@@ -75,8 +78,8 @@ pub(crate) fn forget_show(
     // named.
     let mut kitsu_ids: Vec<String> = recorded.into_iter().map(str::to_owned).collect();
     kitsu_ids.extend(pages.iter().cloned());
-    kitsu_ids.extend(forget_mappings(state, id)?);
-    kitsu_ids.extend(super::history_forget_titles::forget_title_matches(
+    kitsu_ids.extend(super::history_forget_skips::mapping_ids(state, id)?);
+    kitsu_ids.extend(super::history_forget_titles::title_match_ids(
         state, id, title,
     )?);
     // An empty id — a title match stored without one — names no page.
@@ -85,17 +88,22 @@ pub(crate) fn forget_show(
     Ok(kitsu_ids)
 }
 
-/// Delete the show's reverse mapping under every version's key, and
-/// return the Kitsu ids they named, expired or not.
-fn forget_mappings(state: &AppState, id: &str) -> Result<Vec<String>> {
-    let named = super::history_forget_skips::mapping_ids(state, id)?;
+/// Delete the row `id`'s reverse mapping under every version's key,
+/// and the title-match rows stored for it, titled `title`: what
+/// [`forget_show`] finds the show's Kitsu ids by, so a removal deletes
+/// them once nothing it finds by those ids is left to delete.
+///
+/// # Errors
+/// Cache write failures propagate.
+pub(crate) fn forget_finders(state: &AppState, id: &str, title: &str) -> Result<()> {
     for version in 1..=ALLMANGA_KITSU_VERSION {
         meta_cache_delete(
             &state.cache_pool,
             &format!("allmanga2kitsu:v{version}:{id}"),
         )?;
     }
-    Ok(named)
+    super::history_forget_titles::forget_title_matches(state, id, title)?;
+    Ok(())
 }
 
 /// Delete everything every history row left in the cache. The offsets

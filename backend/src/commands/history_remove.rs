@@ -73,6 +73,9 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         let rowless: Vec<&str> = rowless.iter().map(String::as_str).collect();
         super::history_forget::sweep_offsets(state, &rowless);
         found.forget(state)?;
+        for (title, _) in &removed {
+            super::history_forget::forget_finders(state, id, title)?;
+        }
         held.write(&entries)?;
         super::history_forget::sweep_offsets(state, &[id]);
         held.removed_show(id, &known_by);
