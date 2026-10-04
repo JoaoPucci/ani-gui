@@ -4,8 +4,9 @@
 //! A removal runs with the history held ([`crate::history::guard`]),
 //! so no other writer is half-way through a write of the file or of
 //! what its rows leave behind, and it records what it removed, so work
-//! begun before it — a watch still waiting on Kitsu — writes nothing
-//! of the removed show afterwards.
+//! begun before it — a watch still waiting on Kitsu, a play still
+//! resolving, a skip-time lookup still out — writes nothing of the
+//! removed show afterwards.
 
 use crate::error::Result;
 use crate::history::guard::hold;
@@ -41,12 +42,19 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         // failure for a row already gone. The offsets last, once the
         // row is gone, so no failure leaves a row without its offset.
         let claimed = super::history_forget_skips::claimed_ids(state, &entries)?;
+        let mut skip_ids = Vec::new();
         for (title, recorded) in &removed {
-            super::history_forget::forget_show(state, id, title, recorded.as_deref(), &claimed)?;
+            skip_ids.extend(super::history_forget::forget_show(
+                state,
+                id,
+                title,
+                recorded.as_deref(),
+                &claimed,
+            )?);
         }
         held.write(&entries)?;
         super::history_forget::sweep_offsets(state, &[id]);
-        held.removed_show(id);
+        held.removed_show(id, &skip_ids);
         Ok(true)
     })
 }

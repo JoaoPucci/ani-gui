@@ -68,19 +68,26 @@ pub async fn aniskip_get(
     Ok(intervals)
 }
 
-/// Cache the skip times a lookup begun at `_begun` fetched for
-/// `_kitsu_id`. A row that cannot be serialized or written is skipped:
-/// the next lookup fetches again.
+/// Cache the skip times a lookup begun at `begun` fetched for
+/// `kitsu_id` — unless a show's removal from history took that id's
+/// skip times since, which these would bring back
+/// ([`crate::history::guard`]). A row that cannot be serialized or
+/// written is skipped: the next lookup fetches again.
 fn store_skip_times(
     state: &AppState,
-    _begun: crate::history::guard::Epoch,
-    _kitsu_id: &str,
+    begun: crate::history::guard::Epoch,
+    kitsu_id: &str,
     key: &str,
     intervals: &[SkipInterval],
 ) {
-    if let Ok(body) = serde_json::to_string(intervals) {
-        let _ = meta_cache_put(&state.cache_pool, key, &body, ANISKIP_TTL_SECS);
-    }
+    let Ok(body) = serde_json::to_string(intervals) else {
+        return;
+    };
+    crate::history::guard::hold(&state.history_path, |held| {
+        if !held.kitsu_removed_since(begun, kitsu_id) {
+            let _ = meta_cache_put(&state.cache_pool, key, &body, ANISKIP_TTL_SECS);
+        }
+    });
 }
 
 /// Cache key for `(mal_id, episode)` lookups, led by the Kitsu id the

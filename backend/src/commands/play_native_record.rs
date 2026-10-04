@@ -25,7 +25,20 @@ use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id
 ///
 /// Prefetches stamp as well: their resolve is exactly as
 /// authoritative as a click's.
-pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, _begun: Epoch) {
+///
+/// `begun` is the moment the resolve's request began: a show removed
+/// from history since is not stamped, the removal having taken its
+/// numbering with the row ([`crate::history::guard`]).
+pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, begun: Epoch) {
+    crate::history::guard::hold(&state.history_path, |held| {
+        if !held.show_removed_since(begun, &native.slug) {
+            put_numbering(state, native);
+        }
+    });
+}
+
+/// The offset, with the (slot, display tag) pair when they differ.
+fn put_numbering(state: &AppState, native: &NativeResolved) {
     match &native.resolved_tag {
         Some(tag)
             if !crate::commands::play_native_episode::tag_matches(
@@ -193,11 +206,15 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
 ///
 /// `requested` is the episode the caller asked for, for the log line
 /// only; it is the display number and must never reach the file.
+///
+/// `begun` is the moment the play's request began: a show removed from
+/// history while the play resolved gets no row from it
+/// ([`crate::history::guard`]).
 pub(crate) fn write_history(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
-    _begun: Epoch,
+    begun: Epoch,
 ) {
     let entry = crate::history::HistoryEntry {
         ep_no: native.resolved_slot.to_string(),
@@ -208,7 +225,13 @@ pub(crate) fn write_history(
         watched_at: None,
         kitsu_id: None,
     };
-    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
+    let wrote = crate::history::guard::hold(&state.history_path, |held| {
+        if held.show_removed_since(begun, &native.slug) {
+            return Ok(());
+        }
+        held.upsert(entry)
+    });
+    if let Err(e) = wrote {
         tracing::warn!(
             title = %native.title,
             episode = %requested,

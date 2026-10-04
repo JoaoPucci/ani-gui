@@ -122,7 +122,7 @@ fn write_history_on_cache_hit(
     state: &AppState,
     args: &PlayArgs,
     cached: &CachedResolution,
-    _begun: crate::history::guard::Epoch,
+    begun: crate::history::guard::Epoch,
 ) {
     if args.prefetch || cached.show_id.is_empty() {
         return;
@@ -149,7 +149,15 @@ fn write_history_on_cache_hit(
         watched_at: None,
         kitsu_id: None,
     };
-    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
+    // A show removed from history while the cached stream was being
+    // checked gets no row from this play.
+    let wrote = crate::history::guard::hold(&state.history_path, |held| {
+        if held.show_removed_since(begun, &cached.show_id) {
+            return Ok(());
+        }
+        held.upsert(entry)
+    });
+    if let Err(e) = wrote {
         tracing::warn!(
             title = %args.title,
             episode = %args.episode,

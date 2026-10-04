@@ -41,7 +41,8 @@ const HISTORY_PREFIXES: [&str; 5] = [
 /// as the show played, left in the cache. Skip times cached under a
 /// Kitsu id in `claimed` — one a remaining row records, maps to or
 /// matched by title — stay with that row's show. The offsets go after
-/// the row ([`sweep_offsets`]).
+/// the row ([`sweep_offsets`]). Returns the Kitsu ids whose skip times
+/// went, for the removal's record.
 ///
 /// # Errors
 /// Cache write failures propagate.
@@ -51,7 +52,7 @@ pub(crate) fn forget_show(
     title: &str,
     recorded: Option<&str>,
     claimed: &std::collections::HashSet<String>,
-) -> Result<()> {
+) -> Result<Vec<String>> {
     let pool = &state.cache_pool;
     meta_cache_delete(pool, &watched_at_key(id))?;
     // Every Kitsu id the player could have asked with for this show:
@@ -64,7 +65,8 @@ pub(crate) fn forget_show(
     )?);
     forget_resolutions(state, id)?;
     kitsu_ids.retain(|k| !claimed.contains(k));
-    super::history_forget_skips::forget_skip_times(state, &kitsu_ids)
+    super::history_forget_skips::forget_skip_times(state, &kitsu_ids)?;
+    Ok(kitsu_ids)
 }
 
 /// Delete the show's reverse mapping under every version's key, and

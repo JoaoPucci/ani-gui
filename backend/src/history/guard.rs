@@ -15,8 +15,9 @@
 //! history has a moment that every removal moves on. Work takes the
 //! moment it began ([`epoch`], [`Held::epoch`]) and, holding the file
 //! again for a later write, asks whether the show was removed since
-//! ([`Held::show_removed_since`]). A removal wins over work begun
-//! before it; work begun after it is new.
+//! ([`Held::show_removed_since`]; [`Held::kitsu_removed_since`] for
+//! skip times, which are keyed by Kitsu id). A removal wins over work
+//! begun before it; work begun after it is new.
 //!
 //! Both belong to this process. Another instance of the app writing
 //! the same file does not take turns with this one, and its pending
@@ -42,6 +43,9 @@ struct Removals {
     cleared: u64,
     /// The moment each show was last removed, since the last clear.
     shows: HashMap<String, u64>,
+    /// The moment the skip times cached under each Kitsu id were last
+    /// removed with a show, since the last clear.
+    kitsu: HashMap<String, u64>,
 }
 
 /// Every history this process has held, by its file. One lock for all
@@ -119,20 +123,24 @@ impl Held<'_> {
         self.write(&entries)
     }
 
-    /// Record that the show `id` was removed from the history.
-    pub fn removed_show(&mut self, id: &str) {
+    /// Record that the show `id` was removed from the history, and
+    /// with it the skip times cached under each of `kitsu_ids`.
+    pub fn removed_show(&mut self, id: &str, kitsu_ids: &[String]) {
         self.removals.moment += 1;
-        self.removals
-            .shows
-            .insert(id.to_owned(), self.removals.moment);
+        let now = self.removals.moment;
+        self.removals.shows.insert(id.to_owned(), now);
+        for kitsu_id in kitsu_ids {
+            self.removals.kitsu.insert(kitsu_id.clone(), now);
+        }
     }
 
     /// Record that the history was cleared.
     pub fn removed_all(&mut self) {
         self.removals.moment += 1;
         self.removals.cleared = self.removals.moment;
-        // The clear stands for every show removed before it.
+        // The clear stands for everything removed before it.
         self.removals.shows.clear();
+        self.removals.kitsu.clear();
     }
 
     /// Whether the show `id` was removed, or the history cleared,
@@ -140,6 +148,14 @@ impl Held<'_> {
     #[must_use]
     pub fn show_removed_since(&self, begun: Epoch, id: &str) -> bool {
         let removed = self.removals.shows.get(id).copied().unwrap_or(0);
+        removed.max(self.removals.cleared) > begun.0
+    }
+
+    /// Whether the skip times cached under `kitsu_id` were removed
+    /// with a show, or the history cleared, since `begun`.
+    #[must_use]
+    pub fn kitsu_removed_since(&self, begun: Epoch, kitsu_id: &str) -> bool {
+        let removed = self.removals.kitsu.get(kitsu_id).copied().unwrap_or(0);
         removed.max(self.removals.cleared) > begun.0
     }
 }
