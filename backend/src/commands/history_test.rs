@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::app::AppState;
+use crate::history::write_atomic;
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use std::path::PathBuf;
 use std::sync::Arc;
