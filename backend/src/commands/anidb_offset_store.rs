@@ -132,7 +132,14 @@ fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> std::io::Res
             .write(true)
             .open(lock_path(&path))?;
         fs4::FileExt::lock(&lock_file)?;
-        let body = std::fs::read_to_string(&path).unwrap_or_default();
+        // A missing store is an empty one. Any other read failure ends
+        // the rewrite: a store that exists but cannot be read rewritten
+        // from nothing would lose every show's offset.
+        let body = match std::fs::read_to_string(&path) {
+            Ok(body) => body,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e),
+        };
         let mut rows = parse(&body);
         change(&mut rows);
         // Atomic like the history writer: a concurrent reader sees

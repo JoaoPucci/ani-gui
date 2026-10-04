@@ -186,13 +186,14 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
 /// ([`super::history_forget::forget_all`]).
 ///
 /// # Errors
-/// Returns [`crate::error::AniError::Io`] if the file cannot be written,
-/// and [`crate::error::AniError::Cache`] if the cache cannot be.
+/// Returns [`crate::error::AniError::Io`] if the file exists but cannot
+/// be read, or cannot be written, and [`crate::error::AniError::Cache`]
+/// if the cache cannot be.
 pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
     // In history_delete's order, for its reasons.
-    // A history that cannot be read is still cleared; only the offsets
-    // of rows it could name are known to go with them.
-    let cleared = read_all(&state.history_path).unwrap_or_default();
+    // A history that exists but cannot be read fails the clear: the
+    // rows it holds name the offsets that go with them.
+    let cleared = read_all(&state.history_path)?;
     super::history_forget::forget_all(state)?;
     write_atomic(&state.history_path, &[])?;
     let ids: Vec<&str> = cleared.iter().map(|e| e.id.as_str()).collect();

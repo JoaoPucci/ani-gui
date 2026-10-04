@@ -44,7 +44,8 @@ pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &s
 /// by a resolve before it has a history row among them.
 ///
 /// # Errors
-/// The store's read or write failure.
+/// The store's read or write failure. A missing store reads as empty;
+/// one that exists but cannot be read is left as it is.
 pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> std::io::Result<()> {
     remove_rows(state, |r| removed.contains(r.slug.as_str()))
 }
