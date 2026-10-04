@@ -68,6 +68,16 @@ pub enum Reason {
 /// kill outright. Call it inside the runtime: installing a handler
 /// needs its reactor.
 ///
+/// A signal the backend was started ignoring is left ignored, and its
+/// future never resolves. A process starts that way when someone
+/// means it to outlive the signal — `nohup` for a hangup, a shell
+/// without job control for an interrupt on a background job — and a
+/// handler would undo that. This holds on Linux, where the ignored
+/// set can be read; elsewhere on Unix it cannot be read without
+/// unsafe code, and every handler is installed. It never applies to
+/// the backend Electron runs: a process Node spawns starts with every
+/// disposition reset to its default.
+///
 /// Windows has no SIGTERM, and a quit there asks nothing: it runs
 /// `taskkill /F /T` against the backend, which ends its whole tree by
 /// parent pid, tools included. The one signal handled is Ctrl+C in a
@@ -87,9 +97,12 @@ pub fn requested() -> impl Future<Output = Reason> + Send + 'static {
 #[cfg(unix)]
 fn signalled() -> impl Future<Output = Reason> + Send + 'static {
     use tokio::signal::unix::SignalKind;
-    let terminated = received(SignalKind::terminate());
-    let interrupted = received(SignalKind::interrupt());
-    let hung_up = received(SignalKind::hangup());
+    // Read before any handler goes in: installing one takes its signal
+    // out of the ignored set.
+    let ignored = inherited_ignores();
+    let terminated = received(SignalKind::terminate(), ignored);
+    let interrupted = received(SignalKind::interrupt(), ignored);
+    let hung_up = received(SignalKind::hangup(), ignored);
     async move {
         tokio::select! {
             () = terminated => Reason::Terminated,
@@ -99,24 +112,71 @@ fn signalled() -> impl Future<Output = Reason> + Send + 'static {
     }
 }
 
-/// Install the handler for `kind` now; the future resolves when the
-/// signal arrives. A handler that cannot be installed is logged and
-/// never resolves — the signal then keeps its default action, and a
-/// failure to listen is not a request to stop.
+/// Install the handler for `kind` now, unless `ignored` — the set the
+/// process was started with — has it; the future resolves when the
+/// signal arrives. A signal left ignored never resolves. Nor does a
+/// handler that cannot be installed, which is logged: the signal then
+/// keeps its default action, and a failure to listen is not a request
+/// to stop.
 #[cfg(unix)]
-fn received(kind: tokio::signal::unix::SignalKind) -> impl Future<Output = ()> + Send + 'static {
-    let stream = tokio::signal::unix::signal(kind);
+fn received(
+    kind: tokio::signal::unix::SignalKind,
+    ignored: u64,
+) -> impl Future<Output = ()> + Send + 'static {
+    let stream = if ignores(ignored, kind.as_raw_value()) {
+        tracing::debug!(?kind, "ignored when the backend started; left ignored");
+        None
+    } else {
+        Some(tokio::signal::unix::signal(kind))
+    };
     async move {
         match stream {
-            Ok(mut stream) => {
+            Some(Ok(mut stream)) => {
                 if stream.recv().await.is_some() {
                     return;
                 }
             }
-            Err(e) => tracing::warn!(error = %e, ?kind, "signal handler not installed"),
+            Some(Err(e)) => tracing::warn!(error = %e, ?kind, "signal handler not installed"),
+            None => {}
         }
         std::future::pending::<()>().await;
     }
+}
+
+/// The signals this process is ignoring, as the kernel's mask: bit
+/// `n - 1` for signal `n`. Empty when it cannot be read, which then
+/// means every handler is installed.
+#[cfg(target_os = "linux")]
+fn inherited_ignores() -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| sig_ign_mask(&status))
+        .unwrap_or(0)
+}
+
+/// Nothing outside Linux says what a process ignores without unsafe
+/// code, so nothing is taken to be.
+#[cfg(all(unix, not(target_os = "linux")))]
+fn inherited_ignores() -> u64 {
+    0
+}
+
+/// The set of signals a process ignores, read off the text of its
+/// `/proc/<pid>/status`: the `SigIgn` line, sixteen hexadecimal
+/// digits. `None` when the line is missing or is not a mask.
+#[cfg(target_os = "linux")]
+fn sig_ign_mask(status: &str) -> Option<u64> {
+    let mask = status
+        .lines()
+        .find_map(|line| line.strip_prefix("SigIgn:"))?;
+    u64::from_str_radix(mask.trim(), 16).ok()
+}
+
+/// Whether `mask` has `signal` in it: bit `signal - 1`, for the
+/// signals a 64-bit mask can name.
+#[cfg(unix)]
+fn ignores(mask: u64, signal: i32) -> bool {
+    (1..=64).contains(&signal) && mask & (1_u64 << (signal - 1)) != 0
 }
 
 #[cfg(not(unix))]
@@ -173,22 +233,6 @@ where
 /// could end the process before a guard had run.
 pub fn teardown(runtime: tokio::runtime::Runtime, limit: Duration) {
     runtime.shutdown_timeout(limit);
-}
-
-/// The set of signals a process ignores, read off the text of its
-/// `/proc/<pid>/status`. Not wired in yet: nothing asks what the
-/// backend was started ignoring, so this knows nothing.
-#[cfg(target_os = "linux")]
-#[cfg_attr(not(test), allow(dead_code))]
-fn sig_ign_mask(_status: &str) -> Option<u64> {
-    None
-}
-
-/// Whether `mask` has `signal` in it. Not wired in yet; see above.
-#[cfg(unix)]
-#[cfg_attr(not(test), allow(dead_code))]
-fn ignores(_mask: u64, _signal: i32) -> bool {
-    false
 }
 
 #[cfg(test)]
