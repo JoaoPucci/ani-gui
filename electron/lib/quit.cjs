@@ -1,14 +1,16 @@
 "use strict";
 
 // The app's before-quit decision, lifted out of main.js so it can be
-// exercised without Electron. Behaviour is main.js's as it stood.
+// exercised without Electron.
 
 /**
- * Run the close prompt, then stop the backend tree.
- * `promptOnClose` returns whether it cancelled this quit.
+ * Run the close prompt; stop the backend tree only when the quit goes
+ * ahead. `promptOnClose` returns whether it prevented this quit — the
+ * user cancelled, or confirmed and a fresh close is already on its
+ * way, whose own before-quit stops the backend.
  */
 function handleBeforeQuit({ promptOnClose, stopBackend }) {
-  promptOnClose();
+  if (promptOnClose()) return;
   stopBackend();
 }
 

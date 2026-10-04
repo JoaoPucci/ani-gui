@@ -36,6 +36,7 @@ const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
 const { awaitHandshake } = require("./lib/backend-handshake.cjs");
+const { handleBeforeQuit } = require("./lib/quit.cjs");
 const { awaitFirstShow, bootApp, loadFirstPage } = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
@@ -856,8 +857,8 @@ ipcMain.handle("ani-gui:open-external", async (_event, url) => {
  * committed.
  */
 function maybePromptOnClose(win, event) {
-  if (confirmedQuit) return;
-  if (activeDownloadCount <= 0) return;
+  if (confirmedQuit) return false;
+  if (activeDownloadCount <= 0) return false;
   event.preventDefault();
   const plural = activeDownloadCount === 1 ? "" : "s";
   const choice = dialog.showMessageBoxSync(win, {
@@ -876,6 +877,9 @@ function maybePromptOnClose(win, event) {
     if (win && !win.isDestroyed()) win.close();
     else app.quit();
   }
+  // This event is prevented either way: cancelled, or superseded by
+  // the close re-triggered above.
+  return true;
 }
 
 app.whenReady().then(() =>
@@ -909,11 +913,15 @@ app.on("before-quit", (e) => {
   // X-button path; both reuse the same guard.
   const focused = BrowserWindow.getFocusedWindow();
   const win = focused || BrowserWindow.getAllWindows()[0];
-  if (win) maybePromptOnClose(win, e);
   // Tree-kill so the transport + yt-dlp + ffmpeg actually
   // stop. A bare backendChild.kill() only signals the Rust process
-  // and orphans the grandchildren to init.
-  killBackendTree();
+  // and orphans the grandchildren to init. Only when the quit goes
+  // ahead: a quit cancelled at the prompt keeps the app, and so its
+  // backend (see lib/quit.cjs).
+  handleBeforeQuit({
+    promptOnClose: () => (win ? maybePromptOnClose(win, e) : false),
+    stopBackend: killBackendTree,
+  });
 });
 
 // Re-create a window if the user clicks the dock icon on macOS while
