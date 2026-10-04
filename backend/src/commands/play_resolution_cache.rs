@@ -234,18 +234,18 @@ pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
     let _ = meta_cache_put(pool, key, &body, PLAY_RESOLUTION_TTL.as_secs());
 }
 
-/// Persist the resolution a play begun at `begun` produced — unless
-/// the show it names was removed from history since: the removal took
-/// the show's resolution rows, and this one would outlive it
-/// ([`crate::history::guard`]).
+/// Persist the resolution the play `asked` for produced — unless the
+/// show it names was removed from history since the play began: the
+/// removal took the show's resolution rows, and this one would outlive
+/// it ([`crate::history::guard`]).
 pub(crate) fn store(
     state: &crate::app::AppState,
-    begun: crate::history::guard::Epoch,
+    asked: crate::history::guard::Asked<'_>,
     key: &str,
     value: &CachedResolution,
 ) {
     crate::history::guard::hold(&state.history_path, |held| {
-        if !held.show_removed_since(begun, &value.show_id) {
+        if !held.show_removed_since(asked.begun, &value.show_id) {
             put(&state.cache_pool, key, value);
         }
     });

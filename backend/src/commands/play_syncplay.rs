@@ -66,7 +66,12 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         return Ok(());
     }
 
-    let (launch, watch) = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
+    let (launch, watch) = crate::commands::play_handoff::resolve_launch_args(
+        state,
+        args,
+        crate::history::guard::Asked::now(&state.history_path, args.kitsu_id.as_deref()),
+    )
+    .await?;
     open_syncplay(&syncplay_launch_for(
         launch,
         cfg.syncplay_binary,

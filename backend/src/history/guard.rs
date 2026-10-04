@@ -34,6 +34,28 @@ use crate::error::Result;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Epoch(u64);
 
+/// A play as it was asked for: the moment its request began, and the
+/// Kitsu page it was made from when the caller named one.
+#[derive(Debug, Clone, Copy)]
+pub struct Asked<'a> {
+    /// The moment the request began.
+    pub begun: Epoch,
+    /// The Kitsu id of the page the play was asked from.
+    pub page: Option<&'a str>,
+}
+
+impl<'a> Asked<'a> {
+    /// A request on the history at `path` that begins now, made from
+    /// the Kitsu page `page`. An empty id is no page.
+    #[must_use]
+    pub fn now(path: &Path, page: Option<&'a str>) -> Self {
+        Self {
+            begun: epoch(path),
+            page: page.filter(|p| !p.is_empty()),
+        }
+    }
+}
+
 /// What has been removed from one history, and when.
 #[derive(Default)]
 struct Removals {

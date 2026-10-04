@@ -83,6 +83,11 @@ async fn stub_provider() -> wiremock::MockServer {
     server
 }
 
+/// A handoff asked for now, from no Kitsu page.
+fn asked_now(state: &AppState) -> crate::history::guard::Asked<'static> {
+    crate::history::guard::Asked::now(&state.history_path, None)
+}
+
 fn args_for() -> PlayArgs {
     serde_json::from_value(serde_json::json!({
         "title": "Handoff Show",
@@ -102,9 +107,10 @@ async fn the_handoff_resolves_through_the_native_walk() {
     let server = stub_provider().await;
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server.uri());
-    let (launch, _watch) = super::play_handoff::resolve_launch_args(&state, &args_for())
-        .await
-        .expect("the native walk resolves the stream");
+    let (launch, _watch) =
+        super::play_handoff::resolve_launch_args(&state, &args_for(), asked_now(&state))
+            .await
+            .expect("the native walk resolves the stream");
     assert!(
         launch.stream_url.ends_with("/m/master.m3u8"),
         "the handoff plays what the walk resolved: {}",
@@ -131,7 +137,7 @@ async fn a_handoff_resolve_remembers_the_provider_that_served_it() {
     let state = state_for(&td, &server.uri());
     let mut args = args_for();
     args.kitsu_id = Some("hs-7".into());
-    super::play_handoff::resolve_launch_args(&state, &args)
+    super::play_handoff::resolve_launch_args(&state, &args, asked_now(&state))
         .await
         .expect("the native walk resolves the stream");
     assert_eq!(
@@ -158,7 +164,7 @@ async fn a_handoff_miss_surfaces_the_walks_verdict() {
     let state = state_for(&td, &server.uri());
     let mut args = args_for();
     args.kitsu_id = Some("hs-8".into());
-    let err = super::play_handoff::resolve_launch_args(&state, &args)
+    let err = super::play_handoff::resolve_launch_args(&state, &args, asked_now(&state))
         .await
         .expect_err("nothing matches");
     assert!(matches!(err, crate::error::AniError::NoResults));
@@ -338,9 +344,10 @@ async fn the_resolve_records_no_watch_before_the_spawn() {
     let server = stub_provider().await;
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server.uri());
-    let (_launch, _native) = super::play_handoff::resolve_launch_args(&state, &args_for())
-        .await
-        .expect("the native walk resolves the stream");
+    let (_launch, _native) =
+        super::play_handoff::resolve_launch_args(&state, &args_for(), asked_now(&state))
+            .await
+            .expect("the native walk resolves the stream");
     assert!(
         !state.history_path.exists(),
         "no history row before the player has started"

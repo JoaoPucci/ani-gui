@@ -35,13 +35,14 @@ use crate::error::Result;
 /// both reach the external-player and Syncplay endpoints through
 /// here, so a consumer reading every non-weather miss as a catalogue
 /// miss names the wrong thing missing.
+///
+/// `asked` is the handoff's request, for the numbering the resolve
+/// stamps ([`crate::history::guard`]).
 pub async fn resolve_launch_args(
     state: &AppState,
     args: &PlayArgs,
+    asked: crate::history::guard::Asked<'_>,
 ) -> Result<(LaunchArgs, crate::commands::play_native_record::Watch)> {
-    // The moment this handoff began, for the numbering its resolve
-    // stamps.
-    let begun = crate::history::guard::epoch(&state.history_path);
     let quality = args.quality.as_deref().unwrap_or("best");
     let cfg = read_config(&state.config_path).unwrap_or_default();
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
@@ -101,7 +102,7 @@ pub async fn resolve_launch_args(
                 return Err(ne.error);
             }
         };
-    crate::commands::play_native_record::stamp_numbering(state, &native, begun);
+    crate::commands::play_native_record::stamp_numbering(state, &native, asked);
     let watch = crate::commands::play_native_record::Watch::of(&native);
     Ok((launch_args_for(native, args, &cfg), watch))
 }

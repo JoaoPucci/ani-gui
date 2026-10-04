@@ -9,7 +9,7 @@
 
 use crate::app::AppState;
 use crate::commands::play_native_resolve::NativeResolved;
-use crate::history::guard::Epoch;
+use crate::history::guard::{Asked, Epoch};
 
 #[path = "play_native_record_id.rs"]
 mod record_id;
@@ -26,12 +26,12 @@ use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id
 /// Prefetches stamp as well: their resolve is exactly as
 /// authoritative as a click's.
 ///
-/// `begun` is the moment the resolve's request began: a show removed
-/// from history since is not stamped, the removal having taken its
+/// `asked` is the request the resolve served: a show removed from
+/// history since it began is not stamped, the removal having taken its
 /// numbering with the row ([`crate::history::guard`]).
-pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, begun: Epoch) {
+pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: Asked<'_>) {
     crate::history::guard::hold(&state.history_path, |held| {
-        if !held.show_removed_since(begun, &native.slug) {
+        if !held.show_removed_since(asked.begun, &native.slug) {
             put_numbering(state, native);
         }
     });
@@ -226,14 +226,13 @@ pub(crate) async fn record_watch_requested_at(
 /// `requested` is the episode the caller asked for, for the log line
 /// only; it is the display number and must never reach the file.
 ///
-/// `begun` is the moment the play's request began: a show removed from
-/// history while the play resolved gets no row from it
-/// ([`crate::history::guard`]).
+/// `asked` is the play's request: a show removed from history while
+/// the play resolved gets no row from it ([`crate::history::guard`]).
 pub(crate) fn write_history(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
-    begun: Epoch,
+    asked: Asked<'_>,
 ) {
     let entry = crate::history::HistoryEntry {
         ep_no: native.resolved_slot.to_string(),
@@ -245,7 +244,7 @@ pub(crate) fn write_history(
         kitsu_id: None,
     };
     let wrote = crate::history::guard::hold(&state.history_path, |held| {
-        if held.show_removed_since(begun, &native.slug) {
+        if held.show_removed_since(asked.begun, &native.slug) {
             return Ok(());
         }
         held.upsert(entry)

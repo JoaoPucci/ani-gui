@@ -48,7 +48,12 @@ pub async fn play_external(state: &AppState, args: &PlayArgs) -> Result<()> {
         return Ok(());
     }
 
-    let (launch, watch) = crate::commands::play_handoff::resolve_launch_args(state, args).await?;
+    let (launch, watch) = crate::commands::play_handoff::resolve_launch_args(
+        state,
+        args,
+        crate::history::guard::Asked::now(&state.history_path, args.kitsu_id.as_deref()),
+    )
+    .await?;
     external_player::open_external_player(&launch)?;
     // The spawn is the watch: recorded once the player has started.
     crate::commands::play_native_record::record_watch_requested_at(

@@ -83,10 +83,11 @@ fn args() -> PlayArgs {
 /// began at `begun`: the row a fresh resolve writes, the row a cached
 /// stream writes, the show's numbering, and the resolution row.
 fn finish_play(state: &AppState, begun: crate::history::guard::Epoch) {
-    write_history(state, &native(), "2", begun);
-    write_history_on_cache_hit(state, &args(), &cached(), begun);
-    stamp_numbering(state, &native(), begun);
-    play_resolution_cache::store(state, begun, KEY, &cached());
+    let asked = crate::history::guard::Asked { begun, page: None };
+    write_history(state, &native(), "2", asked);
+    write_history_on_cache_hit(state, &args(), &cached(), asked);
+    stamp_numbering(state, &native(), asked);
+    play_resolution_cache::store(state, asked, KEY, &cached());
 }
 
 /// What a finished play left of the show: its row, its numbering, its
