@@ -302,15 +302,6 @@ pub fn upsert_and_write(path: &Path, new: HistoryEntry) -> Result<()> {
     guard::hold(path, |held| held.upsert(new))
 }
 
-/// Set the Kitsu id the row for `id` records, `None` clearing it, with
-/// the file held ([`guard`]). A missing row is left missing.
-///
-/// # Errors
-/// Returns [`AniError::Io`] on read or write failure.
-pub fn set_kitsu_id(path: &Path, id: &str, kitsu_id: Option<String>) -> Result<()> {
-    guard::hold(path, |held| held.set_kitsu_id(id, kitsu_id))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

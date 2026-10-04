@@ -3,11 +3,14 @@
 //!
 //! Every write of the history file reads it, changes it and writes it
 //! back, so writers take turns: [`hold`] runs a piece of work with the
-//! file held, and the plain writers ([`super::upsert_and_write`],
-//! [`super::set_kitsu_id`]) go through it. A removal of history holds
-//! the file across everything it removes — the rows, and what they left
-//! in the cache and beside the file — so nothing else is half-way
-//! through a write while it runs.
+//! file held, and every writer of the file goes through it — the plain
+//! [`super::upsert_and_write`], and the plays and watches that write a
+//! row with something beside it. So does everything that stores what a
+//! row leaves behind: the stamp, the mapping, the title match, the
+//! numbering, the resolution row, the skip times. A removal of history
+//! holds the file across everything it removes, so none of those is
+//! half-way through a store while it runs. What only takes away — an
+//! eviction, a cache clear — does not ask for the file.
 //!
 //! Holding the file is not enough for work that waits on the network
 //! between its writes: a watch records its row, waits on Kitsu, then
