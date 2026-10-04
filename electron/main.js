@@ -35,7 +35,10 @@ const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
-const { awaitHandshake } = require("./lib/backend-handshake.cjs");
+const {
+  HANDSHAKE_TIMEOUT_MS,
+  awaitHandshake,
+} = require("./lib/backend-handshake.cjs");
 const { backendSpawnOptions } = require("./lib/backend-spawn.cjs");
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
@@ -225,21 +228,13 @@ function readConfigLocale() {
   return extractLocaleFromToml(text);
 }
 
-// How long the backend may take to print its handshake before the boot
-// gives up on it. Before the handshake it only binds a loopback port,
-// opens its SQLite cache (running any pending migrations) and sweeps a
-// legacy file, which takes milliseconds. Fifteen seconds covers a cold
-// disk and an antivirus scan of a first exec on Windows, while a
-// backend that is not going to answer still ends the boot instead of
-// leaving the app with no window and no exit.
-const BACKEND_HANDSHAKE_TIMEOUT_MS = 15_000;
-
 /**
  * Spawn the backend and resolve once it has printed its handshake
  * (see lib/backend-handshake.cjs). Rejects — after stopping the
  * backend if it is running — when the spawn fails, the backend exits
- * first, or the handshake does not arrive within
- * BACKEND_HANDSHAKE_TIMEOUT_MS, so bootApp can end the boot.
+ * first, or the handshake does not arrive within HANDSHAKE_TIMEOUT_MS
+ * (a budget for a backend that never answers, not for a slow one —
+ * see the module), so bootApp can end the boot.
  */
 async function spawnBackend() {
   const bin = resolveBackendBinary();
@@ -257,7 +252,7 @@ async function spawnBackend() {
   // After the handshake, downstream stdout becomes log output; it is
   // echoed through so we can see it in dev.
   const { apiBase, internalSecret } = await awaitHandshake(child, {
-    timeoutMs: BACKEND_HANDSHAKE_TIMEOUT_MS,
+    timeoutMs: HANDSHAKE_TIMEOUT_MS,
     stopChild: killTree,
     log: (line) => process.stdout.write(`${line}\n`),
   });

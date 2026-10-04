@@ -4,9 +4,24 @@
 // spawnBackend so its failure paths can be exercised without spawning
 // anything.
 
-// How long the boot waits for the handshake. As main.js has it:
-// fifteen seconds.
-const HANDSHAKE_TIMEOUT_MS = 15_000;
+// How long the boot waits for the handshake: two minutes.
+//
+// The deadline exists for a backend that will never answer, not for
+// one that is slow. A backend that dies is reported at once, by its
+// exit or by the spawn's error, so what the deadline catches is one
+// that is alive and stuck — rare, and the only cost of catching it
+// late is how long the user waits to be told.
+//
+// A slow one is not rare. Before the handshake the backend binds a
+// port, opens its SQLite cache and sweeps a legacy file, and on a
+// first run opening the cache means creating it and running every
+// migration, each a commit the disk has to confirm. Measured on a
+// hard disk with a fresh profile: about a second on an idle disk,
+// about 24 s during an 8 GB sequential write. At fifteen seconds the
+// boot called that a failure, where a boot with no deadline would
+// just have been late. Two minutes is five times the slowest start
+// measured.
+const HANDSHAKE_TIMEOUT_MS = 120_000;
 
 /**
  * Resolve with `{ apiBase, internalSecret }` once the backend has
