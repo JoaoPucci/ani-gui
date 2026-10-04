@@ -304,3 +304,44 @@ fn list_then_clear_round_trip() {
     let after = history_list(&s).unwrap();
     assert!(after.is_empty());
 }
+
+/// A row that records the Kitsu id played is found by it, whatever the
+/// reverse mapping says or whether there is one.
+#[test]
+fn by_kitsu_reads_the_kitsu_id_the_row_records() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "3".into(),
+                id: "hianime:seitokai-10497".into(),
+                title: "There Is Also a Hole in the Student Organization!".into(),
+                watched_at: None,
+                kitsu_id: Some("49877".into()),
+            },
+            HistoryEntry {
+                ep_no: "5".into(),
+                id: "hianime:here-is-greenwood-3081".into(),
+                title: "Here is Greenwood".into(),
+                watched_at: None,
+                kitsu_id: Some("1623".into()),
+            },
+        ],
+    )
+    .unwrap();
+    // A wrong mapping a guess left behind does not outrank the row.
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:seitokai-10497", "1623").unwrap();
+
+    let hit = history_by_kitsu(&s, "49877")
+        .unwrap()
+        .expect("found by its own id");
+    assert_eq!(hit.id, "hianime:seitokai-10497");
+    let hit = history_by_kitsu(&s, "1623").unwrap().expect("greenwood");
+    assert_eq!(
+        hit.id, "hianime:here-is-greenwood-3081",
+        "the mapping does not pull the other row in"
+    );
+}

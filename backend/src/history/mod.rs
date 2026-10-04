@@ -735,3 +735,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "kitsu_column_test.rs"]
+mod kitsu_column_tests;

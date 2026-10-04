@@ -1646,6 +1646,69 @@ mod tests {
         assert_eq!(body, Some("11061".to_string()));
     }
 
+    /// Marking a play watched records the Kitsu id of the page it was
+    /// started from on the history row: Continue Watching reads the
+    /// show from it, and nothing has to match the provider's title
+    /// back to Kitsu. Only digits are an id.
+    #[tokio::test]
+    async fn mark_watched_records_the_kitsu_id_on_the_history_row() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        for (title, show) in [
+            ("Seitokai ni mo Ana wa Aru!", "hianime:seitokai-10497"),
+            ("Bad Id", "hianime:bad-1"),
+        ] {
+            put(
+                &state.cache_pool,
+                &cache_key(title, "sub", "best", "1", None, None, None),
+                &CachedResolution {
+                    upstream_url: "https://video.example/master.m3u8".into(),
+                    referer: String::new(),
+                    media_kind: MediaKind::Hls,
+                    show_id: show.into(),
+                    show_title: title.into(),
+                    resolved_slot: Some(1),
+                    subtitles: Vec::new(),
+                },
+            );
+        }
+        let history = state.history_path.clone();
+        let router = build_api_router(Arc::new(state));
+        for body in [
+            r#"{"title":"Seitokai ni mo Ana wa Aru!","episode":"1","mode":"sub","kitsu_id":"49877"}"#,
+            r#"{"title":"Bad Id","episode":"1","mode":"sub","kitsu_id":"../49877"}"#,
+        ] {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/play/mark-watched")
+                        .header("content-type", "application/json")
+                        .body(Body::from(body))
+                        .expect("req"),
+                )
+                .await
+                .expect("oneshot");
+            assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        }
+        let rows = crate::history::read_all(&history).expect("rows");
+        let id_of = |show: &str| {
+            rows.iter()
+                .find(|r| r.id == show)
+                .and_then(|r| r.kitsu_id.clone())
+        };
+        assert_eq!(id_of("hianime:seitokai-10497").as_deref(), Some("49877"));
+        assert_eq!(
+            id_of("hianime:bad-1"),
+            None,
+            "an id that is not digits is not recorded"
+        );
+    }
+
     /// The reverse-mapping write must REJECT cross-cour pairings.
     /// The backend's provider picker can land on a sibling cour when
     /// ep-count and year tie (Stone Ocean parts 1/2/3 all 12 eps,
