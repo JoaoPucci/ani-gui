@@ -41,6 +41,7 @@ function page(opts: { airsOnRefresh?: boolean; fails?: boolean } = {}) {
 		advance: (ms: number) => (clock += ms),
 		leave: () => (context = 'visit-2'),
 		holdRefresh: () => (hold = true),
+		stopHolding: () => (hold = false),
 		releaseRefresh: () => release?.()
 	};
 }
@@ -129,6 +130,7 @@ describe('createUnairedRecheck', () => {
 		p.leave();
 		p.releaseRefresh();
 		await pending;
+		p.stopHolding();
 		await recheck.check('49847', p.deps);
 		expect(p.refreshes()).toBe(2);
 	});
