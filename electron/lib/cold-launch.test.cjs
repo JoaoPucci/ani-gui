@@ -93,3 +93,23 @@ test('a cleanup that itself fails does not mask the retry', async () => {
 	);
 	assert.equal(got, 'ok');
 });
+
+// CI run 37241086339: the dead app's close() never settled, so the
+// cleanup ate the whole test timeout and the relaunch never ran. A
+// cleanup gets a bound; past it the harness relaunches regardless.
+test('a cleanup that never settles is abandoned and the relaunch runs', { timeout: 2000 }, async () => {
+	let attempts = 0;
+	const got = await withColdLaunchRetry(
+		async () => {
+			attempts += 1;
+			if (attempts === 1) throw closedTarget();
+			return 'relaunched';
+		},
+		{
+			cleanupTimeoutMs: 50,
+			cleanup: () => new Promise(() => {}),
+		},
+	);
+	assert.equal(got, 'relaunched');
+	assert.equal(attempts, 2);
+});
