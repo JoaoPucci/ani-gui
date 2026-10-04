@@ -155,8 +155,9 @@ fn write_history_on_cache_hit(
         if held.removed_since(asked, &cached.show_id) {
             return Ok(());
         }
+        held.upsert(entry)?;
         held.played_from(&cached.show_id, asked.page);
-        held.upsert(entry)
+        Ok::<_, AniError>(())
     });
     if let Err(e) = wrote {
         tracing::warn!(

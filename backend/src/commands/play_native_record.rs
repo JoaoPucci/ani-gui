@@ -183,10 +183,10 @@ pub(crate) async fn record_watch_requested_at(
         if held.removed_since(asked, &watch.show_id) {
             return Ok(None);
         }
+        held.upsert(entry)?;
         // The row records the page only once the guard accepts it; a
         // removal before then still has to know it.
         held.played_from(&watch.show_id, given);
-        held.upsert(entry)?;
         stamp_watched_at(state, &watch.show_id, now);
         Ok::<_, crate::error::AniError>(Some(held.epoch()))
     });
@@ -251,8 +251,9 @@ pub(crate) fn write_history(
         if held.removed_since(asked, &native.slug) {
             return Ok(());
         }
+        held.upsert(entry)?;
         held.played_from(&native.slug, asked.page);
-        held.upsert(entry)
+        Ok::<_, crate::error::AniError>(())
     });
     if let Err(e) = wrote {
         tracing::warn!(
