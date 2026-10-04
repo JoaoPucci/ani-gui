@@ -38,7 +38,12 @@ const { isDevProfile } = require("./lib/dev-profile.cjs");
 const { awaitHandshake } = require("./lib/backend-handshake.cjs");
 const { backendSpawnOptions } = require("./lib/backend-spawn.cjs");
 const { handleBeforeQuit } = require("./lib/quit.cjs");
-const { awaitFirstShow, bootApp, loadFirstPage } = require("./lib/startup.cjs");
+const {
+  awaitFirstShow,
+  bootApp,
+  firstShowTimeoutMs,
+  loadFirstPage,
+} = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
@@ -311,14 +316,6 @@ function killTree(child) {
   }
 }
 
-// How long a new window may take to reach ready-to-show before the
-// boot gives up on it. The first paint of the local bundle lands in
-// well under a second on a desktop and within a few seconds on a
-// heavily loaded CI runner; fifteen leaves a wide margin for a cold
-// disk while a launch that is never going to paint still ends,
-// instead of leaving a blank window with no controls on screen.
-const FIRST_SHOW_TIMEOUT_MS = 15_000;
-
 async function createWindow(apiBase, internalSecret) {
   // Pre-compute the work area so the window opens at the maximized
   // size in one shot. Setting the constructor width/height to the
@@ -450,11 +447,11 @@ async function createWindow(apiBase, internalSecret) {
   // already on screen here — maximize() above shows a hidden window —
   // but blank and frameless, so with nothing to close it by until the
   // renderer has drawn the titlebar. A window that never gets there —
-  // a renderer gone, or no first paint within FIRST_SHOW_TIMEOUT_MS —
-  // fails the boot instead (see lib/startup.cjs).
-  const firstShow = awaitFirstShow(win, { timeoutMs: FIRST_SHOW_TIMEOUT_MS }).then(
-    () => win.show(),
-  );
+  // a renderer gone, or, in a packaged build, no first paint within
+  // the deadline — fails the boot instead (see lib/startup.cjs).
+  const firstShow = awaitFirstShow(win, {
+    timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
+  }).then(() => win.show());
   win.once("show", () => {
     if (!win.isMaximized()) win.maximize();
   });

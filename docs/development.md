@@ -126,6 +126,13 @@ cd electron
 pnpm dev
 ```
 
+Step 3 has to be answering before step 4 starts. The shell loads its
+first page from Vite, and when that load fails it prints the reason
+on its terminal (`[main] startup failed: …`) and exits with code 1.
+Once Vite answers, a dev launch waits as long as the first paint
+takes — a cold Vite re-optimizing its dependencies can keep it
+waiting a while — where a packaged build gives up after 15 seconds.
+
 Step 2's position is load-bearing on a fresh checkout: it must run
 after the first build, because the fetcher mirrors into
 `backend/target/{debug,release}/bin` only for profile directories

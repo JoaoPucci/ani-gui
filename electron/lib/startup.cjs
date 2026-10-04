@@ -24,18 +24,35 @@ async function loadFirstPage(win, url, logError) {
   }
 }
 
+// How long a packaged launch gives its window to reach ready-to-show.
+// The first paint of the local bundle lands in well under a second on
+// a desktop and within a few seconds on a heavily loaded CI runner;
+// fifteen leaves a wide margin for a cold disk while a launch that is
+// never going to paint still ends, instead of leaving a blank window
+// with no controls on screen.
+const FIRST_SHOW_TIMEOUT_MS = 15_000;
+
 /**
- * How long a launch gives its window to reach ready-to-show. As
- * main.js had it: fifteen seconds, whatever kind of launch it is.
+ * How long a launch gives its window to reach ready-to-show, or
+ * `null` for no deadline.
+ *
+ * A dev launch has none. Its first page comes from Vite, and a cold
+ * Vite re-optimizing its dependencies can take longer over the first
+ * paint than any figure fit for the packaged bundle. The developer is
+ * at the terminal watching it work and can stop it there; ending
+ * `pnpm dev` under them would be the launcher getting in the way. A
+ * renderer that dies still fails a dev launch — awaitFirstShow keeps
+ * that half whatever the deadline.
  */
-function firstShowTimeoutMs(_launch) {
-  return 15_000;
+function firstShowTimeoutMs({ isDev }) {
+  return isDev ? null : FIRST_SHOW_TIMEOUT_MS;
 }
 
 /**
  * Resolve when the window reaches `ready-to-show`; reject when its
  * renderer dies first, or when it has not got there within
- * `timeoutMs`.
+ * `timeoutMs` — unless that is `null`, which sets no deadline (see
+ * firstShowTimeoutMs).
  *
  * The window is on screen well before `ready-to-show`: it is created
  * with `show: false`, but main.js maximizes it straight away, and
@@ -64,14 +81,19 @@ function awaitFirstShow(win, { timeoutMs }) {
           `renderer gone before the first show (${details && details.reason})`,
         ),
       );
-    const timer = setTimeout(
-      () =>
-        settle(
-          reject,
-          new Error(`window did not reach ready-to-show within ${timeoutMs} ms`),
-        ),
-      timeoutMs,
-    );
+    const timer =
+      timeoutMs === null
+        ? undefined
+        : setTimeout(
+            () =>
+              settle(
+                reject,
+                new Error(
+                  `window did not reach ready-to-show within ${timeoutMs} ms`,
+                ),
+              ),
+            timeoutMs,
+          );
     win.once("ready-to-show", onShow);
     win.webContents.on("render-process-gone", onGone);
   });
