@@ -458,3 +458,41 @@ fn clear_removes_what_every_row_left_in_the_cache() {
         "the catalogue cache is not history"
     );
 }
+
+/// A title that starts another's keeps the other's title-match rows:
+/// "Re" is not "Re:Creators".
+#[test]
+fn delete_keeps_title_match_rows_of_a_title_that_extends_the_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("re-1", "Re")]).unwrap();
+    put(&s, "title-match:v3:anidb.app:re:c1", "1");
+    put(&s, "title-match:v3:anidb.app:re:creators:c1", "2");
+
+    assert!(history_delete(&s, "re-1").unwrap());
+
+    assert_eq!(cached(&s, "title-match:v3:anidb.app:re:c1"), None);
+    assert!(cached(&s, "title-match:v3:anidb.app:re:creators:c1").is_some());
+}
+
+/// A cache that cannot forget a row's entries fails the delete before
+/// the row is removed, so the error the caller sees is true and a
+/// retry finds the row still there.
+#[test]
+fn delete_that_cannot_forget_the_cache_leaves_the_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("abc", "T")]).unwrap();
+    s.cache_pool
+        .get()
+        .unwrap()
+        .execute("DROP TABLE meta_cache", [])
+        .unwrap();
+
+    assert!(history_delete(&s, "abc").is_err());
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
+    assert!(history_clear(&s).is_err());
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the history stays");
+}

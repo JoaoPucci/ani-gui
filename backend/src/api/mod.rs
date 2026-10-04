@@ -2368,6 +2368,20 @@ mod tests {
             "an hour apart"
         );
 
+        // A guess a Continue load stored half a minute after a watch
+        // that stored no mapping: builds that stamped and mapped wrote
+        // the two a Kitsu read apart, within seconds.
+        let td = TempDir::new().expect("tempdir");
+        let later = test_app_state(&td);
+        crate::commands::kitsu::watched_at_put(&later, "hianime:x-1", now_ms() - 30_000)
+            .expect("stamp");
+        crate::commands::kitsu::allmanga_kitsu_put(&later, "hianime:x-1", "1623").expect("put");
+        assert_eq!(
+            played_body(later, "hianime:x-1").await,
+            "false",
+            "half a minute after"
+        );
+
         let td = TempDir::new().expect("tempdir");
         let unmapped = test_app_state(&td);
         crate::commands::kitsu::watched_at_put(&unmapped, "hianime:x-1", now_ms()).expect("stamp");
