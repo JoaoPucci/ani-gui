@@ -890,6 +890,7 @@ function maybePromptOnClose(win, event) {
 function mainLocale() {
   return resolveLocale({
     configured: readConfigLocale(),
+    appLocale: app.getLocale(),
     preferred: app.getPreferredSystemLanguages(),
   });
 }

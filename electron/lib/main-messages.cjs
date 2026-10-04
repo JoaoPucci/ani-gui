@@ -76,25 +76,36 @@ function shippedLocale(tag) {
 }
 
 /**
- * The locale the main process speaks in — the one the renderer would
- * have come up in, by the renderer's own order (Paraglide's
- * `localStorage`, `preferredLanguage`, `baseLocale` strategy, with the
- * preload seeding localStorage from config.toml):
+ * The locale the main process speaks in: the one the renderer comes
+ * up in, by the renderer's own order.
  *
- *   1. `configured`, the locale saved in config.toml, when the app
- *      ships it;
- *   2. the first of `preferred`, the system's languages in order, that
- *      matches a shipped locale by its full tag or, failing that, by
- *      its base language — so `ru-RU` is `ru`, while `es-MX` matches
- *      nothing, `es` alone not being a locale the app ships;
- *   3. the base locale.
+ *   1. `configured`, the locale saved in config.toml, when it is
+ *      exactly a locale the app ships. The renderer applies it at
+ *      boot (frontend/src/hooks.client.ts) and compares it as
+ *      written, so a value in the wrong case falls through there and
+ *      has to here.
+ *   2. The system's languages, as the renderer sees them in
+ *      `navigator.languages`: `appLocale` (Electron's
+ *      `app.getLocale()`) first, then `preferred`
+ *      (`app.getPreferredSystemLanguages()`). The first that matches
+ *      a shipped locale by its full tag or, failing that, by its base
+ *      language decides, compared without regard to case — Paraglide's
+ *      `preferredLanguage` strategy. The application locale matters:
+ *      it is Chromium's pick among the locales it ships, and it turns
+ *      `es-MX` and every other Latin American Spanish into `es-419`,
+ *      which nothing in the preferred list would match.
+ *   3. The base locale.
+ *
+ * One thing the renderer consults is out of reach here: its own
+ * localStorage, where Paraglide remembers the last locale it was
+ * set to. config.toml is written whenever that changes, so the two
+ * agree unless the file is edited by hand afterwards.
  */
-function resolveLocale({ configured, preferred } = {}) {
-  const saved = shippedLocale(configured);
-  if (saved) return saved;
-  for (const tag of preferred || []) {
-    const match =
-      shippedLocale(tag) || shippedLocale(String(tag).split("-")[0]);
+function resolveLocale({ configured, appLocale, preferred } = {}) {
+  if (LOCALES.includes(configured)) return configured;
+  for (const tag of [appLocale, ...(preferred || [])]) {
+    if (typeof tag !== "string") continue;
+    const match = shippedLocale(tag) || shippedLocale(tag.split("-")[0]);
     if (match) return match;
   }
   return BASE_LOCALE;
