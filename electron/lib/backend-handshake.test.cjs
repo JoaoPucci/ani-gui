@@ -12,7 +12,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 
-const { awaitHandshake } = require("./backend-handshake.cjs");
+const { HANDSHAKE_TIMEOUT_MS, awaitHandshake } = require("./backend-handshake.cjs");
 
 const fakeChild = () => {
   const child = new EventEmitter();
@@ -71,4 +71,49 @@ test("after the handshake, output and exit are logged and the timer is gone", as
   assert.deepEqual(stopped, []);
   assert.deepEqual(logged.slice(0, 1), ["[backend] ready"]);
   assert.equal(logged.length, 3);
+});
+
+// The budget itself. The deadline is there for a backend that will
+// never answer, not for one that is slow — and a first start can be
+// slow: it creates the database and runs every migration, each a
+// commit the disk has to confirm. Measured on a hard disk with a fresh
+// profile, that start took about a second on an idle disk and about
+// 24 s while an 8 GB write was in progress. A budget shorter than
+// that turns a busy disk into "could not start".
+
+/** Lets the promise callbacks run; setImmediate is not mocked. */
+const settled = () => new Promise((resolve) => setImmediate(resolve));
+
+test("a backend a minute and a half into a slow first start is late, not failed", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const child = fakeChild();
+  const stopped = [];
+  let outcome = "waiting";
+  const got = awaitHandshake(child, {
+    timeoutMs: HANDSHAKE_TIMEOUT_MS,
+    stopChild: (c) => stopped.push(c),
+  });
+  got.then(
+    () => (outcome = "up"),
+    () => (outcome = "failed"),
+  );
+  t.mock.timers.tick(90_000);
+  await settled();
+  assert.equal(outcome, "waiting");
+  assert.deepEqual(stopped, []);
+  say(child, "ANI_GUI_LISTENING http://127.0.0.1:4242\nANI_GUI_INTERNAL_SECRET s\n");
+  assert.deepEqual(await got, { apiBase: "http://127.0.0.1:4242", internalSecret: "s" });
+});
+
+test("a backend that never answers still ends the boot, at the end of the budget", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const child = fakeChild();
+  const stopped = [];
+  const got = awaitHandshake(child, {
+    timeoutMs: HANDSHAKE_TIMEOUT_MS,
+    stopChild: (c) => stopped.push(c),
+  });
+  t.mock.timers.tick(HANDSHAKE_TIMEOUT_MS);
+  await assert.rejects(got, /did not complete its handshake/);
+  assert.deepEqual(stopped, [child]);
 });

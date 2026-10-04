@@ -4,6 +4,10 @@
 // spawnBackend so its failure paths can be exercised without spawning
 // anything.
 
+// How long the boot waits for the handshake. As main.js has it:
+// fifteen seconds.
+const HANDSHAKE_TIMEOUT_MS = 15_000;
+
 /**
  * Resolve with `{ apiBase, internalSecret }` once the backend has
  * printed both handshake lines (in either order); reject when it
@@ -80,4 +84,4 @@ function awaitHandshake(child, { timeoutMs, stopChild, log = () => {} }) {
   });
 }
 
-module.exports = { awaitHandshake };
+module.exports = { HANDSHAKE_TIMEOUT_MS, awaitHandshake };
