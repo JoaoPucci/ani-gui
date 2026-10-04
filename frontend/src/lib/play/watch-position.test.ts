@@ -11,6 +11,7 @@ import {
 	savePosition,
 	type PositionStorage
 } from './watch-position';
+import { recoveryResume } from './resume-after-recovery';
 
 function memory(): PositionStorage & { data: Map<string, string> } {
 	const data = new Map<string, string>();
@@ -85,6 +86,22 @@ describe('watch position', () => {
 		expect(readPosition('42', 3, s)).toBeNull();
 		expect(readPosition('42', 4, s)).toBeNull();
 		expect(readPosition('420', 3, s)).toBe(200);
+	});
+
+	it("forgetting a show's episodes forgets a recovery's pending point for it too", () => {
+		// A recovery that began before the viewer left still holds where
+		// the stream stood; forgotten positions include it.
+		const s = memory();
+		recoveryResume.capture('42', 3, 700);
+		clearShowPositions('42', s);
+		expect(recoveryResume.consume('42', 3)).toBeNull();
+	});
+
+	it("forgetting every episode forgets a recovery's pending point too", () => {
+		const s = memory();
+		recoveryResume.capture('42', 3, 700);
+		clearAllPositions(s);
+		expect(recoveryResume.consume('42', 3)).toBeNull();
 	});
 
 	it('forgets every kept episode', () => {

@@ -193,6 +193,20 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 		expect(forgetPositions).toHaveBeenCalledWith('k-9');
 	});
 
+	test("a remaining unresolved row with no stamped mapping keeps the removed show's positions", async () => {
+		// No mapping is not a different show: the row may well be this
+		// one's, so its show cannot be told.
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), h('bb-1')],
+			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions,
+			kitsuIdOf: async () => null
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+
 	test("a remaining row whose show cannot be told keeps the removed show's positions", async () => {
 		const forgetPositions = vi.fn();
 		await executeKitsuGroupDelete('aa-1', {
