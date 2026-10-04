@@ -253,6 +253,11 @@ async function launchAppWithContinueStubsOnce(
 	// entirely; the goto back to the home URL fires a fresh mount,
 	// and every /api/* it issues now flows through page.route()
 	// because the handler was registered before the bounce.
+	//
+	// On a slow cold launch the bounce can land before the first page
+	// finishes loading. Electron then rejects the app's own loadURL
+	// with ERR_ABORTED, which the app logs and survives (see
+	// lib/startup.cjs); the window and this page stay alive.
 	const homeUrl = page.url();
 	await page.waitForLoadState('networkidle').catch(() => {});
 	await page.goto('about:blank');

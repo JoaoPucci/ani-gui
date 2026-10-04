@@ -1,11 +1,18 @@
 // Retry harness for the e2e suites' Electron cold launch.
 //
-// The launch dies, rarely, with Playwright's closed-target signature:
-// the first window is torn down underneath the about:blank bounce
-// while a cold app is still settling. That death carries no
-// information about the code under test, so it is the one failure a
-// relaunch may absorb. Everything else — assertions, spawn errors —
-// propagates untouched.
+// The launch died, rarely, with Playwright's closed-target signature:
+// the first window torn down underneath the about:blank bounce on a
+// cold launch. The known cause was the app's: the bounce superseded a
+// first page that had not finished loading, the boot treated the
+// rejected loadURL as fatal and exited, and while the orphaned
+// backend ran, this retry's close of the exited app never returned.
+// lib/startup.cjs now keeps that window and stops the backend on a
+// failed boot.
+//
+// The retry stays as a net for a death that carries no information
+// about the code under test: it is the one failure a relaunch may
+// absorb. Everything else — assertions, spawn errors — propagates
+// untouched.
 
 /** Whether an error is Playwright's closed-target signature. */
 function isClosedTargetError(err) {
