@@ -190,3 +190,7 @@ pub(crate) fn write_history(state: &AppState, native: &NativeResolved, requested
         );
     }
 }
+
+#[cfg(test)]
+#[path = "play_native_record_test.rs"]
+mod tests;
