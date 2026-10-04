@@ -45,7 +45,11 @@ ani-gui keeps the following on your computer only:
   show's positions stay until the history is cleared or they are
   pushed out by newer ones. They also stay while another history row
   for the same show remains — it is still a Continue card — or while
-  a remaining row's show cannot be told.
+  a remaining row's show cannot be told (its match has not resolved
+  and it has no readable show id → Kitsu id mapping). Forgetting a
+  show's positions, or all of them, also forgets where a stream that
+  was recovering from a dropped connection stood, which the app keeps
+  in memory until that episode is opened again.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
