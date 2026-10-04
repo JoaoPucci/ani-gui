@@ -141,6 +141,44 @@ test("a window that cannot be created stops the backend before the app exits", a
   assert.deepEqual(events, ["spawn", "stop", "exit:1"]);
 });
 
+test("a failed boot stops the backend, says why, and only then exits", async () => {
+  const events = [];
+  const failure = new Error("no display");
+  await bootApp({
+    spawnBackend: async () => ({ apiBase: "http://127.0.0.1:1", internalSecret: "s" }),
+    createWindow: async () => {
+      throw failure;
+    },
+    stopBackend: () => events.push("stop"),
+    // Slow on purpose: the exit has to wait for the report, which is
+    // a dialog somebody may be reading.
+    reportFailure: async (err) => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      events.push(err === failure ? "report" : "report of something else");
+    },
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["stop", "report", "exit:1"]);
+});
+
+test("a report that fails does not keep a failed boot from exiting", async () => {
+  const events = [];
+  await bootApp({
+    spawnBackend: async () => {
+      throw new Error("backend exited before handshake");
+    },
+    createWindow: async () => {},
+    stopBackend: () => events.push("stop"),
+    reportFailure: async () => {
+      throw new Error("no display to report on");
+    },
+    exit: (code) => events.push(`exit:${code}`),
+    logError: () => {},
+  });
+  assert.deepEqual(events, ["stop", "exit:1"]);
+});
+
 test("a backend that never starts still exits with a failure", async () => {
   const events = [];
   await bootApp({
