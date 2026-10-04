@@ -41,20 +41,29 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         // with the row still there to retry, rather than reporting a
         // failure for a row already gone. The offsets last, once the
         // row is gone, so no failure leaves a row without its offset.
-        let claimed = super::history_forget_skips::claimed_ids(state, &entries)?;
-        let mut skip_ids = Vec::new();
+        // The Kitsu ids the remaining rows claim, and the ones this row
+        // was known by: what the rows and the cache say, and the pages
+        // this process saw each played from — a row records its page
+        // only once its watch's verdict is in.
+        let mut claimed = super::history_forget_skips::claimed_ids(state, &entries)?;
+        for entry in &entries {
+            claimed.extend(held.pages_of(&entry.id));
+        }
+        let pages = held.pages_of(id);
+        let mut known_by = Vec::new();
         for (title, recorded) in &removed {
-            skip_ids.extend(super::history_forget::forget_show(
+            known_by.extend(super::history_forget::forget_show(
                 state,
                 id,
                 title,
                 recorded.as_deref(),
+                &pages,
                 &claimed,
             )?);
         }
         held.write(&entries)?;
         super::history_forget::sweep_offsets(state, &[id]);
-        held.removed_show(id, &skip_ids);
+        held.removed_show(id, &known_by);
         Ok(true)
     })
 }

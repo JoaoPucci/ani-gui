@@ -31,7 +31,7 @@ use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id
 /// numbering with the row ([`crate::history::guard`]).
 pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: Asked<'_>) {
     crate::history::guard::hold(&state.history_path, |held| {
-        if !held.show_removed_since(asked.begun, &native.slug) {
+        if !held.removed_since(asked, &native.slug) {
             put_numbering(state, native);
         }
     });
@@ -141,16 +141,13 @@ impl Watch {
 /// row — it writes only if the show was not removed since the row went
 /// down ([`crate::history::guard`]): a removal wins over a watch begun
 /// before it.
-pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
-    let now = crate::history::guard::epoch(&state.history_path);
-    record_watch_requested_at(state, watch, kitsu_id, now).await;
-}
-
-/// [`record_watch`] for a watch whose request began at `requested`. A
-/// handoff resolves its stream before its player starts, and the show
-/// can be removed from history while it resolves: the player still
-/// opens, and the watch is not recorded — the removal stands, as it
-/// does over everything else a play begun before it would write.
+///
+/// `requested` is the moment the watch's request began. A handoff
+/// resolves its stream before its player starts, and the show can be
+/// removed from history while it resolves, under the key the resolve
+/// lands on or another: the player still opens, and the watch is not
+/// recorded — the removal stands, as it does over everything else a
+/// play begun before it would write.
 pub(crate) async fn record_watch_requested_at(
     state: &AppState,
     watch: &Watch,
@@ -178,10 +175,17 @@ pub(crate) async fn record_watch_requested_at(
     // step with the history held: a removal runs wholly before it, and
     // the watch is new, or wholly after it, and takes the row and the
     // stamp together.
+    let asked = Asked {
+        begun: requested,
+        page: given,
+    };
     let recorded = crate::history::guard::hold(&state.history_path, |held| {
-        if held.show_removed_since(requested, &watch.show_id) {
+        if held.removed_since(asked, &watch.show_id) {
             return Ok(None);
         }
+        // The row records the page only once the guard accepts it; a
+        // removal before then still has to know it.
+        held.played_from(&watch.show_id, given);
         held.upsert(entry)?;
         stamp_watched_at(state, &watch.show_id, now);
         Ok::<_, crate::error::AniError>(Some(held.epoch()))
@@ -244,9 +248,10 @@ pub(crate) fn write_history(
         kitsu_id: None,
     };
     let wrote = crate::history::guard::hold(&state.history_path, |held| {
-        if held.show_removed_since(asked.begun, &native.slug) {
+        if held.removed_since(asked, &native.slug) {
             return Ok(());
         }
+        held.played_from(&native.slug, asked.page);
         held.upsert(entry)
     });
     if let Err(e) = wrote {
@@ -257,6 +262,15 @@ pub(crate) fn write_history(
             "history write failed after native resolve",
         );
     }
+}
+
+/// [`record_watch_requested_at`] for a watch whose request begins as it
+/// is recorded — the form the tests record with. Every production
+/// caller takes its request's moment first.
+#[cfg(test)]
+pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Option<&str>) {
+    let now = crate::history::guard::epoch(&state.history_path);
+    record_watch_requested_at(state, watch, kitsu_id, now).await;
 }
 
 #[cfg(test)]

@@ -245,7 +245,7 @@ pub(crate) fn store(
     value: &CachedResolution,
 ) {
     crate::history::guard::hold(&state.history_path, |held| {
-        if !held.show_removed_since(asked.begun, &value.show_id) {
+        if !held.removed_since(asked, &value.show_id) {
             put(&state.cache_pool, key, value);
         }
     });

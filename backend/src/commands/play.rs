@@ -152,9 +152,10 @@ fn write_history_on_cache_hit(
     // A show removed from history while the cached stream was being
     // checked gets no row from this play.
     let wrote = crate::history::guard::hold(&state.history_path, |held| {
-        if held.show_removed_since(asked.begun, &cached.show_id) {
+        if held.removed_since(asked, &cached.show_id) {
             return Ok(());
         }
+        held.played_from(&cached.show_id, asked.page);
         held.upsert(entry)
     });
     if let Err(e) = wrote {

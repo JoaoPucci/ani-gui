@@ -38,11 +38,13 @@ const HISTORY_PREFIXES: [&str; 5] = [
 ];
 
 /// Delete what the row for `id`, titled `title`, recording `recorded`
-/// as the show played, left in the cache. Skip times cached under a
-/// Kitsu id in `claimed` — one a remaining row records, maps to or
-/// matched by title — stay with that row's show. The offsets go after
-/// the row ([`sweep_offsets`]). Returns the Kitsu ids whose skip times
-/// went, for the removal's record.
+/// as the show played and seen played from `pages`, left in the cache.
+/// Skip times cached under a Kitsu id in `claimed` — one a remaining
+/// row records, maps to, matched by title or was seen played from —
+/// stay with that row's show. The offsets go after the row
+/// ([`sweep_offsets`]). Returns the Kitsu ids the show was known by
+/// that no remaining row claims — the ones whose skip times went — for
+/// the removal's record.
 ///
 /// # Errors
 /// Cache write failures propagate.
@@ -51,14 +53,17 @@ pub(crate) fn forget_show(
     id: &str,
     title: &str,
     recorded: Option<&str>,
+    pages: &[String],
     claimed: &std::collections::HashSet<String>,
 ) -> Result<Vec<String>> {
     let pool = &state.cache_pool;
     meta_cache_delete(pool, &watched_at_key(id))?;
     // Every Kitsu id the player could have asked with for this show:
-    // the one the row records, and for an older row the ones its
-    // mapping and title match named.
+    // the one the row records, the pages this process saw it played
+    // from, and for an older row the ones its mapping and title match
+    // named.
     let mut kitsu_ids: Vec<String> = recorded.into_iter().map(str::to_owned).collect();
+    kitsu_ids.extend(pages.iter().cloned());
     kitsu_ids.extend(forget_mappings(state, id)?);
     kitsu_ids.extend(super::history_forget_titles::forget_title_matches(
         state, id, title,

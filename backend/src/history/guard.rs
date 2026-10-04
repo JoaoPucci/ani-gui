@@ -15,15 +15,28 @@
 //! history has a moment that every removal moves on. Work takes the
 //! moment it began ([`epoch`], [`Held::epoch`]) and, holding the file
 //! again for a later write, asks whether the show was removed since
-//! ([`Held::show_removed_since`]; [`Held::kitsu_removed_since`] for
-//! skip times, which are keyed by Kitsu id). A removal wins over work
-//! begun before it; work begun after it is new.
+//! ([`Held::show_removed_since`]). A removal wins over work begun
+//! before it; work begun after it is new.
+//!
+//! A show is removed under its row's key, and not everything that
+//! would write of it has that key: skip times are cached under the
+//! Kitsu id of the page they were fetched from, and a play resolves
+//! under the key of whichever provider answers, which is another's
+//! when the walk fails over. So a removal also records the Kitsu ids
+//! the show was known by — the one its row recorded, the ones its
+//! mapping and title match named, and the pages this process saw it
+//! played from ([`Held::played_from`]), the row itself recording its
+//! page only once the watch's verdict is in — less any a remaining row
+//! still claims. A play names the page it was asked from ([`Asked`])
+//! and loses to a removal of a show known by it
+//! ([`Held::removed_since`]); a skip-time lookup asks by its id
+//! ([`Held::kitsu_removed_since`]).
 //!
 //! Both belong to this process. Another instance of the app writing
 //! the same file does not take turns with this one, and its pending
 //! work is not known here.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
@@ -65,9 +78,13 @@ struct Removals {
     cleared: u64,
     /// The moment each show was last removed, since the last clear.
     shows: HashMap<String, u64>,
-    /// The moment the skip times cached under each Kitsu id were last
-    /// removed with a show, since the last clear.
+    /// The moment a show known by each Kitsu id was last removed, with
+    /// no remaining row still claiming the id, since the last clear.
     kitsu: HashMap<String, u64>,
+    /// The Kitsu pages each show in the history was played from, as
+    /// far as this process saw. A row records its page only once the
+    /// watch's verdict is in, and a removal before that has to know it.
+    pages: HashMap<String, BTreeSet<String>>,
 }
 
 /// Every history this process has held, by its file. One lock for all
@@ -145,12 +162,35 @@ impl Held<'_> {
         self.write(&entries)
     }
 
-    /// Record that the show `id` was removed from the history, and
-    /// with it the skip times cached under each of `kitsu_ids`.
+    /// Note that the show `id` was played from the Kitsu page `page`.
+    pub fn played_from(&mut self, id: &str, page: Option<&str>) {
+        if let Some(page) = page {
+            self.removals
+                .pages
+                .entry(id.to_owned())
+                .or_default()
+                .insert(page.to_owned());
+        }
+    }
+
+    /// The Kitsu pages the show `id` was played from, as far as this
+    /// process saw.
+    #[must_use]
+    pub fn pages_of(&self, id: &str) -> Vec<String> {
+        self.removals
+            .pages
+            .get(id)
+            .map(|pages| pages.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Record that the show `id` was removed from the history, known
+    /// by each of `kitsu_ids` that no remaining row claims.
     pub fn removed_show(&mut self, id: &str, kitsu_ids: &[String]) {
         self.removals.moment += 1;
         let now = self.removals.moment;
         self.removals.shows.insert(id.to_owned(), now);
+        self.removals.pages.remove(id);
         for kitsu_id in kitsu_ids {
             self.removals.kitsu.insert(kitsu_id.clone(), now);
         }
@@ -163,6 +203,7 @@ impl Held<'_> {
         // The clear stands for everything removed before it.
         self.removals.shows.clear();
         self.removals.kitsu.clear();
+        self.removals.pages.clear();
     }
 
     /// Whether the show `id` was removed, or the history cleared,
@@ -173,8 +214,20 @@ impl Held<'_> {
         removed.max(self.removals.cleared) > begun.0
     }
 
-    /// Whether the skip times cached under `kitsu_id` were removed
-    /// with a show, or the history cleared, since `begun`.
+    /// Whether what the play `asked` for would write under the show
+    /// key `id` was removed since the play began: the key's own row,
+    /// or — the play having resolved under another key than the row
+    /// had — the show known by the page it was asked from.
+    #[must_use]
+    pub fn removed_since(&self, asked: Asked<'_>, id: &str) -> bool {
+        self.show_removed_since(asked.begun, id)
+            || asked
+                .page
+                .is_some_and(|page| self.kitsu_removed_since(asked.begun, page))
+    }
+
+    /// Whether a show known by `kitsu_id` was removed with no remaining
+    /// row claiming the id, or the history cleared, since `begun`.
     #[must_use]
     pub fn kitsu_removed_since(&self, begun: Epoch, kitsu_id: &str) -> bool {
         let removed = self.removals.kitsu.get(kitsu_id).copied().unwrap_or(0);

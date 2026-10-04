@@ -633,6 +633,10 @@ async fn post_play_mark_watched(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> StatusCode {
+    // The moment this watch is asked to be recorded, taken before the
+    // resolution row is read: a removal of the show in between took
+    // that row, and the watch read from it is not recorded after it.
+    let begun = crate::history::guard::epoch(&state.history_path);
     let quality = args.quality.as_deref().unwrap_or("best");
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
@@ -670,10 +674,11 @@ async fn post_play_mark_watched(
             // display number translated through the stamp only for a
             // row from before the slot was cached.
             let watch = crate::commands::play_cache::cached_watch(&state, &cached, &args.episode);
-            crate::commands::play_native_record::record_watch(
+            crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
                 args.kitsu_id.as_deref(),
+                begun,
             )
             .await;
         }
