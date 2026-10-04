@@ -9,7 +9,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { backendSpawnOptions, launchBackend, stoppable } = require("./backend-spawn.cjs");
+const { EventEmitter } = require("node:events");
+const spawnModule = require("./backend-spawn.cjs");
+
+const { backendSpawnOptions, launchBackend, stoppable } = spawnModule;
 
 for (const platform of ["linux", "win32", "darwin"]) {
   test(`the backend gets a parent pipe on stdin and the flag to watch it (${platform})`, () => {
@@ -81,15 +84,13 @@ test("a failed handshake leaves the backend tracked for the boot's stop", async 
   assert.deepEqual(launch.tracked, [child]);
 });
 
-// The tree kill acts on ids the OS hands out again. On Windows it is
-// `taskkill /T` on the backend's pid, which is free once the backend
-// has exited and may by then be someone else's, so an exited backend
-// is left alone. Elsewhere it signals the backend's process group, and
-// a group id is not reused while anyone is left in the group — the
-// transports the backend ran in it among them — while an empty group
-// just answers ESRCH. So there the group is signalled whatever became
-// of the backend: skipping it would leave a crashed backend's
-// transports running past the quit.
+// The tree kill acts on ids the OS hands out again: on Windows the
+// backend's pid (taskkill /T), elsewhere its process group's id, which
+// is the backend's pid too. Either is free for reuse once the backend
+// has exited and — for a group — everything left in it has as well,
+// which can be long before the app quits. So the kill must never act on
+// an exited backend's ids later, on any platform. What the backend
+// left behind in its group is stopped at its exit instead (below).
 
 const running = { pid: 4242, killed: false, exitCode: null, signalCode: null };
 
@@ -103,16 +104,59 @@ for (const platform of ["linux", "darwin", "win32"]) {
     assert.equal(stoppable({ ...running, pid: undefined }, platform), false);
     assert.equal(stoppable({ ...running, killed: true }, platform), false);
   });
+
+  test(`a backend that has exited is left alone: its ids may be someone else's (${platform})`, () => {
+    assert.equal(stoppable({ ...running, exitCode: 1 }, platform), false);
+    assert.equal(stoppable({ ...running, signalCode: "SIGKILL" }, platform), false);
+  });
 }
 
-test("on Windows a backend that has exited is left alone: its pid may be someone else's", () => {
-  assert.equal(stoppable({ ...running, exitCode: 1 }, "win32"), false);
-  assert.equal(stoppable({ ...running, signalCode: "SIGKILL" }, "win32"), false);
+/** A child that exits the way node reports it: the code is set, then 'exit'. */
+function fakeChild(pid) {
+  const child = new EventEmitter();
+  Object.assign(child, { pid, killed: false, exitCode: null, signalCode: null });
+  child.exit = (code, signal) => {
+    child.exitCode = code;
+    child.signalCode = signal;
+    child.emit("exit", code, signal);
+  };
+  return child;
+}
+
+// At the moment the backend's exit is reported its group id is still
+// safe to signal: nothing outside the group can hold that id while a
+// member is left in it, and if none is, the signal answers ESRCH. That
+// is when the transports a crashed backend left in its group are
+// stopped — once; afterwards the id is let go.
+
+test("a backend's exit stops its group once, there and then (POSIX)", () => {
+  assert.equal(typeof spawnModule.reapOnExit, "function", "reapOnExit exists");
+  for (const platform of ["linux", "darwin"]) {
+    const signalled = [];
+    const child = fakeChild(4242);
+    spawnModule.reapOnExit(child, { platform, signalGroup: (pid) => signalled.push(pid) });
+    assert.deepEqual(signalled, [], `nothing before the exit (${platform})`);
+    child.exit(null, "SIGSEGV");
+    assert.deepEqual(signalled, [4242], platform);
+    assert.equal(stoppable(child, platform), false, `the quit leaves it alone (${platform})`);
+  }
 });
 
-test("elsewhere the group of a backend that has exited is still signalled", () => {
-  for (const platform of ["linux", "darwin"]) {
-    assert.equal(stoppable({ ...running, exitCode: 1 }, platform), true, platform);
-    assert.equal(stoppable({ ...running, signalCode: "SIGKILL" }, platform), true, platform);
-  }
+test("on Windows a backend's exit signals nothing: there is no group", () => {
+  assert.equal(typeof spawnModule.reapOnExit, "function", "reapOnExit exists");
+  const signalled = [];
+  const child = fakeChild(4242);
+  spawnModule.reapOnExit(child, { platform: "win32", signalGroup: (pid) => signalled.push(pid) });
+  child.exit(1, null);
+  assert.deepEqual(signalled, []);
+  assert.equal(stoppable(child, "win32"), false);
+});
+
+test("a spawn that never ran has no group to stop", () => {
+  assert.equal(typeof spawnModule.reapOnExit, "function", "reapOnExit exists");
+  const signalled = [];
+  const child = fakeChild(undefined);
+  spawnModule.reapOnExit(child, { platform: "linux", signalGroup: (pid) => signalled.push(pid) });
+  child.exit(null, null);
+  assert.deepEqual(signalled, []);
 });
