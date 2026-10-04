@@ -48,7 +48,7 @@
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
 	import { toastStore } from '$lib/toasts/store.svelte';
-	import { planUnairedClick, unairedRecheck } from '$lib/detail/unaired-recheck';
+	import { runUnairedClick } from '$lib/detail/unaired-click';
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { filterAvailable } from '$lib/availability/filter';
@@ -276,48 +276,42 @@
 	/**
 	 * Tile click for an episode the schedule calls unaired: refresh the
 	 * schedule and the episode's page past their caches, then treat the
-	 * episode as the fresh answer says ($lib/detail/unaired-recheck).
+	 * episode as the fresh answer says ($lib/detail/unaired-click).
 	 */
 	async function onUnairedEpisode(n: number) {
-		const showId = id;
-		if (actionBusy || !showId) return;
-		const caption = m.detail_ep_unaired_recheck_busy();
-		actionBusy = true;
-		actionProgress = caption;
-		const kitsuPage = Math.ceil(n / KITSU_PAGE_SIZE);
-		const outcome = await unairedRecheck.check(
-			{ show: showId, page: kitsuPage },
-			{
-				// Fetch only: the page may be another show's by the time this
-				// lands, and `apply` runs only if it is still this one's.
-				refresh: () =>
-					Promise.all([
-						airingGet(showId, { refresh: true }),
-						kitsuEpisodes(showId, kitsuPage, { refresh: true })
-					]),
-				apply: ([schedule, eps]) => {
-					airingSchedule = schedule;
-					kitsuPageCache.set(kitsuPage, eps);
-				},
-				isAired: () => !epAirState(n, airing).unaired,
-				currentContext: () => (gone ? GONE : `${visit}:${showId}`),
-				now: () => Date.now()
-			}
-		);
-		const plan = planUnairedClick(outcome, beyondPlayable(n, playableEpisodeCount));
-		// Superseded: the page is another show's now. Let go of the block
-		// only while it is still the one this check raised — its caption
-		// is how it is told apart — so an action the new show started
-		// keeps its own.
-		if (plan === 'none' && actionProgress !== caption) return;
-		actionBusy = false;
-		actionProgress = null;
-		if (plan === 'play') onPickEpisode(n);
-		else if (plan === 'recheck-provider') onRecheckEpisode(n);
-		else if (plan === 'still-unaired')
-			toastStore.push({ kind: 'info', message: m.detail_ep_unaired_still() });
-		else if (plan === 'failed')
-			toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() });
+		await runUnairedClick({
+			show: id ?? null,
+			episode: n,
+			kitsuPageSize: KITSU_PAGE_SIZE,
+			caption: m.detail_ep_unaired_recheck_busy(),
+			isBusy: () => actionBusy,
+			hold: (caption) => {
+				actionBusy = true;
+				actionProgress = caption;
+			},
+			heldCaption: () => actionProgress,
+			release: () => {
+				actionBusy = false;
+				actionProgress = null;
+			},
+			fetch: (show, page) =>
+				Promise.all([
+					airingGet(show, { refresh: true }),
+					kitsuEpisodes(show, page, { refresh: true })
+				]),
+			apply: ([schedule, eps], page) => {
+				airingSchedule = schedule;
+				kitsuPageCache.set(page, eps);
+			},
+			isAired: () => !epAirState(n, airing).unaired,
+			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
+			currentContext: () => (gone ? GONE : `${visit}:${id ?? ''}`),
+			play: () => onPickEpisode(n),
+			recheckProvider: () => onRecheckEpisode(n),
+			notifyStillUnaired: () =>
+				toastStore.push({ kind: 'info', message: m.detail_ep_unaired_still() }),
+			notifyFailed: () => toastStore.push({ kind: 'error', message: m.detail_ep_recheck_failed() })
+		});
 	}
 
 	/** Tile click for an episode the cap is currently hiding. */
