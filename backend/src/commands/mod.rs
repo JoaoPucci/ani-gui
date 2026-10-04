@@ -51,6 +51,7 @@ pub mod play_native_episode;
 pub mod play_native_format;
 pub mod play_native_numbering;
 pub mod play_native_outcome;
+mod play_native_part_title;
 pub(crate) mod play_native_record;
 pub mod play_native_resolve;
 mod play_native_split;
