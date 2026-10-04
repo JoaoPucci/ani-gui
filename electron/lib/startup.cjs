@@ -24,11 +24,14 @@
  * judge.
  */
 async function loadFirstPage(win, url, logError) {
+  // Taken once: a window closed mid-load is destroyed, and reading
+  // `webContents` off a destroyed window throws.
+  const contents = win.webContents;
   let status = null;
   const onNavigate = (_event, _url, httpResponseCode) => {
     status = httpResponseCode;
   };
-  win.webContents.once("did-navigate", onNavigate);
+  contents.once("did-navigate", onNavigate);
   try {
     await win.loadURL(url);
   } catch (err) {
@@ -36,7 +39,7 @@ async function loadFirstPage(win, url, logError) {
     logError("[main] first page superseded before it finished loading:", err);
     return;
   } finally {
-    win.webContents.removeListener("did-navigate", onNavigate);
+    contents.removeListener("did-navigate", onNavigate);
   }
   if (typeof status === "number" && status >= 400) {
     throw new Error(`first page answered ${status} (${url})`);
@@ -69,9 +72,9 @@ function firstShowTimeoutMs({ isDev }) {
 
 /**
  * Resolve when the window reaches `ready-to-show`; reject when its
- * renderer dies first, or when it has not got there within
- * `timeoutMs` — unless that is `null`, which sets no deadline (see
- * firstShowTimeoutMs).
+ * renderer dies first, when the window is closed first, or when it
+ * has not got there within `timeoutMs` — unless that is `null` or
+ * left out, which sets no deadline (see firstShowTimeoutMs).
  *
  * The window is on screen well before `ready-to-show`: it is created
  * with `show: false`, but main.js maximizes it straight away, and
@@ -85,14 +88,19 @@ function firstShowTimeoutMs({ isDev }) {
  * not a boot failure.
  */
 function awaitFirstShow(win, { timeoutMs }) {
+  // Taken once, for the same reason as in loadFirstPage.
+  const contents = win.webContents;
   return new Promise((resolve, reject) => {
     const settle = (fn, value) => {
       clearTimeout(timer);
       win.removeListener("ready-to-show", onShow);
-      win.webContents.removeListener("render-process-gone", onGone);
+      win.removeListener("closed", onClosed);
+      contents.removeListener("render-process-gone", onGone);
       fn(value);
     };
     const onShow = () => settle(resolve);
+    const onClosed = () =>
+      settle(reject, new Error("window closed before the first show"));
     const onGone = (_event, details) =>
       settle(
         reject,
@@ -101,7 +109,7 @@ function awaitFirstShow(win, { timeoutMs }) {
         ),
       );
     const timer =
-      timeoutMs === null
+      timeoutMs == null
         ? undefined
         : setTimeout(
             () =>
@@ -114,7 +122,8 @@ function awaitFirstShow(win, { timeoutMs }) {
             timeoutMs,
           );
     win.once("ready-to-show", onShow);
-    win.webContents.on("render-process-gone", onGone);
+    win.once("closed", onClosed);
+    contents.on("render-process-gone", onGone);
   });
 }
 
@@ -128,8 +137,16 @@ function awaitFirstShow(win, { timeoutMs }) {
  * so once the open has failed, the show is off: the boot's report
  * hides the failed window, and a first paint arriving afterwards must
  * not put it back on screen.
+ *
+ * A window that is gone is not a failure. The window is on screen
+ * while it loads, and something that closes it then — the user,
+ * through the window manager, on a boot taking its time — makes the
+ * load reject like a crashed renderer's (ERR_FAILED) while the app is
+ * already quitting over its last window. That is a quit, and the open
+ * resolves with nothing to report.
  */
 async function openFirstPage(win, url, { timeoutMs, logError }) {
+  const contents = win.webContents;
   let failed = false;
   const shown = awaitFirstShow(win, { timeoutMs }).then(() => {
     if (!failed) win.show();
@@ -138,6 +155,9 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
     await Promise.all([loadFirstPage(win, url, logError), shown]);
   } catch (err) {
     failed = true;
+    // Either part may go first: close() destroys the contents and
+    // then the window, destroy() the other way round.
+    if (win.isDestroyed() || contents.isDestroyed()) return;
     throw err;
   }
 }
