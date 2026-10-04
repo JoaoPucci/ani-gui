@@ -570,12 +570,14 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
 ///
 /// Returns whether the guard accepted the pairing, so the caller can
 /// settle the history row's id on the same verdict rather than asking
-/// the guard again.
+/// the guard again. `_begun` is the moment the caller's recording
+/// began ([`crate::history::guard`]).
 pub async fn try_put_allmanga_kitsu_mapping(
     state: &AppState,
     show_id: &str,
     show_title: &str,
     kitsu_id: &str,
+    _begun: crate::history::guard::Epoch,
 ) -> bool {
     // Every provider's ids are guarded. The resolve carries no
     // identity the guard could defer to — no Kitsu or MyAnimeList

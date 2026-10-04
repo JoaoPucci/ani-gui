@@ -3,6 +3,7 @@
 
 use super::Watch;
 use crate::app::AppState;
+use crate::history::guard::Epoch;
 
 /// The given id when the cache can already say the cour guard accepts
 /// pairing it with the watch, so it can go on with the row's own
@@ -23,7 +24,7 @@ pub(super) fn judged_by_cache(
 
 /// Put an id the guard accepted on the row, once the guard has read
 /// Kitsu for it. An id that is not digits is not recorded.
-pub(super) fn add_accepted_id(state: &AppState, watch: &Watch, accepted: &str) {
+pub(super) fn add_accepted_id(state: &AppState, watch: &Watch, accepted: &str, _begun: Epoch) {
     let Some(id) = crate::history::kitsu_id_of(accepted) else {
         return;
     };
@@ -59,6 +60,7 @@ pub(super) async fn settle_refused_id(
     watch: &Watch,
     refused: &str,
     previous: Option<String>,
+    _begun: Epoch,
 ) {
     let keep = match previous {
         Some(p)

@@ -118,7 +118,12 @@ pub struct PlayArgs {
 /// (the page-mount loop fires concurrently and whichever finishes
 /// last would otherwise overwrite the user's real click) and on
 /// legacy rows missing show_id.
-fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &CachedResolution) {
+fn write_history_on_cache_hit(
+    state: &AppState,
+    args: &PlayArgs,
+    cached: &CachedResolution,
+    _begun: crate::history::guard::Epoch,
+) {
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
@@ -225,6 +230,9 @@ pub async fn play_with_progress<F>(
 where
     F: FnMut(ProgressLine) + Send,
 {
+    // The moment this play began, for the writes it makes once the
+    // stream is resolved.
+    let begun = crate::history::guard::epoch(&state.history_path);
     let quality = args.quality.as_deref().unwrap_or("best");
 
     // Resolution caching is the user's call (Config::cache_resolutions,
@@ -266,7 +274,7 @@ where
                     upstream = cached.upstream_url.as_str(),
                     "play: cache hit (HEAD ok)",
                 );
-                write_history_on_cache_hit(state, args, &cached);
+                write_history_on_cache_hit(state, args, &cached, begun);
                 crate::commands::play_cache::stamp_availability_on_cache_hit(
                     state,
                     args,
@@ -365,10 +373,10 @@ where
         &native.extra_tags,
     )
     .await;
-    crate::commands::play_native_record::stamp_numbering(state, &native);
+    crate::commands::play_native_record::stamp_numbering(state, &native, begun);
     // Prefetches stay out of the user's history exactly as before.
     if !args.prefetch {
-        crate::commands::play_native_record::write_history(state, &native, &args.episode);
+        crate::commands::play_native_record::write_history(state, &native, &args.episode, begun);
     }
 
     let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {
@@ -404,7 +412,7 @@ where
     // numbering slot this resolve stamped) — only the REPLAY reads
     // are the user's cache_resolutions call. Every fresh resolve
     // overwriting the row also keeps that metadata current.
-    play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
+    play_resolution_cache::store(state, begun, &cache_key, &cached_resolution);
 
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
@@ -1012,7 +1020,12 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
         };
-        write_history_on_cache_hit(&state, &args, &cached);
+        write_history_on_cache_hit(
+            &state,
+            &args,
+            &cached,
+            crate::history::guard::epoch(&state.history_path),
+        );
         let rows = crate::history::read_all(&state.history_path).expect("rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].ep_no, "41", "provider numbering, not Kitsu's");
@@ -1399,7 +1412,12 @@ pub(crate) mod tests {
         cached.show_id = "recap-show-7".into();
         cached.show_title = "Recap Show".into();
         cached.resolved_slot = Some(4);
-        write_history_on_cache_hit(&state, &args, &cached);
+        write_history_on_cache_hit(
+            &state,
+            &args,
+            &cached,
+            crate::history::guard::epoch(&state.history_path),
+        );
         let body = std::fs::read_to_string(&state.history_path).unwrap_or_default();
         assert!(
             body.contains("\t4\t") || body.starts_with("4\t"),

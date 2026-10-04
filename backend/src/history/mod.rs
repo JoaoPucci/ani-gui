@@ -49,6 +49,8 @@
 //!
 //! Path resolution lives in [`crate::config::paths::gui_history`].
 
+pub mod guard;
+
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;

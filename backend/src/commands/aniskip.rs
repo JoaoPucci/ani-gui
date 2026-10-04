@@ -37,6 +37,8 @@ pub async fn aniskip_get(
     episode: &str,
     episode_length: f32,
 ) -> Result<Vec<SkipInterval>> {
+    // The moment this lookup began, for the row it caches at the end.
+    let begun = crate::history::guard::epoch(&state.history_path);
     // Bridge kitsu_id → mal_id. No mapping = aniskip can't index
     // it; return empty so the player skips rendering the button.
     let mal_id = match state.kitsu.mal_id_for_kitsu_id(kitsu_id).await {
@@ -62,10 +64,23 @@ pub async fn aniskip_get(
     )
     .await?;
 
-    if let Ok(body) = serde_json::to_string(&intervals) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ANISKIP_TTL_SECS);
-    }
+    store_skip_times(state, begun, kitsu_id, &key, &intervals);
     Ok(intervals)
+}
+
+/// Cache the skip times a lookup begun at `_begun` fetched for
+/// `_kitsu_id`. A row that cannot be serialized or written is skipped:
+/// the next lookup fetches again.
+fn store_skip_times(
+    state: &AppState,
+    _begun: crate::history::guard::Epoch,
+    _kitsu_id: &str,
+    key: &str,
+    intervals: &[SkipInterval],
+) {
+    if let Ok(body) = serde_json::to_string(intervals) {
+        let _ = meta_cache_put(&state.cache_pool, key, &body, ANISKIP_TTL_SECS);
+    }
 }
 
 /// Cache key for `(mal_id, episode)` lookups, led by the Kitsu id the

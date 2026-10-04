@@ -12,6 +12,11 @@ const SEARCH_FIXTURE: &[u8] = include_bytes!("../../../tests/fixtures/kitsu/sear
 const DETAIL_FIXTURE: &[u8] =
     include_bytes!("../../../tests/fixtures/kitsu/anime_one_piece_detail.json");
 
+/// The moment a recording on `state`'s history begins.
+fn begun(state: &AppState) -> crate::history::guard::Epoch {
+    crate::history::guard::epoch(&state.history_path)
+}
+
 fn state_with_kitsu_at(uri: &str) -> AppState {
     AppState {
         anidb_base: None,
@@ -91,13 +96,27 @@ async fn the_cour_guard_applies_to_every_providers_ids() {
     // Kitsu's One Piece slug carries no part suffix (cour 1); the
     // provider title says Part 2. For anidb that is the poison the
     // guard exists for.
-    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 2", "12").await;
+    try_put_allmanga_kitsu_mapping(
+        &state,
+        "one-piece-69",
+        "One Piece Part 2",
+        "12",
+        begun(&state),
+    )
+    .await;
     assert_eq!(
         allmanga_kitsu_get(&state, "one-piece-69").expect("read"),
         None,
         "an anidb id under a cross-cour title stays unmapped"
     );
-    try_put_allmanga_kitsu_mapping(&state, "hianime:one-piece-100", "One Piece Part 2", "12").await;
+    try_put_allmanga_kitsu_mapping(
+        &state,
+        "hianime:one-piece-100",
+        "One Piece Part 2",
+        "12",
+        begun(&state),
+    )
+    .await;
     assert_eq!(
         allmanga_kitsu_get(&state, "hianime:one-piece-100").expect("read"),
         None,
@@ -140,7 +159,14 @@ async fn a_rejected_write_drops_the_old_mapping_under_the_refused_entry() {
     // The poison the guard was written against, persisted before it
     // existed: a Part 2 title bound to the cour-1 entry.
     allmanga_kitsu_put(&state, "one-piece-69", "12").expect("seed");
-    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 2", "12").await;
+    try_put_allmanga_kitsu_mapping(
+        &state,
+        "one-piece-69",
+        "One Piece Part 2",
+        "12",
+        begun(&state),
+    )
+    .await;
     assert_eq!(
         allmanga_kitsu_get(&state, "one-piece-69").expect("read"),
         None,
@@ -159,7 +185,14 @@ async fn a_rejected_write_drops_an_old_mapping_the_title_disagrees_with() {
     serve_detail(&mock, "13", sibling_cour_detail("13", "one-piece-part-2")).await;
     let state = state_with_kitsu_at(&mock.uri());
     allmanga_kitsu_put(&state, "one-piece-69", "12").expect("seed");
-    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 3", "13").await;
+    try_put_allmanga_kitsu_mapping(
+        &state,
+        "one-piece-69",
+        "One Piece Part 3",
+        "13",
+        begun(&state),
+    )
+    .await;
     assert_eq!(
         allmanga_kitsu_get(&state, "one-piece-69").expect("read"),
         None,
@@ -177,7 +210,14 @@ async fn a_rejected_write_keeps_a_stored_mapping_the_title_agrees_with() {
     serve_detail(&mock, "13", sibling_cour_detail("13", "one-piece-part-2")).await;
     let state = state_with_kitsu_at(&mock.uri());
     allmanga_kitsu_put(&state, "one-piece-69", "13").expect("seed");
-    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 2", "12").await;
+    try_put_allmanga_kitsu_mapping(
+        &state,
+        "one-piece-69",
+        "One Piece Part 2",
+        "12",
+        begun(&state),
+    )
+    .await;
     assert_eq!(
         allmanga_kitsu_get(&state, "one-piece-69")
             .expect("read")
@@ -195,7 +235,14 @@ async fn a_rejected_write_keeps_a_stored_mapping_it_cannot_check() {
     serve_detail(&mock, "12", DETAIL_FIXTURE.to_vec()).await;
     let state = state_with_kitsu_at(&mock.uri());
     allmanga_kitsu_put(&state, "one-piece-69", "404").expect("seed");
-    try_put_allmanga_kitsu_mapping(&state, "one-piece-69", "One Piece Part 2", "12").await;
+    try_put_allmanga_kitsu_mapping(
+        &state,
+        "one-piece-69",
+        "One Piece Part 2",
+        "12",
+        begun(&state),
+    )
+    .await;
     assert_eq!(
         allmanga_kitsu_get(&state, "one-piece-69")
             .expect("read")
@@ -368,6 +415,7 @@ async fn the_cour_guard_reads_an_ordinal_provider_title() {
         "hianime:one-piece-100",
         "One Piece 2nd Season",
         "12",
+        begun(&state),
     )
     .await;
     assert_eq!(

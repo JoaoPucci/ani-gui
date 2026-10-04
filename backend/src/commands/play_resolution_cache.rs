@@ -234,6 +234,16 @@ pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
     let _ = meta_cache_put(pool, key, &body, PLAY_RESOLUTION_TTL.as_secs());
 }
 
+/// Persist the resolution a play begun at `_begun` produced.
+pub(crate) fn store(
+    state: &crate::app::AppState,
+    _begun: crate::history::guard::Epoch,
+    key: &str,
+    value: &CachedResolution,
+) {
+    put(&state.cache_pool, key, value);
+}
+
 /// Drop a single cached resolution. Two callers feed this:
 /// 1. The play flow's HEAD-fail branch — the cached URL is dead so
 ///    the row should not linger if the fresh resolve also fails.

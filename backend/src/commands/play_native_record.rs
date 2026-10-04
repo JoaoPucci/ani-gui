@@ -9,6 +9,7 @@
 
 use crate::app::AppState;
 use crate::commands::play_native_resolve::NativeResolved;
+use crate::history::guard::Epoch;
 
 #[path = "play_native_record_id.rs"]
 mod record_id;
@@ -24,7 +25,7 @@ use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id
 ///
 /// Prefetches stamp as well: their resolve is exactly as
 /// authoritative as a click's.
-pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved) {
+pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, _begun: Epoch) {
     match &native.resolved_tag {
         Some(tag)
             if !crate::commands::play_native_episode::tag_matches(
@@ -124,6 +125,7 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
     if watch.show_id.is_empty() {
         return;
     }
+    let begun = crate::history::guard::epoch(&state.history_path);
     let given = kitsu_id.filter(|k| !k.is_empty());
     let previous = recorded_id(state, &watch.show_id);
     let judged = judged_by_cache(state, watch, given);
@@ -155,12 +157,13 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
         &watch.show_id,
         &watch.title,
         kid,
+        begun,
     )
     .await;
     if !accepted {
-        settle_refused_id(state, watch, kid, previous).await;
+        settle_refused_id(state, watch, kid, previous, begun).await;
     } else if judged.is_none() {
-        add_accepted_id(state, watch, kid);
+        add_accepted_id(state, watch, kid, begun);
     }
 }
 
@@ -173,7 +176,12 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
 ///
 /// `requested` is the episode the caller asked for, for the log line
 /// only; it is the display number and must never reach the file.
-pub(crate) fn write_history(state: &AppState, native: &NativeResolved, requested: &str) {
+pub(crate) fn write_history(
+    state: &AppState,
+    native: &NativeResolved,
+    requested: &str,
+    _begun: Epoch,
+) {
     let entry = crate::history::HistoryEntry {
         ep_no: native.resolved_slot.to_string(),
         id: native.slug.clone(),
