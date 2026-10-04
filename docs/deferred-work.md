@@ -191,6 +191,26 @@ starting it, and delete it when you find it done.
   expiry is worth having, but only alongside — a correctly-worded
   interruption is still an interruption.
 
+- **What a history removal does not reach.** Removing a show from the
+  history, or clearing it, misses six things, each described in
+  [`architecture.md`](./architecture.md#watch-history-and-removing-it):
+  a write from a second running instance of the app; a show the
+  history never linked to a Kitsu id; a resolution row from before
+  rows recorded their page; numbering whose resolution row is already
+  gone (a hand-off that never started, a re-resolve that landed on
+  another key, an evicted row); a row of the same show under another
+  key; and a numbering file that cannot be written, whose failure is
+  logged while the removal succeeds. Each of the middle four is a link
+  nothing stores, so closing one means storing it, and the change that
+  made removal thorough chose not to add new records.
+
+  The second instance has a cheap fix: Electron takes no single-instance
+  lock today (`requestSingleInstanceLock` appears nowhere in
+  `electron/main.js`). Adding one changes how the app launches, so it
+  was put to the maintainer rather than made as a side effect of
+  history work; it was approved, and lands as its own change, which
+  removes the case from this entry and from `architecture.md`.
+
 ## Interface
 
 - **Localised content fetch** — synopsis and episode titles.
