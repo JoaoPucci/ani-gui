@@ -57,24 +57,67 @@ test("a locale the table does not carry falls back to the base one", () => {
   assert.equal(messagesFor(null), messagesFor(shipped.baseLocale));
 });
 
-// The renderer's order: the locale saved in config.toml, then the
-// system's preferred languages — full tag first, then its base
-// language, each compared without regard to case — then the base
-// locale. `es-MX` therefore lands on English, as it does in the
-// renderer: `es` alone is not a locale the app ships.
-test("the configured locale wins when the app ships it", () => {
-  assert.equal(resolveLocale({ configured: "pt-BR", preferred: ["ru-RU"] }), "pt-BR");
-  assert.equal(resolveLocale({ configured: "RU", preferred: [] }), "ru");
+// The renderer's order, which this has to reproduce or the dialog is
+// in a language the interface is not:
+//
+//   1. the locale saved in config.toml, when it is exactly one the app
+//      ships — the renderer compares it as written, so `RU` is not
+//      `ru` and falls through;
+//   2. `navigator.languages`, negotiated by full tag and then by base
+//      language, without regard to case. In Electron that list is the
+//      application locale followed by the system's preferred
+//      languages — and the application locale is Chromium's own pick
+//      among the locales it ships, which maps every Latin American
+//      Spanish to `es-419`. Measured on the packaged app under
+//      LANG=es_MX: app.getLocale() is `es-419`,
+//      getPreferredSystemLanguages() is [`es-MX`, `es`], and
+//      navigator.languages is [`es-419`, `es-MX`, `es`];
+//   3. the base locale.
+test("the configured locale wins when it is exactly one the app ships", () => {
+  assert.equal(
+    resolveLocale({ configured: "pt-BR", appLocale: "ru", preferred: ["ru-RU"] }),
+    "pt-BR",
+  );
 });
 
-test("without a usable configured locale the system's preferences decide", () => {
-  assert.equal(resolveLocale({ configured: null, preferred: ["ru-RU", "en-US"] }), "ru");
-  assert.equal(resolveLocale({ configured: "tlh", preferred: ["es-419"] }), "es-419");
-  assert.equal(resolveLocale({ configured: "", preferred: ["de-DE", "pt-br"] }), "pt-BR");
+test("a configured locale in the wrong case falls through, as it does in the renderer", () => {
+  assert.equal(resolveLocale({ configured: "RU", appLocale: "en-US", preferred: [] }), "en");
+  assert.equal(resolveLocale({ configured: "pt-br", appLocale: "es-419", preferred: [] }), "es-419");
 });
 
-test("a preference the app does not ship falls through to the base locale", () => {
-  assert.equal(resolveLocale({ configured: null, preferred: ["es-MX"] }), "en");
-  assert.equal(resolveLocale({ configured: null, preferred: [] }), "en");
+test("the application locale comes first among the system's languages", () => {
+  // The audience the Spanish bundle exists for: a Mexican, Argentine
+  // or Chilean system, which no entry of the preferred list matches.
+  assert.equal(
+    resolveLocale({ configured: null, appLocale: "es-419", preferred: ["es-MX", "es"] }),
+    "es-419",
+  );
+  assert.equal(
+    resolveLocale({ configured: null, appLocale: "ru", preferred: ["ru-RU", "ru"] }),
+    "ru",
+  );
+});
+
+test("without a usable configured locale the system's languages decide", () => {
+  assert.equal(
+    resolveLocale({ configured: null, appLocale: "de", preferred: ["de-DE", "ru-RU", "en-US"] }),
+    "ru",
+  );
+  assert.equal(
+    resolveLocale({ configured: "tlh", appLocale: "en-US", preferred: ["es-419"] }),
+    "en",
+  );
+  assert.equal(
+    resolveLocale({ configured: "", appLocale: "fr", preferred: ["de-DE", "pt-br"] }),
+    "pt-BR",
+  );
+});
+
+test("languages the app does not ship fall through to the base locale", () => {
+  assert.equal(
+    resolveLocale({ configured: null, appLocale: "pt-PT", preferred: ["pt-PT", "pt"] }),
+    "en",
+  );
+  assert.equal(resolveLocale({ configured: null, appLocale: "", preferred: [] }), "en");
   assert.equal(resolveLocale({}), "en");
 });
