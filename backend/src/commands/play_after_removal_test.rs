@@ -234,3 +234,39 @@ fn removing_a_row_a_play_just_wrote_takes_the_skip_times_of_its_page() {
         None
     );
 }
+
+/// A page is noted for a row that was written. A play whose row could
+/// not be written leaves no page behind for a later row under the same
+/// key to answer for: that row's removal takes nothing of a page it
+/// was never played from.
+#[test]
+fn a_row_that_failed_to_write_leaves_no_page_behind() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    // Block the history's atomic write, as an unwritable state
+    // directory would.
+    std::fs::create_dir(tmp.path().join("history.new")).unwrap();
+    write_history(
+        &state,
+        &native(),
+        "2",
+        crate::history::guard::Asked::now(&state.history_path, Some("77")),
+    );
+    std::fs::remove_dir(tmp.path().join("history.new")).unwrap();
+    write_history(
+        &state,
+        &native(),
+        "2",
+        crate::history::guard::Asked::now(&state.history_path, None),
+    );
+    crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:77:5:2", "[]", 3600).unwrap();
+
+    assert!(crate::commands::history::history_delete(&state, SHOW).unwrap());
+
+    assert!(
+        crate::cache::meta_cache_get(&state.cache_pool, "aniskip:v2:77:5:2")
+            .unwrap()
+            .is_some(),
+        "the removed row was never played from that page"
+    );
+}
