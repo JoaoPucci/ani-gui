@@ -121,14 +121,26 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         name: The packaged backend needs no system C library
         # A backend linked against the runner's glibc would refuse to
-        # start on any system with an older one. A static binary has
-        # no dynamic section, so it names no shared library at all.
+        # start on any system with an older one. The musl build is a
+        # static-pie binary: it keeps a dynamic section to relocate
+        # itself, but names no shared library and no loader.
         working-directory: electron
         run: |
+          set -euo pipefail
           backend=dist/linux-unpacked/resources/ani-gui-backend
-          file "$backend"
-          if readelf -d "$backend" | grep -q NEEDED; then
-            readelf -d "$backend" | grep NEEDED
+          test -f "$backend"
+          kind=$(file -b "$backend")
+          echo "$kind"
+          case "$kind" in
+            *"static-pie linked"* | *"statically linked"*) ;;
+            *)
+              echo "the packaged backend is not statically linked" >&2
+              exit 1
+              ;;
+          esac
+          dynamic=$(readelf -d "$backend")
+          if grep -q NEEDED <<<"$dynamic"; then
+            grep NEEDED <<<"$dynamic"
             echo "the packaged backend needs shared libraries" >&2
             exit 1
           fi
