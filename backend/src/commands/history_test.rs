@@ -734,3 +734,56 @@ fn clear_removes_every_skip_time() {
     assert_eq!(cached(&s, "aniskip:v2:12:21:1"), None);
     assert_eq!(cached(&s, "aniskip:v1:21:1"), None);
 }
+
+/// A Kitsu id another row still claims keeps its skip times: deleting
+/// one row never removes what a remaining row's show cached, whether
+/// that row records the id, maps to it, or matched it by title — as
+/// two providers' rows of one show do, or a row a wrong match bound to
+/// another show's id.
+#[test]
+fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    let unrecorded = |id: &str, title: &str| HistoryEntry {
+        kitsu_id: None,
+        ..row(id, title)
+    };
+    write_atomic(
+        &path,
+        &[
+            unrecorded("hianime:seitokai-10497", "Seitokai"),
+            HistoryEntry {
+                kitsu_id: Some("1623".into()),
+                ..row("hianime:here-is-greenwood-3081", "Here is Greenwood")
+            },
+            unrecorded("naruto-20", "Naruto"),
+            unrecorded("bleach-30", "Bleach"),
+        ],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:seitokai-10497", "1623").unwrap();
+    put(&s, "title-match:v3:hianime:seitokai:c1", "11");
+    put(&s, "allmanga2kitsu:v2:hianime:seitokai-10497", "20");
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "naruto-20", "11").unwrap();
+    put(&s, "title-match:v3:anidb.app:bleach:c1", "20");
+    for key in [
+        "aniskip:v2:1623:1:1",
+        "aniskip:v2:11:2:1",
+        "aniskip:v2:20:3:1",
+    ] {
+        put(&s, key, "[]");
+    }
+
+    assert!(history_delete(&s, "hianime:seitokai-10497").unwrap());
+
+    assert!(
+        cached(&s, "aniskip:v2:1623:1:1").is_some(),
+        "a recorded id's"
+    );
+    assert!(cached(&s, "aniskip:v2:11:2:1").is_some(), "a mapped id's");
+    assert!(
+        cached(&s, "aniskip:v2:20:3:1").is_some(),
+        "a title-matched id's"
+    );
+}
