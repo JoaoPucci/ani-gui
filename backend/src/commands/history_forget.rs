@@ -125,14 +125,16 @@ pub(crate) fn forget_all(state: &AppState) -> Result<()> {
 ///
 /// For a row's own key the order is what keeps the pair whole: a
 /// history write that fails leaves the rows with their offsets, and an
-/// offsets write that fails leaves only offsets without rows, which
-/// nothing reads. A rowless key's numbering goes before the history
+/// offsets write that fails leaves offsets without rows, on disk until
+/// a later removal or clear names their key. A rowless key's numbering
+/// goes before the history
 /// write instead, so a retry can still find the key; a removal that
 /// then fails has taken it, and a play already under way that writes
 /// the key's first row afterwards writes it without its numbering
 /// until a resolve stamps it again. A failure here is logged rather
-/// than returned; for a rowless key that leaves its numbering behind,
-/// and once the resolution rows go nothing finds it again.
+/// than returned, and the removal still succeeds: the numbering stays
+/// behind, the row's own as well as a rowless key's, and once the
+/// resolution rows go nothing finds a rowless key's again.
 ///
 /// Every other rowless offset stays: a resolve stamps one before the
 /// show's first row, and a cached stream played later writes that row

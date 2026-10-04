@@ -78,15 +78,15 @@ ani-gui keeps the following on your computer only:
   listing, written by a play that switched catalogues, is a row of its
   own: the home page groups and removes it with the show once it has
   shown it, and otherwise it stays in your history. And when the app
-  cannot write the folder that holds your history, the other
-  catalogue's numbering is missed: the stream addresses it is found by
-  are removed all the same, so trying again no longer finds it. A
-  stream address that is missed stays until you clear your history;
-  numbering that is missed stays as that of any show a page resolved
-  and you never played does. Catalogue data shared with browsing —
-  anime details, artwork, episode lists and which catalogue carries a
-  show — is not part of your history and stays in the cache, as it
-  does for shows you only browsed.
+  cannot write the file that holds the numbering, the numbering is
+  missed: the show's own stays, and so does the other catalogue's,
+  whose stream addresses are removed all the same, so trying again no
+  longer finds it. A stream address that is missed stays until you
+  clear your history; numbering that is missed stays as that of any
+  show a page resolved and you never played does. Catalogue data
+  shared with browsing — anime details, artwork, episode lists and
+  which catalogue carries a show — is not part of your history and
+  stays in the cache, as it does for shows you only browsed.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its
