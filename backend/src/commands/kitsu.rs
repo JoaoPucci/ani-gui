@@ -598,7 +598,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             show_title = %show_title,
             "play: provider→kitsu mapping rejected (cross-cour mismatch)",
         );
-        drop_mapping_the_title_disagrees_with(state, show_id, show_title).await;
+        drop_mapping_the_title_disagrees_with(state, show_id, show_title, begun).await;
         return false;
     }
     let stored = crate::history::guard::hold(&state.history_path, |held| {
@@ -624,8 +624,15 @@ pub async fn try_put_allmanga_kitsu_mapping(
 /// before the guard existed can be the poison it was written
 /// against: the refused entry itself, or another sibling cour. A
 /// mapping the evidence does not condemn stays, and so does one
-/// whose entry cannot be fetched, since silence is not disagreement.
-async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, show_title: &str) {
+/// whose entry cannot be fetched, since silence is not disagreement,
+/// and so does one a row changed since `begun` is read through: a
+/// later watch stored it, past its own guard.
+async fn drop_mapping_the_title_disagrees_with(
+    state: &AppState,
+    show_id: &str,
+    show_title: &str,
+    begun: crate::history::guard::Epoch,
+) {
     let stored = match allmanga_kitsu_get(state, show_id) {
         Ok(Some(stored)) => stored,
         Ok(None) => return,
@@ -641,8 +648,15 @@ async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, 
     if !cour_pairing_disagrees(state, show_title, &stored).await {
         return;
     }
-    match allmanga_kitsu_delete(state, show_id) {
-        Ok(()) => tracing::warn!(
+    let dropped = crate::history::guard::hold(&state.history_path, |held| {
+        if held.show_changed_since(begun, show_id) {
+            return Ok(false);
+        }
+        allmanga_kitsu_delete(state, show_id).map(|()| true)
+    });
+    match dropped {
+        Ok(false) => {}
+        Ok(true) => tracing::warn!(
             show_id = %show_id,
             kitsu_id = %stored,
             show_title = %show_title,
