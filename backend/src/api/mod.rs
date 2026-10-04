@@ -377,7 +377,7 @@ async fn put_title_match(
 ) -> Result<StatusCode, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
-    crate::commands::history_forget_titles::store_title_match(
+    crate::commands::title_match_store::store_title_match(
         &state,
         provider,
         &body.title,

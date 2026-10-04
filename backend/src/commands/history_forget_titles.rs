@@ -1,47 +1,12 @@
-//! The title-match rows of a history row, found from its title: the
-//! rows a removal takes with it, and the one rule for storing one —
-//! split from `history_forget` for the per-file complexity bar.
+//! The title-match rows a history row left, found from its title —
+//! split from `history_forget` for the per-file complexity bar. The
+//! rule for storing one is `title_match_store`'s.
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_delete, meta_cache_entries_prefix};
-use crate::commands::kitsu::{title_match_prefix, title_match_put, TITLE_MATCH_VERSION};
+use crate::commands::kitsu::{title_match_prefix, TITLE_MATCH_VERSION};
 use crate::error::Result;
-use crate::history::HistoryEntry;
-use crate::scraper::provider::{ProviderId, ShowKey};
-
-/// Store a title-match row, with the history held — for a title a
-/// history row carries. Continue Watching stores one when a row's
-/// search settles, and the user can remove the row before it does;
-/// with no row searching that title there is nothing to match, and
-/// storing it would bring back what the removal took.
-///
-/// # Errors
-/// History read and cache write failures propagate.
-pub(crate) fn store_title_match(
-    state: &AppState,
-    provider: ProviderId,
-    title: &str,
-    cour: u32,
-    kitsu_id: &str,
-) -> Result<()> {
-    crate::history::guard::hold(&state.history_path, |held| {
-        if !held.rows()?.iter().any(|e| searches(e, provider, title)) {
-            return Ok(());
-        }
-        title_match_put(state, provider, title, cour, kitsu_id)
-    })
-}
-
-/// Whether Continue Watching searches `title` for the row `entry`: the
-/// row's title as listed or less a legacy episode tail, on the row's
-/// provider, compared the way the cache key folds a title.
-fn searches(entry: &HistoryEntry, provider: ProviderId, title: &str) -> bool {
-    let wanted = title.trim().to_lowercase();
-    ShowKey::parse(&entry.id).provider == provider
-        && [entry.title.as_str(), without_episode_tail(&entry.title)]
-            .iter()
-            .any(|searched| searched.trim().to_lowercase() == wanted)
-}
+use crate::scraper::provider::ShowKey;
 
 /// Delete the title-match rows, every version and cour, stored for
 /// the row `id` titled `title`, and return the Kitsu ids they named.
@@ -114,7 +79,7 @@ fn cour_entries(state: &AppState, prefix: &str) -> Result<Vec<(String, String)>>
 /// `title` less a trailing `(N episodes)`, itself optionally followed
 /// by `(year)` — the tail rows written before the provider migration
 /// carry, which Continue Watching strips before it searches.
-fn without_episode_tail(title: &str) -> &str {
+pub(crate) fn without_episode_tail(title: &str) -> &str {
     let is_year = |inner: &str| (1..=4).contains(&inner.len()) && all_digits(inner);
     let before_year = strip_paren_tail(title, is_year).unwrap_or(title);
     strip_paren_tail(before_year, is_episode_count)
