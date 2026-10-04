@@ -570,3 +570,99 @@ fn clear_removes_the_offsets_and_the_resolution_rows() {
     assert_eq!(cached(&s, "play:v12:Naruto:sub:best:1:::"), None);
     assert_eq!(crate::commands::anidb_offset::get(&s, "one-piece-69"), 0);
 }
+
+// — what a failed removal leaves ——————————————————————————————————
+//
+// A row and its numbering offset are a pair: the offset makes the row
+// readable and has no use without it. A removal that fails part-way
+// must not leave a row without its offset; an offset left without its
+// row is swept by the next removal.
+
+/// Block the atomic write whose temp file is `name`, beside `dir`'s
+/// history, by putting a directory where the temp file would go.
+fn block_write(dir: &std::path::Path, name: &str) {
+    std::fs::create_dir(dir.join(name)).unwrap();
+}
+
+#[test]
+fn a_delete_whose_history_write_fails_keeps_the_row_and_its_offset() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    block_write(tmp.path(), "history.new");
+
+    assert!(history_delete(&s, "one-piece-69").is_err());
+
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
+    assert_eq!(
+        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        4,
+        "with its offset"
+    );
+}
+
+#[test]
+fn a_clear_whose_history_write_fails_keeps_the_rows_and_their_offsets() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    block_write(tmp.path(), "history.new");
+
+    assert!(history_clear(&s).is_err());
+
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
+    assert_eq!(
+        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        4,
+        "with its offset"
+    );
+}
+
+#[test]
+fn a_delete_whose_offsets_write_fails_still_removes_the_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    block_write(tmp.path(), "ani-gui-offsets.new");
+
+    // The row goes; the offset it leaves has no row to misread.
+    assert!(history_delete(&s, "one-piece-69").unwrap());
+    assert!(history_list(&s).unwrap().is_empty());
+}
+
+/// A page's pre-resolve stamps a show's offset before any row exists,
+/// and a cache-hit play later writes the row through it. Removal takes
+/// the removed rows' offsets and no others.
+#[test]
+fn removal_keeps_the_offsets_of_shows_without_a_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[row("one-piece-69", "One Piece"), row("naruto-20", "Naruto")],
+    )
+    .unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    crate::commands::anidb_offset::put(&s, "naruto-20", 2);
+    crate::commands::anidb_offset::put(&s, "bleach-30", 1);
+
+    assert!(history_delete(&s, "one-piece-69").unwrap());
+    assert_eq!(crate::commands::anidb_offset::get(&s, "one-piece-69"), 0);
+    assert_eq!(crate::commands::anidb_offset::get(&s, "naruto-20"), 2);
+    assert_eq!(crate::commands::anidb_offset::get(&s, "bleach-30"), 1);
+
+    history_clear(&s).unwrap();
+    assert_eq!(crate::commands::anidb_offset::get(&s, "naruto-20"), 0);
+    assert_eq!(
+        crate::commands::anidb_offset::get(&s, "bleach-30"),
+        1,
+        "never a row"
+    );
+}
