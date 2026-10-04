@@ -12,15 +12,39 @@
 //!
 //! So each way the backend is told to stop is a request, and they all
 //! lead to the same wind-down: stop accepting, let requests in flight
-//! finish for a bounded time, then return so the runtime is torn down
-//! and every remaining task — a running download among them — dropped.
+//! finish for a bounded time ([`serve_until`]), then tear the runtime
+//! down, which drops every remaining task — a running download among
+//! them — and is bounded too ([`teardown`]).
 
 use std::future::Future;
 use std::time::Duration;
 
-/// How long in-flight requests get to finish once a stop is requested
+/// How long requests in flight get to finish once a stop is requested
 /// before the server stops waiting for them.
+///
+/// Rarely spent. On a quit or a dead parent the requests' client is
+/// gone as well, and a request whose connection has closed is dropped
+/// at once; the grace is for one that does not notice, and for a
+/// client that never hangs up.
+///
+/// It bounds the server's part of a stop, not the stop: the runtime's
+/// teardown follows, under [`TEARDOWN_LIMIT`]. A backend asked to stop
+/// has exited within the two together.
 pub const REQUEST_GRACE: Duration = Duration::from_secs(3);
+
+/// How long the runtime's teardown may take once the server has
+/// stopped.
+///
+/// The teardown drops every task still running, which is what runs
+/// the guards that stop download tools, and then waits for the
+/// runtime's threads. The guards take milliseconds; what the limit
+/// bounds is a blocking call that will not return, which a runtime
+/// otherwise waits for without end. Past the limit the process exits
+/// and the call is abandoned with it.
+///
+/// Generous on purpose. A guard cut short would leave a tool running,
+/// and the limit costs time only when something is already stuck.
+pub const TEARDOWN_LIMIT: Duration = Duration::from_secs(5);
 
 /// Why the backend is stopping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,11 +159,16 @@ where
     }
 }
 
-/// Tear `runtime` down once the server has stopped. As the binary had
-/// it: the runtime is dropped, which waits for its blocking calls
-/// however long they take.
-pub fn teardown(runtime: tokio::runtime::Runtime, _limit: Duration) {
-    drop(runtime);
+/// Tear `runtime` down once the server has stopped: drop every task
+/// still running, then wait for the runtime's threads — at most
+/// `limit`. See [`TEARDOWN_LIMIT`].
+///
+/// Not a plain drop, which waits for blocking calls without limit, and
+/// not `shutdown_background`, which does not wait at all: the tasks
+/// are dropped on the runtime's own threads, so returning at once
+/// could end the process before a guard had run.
+pub fn teardown(runtime: tokio::runtime::Runtime, limit: Duration) {
+    runtime.shutdown_timeout(limit);
 }
 
 #[cfg(test)]

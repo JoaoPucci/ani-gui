@@ -17,12 +17,13 @@
 //! parent being gone (see `ani_gui::parent_watch`): when Electron sets
 //! `ANI_GUI_PARENT_STDIN=1`, end of file on stdin asks the same.
 //!
-//! Either way the server winds down and `main` returns, which tears
-//! the runtime down and drops every task still running. That teardown
-//! is what stops a running download's yt-dlp or ffmpeg: they run in
-//! process groups of their own, which the signal sent to the backend's
-//! group never reaches, and only the guard that owns each one kills
-//! it. Dying on the signal instead would leave them running.
+//! Either way the server winds down and `main` tears the runtime
+//! down, dropping every task still running; both steps are bounded.
+//! That teardown is what stops a running download's yt-dlp or ffmpeg:
+//! they run in process groups of their own, which the signal sent to
+//! the backend's group never reaches, and only the guard that owns
+//! each one kills it. Dying on the signal instead would leave them
+//! running.
 //!
 //! On Windows a quit runs `taskkill /F /T`, which ends the backend and
 //! everything below it by parent pid; nothing is asked and nothing
@@ -49,7 +50,7 @@ fn main() -> std::process::ExitCode {
         .enable_all()
         .build()
     {
-        Ok(r) => Arc::new(r),
+        Ok(r) => r,
         Err(e) => {
             tracing::error!(error = %e, "tokio runtime build failed");
             return std::process::ExitCode::FAILURE;
@@ -115,6 +116,10 @@ fn main() -> std::process::ExitCode {
         .map_err(|_| AniError::Network)?;
         Ok::<_, AniError>(())
     });
+
+    // The server has stopped. Whatever is still running — a download,
+    // above all — is dropped here, which is what stops its tools.
+    shutdown::teardown(runtime, shutdown::TEARDOWN_LIMIT);
 
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,
