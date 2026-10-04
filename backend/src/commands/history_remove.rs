@@ -51,19 +51,27 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
             claimed.extend(held.pages_of(&entry.id));
         }
         let pages = held.pages_of(id);
-        let mut known_by = Vec::new();
+        let (mut known_by, mut other_keys) = (Vec::new(), Vec::new());
         for (title, recorded) in &removed {
-            known_by.extend(super::history_forget::forget_show(
+            let forgotten = super::history_forget::forget_show(
                 state,
                 id,
                 title,
                 recorded.as_deref(),
                 &pages,
                 &claimed,
-            )?);
+            )?;
+            known_by.extend(forgotten.known_by);
+            other_keys.extend(forgotten.other_keys);
         }
         held.write(&entries)?;
-        super::history_forget::sweep_offsets(state, &[id]);
+        // The row's numbering, and that of the keys a page of the show
+        // resolved under without a row of their own: a key a remaining
+        // row has keeps the numbering that row is read through.
+        other_keys.retain(|key| !entries.iter().any(|e| e.id == *key));
+        let mut swept: Vec<&str> = other_keys.iter().map(String::as_str).collect();
+        swept.push(id);
+        super::history_forget::sweep_offsets(state, &swept);
         held.removed_show(id, &known_by);
         Ok(true)
     })

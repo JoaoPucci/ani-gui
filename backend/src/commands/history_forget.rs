@@ -9,7 +9,9 @@
 //! - the title-match rows Continue Watching stored for the row's title
 //!   (`title-match:`), under every version's key;
 //! - the resolution rows whose stream played the show (`play:`), found
-//!   by the show id their value carries;
+//!   by the show id their value carries, and the ones a page of the
+//!   show resolved under another key, found by the page their value
+//!   carries, with that key's numbering when no row has the key;
 //! - the skip times the player cached for its episodes (`aniskip:`),
 //!   found by every Kitsu id above, with the rows of the key that
 //!   carried the MAL id alone, which nothing reads any more;
@@ -42,9 +44,8 @@ const HISTORY_PREFIXES: [&str; 5] = [
 /// Skip times cached under a Kitsu id in `claimed` — one a remaining
 /// row records, maps to, matched by title or was seen played from —
 /// stay with that row's show. The offsets go after the row
-/// ([`sweep_offsets`]). Returns the Kitsu ids the show was known by
-/// that no remaining row claims — the ones whose skip times went — for
-/// the removal's record.
+/// ([`sweep_offsets`]). Returns what the removal has to act on next
+/// ([`Forgotten`]).
 ///
 /// # Errors
 /// Cache write failures propagate.
@@ -55,7 +56,7 @@ pub(crate) fn forget_show(
     recorded: Option<&str>,
     pages: &[String],
     claimed: &std::collections::HashSet<String>,
-) -> Result<Vec<String>> {
+) -> Result<Forgotten> {
     let pool = &state.cache_pool;
     meta_cache_delete(pool, &watched_at_key(id))?;
     // Every Kitsu id the player could have asked with for this show:
@@ -68,10 +69,25 @@ pub(crate) fn forget_show(
     kitsu_ids.extend(super::history_forget_titles::forget_title_matches(
         state, id, title,
     )?);
-    forget_resolutions(state, id)?;
-    kitsu_ids.retain(|k| !claimed.contains(k));
+    // An empty id — a title match stored without one — names no page.
+    kitsu_ids.retain(|k| !k.is_empty() && !claimed.contains(k));
+    let other_keys = forget_resolutions(state, id, &kitsu_ids)?;
     super::history_forget_skips::forget_skip_times(state, &kitsu_ids)?;
-    Ok(kitsu_ids)
+    Ok(Forgotten {
+        known_by: kitsu_ids,
+        other_keys,
+    })
+}
+
+/// What forgetting a show found, for the removal to act on.
+pub(crate) struct Forgotten {
+    /// The Kitsu ids the show was known by that no remaining row
+    /// claims — the ones whose skip times and resolution rows went.
+    pub(crate) known_by: Vec<String>,
+    /// The other show keys those ids' resolution rows named: keys a
+    /// page of the show resolved under, another provider's when its
+    /// walk failed over.
+    pub(crate) other_keys: Vec<String>,
 }
 
 /// Delete the show's reverse mapping under every version's key, and
@@ -115,15 +131,22 @@ pub(crate) fn sweep_offsets(state: &AppState, removed: &[&str]) {
 }
 
 /// Delete the resolution rows, of any schema, whose value names `id`
-/// as the show played.
-fn forget_resolutions(state: &AppState, id: &str) -> Result<()> {
+/// as the show played, or names one of `known_by` as the page it was
+/// resolved from. Returns the other show keys the second kind named.
+fn forget_resolutions(state: &AppState, id: &str, known_by: &[String]) -> Result<Vec<String>> {
+    let mut other_keys = Vec::new();
     for (key, body) in meta_cache_entries_prefix(&state.cache_pool, "play:")? {
-        let show = serde_json::from_str::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|v| v.get("show_id")?.as_str().map(str::to_owned));
-        if show.as_deref() == Some(id) {
-            meta_cache_delete(&state.cache_pool, &key)?;
+        let row = serde_json::from_str::<serde_json::Value>(&body).unwrap_or_default();
+        let field = |name: &str| row.get(name).and_then(|v| v.as_str()).unwrap_or_default();
+        let (show, page) = (field("show_id"), field("kitsu_id"));
+        let of_the_page = known_by.iter().any(|k| k == page);
+        if show != id && !of_the_page {
+            continue;
+        }
+        meta_cache_delete(&state.cache_pool, &key)?;
+        if show != id && !show.is_empty() {
+            other_keys.push(show.to_owned());
         }
     }
-    Ok(())
+    Ok(other_keys)
 }

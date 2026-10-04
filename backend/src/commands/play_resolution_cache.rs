@@ -238,10 +238,13 @@ pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
     let _ = meta_cache_put(pool, key, &body, PLAY_RESOLUTION_TTL.as_secs());
 }
 
-/// Persist the resolution the play `asked` for produced — unless the
-/// show it names was removed from history since the play began: the
-/// removal took the show's resolution rows, and this one would outlive
-/// it ([`crate::history::guard`]).
+/// Persist the resolution the play `asked` for produced, with the page
+/// it was asked from — unless the show it names was removed from
+/// history since the play began: the removal took the show's
+/// resolution rows, and this one would outlive it
+/// ([`crate::history::guard`]). The page is what lets a later removal
+/// find the row when the resolve landed on another key than the show's
+/// history row has.
 pub(crate) fn store(
     state: &crate::app::AppState,
     asked: crate::history::guard::Asked<'_>,
@@ -250,7 +253,9 @@ pub(crate) fn store(
 ) {
     crate::history::guard::hold(&state.history_path, |held| {
         if !held.removed_since(asked, &value.show_id) {
-            put(&state.cache_pool, key, value);
+            let mut value = value.clone();
+            value.kitsu_id = asked.page.map(str::to_owned);
+            put(&state.cache_pool, key, &value);
         }
     });
 }
