@@ -328,13 +328,21 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
     assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
     launch.await.expect("join").expect("launches");
+    let mut argv = String::new();
     for _ in 0..100 {
-        if std::fs::read_to_string(&argv_file).is_ok_and(|s| !s.is_empty()) {
-            break;
+        if let Ok(s) = std::fs::read_to_string(&argv_file) {
+            if !s.is_empty() {
+                argv = s;
+                break;
+            }
         }
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
+    assert!(
+        argv.contains("/x/master.m3u8"),
+        "syncplay was still launched: {argv}"
+    );
     assert!(
         crate::history::read_all(&state.history_path)
             .expect("rows")
@@ -345,4 +353,6 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
         crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp"),
         None
     );
+    let offsets = std::fs::read_to_string(dir.path().join("ani-gui-offsets")).unwrap_or_default();
+    assert!(!offsets.contains("the-show-77"), "nor numbering: {offsets}");
 }
