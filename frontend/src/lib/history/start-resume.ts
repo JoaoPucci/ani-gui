@@ -70,6 +70,9 @@ export interface StartResumeDeps {
 	/** Whether `episode` of `kitsuId` was left part-way, its position
 	 *  kept. Omitted, nothing was. */
 	leftPartWay?: (kitsuId: string, episode: number) => boolean;
+	/** Marks `episode` of `kitsuId` started — before the resolve, which
+	 *  records the watch. Omitted, nothing is marked. */
+	markStarted?: (kitsuId: string, episode: number) => void;
 }
 
 export function makeStartResume(
@@ -118,6 +121,7 @@ export function makeStartResume(
 		}
 
 		const args: ResumePlayArgs = { match, title, episode, mode, quality };
+		deps.markStarted?.(match.id, episode);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
 			void deps.markWatched(args).catch(() => {});

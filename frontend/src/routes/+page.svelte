@@ -99,7 +99,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
-	import { clearShowPositions, readPosition } from '$lib/play/watch-position';
+	import { clearShowPositions, markStarted, readPosition } from '$lib/play/watch-position';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -649,6 +649,7 @@
 	});
 	const startResume = makeStartResume({
 		leftPartWay,
+		markStarted,
 		isBusy: () => !!resumeBusy,
 		onBusy: (id) => {
 			resumeBusy = id;

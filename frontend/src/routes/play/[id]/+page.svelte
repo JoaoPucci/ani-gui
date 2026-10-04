@@ -88,6 +88,7 @@
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createPlayerVideo, placePlayerVideo, releasePlayerVideo } from '$lib/play/player-video';
 	import { createSourceScope } from '$lib/play/source-scope';
+	import { markStarted } from '$lib/play/watch-position';
 	import { armSidecarTracks } from '$lib/play/sidecar-tracks';
 	import { StripPager } from '$lib/play/strip-pager';
 	import { playPageWarmTargets } from '$lib/play/warm-plan';
@@ -1836,6 +1837,9 @@
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
+		// The resolve records the watch; mark the episode started first,
+		// so Continue stays on it even if its stream never attaches.
+		markStarted(id, targetEp);
 		switchBusy = true;
 		switchProgress = null;
 		playerError = null;

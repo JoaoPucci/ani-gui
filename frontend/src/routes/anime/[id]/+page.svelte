@@ -62,7 +62,7 @@
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
-	import { readPosition } from '$lib/play/watch-position';
+	import { markStarted, readPosition } from '$lib/play/watch-position';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
@@ -1201,6 +1201,9 @@
 		}
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
+		// The resolve records the watch; mark the episode started first,
+		// so Continue stays on it even if the player never opens.
+		markStarted(id, ep);
 		// LoadingOverlay binds to actionBusy; it stays up until goto
 		// fires (which unmounts this page) or the catch branch resets
 		// busy and surfaces an error toast.
