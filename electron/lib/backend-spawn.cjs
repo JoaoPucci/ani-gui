@@ -40,9 +40,8 @@ function backendSpawnOptions({ platform, env }) {
  * handshake: it is what the app's quit path and a failed boot stop,
  * and the handshake can take minutes on a first run. A quit in that
  * time has to find the backend to stop it. A handshake that fails
- * leaves it tracked, for the boot's own stop: a spawn that failed has
- * no pid and is skipped, and the group of a backend that exited
- * during startup has nobody left in it to signal (main.js killTree).
+ * leaves it tracked, for the boot's own stop, which skips a spawn that
+ * failed and a backend that has already exited (see `stoppable`).
  */
 async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
   const child = spawn(bin, [], backendSpawnOptions({ platform, env }));
@@ -53,11 +52,15 @@ async function launchBackend({ spawn, bin, platform, env, track, handshake }) {
 
 /**
  * Whether the tree kill has a backend to stop: one that started (a
- * spawn the OS refused has no pid) and that it has not stopped
- * already.
+ * spawn the OS refused has no pid), that it has not stopped already,
+ * and that has not exited. An exited backend's pid is free for the OS
+ * to reuse, and a kill by pid — `taskkill /T` on Windows, a signal to
+ * the group of that id elsewhere — would reach whoever holds it now.
  */
 function stoppable(child) {
-  return Boolean(child && !child.killed && child.pid);
+  return Boolean(
+    child && !child.killed && child.pid && child.exitCode === null && child.signalCode === null,
+  );
 }
 
 module.exports = { backendSpawnOptions, launchBackend, stoppable };

@@ -281,7 +281,8 @@ let backendChild = null;
  * /F /T ends the backend and every process below it by parent pid,
  * the tools included.
  *
- * Idempotent — safe to call when the backend has already exited.
+ * Idempotent — safe to call when the backend has already exited, which
+ * it then leaves alone (see `stoppable` in lib/backend-spawn.cjs).
  */
 function killBackendTree() {
   killTree(backendChild);
@@ -310,8 +311,8 @@ function killTree(child) {
     // tools, and a kill would skip it.
     process.kill(-child.pid, "SIGTERM");
   } catch (e) {
-    // ESRCH: group already gone (backend exited first). Anything
-    // else is unexpected and worth logging.
+    // ESRCH: group already gone (the backend exited before its exit
+    // was reported here). Anything else is unexpected and worth logging.
     if (e && e.code !== "ESRCH") console.error("[main] killTree:", e);
   }
 }
