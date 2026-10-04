@@ -56,11 +56,12 @@ pub(crate) fn mapping_played(state: &AppState, show_id: &str) -> Result<bool> {
 ///   and storing it would bring back what the removal took.
 ///
 /// # Errors
-/// History read and cache write failures propagate.
+/// History read, cache read and cache write failures propagate: a
+/// mapping whose moment cannot be read is not known to be a guess.
 pub(crate) fn store_guess(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
     crate::history::guard::hold(&state.history_path, |held| {
         let listed = held.rows()?.iter().any(|e| e.id == show_id);
-        if !listed || mapping_played(state, show_id).unwrap_or(false) {
+        if !listed || mapping_played(state, show_id)? {
             return Ok(());
         }
         crate::commands::kitsu::allmanga_kitsu_put(state, show_id, kitsu_id)
