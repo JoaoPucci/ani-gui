@@ -935,6 +935,14 @@ app.whenReady().then(() =>
       createWindow(apiBase, internalSecret),
     stopBackend: killBackendTree,
     reportFailure: reportBootFailure,
+    // A quit asked for while the failure dialog is up — a signal, the
+    // session ending — is held back and answered with the exit below:
+    // left alone it would exit with code 0.
+    onQuitAsked: (ended) =>
+      app.on("before-quit", (event) => {
+        event.preventDefault();
+        ended();
+      }),
     exit: (code) => app.exit(code),
     logError: console.error,
   }),

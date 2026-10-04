@@ -174,13 +174,20 @@ async function openFirstPage(win, url, { timeoutMs, logError }) {
  *      where there is someone to read it (lib/boot-failure.cjs). After
  *      the stop, so nothing is left running behind the dialog; awaited,
  *      so the exit does not take the dialog down unread.
- *   3. The app exits — also when the report itself failed.
+ *   3. The app exits with code 1, however the report ended: dismissed,
+ *      timed out, failed to show — or cut short by a quit asked for
+ *      from outside while it was up. `onQuitAsked` is how the boot
+ *      hears of that one: it is handed a function to call when the app
+ *      is asked to quit, and has to keep that quit from running its
+ *      own course, which would exit with code 0. It is only called
+ *      once the boot has failed.
  */
 async function bootApp({
   spawnBackend,
   createWindow,
   stopBackend,
   reportFailure = async () => {},
+  onQuitAsked = () => {},
   exit,
   logError,
 }) {
@@ -190,11 +197,15 @@ async function bootApp({
   } catch (err) {
     logError("[main] startup failed:", err);
     stopBackend();
-    try {
-      await reportFailure(err);
-    } catch (reportErr) {
-      logError("[main] could not report the failed startup:", reportErr);
-    }
+    const quitAsked = new Promise((resolve) => onQuitAsked(resolve));
+    const reported = (async () => {
+      try {
+        await reportFailure(err);
+      } catch (reportErr) {
+        logError("[main] could not report the failed startup:", reportErr);
+      }
+    })();
+    await Promise.race([reported, quitAsked]);
     exit(1);
   }
 }
