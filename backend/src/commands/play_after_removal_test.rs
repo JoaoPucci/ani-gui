@@ -381,3 +381,105 @@ fn a_resolution_row_with_no_page_is_no_removed_shows() {
 
     assert!(resolution(&state, other_key).is_some());
 }
+
+// — the pages the guard notes ———————————————————————————————————————
+
+const SKIPS: &str = "aniskip:v2:77:5:2";
+
+fn page_77(state: &AppState) -> crate::history::guard::Asked<'static> {
+    crate::history::guard::Asked::now(&state.history_path, Some("77"))
+}
+
+fn no_page(state: &AppState) -> crate::history::guard::Asked<'static> {
+    crate::history::guard::Asked::now(&state.history_path, None)
+}
+
+fn seed_skips(state: &AppState) {
+    crate::cache::meta_cache_put(&state.cache_pool, SKIPS, "[]", 3600).unwrap();
+}
+
+fn skips_left(state: &AppState) -> bool {
+    crate::cache::meta_cache_get(&state.cache_pool, SKIPS)
+        .unwrap()
+        .is_some()
+}
+
+fn delete_show(state: &AppState) {
+    assert!(crate::commands::history::history_delete(state, SHOW).unwrap());
+}
+
+/// The fresh-resolve row notes its page on its own.
+#[test]
+fn the_fresh_rows_page_is_known_to_its_removal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    write_history(&state, &native(), "2", page_77(&state));
+    seed_skips(&state);
+
+    delete_show(&state);
+
+    assert!(!skips_left(&state));
+}
+
+/// So does the cached-stream row.
+#[test]
+fn the_cached_rows_page_is_known_to_its_removal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    write_history_on_cache_hit(&state, &args(), &cached(), page_77(&state));
+    seed_skips(&state);
+
+    delete_show(&state);
+
+    assert!(!skips_left(&state));
+}
+
+/// A page noted for a remaining row is claimed like an id it records:
+/// two rows of one show, each written by a play from the page and
+/// neither recording it yet. Removing one leaves the page's skip times
+/// with the other.
+#[test]
+fn a_page_noted_for_a_remaining_row_keeps_its_skip_times() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    write_history(&state, &native(), "2", page_77(&state));
+    let mut other_key = native();
+    other_key.slug = "hianime:the-show-100".into();
+    write_history(&state, &other_key, "2", page_77(&state));
+    seed_skips(&state);
+
+    delete_show(&state);
+
+    assert!(skips_left(&state));
+}
+
+/// What was noted for a removed row goes with it: a row written again
+/// under the key, from no page, is not known by the old one.
+#[test]
+fn a_removed_rows_page_does_not_outlive_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    write_history(&state, &native(), "2", page_77(&state));
+    delete_show(&state);
+    write_history(&state, &native(), "2", no_page(&state));
+    seed_skips(&state);
+
+    delete_show(&state);
+
+    assert!(skips_left(&state));
+}
+
+/// A clear forgets every noted page as it forgets every row.
+#[test]
+fn a_clear_forgets_the_noted_pages() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    write_history(&state, &native(), "2", page_77(&state));
+    crate::commands::history::history_clear(&state).unwrap();
+    write_history(&state, &native(), "2", no_page(&state));
+    seed_skips(&state);
+
+    delete_show(&state);
+
+    assert!(skips_left(&state));
+}
