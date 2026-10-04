@@ -135,6 +135,13 @@ where
     }
 }
 
+/// Tear `runtime` down once the server has stopped. As the binary had
+/// it: the runtime is dropped, which waits for its blocking calls
+/// however long they take.
+pub fn teardown(runtime: tokio::runtime::Runtime, _limit: Duration) {
+    drop(runtime);
+}
+
 #[cfg(test)]
 #[path = "shutdown_test.rs"]
 mod tests;

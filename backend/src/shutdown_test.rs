@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{oneshot, Notify};
@@ -108,4 +109,54 @@ async fn a_request_that_never_finishes_holds_the_stop_for_the_grace_and_no_longe
         asked.elapsed()
     );
     request.abort();
+}
+
+/// Sets its flag when dropped — the shape of the guard that kills a
+/// download tool's process group when its task is torn down.
+struct Dropped(Arc<AtomicBool>);
+
+impl Drop for Dropped {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn teardown_drops_running_tasks_and_does_not_wait_out_a_stuck_blocking_call() {
+    // Stands in for a blocking call that will not return in any time
+    // a stop can wait: a read on a dead mount, a lock held elsewhere.
+    const STUCK: Duration = Duration::from_secs(6);
+    let limit = Duration::from_millis(300);
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let dropped = Arc::new(AtomicBool::new(false));
+    let guard = Dropped(dropped.clone());
+    runtime.spawn(async move {
+        let _guard = guard;
+        std::future::pending::<()>().await;
+    });
+    let (running_tx, running_rx) = std::sync::mpsc::channel();
+    runtime.spawn_blocking(move || {
+        let _ = running_tx.send(());
+        std::thread::sleep(STUCK);
+    });
+    running_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the blocking call is running");
+
+    let asked = Instant::now();
+    teardown(runtime, limit);
+    let took = asked.elapsed();
+
+    assert!(
+        took < STUCK / 2,
+        "the limit bounds the teardown, not the stuck call: {took:?}"
+    );
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "a task still running is dropped, so its guard runs"
+    );
 }
