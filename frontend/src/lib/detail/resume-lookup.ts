@@ -1,12 +1,25 @@
 /**
  * The detail page's resume lookup: the history row the page's Kitsu
  * entry resumes from, or `null` when none does.
+ *
+ * The page runs it beside its Kitsu detail fetch rather than after,
+ * so a row shows without waiting on the network. A fetch that serves
+ * an entry Kitsu once answered gone clears that mark, and the lookup,
+ * being local, has usually answered by then — with no row, since the
+ * mark hid it. So an empty answer is asked again once the detail is
+ * served. A found row is final, and a failed fetch cleared nothing.
  */
-export function lookupResume<T>(
+export async function lookupResume<T>(
 	kitsuId: string,
 	lookup: (kitsuId: string) => Promise<T | null>,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	_detailServed: Promise<unknown>
+	detailServed: Promise<unknown>
 ): Promise<T | null> {
+	const first = await lookup(kitsuId);
+	if (first !== null) return first;
+	try {
+		await detailServed;
+	} catch {
+		return null;
+	}
 	return lookup(kitsuId);
 }
