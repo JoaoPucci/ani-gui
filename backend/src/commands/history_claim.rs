@@ -67,3 +67,7 @@ pub(crate) fn row_names(state: &AppState, entry: &HistoryEntry, kitsu_id: &str) 
     };
     Ok(names(kitsu_id, gone(kitsu_id)?, &row))
 }
+
+#[cfg(test)]
+#[path = "history_claim_test.rs"]
+mod tests;
