@@ -20,7 +20,7 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	/** Forgets the positions written by sessions the removed rows'
 	 *  Continue cards opened (watch-position.ts) — under a guessed
 	 *  match too, which a later load may have corrected. */
-	forgetRowPositions?: (rowIds: string[]) => void;
+	forgetRowPositions?: (rowIds: string[], keepShows?: ReadonlySet<string>) => void;
 }
 
 export interface ConfirmDeleteResult {

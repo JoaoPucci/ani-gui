@@ -147,7 +147,9 @@ export function clearShowPositions(
  *  recovery's pending point for its show. */
 export function clearRowPositions(
 	rows: readonly string[],
-	storage: PositionStorage | null = defaultStorage()
+	storage: PositionStorage | null = defaultStorage(),
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
+	keepShows: ReadonlySet<string> = new Set()
 ): void {
 	const removed = new Set(rows);
 	const kept: Positions = [];
