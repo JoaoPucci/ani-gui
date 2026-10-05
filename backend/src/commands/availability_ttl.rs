@@ -43,13 +43,18 @@ pub(crate) fn bounded_by_next_airing(base: u64, next_airing_at: Option<u64>, now
 /// longer than the ongoing window, and its count does not move.
 #[must_use]
 pub(crate) fn rescheduled_ttl(
-    _ttl: u64,
-    _age: u64,
-    _ceiling: u64,
-    _next_airing_at: Option<u64>,
-    _now: u64,
+    ttl: u64,
+    age: u64,
+    ceiling: u64,
+    next_airing_at: Option<u64>,
+    now: u64,
 ) -> Option<u64> {
-    None
+    if ttl > ceiling || age >= ttl {
+        return None;
+    }
+    let remaining = ttl - age;
+    let cut = bounded_by_next_airing(remaining, next_airing_at, now);
+    (cut < remaining).then_some(age + cut)
 }
 
 #[cfg(test)]

@@ -98,9 +98,12 @@ async fn fetch_and_store(
     Ok(status)
 }
 
-/// Serialize + cache one airing row under the schedule-aware TTL. A
-/// failed cache write is swallowed — the fetched status is still
-/// good, it just won't be remembered.
+/// Serialize + cache one airing row under the schedule-aware TTL, then
+/// cut the show's positive availability rows written before the
+/// schedule was known. Every airing write — detail fetch, recheck,
+/// warm batch seed — comes through here. A failed cache write is
+/// swallowed — the fetched status is still good, it just won't be
+/// remembered.
 fn write_airing_row(state: &AppState, kitsu_id: &str, status: &AiringStatus) {
     if let Ok(body) = serde_json::to_string(status) {
         let now = std::time::SystemTime::now()
@@ -113,6 +116,15 @@ fn write_airing_row(state: &AppState, kitsu_id: &str, status: &AiringStatus) {
             &format!("airing:v2:{kitsu_id}"),
             &body,
             ttl,
+        );
+        // After the put: an availability write that starts from here
+        // on reads the schedule itself. Only one already between its
+        // schedule read and its own put can still land uncut.
+        crate::commands::availability_reschedule::shorten_positive_rows(
+            &state.cache_pool,
+            kitsu_id,
+            status.next_airing_at,
+            now,
         );
     }
 }
