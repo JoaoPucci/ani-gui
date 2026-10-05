@@ -772,10 +772,11 @@ Three things are worth knowing before starting:
   through GitHub's latest-release lookup, which skips pre-releases.
   Whatever string is embedded has to be confirmed to find a
   pre-release.
-- The `.zsync` file comes from `zsyncmake`, which the build machine
-  does not have; installing it is a system change (`AGENTS.md` §11), so
-  the alternative is a copy the build fetches into the repository the
-  way it fetches the runtime.
+- The `.zsync` file comes from `zsyncmake`, which the release build
+  does not provision: nothing in the packaging scripts fetches it, the
+  way the repack fetches the runtime. Requiring it to be installed on
+  the machine that builds is a system change (`AGENTS.md` §11), so the
+  alternative is for the build to fetch a copy into the repository too.
 
 ## Housekeeping
 
