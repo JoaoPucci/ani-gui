@@ -1059,6 +1059,11 @@ async fn anime_detail_read(
     anilist_base: Option<&str>,
     past_cache: impl FnOnce(&AppState),
 ) -> Result<KitsuAnimeRef> {
+    // A 404 or 410 is Kitsu answering the entry is gone, which a
+    // history row that recorded the id needs to know (kitsu_gone.rs) —
+    // unless the history removed the id's show while the read was in
+    // flight, which it is from its first step: the cache read.
+    let begun = crate::history::guard::epoch(&state.history_path);
     let key = anime_detail_key(id);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(detail) = serde_json::from_str::<KitsuAnimeRef>(&body) {
@@ -1067,10 +1072,6 @@ async fn anime_detail_read(
         }
     }
     past_cache(state);
-    // A 404 or 410 is Kitsu answering the entry is gone, which a
-    // history row that recorded the id needs to know (kitsu_gone.rs) —
-    // unless the history removed the id's show while the read waited.
-    let begun = crate::history::guard::epoch(&state.history_path);
     let mut detail = state
         .kitsu
         .anime_detail(id)
