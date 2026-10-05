@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::commands::availability::{cache_key, AvailabilityResponse};
-use crate::commands::availability_ttl::{FLOOR_SECS, GRACE_SECS};
+use crate::commands::availability_ttl::{FLOOR_SECS, GRACE_SECS, NEGATIVE_GRACE_SECS};
 
 const HOUR: u64 = 60 * 60;
 const DAY: u64 = 24 * HOUR;
@@ -99,19 +99,16 @@ fn a_row_already_inside_the_cut_is_never_lengthened() {
 #[test]
 fn rows_the_cut_does_not_concern_are_left_alone() {
     let pool = pool();
-    let negative = cache_key("neg", "sub");
     let finished = cache_key("done", "sub");
     let expired = cache_key("old", "sub");
     let other = cache_key("other", "sub");
-    seed(&pool, &negative, &body(false), HOUR, DAY);
     seed(&pool, &finished, &body(true), HOUR, 30 * DAY);
     seed(&pool, &expired, &body(true), 2 * DAY, DAY);
     seed(&pool, &other, &body(true), HOUR, DAY);
     let t = now();
-    for id in ["neg", "done", "old"] {
+    for id in ["done", "old"] {
         shorten_positive_rows(&pool, id, Some(t + 2 * HOUR), t);
     }
-    assert_eq!(ttl_of(&pool, &negative), DAY);
     assert_eq!(ttl_of(&pool, &finished), 30 * DAY);
     assert_eq!(ttl_of(&pool, &expired), DAY);
     assert_eq!(ttl_of(&pool, &other), DAY);
@@ -149,4 +146,56 @@ fn a_cut_row_still_serves_its_body() {
         crate::cache::meta_cache_get(&pool, &key).expect("read"),
         Some(body(true))
     );
+}
+
+// --- negative rows ----------------------------------------------------
+
+#[test]
+fn a_negative_row_written_before_the_schedule_is_cut_in_both_modes() {
+    let pool = pool();
+    for mode in ["sub", "dub"] {
+        seed(&pool, &cache_key("lagged", mode), &body(false), HOUR, DAY);
+    }
+    let t = now();
+    shorten_positive_rows(&pool, "lagged", Some(t + 2 * HOUR), t);
+    for mode in ["sub", "dub"] {
+        // An hour old, then two hours to the drop plus the negative grace.
+        let ttl = ttl_of(&pool, &cache_key("lagged", mode));
+        assert!(
+            ttl.abs_diff(HOUR + 2 * HOUR + NEGATIVE_GRACE_SECS) <= 2,
+            "{mode}: {ttl}"
+        );
+    }
+}
+
+#[test]
+fn a_negative_row_with_a_passed_airing_is_left_the_floor() {
+    let pool = pool();
+    let key = cache_key("lagged", "sub");
+    seed(&pool, &key, &body(false), HOUR, DAY);
+    let t = now();
+    shorten_positive_rows(&pool, "lagged", Some(t - HOUR), t);
+    assert!(ttl_of(&pool, &key).abs_diff(HOUR + FLOOR_SECS) <= 2);
+}
+
+#[test]
+fn negative_rows_the_cut_does_not_concern_are_left_alone() {
+    let pool = pool();
+    let finished = cache_key("gone", "sub");
+    let expired = cache_key("stale-neg", "sub");
+    let inside = cache_key("soon-neg", "sub");
+    seed(&pool, &finished, &body(false), HOUR, 7 * DAY);
+    seed(&pool, &expired, &body(false), 2 * DAY, DAY);
+    seed(&pool, &inside, &body(false), 0, 2 * HOUR);
+    let t = now();
+    for id in ["gone", "stale-neg", "soon-neg"] {
+        shorten_positive_rows(&pool, id, Some(t + 5 * HOUR), t);
+    }
+    assert_eq!(ttl_of(&pool, &finished), 7 * DAY);
+    assert_eq!(ttl_of(&pool, &expired), DAY);
+    assert_eq!(ttl_of(&pool, &inside), 2 * HOUR);
+    let none = cache_key("ona-neg", "sub");
+    seed(&pool, &none, &body(false), HOUR, DAY);
+    shorten_positive_rows(&pool, "ona-neg", None, t);
+    assert_eq!(ttl_of(&pool, &none), DAY);
 }

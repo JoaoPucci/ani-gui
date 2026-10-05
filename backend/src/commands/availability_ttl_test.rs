@@ -149,3 +149,66 @@ proptest::proptest! {
         proptest::prop_assert_eq!(rescheduled_ttl(ttl, age, DAY, Some(at), NOW), expected);
     }
 }
+
+// --- negative rows ------------------------------------------------------
+
+#[test]
+fn a_negative_row_written_before_its_schedule_is_cut_past_the_drop() {
+    assert_eq!(
+        rescheduled_negative_ttl(DAY, HOUR, DAY, Some(NOW + 2 * HOUR), NOW),
+        Some(HOUR + 2 * HOUR + NEGATIVE_GRACE_SECS)
+    );
+}
+
+#[test]
+fn a_negative_row_with_a_passed_airing_keeps_the_floor() {
+    assert_eq!(
+        rescheduled_negative_ttl(DAY, HOUR, DAY, Some(NOW - HOUR), NOW),
+        Some(HOUR + FLOOR_SECS)
+    );
+}
+
+#[test]
+fn negative_rows_the_cut_does_not_concern_are_left_alone() {
+    let at = Some(NOW + 2 * HOUR);
+    // A finished show's week.
+    assert_eq!(rescheduled_negative_ttl(7 * DAY, HOUR, DAY, at, NOW), None);
+    // Expired.
+    assert_eq!(rescheduled_negative_ttl(DAY, DAY, DAY, at, NOW), None);
+    // Already inside the cut.
+    assert_eq!(
+        rescheduled_negative_ttl(4 * HOUR, HOUR, DAY, Some(NOW + 5 * HOUR), NOW),
+        None
+    );
+    // No schedule.
+    assert_eq!(rescheduled_negative_ttl(DAY, HOUR, DAY, None, NOW), None);
+}
+
+proptest::proptest! {
+    #[test]
+    fn a_negative_reschedule_only_ever_shortens_a_live_row(
+        ttl in 0u64..(60 * DAY),
+        age in 0u64..(60 * DAY),
+        at in proptest::option::of(0u64..(2 * NOW)),
+    ) {
+        if let Some(cut) = rescheduled_negative_ttl(ttl, age, DAY, at, NOW) {
+            proptest::prop_assert!(cut < ttl);
+            proptest::prop_assert!(cut > age);
+            proptest::prop_assert!(ttl <= DAY);
+        }
+    }
+
+    #[test]
+    fn a_negative_cut_never_comes_before_a_positive_one(
+        ttl in 1u64..=DAY,
+        age in 0u64..DAY,
+        at in 0u64..(2 * NOW),
+    ) {
+        proptest::prop_assume!(age < ttl);
+        // The longer grace: a negative row outlives the drop at least
+        // as long as a count does.
+        let pos = rescheduled_ttl(ttl, age, DAY, Some(at), NOW).unwrap_or(ttl);
+        let neg = rescheduled_negative_ttl(ttl, age, DAY, Some(at), NOW).unwrap_or(ttl);
+        proptest::prop_assert!(neg >= pos);
+    }
+}

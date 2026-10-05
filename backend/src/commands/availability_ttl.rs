@@ -57,6 +57,25 @@ pub(crate) fn rescheduled_ttl(
     (cut < remaining).then_some(age + cut)
 }
 
+/// How long past a scheduled airing a negative row stands: the
+/// catalogue adds a show more slowly than it lists a new episode.
+pub(crate) const NEGATIVE_GRACE_SECS: u64 = 3 * 60 * 60;
+
+/// [`rescheduled_ttl`] for a negative row: the cut sits
+/// [`NEGATIVE_GRACE_SECS`] past the airing. `ceiling` is the window a
+/// negative row is written with when no schedule is known; a longer
+/// row is a finished show's week or was sized by a schedule already.
+#[must_use]
+pub(crate) fn rescheduled_negative_ttl(
+    _ttl: u64,
+    _age: u64,
+    _ceiling: u64,
+    _next_airing_at: Option<u64>,
+    _now: u64,
+) -> Option<u64> {
+    None
+}
+
 #[cfg(test)]
 #[path = "availability_ttl_test.rs"]
 mod tests;

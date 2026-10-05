@@ -401,3 +401,28 @@ async fn a_batch_seeded_schedule_cuts_a_count_written_before_it() {
     seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
     assert_cut_at_the_drop(positive_ttl(&state, "50551"));
 }
+
+#[tokio::test]
+async fn a_batch_seeded_schedule_cuts_a_negative_written_before_it() {
+    let at = epoch_now() + 2 * 60 * 60;
+    let batch = format!(
+        r#"{{"data":{{"Page":{{"media":[
+        {{"id":207141,"status":"RELEASING","episodes":12,
+         "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}]}}}}}}"#
+    );
+    let (kitsu, anilist) = mappings_and_anilist(batch).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let key = crate::commands::availability::cache_key("50551", "sub");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &key,
+        r#"{"available":false}"#,
+        24 * 60 * 60,
+    )
+    .expect("seed negative row");
+    seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
+    // Two hours to the drop plus the negative grace of three — not a day.
+    let ttl = positive_ttl(&state, "50551");
+    assert!(ttl <= 5 * 60 * 60 + 5, "ttl {ttl}");
+    assert!(ttl > 4 * 60 * 60, "ttl {ttl}");
+}
