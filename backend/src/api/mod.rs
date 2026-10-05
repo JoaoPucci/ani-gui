@@ -2457,21 +2457,19 @@ mod tests {
         .expect("ms")
     }
 
-    /// A watch stamps the show and stores its mapping in the same
-    /// moment, so a mapping written beside the show's stamp is one a
-    /// play stored. Continue Watching keeps such a mapping when only the
-    /// provider's title doubts it.
+    /// A mapping a play stored reads as played. Continue Watching keeps
+    /// such a mapping when only the provider's title doubts it.
     #[tokio::test]
-    async fn a_mapping_stored_beside_the_watch_stamp_reads_as_played() {
+    async fn a_mapping_a_play_stored_reads_as_played() {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        crate::commands::kitsu::watched_at_put(&state, "hianime:x-1", now_ms()).expect("stamp");
-        crate::commands::kitsu::allmanga_kitsu_put(&state, "hianime:x-1", "49877").expect("put");
+        crate::commands::kitsu::allmanga_kitsu_put_played(&state, "hianime:x-1", "49877")
+            .expect("put");
         assert_eq!(played_body(state, "hianime:x-1").await, "true");
     }
 
-    /// A mapping with no watch stamp, or one written well apart from
-    /// it, was stored by a resolve that guessed: it is not played.
+    /// A mapping no play stored is not played, however near the show's
+    /// watch stamp it was written.
     #[tokio::test]
     async fn a_mapping_no_watch_stored_reads_as_not_played() {
         let td = TempDir::new().expect("tempdir");
@@ -2506,6 +2504,18 @@ mod tests {
             played_body(later, "hianime:x-1").await,
             "false",
             "half a minute after"
+        );
+
+        // A guess stored in the same second as a watch that recorded
+        // no id: written beside the stamp, and still a guess.
+        let td = TempDir::new().expect("tempdir");
+        let beside = test_app_state(&td);
+        crate::commands::kitsu::watched_at_put(&beside, "hianime:x-1", now_ms()).expect("stamp");
+        crate::commands::kitsu::allmanga_kitsu_put(&beside, "hianime:x-1", "1623").expect("put");
+        assert_eq!(
+            played_body(beside, "hianime:x-1").await,
+            "false",
+            "beside the stamp"
         );
 
         let td = TempDir::new().expect("tempdir");
