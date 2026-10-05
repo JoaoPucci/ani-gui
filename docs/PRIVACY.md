@@ -105,16 +105,21 @@ ani-gui keeps the following on your computer only:
   the app's local browser storage (under your OS user-data directory),
   keyed by the show's Kitsu id and the episode number. Clearing your
   watch history forgets them all. Removing a show from Continue
-  Watching forgets that show's positions — found by the card's
-  matched show, or, for a card whose match never loaded, by the show
-  id → Kitsu id mapping a play records. Where neither is available —
-  the mapping was refused or failed to save, expired thirty days after
-  the show's last play, was dropped as wrong, or cannot be read — that
-  show's positions stay until the history is cleared or they are
-  pushed out by newer ones. They also stay while another history row
-  for the same show remains — it is still a Continue card — or while
-  a remaining row's show cannot be told (its match has not resolved
-  and it has no readable show id → Kitsu id mapping). Forgetting a
+  Watching forgets that show's positions — found by the Kitsu id its
+  history row recorded, even one Kitsu has since deleted, and by the
+  card's matched show, or, for a card whose match never loaded, by the
+  show id → Kitsu id mapping a play records, read before the removal
+  deletes it. Where none is available — an older row that recorded no
+  id, whose mapping was refused or failed to save, expired thirty days
+  after the show's last play, was dropped as wrong, or cannot be read
+  — that show's positions stay until the history is cleared or they
+  are pushed out by newer ones. They also stay while another history
+  row for the same show remains — it is still a Continue card, its
+  show told by the Kitsu id it recorded unless Kitsu answers that
+  entry deleted, then by its match, then by its mapping — or while a
+  remaining row's show cannot be told (its match has not resolved, and
+  Kitsu cannot be asked about the id it recorded, or it has no live
+  recorded id and no readable mapping). Forgetting a
   show's positions, or all of them, also forgets where a stream that
   was recovering from a dropped connection stood, which the app keeps
   in memory until that episode is opened again.
