@@ -17,8 +17,14 @@ export interface RowTrust {
 export function createRowTrust(
 	resolve: (entry: HistoryEntry) => Promise<{ match: KitsuAnimeRef | null; trusted: boolean }>
 ): RowTrust {
+	const guesses = new Set<string>();
 	return {
-		resolveMatch: async (entry) => (await resolve(entry)).match,
-		isGuess: () => false
+		resolveMatch: async (entry) => {
+			const { match, trusted } = await resolve(entry);
+			if (match && !trusted) guesses.add(entry.id);
+			else guesses.delete(entry.id);
+			return match;
+		},
+		isGuess: (entryId) => guesses.has(entryId)
 	};
 }

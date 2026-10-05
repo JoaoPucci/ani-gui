@@ -139,8 +139,7 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
-	import { recordableKitsuId } from '$lib/history/match-trust';
-	import { openedFromGuess, withGuess } from '$lib/play/play-origin';
+	import { openedFromGuess, recordableId, withGuess } from '$lib/play/play-origin';
 
 	const id = $derived(page.params.id ?? '');
 	// A session opened from a guessed Continue match records the guess
@@ -1878,7 +1877,7 @@
 						// switchToEpisode (the click path) does that
 						// directly via prefetch:false (default).
 						prefetch: true,
-						kitsu_id: recordableKitsuId(id)
+						kitsu_id: recordableId(id, fromGuess)
 					},
 					emit,
 					signal
@@ -1939,7 +1938,7 @@
 							year: yearFromKitsuRef(detail),
 							subtype: detail?.subtype ?? null,
 							alt_titles: altTitlesFromKitsu(detail),
-							kitsu_id: recordableKitsuId(id)
+							kitsu_id: recordableId(id, fromGuess)
 						},
 						emit,
 						signal
@@ -1980,7 +1979,7 @@
 				year: yearFromKitsuRef(detail),
 				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail),
-				kitsu_id: recordableKitsuId(id)
+				kitsu_id: recordableId(id, fromGuess)
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (AniList / MAL).
 			// Best-effort and renderer-driven — the backend is stateless,
@@ -2229,7 +2228,7 @@
 				handoffArgs({
 					title,
 					episode: episodeNum,
-					kitsuId: recordableKitsuId(id) ?? '',
+					kitsuId: recordableId(id, fromGuess) ?? '',
 					config,
 					detail
 				})
@@ -2282,7 +2281,7 @@
 				handoffArgs({
 					title,
 					episode: episodeNum,
-					kitsuId: recordableKitsuId(id) ?? '',
+					kitsuId: recordableId(id, fromGuess) ?? '',
 					config,
 					detail
 				})

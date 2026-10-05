@@ -83,10 +83,9 @@
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
-	import { resolveKitsuMatch, resolveKitsuMatchWithTrust } from '$lib/history/match';
-	import { forgetMatchTrust, recordableKitsuId } from '$lib/history/match-trust';
+	import { resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
-	import { withGuess } from '$lib/play/play-origin';
+	import { recordableId, withGuess } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
@@ -382,10 +381,9 @@
 				// the right Kitsu episode instead of collapsing onto
 				// Part 1's episode 1.
 				historyById.clear();
-				forgetMatchTrust();
 				for (const h of history) historyById.set(h.id, h);
 				void loadContinueWatchingState(history, {
-					resolveMatch: (entry) => resolveKitsuMatch(resolveHistoryEntry(entry, null)),
+					resolveMatch: rowTrust.resolveMatch,
 					// makeFetchAvailability keeps the args-mapping closure
 					// in a testable lib so no untestable closure lives on
 					// this page. checkAvailability is already cache-first
@@ -655,7 +653,7 @@
 		year: yearFromKitsuRef(a.match),
 		subtype: a.match.subtype ?? null,
 		alt_titles: altTitlesFromKitsu(a.match),
-		kitsu_id: recordableKitsuId(a.match.id)
+		kitsu_id: recordableId(a.match.id, a.guess === true)
 	});
 	const startResume = makeStartResume({
 		leftPartWay,

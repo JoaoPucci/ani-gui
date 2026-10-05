@@ -27,7 +27,6 @@ import {
 import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 import { storedBinding } from './match-stored';
-import { noteMatchTrust } from './match-trust';
 
 /** Whether a failed Kitsu read is Kitsu answering that the entry is
  *  gone — a 404 or 410, which the backend passes on as an upstream
@@ -38,14 +37,9 @@ function kitsuEntryGone(e: unknown): boolean {
 	return err?.kind === 'upstream' && (err.status === 404 || err.status === 410);
 }
 
-/** Resolve a Continue row to its Kitsu entry, and note for the play
- *  the card starts whether the match may be recorded on the row
- *  (match-trust.ts): only the row's recorded id or a mapping a real
- *  play stored may; a guess may not. */
+/** Resolve a Continue row to its Kitsu entry. */
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
-	const { match, trusted } = await resolveKitsuMatchWithTrust(preliminary);
-	if (match) noteMatchTrust(match.id, trusted);
-	return match;
+	return (await resolveKitsuMatchWithTrust(preliminary)).match;
 }
 
 /** Resolve a Continue row to its Kitsu entry, with whether the match

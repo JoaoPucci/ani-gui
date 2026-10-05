@@ -81,7 +81,10 @@ export interface StartResumeDeps {
 	 *  kept. Omitted, nothing was. */
 	leftPartWay?: (kitsuId: string, episode: number) => boolean;
 	/** Marks `episode` of `kitsuId` started — before the resolve, which
-	 *  records the watch. Omitted, nothing is marked. */
+	 *  records the watch. Omitted, nothing is marked. A local position
+	 *  keyed by the card's show, written for a guessed match too: it is
+	 *  neither the history row nor a tracker, and removing the card
+	 *  forgets it (delete-controller.ts). */
 	markStarted?: (kitsuId: string, episode: number) => void;
 }
 
@@ -130,13 +133,17 @@ export function makeStartResume(
 			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
-		const args: ResumePlayArgs = { match, title, episode, mode, quality };
+		const guess = deps.isGuess?.(entry.id) ?? false;
+		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
 		deps.markStarted?.(match.id, episode);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
 			void deps.markWatched(args).catch(() => {});
-			void deps.syncTrackers(match.id, episode, seriesTotal, seriesFinished).catch(() => {});
-			deps.navigateToSession(match.id, session, episode);
+			// A guessed match writes nothing to the user's tracker accounts.
+			if (!guess) {
+				void deps.syncTrackers(match.id, episode, seriesTotal, seriesFinished).catch(() => {});
+			}
+			deps.navigateToSession(match.id, session, episode, guess);
 		} catch (e) {
 			deps.onBusy(null);
 			deps.onProgress(null);

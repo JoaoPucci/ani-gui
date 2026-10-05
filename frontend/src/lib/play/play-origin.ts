@@ -12,21 +12,21 @@
  * detail page, where the user chose the show, never carries it.
  */
 
+const GUESS_PARAM = 'guess';
+
 /** Whether the play URL's query marks a session opened from a guess. */
 export function openedFromGuess(search: URLSearchParams): boolean {
-	void search;
-	return false;
+	return search.get(GUESS_PARAM) === '1';
 }
 
 /** The Kitsu id a request from the session may record, or undefined
  *  for a session opened from a guess. */
 export function recordableId(id: string, fromGuess: boolean): string | undefined {
-	void fromGuess;
-	return id || undefined;
+	return fromGuess || !id ? undefined : id;
 }
 
 /** `query` (a `?…` play query) carrying the guess flag when `guess`. */
 export function withGuess(query: string, guess: boolean): string {
-	void guess;
-	return query;
+	if (!guess) return query;
+	return `${query}${query.length > 1 ? '&' : ''}${GUESS_PARAM}=1`;
 }
