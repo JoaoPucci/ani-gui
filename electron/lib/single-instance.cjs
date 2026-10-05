@@ -50,8 +50,9 @@ function revealWindow(win) {
  *   - otherwise the boot succeeded and its window is gone, which is
  *     macOS after the last window closed (window-all-closed quits
  *     everywhere else): a window is opened against the boot's backend,
- *     one at a time. A reopen that fails is logged, and the next
- *     launch tries again.
+ *     one at a time. A reopen that fails is logged and its window
+ *     discarded — on screen, frameless and blank, it would have
+ *     nothing on it to close it by — and the next launch tries again.
  *
  * Returns what it did: "revealed", "reopened" or "none".
  */
@@ -59,6 +60,7 @@ function windowKeeper({
   createWindow = async () => {},
   quitting = () => false,
   logError = () => {},
+  discard = () => {},
 } = {}) {
   let current = null;
   let backend = null;
@@ -86,6 +88,7 @@ function windowKeeper({
           await createWindow(backend);
         } catch (err) {
           logError("[main] could not reopen the window:", err);
+          discard();
         } finally {
           reopening = false;
         }

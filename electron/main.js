@@ -105,6 +105,11 @@ const keeper = windowKeeper({
     createWindow(apiBase, internalSecret),
   quitting: () => quitGoingAhead,
   logError: console.error,
+  // A reopen happens only with no window left, so whatever window is
+  // there when it fails is the one it opened.
+  discard: () => {
+    for (const win of BrowserWindow.getAllWindows()) win.destroy();
+  },
 });
 if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
   return;
