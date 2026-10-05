@@ -18,6 +18,7 @@ use super::play_native_choice::{identity_rank, pick_without_count, select_winner
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
+use super::play_native_title_marker::EntryTitles;
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -127,6 +128,13 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // from probes that failed below.
         return Err(crate::error::AniError::NoResults);
     }
+    let entry = EntryTitles::new(entry_titles);
+    tracing::debug!(
+        entry = entry.canonical,
+        aliases = entry.alts.len(),
+        search = search_title,
+        "pick: choosing among the pool"
+    );
     let needle = search_title.trim().to_lowercase();
     // Format disproof in both directions, over the RAW list — the
     // badge is free, so incompatible formats never crowd the bounded
@@ -259,7 +267,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         }
         return Err(crate::error::AniError::NoResults);
     }
-    let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle);
+    let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
     if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {
         return Err(crate::error::AniError::Network);
     }

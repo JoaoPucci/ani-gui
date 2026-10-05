@@ -8,6 +8,7 @@ use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
 use super::play_native::PickedShow;
+use super::play_native_title_marker::EntryTitles;
 
 /// Identity a candidate carries: 0 = exact title, 1 = year-confirmed,
 /// 2 = neither. Lower outranks higher.
@@ -85,6 +86,7 @@ pub(super) fn select_winner(
     probed_ok: &[(&BrowseHit, Vec<EpisodeRef>, u32, bool)],
     best_dist: u32,
     needle: &str,
+    _entry: EntryTitles<'_>,
 ) -> (usize, u8) {
     let winner_idx = probed_ok
         .iter()
