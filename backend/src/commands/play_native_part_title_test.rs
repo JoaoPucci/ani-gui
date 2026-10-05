@@ -187,3 +187,39 @@ proptest::proptest! {
         }
     }
 }
+
+#[test]
+fn a_title_the_entry_extends_with_a_later_part_precedes_it() {
+    assert!(precedes_entry("X", &["X Season 2"]));
+    assert!(precedes_entry(
+        "Golden Kamuy",
+        &["Ekkusu", "Golden Kamuy: Season 2"]
+    ));
+    // The entry itself, its own later parts and strangers do not.
+    assert!(!precedes_entry("X Season 2", &["X Season 2"]));
+    assert!(!precedes_entry("X Season 2", &["X"]));
+    assert!(!precedes_entry("Y", &["X Season 2"]));
+    assert!(!precedes_entry(SBR, &[SBR]));
+    assert!(!precedes_entry(&format!("{SBR} 2nd Stage"), &[SBR]));
+    assert!(!precedes_entry("X", &[]));
+}
+
+proptest::proptest! {
+    #[test]
+    fn a_title_precedes_the_entry_exactly_when_an_entry_title_names_its_later_part(
+        stem in "[A-Za-z][A-Za-z ]{0,12}",
+        parts in proptest::collection::vec(proptest::option::of(1u32..6), 0..4),
+    ) {
+        let titles: Vec<String> = parts
+            .iter()
+            .map(|p| match p {
+                Some(1) => stem.clone(),
+                Some(k) => format!("{stem} Part {k}"),
+                None => "Another Show".to_string(),
+            })
+            .collect();
+        let refs: Vec<&str> = titles.iter().map(String::as_str).collect();
+        let later = parts.iter().any(|p| p.is_some_and(|k| k >= 2));
+        proptest::prop_assert_eq!(precedes_entry(&stem, &refs), later);
+    }
+}

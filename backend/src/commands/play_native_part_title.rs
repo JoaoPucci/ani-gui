@@ -77,6 +77,19 @@ pub(crate) fn part_ordinal(stem: &str, title: &str) -> Option<u32> {
     marker_ordinal(rest).filter(|k| *k >= 2)
 }
 
+/// Whether a provider title is a part that comes before the requested
+/// entry: some title the entry goes by (`entry_titles`, the canonical
+/// one and every alias) names a later part of it. Kitsu keeps "X
+/// Season 2" as an entry of its own; asked for it, the provider's "X"
+/// is the season before — never the entry, and never the first half
+/// of it.
+#[must_use]
+pub(crate) fn precedes_entry(title: &str, entry_titles: &[&str]) -> bool {
+    entry_titles
+        .iter()
+        .any(|t| part_ordinal(title, t).is_some_and(|k| k >= 2))
+}
+
 #[cfg(test)]
 #[path = "play_native_part_title_test.rs"]
 mod tests;

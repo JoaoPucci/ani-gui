@@ -17,6 +17,7 @@ use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
+use super::play_native_part_title::precedes_entry;
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -76,6 +77,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// - With `expected = None`: an exact title match wins, else the
 ///   first surviving hit — positional order is the provider's own
 ///   ranking.
+/// - A candidate the searched title names a later part of ("X" when
+///   asked for "X Season 2") is the season before, and never picked;
+///   [`pick_candidate_titled`] reads every title the entry goes by.
 /// - Probe errors skip the candidate rather than abort the pick; a
 ///   pick only fails when no probed candidate survives.
 ///
@@ -114,7 +118,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     hits: &[BrowseHit],
     expected: Option<u32>,
     search_title: &str,
-    _entry_titles: &[&str],
+    entry_titles: &[&str],
     year: Option<u32>,
     subtype: Option<&str>,
 ) -> Result<PickedShow> {
@@ -127,7 +131,11 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // Format disproof in both directions, over the RAW list — the
     // badge is free, so incompatible formats never crowd the bounded
     // probe head (see play_native_format).
-    let hits = format_survivors(hits, expected, subtype);
+    let mut hits = format_survivors(hits, expected, subtype);
+    // A part before the requested entry is not the entry, whichever way
+    // the pick would use it: alone, rescued as airing, or heading a
+    // stitched chain.
+    hits.retain(|h| !precedes_entry(&h.title, entry_titles));
     let (head, year_excluded_any) = year_filtered(client, &hits, year).await?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
