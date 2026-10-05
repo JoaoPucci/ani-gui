@@ -43,12 +43,15 @@ function kitsuEntryGone(e: unknown): boolean {
  *  (match-trust.ts): only the row's recorded id or a mapping a real
  *  play stored may; a guess may not. */
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
-	const { match, trusted } = await resolveWithTrust(preliminary);
+	const { match, trusted } = await resolveKitsuMatchWithTrust(preliminary);
 	if (match) noteMatchTrust(match.id, trusted);
 	return match;
 }
 
-async function resolveWithTrust(
+/** Resolve a Continue row to its Kitsu entry, with whether the match
+ *  is one a play may record: the row's recorded id, or a mapping a
+ *  real play stored. Everything else is a guess. */
+export async function resolveKitsuMatchWithTrust(
 	preliminary: ResumeTarget
 ): Promise<{ match: KitsuAnimeRef | null; trusted: boolean }> {
 	// The row recorded the show the user played: read that entry and

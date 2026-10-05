@@ -83,8 +83,10 @@
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
-	import { resolveKitsuMatch } from '$lib/history/match';
+	import { resolveKitsuMatch, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { forgetMatchTrust, recordableKitsuId } from '$lib/history/match-trust';
+	import { createRowTrust } from '$lib/history/row-trust';
+	import { withGuess } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
@@ -638,6 +640,12 @@
 	// refinement routes through rowReady so a click-time tightened
 	// cap also refreshes the badge's episode metadata (latest-wins
 	// token in row-ready.ts drops the stale fetch).
+	// Per row, whether its Continue match is only a guess: the card
+	// then opens its play as one, which records the guess nowhere
+	// ($lib/play/play-origin.ts).
+	const rowTrust = createRowTrust((entry) =>
+		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
+	);
 	const playArgsFor = (a: ResumePlayArgs) => ({
 		title: a.title,
 		episode: String(a.episode),
@@ -653,6 +661,7 @@
 		leftPartWay,
 		markStarted,
 		isBusy: () => !!resumeBusy,
+		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {
 			resumeBusy = id;
 		},
@@ -696,10 +705,11 @@
 		// (mode-independent), NOT the dub/sub playable cap, and only
 		// for a finished series — see /play/[id] for the rationale.
 		syncTrackers: (id, ep, total, finished) => syncWatchedToTrackers(id, ep, total, finished),
-		navigateToSession: (id, session, ep) => {
+		navigateToSession: (id, session, ep, guess) => {
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(
-				resolve('/play/[id]', { id }) + buildPlayQuery(session as CreateSessionResponse, ep)
+				resolve('/play/[id]', { id }) +
+					withGuess(buildPlayQuery(session as CreateSessionResponse, ep), guess === true)
 			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		}

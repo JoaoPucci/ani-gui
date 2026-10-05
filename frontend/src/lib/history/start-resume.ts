@@ -21,6 +21,9 @@ import { resolveResumeEpisode } from './resume-episode';
 import { resumeOr } from '$lib/play/next-episode';
 
 export interface ResumePlayArgs {
+	/** Whether the card's match is only a guess (row-trust.ts): its id
+	 *  is then not recorded, and the session is opened as a guess. */
+	guess?: boolean;
 	match: KitsuAnimeRef;
 	title: string;
 	episode: number;
@@ -30,6 +33,8 @@ export interface ResumePlayArgs {
 
 export interface StartResumeDeps {
 	isBusy: () => boolean;
+	/** Whether the clicked row's match is only a guess (row-trust.ts). */
+	isGuess?: (entryId: string) => boolean;
 	onBusy: (kitsuId: string | null) => void;
 	onProgress: (label: string | null) => void;
 	onFailure: (title: string, error: unknown) => void;
@@ -66,7 +71,12 @@ export interface StartResumeDeps {
 		seriesTotal: number | null,
 		seriesFinished: boolean
 	) => Promise<void>;
-	navigateToSession: (kitsuId: string, session: { session_id: string }, episode: number) => void;
+	navigateToSession: (
+		kitsuId: string,
+		session: { session_id: string },
+		episode: number,
+		guess?: boolean
+	) => void;
 	/** Whether `episode` of `kitsuId` was left part-way, its position
 	 *  kept. Omitted, nothing was. */
 	leftPartWay?: (kitsuId: string, episode: number) => boolean;

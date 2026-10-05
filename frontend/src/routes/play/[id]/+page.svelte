@@ -140,8 +140,14 @@
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
 	import { recordableKitsuId } from '$lib/history/match-trust';
+	import { openedFromGuess, withGuess } from '$lib/play/play-origin';
 
 	const id = $derived(page.params.id ?? '');
+	// A session opened from a guessed Continue match records the guess
+	// nowhere — not on the history row, not on tracker accounts
+	// ($lib/play/play-origin.ts). The flag is in the URL, and every URL
+	// this page builds for itself carries it on.
+	const fromGuess = $derived(openedFromGuess(page.url.searchParams));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
 	const episodeNum = $derived(parseInt(page.url.searchParams.get('episode') ?? '1', 10));
 	// kind defaults to hls — the legacy URL shape didn't carry one. The
@@ -1984,12 +1990,14 @@
 			// mode the playable cap is only the dubbed slice (Codex P2
 			// #3387467149) — and only for a finished series (Codex P2
 			// #3387184082). progress itself is the played episode number.
-			void syncWatchedToTrackers(
-				id,
-				targetEp,
-				detail?.episode_count ?? null,
-				detail?.status === 'finished'
-			).catch(() => {});
+			if (!fromGuess) {
+				void syncWatchedToTrackers(
+					id,
+					targetEp,
+					detail?.episode_count ?? null,
+					detail?.status === 'finished'
+				).catch(() => {});
+			}
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			// replaceState: true so prev/next don't accumulate history
 			// entries — back from /play/[id] always returns to
@@ -2004,9 +2012,10 @@
 			// without going out between them. A navigation that fails is
 			// not a failed play, so it does not reach the play-failure
 			// overlay below.
-			await goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
-				replaceState: true
-			}).catch(() => {});
+			await goto(
+				resolve('/play/[id]', { id }) + withGuess(buildPlayQuery(session, targetEp), fromGuess),
+				{ replaceState: true }
+			).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			// switchToEpisode is the play *call* failing — the user
