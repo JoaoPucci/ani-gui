@@ -43,13 +43,30 @@ fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
 /// `kitsu_ids`: the ones a removed show was known by and no remaining
 /// row claims. A provider can rename a show and the row takes the new
 /// title, so rows stored under an earlier title are found by the entry
-/// they name, not by the title the row has now.
+/// they name, not by the title the row has now. The rows stored for
+/// the row `id` under each of `titles` stay, for [`forget_title_matches`]
+/// to take afterwards: a retry finds the show's ids by them.
 ///
 /// # Errors
 /// Cache failures propagate.
-pub(crate) fn forget_title_matches_naming(state: &AppState, kitsu_ids: &[String]) -> Result<()> {
+pub(crate) fn forget_title_matches_naming(
+    state: &AppState,
+    id: &str,
+    titles: &[&str],
+    kitsu_ids: &[String],
+) -> Result<()> {
+    let mut own = std::collections::HashSet::new();
+    for title in titles {
+        for prefix in title_match_prefixes(id, title) {
+            own.extend(
+                cour_entries(state, &prefix)?
+                    .into_iter()
+                    .map(|(key, _)| key),
+            );
+        }
+    }
     for (key, body) in meta_cache_entries_prefix(&state.cache_pool, "title-match:")? {
-        if kitsu_ids.contains(&body) {
+        if kitsu_ids.contains(&body) && !own.contains(&key) {
             meta_cache_delete(&state.cache_pool, &key)?;
         }
     }

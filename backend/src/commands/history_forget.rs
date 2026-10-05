@@ -31,8 +31,10 @@
 //! The order is what a retry needs: nothing goes before what the
 //! retry would find it by. The watch stamp and skip times; the other
 //! keys' numbering, while the resolution rows that name those keys are
-//! still there; the resolution rows; the mappings and title matches the
-//! show's Kitsu ids are found by; then the history file; then the
+//! still there; the resolution rows; the title matches under earlier
+//! titles that name the show's Kitsu ids; the mappings and title
+//! matches those ids are found by, all a retry in a later process has;
+//! then the history file; then the
 //! removed rows' own offsets ([`sweep_offsets`]).
 
 use crate::app::AppState;
@@ -54,9 +56,11 @@ const HISTORY_PREFIXES: [&str; 6] = [
 /// as the show played and seen played from `pages`, left in the cache,
 /// but for what the removal finds things by, which goes after the rest:
 /// the resolution rows, which the removal finds with what this returns
-/// ([`super::history_forget_resolutions::find_resolutions`]), and then
-/// the mapping and title matches this finds the show's Kitsu ids by
-/// ([`forget_finders`]). Skip
+/// ([`super::history_forget_resolutions::find_resolutions`]), the title
+/// matches under earlier titles that name those ids
+/// ([`super::history_forget_titles::forget_title_matches_naming`]), and
+/// then the mapping and title matches this finds the show's Kitsu ids
+/// by ([`forget_finders`]). Skip
 /// times found by a Kitsu id in `claimed` — one a remaining row
 /// records, maps to, matched by title or was seen played from — stay
 /// with that row's show. Returns the Kitsu ids the show was known by

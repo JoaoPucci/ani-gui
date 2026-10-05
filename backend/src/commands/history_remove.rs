@@ -79,10 +79,14 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         for kitsu_id in &known_by {
             held.played_from(id, Some(kitsu_id));
         }
-        for (title, _) in &removed {
+        // The title matches found by those ids, under an earlier title,
+        // before the mapping and current-title matches the ids are found
+        // by: a retry in a later process has only those.
+        let titles: Vec<&str> = removed.iter().map(|(title, _)| title.as_str()).collect();
+        super::history_forget_titles::forget_title_matches_naming(state, id, &titles, &known_by)?;
+        for title in &titles {
             super::history_forget::forget_finders(state, id, title)?;
         }
-        super::history_forget_titles::forget_title_matches_naming(state, &known_by)?;
         held.write(&entries)?;
         super::history_forget::sweep_offsets(state, &[id]);
         held.removed_show(id, &known_by);
