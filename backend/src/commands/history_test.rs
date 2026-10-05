@@ -827,3 +827,86 @@ fn a_clear_of_an_unreadable_history_fails_and_changes_nothing() {
         "with its offset"
     );
 }
+
+// — a delete that fails part-way, retried after a restart ——————————
+//
+// A row from before rows recorded the Kitsu id finds the show's id
+// only through its mapping and the title match under its current
+// title; a match stored under an earlier title is found by the id it
+// names. A retry in a later process has no pages noted in memory, so a
+// failure must leave it the finders it needs.
+
+const RENAMED_ID: &str = "hianime:the-show-100";
+const OLD_TITLE_MATCH: &str = "title-match:v3:hianime:the show:c1";
+
+fn renamed_legacy_row(s: &AppState) {
+    write_atomic(
+        &s.history_path,
+        &[HistoryEntry {
+            kitsu_id: None,
+            ..row(RENAMED_ID, "The Show: Renamed")
+        }],
+    )
+    .unwrap();
+    put(s, OLD_TITLE_MATCH, "77");
+}
+
+/// Make the cache refuse to delete the row under `key`.
+fn refuse_delete_of(s: &AppState, key: &str) {
+    s.cache_pool
+        .get()
+        .unwrap()
+        .execute_batch(&format!(
+            "CREATE TRIGGER refused BEFORE DELETE ON meta_cache \
+             WHEN old.key = '{key}' BEGIN SELECT RAISE(ABORT, 'refused'); END;"
+        ))
+        .unwrap();
+}
+
+/// The same history and cache in a process that has held neither.
+fn restarted(s: &AppState, dir: &std::path::Path) -> AppState {
+    let path = dir.join("history-after-restart");
+    std::fs::copy(&s.history_path, &path).unwrap();
+    AppState {
+        cache_pool: s.cache_pool.clone(),
+        ..make_state(path)
+    }
+}
+
+fn delete_fails_then_retries_after_a_restart(s: &AppState, dir: &std::path::Path) {
+    refuse_delete_of(s, OLD_TITLE_MATCH);
+    assert!(history_delete(s, RENAMED_ID).is_err());
+    s.cache_pool
+        .get()
+        .unwrap()
+        .execute_batch("DROP TRIGGER refused;")
+        .unwrap();
+
+    let after = restarted(s, dir);
+    assert!(history_delete(&after, RENAMED_ID).unwrap());
+    assert_eq!(
+        cached(&after, OLD_TITLE_MATCH),
+        None,
+        "the old title's match"
+    );
+}
+
+#[test]
+fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_mapping() {
+    let tmp = tempfile::tempdir().unwrap();
+    let s = make_state(tmp.path().join("history"));
+    renamed_legacy_row(&s);
+    crate::commands::kitsu::allmanga_kitsu_put(&s, RENAMED_ID, "77").unwrap();
+
+    delete_fails_then_retries_after_a_restart(&s, tmp.path());
+}
+
+#[test]
+fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_current_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let s = make_state(tmp.path().join("history"));
+    renamed_legacy_row(&s);
+    put(&s, "title-match:v3:hianime:the show: renamed:c1", "77");
+
+    delete_fails_then_retries_after_a_restart(&s, tmp.path());
+}
