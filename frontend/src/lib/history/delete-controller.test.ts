@@ -412,3 +412,18 @@ describe('executeKitsuGroupDelete — a slow Kitsu does not hold the removal', (
 		expect(forgetPositions).toHaveBeenCalledWith('k-7');
 	});
 });
+
+describe('executeKitsuGroupDelete — forgetting that fails', () => {
+	test('a forget that throws leaves the removal settled and fails nothing', async () => {
+		const result = await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1')],
+			matches: { 'aa-1': m('k-1') },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions: () => {
+				throw new Error('storage refused');
+			}
+		});
+		await expect(result.forgetting).resolves.toBeUndefined();
+		expect(result.removedIds).toEqual(['aa-1']);
+	});
+});
