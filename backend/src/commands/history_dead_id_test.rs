@@ -341,3 +341,21 @@ async fn a_read_begun_after_the_removal_marks_as_any_does() {
 
     assert!(marked(&state, "999"));
 }
+
+// A read is in flight from its first step, the cache read, not from
+// the moment it reaches Kitsu: a removal that lands between the two
+// took the marks of the show's ids, and the 404 that follows does not
+// bring one back.
+
+#[tokio::test]
+async fn a_404_after_a_deletion_between_the_cache_read_and_kitsu_marks_nothing() {
+    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+
+    let read = crate::commands::kitsu::anime_detail_past_cache(&state, "999", |state| {
+        assert!(history_delete(state, SHOW).expect("delete"));
+    })
+    .await;
+
+    assert!(read.is_err());
+    assert!(!marked(&state, "999"));
+}
