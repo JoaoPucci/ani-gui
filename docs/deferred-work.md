@@ -115,6 +115,22 @@ starting it, and delete it when you find it done.
   clear, which also reran candidate selection; nobody captured the
   two master URLs to compare.
 
+- **A page that loads but never mounts leaves a blank window.** The
+  boot counts the first page as there once it arrives with a good
+  status. If the bundle's scripts are then missing, or throw before
+  the app mounts, what is on screen is the frameless window with
+  nothing in it — no titlebar, so no close button — and the backend
+  running behind it. The main process cannot tell: everything it
+  can see says the page loaded.
+
+  It waited because it is not a check the main process can make
+  alone. The renderer has to say it has mounted, and the boot has to
+  give up when it does not — which is one more deadline, with the
+  fault the other two had to be widened for: on a slow disk a working
+  install takes long enough to look like a broken one
+  (`electron/lib/backend-handshake.cjs` has the measurement). Whatever
+  bounds the wait has to be sized for "never", not for "slow".
+
 ## Testing and CI
 
 - **The CRAP ratchet disagrees between CI and local** — 26 against 25 —
@@ -132,6 +148,21 @@ starting it, and delete it when you find it done.
   writes `COMMIT_EDITMSG` after pre-commit runs, even for `git commit
   -m` — verified with a probe hook. So a gate that skips the tests
   only for a `test(red):` subject has to live in `commit-msg`.
+- **Nothing stops a download tool on Windows under test.** When the
+  shell dies without quitting, the backend stops itself, and the
+  guards on its running downloads kill each tool's tree — on Windows
+  with `taskkill /T`, which finds the tree by parent pid. The test
+  that runs a real download and takes the parent away
+  (`backend/tests/backend_stop.rs`) is Unix-only: its stand-ins for
+  the provider's transport and for yt-dlp are shell scripts, and the
+  backend looks both up as a bare name or an `.exe`, neither of which
+  a script can be on Windows. The Windows leg does run the parent
+  watch and the cases for a dead parent's pipes; what it never does
+  is stop a tool.
+
+  The same goes for what the shell shows on that platform: the
+  failed-startup dialog and the quit prompt have been seen on Linux
+  only, since nothing builds or launches the Windows app in CI.
 
 ## Correctness in the app (continued)
 
@@ -183,6 +214,15 @@ starting it, and delete it when you find it done.
   ascending/descending is absent. Name any further filters wanted
   before starting, rather than reading this as filters being missing.
 - **Update notifier is not resilient to GitHub rate limits.**
+- **Two things still speak English whatever the app's language.** The
+  pages the OAuth callback server answers the browser with after a
+  sign-in — "Connected to ani-gui", "Connection failed" — are written
+  into `electron/oauth-server.js`; the main process has a message
+  table in every shipped locale for its dialogs
+  (`electron/lib/main-messages.cjs`), and they belong in it. And the
+  renderer hands the native pickers English literals: the download
+  folder picker's title, and the file-type names `Executables` and
+  `All files`.
 - **Adopt the `documentPictureInPicture` browser API** for the player's
   pop-out window. Not a request to write documentation — "Document
   Picture-in-Picture" is the W3C API's name.
@@ -707,6 +747,36 @@ the shape against the app as it is then.
   inherits the app's environment — so that route needs the same
   path wiring on the hand-off, or a yt-dlp the user installed
   themselves.
+
+## Update information in the AppImage
+
+The AppImage carries no update information and releases publish no
+`.zsync` file beside it, so AppImageUpdate and similar tools cannot
+update an installed AppImage in place. The AppImageHub catalog's check
+reports it as a warning, not a failure. It waited because the app's own
+update notifier already announces new releases, and in-place updating
+is a convenience on top of that. The notifier covers installs that keep
+"Include prereleases" on, which is the default: with it off, the
+notifier asks only for full releases, and since every release so far is
+a pre-release, it announces none.
+
+Three things are worth knowing before starting:
+
+- `electron/scripts/repack-appimage.mjs` builds the final AppImage
+  itself — the type2 runtime concatenated with a squashfs it makes with
+  `mksquashfs` — so `appimagetool -u` is not on the path. The update
+  information belongs in the runtime's `.upd_info` ELF section, which
+  the repack would have to fill.
+- Every release is published as a pre-release, and the `latest` tag of
+  the usual `gh-releases-zsync|JoaoPucci|ani-gui|latest|…` string goes
+  through GitHub's latest-release lookup, which skips pre-releases.
+  Whatever string is embedded has to be confirmed to find a
+  pre-release.
+- The `.zsync` file comes from `zsyncmake`, which the release build
+  does not provision: nothing in the packaging scripts fetches it, the
+  way the repack fetches the runtime. Requiring it to be installed on
+  the machine that builds is a system change (`AGENTS.md` §11), so the
+  alternative is for the build to fetch a copy into the repository too.
 
 ## Housekeeping
 
