@@ -748,6 +748,32 @@ the shape against the app as it is then.
   path wiring on the hand-off, or a yt-dlp the user installed
   themselves.
 
+## Update information in the AppImage
+
+The AppImage carries no update information and releases publish no
+`.zsync` file beside it, so AppImageUpdate and similar tools cannot
+update an installed AppImage in place. The AppImageHub catalog's check
+reports it as a warning, not a failure. It waited because the app's own
+update notifier already tells every install that a release is out, and
+in-place updating is a convenience on top of that.
+
+Three things are worth knowing before starting:
+
+- `electron/scripts/repack-appimage.mjs` builds the final AppImage
+  itself — the type2 runtime concatenated with a squashfs it makes with
+  `mksquashfs` — so `appimagetool -u` is not on the path. The update
+  information belongs in the runtime's `.upd_info` ELF section, which
+  the repack would have to fill.
+- Every release is published as a pre-release, and the `latest` tag of
+  the usual `gh-releases-zsync|JoaoPucci|ani-gui|latest|…` string goes
+  through GitHub's latest-release lookup, which skips pre-releases.
+  Whatever string is embedded has to be confirmed to find a
+  pre-release.
+- The `.zsync` file comes from `zsyncmake`, which the build machine
+  does not have; installing it is a system change (`AGENTS.md` §11), so
+  the alternative is a copy the build fetches into the repository the
+  way it fetches the runtime.
+
 ## Housekeeping
 
 - **Snapshot `$0`: preserve the basename as well as the directory**, if
