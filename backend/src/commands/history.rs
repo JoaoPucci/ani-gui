@@ -43,7 +43,10 @@ pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
 
 /// Find the history entry (if any) for the supplied `kitsu_id`: a row
 /// that records it as the show played, matched with no mapping at
-/// all, or, for a row that records none, one whose show id maps to it
+/// all; a row whose recorded entry Kitsu answered gone (a 404 or 410,
+/// [`super::kitsu_gone`]), matched as one that records none or else by
+/// the title match the home page stored for it; or, for a row that
+/// records none, one whose show id maps to it
 /// — resolving that row's `id`, a provider slug on rows written since
 /// the migration, through the `(show id → kitsu_id)` reverse cache a
 /// successful play stamps.
@@ -96,15 +99,10 @@ pub fn history_by_kitsu(
     let mut best: Option<(HistoryEntry, Option<i64>)> = None;
     for entry in entries {
         // The id the row records is the show the user played; the
-        // reverse mapping stands in only for a row without one.
-        let mapped = match &entry.kitsu_id {
-            Some(id) => id.clone(),
-            None => match crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)? {
-                Some(mapped) => mapped,
-                None => continue,
-            },
-        };
-        if mapped != kitsu_id {
+        // reverse mapping stands in only for a row without one, or one
+        // whose recorded entry Kitsu has since deleted
+        // ([`super::history_claim::names`]).
+        if !super::history_claim::row_names(state, &entry, kitsu_id)? {
             continue;
         }
         let stamp = super::history_resume::latest_of(

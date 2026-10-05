@@ -970,6 +970,7 @@ pub(crate) fn anime_detail_ttl(status: Option<&str>) -> u64 {
 /// of blurred-poster fallback on exactly the newer ongoing shows the
 /// backfill exists for.
 pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) {
+    super::kitsu_gone::note_served(state, &detail.id);
     if detail.cover_image.is_none() {
         return;
     }
@@ -1011,7 +1012,14 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
             return Ok(detail);
         }
     }
-    let mut detail = state.kitsu.anime_detail(id).await?;
+    // A 404 or 410 is Kitsu answering the entry is gone, which a
+    // history row that recorded the id needs to know (kitsu_gone.rs).
+    let mut detail = state
+        .kitsu
+        .anime_detail(id)
+        .await
+        .inspect_err(|e| super::kitsu_gone::note_failure(state, id, e))?;
+    super::kitsu_gone::note_served(state, id);
 
     // Banner enrichment: Kitsu cataloguers upload coverImage lazily,
     // so newer ongoing shows often arrive with cover_image=null.
