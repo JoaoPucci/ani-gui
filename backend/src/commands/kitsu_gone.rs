@@ -7,10 +7,14 @@
 //! later fetch that succeeds clears it, and removing history takes it
 //! ([`super::history_forget`]): a clear takes every mark, a delete the
 //! marks of the ids the show was known by that no remaining row claims.
+//! A read begun before such a removal writes no mark after it
+//! ([`crate::history::guard`]); a clear after one only takes data, so
+//! it needs no guard.
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_delete, meta_cache_get, meta_cache_put};
 use crate::error::{AniError, Result};
+use crate::history::guard::Epoch;
 
 /// How long Kitsu's answer stands without another fetch of the id.
 /// Long: the mark only matters while a history row names the id, and
@@ -24,13 +28,20 @@ fn gone_key(id: &str) -> String {
     format!("{GONE_PREFIX}{id}")
 }
 
-/// Remember `id` as gone when `err` is Kitsu answering so. A cache
-/// that cannot store the mark leaves the id standing, the state before
-/// the mark existed.
-pub(crate) fn note_failure(state: &AppState, id: &str, err: &AniError) {
-    if err.is_not_found_shaped() {
-        let _ = meta_cache_put(&state.cache_pool, &gone_key(id), "1", GONE_TTL_SECS);
+/// Remember `id` as gone when `err` is Kitsu answering so to a read
+/// begun at `begun` — unless a show known by `id` was removed from
+/// history, or the history cleared, since: the removal took the id's
+/// mark, and this one would bring it back. A cache that cannot store
+/// the mark leaves the id standing, the state before the mark existed.
+pub(crate) fn note_failure(state: &AppState, begun: Epoch, id: &str, err: &AniError) {
+    if !err.is_not_found_shaped() {
+        return;
     }
+    crate::history::guard::hold(&state.history_path, |held| {
+        if !held.kitsu_removed_since(begun, id) {
+            let _ = meta_cache_put(&state.cache_pool, &gone_key(id), "1", GONE_TTL_SECS);
+        }
+    });
 }
 
 /// Kitsu served `id`: it is not gone, whatever an earlier answer said.

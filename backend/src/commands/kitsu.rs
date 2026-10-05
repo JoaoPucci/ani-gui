@@ -1013,12 +1013,14 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
         }
     }
     // A 404 or 410 is Kitsu answering the entry is gone, which a
-    // history row that recorded the id needs to know (kitsu_gone.rs).
+    // history row that recorded the id needs to know (kitsu_gone.rs) —
+    // unless the history removed the id's show while the read waited.
+    let begun = crate::history::guard::epoch(&state.history_path);
     let mut detail = state
         .kitsu
         .anime_detail(id)
         .await
-        .inspect_err(|e| super::kitsu_gone::note_failure(state, id, e))?;
+        .inspect_err(|e| super::kitsu_gone::note_failure(state, begun, id, e))?;
     super::kitsu_gone::note_served(state, id);
 
     // Banner enrichment: Kitsu cataloguers upload coverImage lazily,

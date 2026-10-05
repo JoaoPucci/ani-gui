@@ -43,7 +43,8 @@
 //! page only once the watch's verdict is in — less any a remaining row
 //! still claims. A play names the page it was asked from ([`Asked`])
 //! and loses to a removal of a show known by it
-//! ([`Held::removed_since`]); a skip-time lookup asks by its id
+//! ([`Held::removed_since`]); a skip-time lookup, and a detail read
+//! that would mark its id gone, ask by the id
 //! ([`Held::kitsu_removed_since`]).
 //!
 //! Both belong to this process, which is enough because only one runs
