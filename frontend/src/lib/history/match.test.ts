@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveKitsuMatch } from './match';
 import { resolveHistoryEntry } from './resolve';
+import { forgetMatchTrust, recordableKitsuId } from './match-trust';
 import {
 	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
@@ -810,5 +811,157 @@ describe('resolveKitsuMatch', () => {
 		expect(mockedAllmangaDelete).toHaveBeenCalledWith('vDTSJHSpYnrkZnAvG');
 		// Enrichment must have observed the eviction as already committed.
 		expect(enrichmentSawDeleteDone).toBe(true);
+	});
+});
+
+// A row records the Kitsu id of the show played, and Kitsu can delete
+// that entry. Its absence is an answer about the id — a 404 or 410,
+// which the backend passes on as an upstream error carrying the status
+// — and the row is then matched the way a row with no recorded id is.
+// Any other failure says nothing about the id, and the row answers no
+// show for this load rather than a guess.
+describe('a recorded id Kitsu cannot read', () => {
+	const recordedRow = () =>
+		resolveHistoryEntry(
+			{ id: 'hianime:cowboy-bebop-1', ep_no: '3', title: 'Cowboy Bebop', kitsu_id: '999' },
+			null
+		);
+
+	it.each([404, 410])('matches the row anew when Kitsu answers %i for it', async (status) => {
+		mockedDetail.mockImplementation(async (id) => {
+			if (id === '999') throw { kind: 'upstream', status, key: 'error.network.upstream' };
+			return stubKitsu(id, 'Cowboy Bebop', 26);
+		});
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+
+		const got = await resolveKitsuMatch(recordedRow());
+
+		expect(got?.id).toBe('1');
+		expect(mockedSearch).toHaveBeenCalled();
+	});
+
+	it.each([
+		['a provider 503', { kind: 'upstream', status: 503, key: 'error.network.upstream' }],
+		['a rate limit', { kind: 'upstream', status: 429, key: 'error.network.upstream' }],
+		['an unreachable network', { kind: 'network', key: 'error.network.unreachable' }],
+		['a timeout', { kind: 'timeout', key: 'error.scraper.timeout' }],
+		['a bodiless gateway error', { kind: 'http', status: 502 }]
+	])('answers no show on %s, and matches nothing', async (_label, failure) => {
+		mockedDetail.mockRejectedValue(failure);
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+
+		const got = await resolveKitsuMatch(recordedRow());
+
+		expect(got).toBeNull();
+		expect(mockedSearch).not.toHaveBeenCalled();
+		expect(mockedAllmangaMap).not.toHaveBeenCalled();
+	});
+});
+
+// A play started from a Continue card records the card's Kitsu id on
+// the row, and the row is matched by that id from then on. Only a match
+// the user stands behind may be recorded: the id the row recorded, or a
+// mapping a real play stored. A guess — a remembered title match, a
+// search pick, an unplayed mapping — stays off the row, so the row can
+// still be matched again.
+describe('which Continue matches a play may record', () => {
+	beforeEach(() => forgetMatchTrust());
+
+	const legacyRow = () =>
+		resolveHistoryEntry({ id: 'hianime:cowboy-bebop-1', ep_no: '3', title: 'Cowboy Bebop' }, null);
+
+	it('records the id the row recorded', async () => {
+		mockedDetail.mockResolvedValue(stubKitsu('49877', 'Seitokai ni mo Ana wa Aru!', 12));
+		const got = await resolveKitsuMatch(
+			resolveHistoryEntry({ id: 'hianime:x-1', ep_no: '1', title: 'X', kitsu_id: '49877' }, null)
+		);
+		expect(got?.id).toBe('49877');
+		expect(recordableKitsuId('49877')).toBe('49877');
+	});
+
+	it('records a mapping a play stored', async () => {
+		mockedAllmangaMap.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		mockedPlayed.mockResolvedValue(true);
+
+		const got = await resolveKitsuMatch(legacyRow());
+
+		expect(got?.id).toBe('1');
+		expect(recordableKitsuId('1')).toBe('1');
+	});
+
+	it('does not record a mapping no play stored', async () => {
+		mockedAllmangaMap.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		mockedPlayed.mockResolvedValue(false);
+
+		const got = await resolveKitsuMatch(legacyRow());
+
+		expect(got?.id).toBe('1');
+		expect(recordableKitsuId('1')).toBeUndefined();
+	});
+
+	it('does not record a remembered title match', async () => {
+		mockedGetMatch.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+
+		const got = await resolveKitsuMatch(legacyRow());
+
+		expect(got?.id).toBe('1');
+		expect(recordableKitsuId('1')).toBeUndefined();
+	});
+
+	it('does not record a search pick', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+
+		const got = await resolveKitsuMatch(legacyRow());
+
+		expect(got?.id).toBe('1');
+		expect(recordableKitsuId('1')).toBeUndefined();
+	});
+
+	it('does not record the match a row whose recorded id is gone falls back to', async () => {
+		mockedDetail.mockImplementation(async (id) => {
+			if (id === '999') throw { kind: 'upstream', status: 404, key: 'error.network.upstream' };
+			return stubKitsu(id, 'Cowboy Bebop', 26);
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+
+		const got = await resolveKitsuMatch(
+			resolveHistoryEntry(
+				{ id: 'hianime:cowboy-bebop-1', ep_no: '3', title: 'Cowboy Bebop', kitsu_id: '999' },
+				null
+			)
+		);
+
+		expect(got?.id).toBe('1');
+		expect(recordableKitsuId('1')).toBeUndefined();
+	});
+
+	it('records an id one row recorded though another row only guessed it', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+		await resolveKitsuMatch(legacyRow());
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		await resolveKitsuMatch(
+			resolveHistoryEntry(
+				{ id: 'allanime:bebop', ep_no: '1', title: 'Cowboy Bebop', kitsu_id: '1' },
+				null
+			)
+		);
+
+		expect(recordableKitsuId('1')).toBe('1');
+	});
+
+	it('records an id again once the guesses are forgotten', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+		await resolveKitsuMatch(legacyRow());
+
+		forgetMatchTrust();
+
+		expect(recordableKitsuId('1')).toBe('1');
 	});
 });

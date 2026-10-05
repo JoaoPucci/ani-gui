@@ -35,6 +35,7 @@ vi.mock('$app/navigation', () => ({
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { forgetMatchTrust, noteMatchTrust } from '../../src/lib/history/match-trust';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -70,6 +71,7 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
+	forgetMatchTrust();
 	setParams({ id: KITSU_ID });
 	setUrl(`/play/${KITSU_ID}`, { episode: '3' });
 	target = document.createElement('div');
@@ -210,5 +212,24 @@ describe('play route — the handoffs send the Kitsu id', () => {
 		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
 		expectHandoffBody(posted.syncplay[0]);
 		expect(posted.external).toHaveLength(0);
+	});
+});
+
+// A page opened from a Continue card whose match was only a guess must
+// not record that guess on the history row through its own requests:
+// the next one would otherwise pin it there just as the card's click
+// would have.
+describe('play route — a guessed Continue match is not recorded', () => {
+	it('the stream and the external-player handoff carry no Kitsu id', async () => {
+		noteMatchTrust(KITSU_ID, false);
+		const posted = { external: [] as Posted[], syncplay: [] as Posted[] };
+		useHandlers(posted);
+		await mountPlaying();
+
+		expect(new URL(FakeEventSource.instances[0].url).searchParams.get('kitsu_id')).toBeNull();
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect(posted.external[0].kitsu_id).toBeUndefined();
+		expect(posted.external[0].title).toBe(TITLE);
 	});
 });
