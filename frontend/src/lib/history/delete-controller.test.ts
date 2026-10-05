@@ -3,8 +3,10 @@ import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { executeKitsuGroupDelete } from './delete-controller';
 import {
 	clearRowPositions,
+	clearShowPositions,
 	readPosition,
 	savePosition,
+	snapshotPositions,
 	type PositionStorage
 } from '$lib/play/watch-position';
 
@@ -529,5 +531,35 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 			})
 		).rejects.toThrow('down');
 		expect(forgetRowPositions).not.toHaveBeenCalled();
+	});
+});
+
+describe('executeKitsuGroupDelete — what the user plays after the removal', () => {
+	// The cleanup waits on Kitsu to tell a remaining row's show, and the
+	// user can open the removed show and play it meanwhile. What that
+	// play keeps is the user's since the removal, not the removed row's.
+	test('a point written while the cleanup waits outlives it; one kept before goes', async () => {
+		const s = memory();
+		savePosition('k-7', 1, 600, 1420, s, 'aa-1');
+		savePosition('k-7', 3, 600, 1420, s);
+		const answers: Array<(gone: boolean) => void> = [];
+		const result = await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), { ...h('bb-1'), kitsu_id: 'k-8' }],
+			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			snapshotPositions,
+			forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, s, since),
+			forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, s, keep, since),
+			recordedGone: () => new Promise<boolean>((r) => answers.push(r))
+		});
+		savePosition('k-7', 1, 650, 1420, s, 'aa-1');
+		savePosition('k-7', 2, 300, 1420, s);
+		await new Promise((r) => setTimeout(r, 0));
+		for (const answer of answers) answer(false);
+		await result.forgetting;
+
+		expect(readPosition('k-7', 1, s), 'rewritten since').toBe(650);
+		expect(readPosition('k-7', 2, s), 'written since').toBe(300);
+		expect(readPosition('k-7', 3, s), 'kept before').toBeNull();
 	});
 });

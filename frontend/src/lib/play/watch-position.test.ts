@@ -10,6 +10,7 @@ import {
 	markStarted,
 	readPosition,
 	savePosition,
+	snapshotPositions,
 	type PositionStorage
 } from './watch-position';
 import { recoveryResume } from './resume-after-recovery';
@@ -243,5 +244,61 @@ describe('positions written for a Continue row', () => {
 		clearRowPositions(['row-x'], s);
 
 		expect(recoveryResume.consume('A', 3)).toBeNull();
+	});
+});
+
+// A Continue delete's cleanup can wait on Kitsu, and the user can open
+// the removed show and play it meanwhile. The cleanup takes what was
+// kept when the rows were gone, never a point made since.
+describe("a removal's cleanup, as of when its rows were gone", () => {
+	it("forgets the show's points kept before, and keeps those written since", () => {
+		const s = memory();
+		s.setItem('ani-gui.watch-positions', JSON.stringify([['A:1', 300]]));
+		savePosition('A', 2, 600, 1420, s);
+		savePosition('A', 3, 600, 1420, s);
+		const since = snapshotPositions();
+		savePosition('A', 3, 700, 1420, s);
+		markStarted('A', 4, s);
+
+		clearShowPositions('A', s, since);
+
+		expect(readPosition('A', 1, s), 'kept by an earlier session').toBeNull();
+		expect(readPosition('A', 2, s)).toBeNull();
+		expect(readPosition('A', 3, s), 'rewritten since').toBe(700);
+		expect(readPosition('A', 4, s), 'started since').toBe(0);
+	});
+
+	it("forgets the rows' points kept before, and keeps those written since", () => {
+		const s = memory();
+		savePosition('A', 2, 600, 1420, s, 'row-x');
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		const since = snapshotPositions();
+		savePosition('A', 3, 700, 1420, s, 'row-x');
+		savePosition('A', 4, 700, 1420, s, 'row-x');
+
+		clearRowPositions(['row-x'], s, new Set(), since);
+
+		expect(readPosition('A', 2, s)).toBeNull();
+		expect(readPosition('A', 3, s)).toBe(700);
+		expect(readPosition('A', 4, s)).toBe(700);
+	});
+
+	it('keeps a recovery point captured since, and drops one captured before', () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		recoveryResume.capture('B', 1, 500);
+		const since = snapshotPositions();
+		recoveryResume.capture('A', 3, 700);
+
+		clearShowPositions('A', s, since);
+		clearRowPositions(['row-x'], s, new Set(), since);
+
+		expect(recoveryResume.consume('A', 3)).toBe(700);
+
+		savePosition('B', 1, 600, 1420, s, 'row-y');
+		recoveryResume.capture('B', 1, 500);
+		const later = snapshotPositions();
+		clearShowPositions('B', s, later);
+		expect(recoveryResume.consume('B', 1)).toBeNull();
 	});
 });
