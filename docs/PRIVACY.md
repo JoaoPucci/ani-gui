@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-10-04_
+_Last updated: 2026-10-05_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -88,8 +88,9 @@ ani-gui keeps the following on your computer only:
   finds it. A stream address that is missed stays until you clear your
   history; numbering that is missed stays as that of any show a page
   resolved and you never played does. Catalogue data shared with
-  browsing — anime details, artwork, episode lists and which catalogue
-  carries a show — is not part of your history and stays in the cache,
+  browsing — anime details, artwork, episode lists, which catalogue
+  carries a show and which Kitsu entries Kitsu says no longer exist —
+  is not part of your history and stays in the cache,
   as it does for shows you only browsed.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
