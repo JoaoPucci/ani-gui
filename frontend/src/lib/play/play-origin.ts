@@ -13,6 +13,7 @@
  */
 
 const GUESS_PARAM = 'guess';
+const ROW_PARAM = 'row';
 
 /** Whether the play URL's query marks a session opened from a guess. */
 export function openedFromGuess(search: URLSearchParams): boolean {
@@ -31,14 +32,17 @@ export function withGuess(query: string, guess: boolean): string {
 	return `${query}${query.length > 1 ? '&' : ''}${GUESS_PARAM}=1`;
 }
 
-/** The history row whose Continue card opened the session, or null. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
+/** The history row — its provider show id — whose Continue card
+ *  opened the session, or null for a session the detail page opened.
+ *  The session's positions are written for it (watch-position.ts), and
+ *  every URL the play page builds for itself carries it on. */
 export function openedFromRow(search: URLSearchParams): string | null {
-	return null;
+	return search.get(ROW_PARAM) || null;
 }
 
-/** `query` carrying the history row that opened the session. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
+/** `query` (a `?…` play query) carrying the history row `row`. */
 export function withRow(query: string, row: string | null): string {
-	return query;
+	if (!row) return query;
+	const param = `${ROW_PARAM}=${encodeURIComponent(row)}`;
+	return `${query}${query.length > 1 ? '&' : ''}${param}`;
 }

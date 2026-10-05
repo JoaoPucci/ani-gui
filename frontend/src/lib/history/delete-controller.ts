@@ -18,7 +18,8 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	 *  rows are gone. */
 	forgetPositions?: (kitsuId: string) => void;
 	/** Forgets the positions written by sessions the removed rows'
-	 *  cards opened. */
+	 *  Continue cards opened (watch-position.ts) — under a guessed
+	 *  match too, which a later load may have corrected. */
 	forgetRowPositions?: (rowIds: string[]) => void;
 }
 
@@ -65,6 +66,9 @@ export async function executeKitsuGroupDelete(
 	}
 	const removed = new Set(groupIds);
 	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
+	// What the removed rows' own sessions kept goes with them. No
+	// remaining row has their id: a delete takes every row of it.
+	deps.forgetRowPositions?.(groupIds);
 	// Telling a remaining row's show can take a Kitsu read; the card's
 	// removal does not wait on it.
 	const forgetting = forgetShowsLeftWithoutRows(shows, remainingHistory, deps).catch(() => {});

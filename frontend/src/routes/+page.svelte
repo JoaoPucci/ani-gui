@@ -86,7 +86,7 @@
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
-	import { recordableId, withGuess } from '$lib/play/play-origin';
+	import { recordableId, withGuess, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
@@ -102,7 +102,12 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
-	import { clearShowPositions, markStarted, readPosition } from '$lib/play/watch-position';
+	import {
+		clearRowPositions,
+		clearShowPositions,
+		markStarted,
+		readPosition
+	} from '$lib/play/watch-position';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -268,6 +273,7 @@
 				matches: historyMatches,
 				historyDelete,
 				forgetPositions: clearShowPositions,
+				forgetRowPositions: clearRowPositions,
 				kitsuIdOf: allmangaKitsuMapGet,
 				// Read the way the Continue resolver reads a recorded id.
 				recordedGone: (id) =>
@@ -664,7 +670,7 @@
 	});
 	const startResume = makeStartResume({
 		leftPartWay,
-		markStarted: (kitsuId, episode) => markStarted(kitsuId, episode),
+		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
 		isBusy: () => !!resumeBusy,
 		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {
@@ -710,11 +716,14 @@
 		// (mode-independent), NOT the dub/sub playable cap, and only
 		// for a finished series — see /play/[id] for the rationale.
 		syncTrackers: (id, ep, total, finished) => syncWatchedToTrackers(id, ep, total, finished),
-		navigateToSession: (id, session, ep, guess) => {
+		navigateToSession: (id, session, ep, guess, row) => {
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(
 				resolve('/play/[id]', { id }) +
-					withGuess(buildPlayQuery(session as CreateSessionResponse, ep), guess === true)
+					withRow(
+						withGuess(buildPlayQuery(session as CreateSessionResponse, ep), guess === true),
+						row ?? null
+					)
 			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		}

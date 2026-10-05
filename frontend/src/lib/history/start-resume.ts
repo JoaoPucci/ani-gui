@@ -85,7 +85,8 @@ export interface StartResumeDeps {
 	 *  records the watch. Omitted, nothing is marked. A local position
 	 *  keyed by the card's show, written for a guessed match too: it is
 	 *  neither the history row nor a tracker, and removing the card
-	 *  forgets it (delete-controller.ts). */
+	 *  forgets it (delete-controller.ts), by `row`, the clicked history
+	 *  row's id, whatever show the card names by then. */
 	markStarted?: (kitsuId: string, episode: number, row?: string) => void;
 }
 
@@ -136,7 +137,7 @@ export function makeStartResume(
 
 		const guess = deps.isGuess?.(entry.id) ?? false;
 		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
-		deps.markStarted?.(match.id, episode);
+		deps.markStarted?.(match.id, episode, entry.id);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
 			void deps.markWatched(args).catch(() => {});
@@ -144,7 +145,7 @@ export function makeStartResume(
 			if (!guess) {
 				void deps.syncTrackers(match.id, episode, seriesTotal, seriesFinished).catch(() => {});
 			}
-			deps.navigateToSession(match.id, session, episode, guess);
+			deps.navigateToSession(match.id, session, episode, guess, entry.id);
 		} catch (e) {
 			deps.onBusy(null);
 			deps.onProgress(null);

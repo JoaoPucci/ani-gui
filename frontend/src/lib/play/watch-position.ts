@@ -19,8 +19,12 @@ const KEY = 'ani-gui.watch-positions';
 
 export type PositionStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
-/** `[show:episode, seconds]` pairs, oldest first. */
-type Positions = [string, number][];
+/** `[show:episode, seconds]` entries, oldest first. One a session a
+ *  Continue card opened wrote carries the card's history row — its
+ *  provider show id — third: removing the card forgets it, whatever
+ *  show the card names by then. The latest write decides it. */
+type Position = [string, number] | [string, number, string];
+type Positions = Position[];
 
 function defaultStorage(): PositionStorage | null {
 	try {
@@ -35,8 +39,11 @@ function load(storage: PositionStorage | null): Positions {
 		const parsed: unknown = JSON.parse(storage?.getItem(KEY) ?? '[]');
 		return Array.isArray(parsed)
 			? parsed.filter(
-					(p): p is [string, number] =>
-						Array.isArray(p) && typeof p[0] === 'string' && typeof p[1] === 'number'
+					(p): p is Position =>
+						Array.isArray(p) &&
+						typeof p[0] === 'string' &&
+						typeof p[1] === 'number' &&
+						(p[2] === undefined || typeof p[2] === 'string')
 				)
 			: [];
 	} catch {
@@ -56,14 +63,14 @@ const keyOf = (showId: string, episode: number) => `${showId}:${episode}`;
 
 /** Records `seconds` into `episode` of `showId` — zero, a started
  *  mark, when that is its start — or forgets the episode when
- *  `duration` puts it at its end. */
+ *  `duration` puts it at its end. `row` is the history row whose
+ *  Continue card opened the session, when one did. */
 export function savePosition(
 	showId: string,
 	episode: number,
 	seconds: number,
 	duration: number,
 	storage: PositionStorage | null = defaultStorage(),
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
 	row: string | null = null
 ): void {
 	const key = keyOf(showId, episode);
@@ -75,20 +82,19 @@ export function savePosition(
 		store(storage, rest);
 		return;
 	}
-	store(storage, [...rest, [key, point]]);
+	store(storage, [...rest, row ? [key, point, row] : [key, point]]);
 }
 
-/** Marks `episode` of `showId` started, at zero, unless a point is
- *  already kept for it. */
+/** Marks `episode` of `showId` started, at zero, for `row` as
+ *  savePosition does, unless a point is already kept for it. */
 export function markStarted(
 	showId: string,
 	episode: number,
 	storage: PositionStorage | null = defaultStorage(),
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
 	row: string | null = null
 ): void {
 	if (readPosition(showId, episode, storage) === null) {
-		savePosition(showId, episode, 0, Number.NaN, storage);
+		savePosition(showId, episode, 0, Number.NaN, storage, row);
 	}
 }
 
@@ -136,13 +142,24 @@ export function clearShowPositions(
 	);
 }
 
-/** Forgets every kept episode written by a session a removed
- *  history row's Continue card opened. */
+/** Forgets every kept episode last written by a session one of
+ *  `rows`' Continue cards opened — the rows are gone — and a
+ *  recovery's pending point for its show. */
 export function clearRowPositions(
 	rows: readonly string[],
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
 	storage: PositionStorage | null = defaultStorage()
-): void {}
+): void {
+	const removed = new Set(rows);
+	const kept: Positions = [];
+	for (const p of load(storage)) {
+		if (p[2] !== undefined && removed.has(p[2])) {
+			recoveryResume.forgetShow(p[0].slice(0, p[0].lastIndexOf(':')));
+		} else {
+			kept.push(p);
+		}
+	}
+	store(storage, kept);
+}
 
 /** Forgets every kept episode — the history is cleared — and any
  *  recovery's pending point. */

@@ -139,7 +139,13 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
-	import { openedFromGuess, recordableId, withGuess } from '$lib/play/play-origin';
+	import {
+		openedFromGuess,
+		openedFromRow,
+		recordableId,
+		withGuess,
+		withRow
+	} from '$lib/play/play-origin';
 
 	const id = $derived(page.params.id ?? '');
 	// A session opened from a guessed Continue match records the guess
@@ -147,6 +153,10 @@
 	// ($lib/play/play-origin.ts). The flag is in the URL, and every URL
 	// this page builds for itself carries it on.
 	const fromGuess = $derived(openedFromGuess(page.url.searchParams));
+	// A session a Continue card opened writes its positions for the
+	// card's history row, so removing the card forgets them whatever
+	// show it names by then; every URL this page builds carries it on.
+	const fromRow = $derived(openedFromRow(page.url.searchParams));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
 	const episodeNum = $derived(parseInt(page.url.searchParams.get('episode') ?? '1', 10));
 	// kind defaults to hls — the legacy URL shape didn't carry one. The
@@ -1555,6 +1565,7 @@
 			showId: id,
 			episode: episodeNum,
 			scope: sourceScope,
+			row: fromRow,
 			onResumeHold: (holding) => {
 				resumeHolding = holding;
 			}
@@ -1916,7 +1927,7 @@
 		const quality = config?.quality ?? 'best';
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
-		markStarted(id, targetEp);
+		markStarted(id, targetEp, undefined, fromRow);
 		switchBusy = true;
 		switchProgress = null;
 		playerError = null;
@@ -2012,7 +2023,8 @@
 			// not a failed play, so it does not reach the play-failure
 			// overlay below.
 			await goto(
-				resolve('/play/[id]', { id }) + withGuess(buildPlayQuery(session, targetEp), fromGuess),
+				resolve('/play/[id]', { id }) +
+					withRow(withGuess(buildPlayQuery(session, targetEp), fromGuess), fromRow),
 				{ replaceState: true }
 			).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */

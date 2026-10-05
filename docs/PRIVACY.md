@@ -118,10 +118,18 @@ ani-gui keeps the following on your computer only:
   entry deleted, then by its match, then by its mapping — or while a
   remaining row's show cannot be told (its match has not resolved, and
   Kitsu cannot be asked about the id it recorded, or it has no live
-  recorded id and no readable mapping). Forgetting a
-  show's positions, or all of them, also forgets where a stream that
-  was recovering from a dropped connection stood, which the app keeps
-  in memory until that episode is opened again.
+  recorded id and no readable mapping). Separately, a position
+  written while playing from a Continue card records that card's
+  history row, and removing the card forgets every position its plays
+  wrote last — whichever show it is under, including a show the card
+  was matched to by a guess that a later load corrected, and even
+  while another row for that show remains or a remaining row's show
+  cannot be told. Playing the same episode again from the show's own
+  page takes the position over, and it then follows the rules above,
+  as positions kept before rows were recorded do. Forgetting a
+  show's positions, a card's, or all of them, also forgets where a
+  stream that was recovering from a dropped connection stood, which
+  the app keeps in memory until that episode is opened again.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's
