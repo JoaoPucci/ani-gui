@@ -1247,10 +1247,11 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
 /// re-probes, and so does a negative row whose provider no longer
 /// stands behind it.
 /// The warm entries whose airing row is batch-seeded before they
-/// probe: the pre-premiere entries that will actually probe (no fresh
-/// availability row). One AniList request covers the whole rail, so
-/// each probe's per-show seed becomes a cache hit instead of its own
-/// AniList call.
+/// probe: every entry still on air or to come that will actually
+/// probe (no fresh availability row). One AniList request covers the
+/// whole rail. A pre-premiere probe's per-show seed becomes a cache
+/// hit, and a current show's positive row is bounded by its next
+/// airing when it is written rather than holding the ongoing day.
 fn schedule_seed_ids(state: &AppState, items: &[AvailabilityArgs]) -> Vec<String> {
     let mut ids: Vec<String> = Vec::new();
     for args in items {
@@ -1263,7 +1264,7 @@ fn schedule_seed_ids(state: &AppState, items: &[AvailabilityArgs]) -> Vec<String
         }
         if matches!(
             args.status.as_deref(),
-            Some("unreleased" | "tba" | "upcoming")
+            Some("current" | "unreleased" | "tba" | "upcoming")
         ) {
             ids.push(id.to_string());
         }

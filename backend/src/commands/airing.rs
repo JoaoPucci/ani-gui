@@ -151,9 +151,9 @@ pub(crate) async fn airing_refresh_with_anilist_base(
 }
 
 /// Batch-seed airing rows for many shows: the home-rail warm calls
-/// this once, so its pre-premiere negative writes find their
-/// schedule in the cache instead of paying one AniList request per
-/// show. One `Page(media(id_in))` request covers the whole rail.
+/// this once, so its probes' writes — a current show's count, a
+/// pre-premiere negative — find their schedule in the cache instead
+/// of paying one AniList request per show. One `Page(media(id_in))` request covers the whole rail.
 /// Best-effort throughout — mapping or fetch failures leave rows
 /// unwritten and the per-show seed path covers them later. Shows
 /// whose airing row is still fresh cost nothing; MAL-only mappings

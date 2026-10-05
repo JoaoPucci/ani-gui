@@ -4,12 +4,11 @@
 //!
 //! The write path bounds an ongoing show's row — positive or
 //! negative — by the cached next airing, but only when the airing row
-//! already exists. Nothing orders the two: the home warm seeds
-//! schedules for pre-premiere shows alone, a current show's negative
-//! fetches none, a failed seed leaves none, and a detail page asks for
-//! availability and airing side by side. So every airing write
-//! re-cuts the show's rows here — a local rewrite of their TTL, no
-//! request made.
+//! already exists. Nothing orders the two: a detail page asks for
+//! availability and airing side by side, a probe outside the warm
+//! fetches no schedule for a current show, and a failed seed leaves
+//! none. So every airing write re-cuts the show's rows here — a local
+//! rewrite of their TTL, no request made.
 
 use crate::cache::{meta_cache_row, meta_cache_shorten, SqlitePool};
 use crate::commands::availability::{cache_key, AvailabilityResponse};
