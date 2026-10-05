@@ -273,7 +273,7 @@
 				matches: historyMatches,
 				historyDelete,
 				forgetPositions: clearShowPositions,
-				forgetRowPositions: (rows) => clearRowPositions(rows),
+				forgetRowPositions: (rows, keep) => clearRowPositions(rows, undefined, keep),
 				kitsuIdOf: allmangaKitsuMapGet,
 				// Read the way the Continue resolver reads a recorded id.
 				recordedGone: (id) =>

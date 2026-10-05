@@ -122,9 +122,9 @@ ani-gui keeps the following on your computer only:
   written while playing from a Continue card records that card's
   history row, and removing the card forgets every position its plays
   wrote last — whichever show it is under, including a show the card
-  was matched to by a guess that a later load corrected, and even
-  while another row for that show remains or a remaining row's show
-  cannot be told. Playing the same episode again from the show's own
+  was matched to by a guess that a later load corrected — except one
+  under a show another remaining row is still a card of, and none
+  while a remaining row's show cannot be told, as above. Playing the same episode again from the show's own
   page takes the position over, and it then follows the rules above,
   as positions kept before rows were recorded do. Forgetting a
   show's positions, a card's, or all of them, also forgets where a

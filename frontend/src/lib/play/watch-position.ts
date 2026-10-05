@@ -144,18 +144,19 @@ export function clearShowPositions(
 
 /** Forgets every kept episode last written by a session one of
  *  `rows`' Continue cards opened — the rows are gone — and a
- *  recovery's pending point for its show. */
+ *  recovery's pending point for its show, unless the episode's show
+ *  is one of `keepShows`, still a remaining row's card. */
 export function clearRowPositions(
 	rows: readonly string[],
 	storage: PositionStorage | null = defaultStorage(),
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
 	keepShows: ReadonlySet<string> = new Set()
 ): void {
 	const removed = new Set(rows);
 	const kept: Positions = [];
 	for (const p of load(storage)) {
-		if (p[2] !== undefined && removed.has(p[2])) {
-			recoveryResume.forgetShow(p[0].slice(0, p[0].lastIndexOf(':')));
+		const show = p[0].slice(0, p[0].lastIndexOf(':'));
+		if (p[2] !== undefined && removed.has(p[2]) && !keepShows.has(show)) {
+			recoveryResume.forgetShow(show);
 		} else {
 			kept.push(p);
 		}

@@ -19,8 +19,9 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	forgetPositions?: (kitsuId: string) => void;
 	/** Forgets the positions written by sessions the removed rows'
 	 *  Continue cards opened (watch-position.ts) — under a guessed
-	 *  match too, which a later load may have corrected. */
-	forgetRowPositions?: (rowIds: string[], keepShows?: ReadonlySet<string>) => void;
+	 *  match too, which a later load may have corrected — except those
+	 *  under `keepShows`, the shows remaining rows are cards of. */
+	forgetRowPositions?: (rowIds: string[], keepShows: ReadonlySet<string>) => void;
 }
 
 export interface ConfirmDeleteResult {
@@ -66,28 +67,31 @@ export async function executeKitsuGroupDelete(
 	}
 	const removed = new Set(groupIds);
 	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
-	// What the removed rows' own sessions kept goes with them. No
-	// remaining row has their id: a delete takes every row of it.
-	deps.forgetRowPositions?.(groupIds);
 	// Telling a remaining row's show can take a Kitsu read; the card's
 	// removal does not wait on it.
-	const forgetting = forgetShowsLeftWithoutRows(shows, remainingHistory, deps).catch(() => {});
+	const forgetting = forgetLeftWithoutRows(shows, groupIds, remainingHistory, deps).catch(() => {});
 	return { removedIds: groupIds, remainingHistory, forgetting };
 }
 
 /** Forgets the positions of each removed row's show that no remaining
- *  row maps to. Positions belong to the show, and a surviving row of
- *  it is still a Continue card. When a remaining row's show cannot be
- *  told, nothing is forgotten. */
-async function forgetShowsLeftWithoutRows(
+ *  row maps to, and those the removed rows' own sessions kept under a
+ *  show no remaining row maps to. Positions belong to the show, and a
+ *  surviving row of it is still a Continue card — a guessed card's
+ *  play can land on, and record its watch under, another row of the
+ *  show it played. No remaining row has a removed row's id: a delete
+ *  takes every row of it. When a remaining row's show cannot be told,
+ *  nothing is forgotten. */
+async function forgetLeftWithoutRows(
 	shows: Set<string>,
+	rowIds: string[],
 	remaining: HistoryEntry[],
 	deps: ConfirmDeleteDeps
 ): Promise<void> {
-	if (shows.size === 0) return;
+	if (shows.size === 0 && !deps.forgetRowPositions) return;
 	const still = await remainingShows(remaining, deps);
 	if (still === null) return;
 	for (const kitsuId of shows) if (!still.has(kitsuId)) deps.forgetPositions?.(kitsuId);
+	deps.forgetRowPositions?.(rowIds, still);
 }
 
 /** The shows the remaining rows are cards of (row-show.ts), or null
