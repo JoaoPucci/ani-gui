@@ -59,6 +59,7 @@ pub mod play_native_resolve;
 mod play_native_split;
 #[cfg(test)]
 pub(crate) mod play_native_test_provider;
+pub(crate) mod play_native_title_marker;
 pub mod play_native_walk;
 pub mod play_native_year;
 pub mod play_resolution_cache;

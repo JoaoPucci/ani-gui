@@ -100,7 +100,7 @@ proptest::proptest! {
             .map(|(h, (_, confirmed, d))| (h, Vec::new(), *d, *confirmed))
             .collect();
         let best = probed.iter().map(|(_, _, d, _)| *d).min().expect("non-empty");
-        let (idx, rank) = select_winner(&probed, best, needle);
+        let (idx, rank) = select_winner(&probed, best, needle, EntryTitles::bare(needle));
         let key = |i: usize| {
             let (h, _, _, c) = &probed[i];
             (h.title.trim().to_lowercase() != needle, !*c)
