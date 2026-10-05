@@ -516,3 +516,86 @@ async fn a_later_watchs_mapping_survives_an_earlier_watchs_refusal() {
         "the later watch's mapping stands"
     );
 }
+
+/// The history row for `show_id`, as the file holds it.
+fn row_of(state: &AppState, show_id: &str) -> crate::history::HistoryEntry {
+    crate::history::read_all(&state.history_path)
+        .expect("read history")
+        .into_iter()
+        .find(|e| e.id == show_id)
+        .expect("row")
+}
+
+/// Two watches of one show overlap: A's request begins, then stalls —
+/// on a cached stream's check, on a handoff's resolve — while B records
+/// a later episode. When A reaches its write, the row and its stamp
+/// are B's: a request begun before a watch was recorded does not
+/// replace it.
+#[tokio::test]
+async fn an_earlier_request_does_not_replace_a_later_watch() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    let requested = crate::history::guard::epoch(&state.history_path);
+    let b = Watch {
+        ep_no: "5".into(),
+        ..part_two()
+    };
+    record_watch(&state, &b, None).await;
+    let b_stamp = row_of(&state, &b.show_id).watched_at;
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let a = Watch {
+        ep_no: "3".into(),
+        ..part_two()
+    };
+    record_watch_requested_at(&state, &a, None, requested).await;
+
+    let row = row_of(&state, &b.show_id);
+    assert_eq!(row.ep_no, "5", "the row keeps the later watch's episode");
+    assert_eq!(
+        row.watched_at, b_stamp,
+        "the row keeps the later watch's moment"
+    );
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, &b.show_id).expect("read"),
+        b_stamp,
+        "the stamp keeps the later watch's moment"
+    );
+}
+
+/// What a play's resolve writes between a watch's request and its
+/// recording — the row's episode, with neither a watch moment nor a
+/// Kitsu id — is not another watch, and the watch still records.
+#[tokio::test]
+async fn a_resolve_written_while_a_watch_waits_does_not_drop_it() {
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    let requested = crate::history::guard::epoch(&state.history_path);
+    let watch = Watch {
+        ep_no: "3".into(),
+        ..part_two()
+    };
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "3".into(),
+            id: watch.show_id.clone(),
+            title: watch.title.clone(),
+            watched_at: None,
+            kitsu_id: None,
+        },
+    )
+    .expect("resolve row");
+
+    record_watch_requested_at(&state, &watch, None, requested).await;
+
+    let row = row_of(&state, &watch.show_id);
+    assert_eq!(row.ep_no, "3");
+    assert!(row.watched_at.is_some(), "the watch is recorded");
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, &watch.show_id).expect("read"),
+        row.watched_at
+    );
+}

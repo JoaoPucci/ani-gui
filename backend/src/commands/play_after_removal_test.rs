@@ -760,3 +760,42 @@ fn a_delete_takes_the_title_match_stored_under_the_rows_old_title() {
         None
     );
 }
+
+/// A play's row is the user's latest pick only while nothing newer has
+/// been recorded: a watch of a later episode recorded while the play
+/// resolved keeps the row, and the play's late write does not pair its
+/// episode with that watch's moment.
+#[test]
+fn a_play_begun_before_a_watch_leaves_the_watchs_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let begun = epoch(&state.history_path);
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "5".into(),
+            id: SHOW.into(),
+            title: "The Show".into(),
+            watched_at: Some(1_000),
+            kitsu_id: None,
+        },
+    )
+    .expect("the later watch");
+
+    write_history(
+        &state,
+        &native(),
+        "2",
+        crate::history::guard::Asked { begun, page: None },
+    );
+    write_history_on_cache_hit(
+        &state,
+        &args(),
+        &cached(),
+        crate::history::guard::Asked { begun, page: None },
+    );
+
+    let rows = crate::history::read_all(&state.history_path).unwrap();
+    let row = rows.iter().find(|e| e.id == SHOW).expect("row");
+    assert_eq!(row.ep_no, "5", "the later watch's episode stands");
+}
