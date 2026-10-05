@@ -105,6 +105,7 @@
 	import {
 		clearRowPositions,
 		clearShowPositions,
+		snapshotPositions,
 		markStarted,
 		readPosition
 	} from '$lib/play/watch-position';
@@ -272,8 +273,9 @@
 				history: history ?? [],
 				matches: historyMatches,
 				historyDelete,
-				forgetPositions: clearShowPositions,
-				forgetRowPositions: (rows, keep) => clearRowPositions(rows, undefined, keep),
+				snapshotPositions,
+				forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
+				forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
 				kitsuIdOf: allmangaKitsuMapGet,
 				// Read the way the Continue resolver reads a recorded id.
 				recordedGone: (id) =>

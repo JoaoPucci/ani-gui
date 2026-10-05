@@ -14,14 +14,19 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	history: HistoryEntry[];
 	matches: Record<string, KitsuAnimeRef | null | undefined>;
 	historyDelete: (id: string) => Promise<void>;
+	/** The moment the removed rows are gone (watch-position.ts): the
+	 *  forgetting below, which can wait on Kitsu, takes only what was
+	 *  written before it. */
+	snapshotPositions?: () => number;
 	/** Forgets where a removed show's episodes were left, once its
-	 *  rows are gone. */
-	forgetPositions?: (kitsuId: string) => void;
+	 *  rows are gone, as of `since`. */
+	forgetPositions?: (kitsuId: string, since?: number) => void;
 	/** Forgets the positions written by sessions the removed rows'
 	 *  Continue cards opened (watch-position.ts) — under a guessed
 	 *  match too, which a later load may have corrected — except those
-	 *  under `keepShows`, the shows remaining rows are cards of. */
-	forgetRowPositions?: (rowIds: string[], keepShows: ReadonlySet<string>) => void;
+	 *  under `keepShows`, the shows remaining rows are cards of — as of
+	 *  `since`. */
+	forgetRowPositions?: (rowIds: string[], keepShows: ReadonlySet<string>, since?: number) => void;
 }
 
 export interface ConfirmDeleteResult {
@@ -65,11 +70,16 @@ export async function executeKitsuGroupDelete(
 	for (const id of groupIds) {
 		await deps.historyDelete(id);
 	}
+	// What is kept from here on is the user's since the removal.
+	const snapshot = deps.snapshotPositions?.();
+	const since: [] | [number] = snapshot === undefined ? [] : [snapshot];
 	const removed = new Set(groupIds);
 	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
 	// Telling a remaining row's show can take a Kitsu read; the card's
 	// removal does not wait on it.
-	const forgetting = forgetLeftWithoutRows(shows, groupIds, remainingHistory, deps).catch(() => {});
+	const forgetting = forgetLeftWithoutRows(shows, groupIds, remainingHistory, deps, since).catch(
+		() => {}
+	);
 	return { removedIds: groupIds, remainingHistory, forgetting };
 }
 
@@ -80,18 +90,19 @@ export async function executeKitsuGroupDelete(
  *  play can land on, and record its watch under, another row of the
  *  show it played. No remaining row has a removed row's id: a delete
  *  takes every row of it. When a remaining row's show cannot be told,
- *  nothing is forgotten. */
+ *  nothing is forgotten. Only what was kept before `since` goes. */
 async function forgetLeftWithoutRows(
 	shows: Set<string>,
 	rowIds: string[],
 	remaining: HistoryEntry[],
-	deps: ConfirmDeleteDeps
+	deps: ConfirmDeleteDeps,
+	since: [] | [number]
 ): Promise<void> {
 	if (shows.size === 0 && !deps.forgetRowPositions) return;
 	const still = await remainingShows(remaining, deps);
 	if (still === null) return;
-	for (const kitsuId of shows) if (!still.has(kitsuId)) deps.forgetPositions?.(kitsuId);
-	deps.forgetRowPositions?.(rowIds, still);
+	for (const kitsuId of shows) if (!still.has(kitsuId)) deps.forgetPositions?.(kitsuId, ...since);
+	deps.forgetRowPositions?.(rowIds, still, ...since);
 }
 
 /** The shows the remaining rows are cards of (row-show.ts), or null

@@ -7,6 +7,7 @@
  */
 
 import { recoveryResume } from './resume-after-recovery';
+import { nextWrite } from './write-order';
 
 /** Below this, an episode is kept as started, at zero. */
 export const RESUME_MIN_S = 15;
@@ -128,11 +129,19 @@ export function clearPosition(
 	);
 }
 
+/** The moment a removal's rows are gone. Its cleanup, handed this as
+ *  `since`, forgets only what was written before it. */
+export function snapshotPositions(): number {
+	return nextWrite();
+}
+
 /** Forgets every kept episode of `showId` — its history row is gone —
  *  and a recovery's pending point for it. */
 export function clearShowPositions(
 	showId: string,
-	storage: PositionStorage | null = defaultStorage()
+	storage: PositionStorage | null = defaultStorage(),
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	since?: number
 ): void {
 	recoveryResume.forgetShow(showId);
 	const prefix = `${showId}:`;
@@ -149,7 +158,9 @@ export function clearShowPositions(
 export function clearRowPositions(
 	rows: readonly string[],
 	storage: PositionStorage | null = defaultStorage(),
-	keepShows: ReadonlySet<string> = new Set()
+	keepShows: ReadonlySet<string> = new Set(),
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	since?: number
 ): void {
 	const removed = new Set(rows);
 	const kept: Positions = [];
