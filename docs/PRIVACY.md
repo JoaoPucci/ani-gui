@@ -58,10 +58,8 @@ ani-gui keeps the following on your computer only:
   matching the row: none of it is written for the removed show
   afterwards. Playing the show again after removing it records it
   again. A removal that fails part-way leaves what it has not yet
-  removed findable, so trying again finishes it, except as below. Six
-  things are not covered. A second copy of the app running on the same
-  profile does not know of the removal, and something it was in the
-  middle of writing can land after it. The app knows a removed show by
+  removed findable, so trying again finishes it, except as below. Five
+  things are not covered. The app knows a removed show by
   its row and by the Kitsu entry it linked the row to — the one the
   row recorded, the ones it was matched to, the page it was played
   from while the app was running: for a show the history never linked
