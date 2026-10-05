@@ -17,11 +17,15 @@ export interface RowShowDeps {
 	recordedGone?: (kitsuId: string) => Promise<boolean>;
 }
 
-/** The show `row` is a card of, or null when it cannot be told. The
- *  id the row records names it unless Kitsu answers that id gone —
- *  the rule the Continue resolver and the backend's claim apply. Past
- *  that, the row is the entry the home page resolved for it (its
- *  mapping, else its title match), else its stamped mapping. */
+/** The show `row` is a card of, or null when it cannot be told. That
+ *  is the entry the home page resolved and shows for it — the id it
+ *  records unless Kitsu answered that gone, else its mapping, else a
+ *  title match (match.ts) — since a card's plays key positions by the
+ *  entry it shows. An unresolved row is the id it records unless a
+ *  Kitsu read answers it gone, else its stamped mapping. This follows
+ *  the card, not the backend's claim on a row (history_claim.rs),
+ *  which reads "gone" from the cached mark and never names a row that
+ *  recorded no id by a title match. */
 export async function rowShow(row: HistoryEntry, deps: RowShowDeps): Promise<string | null> {
 	const resolved = deps.matches[row.id]?.id;
 	// The resolver goes past a recorded id only when Kitsu answers it
