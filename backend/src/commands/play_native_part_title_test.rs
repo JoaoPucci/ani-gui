@@ -32,6 +32,63 @@ fn anything_else_is_not_a_part() {
     );
 }
 
+#[test]
+fn real_provider_sequel_titles_name_their_part() {
+    assert_eq!(
+        part_ordinal("Spy x Family", "Spy x Family, Part 2"),
+        Some(2)
+    );
+    assert_eq!(
+        part_ordinal("Vinland Saga", "Vinland Saga: 2nd Season"),
+        Some(2)
+    );
+    assert_eq!(
+        part_ordinal("Mob Psycho 100", "Mob Psycho 100 III"),
+        Some(3)
+    );
+    assert_eq!(
+        part_ordinal(
+            "Mushoku Tensei: Jobless Reincarnation Season 2",
+            "Mushoku Tensei: Jobless Reincarnation Season 2 Part 2"
+        ),
+        Some(2)
+    );
+}
+
+#[test]
+fn real_franchise_titles_that_are_not_parts_of_each_other() {
+    // Gintama's entries differ only by punctuation; none of them is a
+    // part of another, and none is the bare title either.
+    for t in ["Gintama'", "Gintama°", "Gintama.", "Gintama: Enchousen"] {
+        assert_eq!(part_ordinal("Gintama", t), None, "{t}");
+    }
+    assert_eq!(part_ordinal("Gintama.", "Gintama.: Slip Arc"), None);
+    assert_eq!(
+        part_ordinal(
+            "Gintama.: Silver Soul Arc",
+            "Gintama.: Silver Soul Arc - Second Half War"
+        ),
+        None
+    );
+    assert_eq!(part_ordinal("Naruto", "Naruto: Shippuden"), None);
+    assert_eq!(part_ordinal("Naruto", "Naruto: Shippuden the Movie"), None);
+    assert_eq!(part_ordinal("Overlord II", "Overlord III"), None);
+    assert_eq!(
+        part_ordinal(
+            "Attack on Titan: Final Season, Part 1",
+            "Attack on Titan: Final Season, Part 2"
+        ),
+        None
+    );
+    assert_eq!(
+        part_ordinal(
+            "Haikyuu!!: To the Top (Part 1+2)",
+            "Haikyuu!!: To the Top 2nd Season"
+        ),
+        None
+    );
+}
+
 /// A stem the marker forms can follow: ASCII words, ending in a letter
 /// so the marker is a separate word.
 fn stem() -> impl proptest::strategy::Strategy<Value = String> {

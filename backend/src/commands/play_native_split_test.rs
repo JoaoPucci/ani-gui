@@ -267,6 +267,87 @@ fn a_lead_numbered_cumulatively_is_never_stitched() {
     assert_eq!(split_chain(&cands, 12, 10), None);
 }
 
+/// The best single candidate's distance, as the picker computes it.
+fn best_single(cands: &[PartCandidate<'_>], expected: u32) -> u32 {
+    cands
+        .iter()
+        .map(|c| c.count.abs_diff(expected))
+        .min()
+        .unwrap_or(u32::MAX)
+}
+
+#[test]
+fn steel_ball_run_as_hianime_lists_it_mid_season_is_stitched() {
+    // hianime's pool for Kitsu's Steel Ball Run (12 episodes, 2026),
+    // in search order: the March premiere alone, then the weekly run
+    // with two episodes aired. Kitsu's episode 2 is the 2nd Stage's 1.
+    let lead = "Steel Ball Run: JoJo's Bizarre Adventure";
+    let second = "Steel Ball Run: JoJo's Bizarre Adventure 2nd Stage";
+    let cands = [cand(lead, 1, true), cand(second, 2, true)];
+    assert_eq!(
+        split_chain(&cands, 12, best_single(&cands, 12)),
+        Some(vec![0, 1])
+    );
+}
+
+#[test]
+fn same_year_sequels_hianime_lists_beside_their_first_cour_are_not_stitched() {
+    // Real hianime pools where the bare title and a same-year sequel
+    // both confirm Kitsu's year, and Kitsu keeps each as its own
+    // entry: whichever entry is asked for, one candidate is it.
+    let pools: [(&str, u32, &str, u32, &[u32]); 4] = [
+        ("Golden Kamuy", 12, "Golden Kamuy: Season 2", 12, &[12]),
+        ("Spy x Family", 12, "Spy x Family, Part 2", 13, &[12, 13]),
+        (
+            "Mushoku Tensei: Jobless Reincarnation",
+            11,
+            "Mushoku Tensei: Jobless Reincarnation Part 2",
+            12,
+            &[11, 12],
+        ),
+        ("Tokyo Ghoul:re", 12, "Tokyo Ghoul:re 2nd Season", 12, &[12]),
+    ];
+    for (first, n1, second, n2, expecteds) in pools {
+        let cands = [cand(first, n1, true), cand(second, n2, true)];
+        for &expected in expecteds {
+            assert_eq!(
+                split_chain(&cands, expected, best_single(&cands, expected)),
+                None,
+                "{first} / {second} against {expected}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_provider_entry_spanning_two_kitsu_entries_is_not_a_split() {
+    // The inverse shape: hianime lists both of Kitsu's Silver Soul
+    // halves as one 26-episode show beside the second half alone, and
+    // both of Haikyuu's To the Top cours as "(Part 1+2)" beside the
+    // second cour. Neither title names a part of the other, so no
+    // chain forms whichever entry is asked for.
+    let gintama = [
+        cand("Gintama.: Silver Soul Arc", 26, true),
+        cand("Gintama.: Silver Soul Arc - Second Half War", 14, true),
+    ];
+    for expected in [12, 14] {
+        assert_eq!(
+            split_chain(&gintama, expected, best_single(&gintama, expected)),
+            None
+        );
+    }
+    let haikyuu = [
+        cand("Haikyuu!!: To the Top (Part 1+2)", 25, true),
+        cand("Haikyuu!!: To the Top 2nd Season", 12, true),
+    ];
+    for expected in [13, 12] {
+        assert_eq!(
+            split_chain(&haikyuu, expected, best_single(&haikyuu, expected)),
+            None
+        );
+    }
+}
+
 /// A probed pool: titles drawn from one stem's parts and some
 /// strangers, with arbitrary counts, years and offsets.
 fn pool() -> impl proptest::strategy::Strategy<Value = Vec<(String, u32, bool, u32)>> {
