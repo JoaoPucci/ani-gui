@@ -1278,8 +1278,9 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
 /// stands behind it.
 /// The warm entries whose airing row is batch-seeded before they
 /// probe: every entry still on air or to come that will actually
-/// probe (no fresh availability row). One AniList request covers the
-/// whole rail. A pre-premiere probe's per-show seed becomes a cache
+/// probe (no fresh availability row). One AniList request per id
+/// space — AniList id, or MAL id for a show mapped to MAL alone —
+/// covers a rail of up to 50 shows. A pre-premiere probe's per-show seed becomes a cache
 /// hit, and a current show's positive row is bounded by its next
 /// airing when it is written rather than holding the ongoing day.
 fn schedule_seed_ids(state: &AppState, items: &[AvailabilityArgs]) -> Vec<String> {
