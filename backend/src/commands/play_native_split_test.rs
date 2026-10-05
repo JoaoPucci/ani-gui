@@ -34,7 +34,7 @@ fn an_airing_split_chains_both_parts_in_order() {
     // at the stem.
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(&second, 2, true), cand(SBR, 1, true)];
-    assert_eq!(split_chain(&cands, 12, 10), Some(vec![1, 0]));
+    assert_eq!(split_chain(&cands, 12, 10, &[]), Some(vec![1, 0]));
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn a_finished_split_beats_the_near_miss_single_part() {
     // would otherwise win inside the tolerance.
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(SBR, 1, true), cand(&second, 11, true)];
-    assert_eq!(split_chain(&cands, 12, 1), Some(vec![0, 1]));
+    assert_eq!(split_chain(&cands, 12, 1, &[]), Some(vec![0, 1]));
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn three_parts_chain_in_order() {
         cand("The Show", 4, true),
         cand("The Show Part 2", 4, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 8), Some(vec![1, 2, 0]));
+    assert_eq!(split_chain(&cands, 12, 8, &[]), Some(vec![1, 2, 0]));
 }
 
 #[test]
@@ -62,29 +62,29 @@ fn no_chain_where_a_single_part_already_fits() {
         cand("The Show", 12, true),
         cand("The Show 2nd Season", 1, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 0), None);
+    assert_eq!(split_chain(&cands, 12, 0, &[]), None);
     // Still none when the chain only ties the single part.
     let cands = [
         cand("The Show", 11, true),
         cand("The Show 2nd Season", 2, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 1), None);
+    assert_eq!(split_chain(&cands, 12, 1, &[]), None);
 }
 
 #[test]
 fn no_chain_without_both_years_confirmed() {
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(SBR, 1, true), cand(&second, 2, false)];
-    assert_eq!(split_chain(&cands, 12, 10), None);
+    assert_eq!(split_chain(&cands, 12, 10, &[]), None);
     let cands = [cand(SBR, 1, false), cand(&second, 2, true)];
-    assert_eq!(split_chain(&cands, 12, 10), None);
+    assert_eq!(split_chain(&cands, 12, 10, &[]), None);
 }
 
 #[test]
 fn a_sibling_with_nothing_listed_adds_nothing() {
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(SBR, 1, true), cand(&second, 0, true)];
-    assert_eq!(split_chain(&cands, 12, 11), None);
+    assert_eq!(split_chain(&cands, 12, 11, &[]), None);
 }
 
 #[test]
@@ -93,18 +93,18 @@ fn no_chain_past_the_expected_count_outside_the_tolerance() {
         cand("The Show", 12, true),
         cand("The Show Part 2", 12, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 0), None);
+    assert_eq!(split_chain(&cands, 12, 0, &[]), None);
     let cands = [
         cand("The Show", 10, true),
         cand("The Show Part 2", 10, true),
     ];
-    assert_eq!(split_chain(&cands, 12, 2), None);
+    assert_eq!(split_chain(&cands, 12, 2, &[]), None);
 }
 
 #[test]
 fn a_gap_in_the_parts_ends_the_chain() {
     let cands = [cand("The Show", 4, true), cand("The Show Part 3", 4, true)];
-    assert_eq!(split_chain(&cands, 12, 8), None);
+    assert_eq!(split_chain(&cands, 12, 8, &[]), None);
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn a_bare_title_that_already_fits_is_not_stitched_to_its_sequel() {
     // inside the tolerance: it is the entry, and stitching would play
     // Part 2's first episode as episode 13.
     let cands = [cand("X", 12, true), cand("X Part 2", 1, true)];
-    assert_eq!(split_chain(&cands, 13, 1), None);
+    assert_eq!(split_chain(&cands, 13, 1, &[]), None);
 }
 
 #[test]
@@ -241,7 +241,7 @@ fn a_near_miss_that_is_a_later_part_is_stitched_whatever_the_titles_spell() {
     let lead = "Steel Ball Run: JoJo's Bizarre Adventure";
     let second = format!("{lead} 2nd Stage");
     let cands = [cand(lead, 1, true), cand(&second, 11, true)];
-    assert_eq!(split_chain(&cands, 12, 1), Some(vec![0, 1]));
+    assert_eq!(split_chain(&cands, 12, 1, &[]), Some(vec![0, 1]));
 }
 
 #[test]
@@ -252,7 +252,7 @@ fn an_airing_split_stays_stitched_once_its_later_part_reaches_the_tolerance() {
     // would move under the user part-way through the season.
     let second = format!("{SBR} 2nd Stage");
     let cands = [cand(SBR, 1, true), cand(&second, 9, true)];
-    assert_eq!(split_chain(&cands, 12, 3), Some(vec![0, 1]));
+    assert_eq!(split_chain(&cands, 12, 3, &[]), Some(vec![0, 1]));
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn a_lead_numbered_cumulatively_is_never_stitched() {
     let mut lead = cand("The Show", 2, true);
     lead.offset = 40;
     let cands = [lead, cand("The Show Part 2", 2, true)];
-    assert_eq!(split_chain(&cands, 12, 10), None);
+    assert_eq!(split_chain(&cands, 12, 10, &[]), None);
 }
 
 /// The best single candidate's distance, as the picker computes it.
@@ -285,7 +285,7 @@ fn steel_ball_run_as_hianime_lists_it_mid_season_is_stitched() {
     let second = "Steel Ball Run: JoJo's Bizarre Adventure 2nd Stage";
     let cands = [cand(lead, 1, true), cand(second, 2, true)];
     assert_eq!(
-        split_chain(&cands, 12, best_single(&cands, 12)),
+        split_chain(&cands, 12, best_single(&cands, 12), &[SBR]),
         Some(vec![0, 1])
     );
 }
@@ -311,7 +311,7 @@ fn same_year_sequels_hianime_lists_beside_their_first_cour_are_not_stitched() {
         let cands = [cand(first, n1, true), cand(second, n2, true)];
         for &expected in expecteds {
             assert_eq!(
-                split_chain(&cands, expected, best_single(&cands, expected)),
+                split_chain(&cands, expected, best_single(&cands, expected), &[]),
                 None,
                 "{first} / {second} against {expected}"
             );
@@ -332,7 +332,7 @@ fn a_provider_entry_spanning_two_kitsu_entries_is_not_a_split() {
     ];
     for expected in [12, 14] {
         assert_eq!(
-            split_chain(&gintama, expected, best_single(&gintama, expected)),
+            split_chain(&gintama, expected, best_single(&gintama, expected), &[]),
             None
         );
     }
@@ -342,7 +342,7 @@ fn a_provider_entry_spanning_two_kitsu_entries_is_not_a_split() {
     ];
     for expected in [13, 12] {
         assert_eq!(
-            split_chain(&haikyuu, expected, best_single(&haikyuu, expected)),
+            split_chain(&haikyuu, expected, best_single(&haikyuu, expected), &[]),
             None
         );
     }
@@ -390,7 +390,7 @@ proptest::proptest! {
             .map(|c| c.count.abs_diff(expected))
             .min()
             .unwrap_or(u32::MAX);
-        let Some(chain) = split_chain(&cands, expected, best_single) else {
+        let Some(chain) = split_chain(&cands, expected, best_single, &[]) else {
             return Ok(());
         };
         proptest::prop_assert!(chain.len() >= 2);
