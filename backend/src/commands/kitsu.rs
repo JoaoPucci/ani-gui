@@ -1035,6 +1035,30 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
     id: &str,
     anilist_base: Option<&str>,
 ) -> Result<KitsuAnimeRef> {
+    anime_detail_read(state, id, anilist_base, |_| {}).await
+}
+
+/// [`kitsu_anime_detail`], running `past_cache` once the cache has
+/// missed and before Kitsu is asked — the point a test removes
+/// history at to find which moment the read is judged by.
+#[cfg(test)]
+pub(crate) async fn anime_detail_past_cache(
+    state: &AppState,
+    id: &str,
+    past_cache: impl FnOnce(&AppState),
+) -> Result<KitsuAnimeRef> {
+    anime_detail_read(state, id, None, past_cache).await
+}
+
+/// The detail read behind [`kitsu_anime_detail`] and its two test
+/// seams: the AniList endpoint, and work run between the cache miss
+/// and the Kitsu request.
+async fn anime_detail_read(
+    state: &AppState,
+    id: &str,
+    anilist_base: Option<&str>,
+    past_cache: impl FnOnce(&AppState),
+) -> Result<KitsuAnimeRef> {
     let key = anime_detail_key(id);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(detail) = serde_json::from_str::<KitsuAnimeRef>(&body) {
@@ -1042,6 +1066,7 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
             return Ok(detail);
         }
     }
+    past_cache(state);
     // A 404 or 410 is Kitsu answering the entry is gone, which a
     // history row that recorded the id needs to know (kitsu_gone.rs) —
     // unless the history removed the id's show while the read waited.
