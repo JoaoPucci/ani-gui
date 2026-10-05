@@ -138,3 +138,99 @@ test("a destroyed window is left alone", () => {
   assert.strictEqual(revealWindow(win), false);
   assert.deepStrictEqual(win.calls, []);
 });
+
+// After the boot: a launch that finds no window opens one. On macOS
+// closing the last window leaves the app and its backend running, and
+// the lock then sends every later launch here — so a keeper that only
+// reveals would leave the user with no window from any launch.
+
+const BACKEND = { apiBase: "http://127.0.0.1:4321", internalSecret: "s3cret" };
+
+/** A keeper whose createWindow is recorded and settled by the test. */
+function reopeningKeeper({ quitting = () => false } = {}) {
+  const opened = [];
+  const errors = [];
+  let settle;
+  const keeper = windowKeeper({
+    createWindow: (backend) => {
+      opened.push(backend);
+      return new Promise((resolve, reject) => {
+        settle = { resolve, reject };
+      });
+    },
+    quitting,
+    logError: (...args) => errors.push(args),
+  });
+  return { keeper, opened, errors, settle: () => settle };
+}
+
+test("after the boot, a launch with no window opens one against the boot's backend", () => {
+  const { keeper, opened } = reopeningKeeper();
+  const win = fakeWindow();
+  keeper.shown(win);
+  keeper.booted(BACKEND);
+  keeper.closed(win);
+  assert.strictEqual(keeper.summon(), "reopened");
+  assert.deepStrictEqual(opened, [BACKEND]);
+});
+
+test("a window being reopened is not reopened again by the next launch", async () => {
+  const { keeper, opened, settle } = reopeningKeeper();
+  keeper.booted(BACKEND);
+  assert.strictEqual(keeper.summon(), "reopened");
+  assert.strictEqual(keeper.summon(), "none");
+  assert.strictEqual(opened.length, 1);
+  const win = fakeWindow();
+  keeper.shown(win);
+  settle().resolve();
+  await Promise.resolve();
+  assert.strictEqual(keeper.summon(), "revealed");
+  assert.strictEqual(opened.length, 1);
+});
+
+test("a reopen that fails is logged, and the next launch tries again", async () => {
+  const { keeper, opened, errors, settle } = reopeningKeeper();
+  keeper.booted(BACKEND);
+  assert.strictEqual(keeper.summon(), "reopened");
+  settle().reject(new Error("renderer gone"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.strictEqual(errors.length, 1);
+  assert.strictEqual(keeper.summon(), "reopened");
+  assert.strictEqual(opened.length, 2);
+});
+
+test("a window that is up is brought forward, not reopened", () => {
+  const { keeper, opened } = reopeningKeeper();
+  const win = fakeWindow();
+  keeper.shown(win);
+  keeper.booted(BACKEND);
+  assert.strictEqual(keeper.summon(), "revealed");
+  assert.deepStrictEqual(opened, []);
+});
+
+test("a launch during the boot opens nothing", () => {
+  // The boot's window may be on screen already — shown before it is
+  // ready — but the boot has not opened it: that is still the boot's.
+  const { keeper, opened } = reopeningKeeper();
+  assert.strictEqual(keeper.summon(), "none");
+  keeper.shown(fakeWindow({ visible: false }));
+  keeper.failed();
+  assert.strictEqual(keeper.summon(), "none");
+  assert.deepStrictEqual(opened, []);
+});
+
+test("a launch after a failed boot opens nothing", () => {
+  const { keeper, opened } = reopeningKeeper();
+  keeper.booted(BACKEND);
+  keeper.failed();
+  assert.strictEqual(keeper.summon(), "none");
+  assert.deepStrictEqual(opened, []);
+});
+
+test("a launch while the app is quitting opens nothing", () => {
+  // The quit is stopping the backend the window would load against.
+  const { keeper, opened } = reopeningKeeper({ quitting: () => true });
+  keeper.booted(BACKEND);
+  assert.strictEqual(keeper.summon(), "none");
+  assert.deepStrictEqual(opened, []);
+});
