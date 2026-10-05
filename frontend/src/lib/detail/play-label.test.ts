@@ -146,3 +146,38 @@ describe('computePlayLabel', () => {
 		).toEqual({ kind: 'watch_again' });
 	});
 });
+
+describe('computePlayLabel — an episode left part-way', () => {
+	it('reads continue, not replay, for the last episode left part-way', () => {
+		expect(
+			computePlayLabel({
+				isSingleVideo: false,
+				resumeEntry: { ep_no: '12' },
+				defaultEpisode: 12,
+				leftPartWay: true
+			})
+		).toEqual({ kind: 'resume', episode: 12 });
+	});
+
+	it('reads continue for a mid-show episode left part-way', () => {
+		expect(
+			computePlayLabel({
+				isSingleVideo: false,
+				resumeEntry: { ep_no: '5' },
+				defaultEpisode: 5,
+				leftPartWay: true
+			})
+		).toEqual({ kind: 'resume', episode: 5 });
+	});
+
+	it('reads continue, not watch again, for a movie left part-way', () => {
+		expect(
+			computePlayLabel({
+				isSingleVideo: true,
+				resumeEntry: { ep_no: '1' },
+				defaultEpisode: 1,
+				leftPartWay: true
+			})
+		).toEqual({ kind: 'continue' });
+	});
+});

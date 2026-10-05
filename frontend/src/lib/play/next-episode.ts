@@ -30,3 +30,41 @@ export function pickNextEpisode(lastWatched: number | null, episodeCap: number |
 	if (episodeCap !== null && next > episodeCap) return lastWatched;
 	return next;
 }
+
+/**
+ * The episode a Continue click plays: the last watched one again when
+ * it was left part-way — its position is kept — and otherwise
+ * {@link pickNextEpisode}. An episode's watched mark is written when
+ * it starts, so without the position the last watched episode reads
+ * as finished. Only the last watched episode is asked about: a
+ * position kept for an older one does not pull Continue back to it.
+ */
+export function pickResumeEpisode(
+	lastWatched: number | null,
+	episodeCap: number | null,
+	leftPartWay: boolean
+): number {
+	return resumeOr(lastWatched, pickNextEpisode(lastWatched, episodeCap), leftPartWay);
+}
+
+/** {@link pickResumeEpisode}, asking `leftPartWay` about the last
+ *  watched episode of `kitsuId` — only when there is one. Omitted,
+ *  nothing was left part-way. */
+export function pickResumeEpisodeFor(
+	kitsuId: string,
+	lastWatched: number | null,
+	episodeCap: number | null,
+	leftPartWay?: (kitsuId: string, episode: number) => boolean
+): number {
+	const asked = lastWatched !== null && leftPartWay !== undefined;
+	return pickResumeEpisode(lastWatched, episodeCap, asked && leftPartWay(kitsuId, lastWatched));
+}
+
+/** `lastWatched` when it was left part-way and is an episode at all,
+ *  else `next` — for a caller that already picked the next episode. */
+export function resumeOr(lastWatched: number | null, next: number, leftPartWay: boolean): number {
+	if (!leftPartWay || lastWatched === null || !Number.isFinite(lastWatched) || lastWatched < 1) {
+		return next;
+	}
+	return lastWatched;
+}

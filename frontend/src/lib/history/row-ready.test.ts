@@ -42,7 +42,8 @@ interface Spy {
 
 function makeSpy(
 	history: HistoryEntry[],
-	fetchImpl?: (kitsuId: string, page: number) => Promise<KitsuEpisode[]>
+	fetchImpl?: (kitsuId: string, page: number) => Promise<KitsuEpisode[]>,
+	leftPartWay?: (kitsuId: string, episode: number) => boolean
 ): Spy {
 	const historyById = new Map(history.map((h) => [h.id, h]));
 	const fetchKitsuEpisodes = vi.fn(fetchImpl ?? (() => Promise.resolve([])));
@@ -57,7 +58,8 @@ function makeSpy(
 			fetchKitsuEpisodes,
 			setMatch: (id, m) => calls.setMatch.push([id, m]),
 			setPlayableCount: (id, c) => calls.setPlayableCount.push([id, c]),
-			setEpisode: (id, ep) => calls.setEpisode.push([id, ep])
+			setEpisode: (id, ep) => calls.setEpisode.push([id, ep]),
+			leftPartWay
 		},
 		calls,
 		fetchKitsuEpisodes
@@ -380,5 +382,20 @@ describe('refinement re-fire (render-then-refine)', () => {
 		handler(entry.id, match, 24);
 
 		expect(fetchKitsuEpisodes).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe('makeContinueRowReadyHandler — an episode left part-way', () => {
+	it("shows the episode left part-way, the one the card's click plays", async () => {
+		const entry = makeEntry('hist-a', '5', 'Show A');
+		const spy = makeSpy(
+			[entry],
+			() => Promise.resolve([makeKitsuEpisode(5), makeKitsuEpisode(6)]),
+			(kitsuId, ep) => kitsuId === 'k-a' && ep === 5
+		);
+		const handle = makeContinueRowReadyHandler(spy.deps);
+		handle('hist-a', makeMatch('k-a', 12), 12);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(spy.calls.setEpisode).toEqual([['hist-a', makeKitsuEpisode(5)]]);
 	});
 });

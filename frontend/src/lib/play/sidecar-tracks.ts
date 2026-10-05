@@ -8,7 +8,7 @@
  * URL carries, which the backend built on its own address, so the ask
  * reaches the backend whether the preload bridge is present or the
  * base came from the environment — and each becomes one `<track>` on
- * the singleton video, where the browser renders it natively and the
+ * the play page's video, where the browser renders it natively and the
  * captions picker already lists it. The pure parts (the URL, the
  * attribute mapping) are tested on their own; the DOM adapter is
  * exercised by the acceptance test on the mounted page.

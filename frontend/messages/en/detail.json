@@ -79,6 +79,7 @@
 	"play_button_resume": "Continue · Episode {episode}",
 	"play_button_watch": "Watch",
 	"play_button_watch_again": "Watch again",
+	"play_button_continue": "Continue",
 	"quality_group_aria_label": "Quality",
 	"quality_group_label": "Quality",
 	"settings_error_prefix": "Settings: {detail}",

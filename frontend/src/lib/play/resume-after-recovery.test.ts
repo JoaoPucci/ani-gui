@@ -47,3 +47,22 @@ describe('RecoveryResume', () => {
 		expect(r.consume('show-a', 6)).toBe(200);
 	});
 });
+
+describe('RecoveryResume — forgetting with the history', () => {
+	it("forgets a capture for the show whose positions are forgotten, and only that show's", () => {
+		const r = new RecoveryResume();
+		r.capture('show-a', 6, 432.5);
+		r.forgetShow('show-b');
+		expect(r.consume('show-a', 6)).toBe(432.5);
+		r.capture('show-a', 6, 432.5);
+		r.forgetShow('show-a');
+		expect(r.consume('show-a', 6)).toBeNull();
+	});
+
+	it('forgets any capture when every position is forgotten', () => {
+		const r = new RecoveryResume();
+		r.capture('show-a', 6, 432.5);
+		r.forgetAll();
+		expect(r.consume('show-a', 6)).toBeNull();
+	});
+});

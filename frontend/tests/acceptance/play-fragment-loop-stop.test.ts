@@ -69,7 +69,7 @@ vi.mock('hls.js', () => {
 import Hls from 'hls.js';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { getGlobalVideo } from '../../src/lib/play/global-video';
+import { playerVideo, playerVideoInSlot } from './player-video';
 
 type FakeHlsT = InstanceType<typeof Hls> & {
 	stopLoadCalls: number;
@@ -154,11 +154,7 @@ async function mountHls(): Promise<FakeHlsT> {
 	useShowHandlers();
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
 	app = mount(PlayPage, { target });
-	const video = getGlobalVideo();
-	await until(
-		() => video.parentElement?.classList.contains('player-video-slot') === true,
-		'the video in its slot'
-	);
+	await until(() => playerVideoInSlot(), 'the video in its slot');
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 	await until(() => hlsInstances().length > 0, 'the hls engine to attach');
 	return hlsInstances()[hlsInstances().length - 1];
@@ -185,7 +181,7 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 
 	it('a hold armed before the trip does not start the stopped engine', async () => {
 		const hls = await mountHls();
-		const video = getGlobalVideo();
+		const video = playerVideo();
 		Object.defineProperty(video, 'buffered', {
 			configurable: true,
 			get: () => ({ length: 1, start: () => 0, end: () => 300 })
@@ -204,7 +200,7 @@ describe('play route — a fragment loaded past its allowance stops the engine',
 		// re-armed delay would be the first rung; the wait covers the
 		// second rung as well, so the case does not lean on that reset.
 		const hls = await mountHls();
-		const video = getGlobalVideo();
+		const video = playerVideo();
 		Object.defineProperty(video, 'buffered', {
 			configurable: true,
 			get: () => ({ length: 1, start: () => 0, end: () => 300 })

@@ -7,7 +7,7 @@
  * of exactly that did well over a hundred requests a second until the
  * host refused the address with 429s, which took every other stream
  * with it, and the requests went on after the user had left the page,
- * because the engine outlives the route for picture-in-picture.
+ * because the engine then outlived the route.
  *
  * A playing stream loads each fragment once. A rewind past the back
  * buffer loads one again, minutes apart. The guard counts loads of one

@@ -25,6 +25,7 @@
  * without a backend address.
  */
 import type { StreamProvider } from '$lib/history/show-key';
+import { clearAllPositions } from '$lib/play/watch-position';
 
 let apiBaseCache: string | null = null;
 
@@ -299,7 +300,6 @@ export interface Config {
 	auto_skip_op: boolean;
 	auto_skip_ed: boolean;
 	use_custom_player_controls: boolean;
-	disable_auto_pip_on_leave: boolean;
 	update_include_prereleases: boolean;
 	/** Chosen lead tracker (`"anilist"` | `"mal"`); empty = no choice
 	 *  (UI falls back to AniList-first). Drives the topbar chip + the
@@ -426,8 +426,9 @@ export function historyList(): Promise<HistoryEntry[]> {
 	return getJson<HistoryEntry[]>('/api/history');
 }
 
+/** Clears the history, and with it where each episode was left. */
 export function historyClear(): Promise<void> {
-	return deleteJson<void>('/api/history');
+	return deleteJson<void>('/api/history').then(() => clearAllPositions());
 }
 
 /** Remove one history row by its `show_id`. Backend rewrites
