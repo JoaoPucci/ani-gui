@@ -183,3 +183,45 @@ describe('watchStripOverflow', () => {
 		expect(w.seen.length).toBe(count);
 	});
 });
+
+describe('watchStripOverflow with the browser observers', () => {
+	it('uses the global ResizeObserver and MutationObserver when none are given', () => {
+		const made: string[] = [];
+		const realResize = globalThis.ResizeObserver;
+		const realMutation = globalThis.MutationObserver;
+		globalThis.ResizeObserver = class {
+			constructor() {
+				made.push('resize');
+			}
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		} as unknown as typeof ResizeObserver;
+		globalThis.MutationObserver = class {
+			constructor() {
+				made.push('mutation');
+			}
+			observe() {}
+			disconnect() {}
+			takeRecords() {
+				return [];
+			}
+		} as unknown as typeof MutationObserver;
+		try {
+			const scroller = {
+				scrollLeft: 0,
+				clientWidth: 800,
+				scrollWidth: 600,
+				addEventListener() {},
+				removeEventListener() {}
+			} as unknown as HTMLElement;
+			const content = { children: [] } as unknown as HTMLElement;
+			const stop = watchStripOverflow(scroller, content, () => {});
+			stop();
+		} finally {
+			globalThis.ResizeObserver = realResize;
+			globalThis.MutationObserver = realMutation;
+		}
+		expect(made).toEqual(['resize', 'mutation']);
+	});
+});
