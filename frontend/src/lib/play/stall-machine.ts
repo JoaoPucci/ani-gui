@@ -128,7 +128,6 @@ export class HlsStallMachine {
 	}
 }
 
-/** The shared machine, module-level like the singleton video whose
- *  stream it guards: the hls callbacks survive a route unmount (PiP),
- *  so burst and progress state must not fork per component mount. */
+/** The shared machine, module-level: one play page plays at a time,
+ *  and the page resets it whenever a stream attaches. */
 export const stallMachine = new HlsStallMachine();

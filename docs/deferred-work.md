@@ -166,19 +166,6 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
-- **The play page's same-URL attach shortcut skips the video error
-  listener.** The attach effect returns early when the singleton
-  already carries the exact media URL (the PiP-return path, kept so
-  a working pipeline isn't torn down), but the element's `error`
-  listener is registered below that return — so a session entered
-  through the shortcut has no element-error recovery: a rotated URL
-  dying under it surfaces nothing and retries nothing until the user
-  navigates. Found while writing the acceptance case for the
-  source-down failure copy, whose first draft accidentally took the
-  shortcut and dispatched an error nobody heard. The fix wants the
-  same source-scoped treatment the progress and resume listeners
-  got, not another registration inside the effect's conditional.
-
 - **A download beside an active play starves the player and breaks
   playback.** The downloader spawns yt-dlp with 16-way fragment
   concurrency; the player's fragment load policy
@@ -208,7 +195,6 @@ starting it, and delete it when you find it done.
 
 - **Localised content fetch** — synopsis and episode titles.
 - **Franchise and season grouping** across surfaces.
-- **Play-page keep-alive → normal reload with a persisted position.**
 - **Search has no sort *direction* control.** Sorting by relevance,
   title, year and rating ships, as do subtype filter chips; only
   ascending/descending is absent. Name any further filters wanted
@@ -229,8 +215,8 @@ starting it, and delete it when you find it done.
 
   Electron exposes the API but omits the window-creation glue, so it
   cannot work today: electron/electron#39633, open since 2023. Do not
-  re-attempt until that lands. PiP as it exists now — the singleton
-  video that survives navigation — ships and is described in
+  re-attempt until that lands. PiP as it exists now — the player's
+  video, while the player is open — ships and is described in
   `README.md` and `docs/architecture.md`.
 - **A flatpak-only mpv goes undetected by the external-player
   surface.** Upstream ani-cli fixed exactly this for its own player
@@ -285,10 +271,10 @@ starting it, and delete it when you find it done.
 - **No way from a Continue Watching card to the show's page.** A
   card on the home page's Continue Watching row, once its history
   entry has been matched to a Kitsu show, is a button that tries to
-  take the user into playback — with a fresh resolution, a cached
-  one, or a player that already has the episode, or, when the
-  resolution fails, a failure notice instead — of an episode chosen when
-  the button is clicked, usually the one after the last watched, so
+  take the user into playback — with a fresh resolution or a cached
+  one, or, when the resolution fails, a failure notice instead — of an
+  episode chosen when the button is clicked: the last watched when it
+  was left part-way, otherwise usually the one after it, so
   the number the card shows beforehand, where it shows one, is not
   always the episode played. Nothing else on the card or the row
   leads to the show either: the chip on a card removes it, the

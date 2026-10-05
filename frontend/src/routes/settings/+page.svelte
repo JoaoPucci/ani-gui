@@ -218,10 +218,6 @@
 		if (!cfg) return;
 		void persist({ ...cfg, use_custom_player_controls: value });
 	}
-	function setDisableAutoPipOnLeave(value: boolean) {
-		if (!cfg) return;
-		void persist({ ...cfg, disable_auto_pip_on_leave: value });
-	}
 	function setUpdateIncludePrereleases(value: boolean) {
 		if (!cfg) return;
 		void persist({ ...cfg, update_include_prereleases: value });
@@ -591,30 +587,6 @@
 					</span>
 					<span class="switch-state"
 						>{cfg.use_custom_player_controls
-							? m.settings_switch_state_on()
-							: m.settings_switch_state_off()}</span
-					>
-				</label>
-			</div>
-
-			<div class="field">
-				<div class="field-label">
-					<span class="field-key">{m.settings_field_disable_pip_key()}</span>
-					<span class="field-hint">{m.settings_field_disable_pip_hint()}</span>
-				</div>
-				<label class="switch">
-					<input
-						type="checkbox"
-						checked={cfg.disable_auto_pip_on_leave}
-						onchange={(e) =>
-							setDisableAutoPipOnLeave((e.currentTarget as HTMLInputElement).checked)}
-						aria-label={m.settings_disable_pip_aria_label()}
-					/>
-					<span class="switch-track" aria-hidden="true">
-						<span class="switch-thumb"></span>
-					</span>
-					<span class="switch-state"
-						>{cfg.disable_auto_pip_on_leave
 							? m.settings_switch_state_on()
 							: m.settings_switch_state_off()}</span
 					>

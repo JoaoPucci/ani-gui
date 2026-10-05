@@ -75,13 +75,6 @@ pub struct Config {
     /// custom chrome is what the M3 design direction targets and
     /// native is strictly inferior for ani-gui's UI surface.
     pub use_custom_player_controls: bool,
-    /// When `true`, navigating away from the player pauses the
-    /// video instead of entering Picture-in-Picture. Default
-    /// `true` because auto-PiP-on-navigate is a surprising default
-    /// (a small floating window follows OS focus when the user
-    /// expected Back to halt playback). Users who actively want
-    /// PiP can flip this to `false` in Settings.
-    pub disable_auto_pip_on_leave: bool,
     /// When `true`, the renderer's update notifier considers GitHub
     /// pre-releases when checking for a newer version. Defaults to
     /// `true` because every ani-gui release shipped so far is marked
@@ -130,7 +123,6 @@ impl Default for Config {
             auto_skip_op: false,
             auto_skip_ed: false,
             use_custom_player_controls: true,
-            disable_auto_pip_on_leave: true,
             update_include_prereleases: true,
             primary_account: String::new(),
         }

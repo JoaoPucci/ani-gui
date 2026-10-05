@@ -18,7 +18,6 @@ function cfg(primary = ''): Config {
 		auto_skip_op: false,
 		auto_skip_ed: false,
 		use_custom_player_controls: false,
-		disable_auto_pip_on_leave: false,
 		update_include_prereleases: true,
 		primary_account: primary
 	};
