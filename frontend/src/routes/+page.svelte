@@ -950,7 +950,7 @@
 			       mis-route the user to /search (Codex P2
 			       #3348970892).
 			     - match === null : resolution definitively failed;
-			       the row falls through to /search as a fallback. -->
+			       the row falls through to a search for its title. -->
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				{#if resumable && match}
 					<button
@@ -1028,7 +1028,11 @@
 						</span>
 					</div>
 				{:else}
-					<a class="resume-card" style="--accent: {accent};" href={resolve('/search')}>
+					<a
+						class="resume-card"
+						style="--accent: {accent};"
+						href={`${resolve('/search')}?q=${encodeURIComponent(target.displayTitle)}`}
+					>
 						<span class="resume-poster">
 							{#if image}
 								<img src={image} alt="" loading="lazy" decoding="async" />

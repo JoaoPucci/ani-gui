@@ -1,7 +1,8 @@
 /**
  * A row that recorded the Kitsu id of the show played resolves to that
- * entry and nothing else. Rows written before history recorded it fall
- * back to matching:
+ * entry and nothing else, unless Kitsu answers that the entry is gone
+ * (a 404 or 410). That row, and rows written before history recorded
+ * the id, fall back to matching:
  *
  * Resolves a `ResumeTarget`'s kitsu match against the title-match
  * cache before falling back to a live `kitsuSearch` + `pickKitsuMatch`
@@ -26,13 +27,40 @@ import {
 import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
 import { storedBinding } from './match-stored';
+import { noteMatchTrust } from './match-trust';
 
+/** Whether a failed Kitsu read is Kitsu answering that the entry is
+ *  gone — a 404 or 410, which the backend passes on as an upstream
+ *  error carrying the status — rather than a failure that says nothing
+ *  about the id (the network, a 5xx, a rate limit, a timeout). */
+function kitsuEntryGone(e: unknown): boolean {
+	const err = e as { kind?: unknown; status?: unknown } | null;
+	return err?.kind === 'upstream' && (err.status === 404 || err.status === 410);
+}
+
+/** Resolve a Continue row to its Kitsu entry, and note for the play
+ *  the card starts whether the match may be recorded on the row
+ *  (match-trust.ts): only the row's recorded id or a mapping a real
+ *  play stored may; a guess may not. */
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
+	const { match, trusted } = await resolveWithTrust(preliminary);
+	if (match) noteMatchTrust(match.id, trusted);
+	return match;
+}
+
+async function resolveWithTrust(
+	preliminary: ResumeTarget
+): Promise<{ match: KitsuAnimeRef | null; trusted: boolean }> {
 	// The row recorded the show the user played: read that entry and
 	// match nothing. A failed read answers no show rather than a guess
-	// that could land on another one.
+	// that could land on another one — unless Kitsu answers that the
+	// entry is gone, when the row is matched as one with no id is.
 	if (preliminary.recordedKitsuId) {
-		return kitsuAnimeDetail(preliminary.recordedKitsuId).catch(() => null);
+		try {
+			return { match: await kitsuAnimeDetail(preliminary.recordedKitsuId), trusted: true };
+		} catch (e) {
+			if (!kitsuEntryGone(e)) return { match: null, trusted: false };
+		}
 	}
 	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id,
 	//    stored by a play, or by the enrichment step below. Wins over
@@ -41,9 +69,14 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    Shippuuden). The binding is validated before it is accepted
 	//    (match-stored.ts): older sessions may have persisted a wrong
 	//    mapping (Burichi/Buriki fuzzy-matched to Doraemon Movie 14).
+	//    Only a mapping a play stored may be recorded on the row.
 	const stored = await storedBinding(preliminary);
-	if (stored) return stored;
+	if (stored) return { match: stored.ref, trusted: stored.played };
+	return { match: await guessKitsuMatch(preliminary), trusted: false };
+}
 
+/** Steps 1-5: everything below the stored mapping is a guess. */
+async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
 	// 1) Cache lookup. If we've resolved this title→id before, fetch
 	//    the (cached, 7d-TTL) detail and short-circuit.
 	//

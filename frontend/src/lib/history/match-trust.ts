@@ -10,18 +10,28 @@
  * guess to the row with one click.
  */
 
+const trusted = new Set<string>();
+const guessed = new Set<string>();
+
 /** Forget every match noted so far; the home page calls it before it
  *  resolves its rows again. */
-export function forgetMatchTrust(): void {}
+export function forgetMatchTrust(): void {
+	trusted.clear();
+	guessed.clear();
+}
 
-/** Note how a Continue row's match was reached. */
-export function noteMatchTrust(kitsuId: string, trusted: boolean): void {
-	void kitsuId;
-	void trusted;
+/** Note how a Continue row's match was reached. Two rows can reach one
+ *  entry, one by its recorded id and one by a guess; the recorded one
+ *  stands. */
+export function noteMatchTrust(kitsuId: string, isTrusted: boolean): void {
+	(isTrusted ? trusted : guessed).add(kitsuId);
 }
 
 /** The id a play may record on the row, or undefined when the id is
- *  only a guess the home page made. */
+ *  only a guess the home page made. An id the home page never resolved
+ *  — a play from the detail page, where the user chose the show — is
+ *  recorded. */
 export function recordableKitsuId(kitsuId: string): string | undefined {
-	return kitsuId || undefined;
+	if (!kitsuId) return undefined;
+	return guessed.has(kitsuId) && !trusted.has(kitsuId) ? undefined : kitsuId;
 }

@@ -12,9 +12,12 @@ import {
 import { cachedBindingVerdict, onlyTitleInDoubt, type ResumeTarget } from './resolve';
 
 /** The stored mapping for the row's show id when it can stand as the
- *  answer, else null and the row resolves on. Every endpoint failure
- *  is the same as finding nothing. */
-export async function storedBinding(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
+ *  answer, and whether a real play stored it, else null and the row
+ *  resolves on. Every endpoint failure is the same as finding nothing,
+ *  and a played read that fails is the same as no play. */
+export async function storedBinding(
+	preliminary: ResumeTarget
+): Promise<{ ref: KitsuAnimeRef; played: boolean } | null> {
 	if (!preliminary.allmangaShowId) return null;
 	let cached: KitsuAnimeRef;
 	try {
@@ -26,7 +29,8 @@ export async function storedBinding(preliminary: ResumeTarget): Promise<KitsuAni
 		return null;
 	}
 	const verdict = cachedBindingVerdict(cached, preliminary, true);
-	if (verdict === 'trust') return cached;
+	const played = () => allmangaKitsuMapPlayed(preliminary.allmangaShowId).catch(() => false);
+	if (verdict === 'trust') return { ref: cached, played: await played() };
 	if (verdict === 'evict') {
 		// Provably wrong (a music entry). Awaited: the enrichment step
 		// reads this same reverse cache first, so the delete must commit
@@ -41,6 +45,5 @@ export async function storedBinding(preliminary: ResumeTarget): Promise<KitsuAni
 	// stored is the show the user played, so it stands; a guess an
 	// earlier resolve stored does not.
 	if (!onlyTitleInDoubt(cached, preliminary, true)) return null;
-	const played = await allmangaKitsuMapPlayed(preliminary.allmangaShowId).catch(() => false);
-	return played ? cached : null;
+	return (await played()) ? { ref: cached, played: true } : null;
 }
