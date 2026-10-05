@@ -7,6 +7,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { m } from '$lib/paraglide/messages';
+	import { watchStripOverflow } from '$lib/components/strip-overflow';
 
 	interface Props {
 		eyebrow: string;
@@ -46,27 +47,16 @@
 	}: Props = $props();
 
 	let scrollerEl: HTMLDivElement | undefined = $state();
+	let railEl: HTMLDivElement | undefined = $state();
 	let canScrollLeft = $state(false);
 	let canScrollRight = $state(false);
 
-	function updateScrollState() {
-		if (!scrollerEl) return;
-		canScrollLeft = scrollerEl.scrollLeft > 4;
-		canScrollRight = scrollerEl.scrollLeft + scrollerEl.clientWidth < scrollerEl.scrollWidth - 4;
-	}
-
 	$effect(() => {
-		if (!scrollerEl) return;
-		updateScrollState();
-		const el = scrollerEl;
-		const onScroll = () => updateScrollState();
-		el.addEventListener('scroll', onScroll, { passive: true });
-		const ro = new ResizeObserver(updateScrollState);
-		ro.observe(el);
-		return () => {
-			el.removeEventListener('scroll', onScroll);
-			ro.disconnect();
-		};
+		if (!scrollerEl || !railEl) return;
+		return watchStripOverflow(scrollerEl, railEl, (edges) => {
+			canScrollLeft = edges.canScrollLeft;
+			canScrollRight = edges.canScrollRight;
+		});
 	});
 
 	function nudge(dir: 1 | -1) {
@@ -208,7 +198,7 @@
 			  viewport when the user pages right (so cards can touch the
 			  inline-start edge once scrolled, per user feedback).
 			-->
-			<div class="strip-rail">
+			<div class="strip-rail" bind:this={railEl}>
 				{@render children()}
 			</div>
 		</div>
