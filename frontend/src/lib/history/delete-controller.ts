@@ -26,6 +26,9 @@ export interface ConfirmDeleteResult {
 	/** History minus the removed group, suitable for an optimistic
 	 *  local-state update. */
 	remainingHistory: HistoryEntry[];
+	/** Settles once the removed shows' kept positions are forgotten,
+	 *  or found to stay. Never rejects. */
+	forgetting: Promise<void>;
 }
 
 /**
@@ -60,7 +63,7 @@ export async function executeKitsuGroupDelete(
 	const removed = new Set(groupIds);
 	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
 	await forgetShowsLeftWithoutRows(shows, remainingHistory, deps);
-	return { removedIds: groupIds, remainingHistory };
+	return { removedIds: groupIds, remainingHistory, forgetting: Promise.resolve() };
 }
 
 /** Forgets the positions of each removed row's show that no remaining
