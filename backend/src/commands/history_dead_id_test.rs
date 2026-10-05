@@ -198,3 +198,52 @@ async fn kitsu_anime_detail_fails(state: &AppState, id: &str) -> bool {
         .await
         .is_err()
 }
+
+fn marked(state: &AppState, id: &str) -> bool {
+    crate::commands::kitsu_gone::is_gone(state, id).expect("mark read")
+}
+
+// The mark is written by reading an id a history row recorded, so it
+// is history the user can remove: a clear takes every mark, and a
+// delete takes the marks of the ids the removed show was known by
+// that no remaining row claims.
+
+#[tokio::test]
+async fn clearing_the_history_takes_every_gone_mark() {
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+    assert!(marked(&state, "999"));
+
+    history_clear(&state).expect("clear");
+
+    assert!(!marked(&state, "999"));
+}
+
+#[tokio::test]
+async fn deleting_a_show_takes_the_gone_marks_of_its_ids() {
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert!(history_delete(&state, SHOW).expect("delete"));
+
+    assert!(!marked(&state, "999"));
+}
+
+#[tokio::test]
+async fn deleting_a_show_keeps_a_gone_mark_another_row_claims() {
+    let (_tmp, _mock, state) = row_recording("999", 404).await;
+    let mut rows = crate::history::read_all(&state.history_path).unwrap();
+    rows.push(HistoryEntry {
+        ep_no: "2".into(),
+        id: "hianime:cowboy-bebop-77".into(),
+        title: TITLE.into(),
+        watched_at: None,
+        kitsu_id: Some("999".into()),
+    });
+    write_atomic(&state.history_path, &rows).unwrap();
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert!(history_delete(&state, SHOW).expect("delete"));
+
+    assert!(marked(&state, "999"));
+}
