@@ -36,6 +36,10 @@ const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
 const {
+  claimSingleInstance,
+  windowKeeper,
+} = require("./lib/single-instance.cjs");
+const {
   HANDSHAKE_TIMEOUT_MS,
   awaitHandshake,
 } = require("./lib/backend-handshake.cjs");
@@ -85,6 +89,31 @@ if (IS_DEV) {
 const APP_NAME = isDevProfile(process.env) ? "ani-gui-dev" : "ani-gui";
 app.setName(APP_NAME);
 process.title = APP_NAME;
+
+// One running instance per profile (see lib/single-instance.cjs). Taken
+// here — after setName, which places userData and with it the lock on
+// the right profile, and before anything else: a later launch hands over
+// to the running instance and stops at this return, so it never reaches
+// whenReady and never spawns a backend of its own. `keeper` answers a
+// later launch: it brings the window forward once the boot has shown
+// it, and does nothing while the boot is still under way — the booting
+// instance shows its window as usual. After the boot, a launch that
+// finds no window (macOS keeps the app running when its last window
+// closes) opens a new one against the boot's backend.
+const keeper = windowKeeper({
+  createWindow: ({ apiBase, internalSecret }) =>
+    createWindow(apiBase, internalSecret),
+  quitting: () => quitGoingAhead,
+  logError: console.error,
+  // A reopen happens only with no window left, so whatever window is
+  // there when it fails is the one it opened.
+  discard: () => {
+    for (const win of BrowserWindow.getAllWindows()) win.destroy();
+  },
+});
+if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
+  return;
+}
 
 // Custom scheme used in packaged builds to serve the SvelteKit
 // static bundle. Loading the index.html via plain `file://` works
@@ -463,6 +492,8 @@ async function createWindow(apiBase, internalSecret) {
   win.once("show", () => {
     if (!win.isMaximized()) win.maximize();
   });
+  win.once("show", () => keeper.shown(win));
+  win.on("closed", () => keeper.closed(win));
 
   // Catch the X-button / window-close path. The before-quit hook
   // below covers Cmd+Q / dock-quit / OS shutdown; both reuse the
@@ -912,6 +943,9 @@ function mainLocale() {
  * timed out, or at once when none is shown.
  */
 function reportBootFailure(err) {
+  // A failed boot has no window worth bringing forward: a later launch
+  // that arrives while this one says why must not re-show it.
+  keeper.failed();
   // What is on screen, if anything, is the window that failed: blank
   // and frameless. Hidden, not closed — closing the last window would
   // start a quit of its own, and that one exits with code 0.
@@ -938,8 +972,12 @@ app.whenReady().then(() =>
       if (!IS_DEV) registerAppProtocol();
       return spawnBackend();
     },
-    createWindow: ({ apiBase, internalSecret }) =>
-      createWindow(apiBase, internalSecret),
+    createWindow: async ({ apiBase, internalSecret }) => {
+      await createWindow(apiBase, internalSecret);
+      // The boot's window is open: what it was opened against is what
+      // a later window needs (see windowKeeper).
+      keeper.booted({ apiBase, internalSecret });
+    },
     stopBackend: killBackendTree,
     reportFailure: reportBootFailure,
     // A quit asked for while the failure dialog is up — a signal, the
@@ -983,12 +1021,9 @@ app.on("before-quit", (e) => {
   }
 });
 
-// Re-create a window if the user clicks the dock icon on macOS while
-// the app is still running.
-app.on("activate", async () => {
-  if (BrowserWindow.getAllWindows().length === 0 && backendChild) {
-    // Re-derive apiBase from the running backend's known origin.
-    // In practice we'd persist this from spawnBackend(); for now,
-    // rely on the user to relaunch.
-  }
+// Clicking the dock icon on macOS while the app runs with no window
+// open is answered like a later launch: the window is brought forward,
+// or reopened against the running backend (see windowKeeper).
+app.on("activate", () => {
+  keeper.summon();
 });
