@@ -31,6 +31,7 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import HomePage from '../../src/routes/+page.svelte';
+import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
 type EsHandler = (ev: MessageEvent) => void;
@@ -60,7 +61,11 @@ let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
+	vi.mocked(goto).mockClear();
 	__resetApiBaseForTests(API_BASE);
+	server.use(
+		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 }))
+	);
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	target = document.createElement('div');
@@ -93,10 +98,21 @@ async function clickAndReadRecordedId(): Promise<string | null> {
 	resumeButton()!.click();
 	await until(() => FakeEventSource.instances.length > 0, 'the resume play stream');
 	const stream = FakeEventSource.instances[0];
-	// Settle the play, so the next case's click is not folded into this
-	// one's still-pending request.
-	stream.dispatch('error', JSON.stringify({ kind: 'network', key: 'error.network.unreachable' }));
-	return new URL(stream.url).searchParams.get('kitsu_id');
+	const recorded = new URL(stream.url).searchParams.get('kitsu_id');
+	// Settle the play as resolved, so the session opens and the next
+	// case's click is not folded into this one's pending request.
+	stream.dispatch(
+		'done',
+		JSON.stringify({ id: 's-1', kind: 'mp4', has_subtitles: false, quality: '1080', mode: 'sub' })
+	);
+	await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
+	return recorded;
+}
+
+/** Whether the play page was opened as a session from a guess. */
+function openedAsGuess(): boolean {
+	const url = String(vi.mocked(goto).mock.calls.at(-1)?.[0] ?? '');
+	return new URL(url, 'http://app.test').searchParams.get('guess') === '1';
 }
 
 describe('what a Continue card records', () => {
@@ -111,22 +127,24 @@ describe('what a Continue card records', () => {
 		app = mount(HomePage, { target });
 
 		expect(await clickAndReadRecordedId()).toBeNull();
+		expect(openedAsGuess()).toBe(true);
 	});
 
 	it('records the id the row recorded', async () => {
 		server.use(
 			...homeHandlers(
-				{ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW, kitsu_id: '1' }] },
+				{ history: [{ ep_no: '3', id: 'hianime:cowboy-bebop-1', title: SHOW, kitsu_id: '2' }] },
 				[
-					http.get(`${API_BASE}/api/kitsu/anime/1`, () =>
-						HttpResponse.json(kitsuRef('1', SHOW, 26))
+					http.get(`${API_BASE}/api/kitsu/anime/2`, () =>
+						HttpResponse.json(kitsuRef('2', SHOW, 26))
 					)
 				]
 			)
 		);
 		app = mount(HomePage, { target });
 
-		expect(await clickAndReadRecordedId()).toBe('1');
+		expect(await clickAndReadRecordedId()).toBe('2');
+		expect(openedAsGuess()).toBe(false);
 	});
 });
 
@@ -143,7 +161,7 @@ describe('a Continue row whose recorded id Kitsu no longer has', () => {
 						)
 					),
 					http.post(`${API_BASE}/api/kitsu/search`, () =>
-						HttpResponse.json([kitsuRef('1', SHOW, 26)])
+						HttpResponse.json([kitsuRef('3', SHOW, 26)])
 					)
 				]
 			)
@@ -151,6 +169,7 @@ describe('a Continue row whose recorded id Kitsu no longer has', () => {
 		app = mount(HomePage, { target });
 
 		expect(await clickAndReadRecordedId()).toBeNull();
+		expect(openedAsGuess()).toBe(true);
 	});
 });
 

@@ -35,7 +35,6 @@ vi.mock('$app/navigation', () => ({
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { forgetMatchTrust, noteMatchTrust } from '../../src/lib/history/match-trust';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -71,7 +70,6 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
-	forgetMatchTrust();
 	setParams({ id: KITSU_ID });
 	setUrl(`/play/${KITSU_ID}`, { episode: '3' });
 	target = document.createElement('div');
@@ -215,16 +213,31 @@ describe('play route — the handoffs send the Kitsu id', () => {
 	});
 });
 
-// A page opened from a Continue card whose match was only a guess must
-// not record that guess on the history row through its own requests:
-// the next one would otherwise pin it there just as the card's click
-// would have.
-describe('play route — a guessed Continue match is not recorded', () => {
+// A session opened from a Continue card whose match was only a guess
+// carries the flag in its URL, and records the guess nowhere: the next
+// request would otherwise pin it on the history row, as the card's
+// click would have. The verdict lives with the session, so it holds
+// whatever the home page does meanwhile, and a session without the
+// flag — one opened from the detail page — records its id as before.
+describe('play route — a session opened from a guess records no Kitsu id', () => {
 	it('the stream and the external-player handoff carry no Kitsu id', async () => {
-		noteMatchTrust(KITSU_ID, false);
+		setUrl(`/play/${KITSU_ID}`, { episode: '3', guess: '1' });
 		const posted = { external: [] as Posted[], syncplay: [] as Posted[] };
 		useHandlers(posted);
-		await mountPlaying();
+		app = mount(PlayPage, { target });
+		await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
+		FakeEventSource.instances[0].dispatch(
+			'done',
+			JSON.stringify({
+				id: 'session-1',
+				kind: 'mp4',
+				has_subtitles: false,
+				quality: '1080',
+				mode: 'sub'
+			})
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '3', kind: 'mp4', guess: '1' });
+		await until(() => moreButton() !== null, 'the More actions button under the player');
 
 		expect(new URL(FakeEventSource.instances[0].url).searchParams.get('kitsu_id')).toBeNull();
 		await clickMenuItem(m.play_external_label());

@@ -198,6 +198,33 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		expect(h.deps.navigateToSession).toHaveBeenCalled();
 		expect(h.failures).toEqual([]);
 	});
+
+	it('opens a guessed match as a guess: no id recorded, no tracker write', async () => {
+		const h = makeHarness({ isGuess: (id) => id === 'h1' });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true }),
+			expect.any(Function)
+		);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: true }));
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith('k1', { session_id: 's1' }, 6, true);
+	});
+
+	it('opens a trusted match as the show itself', async () => {
+		const h = makeHarness({ isGuess: () => false });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: false }),
+			expect.any(Function)
+		);
+		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 6, 12, true);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith('k1', { session_id: 's1' }, 6, false);
+	});
 });
 
 describe('makeStartResume — an episode left part-way', () => {
@@ -210,7 +237,7 @@ describe('makeStartResume — an episode left part-way', () => {
 			expect.objectContaining({ episode: 5 }),
 			expect.any(Function)
 		);
-		expect(h.deps.navigateToSession).toHaveBeenCalledWith('k1', { session_id: 's1' }, 5);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith('k1', { session_id: 's1' }, 5, false);
 	});
 
 	it('goes on to the next episode when only an older one was left part-way', async () => {
