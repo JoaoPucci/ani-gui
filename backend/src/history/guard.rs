@@ -43,9 +43,9 @@
 //! ([`Held::removed_since`]); a skip-time lookup asks by its id
 //! ([`Held::kitsu_removed_since`]).
 //!
-//! Both belong to this process. Another instance of the app writing
-//! the same file does not take turns with this one, and its pending
-//! work is not known here.
+//! Both belong to this process, which is enough because only one runs
+//! per profile: the desktop shell takes a single-instance lock before
+//! it spawns a backend (`electron/lib/single-instance.cjs`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
