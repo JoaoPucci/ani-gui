@@ -52,12 +52,14 @@ export async function executeKitsuGroupDelete(
 	deps: ConfirmDeleteDeps
 ): Promise<ConfirmDeleteResult> {
 	const groupIds = kitsuGroupSiblingIds(clickedId, deps.history, deps.matches);
+	// Read before the deletes: removing a row takes its stamped mapping.
+	const shows = await removedShows(groupIds, deps);
 	for (const id of groupIds) {
 		await deps.historyDelete(id);
 	}
 	const removed = new Set(groupIds);
 	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
-	await forgetShowsLeftWithoutRows(groupIds, remainingHistory, deps);
+	await forgetShowsLeftWithoutRows(shows, remainingHistory, deps);
 	return { removedIds: groupIds, remainingHistory };
 }
 
@@ -66,11 +68,10 @@ export async function executeKitsuGroupDelete(
  *  it is still a Continue card. When a remaining row's show cannot be
  *  told, nothing is forgotten. */
 async function forgetShowsLeftWithoutRows(
-	removedIds: string[],
+	shows: Set<string>,
 	remaining: HistoryEntry[],
 	deps: ConfirmDeleteDeps
 ): Promise<void> {
-	const shows = await removedShows(removedIds, deps);
 	if (shows.size === 0) return;
 	const still = await remainingShows(remaining, deps);
 	if (still === null) return;

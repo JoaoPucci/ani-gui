@@ -47,6 +47,7 @@
 		historyDelete,
 		historyList,
 		imageProxyUrl,
+		kitsuAnimeDetail,
 		kitsuByMalIds,
 		kitsuEpisodes,
 		kitsuTopRated,
@@ -83,7 +84,7 @@
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
-	import { resolveKitsuMatchWithTrust } from '$lib/history/match';
+	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
 	import { createRowTrust } from '$lib/history/row-trust';
 	import { recordableId, withGuess } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
@@ -267,7 +268,13 @@
 				matches: historyMatches,
 				historyDelete,
 				forgetPositions: clearShowPositions,
-				kitsuIdOf: allmangaKitsuMapGet
+				kitsuIdOf: allmangaKitsuMapGet,
+				// Read the way the Continue resolver reads a recorded id.
+				recordedGone: (id) =>
+					kitsuAnimeDetail(id).then(
+						() => false,
+						(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
+					)
 			});
 			// Open the gate IMMEDIATELY before the optimistic mutation
 			// so the 350ms auto-close window starts when Svelte's
