@@ -98,7 +98,14 @@ process.title = APP_NAME;
 // later launch; it learns of the window once the boot has shown it, so
 // a launch during the boot finds nothing to reveal and the booting
 // instance shows its window as usual.
-const keeper = windowKeeper();
+// A launch after the boot, with the boot's window gone (macOS keeps the
+// app running when its last window closes), opens a new one.
+const keeper = windowKeeper({
+  createWindow: ({ apiBase, internalSecret }) =>
+    createWindow(apiBase, internalSecret),
+  quitting: () => quitGoingAhead,
+  logError: console.error,
+});
 if (!claimSingleInstance(app, { summon: () => keeper.summon() })) {
   return;
 }
@@ -1009,12 +1016,9 @@ app.on("before-quit", (e) => {
   }
 });
 
-// Re-create a window if the user clicks the dock icon on macOS while
-// the app is still running.
-app.on("activate", async () => {
-  if (BrowserWindow.getAllWindows().length === 0 && backendChild) {
-    // Re-derive apiBase from the running backend's known origin.
-    // In practice we'd persist this from spawnBackend(); for now,
-    // rely on the user to relaunch.
-  }
+// Clicking the dock icon on macOS while the app runs with no window
+// open is answered like a later launch: the window is brought forward,
+// or reopened against the running backend (see windowKeeper).
+app.on("activate", () => {
+  keeper.summon();
 });
