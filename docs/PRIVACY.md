@@ -29,9 +29,10 @@ ani-gui keeps the following on your computer only:
   directory. Lists what you've watched, where you left off and when,
   and the Kitsu id of the show you played. More about each show you
   watch is kept beside it: in the metadata cache, when you last
-  watched it, the Kitsu entry it maps to, the Kitsu entry its title
-  matched (for a show watched before the history recorded the Kitsu
-  id), the stream addresses resolved to play it, and the opening and
+  watched it, the Kitsu entry it maps to and whether a play stored
+  that link, the Kitsu entry its title matched (for a show watched
+  before the history recorded the Kitsu id), the stream addresses
+  resolved to play it, and the opening and
   ending times fetched for the episodes you played; and, in a file
   beside the history, how the show's episode numbering lines up with
   Kitsu's. Deleting a show from your history deletes its row and all

@@ -82,7 +82,7 @@ A history row also records the Kitsu id of the show the user played, so Continue
 
 Removing a row removes what is kept about its show beside it (`backend/src/commands/history_remove.rs` and the `history_forget*.rs` modules it calls):
 
-- by the row's key: the watched-at stamp, the reverse mapping under every version's key, the resolution-cache rows whose stream played it, and its row in the numbering sidecar;
+- by the row's key: the watched-at stamp, the reverse mapping under every version's key with the mark a play leaves beside it, the resolution-cache rows whose stream played it, and its row in the numbering sidecar;
 - by the row's title: the title-match rows stored for it, under every version's key; and, since a provider can rename a show and the row takes the new title, the title-match rows under any title that name a Kitsu id the show is known by and no remaining row claims — one stored under an earlier title that names an entry the show is not known by, or one a remaining row claims, stays;
 - by the Kitsu ids the show is known by that no remaining row claims — the one the row records, the ones its mapping and title match name, the pages the running process saw it played from: the aniskip skip times cached under them, and the resolution-cache rows a page of the show resolved under another key (each resolution row carries the page it was asked from), with that key's numbering when no history row has the key and no resolution row still names it.
 

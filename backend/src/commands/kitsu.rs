@@ -524,6 +524,13 @@ pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
 }
 
+/// The mark a play leaves beside the mapping it stored, naming the
+/// Kitsu id it stored ([`crate::commands::kitsu_played`]). Under the
+/// mapping's prefix, so clearing the history takes it with them.
+pub(crate) fn allmanga_kitsu_played_key(show_id: &str) -> String {
+    format!("allmanga2kitsu:played:v1:{show_id}")
+}
+
 /// Read the cached `provider show_id → kitsu_id` mapping. Returns
 /// `None` on miss; SQLite errors propagate.
 pub fn allmanga_kitsu_get(state: &AppState, show_id: &str) -> Result<Option<String>> {
@@ -533,7 +540,11 @@ pub fn allmanga_kitsu_get(state: &AppState, show_id: &str) -> Result<Option<Stri
 /// Persist an `provider show_id → kitsu_id` mapping. Same TTL as
 /// `title_match` (30d) — the mapping is as stable as Kitsu's id
 /// space, and re-puts on every successful play keep it fresh.
+///
+/// A write that is not a play's takes the play's mark first, so a
+/// mapping it replaces cannot lend the mark to it.
 pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
+    crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_played_key(show_id))?;
     meta_cache_put(
         &state.cache_pool,
         &allmanga_kitsu_key(show_id),
@@ -547,8 +558,17 @@ pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
 ///
 /// # Errors
 /// SQLite write failures propagate.
+/// The mapping goes first and the mark after it: a mark that fails to
+/// save leaves the mapping read as a guess, never a guess read as
+/// played.
 pub fn allmanga_kitsu_put_played(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
-    allmanga_kitsu_put(state, show_id, kitsu_id)
+    allmanga_kitsu_put(state, show_id, kitsu_id)?;
+    meta_cache_put(
+        &state.cache_pool,
+        &allmanga_kitsu_played_key(show_id),
+        kitsu_id,
+        TITLE_MATCH_TTL.as_secs(),
+    )
 }
 
 /// Evict a single `provider show_id → kitsu_id` mapping. Used by the
@@ -557,6 +577,7 @@ pub fn allmanga_kitsu_put_played(state: &AppState, show_id: &str, kitsu_id: &str
 /// is passed over and kept. SQLite errors propagate; a missing row is
 /// not an error (DELETE on no rows is a no-op).
 pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
+    crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_played_key(show_id))?;
     crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_key(show_id))
 }
 

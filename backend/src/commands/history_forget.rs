@@ -5,7 +5,7 @@
 //!
 //! - the show's watch stamp (`watched-at:`);
 //! - its reverse mapping to Kitsu (`allmanga2kitsu:`), under every
-//!   version's key;
+//!   version's key, with the mark a play left beside it;
 //! - the title-match rows Continue Watching stored for the row's title
 //!   (`title-match:`), under every version's key, and those under any
 //!   earlier title that name a Kitsu id the show is known by;
@@ -92,13 +92,18 @@ pub(crate) fn forget_show(
 }
 
 /// Delete the row `id`'s reverse mapping under every version's key,
-/// and the title-match rows stored for it, titled `title`: what
-/// [`forget_show`] finds the show's Kitsu ids by, so a removal deletes
-/// them once nothing it finds by those ids is left to delete.
+/// with the mark a play left beside it, and the title-match rows
+/// stored for it, titled `title`: what [`forget_show`] finds the
+/// show's Kitsu ids by, so a removal deletes them once nothing it
+/// finds by those ids is left to delete.
 ///
 /// # Errors
 /// Cache write failures propagate.
 pub(crate) fn forget_finders(state: &AppState, id: &str, title: &str) -> Result<()> {
+    meta_cache_delete(
+        &state.cache_pool,
+        &crate::commands::kitsu::allmanga_kitsu_played_key(id),
+    )?;
     for version in 1..=ALLMANGA_KITSU_VERSION {
         meta_cache_delete(
             &state.cache_pool,
