@@ -16,14 +16,19 @@
  * worth carrying: the restart the user resents is losing minutes,
  * not a second.
  */
+import { nextWrite } from './write-order';
+
 const MIN_CARRY_SECONDS = 1;
 
 export class RecoveryResume {
-	private pending: { showId: string; episode: number; at: number } | null = null;
+	private pending: { showId: string; episode: number; at: number; written: number } | null = null;
 
 	/** Remember where playback stood when a recovery began. */
 	capture(showId: string, episode: number, currentTime: number): void {
-		this.pending = currentTime >= MIN_CARRY_SECONDS ? { showId, episode, at: currentTime } : null;
+		this.pending =
+			currentTime >= MIN_CARRY_SECONDS
+				? { showId, episode, at: currentTime, written: nextWrite() }
+				: null;
 	}
 
 	/** The position the media attach for `episode` of `showId` should
@@ -39,9 +44,10 @@ export class RecoveryResume {
 	}
 
 	/** Forgets a capture for `showId` — its positions are forgotten
-	 *  with its history row. */
-	forgetShow(showId: string): void {
-		if (this.pending?.showId === showId) this.pending = null;
+	 *  with its history row — unless it was taken after `since`
+	 *  (write-order.ts), once the row was gone. */
+	forgetShow(showId: string, since = Infinity): void {
+		if (this.pending?.showId === showId && this.pending.written < since) this.pending = null;
 	}
 
 	/** Forgets any capture — the history is cleared. */

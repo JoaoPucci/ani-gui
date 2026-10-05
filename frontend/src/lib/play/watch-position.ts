@@ -62,6 +62,24 @@ function store(storage: PositionStorage | null, positions: Positions): void {
 
 const keyOf = (showId: string, episode: number) => `${showId}:${episode}`;
 
+/** When this session last wrote each kept episode, by storage
+ *  (write-order.ts). One written by an earlier session has none. */
+const written = new WeakMap<PositionStorage, Map<string, number>>();
+
+function noteWrite(storage: PositionStorage | null, key: string): void {
+	if (!storage) return;
+	const moments = written.get(storage) ?? new Map<string, number>();
+	moments.set(key, nextWrite());
+	written.set(storage, moments);
+}
+
+/** Whether `key` was written after `since` — a point a removal's
+ *  cleanup leaves. Without `since`, nothing was. */
+function writtenSince(storage: PositionStorage | null, key: string, since?: number): boolean {
+	if (since === undefined || !storage) return false;
+	return (written.get(storage)?.get(key) ?? 0) > since;
+}
+
 /** Records `seconds` into `episode` of `showId` — zero, a started
  *  mark, when that is its start — or forgets the episode when
  *  `duration` puts it at its end. `row` is the history row whose
@@ -84,6 +102,7 @@ export function savePosition(
 		return;
 	}
 	store(storage, [...rest, row ? [key, point, row] : [key, point]]);
+	noteWrite(storage, key);
 }
 
 /** Marks `episode` of `showId` started, at zero, for `row` as
@@ -136,38 +155,39 @@ export function snapshotPositions(): number {
 }
 
 /** Forgets every kept episode of `showId` — its history row is gone —
- *  and a recovery's pending point for it. */
+ *  and a recovery's pending point for it: with `since`, only those
+ *  written before it. */
 export function clearShowPositions(
 	showId: string,
 	storage: PositionStorage | null = defaultStorage(),
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	since?: number
 ): void {
-	recoveryResume.forgetShow(showId);
+	recoveryResume.forgetShow(showId, since);
 	const prefix = `${showId}:`;
 	store(
 		storage,
-		load(storage).filter(([k]) => !k.startsWith(prefix))
+		load(storage).filter(([k]) => !k.startsWith(prefix) || writtenSince(storage, k, since))
 	);
 }
 
 /** Forgets every kept episode last written by a session one of
  *  `rows`' Continue cards opened — the rows are gone — and a
  *  recovery's pending point for its show, unless the episode's show
- *  is one of `keepShows`, still a remaining row's card. */
+ *  is one of `keepShows`, still a remaining row's card: with `since`,
+ *  only those written before it. */
 export function clearRowPositions(
 	rows: readonly string[],
 	storage: PositionStorage | null = defaultStorage(),
 	keepShows: ReadonlySet<string> = new Set(),
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	since?: number
 ): void {
 	const removed = new Set(rows);
 	const kept: Positions = [];
 	for (const p of load(storage)) {
 		const show = p[0].slice(0, p[0].lastIndexOf(':'));
-		if (p[2] !== undefined && removed.has(p[2]) && !keepShows.has(show)) {
-			recoveryResume.forgetShow(show);
+		const theRows = p[2] !== undefined && removed.has(p[2]) && !writtenSince(storage, p[0], since);
+		if (theRows && !keepShows.has(show)) {
+			recoveryResume.forgetShow(show, since);
 		} else {
 			kept.push(p);
 		}
