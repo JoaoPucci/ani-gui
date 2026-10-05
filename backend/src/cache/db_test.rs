@@ -207,3 +207,71 @@ fn v002_user_list_cache_round_trip_insert_select() {
     assert_eq!(row.4, "planning");
     assert_eq!(row.5, 0);
 }
+
+/// Before plays marked the mappings they stored, a mapping written
+/// within seconds after the show's watch stamp was read as the play's.
+/// The upgrade marks each mapping that rule read as played, once, so a
+/// play stored before it keeps its standing; a mapping the rule read as
+/// a guess gets no mark, and neither does one written after.
+#[test]
+fn the_upgrade_marks_the_mappings_the_stamp_rule_read_as_played() {
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    crate::cache::schema::run_migrations_to(&mut conn, 2).unwrap();
+    let now = now_secs();
+    let ttl = 30 * 24 * 3600;
+    let put = |conn: &rusqlite::Connection, key: &str, body: &str, at: i64| {
+        conn.execute(
+            "INSERT INTO meta_cache(key, body, fetched_at, ttl_seconds) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![key, body, at, ttl],
+        )
+        .unwrap();
+    };
+    // Stamped, then mapped two seconds later: a play's.
+    put(
+        &conn,
+        "watched-at:v1:played",
+        &((now - 60) * 1000).to_string(),
+        now - 60,
+    );
+    put(&conn, "allmanga2kitsu:v3:played", "21", now - 58);
+    // Mapped in the stamp's own second, the cache reading it first.
+    put(
+        &conn,
+        "watched-at:v1:same",
+        &((now - 60) * 1000 + 400).to_string(),
+        now - 60,
+    );
+    put(&conn, "allmanga2kitsu:v3:same", "22", now - 60);
+    // Mapped an hour after the stamp: a guess.
+    put(
+        &conn,
+        "watched-at:v1:guess",
+        &((now - 3_600) * 1000).to_string(),
+        now - 3_600,
+    );
+    put(&conn, "allmanga2kitsu:v3:guess", "12", now);
+    // Mapped with no stamp at all: a guess.
+    put(&conn, "allmanga2kitsu:v3:unstamped", "13", now);
+
+    run_migrations(&mut conn).unwrap();
+    let mark = |conn: &rusqlite::Connection, id: &str| -> Option<String> {
+        conn.query_row(
+            "SELECT body FROM meta_cache WHERE key = ?1",
+            [format!("allmanga2kitsu:played:v1:{id}")],
+            |r| r.get(0),
+        )
+        .optional()
+        .unwrap()
+    };
+    assert_eq!(mark(&conn, "played").as_deref(), Some("21"));
+    assert_eq!(mark(&conn, "same").as_deref(), Some("22"));
+    assert_eq!(mark(&conn, "guess"), None);
+    assert_eq!(mark(&conn, "unstamped"), None);
+
+    // Once: a mapping written beside a stamp after the upgrade is not
+    // marked by opening the cache again.
+    put(&conn, "watched-at:v1:later", &(now * 1000).to_string(), now);
+    put(&conn, "allmanga2kitsu:v3:later", "14", now);
+    run_migrations(&mut conn).unwrap();
+    assert_eq!(mark(&conn, "later"), None);
+}
