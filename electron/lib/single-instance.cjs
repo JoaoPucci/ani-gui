@@ -31,25 +31,62 @@ function revealWindow(win) {
 }
 
 /**
- * Take the single-instance lock. The first instance gets it and
- * reveals `getWindow()` whenever a later launch arrives; the window is
- * read at that moment, since the lock is taken before any window
- * exists. A later instance gets `false` after `app.quit()` has been
- * asked, and its caller must stop there: no whenReady work, no backend.
+ * What a later launch finds: the window it brings forward, and the
+ * state that decides whether there is one.
+ *
+ * The window is the one the boot has shown (`shown`); it is let go
+ * when that window closes (`closed`) and when the boot fails
+ * (`failed`) — a failed boot has no window worth bringing forward.
+ * Before the boot shows it there is none, and a launch then is a
+ * no-op: the booting instance shows its window itself.
+ *
+ * `booted` records what the boot's window was opened against — the
+ * backend's apiBase and internal secret — once that window is open.
+ */
+function windowKeeper() {
+  let current = null;
+  let backend = null;
+  return {
+    booted(opened) {
+      backend = opened;
+    },
+    shown(win) {
+      current = win;
+    },
+    closed(win) {
+      if (current === win) current = null;
+    },
+    failed() {
+      current = null;
+      backend = null;
+    },
+    /** Answer a later launch. Returns what it did: "revealed" or "none". */
+    summon() {
+      return revealWindow(current) ? "revealed" : "none";
+    },
+  };
+}
+
+/**
+ * Take the single-instance lock. The first instance gets it and calls
+ * `summon()` whenever a later launch arrives — what that does is read
+ * at that moment, since the lock is taken before any window exists. A
+ * later instance gets `false` after `app.quit()` has been asked, and
+ * its caller must stop there: no whenReady work, no backend.
  *
  * @param {{requestSingleInstanceLock(): boolean, quit(): void, on(event: string, handler: Function): void}} app
- * @param {{getWindow: () => any}} options
+ * @param {{summon: () => unknown}} options
  * @returns {boolean} whether this process holds the lock
  */
-function claimSingleInstance(app, { getWindow }) {
+function claimSingleInstance(app, { summon }) {
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return false;
   }
   app.on("second-instance", () => {
-    revealWindow(getWindow());
+    summon();
   });
   return true;
 }
 
-module.exports = { claimSingleInstance, revealWindow };
+module.exports = { claimSingleInstance, revealWindow, windowKeeper };

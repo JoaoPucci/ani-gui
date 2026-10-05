@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const { claimSingleInstance, revealWindow } = require("./single-instance.cjs");
+const { claimSingleInstance, revealWindow, windowKeeper } = require("./single-instance.cjs");
 
 /** A stand-in for Electron's `app`: records the calls the module makes. */
 function fakeApp({ lock }) {
@@ -48,7 +48,7 @@ function fakeWindow({ destroyed = false, minimized = false, visible = true } = {
 
 test("the first instance takes the lock and listens for later launches", () => {
   const app = fakeApp({ lock: true });
-  const claimed = claimSingleInstance(app, { getWindow: () => null });
+  const claimed = claimSingleInstance(app, { summon: () => {} });
   assert.strictEqual(claimed, true);
   assert.deepStrictEqual(app.calls, ["requestSingleInstanceLock", "on:second-instance"]);
 });
@@ -57,28 +57,62 @@ test("a later instance quits at once and registers nothing", () => {
   // It must not go on to boot: main.js stops at this answer, before
   // whenReady work and before the backend is spawned.
   const app = fakeApp({ lock: false });
-  const claimed = claimSingleInstance(app, { getWindow: () => null });
+  const claimed = claimSingleInstance(app, { summon: () => {} });
   assert.strictEqual(claimed, false);
   assert.deepStrictEqual(app.calls, ["requestSingleInstanceLock", "quit"]);
 });
 
-test("a later launch brings the running window forward", () => {
+test("a later launch is answered by summon", () => {
   const app = fakeApp({ lock: true });
-  const win = fakeWindow();
-  claimSingleInstance(app, { getWindow: () => win });
+  let summoned = 0;
+  claimSingleInstance(app, { summon: () => summoned++ });
   app.handlers["second-instance"]();
+  assert.strictEqual(summoned, 1);
+});
+
+test("a later launch brings the running window forward", () => {
+  const keeper = windowKeeper();
+  const win = fakeWindow();
+  keeper.shown(win);
+  assert.strictEqual(keeper.summon(), "revealed");
   assert.deepStrictEqual(win.calls, ["focus"]);
 });
 
-test("the window is read when the later launch arrives, not when the lock is taken", () => {
-  // The lock is taken before any window exists; the window the
-  // handler reveals is the one current at the moment of the launch.
+test("the window is the one shown when the later launch arrives", () => {
+  // The lock is taken before any window exists; the window a launch
+  // reveals is the one current at the moment of the launch.
+  const keeper = windowKeeper();
   const app = fakeApp({ lock: true });
-  let current = null;
-  claimSingleInstance(app, { getWindow: () => current });
-  current = fakeWindow({ minimized: true });
+  claimSingleInstance(app, { summon: () => keeper.summon() });
+  const win = fakeWindow({ minimized: true });
+  keeper.shown(win);
   app.handlers["second-instance"]();
-  assert.deepStrictEqual(current.calls, ["restore", "focus"]);
+  assert.deepStrictEqual(win.calls, ["restore", "focus"]);
+});
+
+test("a launch while the first is still booting finds no window", () => {
+  assert.strictEqual(windowKeeper().summon(), "none");
+});
+
+test("a closed window is let go; another window's close is not its", () => {
+  const keeper = windowKeeper();
+  const win = fakeWindow();
+  keeper.shown(win);
+  keeper.closed(fakeWindow());
+  assert.strictEqual(keeper.summon(), "revealed");
+  keeper.closed(win);
+  win.calls.length = 0;
+  assert.strictEqual(keeper.summon(), "none");
+  assert.deepStrictEqual(win.calls, []);
+});
+
+test("a failed boot has no window to bring forward", () => {
+  const keeper = windowKeeper();
+  const win = fakeWindow({ visible: false });
+  keeper.shown(win);
+  keeper.failed();
+  assert.strictEqual(keeper.summon(), "none");
+  assert.deepStrictEqual(win.calls, []);
 });
 
 test("a minimized window is restored before it is focused", () => {
