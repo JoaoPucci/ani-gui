@@ -222,3 +222,138 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 		expect(forgetPositions).not.toHaveBeenCalled();
 	});
 });
+
+describe('executeKitsuGroupDelete — the show a row records', () => {
+	// A row records the Kitsu id of the show played, and that id names
+	// the row's show unless Kitsu answers it gone; then the row is the
+	// entry it is shown as, else its stamped mapping. Positions are
+	// keyed by the id the play page had, so a removed row's recorded id
+	// is one of them, whatever became of the entry since.
+	function rec(id: string, kitsuId: string): HistoryEntry {
+		return { ...h(id), kitsu_id: kitsuId };
+	}
+	const deleteOk = () => vi.fn().mockResolvedValue(undefined);
+
+	test('reads a removed row’s mapping before the delete takes it', async () => {
+		// Removing a row deletes its show id → Kitsu id mapping with it,
+		// so a read after the delete finds nothing.
+		const mappings: Record<string, string> = { 'aa-1': 'k-9' };
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1')],
+			matches: { 'aa-1': undefined },
+			historyDelete: vi.fn(async (id: string) => {
+				delete mappings[id];
+			}),
+			forgetPositions,
+			kitsuIdOf: async (id) => mappings[id] ?? null
+		});
+		expect(forgetPositions).toHaveBeenCalledWith('k-9');
+	});
+
+	test('forgets a removed row’s recorded id though its card never resolved', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [rec('aa-1', 'k-5')],
+			matches: { 'aa-1': undefined },
+			historyDelete: deleteOk(),
+			forgetPositions,
+			kitsuIdOf: async () => null
+		});
+		expect(forgetPositions).toHaveBeenCalledWith('k-5');
+	});
+
+	test('forgets a gone recorded id and the entry the card was shown as', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [rec('aa-1', 'k-gone')],
+			matches: { 'aa-1': m('k-6') },
+			historyDelete: deleteOk(),
+			forgetPositions
+		});
+		expect(forgetPositions.mock.calls.map(([k]) => k).sort()).toEqual(['k-6', 'k-gone']);
+	});
+
+	test('a remaining row is told by its recorded id, not a stale mapping', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), rec('bb-1', 'k-8')],
+			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
+			historyDelete: deleteOk(),
+			forgetPositions,
+			kitsuIdOf: async (id) => (id === 'bb-1' ? 'k-7' : null),
+			recordedGone: async () => false
+		});
+		expect(forgetPositions).toHaveBeenCalledWith('k-7');
+	});
+
+	test('a remaining row with a recorded id needs no mapping to be told', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), rec('bb-1', 'k-8')],
+			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
+			historyDelete: deleteOk(),
+			forgetPositions,
+			kitsuIdOf: async () => null,
+			recordedGone: async () => false
+		});
+		expect(forgetPositions).toHaveBeenCalledWith('k-7');
+	});
+
+	test('a remaining row of the same show keeps its positions by the id it records', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [rec('aa-1', 'k-1'), rec('bb-1', 'k-1')],
+			matches: { 'aa-1': m('k-1'), 'bb-1': undefined },
+			historyDelete: deleteOk(),
+			forgetPositions,
+			kitsuIdOf: async () => null,
+			recordedGone: async () => false
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+
+	test('a remaining row whose recorded entry is gone is told by its mapping', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), rec('bb-1', 'k-gone')],
+			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
+			historyDelete: deleteOk(),
+			forgetPositions,
+			kitsuIdOf: async (id) => (id === 'bb-1' ? 'k-7' : null),
+			recordedGone: async (k) => k === 'k-gone'
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+
+	test('a remaining row shown as another entry is that entry, without asking Kitsu', async () => {
+		// The home page goes past a recorded id only when Kitsu answers
+		// it gone, so a match other than the recorded id is the entry
+		// the card shows.
+		const recordedGone = vi.fn(async () => false);
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), rec('bb-1', 'k-gone')],
+			matches: { 'aa-1': undefined, 'bb-1': m('k-7') },
+			historyDelete: deleteOk(),
+			forgetPositions,
+			kitsuIdOf: async (id) => (id === 'aa-1' ? 'k-7' : null),
+			recordedGone
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+		expect(recordedGone).not.toHaveBeenCalled();
+	});
+
+	test('a remaining row whose recorded id cannot be judged keeps the removed show’s positions', async () => {
+		const forgetPositions = vi.fn();
+		await executeKitsuGroupDelete('aa-1', {
+			history: [h('aa-1'), rec('bb-1', 'k-8')],
+			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
+			historyDelete: deleteOk(),
+			forgetPositions,
+			kitsuIdOf: async (id) => (id === 'bb-1' ? 'k-8' : null),
+			recordedGone: vi.fn().mockRejectedValue(new Error('down'))
+		});
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+});
