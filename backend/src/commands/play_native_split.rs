@@ -103,7 +103,6 @@ pub(crate) fn split_chain(
     cands: &[PartCandidate<'_>],
     expected: u32,
     best_single: u32,
-    _entry_titles: &[&str],
 ) -> Option<Vec<usize>> {
     let tolerance = super::play_native::ep_count_threshold(expected);
     let single_fits = best_single <= tolerance;
@@ -141,7 +140,6 @@ pub(crate) fn stitched(
     )],
     expected: u32,
     best_single: u32,
-    entry_titles: &[&str],
 ) -> Option<super::play_native::PickedShow> {
     let cands: Vec<PartCandidate<'_>> = probed
         .iter()
@@ -152,7 +150,7 @@ pub(crate) fn stitched(
             offset: super::play_native_numbering::numbering_offset(eps),
         })
         .collect();
-    let chain = split_chain(&cands, expected, best_single, entry_titles)?;
+    let chain = split_chain(&cands, expected, best_single)?;
     let listings: Vec<&[EpisodeRef]> = chain.iter().map(|&i| probed[i].1.as_slice()).collect();
     Some(super::play_native::PickedShow {
         hit: probed[chain[0]].0.clone(),

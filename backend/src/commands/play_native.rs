@@ -114,7 +114,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     hits: &[BrowseHit],
     expected: Option<u32>,
     search_title: &str,
-    entry_titles: &[&str],
+    _entry_titles: &[&str],
     year: Option<u32>,
     subtype: Option<&str>,
 ) -> Result<PickedShow> {
@@ -206,9 +206,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // was probed, so stitching them costs nothing. Only with every
     // candidate heard — a dead probe may have been one of the parts.
     if !any_transport_failure {
-        if let Some(picked) =
-            super::play_native_split::stitched(&probed_ok, expected, best_dist, entry_titles)
-        {
+        if let Some(picked) = super::play_native_split::stitched(&probed_ok, expected, best_dist) {
             return Ok(picked);
         }
     }
