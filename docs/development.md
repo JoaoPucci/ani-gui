@@ -126,6 +126,17 @@ cd electron
 pnpm dev
 ```
 
+Step 3 has to be answering before step 4 starts. The shell loads its
+first page from Vite, and when that load fails — nothing is
+listening, or Vite answers the page with an error status — it prints
+the reason on its terminal (`[main] startup failed: …`) and exits
+with code 1. Once Vite is serving the page, a dev launch waits as
+long as the first paint takes — a cold Vite re-optimizing its
+dependencies can keep it waiting a while — where a packaged build
+gives up after two minutes. The backend gets the same two minutes to
+answer at startup, in dev and packaged alike: both deadlines are
+there for something that will never happen, not for something slow.
+
 Step 2's position is load-bearing on a fresh checkout: it must run
 after the first build, because the fetcher mirrors into
 `backend/target/{debug,release}/bin` only for profile directories
@@ -229,6 +240,8 @@ pnpm --dir electron dev
 
 There is no log file: the backend writes to its own stderr/stdout, and the Electron shell relays both to the terminal it was launched from (prefixed `[backend]`, alongside `[renderer:*]` console lines). A packaged build launched from the desktop has no terminal, so to capture its logs start the executable from a shell with output redirected to a file.
 
+A packaged build whose startup fails — the backend does not start, or the window never gets its first page — says so in an error dialog before it exits with code 1: in the app's language, with the failure's own message as the detail (the same text the `[main] startup failed:` log line carries). The dialog closes by itself after a minute. A dev launch shows no dialog; the reason is on its terminal.
+
 The streaming proxy port is logged at startup:
 
 ```
@@ -250,6 +263,7 @@ curl -sI http://127.0.0.1:42337/healthz
 | `RUST_LOG` | tracing filter |
 | `ANI_GUI_UPSTREAM_BASE` | dev/test only; redirects `meta_http` to a wiremock instance |
 | `VITE_ANI_GUI_API_BASE` | browser-only dev: point the Vite renderer at a separately-running backend |
+| `ANI_GUI_UNATTENDED` | set to `1` by a harness with nobody at the screen (the e2e suites do): a packaged build whose startup fails then exits at once instead of showing its error dialog |
 | `ANI_GUI_DEV` | forces the dev data profile (`ani-gui-dev` dirs) — see below. Auto-set by the Electron dev launcher; rarely needed by hand |
 
 **Dev data isolation.** Any source-built backend (`cargo run`, the

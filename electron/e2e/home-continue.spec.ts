@@ -112,7 +112,11 @@ async function launchAppWithContinueStubsOnce(
 		XDG_STATE_HOME: path.join(tmp, 'state'),
 		XDG_CONFIG_HOME: path.join(tmp, 'config'),
 		XDG_CACHE_HOME: path.join(tmp, 'cache'),
-		XDG_DATA_HOME: path.join(tmp, 'data')
+		XDG_DATA_HOME: path.join(tmp, 'data'),
+		// Nobody is here to read a dialog: a boot that fails must end
+		// the process at once, which is what the cold-launch retry
+		// below relies on. See lib/boot-failure.cjs.
+		ANI_GUI_UNATTENDED: '1'
 	};
 
 	const app = await electron.launch({
@@ -253,8 +257,19 @@ async function launchAppWithContinueStubsOnce(
 	// entirely; the goto back to the home URL fires a fresh mount,
 	// and every /api/* it issues now flows through page.route()
 	// because the handler was registered before the bounce.
+	//
+	// On a slow cold launch the bounce can land before the first page
+	// finishes loading. Electron then rejects the app's own loadURL
+	// with ERR_ABORTED, which the app logs and survives (see
+	// lib/startup.cjs); the window and this page stay alive.
+	//
+	// The settle wait is bounded: a config whose route never answers
+	// (`matchHang`) keeps a request in flight whenever the first load's
+	// fetches reach the handler, so networkidle never arrives and an
+	// unbounded wait spends Playwright's full 30 s navigation timeout
+	// before the bounce. Settling normally takes one to two seconds.
 	const homeUrl = page.url();
-	await page.waitForLoadState('networkidle').catch(() => {});
+	await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 	await page.goto('about:blank');
 	await page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
 	return { app, page, context };
