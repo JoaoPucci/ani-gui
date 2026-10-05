@@ -33,6 +33,8 @@ export function armSourceScopedListeners(input: {
 	/** Where positions are kept; the renderer's local storage when
 	 *  omitted. */
 	positions?: PositionStorage;
+	/** The history row whose Continue card opened the session. */
+	row?: string | null;
 	/** Told when the stream's picture is held back for its resume seek
 	 *  and when it is revealed (`$lib/play/resume-hold`). */
 	onResumeHold?: (holding: boolean) => void;

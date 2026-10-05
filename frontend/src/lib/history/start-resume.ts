@@ -75,7 +75,8 @@ export interface StartResumeDeps {
 		kitsuId: string,
 		session: { session_id: string },
 		episode: number,
-		guess?: boolean
+		guess?: boolean,
+		row?: string
 	) => void;
 	/** Whether `episode` of `kitsuId` was left part-way, its position
 	 *  kept. Omitted, nothing was. */
@@ -85,7 +86,7 @@ export interface StartResumeDeps {
 	 *  keyed by the card's show, written for a guessed match too: it is
 	 *  neither the history row nor a tracker, and removing the card
 	 *  forgets it (delete-controller.ts). */
-	markStarted?: (kitsuId: string, episode: number) => void;
+	markStarted?: (kitsuId: string, episode: number, row?: string) => void;
 }
 
 export function makeStartResume(

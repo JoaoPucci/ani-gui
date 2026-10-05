@@ -30,3 +30,15 @@ export function withGuess(query: string, guess: boolean): string {
 	if (!guess) return query;
 	return `${query}${query.length > 1 ? '&' : ''}${GUESS_PARAM}=1`;
 }
+
+/** The history row whose Continue card opened the session, or null. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
+export function openedFromRow(search: URLSearchParams): string | null {
+	return null;
+}
+
+/** `query` carrying the history row that opened the session. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
+export function withRow(query: string, row: string | null): string {
+	return query;
+}

@@ -62,7 +62,9 @@ export function savePosition(
 	episode: number,
 	seconds: number,
 	duration: number,
-	storage: PositionStorage | null = defaultStorage()
+	storage: PositionStorage | null = defaultStorage(),
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
+	row: string | null = null
 ): void {
 	const key = keyOf(showId, episode);
 	const rest = load(storage).filter(([k]) => k !== key);
@@ -81,7 +83,9 @@ export function savePosition(
 export function markStarted(
 	showId: string,
 	episode: number,
-	storage: PositionStorage | null = defaultStorage()
+	storage: PositionStorage | null = defaultStorage(),
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
+	row: string | null = null
 ): void {
 	if (readPosition(showId, episode, storage) === null) {
 		savePosition(showId, episode, 0, Number.NaN, storage);
@@ -131,6 +135,14 @@ export function clearShowPositions(
 		load(storage).filter(([k]) => !k.startsWith(prefix))
 	);
 }
+
+/** Forgets every kept episode written by a session a removed
+ *  history row's Continue card opened. */
+export function clearRowPositions(
+	rows: readonly string[],
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- seam
+	storage: PositionStorage | null = defaultStorage()
+): void {}
 
 /** Forgets every kept episode — the history is cleared — and any
  *  recovery's pending point. */

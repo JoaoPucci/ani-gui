@@ -17,6 +17,9 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	/** Forgets where a removed show's episodes were left, once its
 	 *  rows are gone. */
 	forgetPositions?: (kitsuId: string) => void;
+	/** Forgets the positions written by sessions the removed rows'
+	 *  cards opened. */
+	forgetRowPositions?: (rowIds: string[]) => void;
 }
 
 export interface ConfirmDeleteResult {

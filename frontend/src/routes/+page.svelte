@@ -664,7 +664,7 @@
 	});
 	const startResume = makeStartResume({
 		leftPartWay,
-		markStarted,
+		markStarted: (kitsuId, episode) => markStarted(kitsuId, episode),
 		isBusy: () => !!resumeBusy,
 		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {
