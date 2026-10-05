@@ -7,7 +7,7 @@
  */
 
 import { recoveryResume } from './resume-after-recovery';
-import { nextWrite } from './write-order';
+import { noteWrite, nextWrite, writtenSince } from './write-order';
 
 /** Below this, an episode is kept as started, at zero. */
 export const RESUME_MIN_S = 15;
@@ -61,24 +61,6 @@ function store(storage: PositionStorage | null, positions: Positions): void {
 }
 
 const keyOf = (showId: string, episode: number) => `${showId}:${episode}`;
-
-/** When this session last wrote each kept episode, by storage
- *  (write-order.ts). One written by an earlier session has none. */
-const written = new WeakMap<PositionStorage, Map<string, number>>();
-
-function noteWrite(storage: PositionStorage | null, key: string): void {
-	if (!storage) return;
-	const moments = written.get(storage) ?? new Map<string, number>();
-	moments.set(key, nextWrite());
-	written.set(storage, moments);
-}
-
-/** Whether `key` was written after `since` — a point a removal's
- *  cleanup leaves. Without `since`, nothing was. */
-function writtenSince(storage: PositionStorage | null, key: string, since?: number): boolean {
-	if (since === undefined || !storage) return false;
-	return (written.get(storage)?.get(key) ?? 0) > since;
-}
 
 /** Records `seconds` into `episode` of `showId` — zero, a started
  *  mark, when that is its start — or forgets the episode when

@@ -16,3 +16,22 @@ export function nextWrite(): number {
 	last += 1;
 	return last;
 }
+
+/** When this session last wrote each key, by the store written to.
+ *  A key an earlier session wrote has none. */
+const written = new WeakMap<object, Map<string, number>>();
+
+/** Notes a write of `key` to `store`, now. */
+export function noteWrite(store: object | null, key: string): void {
+	if (!store) return;
+	const moments = written.get(store) ?? new Map<string, number>();
+	moments.set(key, nextWrite());
+	written.set(store, moments);
+}
+
+/** Whether this session wrote `key` to `store` after `since` — what a
+ *  removal's cleanup leaves. Without `since`, nothing was. */
+export function writtenSince(store: object | null, key: string, since?: number): boolean {
+	const at = store ? written.get(store)?.get(key) : undefined;
+	return (at ?? 0) > (since ?? Infinity);
+}
