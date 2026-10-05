@@ -1108,7 +1108,7 @@ pub fn write_cache_full(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let ttl = availability_row_ttl(state, kitsu_id, status, body, now);
-    put_availability_row(state, kitsu_id, mode, body, ttl);
+    put_availability_row(state, kitsu_id, mode, status, body, ttl);
 }
 
 /// The window a row written now gets, from the show's status and the
@@ -1144,6 +1144,7 @@ fn put_availability_row(
     state: &AppState,
     kitsu_id: &str,
     mode: &str,
+    _status: Option<&str>,
     body: &AvailabilityResponse,
     ttl: u64,
 ) {

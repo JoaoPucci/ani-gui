@@ -158,3 +158,70 @@ fn the_warm_seeds_schedules_for_shows_on_air_as_well_as_to_come() {
         vec!["airing".to_string(), "premiere".to_string()]
     );
 }
+
+// --- a schedule landing between a write's read and its put -------------
+// The availability write reads no schedule; the airing write then puts
+// one and scans for rows to cut before this row exists; the
+// availability put lands last. Whichever lands second must cut.
+
+fn negative() -> AvailabilityResponse {
+    AvailabilityResponse {
+        available: false,
+        episode_count: None,
+        extra_episodes: Vec::new(),
+        episode_count_approximate: false,
+        gate_refused: false,
+        provider: None,
+    }
+}
+
+fn schedule_lands_in_between(state: &AppState, kitsu_id: &str, at: u64, aired: u32) {
+    seed_schedule(state, kitsu_id, aired, at);
+    crate::commands::availability_reschedule::cut_rows_at_next_airing(
+        &state.cache_pool,
+        kitsu_id,
+        Some(at),
+        Some(aired),
+        now(),
+    );
+}
+
+#[test]
+fn a_count_put_after_the_schedule_s_scan_is_still_cut() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    let body = positive(7);
+    let ttl = availability_row_ttl(&state, "race", Some("current"), &body, now());
+    schedule_lands_in_between(&state, "race", now() + 2 * 60 * 60, 7);
+    put_availability_row(&state, "race", "sub", Some("current"), &body, ttl);
+    let stored = stored_ttl(&state, "race");
+    assert!(stored <= 3 * 60 * 60 + 5, "ttl {stored}");
+    assert!(stored > 2 * 60 * 60, "ttl {stored}");
+}
+
+#[test]
+fn a_negative_put_after_the_schedule_s_scan_is_still_cut() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    let body = negative();
+    let ttl = availability_row_ttl(&state, "race-neg", Some("current"), &body, now());
+    schedule_lands_in_between(&state, "race-neg", now() + 2 * 60 * 60, 7);
+    put_availability_row(&state, "race-neg", "sub", Some("current"), &body, ttl);
+    let stored = stored_ttl(&state, "race-neg");
+    assert!(stored <= 5 * 60 * 60 + 5, "ttl {stored}");
+    assert!(stored > 4 * 60 * 60, "ttl {stored}");
+}
+
+#[test]
+fn a_finished_show_s_month_put_after_a_schedule_is_kept() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    let body = positive(12);
+    let ttl = availability_row_ttl(&state, "race-done", Some("finished"), &body, now());
+    schedule_lands_in_between(&state, "race-done", now() + 2 * 60 * 60, 12);
+    put_availability_row(&state, "race-done", "sub", Some("finished"), &body, ttl);
+    assert_eq!(
+        stored_ttl(&state, "race-done"),
+        AVAILABILITY_TTL_FINISHED_SECS
+    );
+}
