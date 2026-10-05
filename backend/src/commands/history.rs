@@ -155,3 +155,7 @@ mod selection_tests;
 #[cfg(test)]
 #[path = "history_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "history_dead_id_test.rs"]
+mod dead_id_tests;
