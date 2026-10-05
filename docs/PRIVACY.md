@@ -88,10 +88,14 @@ ani-gui keeps the following on your computer only:
   finds it. A stream address that is missed stays until you clear your
   history; numbering that is missed stays as that of any show a page
   resolved and you never played does. Catalogue data shared with
-  browsing — anime details, artwork, episode lists, which catalogue
-  carries a show and which Kitsu entries Kitsu says no longer exist —
-  is not part of your history and stays in the cache,
-  as it does for shows you only browsed.
+  browsing — anime details, artwork, episode lists and which catalogue
+  carries a show — is not part of your history and stays in the cache,
+  as it does for shows you only browsed. When Kitsu answers that an
+  entry a show in your history names no longer exists, the app notes
+  that for up to a year, so the show can be found under its new entry;
+  deleting the show removes the note for the entries it was known by
+  that no other show in your history names, and clearing your history
+  removes every note.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its
