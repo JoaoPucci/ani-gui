@@ -32,7 +32,7 @@ import { storedBinding } from './match-stored';
  *  gone — a 404 or 410, which the backend passes on as an upstream
  *  error carrying the status — rather than a failure that says nothing
  *  about the id (the network, a 5xx, a rate limit, a timeout). */
-function kitsuEntryGone(e: unknown): boolean {
+export function kitsuEntryGone(e: unknown): boolean {
 	const err = e as { kind?: unknown; status?: unknown } | null;
 	return err?.kind === 'upstream' && (err.status === 404 || err.status === 410);
 }
