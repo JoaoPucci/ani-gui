@@ -95,11 +95,11 @@ process.title = APP_NAME;
 // the right profile, and before anything else: a later launch hands over
 // to the running instance and stops at this return, so it never reaches
 // whenReady and never spawns a backend of its own. `keeper` answers a
-// later launch; it learns of the window once the boot has shown it, so
-// a launch during the boot finds nothing to reveal and the booting
-// instance shows its window as usual.
-// A launch after the boot, with the boot's window gone (macOS keeps the
-// app running when its last window closes), opens a new one.
+// later launch: it brings the window forward once the boot has shown
+// it, and does nothing while the boot is still under way — the booting
+// instance shows its window as usual. After the boot, a launch that
+// finds no window (macOS keeps the app running when its last window
+// closes) opens a new one against the boot's backend.
 const keeper = windowKeeper({
   createWindow: ({ apiBase, internalSecret }) =>
     createWindow(apiBase, internalSecret),
