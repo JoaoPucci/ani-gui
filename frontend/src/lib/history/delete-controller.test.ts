@@ -11,6 +11,12 @@ function h(id: string): HistoryEntry {
 		kitsu_id: ''
 	} as HistoryEntry;
 }
+/** A delete, and the forgetting of positions it leaves running. */
+async function deleteAndForget(...args: Parameters<typeof executeKitsuGroupDelete>) {
+	const result = await executeKitsuGroupDelete(...args);
+	await result.forgetting;
+	return result;
+}
 function m(id: string): KitsuAnimeRef {
 	return { id, canonical_title: 'Stub' } as KitsuAnimeRef;
 }
@@ -26,7 +32,7 @@ describe('executeKitsuGroupDelete', () => {
 		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
 
-		await executeKitsuGroupDelete('aa-1', { history, matches, historyDelete });
+		await deleteAndForget('aa-1', { history, matches, historyDelete });
 
 		// Pin sequential order — aa-1 fully resolves before aa-2 starts.
 		// A Promise.all regression would interleave starts (Codex P2
@@ -43,7 +49,7 @@ describe('executeKitsuGroupDelete', () => {
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
 		const historyDelete = vi.fn().mockResolvedValue(undefined);
 
-		const result = await executeKitsuGroupDelete('aa-1', { history, matches, historyDelete });
+		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
 		expect(result.removedIds.sort()).toEqual(['aa-1', 'aa-2']);
 		expect(result.remainingHistory.map((e) => e.id)).toEqual(['aa-3']);
@@ -55,7 +61,7 @@ describe('executeKitsuGroupDelete', () => {
 		const matches = { 'aa-1': null, 'aa-2': m('k-1') };
 		const historyDelete = vi.fn().mockResolvedValue(undefined);
 
-		const result = await executeKitsuGroupDelete('aa-1', { history, matches, historyDelete });
+		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
 		expect(result.removedIds).toEqual(['aa-1']);
 		expect(result.remainingHistory.map((e) => e.id)).toEqual(['aa-2']);
@@ -68,7 +74,7 @@ describe('executeKitsuGroupDelete', () => {
 		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-2') };
 		const historyDelete = vi.fn().mockResolvedValue(undefined);
 
-		const result = await executeKitsuGroupDelete('aa-1', { history, matches, historyDelete });
+		const result = await deleteAndForget('aa-1', { history, matches, historyDelete });
 
 		expect(result.removedIds).toEqual(['aa-1']);
 		expect(result.remainingHistory.map((e) => e.id)).toEqual(['aa-2']);
@@ -87,7 +93,7 @@ describe('executeKitsuGroupDelete — kept positions', () => {
 			order.push(`forget:${kitsuId}`);
 		});
 
-		await executeKitsuGroupDelete('aa-1', { history, matches, historyDelete, forgetPositions });
+		await deleteAndForget('aa-1', { history, matches, historyDelete, forgetPositions });
 
 		expect(order).toEqual(['delete:aa-1', 'delete:aa-2', 'forget:k-1']);
 	});
@@ -115,7 +121,7 @@ describe('executeKitsuGroupDelete — kept positions of a card without its match
 		const forgetPositions = vi.fn();
 		const kitsuIdOf = vi.fn(async (showId: string) => (showId === 'aa-1' ? 'k-9' : null));
 
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history,
 			matches: { 'aa-1': undefined },
 			historyDelete,
@@ -129,7 +135,7 @@ describe('executeKitsuGroupDelete — kept positions of a card without its match
 	test('asks for no mapping when the match resolved', async () => {
 		const kitsuIdOf = vi.fn();
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1')],
 			matches: { 'aa-1': m('k-1') },
 			historyDelete: vi.fn().mockResolvedValue(undefined),
@@ -142,7 +148,7 @@ describe('executeKitsuGroupDelete — kept positions of a card without its match
 
 	test('a mapping that cannot be read forgets nothing and fails nothing', async () => {
 		const forgetPositions = vi.fn();
-		const result = await executeKitsuGroupDelete('aa-1', {
+		const result = await deleteAndForget('aa-1', {
 			history: [h('aa-1')],
 			matches: { 'aa-1': null },
 			historyDelete: vi.fn().mockResolvedValue(undefined),
@@ -159,7 +165,7 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 	// is still a Continue card whose resume point they are.
 	test('an unresolved card forgets nothing while a resolved row of its show remains', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1')],
 			matches: { 'aa-1': undefined, 'bb-1': m('k-9') },
 			historyDelete: vi.fn().mockResolvedValue(undefined),
@@ -171,7 +177,7 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 
 	test('a resolved card forgets nothing while an unresolved row maps to its show', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1')],
 			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
 			historyDelete: vi.fn().mockResolvedValue(undefined),
@@ -183,7 +189,7 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 
 	test("a remaining row of another show does not keep this show's positions", async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1'), h('cc-1')],
 			matches: { 'aa-1': undefined, 'bb-1': m('k-2'), 'cc-1': undefined },
 			historyDelete: vi.fn().mockResolvedValue(undefined),
@@ -197,7 +203,7 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 		// No mapping is not a different show: the row may well be this
 		// one's, so its show cannot be told.
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1')],
 			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
 			historyDelete: vi.fn().mockResolvedValue(undefined),
@@ -209,7 +215,7 @@ describe('executeKitsuGroupDelete — a show that still has a row', () => {
 
 	test("a remaining row whose show cannot be told keeps the removed show's positions", async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), h('bb-1')],
 			matches: { 'aa-1': m('k-9'), 'bb-1': undefined },
 			historyDelete: vi.fn().mockResolvedValue(undefined),
@@ -239,7 +245,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 		// so a read after the delete finds nothing.
 		const mappings: Record<string, string> = { 'aa-1': 'k-9' };
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1')],
 			matches: { 'aa-1': undefined },
 			historyDelete: vi.fn(async (id: string) => {
@@ -253,7 +259,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 
 	test('forgets a removed row’s recorded id though its card never resolved', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [rec('aa-1', 'k-5')],
 			matches: { 'aa-1': undefined },
 			historyDelete: deleteOk(),
@@ -265,7 +271,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 
 	test('forgets a gone recorded id and the entry the card was shown as', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [rec('aa-1', 'k-gone')],
 			matches: { 'aa-1': m('k-6') },
 			historyDelete: deleteOk(),
@@ -276,7 +282,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 
 	test('a remaining row is told by its recorded id, not a stale mapping', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-8')],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
 			historyDelete: deleteOk(),
@@ -289,7 +295,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 
 	test('a remaining row with a recorded id needs no mapping to be told', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-8')],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
 			historyDelete: deleteOk(),
@@ -302,7 +308,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 
 	test('a remaining row of the same show keeps its positions by the id it records', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [rec('aa-1', 'k-1'), rec('bb-1', 'k-1')],
 			matches: { 'aa-1': m('k-1'), 'bb-1': undefined },
 			historyDelete: deleteOk(),
@@ -315,7 +321,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 
 	test('a remaining row whose recorded entry is gone is told by its mapping', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-gone')],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
 			historyDelete: deleteOk(),
@@ -332,7 +338,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 		// the card shows.
 		const recordedGone = vi.fn(async () => false);
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-gone')],
 			matches: { 'aa-1': undefined, 'bb-1': m('k-7') },
 			historyDelete: deleteOk(),
@@ -346,7 +352,7 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 
 	test('a remaining row whose recorded id cannot be judged keeps the removed show’s positions', async () => {
 		const forgetPositions = vi.fn();
-		await executeKitsuGroupDelete('aa-1', {
+		await deleteAndForget('aa-1', {
 			history: [h('aa-1'), rec('bb-1', 'k-8')],
 			matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
 			historyDelete: deleteOk(),
@@ -355,5 +361,54 @@ describe('executeKitsuGroupDelete — the show a row records', () => {
 			recordedGone: vi.fn().mockRejectedValue(new Error('down'))
 		});
 		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+});
+
+describe('executeKitsuGroupDelete — a slow Kitsu does not hold the removal', () => {
+	// Telling an unresolved remaining row's show can take a Kitsu read,
+	// and the card's removal must not wait on it: the delete settles
+	// with the remaining history, and the positions follow.
+	const never = () => new Promise<boolean>(() => {});
+	const tick = () => new Promise((r) => setTimeout(r, 20));
+
+	test('settles with the remaining history while a Kitsu read hangs', async () => {
+		const forgetPositions = vi.fn();
+		const outcome = await Promise.race([
+			executeKitsuGroupDelete('aa-1', {
+				history: [h('aa-1'), { ...h('bb-1'), kitsu_id: 'k-8' }],
+				matches: { 'aa-1': m('k-7'), 'bb-1': undefined },
+				historyDelete: vi.fn().mockResolvedValue(undefined),
+				forgetPositions,
+				recordedGone: never
+			}),
+			tick().then(() => 'held' as const)
+		]);
+		expect(outcome).not.toBe('held');
+		if (outcome !== 'held') expect(outcome.remainingHistory.map((e) => e.id)).toEqual(['bb-1']);
+		expect(forgetPositions).not.toHaveBeenCalled();
+	});
+
+	test('asks about every remaining row at once', async () => {
+		const asked: string[] = [];
+		const answers: Array<(gone: boolean) => void> = [];
+		const forgetPositions = vi.fn();
+		const result = await Promise.race([
+			executeKitsuGroupDelete('aa-1', {
+				history: [h('aa-1'), { ...h('bb-1'), kitsu_id: 'k-8' }, { ...h('cc-1'), kitsu_id: 'k-9' }],
+				matches: { 'aa-1': m('k-7'), 'bb-1': undefined, 'cc-1': undefined },
+				historyDelete: vi.fn().mockResolvedValue(undefined),
+				forgetPositions,
+				recordedGone: (k) => {
+					asked.push(k);
+					return new Promise<boolean>((r) => answers.push(r));
+				}
+			}),
+			tick().then(() => null)
+		]);
+		await tick();
+		expect(asked.sort()).toEqual(['k-8', 'k-9']);
+		for (const answer of answers) answer(false);
+		await result?.forgetting;
+		expect(forgetPositions).toHaveBeenCalledWith('k-7');
 	});
 });
