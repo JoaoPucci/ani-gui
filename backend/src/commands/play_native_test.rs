@@ -1281,3 +1281,110 @@ async fn an_airing_split_does_not_flip_to_its_later_part_mid_season() {
     assert_eq!(picked.hit.slug, "sbr-1st-4");
     assert_eq!(picked.episodes.len(), 10);
 }
+
+// A Kitsu entry that is itself a later part. Kitsu keeps "X Season 2"
+// as its own entry, announced at 24 and five episodes in; the provider
+// lists the finished first season as "X" beside it, both premiering in
+// Kitsu's year. The bare title is the season before the entry, never
+// the entry and never the first half of it.
+fn later_part_hits() -> [BrowseHit; 2] {
+    [hit("x-31", "X"), hit("x-season-2-33", "X Season 2")]
+}
+
+#[tokio::test]
+async fn a_later_part_asked_for_by_name_is_not_stitched_to_the_part_before() {
+    // 12 + 5 = 17 falls short of 24 like an airing split, and the
+    // bare title alone is twelve off — but stitching would play
+    // Season 2's episodes 1-12 from the first season.
+    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (33, 5, Some(2026))]));
+    let picked = pick_candidate(
+        &client,
+        &later_part_hits(),
+        Some(24),
+        "X Season 2",
+        Some(2026),
+        Some("TV"),
+    )
+    .await
+    .expect("picked");
+    assert_eq!(picked.hit.slug, "x-season-2-33");
+    assert_eq!(picked.episodes.len(), 5);
+    assert_eq!(picked.episodes[0].id, 33_001);
+}
+
+#[tokio::test]
+async fn a_later_part_is_not_taken_for_the_part_before_however_close_its_count() {
+    // The first season's twelve hit Season 2's announced twelve
+    // exactly while Season 2 has aired ten: still not the entry.
+    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (33, 10, Some(2026))]));
+    let picked = pick_candidate(
+        &client,
+        &later_part_hits(),
+        Some(12),
+        "X Season 2",
+        Some(2026),
+        Some("TV"),
+    )
+    .await
+    .expect("picked");
+    assert_eq!(picked.hit.slug, "x-season-2-33");
+}
+
+#[tokio::test]
+async fn a_later_part_is_recognised_by_any_title_the_entry_goes_by() {
+    // The walk searches an alias; the entry's canonical title is the
+    // one that names the part.
+    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (33, 5, Some(2026))]));
+    let picked = pick_candidate_titled(
+        &client,
+        &later_part_hits(),
+        Some(24),
+        "Ekkusu",
+        &["X Season 2", "Ekkusu"],
+        Some(2026),
+        Some("TV"),
+    )
+    .await
+    .expect("picked");
+    assert_eq!(picked.hit.slug, "x-season-2-33");
+}
+
+#[tokio::test]
+async fn the_part_before_alone_is_no_match_for_a_later_part() {
+    // The provider has not listed Season 2 yet: the first season is
+    // a clean miss, not a stand-in.
+    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026))]));
+    let err = pick_candidate(
+        &client,
+        &[hit("x-31", "X")],
+        Some(12),
+        "X Season 2",
+        Some(2026),
+        Some("TV"),
+    )
+    .await
+    .expect_err("the season before is not the entry");
+    assert!(matches!(err, AniError::NoResults), "got {err:?}");
+}
+
+#[tokio::test]
+async fn a_bare_entry_beside_its_airing_same_year_sequel_stays_whole() {
+    // The inverse: Kitsu's entry is the bare show, and the same-year
+    // "Season 2" is a separate Kitsu entry five episodes in. The bare
+    // title fits on its own, so it never heads a chain.
+    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (33, 5, Some(2026))]));
+    for expected in [12, 13] {
+        let picked = pick_candidate(
+            &client,
+            &later_part_hits(),
+            Some(expected),
+            "X",
+            Some(2026),
+            Some("TV"),
+        )
+        .await
+        .expect("picked");
+        assert_eq!(picked.hit.slug, "x-31", "against {expected}");
+        assert_eq!(picked.episodes.len(), 12, "against {expected}");
+    }
+}
