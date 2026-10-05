@@ -9,12 +9,13 @@
 //! a watch it was written: a Continue load can store a guess within
 //! the second a play stamps the show.
 //!
-//! A mapping stored before plays left the mark carries none, and reads
-//! as a guess. A guess is what it may be — the builds that wrote it
-//! stored guesses too — and reading one as played would let the next
-//! play record it and sync it to trackers. A mapping a play did store
-//! loses only its trust, until the show is played again: Continue
-//! Watching then reads the row the way it reads any guessed one.
+//! Mappings stored before plays left the mark got theirs once, at
+//! upgrade, by the rule the builds that wrote them read them with: a
+//! mapping written from a second before to ten seconds after the
+//! show's watch stamp was the play's (`migrations/V003`). The rule's
+//! flaw — a guess stored in the second a play stamps the show reads as
+//! played — is carried into those marks, and only those; every mapping
+//! written since is judged by its mark alone.
 //!
 //! Rows that record the Kitsu id of the show played never need this.
 //! It serves rows written before history recorded it.
