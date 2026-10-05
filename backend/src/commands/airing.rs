@@ -99,7 +99,7 @@ async fn fetch_and_store(
 }
 
 /// Serialize + cache one airing row under the schedule-aware TTL, then
-/// cut the show's positive availability rows written before the
+/// cut the show's availability rows written before the
 /// schedule was known. Every airing write — detail fetch, recheck,
 /// warm batch seed — comes through here. A failed cache write is
 /// swallowed — the fetched status is still good, it just won't be
@@ -120,7 +120,7 @@ fn write_airing_row(state: &AppState, kitsu_id: &str, status: &AiringStatus) {
         // After the put: an availability write that starts from here
         // on reads the schedule itself. Only one already between its
         // schedule read and its own put can still land uncut.
-        crate::commands::availability_reschedule::shorten_positive_rows(
+        crate::commands::availability_reschedule::cut_rows_at_next_airing(
             &state.cache_pool,
             kitsu_id,
             status.next_airing_at,

@@ -23,7 +23,7 @@ use crate::commands::availability_ttl::{rescheduled_negative_ttl, rescheduled_tt
 /// Finished shows' rows, expired rows and rows already expiring
 /// sooner are left as they are. Best-effort: a cache error leaves the
 /// row its old window.
-pub(crate) fn shorten_positive_rows(
+pub(crate) fn cut_rows_at_next_airing(
     pool: &SqlitePool,
     kitsu_id: &str,
     next_airing_at: Option<u64>,

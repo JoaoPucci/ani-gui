@@ -321,7 +321,7 @@ fn seed_positive_day(state: &AppState, kitsu_id: &str) {
     .expect("seed availability row");
 }
 
-fn positive_ttl(state: &AppState, kitsu_id: &str) -> u64 {
+fn row_ttl(state: &AppState, kitsu_id: &str) -> u64 {
     let conn = state.cache_pool.get().expect("conn");
     let ttl: i64 = conn
         .query_row(
@@ -373,7 +373,7 @@ async fn a_detail_page_s_schedule_cuts_a_count_written_before_it() {
     airing_get_with_anilist_base(&state, "50551", Some(&anilist.uri()))
         .await
         .expect("ok");
-    assert_cut_at_the_drop(positive_ttl(&state, "50551"));
+    assert_cut_at_the_drop(row_ttl(&state, "50551"));
 }
 
 #[tokio::test]
@@ -384,7 +384,7 @@ async fn a_recheck_s_schedule_cuts_a_count_written_before_it() {
     airing_refresh_with_anilist_base(&state, "50551", Some(&anilist.uri()))
         .await
         .expect("ok");
-    assert_cut_at_the_drop(positive_ttl(&state, "50551"));
+    assert_cut_at_the_drop(row_ttl(&state, "50551"));
 }
 
 #[tokio::test]
@@ -399,7 +399,7 @@ async fn a_batch_seeded_schedule_cuts_a_count_written_before_it() {
     let state = state_with_kitsu(&kitsu.uri());
     seed_positive_day(&state, "50551");
     seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
-    assert_cut_at_the_drop(positive_ttl(&state, "50551"));
+    assert_cut_at_the_drop(row_ttl(&state, "50551"));
 }
 
 #[tokio::test]
@@ -422,7 +422,7 @@ async fn a_batch_seeded_schedule_cuts_a_negative_written_before_it() {
     .expect("seed negative row");
     seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
     // Two hours to the drop plus the negative grace of three — not a day.
-    let ttl = positive_ttl(&state, "50551");
+    let ttl = row_ttl(&state, "50551");
     assert!(ttl <= 5 * 60 * 60 + 5, "ttl {ttl}");
     assert!(ttl > 4 * 60 * 60, "ttl {ttl}");
 }
