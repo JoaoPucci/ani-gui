@@ -106,9 +106,9 @@ fn rows_the_cut_does_not_concern_are_left_alone() {
     seed(&pool, &expired, &body(true), 2 * DAY, DAY);
     seed(&pool, &other, &body(true), HOUR, DAY);
     let t = now();
-    for id in ["done", "old"] {
-        cut_rows_at_next_airing(&pool, id, Some(t + 2 * HOUR), t);
-    }
+    // A finished show has no next airing.
+    cut_rows_at_next_airing(&pool, "done", None, t);
+    cut_rows_at_next_airing(&pool, "old", Some(t + 2 * HOUR), t);
     assert_eq!(ttl_of(&pool, &finished), 30 * DAY);
     assert_eq!(ttl_of(&pool, &expired), DAY);
     assert_eq!(ttl_of(&pool, &other), DAY);
@@ -188,7 +188,9 @@ fn negative_rows_the_cut_does_not_concern_are_left_alone() {
     seed(&pool, &expired, &body(false), 2 * DAY, DAY);
     seed(&pool, &inside, &body(false), 0, 2 * HOUR);
     let t = now();
-    for id in ["gone", "stale-neg", "soon-neg"] {
+    // A finished show has no next airing.
+    cut_rows_at_next_airing(&pool, "gone", None, t);
+    for id in ["stale-neg", "soon-neg"] {
         cut_rows_at_next_airing(&pool, id, Some(t + 5 * HOUR), t);
     }
     assert_eq!(ttl_of(&pool, &finished), 7 * DAY);
@@ -198,4 +200,18 @@ fn negative_rows_the_cut_does_not_concern_are_left_alone() {
     seed(&pool, &none, &body(false), HOUR, DAY);
     cut_rows_at_next_airing(&pool, "ona-neg", None, t);
     assert_eq!(ttl_of(&pool, &none), DAY);
+}
+
+#[test]
+fn a_premiere_moved_earlier_cuts_the_negative_its_old_date_sized() {
+    let pool = pool();
+    let key = cache_key("moved", "sub");
+    seed(&pool, &key, &body(false), HOUR, 5 * DAY);
+    let t = now();
+    cut_rows_at_next_airing(&pool, "moved", Some(t + 2 * HOUR), t);
+    let ttl = ttl_of(&pool, &key);
+    assert!(
+        ttl.abs_diff(HOUR + 2 * HOUR + NEGATIVE_GRACE_SECS) <= 2,
+        "{ttl}"
+    );
 }

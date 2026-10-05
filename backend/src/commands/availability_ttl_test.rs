@@ -74,7 +74,7 @@ proptest::proptest! {
 fn a_row_written_before_its_schedule_is_cut_at_the_drop() {
     // Written an hour ago with the ongoing day; the drop is in two hours.
     assert_eq!(
-        rescheduled_ttl(DAY, HOUR, DAY, Some(NOW + 2 * HOUR), NOW),
+        rescheduled_ttl(DAY, HOUR, Some(NOW + 2 * HOUR), NOW),
         Some(HOUR + 2 * HOUR + GRACE_SECS)
     );
 }
@@ -83,7 +83,7 @@ fn a_row_written_before_its_schedule_is_cut_at_the_drop() {
 fn a_row_already_inside_the_cut_is_left_alone() {
     // Written knowing the schedule: two hours left, drop in five.
     assert_eq!(
-        rescheduled_ttl(3 * HOUR, HOUR, DAY, Some(NOW + 5 * HOUR), NOW),
+        rescheduled_ttl(3 * HOUR, HOUR, Some(NOW + 5 * HOUR), NOW),
         None
     );
 }
@@ -91,34 +91,33 @@ fn a_row_already_inside_the_cut_is_left_alone() {
 #[test]
 fn a_passed_airing_leaves_the_row_the_floor() {
     assert_eq!(
-        rescheduled_ttl(DAY, HOUR, DAY, Some(NOW - HOUR), NOW),
+        rescheduled_ttl(DAY, HOUR, Some(NOW - HOUR), NOW),
         Some(HOUR + FLOOR_SECS)
     );
 }
 
 #[test]
 fn no_schedule_leaves_the_row_alone() {
-    assert_eq!(rescheduled_ttl(DAY, HOUR, DAY, None, NOW), None);
+    assert_eq!(rescheduled_ttl(DAY, HOUR, None, NOW), None);
 }
 
 #[test]
-fn a_finished_show_s_month_is_left_alone() {
+fn a_row_longer_than_a_day_is_cut_when_a_schedule_says_sooner() {
+    // A month-long row with a drop in two hours: whatever wrote it,
+    // the schedule says the count moves.
     assert_eq!(
-        rescheduled_ttl(30 * DAY, HOUR, DAY, Some(NOW + 2 * HOUR), NOW),
-        None
+        rescheduled_ttl(30 * DAY, HOUR, Some(NOW + 2 * HOUR), NOW),
+        Some(HOUR + 2 * HOUR + GRACE_SECS)
     );
 }
 
 #[test]
 fn an_expired_row_is_left_alone() {
     assert_eq!(
-        rescheduled_ttl(DAY, 2 * DAY, DAY, Some(NOW + 2 * HOUR), NOW),
+        rescheduled_ttl(DAY, 2 * DAY, Some(NOW + 2 * HOUR), NOW),
         None
     );
-    assert_eq!(
-        rescheduled_ttl(DAY, DAY, DAY, Some(NOW + 2 * HOUR), NOW),
-        None
-    );
+    assert_eq!(rescheduled_ttl(DAY, DAY, Some(NOW + 2 * HOUR), NOW), None);
 }
 
 proptest::proptest! {
@@ -128,11 +127,10 @@ proptest::proptest! {
         age in 0u64..(60 * DAY),
         at in proptest::option::of(0u64..(2 * NOW)),
     ) {
-        if let Some(cut) = rescheduled_ttl(ttl, age, DAY, at, NOW) {
+        if let Some(cut) = rescheduled_ttl(ttl, age, at, NOW) {
             proptest::prop_assert!(cut < ttl);
             // Still live when cut: never expired by the reschedule itself.
             proptest::prop_assert!(cut > age);
-            proptest::prop_assert!(ttl <= DAY);
         }
     }
 
@@ -146,7 +144,7 @@ proptest::proptest! {
         let remaining = ttl - age;
         let fresh = bounded_by_next_airing(remaining, Some(at), NOW);
         let expected = (fresh < remaining).then_some(age + fresh);
-        proptest::prop_assert_eq!(rescheduled_ttl(ttl, age, DAY, Some(at), NOW), expected);
+        proptest::prop_assert_eq!(rescheduled_ttl(ttl, age, Some(at), NOW), expected);
     }
 }
 
@@ -155,7 +153,7 @@ proptest::proptest! {
 #[test]
 fn a_negative_row_written_before_its_schedule_is_cut_past_the_drop() {
     assert_eq!(
-        rescheduled_negative_ttl(DAY, HOUR, DAY, Some(NOW + 2 * HOUR), NOW),
+        rescheduled_negative_ttl(DAY, HOUR, Some(NOW + 2 * HOUR), NOW),
         Some(HOUR + 2 * HOUR + NEGATIVE_GRACE_SECS)
     );
 }
@@ -163,7 +161,7 @@ fn a_negative_row_written_before_its_schedule_is_cut_past_the_drop() {
 #[test]
 fn a_negative_row_with_a_passed_airing_keeps_the_floor() {
     assert_eq!(
-        rescheduled_negative_ttl(DAY, HOUR, DAY, Some(NOW - HOUR), NOW),
+        rescheduled_negative_ttl(DAY, HOUR, Some(NOW - HOUR), NOW),
         Some(HOUR + FLOOR_SECS)
     );
 }
@@ -171,17 +169,15 @@ fn a_negative_row_with_a_passed_airing_keeps_the_floor() {
 #[test]
 fn negative_rows_the_cut_does_not_concern_are_left_alone() {
     let at = Some(NOW + 2 * HOUR);
-    // A finished show's week.
-    assert_eq!(rescheduled_negative_ttl(7 * DAY, HOUR, DAY, at, NOW), None);
     // Expired.
-    assert_eq!(rescheduled_negative_ttl(DAY, DAY, DAY, at, NOW), None);
+    assert_eq!(rescheduled_negative_ttl(DAY, DAY, at, NOW), None);
     // Already inside the cut.
     assert_eq!(
-        rescheduled_negative_ttl(4 * HOUR, HOUR, DAY, Some(NOW + 5 * HOUR), NOW),
+        rescheduled_negative_ttl(4 * HOUR, HOUR, Some(NOW + 5 * HOUR), NOW),
         None
     );
     // No schedule.
-    assert_eq!(rescheduled_negative_ttl(DAY, HOUR, DAY, None, NOW), None);
+    assert_eq!(rescheduled_negative_ttl(DAY, HOUR, None, NOW), None);
 }
 
 proptest::proptest! {
@@ -191,10 +187,9 @@ proptest::proptest! {
         age in 0u64..(60 * DAY),
         at in proptest::option::of(0u64..(2 * NOW)),
     ) {
-        if let Some(cut) = rescheduled_negative_ttl(ttl, age, DAY, at, NOW) {
+        if let Some(cut) = rescheduled_negative_ttl(ttl, age, at, NOW) {
             proptest::prop_assert!(cut < ttl);
             proptest::prop_assert!(cut > age);
-            proptest::prop_assert!(ttl <= DAY);
         }
     }
 
@@ -207,8 +202,18 @@ proptest::proptest! {
         proptest::prop_assume!(age < ttl);
         // The longer grace: a negative row outlives the drop at least
         // as long as a count does.
-        let pos = rescheduled_ttl(ttl, age, DAY, Some(at), NOW).unwrap_or(ttl);
-        let neg = rescheduled_negative_ttl(ttl, age, DAY, Some(at), NOW).unwrap_or(ttl);
+        let pos = rescheduled_ttl(ttl, age, Some(at), NOW).unwrap_or(ttl);
+        let neg = rescheduled_negative_ttl(ttl, age, Some(at), NOW).unwrap_or(ttl);
         proptest::prop_assert!(neg >= pos);
     }
+}
+
+#[test]
+fn a_premiere_moved_earlier_cuts_the_negative_its_old_date_sized() {
+    // Written five days long for a premiere six days out; it now airs
+    // in two hours.
+    assert_eq!(
+        rescheduled_negative_ttl(5 * DAY, HOUR, Some(NOW + 2 * HOUR), NOW),
+        Some(HOUR + 2 * HOUR + NEGATIVE_GRACE_SECS)
+    );
 }

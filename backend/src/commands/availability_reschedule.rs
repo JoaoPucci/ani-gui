@@ -12,9 +12,7 @@
 //! request made.
 
 use crate::cache::{meta_cache_row, meta_cache_shorten, SqlitePool};
-use crate::commands::availability::{
-    cache_key, AvailabilityResponse, AVAILABILITY_TTL_ONGOING_SECS,
-};
+use crate::commands::availability::{cache_key, AvailabilityResponse};
 use crate::commands::availability_ttl::{rescheduled_negative_ttl, rescheduled_ttl};
 
 /// Shorten the show's live availability rows, in both modes, to
@@ -49,13 +47,7 @@ pub(crate) fn cut_rows_at_next_airing(
         // Both kinds are written with the ongoing day when no
         // schedule is known; anything longer is a finished show's
         // window, or a pre-premiere negative a schedule already sized.
-        if let Some(ttl) = recut(
-            row.ttl_seconds,
-            age,
-            AVAILABILITY_TTL_ONGOING_SECS,
-            next_airing_at,
-            now,
-        ) {
+        if let Some(ttl) = recut(row.ttl_seconds, age, next_airing_at, now) {
             // Conditional on the row being the one read: a rewrite
             // in between keeps the window its own write gave it.
             let _ = meta_cache_shorten(pool, &key, &row, ttl);

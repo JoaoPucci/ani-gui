@@ -51,23 +51,22 @@ fn bounded_with_grace(base: u64, next_airing_at: Option<u64>, now: u64, grace: u
 pub(crate) fn rescheduled_ttl(
     ttl: u64,
     age: u64,
-    ceiling: u64,
     next_airing_at: Option<u64>,
     now: u64,
 ) -> Option<u64> {
-    rescheduled_with_grace(ttl, age, ceiling, next_airing_at, now, GRACE_SECS)
+    rescheduled_with_grace(ttl, age, next_airing_at, now, GRACE_SECS)
 }
 
 /// The re-cut both row kinds share, `grace` past the airing.
 fn rescheduled_with_grace(
     ttl: u64,
     age: u64,
-    ceiling: u64,
     next_airing_at: Option<u64>,
     now: u64,
     grace: u64,
 ) -> Option<u64> {
-    if ttl > ceiling || age >= ttl {
+    const CEILING: u64 = 24 * 60 * 60;
+    if ttl > CEILING || age >= ttl {
         return None;
     }
     let remaining = ttl - age;
@@ -87,11 +86,10 @@ pub(crate) const NEGATIVE_GRACE_SECS: u64 = 3 * 60 * 60;
 pub(crate) fn rescheduled_negative_ttl(
     ttl: u64,
     age: u64,
-    ceiling: u64,
     next_airing_at: Option<u64>,
     now: u64,
 ) -> Option<u64> {
-    rescheduled_with_grace(ttl, age, ceiling, next_airing_at, now, NEGATIVE_GRACE_SECS)
+    rescheduled_with_grace(ttl, age, next_airing_at, now, NEGATIVE_GRACE_SECS)
 }
 
 #[cfg(test)]
