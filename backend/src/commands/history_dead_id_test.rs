@@ -247,3 +247,97 @@ async fn deleting_a_show_keeps_a_gone_mark_another_row_claims() {
 
     assert!(marked(&state, "999"));
 }
+
+// A detail read waits on Kitsu before it marks. A removal that lands
+// while it waits took the marks of the ids the show was known by, and
+// a 404 that arrives after it does not bring one back: the read began
+// before the removal. A read begun after it is new, and marks as any
+// does; a removal of another show leaves the read's mark alone.
+
+const OTHER: &str = "hianime:trigun-3";
+
+/// A history of two rows, `SHOW` recording 999 and `OTHER` recording
+/// 555, with Kitsu answering `/anime/999` with a 404 only after a
+/// pause long enough to remove history while the read waits.
+async fn two_rows_with_a_slow_404() -> (tempfile::TempDir, MockServer, AppState) {
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/999"))
+        .respond_with(ResponseTemplate::new(404).set_delay(std::time::Duration::from_millis(400)))
+        .mount(&mock)
+        .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let history = tmp.path().join("history");
+    let row = |id: &str, kitsu_id: &str| HistoryEntry {
+        ep_no: "5".into(),
+        id: id.into(),
+        title: TITLE.into(),
+        watched_at: None,
+        kitsu_id: Some(kitsu_id.into()),
+    };
+    write_atomic(&history, &[row(SHOW, "999"), row(OTHER, "555")]).unwrap();
+    let state = state_at(history, &mock.uri());
+    (tmp, mock, state)
+}
+
+/// Read `/anime/999`, running `removal` once Kitsu has the request and
+/// before it answers.
+async fn read_999_while(state: &AppState, mock: &MockServer, removal: impl FnOnce(&AppState)) {
+    let read = kitsu_anime_detail_fails(state, "999");
+    let remove = async {
+        while mock
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .is_empty()
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        removal(state);
+    };
+    let (failed, ()) = tokio::join!(read, remove);
+    assert!(failed);
+}
+
+#[tokio::test]
+async fn a_404_that_arrives_after_the_show_was_deleted_marks_nothing() {
+    let (_tmp, mock, state) = two_rows_with_a_slow_404().await;
+
+    read_999_while(&state, &mock, |state| {
+        assert!(history_delete(state, SHOW).expect("delete"));
+    })
+    .await;
+
+    assert!(!marked(&state, "999"));
+}
+
+#[tokio::test]
+async fn a_404_that_arrives_after_the_history_was_cleared_marks_nothing() {
+    let (_tmp, mock, state) = two_rows_with_a_slow_404().await;
+
+    read_999_while(&state, &mock, |state| history_clear(state).expect("clear")).await;
+
+    assert!(!marked(&state, "999"));
+}
+
+#[tokio::test]
+async fn a_404_that_arrives_after_another_show_was_deleted_still_marks() {
+    let (_tmp, mock, state) = two_rows_with_a_slow_404().await;
+
+    read_999_while(&state, &mock, |state| {
+        assert!(history_delete(state, OTHER).expect("delete"));
+    })
+    .await;
+
+    assert!(marked(&state, "999"));
+}
+
+#[tokio::test]
+async fn a_read_begun_after_the_removal_marks_as_any_does() {
+    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    assert!(history_delete(&state, SHOW).expect("delete"));
+
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+
+    assert!(marked(&state, "999"));
+}
