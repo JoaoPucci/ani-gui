@@ -30,8 +30,10 @@ pub mod history;
 pub mod i18n;
 pub mod legacy_script;
 pub mod meta;
+pub mod parent_watch;
 pub mod proxy;
 pub mod scraper;
+pub mod shutdown;
 pub mod spawn;
 
 pub use error::{AniError, Result};
