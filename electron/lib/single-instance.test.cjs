@@ -150,6 +150,7 @@ const BACKEND = { apiBase: "http://127.0.0.1:4321", internalSecret: "s3cret" };
 function reopeningKeeper({ quitting = () => false } = {}) {
   const opened = [];
   const errors = [];
+  const discarded = [];
   let settle;
   const keeper = windowKeeper({
     createWindow: (backend) => {
@@ -160,8 +161,9 @@ function reopeningKeeper({ quitting = () => false } = {}) {
     },
     quitting,
     logError: (...args) => errors.push(args),
+    discard: () => discarded.push("discard"),
   });
-  return { keeper, opened, errors, settle: () => settle };
+  return { keeper, opened, errors, discarded, settle: () => settle };
 }
 
 test("after the boot, a launch with no window opens one against the boot's backend", () => {
@@ -233,4 +235,25 @@ test("a launch while the app is quitting opens nothing", () => {
   keeper.booted(BACKEND);
   assert.strictEqual(keeper.summon(), "none");
   assert.deepStrictEqual(opened, []);
+});
+
+test("a reopen that fails discards the window it left behind", async () => {
+  // The window is on screen while its first page loads, frameless and
+  // blank until the renderer draws — a close button included — so one
+  // whose page never arrives would otherwise stay there, unclosable.
+  const { keeper, discarded, settle } = reopeningKeeper();
+  keeper.booted(BACKEND);
+  assert.strictEqual(keeper.summon(), "reopened");
+  settle().reject(new Error("first page answered 404"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepStrictEqual(discarded, ["discard"]);
+});
+
+test("a reopen that succeeds discards nothing", async () => {
+  const { keeper, discarded, settle } = reopeningKeeper();
+  keeper.booted(BACKEND);
+  keeper.summon();
+  settle().resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepStrictEqual(discarded, []);
 });
