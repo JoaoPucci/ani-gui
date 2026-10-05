@@ -150,9 +150,9 @@ fn write_history_on_cache_hit(
         kitsu_id: None,
     };
     // A show removed from history while the cached stream was being
-    // checked gets no row from this play.
+    // checked, or watched since the play began, gets no row from it.
     let wrote = crate::history::guard::hold(&state.history_path, |held| {
-        if held.removed_since(asked, &cached.show_id) {
+        if held.overtaken_since(asked, &cached.show_id) {
             return Ok(());
         }
         held.upsert(entry)?;

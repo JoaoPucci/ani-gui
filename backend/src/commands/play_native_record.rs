@@ -148,7 +148,11 @@ impl Watch {
 /// removed from history while it resolves, under the key the resolve
 /// lands on or another: the player still opens, and the watch is not
 /// recorded — the removal stands, as it does over everything else a
-/// play begun before it would write.
+/// play begun before it would write. So does a later watch of the
+/// show recorded while this one's request stalled: its row and stamp
+/// stay, and this watch writes nothing. That is not a failure — the
+/// show's latest watch is on the row — so it returns quietly, like
+/// every other outcome of a recording.
 pub(crate) async fn record_watch_requested_at(
     state: &AppState,
     watch: &Watch,
@@ -176,13 +180,14 @@ pub(crate) async fn record_watch_requested_at(
     // step with the history held: a removal runs wholly before it —
     // and the watch is new, unless its request began before that
     // removal, when nothing is recorded — or wholly after it, and
-    // takes the row and the stamp together.
+    // takes the row and the stamp together. A watch recorded since the
+    // request began is newer than this one, and keeps the row too.
     let asked = Asked {
         begun: requested,
         page: given,
     };
     let recorded = crate::history::guard::hold(&state.history_path, |held| {
-        if held.removed_since(asked, &watch.show_id) {
+        if held.overtaken_since(asked, &watch.show_id) {
             return Ok(None);
         }
         held.upsert(entry)?;
@@ -233,7 +238,8 @@ pub(crate) async fn record_watch_requested_at(
 /// only; it is the display number and must never reach the file.
 ///
 /// `asked` is the play's request: a show removed from history while
-/// the play resolved gets no row from it ([`crate::history::guard`]).
+/// the play resolved, or watched since it began, gets no row from it
+/// ([`crate::history::guard`]).
 pub(crate) fn write_history(
     state: &AppState,
     native: &NativeResolved,
@@ -250,7 +256,7 @@ pub(crate) fn write_history(
         kitsu_id: None,
     };
     let wrote = crate::history::guard::hold(&state.history_path, |held| {
-        if held.removed_since(asked, &native.slug) {
+        if held.overtaken_since(asked, &native.slug) {
             return Ok(());
         }
         held.upsert(entry)?;

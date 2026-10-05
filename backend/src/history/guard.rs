@@ -27,7 +27,10 @@
 //! that gives a row its watch moment or its Kitsu id moves the moment
 //! on as well, and a watch's deferred writes ask whether the row was
 //! changed since — removed, or written by another watch
-//! ([`Held::show_changed_since`]).
+//! ([`Held::show_changed_since`]). The first write of a play or a watch
+//! asks the same of the moment its request began
+//! ([`Held::overtaken_since`]): a request that stalled while a later
+//! watch was recorded leaves that watch's row and stamp as they are.
 //!
 //! A show is removed under its row's key, and not everything that
 //! would write of it has that key: skip times are cached under the
@@ -266,6 +269,16 @@ impl Held<'_> {
             || asked
                 .page
                 .is_some_and(|page| self.kitsu_removed_since(asked.begun, page))
+    }
+
+    /// Whether what the play `asked` for would write under the show
+    /// key `id` was overtaken since the play began: removed
+    /// ([`Self::removed_since`]), or given a watch moment or Kitsu id
+    /// by another watch ([`Self::show_changed_since`]). A request begun
+    /// before a watch was recorded does not replace that watch's row.
+    #[must_use]
+    pub fn overtaken_since(&self, asked: Asked<'_>, id: &str) -> bool {
+        self.removed_since(asked, id) || self.show_changed_since(asked.begun, id)
     }
 
     /// Whether a show known by `kitsu_id` was removed with no remaining
