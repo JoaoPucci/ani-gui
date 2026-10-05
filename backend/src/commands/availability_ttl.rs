@@ -44,9 +44,9 @@ fn bounded_with_grace(base: u64, next_airing_at: Option<u64>, now: u64, grace: u
 /// TTL (`age` + that) is returned when it is shorter than `ttl`.
 ///
 /// `None` — leave the row as it is — when there is no schedule, when
-/// the row has expired, when the cut would not shorten it, and when
-/// `ttl` exceeds `ceiling`: only a finished show's row is written
-/// longer than the ongoing window, and its count does not move.
+/// the row has expired, and when the cut would not shorten it. A
+/// finished show's long row is safe by the first: it has no next
+/// airing.
 #[must_use]
 pub(crate) fn rescheduled_ttl(
     ttl: u64,
@@ -65,8 +65,7 @@ fn rescheduled_with_grace(
     now: u64,
     grace: u64,
 ) -> Option<u64> {
-    const CEILING: u64 = 24 * 60 * 60;
-    if ttl > CEILING || age >= ttl {
+    if age >= ttl {
         return None;
     }
     let remaining = ttl - age;
@@ -79,9 +78,8 @@ fn rescheduled_with_grace(
 pub(crate) const NEGATIVE_GRACE_SECS: u64 = 3 * 60 * 60;
 
 /// [`rescheduled_ttl`] for a negative row: the cut sits
-/// [`NEGATIVE_GRACE_SECS`] past the airing. `ceiling` is the window a
-/// negative row is written with when no schedule is known; a longer
-/// row is a finished show's week or was sized by a schedule already.
+/// [`NEGATIVE_GRACE_SECS`] past the airing — so a premiere moved
+/// earlier cuts the negative its old date sized.
 #[must_use]
 pub(crate) fn rescheduled_negative_ttl(
     ttl: u64,

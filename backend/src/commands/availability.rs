@@ -26,7 +26,7 @@ const AVAILABILITY_TTL_FINISHED_SECS: u64 = 30 * 24 * 60 * 60;
 /// once a week; a 1-day window means new episodes surface within
 /// a day of the next probe rather than waiting up to a month for
 /// the cap to refresh.
-pub(crate) const AVAILABILITY_TTL_ONGOING_SECS: u64 = 24 * 60 * 60;
+const AVAILABILITY_TTL_ONGOING_SECS: u64 = 24 * 60 * 60;
 /// Cache TTL for negative results — 7 days. Catalog adds are rarer
 /// than removals but still happen (late-season uploads, region
 /// availability shifts), so refresh negatives more often.

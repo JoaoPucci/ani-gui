@@ -18,8 +18,8 @@ use crate::commands::availability_ttl::{rescheduled_negative_ttl, rescheduled_tt
 /// Shorten the show's live availability rows, in both modes, to
 /// expire at `next_airing_at` plus the grace the write path gives
 /// their kind: an hour for a positive row, three for a negative one.
-/// Finished shows' rows, expired rows and rows already expiring
-/// sooner are left as they are. Best-effort: a cache error leaves the
+/// Expired rows and rows already expiring sooner are left as they
+/// are, and a finished show has no next airing to cut at. Best-effort: a cache error leaves the
 /// row its old window.
 pub(crate) fn cut_rows_at_next_airing(
     pool: &SqlitePool,
@@ -44,9 +44,6 @@ pub(crate) fn cut_rows_at_next_airing(
             rescheduled_negative_ttl
         };
         let age = now.saturating_sub(row.fetched_at);
-        // Both kinds are written with the ongoing day when no
-        // schedule is known; anything longer is a finished show's
-        // window, or a pre-premiere negative a schedule already sized.
         if let Some(ttl) = recut(row.ttl_seconds, age, next_airing_at, now) {
             // Conditional on the row being the one read: a rewrite
             // in between keeps the window its own write gave it.
