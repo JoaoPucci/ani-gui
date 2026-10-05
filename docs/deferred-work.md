@@ -754,8 +754,11 @@ The AppImage carries no update information and releases publish no
 `.zsync` file beside it, so AppImageUpdate and similar tools cannot
 update an installed AppImage in place. The AppImageHub catalog's check
 reports it as a warning, not a failure. It waited because the app's own
-update notifier already tells every install that a release is out, and
-in-place updating is a convenience on top of that.
+update notifier already announces new releases, and in-place updating
+is a convenience on top of that. The notifier covers installs that keep
+"Include prereleases" on, which is the default: with it off, the
+notifier asks only for full releases, and since every release so far is
+a pre-release, it announces none.
 
 Three things are worth knowing before starting:
 
