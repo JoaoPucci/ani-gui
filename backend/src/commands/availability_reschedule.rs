@@ -13,24 +13,25 @@
 
 use crate::cache::{meta_cache_row, meta_cache_shorten, SqlitePool};
 use crate::commands::availability::{cache_key, AvailabilityResponse};
-use crate::commands::availability_ttl::{rescheduled_negative_ttl, rescheduled_ttl};
+use crate::commands::availability_ttl::{
+    next_airing_for_count, rescheduled_negative_ttl, rescheduled_ttl,
+};
 
 /// Shorten the show's live availability rows, in both modes, to
 /// expire at `next_airing_at` plus the grace the write path gives
 /// their kind: an hour for a positive row, three for a negative one.
-/// Expired rows and rows already expiring sooner are left as they
-/// are, and a finished show has no next airing to cut at. Best-effort: a cache error leaves the
-/// row its old window.
+/// A positive row whose count `aired` has passed is cut as though the
+/// airing were now ([`next_airing_for_count`]). Expired rows and rows
+/// already expiring sooner are left as they are, and a finished show
+/// has no next airing to cut at. Best-effort: a cache error leaves
+/// the row its old window.
 pub(crate) fn cut_rows_at_next_airing(
     pool: &SqlitePool,
     kitsu_id: &str,
     next_airing_at: Option<u64>,
-    _aired: Option<u32>,
+    aired: Option<u32>,
     now: u64,
 ) {
-    if next_airing_at.is_none() {
-        return;
-    }
     for mode in ["sub", "dub"] {
         let key = cache_key(kitsu_id, mode);
         let Ok(Some(row)) = meta_cache_row(pool, &key) else {
@@ -39,13 +40,19 @@ pub(crate) fn cut_rows_at_next_airing(
         let Ok(body) = serde_json::from_str::<AvailabilityResponse>(&row.body) else {
             continue;
         };
-        let recut = if body.available {
-            rescheduled_ttl
-        } else {
-            rescheduled_negative_ttl
-        };
         let age = now.saturating_sub(row.fetched_at);
-        if let Some(ttl) = recut(row.ttl_seconds, age, next_airing_at, now) {
+        let cut = if body.available {
+            // A count the schedule has passed is cut as at a drop. Only
+            // while a next airing is scheduled: with none, the show may
+            // be finished, whose row a lagging count must not churn.
+            let at = next_airing_at.and_then(|_| {
+                next_airing_for_count(next_airing_at, body.episode_count, aired, now)
+            });
+            rescheduled_ttl(row.ttl_seconds, age, at, now)
+        } else {
+            rescheduled_negative_ttl(row.ttl_seconds, age, next_airing_at, now)
+        };
+        if let Some(ttl) = cut {
             // Conditional on the row being the one read: a rewrite
             // in between keeps the window its own write gave it.
             let _ = meta_cache_shorten(pool, &key, &row, ttl);

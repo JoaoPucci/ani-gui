@@ -1076,11 +1076,17 @@ async fn seed_airing_for_negative_with_base(
 /// Deliberately cache-only — a missing row just means the
 /// status-based fallback in [`negative_ttl_for`] applies.
 fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
+    cached_airing(state, kitsu_id)?.next_airing_at
+}
+
+/// The show's cached airing row, read as [`cached_next_airing_at`] reads it.
+fn cached_airing(
+    state: &AppState,
+    kitsu_id: &str,
+) -> Option<crate::meta::anilist_airing::AiringStatus> {
     let key = format!("airing:v2:{kitsu_id}");
     let body = meta_cache_get(&state.cache_pool, &key).ok().flatten()?;
-    serde_json::from_str::<crate::meta::anilist_airing::AiringStatus>(&body)
-        .ok()?
-        .next_airing_at
+    serde_json::from_str(&body).ok()
 }
 
 /// Same as [`write_cache`] but lets the caller supply the episode
@@ -1105,10 +1111,15 @@ pub fn write_cache_full(
     let ttl = if body.available && status == Some("finished") {
         positive_ttl_for(status)
     } else if body.available {
-        // Still airing: the count goes stale at the next drop.
-        crate::commands::availability_ttl::bounded_by_next_airing(
+        // Still airing: the count goes stale at the next drop — or
+        // already has, when the schedule's aired count is past it.
+        use crate::commands::availability_ttl::{bounded_by_next_airing, next_airing_for_count};
+        let airing = cached_airing(state, kitsu_id);
+        let next = airing.as_ref().and_then(|a| a.next_airing_at);
+        let aired = airing.as_ref().and_then(|a| a.aired);
+        bounded_by_next_airing(
             positive_ttl_for(status),
-            cached_next_airing_at(state, kitsu_id),
+            next_airing_for_count(next, body.episode_count, aired, now),
             now,
         )
     } else {

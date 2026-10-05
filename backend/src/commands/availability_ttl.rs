@@ -53,11 +53,14 @@ pub(crate) const MAX_DROP_EPISODES: u32 = 2;
 #[must_use]
 pub(crate) fn next_airing_for_count(
     next_airing_at: Option<u64>,
-    _count: Option<u32>,
-    _aired: Option<u32>,
-    _now: u64,
+    count: Option<u32>,
+    aired: Option<u32>,
+    now: u64,
 ) -> Option<u64> {
-    next_airing_at
+    match (count, aired) {
+        (Some(c), Some(a)) if a > c && a - c <= MAX_DROP_EPISODES => Some(now),
+        _ => next_airing_at,
+    }
 }
 
 /// A positive row already in the cache when the schedule arrives,
