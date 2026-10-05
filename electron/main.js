@@ -35,6 +35,19 @@ const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 const { extractLocaleFromToml } = require("./lib/extract-locale-from-toml.cjs");
 const { isDevProfile } = require("./lib/dev-profile.cjs");
+const {
+  HANDSHAKE_TIMEOUT_MS,
+  awaitHandshake,
+} = require("./lib/backend-handshake.cjs");
+const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cjs");
+const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
+const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
+const { resolveLocale } = require("./lib/main-messages.cjs");
+const {
+  bootApp,
+  firstShowTimeoutMs,
+  openFirstPage,
+} = require("./lib/startup.cjs");
 const { startOAuthServer } = require("./oauth-server");
 
 const IS_DEV = process.env.ELECTRON_DEV === "1";
@@ -216,113 +229,77 @@ function readConfigLocale() {
 }
 
 /**
- * Spawn the backend and resolve once it prints its listening URL.
- * Rejects if the process exits before the URL is observed (so the
- * Electron main process doesn't sit indefinitely on a broken sidecar).
+ * Spawn the backend and resolve once it has printed its handshake
+ * (see lib/backend-handshake.cjs). Rejects — after stopping the
+ * backend if it is running — when the spawn fails, the backend exits
+ * first, or the handshake does not arrive within HANDSHAKE_TIMEOUT_MS
+ * (a budget for a backend that never answers, not for a slow one —
+ * see the module), so bootApp can end the boot.
  */
-function spawnBackend() {
-  return new Promise((resolve, reject) => {
-    const bin = resolveBackendBinary();
-    // `detached: true` puts the backend in its own process group on
-    // POSIX so we can kill the entire group (backend + the transport
-    // it spawns per request + yt-dlp + ffmpeg) at quit time
-    // via `process.kill(-pid, …)`.
-    // Without it, only the Rust process gets the signal and the
-    // download grandchildren get reparented to init and keep
-    // running. Windows has no process groups; the tree-kill path
-    // shells out to taskkill /T instead — see killBackendTree().
-    const child = spawn(bin, [], {
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    });
-    let buf = "";
-    let resolved = false;
-
-    // Backend prints the renderer-only secret on a separate handshake
-    // line right after ANI_GUI_LISTENING. We may see either order on
-    // the stdout buffer, so cache one while waiting for the other and
-    // only resolve once both are in hand. Used to gate the disconnect-
-    // after-expiry cache wipe (Codex P2 #3370011855).
-    let pendingApiBase = null;
-    let pendingInternalSecret = null;
-    const maybeResolve = () => {
-      if (resolved) return;
-      if (pendingApiBase && pendingInternalSecret) {
-        resolved = true;
-        resolve({
-          child,
-          apiBase: pendingApiBase,
-          internalSecret: pendingInternalSecret,
-        });
-      }
-    };
-
-    const onLine = (line) => {
-      if (resolved) {
-        // After handshake, downstream stdout becomes log output;
-        // just echo it through so we can see it in dev.
-        process.stdout.write(`[backend] ${line}\n`);
-        return;
-      }
-      const apiMatch = line.match(/^ANI_GUI_LISTENING\s+(\S+)/);
-      if (apiMatch) {
-        pendingApiBase = apiMatch[1];
-        maybeResolve();
-        return;
-      }
-      const secretMatch = line.match(/^ANI_GUI_INTERNAL_SECRET\s+(\S+)/);
-      if (secretMatch) {
-        pendingInternalSecret = secretMatch[1];
-        maybeResolve();
-      }
-    };
-
-    child.stdout.on("data", (chunk) => {
-      buf += chunk.toString("utf-8");
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        onLine(line);
-      }
-    });
-    child.stderr.on("data", (chunk) => {
-      process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
-    });
-    child.on("exit", (code, signal) => {
-      if (!resolved) {
-        reject(
-          new Error(
-            `backend exited before handshake (code=${code}, signal=${signal})`,
-          ),
-        );
-      } else {
-        console.error(`[backend] exited (code=${code}, signal=${signal})`);
-      }
-    });
+async function spawnBackend() {
+  // A parent pipe on stdin, the flag to watch it, and its own process
+  // group — see lib/backend-spawn.cjs. `child.stdin` is never written
+  // to or closed: it stays open exactly as long as this process lives.
+  return launchBackend({
+    spawn,
+    bin: resolveBackendBinary(),
+    platform: process.platform,
+    env: process.env,
+    track: (child) => {
+      backendChild = child;
+      reapOnExit(child, { platform: process.platform, signalGroup: signalBackendGroup });
+    },
+    handshake: (child) => {
+      child.stderr.on("data", (chunk) => {
+        process.stderr.write(`[backend] ${chunk.toString("utf-8")}`);
+      });
+      // After the handshake, downstream stdout becomes log output; it
+      // is echoed through so we can see it in dev.
+      return awaitHandshake(child, {
+        timeoutMs: HANDSHAKE_TIMEOUT_MS,
+        stopChild: killTree,
+        log: (line) => process.stdout.write(`${line}\n`),
+      });
+    },
   });
 }
 
 let backendChild = null;
 
 /**
- * Kill the backend AND every grandchild it spawned — the
- * impersonating transport, yt-dlp and ffmpeg. On POSIX we
- * negate the pid to
- * signal the backend's process group — spawnBackend uses
- * `detached: true` so the cascade works. On Windows there are no
- * process groups, so we shell out to taskkill with /T (kill tree).
+ * Stop the backend and everything it spawned — the impersonating
+ * transport, yt-dlp and ffmpeg.
  *
- * Idempotent — safe to call when the backend has already exited.
+ * On POSIX this signals the backend's process group (spawnBackend
+ * uses `detached: true`, so the group is the backend's own). SIGTERM
+ * reaches the backend and the transports it runs in that group. The
+ * download tools are not in it: the backend runs each in a group of
+ * its own and stops them itself, by treating the signal as a request
+ * and winding down (backend/src/shutdown.rs). The backend therefore
+ * outlives this call by a moment; nothing here waits for it.
+ *
+ * On Windows there are no process groups and no SIGTERM: taskkill
+ * /F /T ends the backend and every process below it by parent pid,
+ * the tools included.
+ *
+ * Idempotent — safe to call when the backend has already exited,
+ * which it then leaves alone: its ids may have been reused, and what it
+ * left in its group was stopped at its exit (see `stoppable` and
+ * `reapOnExit` in lib/backend-spawn.cjs).
  */
 function killBackendTree() {
-  if (!backendChild || backendChild.killed) return;
+  killTree(backendChild);
+}
+
+/** Stop `child` and every process it spawned. See killBackendTree. */
+function killTree(child) {
+  if (!stoppable(child)) return;
   if (process.platform === "win32") {
     // /F = force, /T = include child processes. Fire-and-forget;
     // we don't await it because the close path is already winding
     // down and a stuck taskkill shouldn't block the quit.
     try {
-      spawn("taskkill", ["/F", "/T", "/PID", String(backendChild.pid)], {
+      spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], {
         stdio: "ignore",
         windowsHide: true,
       });
@@ -331,15 +308,21 @@ function killBackendTree() {
     }
     return;
   }
+  signalBackendGroup(child.pid);
+}
+
+/**
+ * SIGTERM to the process group `pid` leads (POSIX). SIGTERM rather
+ * than SIGKILL: the backend has to run its own wind-down to stop the
+ * download tools, and a kill would skip it.
+ */
+function signalBackendGroup(pid) {
   try {
-    // Negative pid = process group. SIGTERM gives the children a
-    // chance to clean up; if any survives, the OS reaper will
-    // eventually SIGKILL on app shutdown.
-    process.kill(-backendChild.pid, "SIGTERM");
+    process.kill(-pid, "SIGTERM");
   } catch (e) {
-    // ESRCH: group already gone (backend exited first). Anything
-    // else is unexpected and worth logging.
-    if (e && e.code !== "ESRCH") console.error("[main] killBackendTree:", e);
+    // ESRCH: nobody left in the group. Anything else is unexpected and
+    // worth logging.
+    if (e && e.code !== "ESRCH") console.error("[main] killTree:", e);
   }
 }
 
@@ -470,9 +453,13 @@ async function createWindow(apiBase, internalSecret) {
   // → setOpacity(1), but the maximize animation is on the window
   // frame (compositor-rendered), which Electron cannot suppress.
   win.maximize();
-  win.once("ready-to-show", () => {
-    win.show();
-  });
+  // That call also puts the window on screen — maximizing a hidden
+  // window shows it — and emits a first `show` before the listener
+  // below exists. The `show` Step 2 waits for is the next one: the
+  // show() openFirstPage makes at ready-to-show, further down, where
+  // the first load and the first-show guard are held too. Until the
+  // renderer paints, what is on screen is blank and frameless: the
+  // titlebar and its close button are the renderer's to draw.
   win.once("show", () => {
     if (!win.isMaximized()) win.maximize();
   });
@@ -494,9 +481,16 @@ async function createWindow(apiBase, internalSecret) {
   win.on("maximize", sendMaxState);
   win.on("unmaximize", sendMaxState);
 
+  // A window that never gets its first page — a load that fails, an
+  // error page, a renderer gone, or, in a packaged build, no first
+  // paint within the deadline — fails the boot (see lib/startup.cjs).
+  const firstPage = {
+    timeoutMs: firstShowTimeoutMs({ isDev: IS_DEV }),
+    logError: console.error,
+  };
   if (IS_DEV) {
     win.webContents.openDevTools({ mode: "detach" });
-    await win.loadURL(VITE_DEV_URL);
+    await openFirstPage(win, VITE_DEV_URL, firstPage);
   } else {
     // Packaged static SvelteKit bundle, served via the custom
     // `app://` scheme registered above. The bundle's chunks do
@@ -507,7 +501,7 @@ async function createWindow(apiBase, internalSecret) {
     // router reads `location.pathname` and treats `/index.html`
     // as a non-route (the app has no `routes/index.html` page).
     // The protocol handler maps `/` to the index.html file.
-    await win.loadURL(`${APP_ORIGIN}/`);
+    await openFirstPage(win, `${APP_ORIGIN}/`, firstPage);
   }
   return win;
 }
@@ -879,19 +873,13 @@ ipcMain.handle("ani-gui:open-external", async (_event, url) => {
  * committed.
  */
 function maybePromptOnClose(win, event) {
-  if (confirmedQuit) return;
-  if (activeDownloadCount <= 0) return;
+  if (confirmedQuit) return false;
+  if (activeDownloadCount <= 0) return false;
   event.preventDefault();
-  const plural = activeDownloadCount === 1 ? "" : "s";
-  const choice = dialog.showMessageBoxSync(win, {
-    type: "question",
-    buttons: ["Cancel", "Quit anyway"],
-    defaultId: 0,
-    cancelId: 0,
-    title: "Active downloads",
-    message: `${activeDownloadCount} download${plural} in progress.`,
-    detail: "They will be cancelled if you quit. Continue?",
-  });
+  const choice = dialog.showMessageBoxSync(
+    win,
+    closePromptOptions({ locale: mainLocale(), count: activeDownloadCount }),
+  );
   if (choice === 1) {
     confirmedQuit = true;
     // Re-trigger the close path. The flag above makes this no-op
@@ -899,28 +887,82 @@ function maybePromptOnClose(win, event) {
     if (win && !win.isDestroyed()) win.close();
     else app.quit();
   }
+  // This event is prevented either way: cancelled, or superseded by
+  // the close re-triggered above.
+  return true;
 }
 
-app.whenReady().then(async () => {
-  try {
-    // Drop Electron's default app menu (File / Edit / View / Window /
-    // Help) — the in-window topbar + rail are the navigation surface;
-    // the platform menu was just adding a strip of system chrome the
-    // app doesn't use.
-    Menu.setApplicationMenu(null);
-    if (!IS_DEV) registerAppProtocol();
-    const { child, apiBase, internalSecret } = await spawnBackend();
-    backendChild = child;
-    await createWindow(apiBase, internalSecret);
-  } catch (err) {
-    console.error("[main] startup failed:", err);
-    app.exit(1);
-  }
-});
+/**
+ * The locale the main process's own dialogs speak in: the one the
+ * renderer would come up in (see lib/main-messages.cjs). Read when
+ * asked rather than once — a language change in Settings rewrites
+ * config.toml and reloads the renderer while this process runs on.
+ */
+function mainLocale() {
+  return resolveLocale({
+    configured: readConfigLocale(),
+    appLocale: app.getLocale(),
+    preferred: app.getPreferredSystemLanguages(),
+  });
+}
+
+/**
+ * Tell the user the boot failed, where there is a user to tell (see
+ * lib/boot-failure.cjs). Resolves when the dialog is dismissed or has
+ * timed out, or at once when none is shown.
+ */
+function reportBootFailure(err) {
+  // What is on screen, if anything, is the window that failed: blank
+  // and frameless. Hidden, not closed — closing the last window would
+  // start a quit of its own, and that one exits with code 0.
+  for (const win of BrowserWindow.getAllWindows()) win.hide();
+  return showBounded(
+    bootFailureDialog({
+      env: process.env,
+      isDev: IS_DEV,
+      locale: mainLocale(),
+      error: err,
+    }),
+    (options) => dialog.showMessageBox(options),
+  );
+}
+
+app.whenReady().then(() =>
+  bootApp({
+    spawnBackend: async () => {
+      // Drop Electron's default app menu (File / Edit / View / Window /
+      // Help) — the in-window topbar + rail are the navigation surface;
+      // the platform menu was just adding a strip of system chrome the
+      // app doesn't use.
+      Menu.setApplicationMenu(null);
+      if (!IS_DEV) registerAppProtocol();
+      return spawnBackend();
+    },
+    createWindow: ({ apiBase, internalSecret }) =>
+      createWindow(apiBase, internalSecret),
+    stopBackend: killBackendTree,
+    reportFailure: reportBootFailure,
+    // A quit asked for while the failure dialog is up — a signal, the
+    // session ending — is held back and answered with the exit below:
+    // left alone it would exit with code 0.
+    onQuitAsked: (ended) =>
+      app.on("before-quit", (event) => {
+        event.preventDefault();
+        ended();
+      }),
+    quitting: () => quitGoingAhead,
+    exit: (code) => app.exit(code),
+    logError: console.error,
+  }),
+);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+// Set once a quit has gone past its prompt: a boot cut short by that
+// quit's stop ends as the quit (see bootApp in lib/startup.cjs).
+let quitGoingAhead = false;
 
 app.on("before-quit", (e) => {
   // Prompt on Cmd+Q / dock-quit / OS-shutdown if downloads are
@@ -928,11 +970,17 @@ app.on("before-quit", (e) => {
   // X-button path; both reuse the same guard.
   const focused = BrowserWindow.getFocusedWindow();
   const win = focused || BrowserWindow.getAllWindows()[0];
-  if (win) maybePromptOnClose(win, e);
-  // Tree-kill so the transport + yt-dlp + ffmpeg actually
-  // stop. A bare backendChild.kill() only signals the Rust process
-  // and orphans the grandchildren to init.
-  killBackendTree();
+  // Stop the backend and what it spawned (see killBackendTree) —
+  // only when the quit goes ahead: a quit cancelled at the prompt
+  // keeps the app, and so its backend (see lib/quit.cjs).
+  if (
+    handleBeforeQuit({
+      promptOnClose: () => (win ? maybePromptOnClose(win, e) : false),
+      stopBackend: killBackendTree,
+    })
+  ) {
+    quitGoingAhead = true;
+  }
 });
 
 // Re-create a window if the user clicks the dock icon on macOS while

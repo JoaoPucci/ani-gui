@@ -47,6 +47,8 @@ Three layers, in lockstep:
 - **Backend** — Rust crate inside `backend/`. Spawned as a sidecar by the desktop shell at startup. Resolves streams from the providers, fetches metadata from Kitsu/AniList, reads/writes the watch-history file, runs a streaming proxy on a localhost port, and exposes an HTTP API the renderer talks to via `fetch()`.
 - **External processes** — `curl-impersonate` for provider requests, `yt-dlp` / `ffmpeg` for downloads, and optionally `mpv` for the "Open in external player" escape hatch.
 
+The shell and the backend end together. A quit stops the backend, and with it the provider requests and download tools it has running. If the shell ends without quitting — a crash, a kill — the backend notices its parent is gone, through a pipe the shell holds open for as long as it lives, and stops itself and what it has running. Both hold from the moment the backend is spawned, including while it is still starting up — a first run creates and migrates its cache, which on a busy disk takes seconds — and a backend that loses its shell during startup just exits, having nothing running yet to stop. A launch that cannot get as far as a working window — the backend does not start, or the first page does not load — exits with code 1; a packaged build says why in an error dialog first, unless it was started unattended (see [`development.md`](./development.md)).
+
 ## Data flow: searching and playing an episode
 
 1. The user types a query into the search bar.
@@ -185,6 +187,8 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 Four MVP locales: English (`en`), Brazilian Portuguese (`pt-BR`), Latin American Spanish (`es-419`), Russian (`ru`). The set was chosen for free-content market fit, not language-coverage prestige. Phase-2 candidates listed in `docs/i18n.md`.
 
 The backend never returns localized text. Errors are stable keys (`error.scraper.timeout`, `error.search.no_results`, etc.); the frontend resolves them via Paraglide. Anime titles themselves are not translated by the app — they come from Kitsu/AniList per a user-chosen title-language preference.
+
+The Electron main process shows two dialogs of its own, where no page can: the error a failed startup ends with, and the prompt on a quit with downloads running. Their text lives in `electron/lib/main-messages.cjs`, in the same four locales, and the locale is resolved in the renderer's order: the one saved in the config, then the system's languages as Chromium reports them, then English.
 
 ## The retired CLI
 
