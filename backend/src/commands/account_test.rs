@@ -1360,15 +1360,28 @@ async fn watch_later_bridge_warms_a_presigned_image_when_it_seeds_the_detail_cac
         .mount(&kitsu)
         .await;
 
-    let state = state_with_kitsu(&kitsu.uri());
+    // The image cache must be this test's own. The shared default
+    // directory persists across runs, and its key is the signature-
+    // stripped URL — `http://127.0.0.1:<port>/cover.jpg` — so once an
+    // earlier run had cached the bytes under the port the OS hands
+    // this mock server again, the warm was served from disk, the
+    // server saw no request, and the assertion failed. Every passing
+    // run left one more port behind, so the flake grew with use.
+    let image_cache = tempfile::tempdir().expect("image cache tempdir");
+    let mut state = state_with_kitsu(&kitsu.uri());
+    std::sync::Arc::get_mut(&mut state)
+        .expect("state not yet shared")
+        .image_cache_dir = image_cache.path().join("images");
     let _ = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], None).await;
 
-    // The warm is spawned, so give it a moment to land rather than
-    // asserting on the same tick it was scheduled.
-    for _ in 0..40 {
-        if !images.received_requests().await.unwrap().is_empty() {
-            break;
-        }
+    // The warm is spawned, so poll for its effect rather than asserting
+    // on the same tick it was scheduled. The deadline only bounds a
+    // genuine failure; a passing run returns as soon as the request
+    // lands, so it can be generous enough for a loaded machine.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    while images.received_requests().await.unwrap().is_empty()
+        && tokio::time::Instant::now() < deadline
+    {
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
     assert!(
