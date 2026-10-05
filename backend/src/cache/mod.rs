@@ -14,6 +14,7 @@
 //! `$XDG_CACHE_HOME/ani-gui/images/<hash[0..2]>/<hash>.<ext>`.
 
 pub mod db;
+mod played_marks;
 pub mod schema;
 pub mod ttl;
 

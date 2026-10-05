@@ -9,10 +9,11 @@
 //! a watch it was written: a Continue load can store a guess within
 //! the second a play stamps the show.
 //!
-//! Mappings stored before plays left the mark got theirs once, at
-//! upgrade, by the rule the builds that wrote them read them with: a
-//! mapping written from a second before to ten seconds after the
-//! show's watch stamp was the play's (`migrations/V003`). The rule's
+//! Mappings stored before plays left the mark got theirs once, when
+//! this build first opened the cache, by the rule the builds that
+//! wrote them read them with: a mapping written from a second before
+//! to ten seconds after the show's watch stamp was the play's
+//! ([`crate::cache::played_marks`]). The rule's
 //! flaw — a guess stored in the second a play stamps the show reads as
 //! played — is carried into those marks, and only those; every mapping
 //! written since is judged by its mark alone.

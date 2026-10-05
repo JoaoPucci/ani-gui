@@ -31,7 +31,8 @@ use crate::error::{AniError, Result};
 pub type SqlitePool = Pool<SqliteConnectionManager>;
 
 /// Open a pool against an on-disk SQLite database, creating the file if
-/// it doesn't exist. Runs all pending migrations.
+/// it doesn't exist. Runs all pending migrations, and marks the
+/// mappings earlier builds' plays stored (`played_marks`).
 ///
 /// # Errors
 /// - [`AniError::Cache`] when the pool can't be built or migrations fail.
@@ -43,6 +44,7 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
         .map_err(|_| AniError::Cache)?;
     let mut conn = pool.get().map_err(|_| AniError::Cache)?;
     run_migrations(&mut conn)?;
+    crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
     Ok(pool)
 }
 
