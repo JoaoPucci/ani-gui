@@ -33,6 +33,7 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+import { goto } from '$app/navigation';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
@@ -244,5 +245,48 @@ describe('play route — a session opened from a guess records no Kitsu id', () 
 		await until(() => posted.external.length === 1, 'the external-player request');
 		expect(posted.external[0].kitsu_id).toBeUndefined();
 		expect(posted.external[0].title).toBe(TITLE);
+	});
+
+	it('an episode switch keeps the guess: its stream, watch and URL carry no Kitsu id', async () => {
+		setUrl(`/play/${KITSU_ID}`, { episode: '3', guess: '1' });
+		const posted = { external: [] as Posted[], syncplay: [] as Posted[] };
+		useHandlers(posted);
+		const watched: Posted[] = [];
+		server.use(
+			http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
+				watched.push((await request.json()) as Posted);
+				return new HttpResponse(null, { status: 204 });
+			})
+		);
+		app = mount(PlayPage, { target });
+		await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
+		FakeEventSource.instances[0].dispatch(
+			'done',
+			JSON.stringify({ id: 'session-1', kind: 'mp4', has_subtitles: false })
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '3', kind: 'mp4', guess: '1' });
+		const next = () =>
+			target.querySelector(
+				`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+			) as HTMLButtonElement | null;
+		await until(() => next() !== null && !next()!.disabled, 'the next-episode button');
+		vi.mocked(goto).mockClear();
+
+		next()!.click();
+		await until(() => FakeEventSource.instances.length > 1, 'the switch stream');
+		const switchUrl = new URL(FakeEventSource.instances[1].url);
+		expect(switchUrl.searchParams.get('episode')).toBe('4');
+		expect(switchUrl.searchParams.get('kitsu_id')).toBeNull();
+		FakeEventSource.instances[1].dispatch(
+			'done',
+			JSON.stringify({ id: 'session-2', kind: 'mp4', has_subtitles: false })
+		);
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch navigation');
+
+		const landed = new URL(String(vi.mocked(goto).mock.calls[0][0]), 'http://x');
+		expect(landed.searchParams.get('episode')).toBe('4');
+		expect(landed.searchParams.get('guess')).toBe('1');
+		await until(() => watched.some((w) => w.episode === '4'), 'the switch watch');
+		expect(watched.find((w) => w.episode === '4')?.kitsu_id).toBeUndefined();
 	});
 });
