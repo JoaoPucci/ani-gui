@@ -8,18 +8,28 @@ use crate::commands::kitsu::{title_match_prefix, TITLE_MATCH_VERSION};
 use crate::error::Result;
 use crate::scraper::provider::ShowKey;
 
+use super::history_title_tail::{all_digits, without_episode_tail};
+
 /// Delete the title-match rows, every version and cour, stored for
 /// the row `id` titled `title`.
 ///
 /// # Errors
 /// Cache failures propagate.
 pub(crate) fn forget_title_matches(state: &AppState, id: &str, title: &str) -> Result<()> {
-    for prefix in title_match_prefixes(id, title) {
-        for (key, _) in cour_entries(state, &prefix)? {
-            meta_cache_delete(&state.cache_pool, &key)?;
-        }
+    for (key, _) in own_matches(state, id, title)? {
+        meta_cache_delete(&state.cache_pool, &key)?;
     }
     Ok(())
+}
+
+/// The (key, body) pairs of the row `id`'s title-match rows, titled
+/// `title`, every version and cour.
+fn own_matches(state: &AppState, id: &str, title: &str) -> Result<Vec<(String, String)>> {
+    let mut found = Vec::new();
+    for prefix in title_match_prefixes(id, title) {
+        found.extend(cour_entries(state, &prefix)?);
+    }
+    Ok(found)
 }
 
 /// The key prefixes of the row's title-match rows, every cour to
@@ -57,13 +67,11 @@ pub(crate) fn forget_title_matches_naming(
 ) -> Result<()> {
     let mut own = std::collections::HashSet::new();
     for title in titles {
-        for prefix in title_match_prefixes(id, title) {
-            own.extend(
-                cour_entries(state, &prefix)?
-                    .into_iter()
-                    .map(|(key, _)| key),
-            );
-        }
+        own.extend(
+            own_matches(state, id, title)?
+                .into_iter()
+                .map(|(key, _)| key),
+        );
     }
     for (key, body) in meta_cache_entries_prefix(&state.cache_pool, "title-match:")? {
         if kitsu_ids.contains(&body) && !own.contains(&key) {
@@ -79,15 +87,10 @@ pub(crate) fn forget_title_matches_naming(
 /// # Errors
 /// Cache failures propagate.
 pub(crate) fn title_match_ids(state: &AppState, id: &str, title: &str) -> Result<Vec<String>> {
-    let mut named = Vec::new();
-    for prefix in title_match_prefixes(id, title) {
-        named.extend(
-            cour_entries(state, &prefix)?
-                .into_iter()
-                .map(|(_, body)| body),
-        );
-    }
-    Ok(named)
+    Ok(own_matches(state, id, title)?
+        .into_iter()
+        .map(|(_, body)| body)
+        .collect())
 }
 
 /// The (key, body) pairs under `prefix` whose remainder is a cour.
@@ -99,40 +102,3 @@ fn cour_entries(state: &AppState, prefix: &str) -> Result<Vec<(String, String)>>
         .filter(|(key, _)| all_digits(&key[prefix.len()..]))
         .collect())
 }
-
-/// `title` less a trailing `(N episodes)`, itself optionally followed
-/// by `(year)` — the tail rows written before the provider migration
-/// carry, which Continue Watching strips before it searches.
-pub(crate) fn without_episode_tail(title: &str) -> &str {
-    let is_year = |inner: &str| (1..=4).contains(&inner.len()) && all_digits(inner);
-    let before_year = strip_paren_tail(title, is_year).unwrap_or(title);
-    strip_paren_tail(before_year, is_episode_count)
-        .or_else(|| strip_paren_tail(title, is_episode_count))
-        .unwrap_or(title)
-        .trim()
-}
-
-/// `s` less a trailing parenthesized group whose trimmed contents pass
-/// `inner`.
-fn strip_paren_tail(s: &str, inner: impl Fn(&str) -> bool) -> Option<&str> {
-    let body = s.trim_end().strip_suffix(')')?;
-    let open = body.rfind('(')?;
-    inner(body[open + 1..].trim()).then(|| body[..open].trim_end())
-}
-
-/// `N episode` or `N episodes`, any case.
-fn is_episode_count(inner: &str) -> bool {
-    let Some((count, word)) = inner.split_once(char::is_whitespace) else {
-        return false;
-    };
-    let word = word.trim().to_ascii_lowercase();
-    all_digits(count) && (word == "episode" || word == "episodes")
-}
-
-fn all_digits(s: &str) -> bool {
-    !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
-}
-
-#[cfg(test)]
-#[path = "history_forget_titles_test.rs"]
-mod tests;

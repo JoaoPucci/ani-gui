@@ -3,7 +3,7 @@
 //! bar.
 
 use crate::app::AppState;
-use crate::commands::history_forget_titles::without_episode_tail;
+use crate::commands::history_title_tail::without_episode_tail;
 use crate::commands::kitsu::title_match_put;
 use crate::error::Result;
 use crate::history::HistoryEntry;
