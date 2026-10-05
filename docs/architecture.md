@@ -78,7 +78,7 @@ The survey that chose hianime, and the reasoning behind the shape this section d
 
 ## Watch history and removing it
 
-A history row also records the Kitsu id of the show the user played, so Continue Watching renders that show without matching the provider's title back to Kitsu; rows written before it carry none and match as [`title-resolution.md`](./title-resolution.md#what-this-enables) describes.
+A history row also records the Kitsu id of the show the user played, so Continue Watching renders that show without matching the provider's title back to Kitsu. Rows written before it carry none — and a row whose recorded entry Kitsu has since deleted is treated the same — and match as [`title-resolution.md`](./title-resolution.md#what-this-enables) describes; a play from a card matched that way records the match only when a play stored it, so a guess never becomes the row's id.
 
 Removing a row removes what is kept about its show beside it (`backend/src/commands/history_remove.rs` and the `history_forget*.rs` modules it calls):
 
