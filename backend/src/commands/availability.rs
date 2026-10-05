@@ -1018,8 +1018,7 @@ fn positive_ttl_for(status: Option<&str>) -> u64 {
 ///   - not finished, no
 ///     schedule known    → 24h, same as the ongoing positive TTL.
 fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch_s: u64) -> u64 {
-    const GRACE_SECS: u64 = 3 * 60 * 60;
-    const FLOOR_SECS: u64 = 60 * 60;
+    use crate::commands::availability_ttl::{FLOOR_SECS, NEGATIVE_GRACE_SECS as GRACE_SECS};
     if status == Some("finished") {
         return AVAILABILITY_TTL_NEGATIVE_SECS;
     }
