@@ -38,6 +38,28 @@ fn bounded_with_grace(base: u64, next_airing_at: Option<u64>, now: u64, grace: u
     cut.min(base)
 }
 
+/// Most episodes one drop moves the schedule's aired count by: one a
+/// week, two for a double-episode premiere. A wider gap says the
+/// schedule and the listing number different entries, not that the
+/// provider is behind.
+pub(crate) const MAX_DROP_EPISODES: u32 = 2;
+
+/// The airing a positive row is bounded by. When the schedule says an
+/// episode aired that the listing's count does not carry yet — AniList
+/// moved on to the following week while the provider has not listed
+/// the drop — the drop has already happened, so `now`; otherwise
+/// `next_airing_at`. Both counts are whole episodes in the entry's own
+/// numbering; extras never enter `count`.
+#[must_use]
+pub(crate) fn next_airing_for_count(
+    next_airing_at: Option<u64>,
+    _count: Option<u32>,
+    _aired: Option<u32>,
+    _now: u64,
+) -> Option<u64> {
+    next_airing_at
+}
+
 /// A positive row already in the cache when the schedule arrives,
 /// re-cut as if it had been written knowing it: the row's remaining
 /// life is bounded by [`bounded_by_next_airing`], and the new total

@@ -124,6 +124,7 @@ fn write_airing_row(state: &AppState, kitsu_id: &str, status: &AiringStatus) {
             &state.cache_pool,
             kitsu_id,
             status.next_airing_at,
+            status.aired,
             now,
         );
     }

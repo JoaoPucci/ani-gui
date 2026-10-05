@@ -217,3 +217,49 @@ fn a_premiere_moved_earlier_cuts_the_negative_its_old_date_sized() {
         Some(HOUR + 2 * HOUR + NEGATIVE_GRACE_SECS)
     );
 }
+
+// --- a count the schedule has passed ------------------------------------
+
+#[test]
+fn a_count_behind_the_schedule_is_bounded_by_now() {
+    let next = Some(NOW + 6 * DAY);
+    assert_eq!(
+        next_airing_for_count(next, Some(7), Some(8), NOW),
+        Some(NOW)
+    );
+    assert_eq!(
+        next_airing_for_count(next, Some(6), Some(8), NOW),
+        Some(NOW)
+    );
+    // The last episode aired: no next airing, the listing still behind.
+    assert_eq!(
+        next_airing_for_count(None, Some(11), Some(12), NOW),
+        Some(NOW)
+    );
+}
+
+#[test]
+fn a_count_level_with_or_far_from_the_schedule_keeps_the_next_airing() {
+    let next = Some(NOW + 6 * DAY);
+    assert_eq!(next_airing_for_count(next, Some(8), Some(8), NOW), next);
+    assert_eq!(next_airing_for_count(next, Some(9), Some(8), NOW), next);
+    assert_eq!(next_airing_for_count(next, Some(7), Some(20), NOW), next);
+    assert_eq!(next_airing_for_count(next, None, Some(8), NOW), next);
+    assert_eq!(next_airing_for_count(next, Some(7), None, NOW), next);
+    assert_eq!(next_airing_for_count(None, Some(8), Some(8), NOW), None);
+}
+
+proptest::proptest! {
+    #[test]
+    fn only_a_lagging_count_moves_the_bound_to_now(
+        next in proptest::option::of(0u64..(2 * NOW)),
+        count in 0u32..2000,
+        offset in -3i64..6,
+    ) {
+        // Aired within a few episodes of the count, on either side.
+        let aired = u32::try_from(i64::from(count) + offset).unwrap_or(0);
+        let got = next_airing_for_count(next, Some(count), Some(aired), NOW);
+        let lagging = aired > count && aired - count <= MAX_DROP_EPISODES;
+        proptest::prop_assert_eq!(got, if lagging { Some(NOW) } else { next });
+    }
+}

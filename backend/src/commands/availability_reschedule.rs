@@ -25,6 +25,7 @@ pub(crate) fn cut_rows_at_next_airing(
     pool: &SqlitePool,
     kitsu_id: &str,
     next_airing_at: Option<u64>,
+    _aired: Option<u32>,
     now: u64,
 ) {
     if next_airing_at.is_none() {

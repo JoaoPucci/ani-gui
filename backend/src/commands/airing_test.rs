@@ -426,3 +426,22 @@ async fn a_batch_seeded_schedule_cuts_a_negative_written_before_it() {
     assert!(ttl <= 5 * 60 * 60 + 5, "ttl {ttl}");
     assert!(ttl > 4 * 60 * 60, "ttl {ttl}");
 }
+
+#[tokio::test]
+async fn a_detail_page_s_schedule_past_the_count_cuts_it_to_the_floor() {
+    // AniList already points at next week's episode 9; the provider's
+    // row says 7 (seed_positive_day).
+    let at = epoch_now() + 6 * 24 * 60 * 60;
+    let body = format!(
+        r#"{{"data":{{"Media":{{"status":"RELEASING","episodes":12,
+        "nextAiringEpisode":{{"episode":9,"airingAt":{at}}}}}}}}}"#
+    );
+    let (kitsu, anilist) = mappings_and_anilist(body).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "50551");
+    airing_get_with_anilist_base(&state, "50551", Some(&anilist.uri()))
+        .await
+        .expect("ok");
+    let ttl = row_ttl(&state, "50551");
+    assert!(ttl <= 60 * 60 + 5, "ttl {ttl}");
+}

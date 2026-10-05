@@ -77,3 +77,55 @@ fn a_finished_show_keeps_its_month() {
         AVAILABILITY_TTL_FINISHED_SECS
     );
 }
+
+fn seed_schedule(state: &AppState, kitsu_id: &str, aired: u32, at: u64) {
+    let body = format!(
+        r#"{{"aired":{aired},"next_episode":{},"next_airing_at":{at},"upcoming":[]}}"#,
+        aired + 1
+    );
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &format!("airing:v2:{kitsu_id}"),
+        &body,
+        3600,
+    )
+    .expect("seed airing row");
+}
+
+#[test]
+fn a_count_written_behind_the_schedule_is_re_asked_within_the_hour() {
+    // Just past a drop: AniList already points at next week's episode
+    // 9, the provider still lists 7.
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    seed_schedule(&state, "behind", 8, now() + 6 * 24 * 60 * 60);
+    write_cache_full(&state, "behind", "sub", Some("current"), &positive(7));
+    assert!(stored_ttl(&state, "behind") <= 60 * 60);
+}
+
+#[test]
+fn a_count_level_with_the_schedule_keeps_its_day() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    seed_schedule(&state, "level", 8, now() + 6 * 24 * 60 * 60);
+    write_cache_full(&state, "level", "sub", Some("current"), &positive(8));
+    assert_eq!(stored_ttl(&state, "level"), AVAILABILITY_TTL_ONGOING_SECS);
+}
+
+#[test]
+fn a_finished_show_behind_its_total_keeps_its_month() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    seed_schedule(&state, "done-behind", 12, now() + 6 * 24 * 60 * 60);
+    write_cache_full(
+        &state,
+        "done-behind",
+        "sub",
+        Some("finished"),
+        &positive(11),
+    );
+    assert_eq!(
+        stored_ttl(&state, "done-behind"),
+        AVAILABILITY_TTL_FINISHED_SECS
+    );
+}
