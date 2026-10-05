@@ -129,3 +129,32 @@ fn a_finished_show_behind_its_total_keeps_its_month() {
         AVAILABILITY_TTL_FINISHED_SECS
     );
 }
+
+fn warm_args(kitsu_id: &str, status: &str) -> AvailabilityArgs {
+    serde_json::from_value(serde_json::json!({
+        "title": kitsu_id,
+        "mode": "sub",
+        "kitsu_id": kitsu_id,
+        "status": status,
+    }))
+    .expect("args")
+}
+
+#[test]
+fn the_warm_seeds_schedules_for_shows_on_air_as_well_as_to_come() {
+    // A current show's positive row is bounded by its next airing only
+    // if the schedule is cached before the warm's probe writes it.
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = cache_only_state(&td);
+    write_cache_full(&state, "fresh", "sub", Some("current"), &positive(3));
+    let items = [
+        warm_args("airing", "current"),
+        warm_args("premiere", "upcoming"),
+        warm_args("done", "finished"),
+        warm_args("fresh", "current"),
+    ];
+    assert_eq!(
+        schedule_seed_ids(&state, &items),
+        vec!["airing".to_string(), "premiere".to_string()]
+    );
+}
