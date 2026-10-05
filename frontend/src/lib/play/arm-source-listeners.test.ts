@@ -161,6 +161,72 @@ describe('armSourceScopedListeners', () => {
 		expect(readPosition('show-a', 6, positions)).toBeNull();
 	});
 
+	describe('an episode that played to its end', () => {
+		// Ending forgets the episode; nothing the source does on its way
+		// out — a pause, the flush when the next stream attaches or the
+		// page leaves — may write it back, whatever the length says.
+		function playToEnd(duration: number) {
+			savePosition('show-a', 6, 612.5, Number.NaN, positions);
+			arm('show-a', 6);
+			Object.defineProperty(video, 'duration', { configurable: true, get: () => duration });
+			video.currentTime = 0;
+			video.dispatchEvent(new Event('loadedmetadata'));
+			video.dispatchEvent(new Event('durationchange'));
+			video.currentTime = Number.isFinite(duration) ? duration : 1420;
+			video.dispatchEvent(new Event('ended'));
+		}
+
+		it('stays forgotten when its stream is left, with a known length', () => {
+			playToEnd(1420);
+			video.dispatchEvent(new Event('pause'));
+			scope.flush();
+			expect(readPosition('show-a', 6, positions)).toBeNull();
+		});
+
+		it('stays forgotten when its stream is left, with a length never known', () => {
+			// No kept point to wait on: a started mark opens at once.
+			arm('show-a', 6);
+			Object.defineProperty(video, 'duration', {
+				configurable: true,
+				get: () => Number.POSITIVE_INFINITY
+			});
+			video.dispatchEvent(new Event('loadedmetadata'));
+			video.currentTime = 1420;
+			video.dispatchEvent(new Event('ended'));
+			video.dispatchEvent(new Event('pause'));
+			scope.flush();
+			expect(readPosition('show-a', 6, positions)).toBeNull();
+		});
+
+		it('stays forgotten when the clip ends in its first seconds', () => {
+			arm('show-a', 6);
+			Object.defineProperty(video, 'duration', { configurable: true, get: () => 10 });
+			video.dispatchEvent(new Event('loadedmetadata'));
+			video.currentTime = 10;
+			video.dispatchEvent(new Event('ended'));
+			scope.flush();
+			expect(readPosition('show-a', 6, positions)).toBeNull();
+		});
+
+		it('is kept again once playback resumes on the same stream', () => {
+			arm('show-a', 6);
+			Object.defineProperty(video, 'duration', {
+				configurable: true,
+				get: () => Number.POSITIVE_INFINITY
+			});
+			video.dispatchEvent(new Event('loadedmetadata'));
+			video.currentTime = 1420;
+			video.dispatchEvent(new Event('ended'));
+			video.currentTime = 300;
+			video.dispatchEvent(new Event('playing'));
+			video.dispatchEvent(new Event('timeupdate'));
+			expect(readPosition('show-a', 6, positions)).toBe(300);
+			video.currentTime = 320;
+			scope.flush();
+			expect(readPosition('show-a', 6, positions)).toBe(320);
+		});
+	});
+
 	it('a flushed source writes nothing more', () => {
 		arm('show-a', 6);
 		video.dispatchEvent(new Event('loadedmetadata'));
