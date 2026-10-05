@@ -2,7 +2,7 @@
 //
 // The decision itself is a pure function with its own unit tests; this
 // drives a real keydown through the mounted play page and checks what
-// the user gets — the singleton <video> flips its muted flag, the
+// the user gets — the page's <video> flips its muted flag, the
 // volume pill opens as feedback, and the mute button relabels.
 //
 // The stream is an mp4 session: that kind goes straight to the
@@ -38,7 +38,7 @@ vi.mock('$app/navigation', () => ({
 
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { getGlobalVideo } from '../../src/lib/play/global-video';
+import { playerVideo, playerVideoInSlot } from './player-video';
 
 const KITSU_ID = '42';
 const TITLE = 'Ongoing Show';
@@ -170,15 +170,13 @@ describe('play route — m / M toggles mute', () => {
 		// hand to where the real navigation would have landed.
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
 
-		// The session opens the frame, which pulls the singleton video
-		// in and renders the custom controls with their mute button.
-		const video = getGlobalVideo();
+		// The session opens the frame, which puts the page's video in
+		// its slot and renders the custom controls with their mute button.
 		await until(
-			() =>
-				video.parentElement?.classList.contains('player-video-slot') === true &&
-				buttonLabelled(m.play_controls_mute_aria_label()) !== null,
+			() => playerVideoInSlot() && buttonLabelled(m.play_controls_mute_aria_label()) !== null,
 			'the video in its slot and the mute button'
 		);
+		const video = playerVideo();
 		video.muted = false;
 		expect(controls()?.classList.contains('volume-revealed')).toBe(false);
 
@@ -246,11 +244,8 @@ describe('play route — m / M toggles mute', () => {
 		// `goto`, which this tier stubs out — so the stub is moved by
 		// hand to where the real navigation would have landed.
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
-		const video = getGlobalVideo();
-		await until(
-			() => video.parentElement?.classList.contains('player-video-slot') === true,
-			'the video in its slot'
-		);
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		const video = playerVideo();
 		video.muted = false;
 
 		// A held key auto-repeats keydown; only the first press counts.

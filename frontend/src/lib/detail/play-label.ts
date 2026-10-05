@@ -51,13 +51,15 @@ export function isSingleVideo(
  *   - `episode_one` — multi-ep show, never started → "Play episode 1"
  *   - `resume` — multi-ep show, continuing past last watched → "Continue · Episode N"
  *   - `replay` — multi-ep show, last episode reached → "Replay · Episode N"
+ *   - `continue` — single-video show left part-way → "Continue"
  */
 export type PlayLabelState =
 	| { kind: 'watch' }
 	| { kind: 'watch_again' }
 	| { kind: 'episode_one' }
 	| { kind: 'resume'; episode: number }
-	| { kind: 'replay'; episode: number };
+	| { kind: 'replay'; episode: number }
+	| { kind: 'continue' };
 
 /**
  * Resolve the CTA state from the three inputs the detail page has
@@ -70,22 +72,29 @@ export type PlayLabelState =
  *     dispatch to — already capped at the show's known
  *     `episode_count` by the page's `defaultEpisode()` derivation.
  *
+ *   - `leftPartWay` says the last watched episode was left part-way,
+ *     its position kept: going back to it continues it, so it is
+ *     never a replay.
+ *
  * Single-video shows ignore `defaultEpisode` entirely: with or
  * without a resume entry, there's only one video, so the CTA
- * reads "Watch" or "Watch again" — never with an episode number.
+ * reads "Watch", "Watch again" or, left part-way, "Continue" —
+ * never with an episode number.
  */
 export function computePlayLabel(args: {
 	isSingleVideo: boolean;
 	resumeEntry: { ep_no: string } | null | undefined;
 	defaultEpisode: number;
+	leftPartWay?: boolean;
 }): PlayLabelState {
-	const { isSingleVideo, resumeEntry, defaultEpisode } = args;
+	const { isSingleVideo, resumeEntry, defaultEpisode, leftPartWay = false } = args;
 	if (isSingleVideo) {
-		return resumeEntry ? { kind: 'watch_again' } : { kind: 'watch' };
+		if (!resumeEntry) return { kind: 'watch' };
+		return leftPartWay ? { kind: 'continue' } : { kind: 'watch_again' };
 	}
 	if (!resumeEntry) return { kind: 'episode_one' };
 	const last = parseInt(resumeEntry.ep_no, 10);
-	if (Number.isFinite(last) && defaultEpisode === last) {
+	if (!leftPartWay && Number.isFinite(last) && defaultEpisode === last) {
 		return { kind: 'replay', episode: defaultEpisode };
 	}
 	return { kind: 'resume', episode: defaultEpisode };

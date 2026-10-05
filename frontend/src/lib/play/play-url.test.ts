@@ -34,16 +34,14 @@ describe('buildPlayQuery', () => {
 		expect(buildPlayQuery(noField, 1)).not.toContain('cache_hit');
 	});
 
-	it('combines all flags when cache_hit and quality/mode apply', () => {
+	it('combines all flags when cache_hit applies', () => {
 		const q = buildPlayQuery(
 			baseSession({
 				session_id: 'sx',
 				media_kind: 'hls',
 				cache_hit: true
 			}),
-			12,
-			'1080',
-			'dub'
+			12
 		);
 		// Order isn't part of the contract; URLSearchParams round-trip
 		// proves every key landed regardless of join order.
@@ -52,8 +50,6 @@ describe('buildPlayQuery', () => {
 		expect(params.get('episode')).toBe('12');
 		expect(params.get('kind')).toBe('hls');
 		expect(params.get('cache_hit')).toBe('1');
-		expect(params.get('q')).toBe('1080');
-		expect(params.get('md')).toBe('dub');
 	});
 
 	it('starts with `?` so callers can append directly to the route base', () => {
@@ -61,16 +57,15 @@ describe('buildPlayQuery', () => {
 		expect(q.startsWith('?')).toBe(true);
 	});
 
-	it('carries the resolved quality + mode so the player records the true stream setting', () => {
-		// The session-reuse shortcut compares the loaded session's
-		// quality/mode against the requested one. /play must learn what
-		// the stream was actually resolved at from the URL — not infer it
-		// from mutable current settings — so a later setting change can't
-		// retro-stamp a live session with the wrong value.
+	it('carries no quality or mode: nothing reads them back', () => {
+		// The play page read them to stamp the session a returning page
+		// could take back; the page now loads every visit fresh, so the
+		// URL names the session and nothing about how it was resolved.
+		// @ts-expect-error the builder takes no quality or mode
 		const q = buildPlayQuery(baseSession({ session_id: 's' }), 3, 'worst', 'dub');
 		const p = new URLSearchParams(q.replace(/^\?/, ''));
-		expect(p.get('q')).toBe('worst');
-		expect(p.get('md')).toBe('dub');
+		expect(p.get('q')).toBeNull();
+		expect(p.get('md')).toBeNull();
 	});
 
 	it('omits q/md when not provided', () => {

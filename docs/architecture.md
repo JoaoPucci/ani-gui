@@ -146,26 +146,13 @@ An "Open in external player" button on the player chrome launches the user's `mp
 
 The player surfaces "Skip Opening" / "Skip Outro" buttons during their respective intervals. The skip times come from [aniskip.com](https://aniskip.com)'s community-submitted database, keyed by MyAnimeList id rather than Kitsu. The backend bridges Kitsu → MAL using Kitsu's mappings endpoint, then asks aniskip for `(mal_id, episode)` skip intervals and caches the response for 7 days (skip times stabilize quickly once submitted). When auto-skip is enabled in settings, the player jumps the playhead past the interval automatically; otherwise it just shows the button.
 
-### Persistent Picture-in-Picture across navigation
+### Leaving the player
 
-The Fullscreen and Picture-in-Picture APIs both bind to a specific `HTMLVideoElement` instance: removing the element from the DOM closes the PiP window. SvelteKit destroys page components on route change, which would otherwise kill PiP every time the user clicked away from the player.
+The play page makes its own `<video>` element and releases it when the page goes: the stream's engine is destroyed, the element unloads and leaves the page, and Picture-in-Picture — which shows that element — closes with it. Picture-in-Picture is available from the player while the player is open; it does not follow the viewer to other pages. An episode swap on the same show keeps the page and its element, and swaps the stream in place. The volume and mute carry from one visit's element to the next.
 
-The app sidesteps that by parking the `<video>` element in a hidden 1×1 host attached to `document.body` — body lives outside Svelte's reactive tree, so the element survives any number of route changes. The play page is a "controller" for that singleton: on mount it moves the element into its player frame; on destroy it moves it back to the hidden host. PiP keeps drawing throughout.
+Each episode's position is kept in the renderer's local storage (`ani-gui.watch-positions`, the 200 most recent episodes): the episode is marked started, at zero, when it is chosen — the detail page's Play button or tiles, the Continue card, the player's episode switch, before the resolve that records the watch — and again when its stream attaches, either time unless a point is already kept for it. Its position is written as it plays, when it pauses and when its stream is replaced or the page leaves. Opening the episode again loads it fresh and seeks there once its metadata is in, unless a stale-stream recovery's position is pending for it, which is fresher. A position under 15 seconds in is kept as the started mark, so the episode reopens from its start; a position within the last 90 seconds, or an episode played to its end, is finished and forgotten. An ended episode stays forgotten when its stream is replaced or the page leaves, whatever its length and however short; only playing it again on the same stream keeps its position once more. A point in the first seconds is never judged finished, however short the stream, and a started mark opens without waiting for the stream's length. A point saved while the stream's length was not yet known cannot be judged then; the next visit checks it once the stream reports a known length — at its metadata, or, when the length is still unknown then, at the first change that brings one — and forgets one that falls in the last 90 seconds instead of seeking to it. Nothing drops the wait: playback starting on its own and the engine's own seeks are not the viewer, the player's seek controls need a known length so nothing the viewer does through them reaches it, and a seek through Chromium's native controls bar is not seen either — the resume lands when the length arrives. Until then no position is written for the stream, so leaving keeps the point; a stream whose length never becomes known writes no position, though one that plays to its end still forgets the point, as any ended episode does. Until a visit judges it, such a point still makes its episode the Continue target.
 
-Navigation away from the player branches three ways:
-
-1. **Episode swap on the same show** — the singleton stays attached to the play frame; the new page's load effect swaps its `src` in place. No PiP, no teardown.
-2. **Different route or different show**, auto-PiP enabled (default) — the page calls `requestPictureInPicture()` from the navigation hook, the floating window appears, the user keeps watching while they browse. A paused video also pops out into PiP so the user keeps the floating thumbnail and can resume from there.
-3. **Different route or different show**, auto-PiP disabled — the page pauses the singleton instead of requesting PiP. Without an explicit pause the off-screen element would keep streaming audio in the background.
-
-The PiP window itself has two close paths, and the app distinguishes them:
-
-- **X button (close in place)** — the platform's PiP UI pauses the video as part of the close path. The app reads this signal (a `pause` event lands within milliseconds of `leavepictureinpicture`) and does nothing else; the user dismissed the floating thumbnail and stays where they are.
-- **Return-to-tab** — the platform keeps playback state intact. The app interprets that as an explicit request to come back to the player and navigates to `/play/[id]` so the stream surfaces inline again.
-
-The discriminator is "did a `pause` event fire within ~100 ms of `leavepictureinpicture`?". The edge case (user manually pauses then immediately clicks return-to-tab inside the 100 ms window) misclassifies as X-close; this is accepted to keep the common cases right.
-
-Clicking back into the same episode reuses the live session: the play page's load effect detects that the singleton already has the right `src` loaded and skips re-attaching, so playback resumes at its current timestamp instead of restarting from zero.
+An episode's watched mark is written when it starts, so the last watched episode is the one the viewer was in when they left. When that episode has a kept position — the started mark included — the Continue Watching card and the detail page's Play button go back to it — the card shows its number, and the button reads "Continue · Episode N" (or "Continue" for a movie) rather than Replay; once it is finished, or with nothing kept for it (pushed out by the 200-episode cap, or storage refused), they go on to the next episode as before. An episode whose stream fails to load every time stays the Continue target: it is the one the viewer chose, and it is marked started as its stream attaches. Only the last watched episode is asked about: a position kept for an older one does not pull Continue back. Removing a show's Continue card forgets its kept positions — by the card's matched Kitsu id, or for a card whose match never resolved, by the show id → Kitsu id mapping a play stamps, which expires thirty days after the show's last play and can be refused or dropped as wrong; a show with neither keeps them; a show another remaining history row still maps to keeps them too, since that row is still a Continue card, and so does every show when a remaining row's show cannot be told (unresolved, with no readable stamped mapping) — and clearing the history forgets them all. Forgetting a show's positions, or all of them, also drops a pending stale-stream recovery point for that show, which otherwise waits in memory for the episode's next attach.
 
 ### Episode prefetching
 
@@ -176,22 +163,7 @@ Two prefetch surfaces warm play data ahead of demand so episode boundaries don't
 
 Both flow through `play-cache.getOrFire` — keyed by show id + episode + mode + quality — which dedupes concurrent calls and keeps a 4-hour TTL. Cancellation goes through `clearForShow(showId)`, which aborts every in-flight prefetch for that show.
 
-The cancellation policy is PiP-aware. On play-page destroy:
-
-| Situation                                        | Action                                                                                  |
-|--------------------------------------------------|-----------------------------------------------------------------------------------------|
-| No PiP active                                    | `clearForShow` immediately — the user truly left the show.                              |
-| PiP active                                       | **Defer.** Register a one-shot `leavepictureinpicture` listener and a deferred-cancel registry entry keyed on the show id. The user is still engaged with the show via the floating thumbnail. |
-
-The deferred entry can be discharged in three ways:
-
-1. **PiP closes elsewhere** — the listener fires `clearForShow(showId)` and self-removes. User truly disengaged.
-2. **PiP closes while the user is back on `/play/[id]` for the same show** — listener noops; the new mount has already taken ownership of the prefetches.
-3. **A different show's `/play/[id]` mounts during PiP** — the new mount calls `fireDeferredCancelsExcept(currentShowId)`, which flushes every deferred cancel whose id differs from the current one. Without this, two shows' prefetches would run concurrently against the provider's rate limit until PiP eventually closed.
-
-Closing PiP via X **while still on `/play/[id]`** doesn't kill prefetch — the page never unmounted, no listener was registered, and `onDestroy` hasn't run.
-
-The pure decision helpers and the registry live in [`frontend/src/lib/play/prefetch-lifecycle.ts`](../frontend/src/lib/play/prefetch-lifecycle.ts) and are unit-tested next to the file.
+When the play page goes, it clears the show's in-flight prefetches.
 
 ## User settings
 
@@ -207,8 +179,7 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 | `auto_play_next` | `false` | When the current episode ends, automatically resolve and play the next one. |
 | `auto_skip_op` | `false` | When aniskip has an OP interval, jump past it automatically. |
 | `auto_skip_ed` | `false` | Same as above, for the ED. |
-| `use_custom_player_controls` | `false` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. |
-| `disable_auto_pip_on_leave` | `false` | When set, navigating away from the player pauses playback instead of entering PiP. |
+| `use_custom_player_controls` | `true` | Replace the browser's native controls with the in-app two-row bar. The native bar gives free PiP/captions menus; the custom bar keeps the Skip OP/ED button visible during fullscreen. |
 | `download_bottom_bar_enabled` | `true` | Show the per-download progress dock at the bottom of the window when downloads are active. |
 
 ## Localization

@@ -82,6 +82,7 @@
 	"play_button_resume": "Continuar · Episódio {episode}",
 	"play_button_watch": "Assistir",
 	"play_button_watch_again": "Assistir de novo",
+	"play_button_continue": "Continuar",
 	"quality_group_aria_label": "Qualidade",
 	"quality_group_label": "Qualidade",
 	"settings_error_prefix": "Ajustes: {detail}",

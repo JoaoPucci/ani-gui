@@ -73,7 +73,7 @@ vi.mock('hls.js', () => {
 import Hls from 'hls.js';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { getGlobalVideo } from '../../src/lib/play/global-video';
+import { playerVideo, playerVideoInSlot } from './player-video';
 
 type FakeHlsT = InstanceType<typeof Hls> & {
 	startLoadCalls: number;
@@ -184,11 +184,8 @@ async function mountPlayingHls(opts: { proven?: boolean } = {}): Promise<FakeHls
 	useShowHandlers();
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
 	app = mount(PlayPage, { target });
-	const video = getGlobalVideo();
-	await until(
-		() => video.parentElement?.classList.contains('player-video-slot') === true,
-		'the video in its slot'
-	);
+	await until(() => playerVideoInSlot(), 'the video in its slot');
+	const video = playerVideo();
 	await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 	await until(() => hlsInstances().length > 0, 'the hls engine to attach');
 	if (opts.proven !== false) {
@@ -288,7 +285,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-9', episode: '2', kind: 'hls' });
 		await until(() => hlsInstances().length > 1, 'the new session to attach');
 		const fresh = hlsInstances()[hlsInstances().length - 1];
-		const video = getGlobalVideo();
+		const video = playerVideo();
 		// The fresh stream proves itself: the machine reset with the
 		// re-attach, so playback must render again (happy-dom never
 		// fires `playing` on its own).
@@ -307,7 +304,7 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		// the host stalls. The stream already proved itself — the
 		// stall must nudge in place, not evict and re-resolve.
 		const hls = await mountPlayingHls();
-		const video = getGlobalVideo();
+		const video = playerVideo();
 		video.currentTime = 0.5;
 		const streamsBefore = FakeEventSource.instances.length;
 
@@ -317,40 +314,11 @@ describe('play route — host-slow fatals nudge the same stream', () => {
 		expect(FakeEventSource.instances.length).toBe(streamsBefore);
 	});
 
-	it('progress earned off-route still makes a stall nudge', async () => {
-		// The viewer leaves for PiP before playback crosses the running
-		// threshold; the route unmounts but the singleton keeps
-		// playing. Minutes later the host stalls. Progress tracking
-		// rides the SOURCE, not the page, so the surviving player
-		// callbacks see a proven stream and nudge in place instead of
-		// taking the disruptive re-resolve.
-		const hls = await mountPlayingHls({ proven: false });
-		const video = getGlobalVideo();
-		// Not yet proven at unmount time.
-		video.currentTime = 0.2;
-		video.dispatchEvent(new Event('timeupdate'));
-		unmount(app!);
-		app = null;
-
-		// Off-route playback renders for minutes…
-		video.currentTime = 300;
-		video.dispatchEvent(new Event('playing'));
-		const streamsBefore = FakeEventSource.instances.length;
-
-		// …then the host stalls.
-		hls.emit((Hls as unknown as { Events: { ERROR: string } }).Events.ERROR, HOST_SLOW_FATAL);
-		expect(hls.startLoadCalls).toBe(1);
-		await new Promise((r) => setTimeout(r, 100));
-		expect(FakeEventSource.instances.length).toBe(streamsBefore);
-	});
-
-	it("a remount retires the previous mount's engine with its source", async () => {
-		// The engine handle lives in the component, so after an
-		// unmount + remount the old engine was nobody's to destroy —
-		// and its late FRAG_LOADED / error callbacks kept feeding the
-		// shared machine for a source no longer attached. Destruction
-		// rides the source-scoped lifecycle now: the remount's attach
-		// retires the old engine.
+	it("a remount leaves no trace of the previous mount's engine", async () => {
+		// The page owns its engine: leaving destroys it, so its late
+		// FRAG_LOADED / error callbacks cannot feed the shared machine
+		// for a source no longer attached, and the next mount attaches
+		// its own.
 		const old = await mountPlayingHls();
 		unmount(app!);
 		app = null;
