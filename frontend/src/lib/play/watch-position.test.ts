@@ -204,6 +204,17 @@ describe('positions written for a Continue row', () => {
 		expect(readPosition('A', 4, s)).toBe(700);
 	});
 
+	it('keeps a position whose show a remaining card is', () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		savePosition('B', 3, 600, 1420, s, 'row-x');
+
+		clearRowPositions(['row-x'], s, new Set(['A']));
+
+		expect(readPosition('A', 3, s)).toBe(600);
+		expect(readPosition('B', 3, s)).toBeNull();
+	});
+
 	it('stays with the position as newer episodes push older ones out', () => {
 		const s = memory();
 		savePosition('A', 3, 600, 1420, s, 'row-x');

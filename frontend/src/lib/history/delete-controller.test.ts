@@ -1,6 +1,17 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { executeKitsuGroupDelete } from './delete-controller';
+import {
+	clearRowPositions,
+	readPosition,
+	savePosition,
+	type PositionStorage
+} from '$lib/play/watch-position';
+
+function memory(): PositionStorage {
+	const data = new Map<string, string>();
+	return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
+}
 
 function h(id: string): HistoryEntry {
 	return {
@@ -449,9 +460,10 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 		expect(order).toEqual(['delete:aa-1', 'delete:aa-2', 'forget-rows:aa-1,aa-2']);
 	});
 
-	test("forgets them even when a remaining row's show cannot be told", async () => {
-		// Untold, the remaining row may be the removed show's card, so
-		// the show's positions stay; the row's own are the row's alone.
+	test("forgets none of them while a remaining row's show cannot be told", async () => {
+		// Untold, the remaining row may be a card of the show a removed
+		// row's position is under — its play may have landed on that
+		// row — so every position stays, as the show rule keeps them.
 		const history = [h('aa-1'), h('aa-2')];
 		const matches = { 'aa-1': m('k-1') };
 		const forgetPositions = vi.fn();
@@ -466,7 +478,43 @@ describe('executeKitsuGroupDelete — positions written for the removed rows', (
 		});
 
 		expect(forgetPositions).not.toHaveBeenCalled();
-		expect(forgetRowPositions).toHaveBeenCalledWith(['aa-1']);
+		expect(forgetRowPositions).not.toHaveBeenCalled();
+	});
+
+	test('a guess later corrected leaves no position behind', async () => {
+		// The card was a guess of k-1 when it played, and is k-2 now; no
+		// remaining row is a card of k-1.
+		const s = memory();
+		savePosition('k-1', 1, 600, 1420, s, 'aa-1');
+		const history = [h('aa-1'), h('aa-2')];
+		const matches = { 'aa-1': m('k-2'), 'aa-2': m('k-3') };
+
+		await deleteAndForget('aa-1', {
+			history,
+			matches,
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetRowPositions: (rows, keep) => clearRowPositions(rows, s, keep)
+		});
+
+		expect(readPosition('k-1', 1, s)).toBeNull();
+	});
+
+	test('keeps a position whose show a remaining card is', async () => {
+		// The guessed card's play landed on another provider show, whose
+		// row is a card of the show played: its position is that card's.
+		const s = memory();
+		savePosition('k-1', 1, 600, 1420, s, 'aa-1');
+		const history = [h('aa-1'), h('aa-9')];
+		const matches = { 'aa-1': m('k-2'), 'aa-9': m('k-1') };
+
+		await deleteAndForget('aa-1', {
+			history,
+			matches,
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetRowPositions: (rows, keep) => clearRowPositions(rows, s, keep)
+		});
+
+		expect(readPosition('k-1', 1, s)).toBe(600);
 	});
 
 	test('a failed delete forgets nothing', async () => {
