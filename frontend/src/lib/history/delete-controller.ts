@@ -62,8 +62,10 @@ export async function executeKitsuGroupDelete(
 	}
 	const removed = new Set(groupIds);
 	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
-	await forgetShowsLeftWithoutRows(shows, remainingHistory, deps);
-	return { removedIds: groupIds, remainingHistory, forgetting: Promise.resolve() };
+	// Telling a remaining row's show can take a Kitsu read; the card's
+	// removal does not wait on it.
+	const forgetting = forgetShowsLeftWithoutRows(shows, remainingHistory, deps).catch(() => {});
+	return { removedIds: groupIds, remainingHistory, forgetting };
 }
 
 /** Forgets the positions of each removed row's show that no remaining
@@ -87,9 +89,9 @@ async function remainingShows(
 	rows: HistoryEntry[],
 	deps: ConfirmDeleteDeps
 ): Promise<Set<string> | null> {
+	const told = await Promise.all(rows.map((row) => rowShow(row, deps)));
 	const shows = new Set<string>();
-	for (const row of rows) {
-		const show = await rowShow(row, deps);
+	for (const show of told) {
 		if (!show) return null;
 		shows.add(show);
 	}
