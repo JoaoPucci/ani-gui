@@ -148,6 +148,29 @@ describe('what a Continue card records', () => {
 	});
 });
 
+// The positions a card's session writes are its history row's: the
+// guess may be corrected on a later load, and removing the card still
+// has to reach what was kept under it.
+describe("a Continue card's session", () => {
+	it("writes its positions for the card's history row, and carries the row on", async () => {
+		window.localStorage.clear();
+		server.use(
+			...homeHandlers({ history: [{ ep_no: '5', id: 'hianime:cowboy-bebop-1', title: SHOW }] }, [
+				http.post(`${API_BASE}/api/kitsu/search`, () =>
+					HttpResponse.json([kitsuRef('1', SHOW, 26)])
+				)
+			])
+		);
+		app = mount(HomePage, { target });
+
+		await clickAndReadRecordedId();
+		const url = String(vi.mocked(goto).mock.calls.at(-1)?.[0] ?? '');
+		expect(new URL(url, 'http://app.test').searchParams.get('row')).toBe('hianime:cowboy-bebop-1');
+		const kept = JSON.parse(window.localStorage.getItem('ani-gui.watch-positions') ?? '[]');
+		expect(kept).toEqual([['1:6', 0, 'hianime:cowboy-bebop-1']]);
+	});
+});
+
 describe('a Continue row whose recorded id Kitsu no longer has', () => {
 	it('is matched again, and the guess is not recorded', async () => {
 		server.use(

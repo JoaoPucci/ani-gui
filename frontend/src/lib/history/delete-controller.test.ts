@@ -427,3 +427,59 @@ describe('executeKitsuGroupDelete — forgetting that fails', () => {
 		expect(result.removedIds).toEqual(['aa-1']);
 	});
 });
+
+// A session a Continue card opened keeps its positions for the card's
+// row. The card's match may have been a guess a later load corrected,
+// so the shows the card names now need not include the one those
+// positions are under; the row still reaches them.
+describe('executeKitsuGroupDelete — positions written for the removed rows', () => {
+	test("forgets every removed row's positions once the rows are gone", async () => {
+		const history = [h('aa-1'), h('aa-2'), h('aa-3')];
+		const matches = { 'aa-1': m('k-1'), 'aa-2': m('k-1'), 'aa-3': m('k-2') };
+		const order: string[] = [];
+		const historyDelete = vi.fn(async (id: string) => {
+			order.push(`delete:${id}`);
+		});
+		const forgetRowPositions = vi.fn((rows: string[]) => {
+			order.push(`forget-rows:${rows.join(',')}`);
+		});
+
+		await deleteAndForget('aa-1', { history, matches, historyDelete, forgetRowPositions });
+
+		expect(order).toEqual(['delete:aa-1', 'delete:aa-2', 'forget-rows:aa-1,aa-2']);
+	});
+
+	test("forgets them even when a remaining row's show cannot be told", async () => {
+		// Untold, the remaining row may be the removed show's card, so
+		// the show's positions stay; the row's own are the row's alone.
+		const history = [h('aa-1'), h('aa-2')];
+		const matches = { 'aa-1': m('k-1') };
+		const forgetPositions = vi.fn();
+		const forgetRowPositions = vi.fn();
+
+		await deleteAndForget('aa-1', {
+			history,
+			matches,
+			historyDelete: vi.fn().mockResolvedValue(undefined),
+			forgetPositions,
+			forgetRowPositions
+		});
+
+		expect(forgetPositions).not.toHaveBeenCalled();
+		expect(forgetRowPositions).toHaveBeenCalledWith(['aa-1']);
+	});
+
+	test('a failed delete forgets nothing', async () => {
+		const forgetRowPositions = vi.fn();
+
+		await expect(
+			executeKitsuGroupDelete('aa-1', {
+				history: [h('aa-1')],
+				matches: { 'aa-1': m('k-1') },
+				historyDelete: vi.fn().mockRejectedValue(new Error('down')),
+				forgetRowPositions
+			})
+		).rejects.toThrow('down');
+		expect(forgetRowPositions).not.toHaveBeenCalled();
+	});
+});

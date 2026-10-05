@@ -255,8 +255,8 @@ describe('play route — a session opened from a guess records no Kitsu id', () 
 	/** Mount a session for episode 3, `guess` or not, click Next and
 	 *  settle the switch; returns its stream URL, the URL it landed on
 	 *  and the watch it posted. */
-	async function switchToNext(guess: boolean) {
-		const flag: Record<string, string> = guess ? { guess: '1' } : {};
+	async function switchToNext(guess: boolean, extra: Record<string, string> = {}) {
+		const flag: Record<string, string> = { ...(guess ? { guess: '1' } : {}), ...extra };
 		setUrl(`/play/${KITSU_ID}`, { episode: '3', ...flag });
 		const posted = { external: [] as Posted[], syncplay: [] as Posted[] };
 		useHandlers(posted);
@@ -306,6 +306,14 @@ describe('play route — a session opened from a guess records no Kitsu id', () 
 		expect(landed.searchParams.get('guess')).toBe('1');
 		expect(watch.kitsu_id).toBeUndefined();
 		expect(syncWatchedToTrackers).not.toHaveBeenCalled();
+	});
+
+	it("an episode switch of a Continue card's session writes for the card's row and carries it on", async () => {
+		window.localStorage.clear();
+		const { landed } = await switchToNext(true, { row: 'hianime:show-1' });
+		expect(landed.searchParams.get('row')).toBe('hianime:show-1');
+		const kept = JSON.parse(window.localStorage.getItem('ani-gui.watch-positions') ?? '[]');
+		expect(kept).toContainEqual([`${KITSU_ID}:4`, 0, 'hianime:show-1']);
 	});
 
 	it('an episode switch of a session the user chose records its id and syncs the trackers', async () => {

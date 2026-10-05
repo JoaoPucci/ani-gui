@@ -5,6 +5,7 @@ import {
 	RESUME_MIN_S,
 	clearAllPositions,
 	clearPosition,
+	clearRowPositions,
 	clearShowPositions,
 	markStarted,
 	readPosition,
@@ -166,5 +167,70 @@ describe('watch position', () => {
 			expect(() => savePosition('42', 3, 612.4, 1420)).not.toThrow();
 			expect(readPosition('42', 3)).toBeNull();
 		});
+	});
+});
+
+// A session a Continue card opened writes its positions for the card's
+// history row, by the row's provider show id. The card's match can be a
+// guess the next load corrects, and the positions keyed by the guess
+// are then on no show the card names; removing the card still reaches
+// them through the row.
+describe('positions written for a Continue row', () => {
+	it("forgets the row's positions, and keeps a detail-page play's and another row's", () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		markStarted('A', 4, s, 'row-x');
+		savePosition('A', 5, 600, 1420, s);
+		savePosition('B', 1, 600, 1420, s, 'row-y');
+
+		clearRowPositions(['row-x'], s);
+
+		expect(readPosition('A', 3, s)).toBeNull();
+		expect(readPosition('A', 4, s)).toBeNull();
+		expect(readPosition('A', 5, s)).toBe(600);
+		expect(readPosition('B', 1, s)).toBe(600);
+	});
+
+	it("is the latest write's: a detail-page play of the episode is no longer the row's", () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		savePosition('A', 3, 700, 1420, s);
+		savePosition('A', 4, 600, 1420, s, 'row-x');
+		savePosition('A', 4, 700, 1420, s, 'row-y');
+
+		clearRowPositions(['row-x'], s);
+
+		expect(readPosition('A', 3, s)).toBe(700);
+		expect(readPosition('A', 4, s)).toBe(700);
+	});
+
+	it('stays with the position as newer episodes push older ones out', () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		for (let ep = 1; ep < MAX_POSITIONS; ep++) savePosition('C', ep, 600, 1420, s);
+
+		clearRowPositions(['row-x'], s);
+
+		expect(readPosition('A', 3, s)).toBeNull();
+		expect(readPosition('C', 1, s)).toBe(600);
+	});
+
+	it('leaves positions kept before rows were recorded as they were', () => {
+		const s = memory();
+		s.setItem('ani-gui.watch-positions', JSON.stringify([['A:3', 600]]));
+
+		clearRowPositions(['row-x'], s);
+
+		expect(readPosition('A', 3, s)).toBe(600);
+	});
+
+	it("drops a pending recovery point for a forgotten position's show", () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		recoveryResume.capture('A', 3, 700);
+
+		clearRowPositions(['row-x'], s);
+
+		expect(recoveryResume.consume('A', 3)).toBeNull();
 	});
 });
