@@ -41,12 +41,13 @@ use crate::commands::kitsu::{watched_at_key, ALLMANGA_KITSU_VERSION};
 use crate::error::Result;
 
 /// The prefixes every history-derived cache entry lives under.
-const HISTORY_PREFIXES: [&str; 5] = [
+const HISTORY_PREFIXES: [&str; 6] = [
     "watched-at:",
     "allmanga2kitsu:",
     "title-match:",
     "play:",
     "aniskip:",
+    super::kitsu_gone::GONE_PREFIX,
 ];
 
 /// Delete what the row for `id`, titled `title`, recording `recorded`
@@ -86,6 +87,7 @@ pub(crate) fn forget_show(
     // An empty id — a title match stored without one — names no page.
     kitsu_ids.retain(|k| !k.is_empty() && !claimed.contains(k));
     super::history_forget_skips::forget_skip_times(state, &kitsu_ids)?;
+    super::kitsu_gone::forget(state, &kitsu_ids)?;
     Ok(kitsu_ids)
 }
 
