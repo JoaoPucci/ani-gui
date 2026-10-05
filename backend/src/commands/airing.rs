@@ -117,9 +117,9 @@ fn write_airing_row(state: &AppState, kitsu_id: &str, status: &AiringStatus) {
             &body,
             ttl,
         );
-        // After the put: an availability write that starts from here
-        // on reads the schedule itself. Only one already between its
-        // schedule read and its own put can still land uncut.
+        // After the put: an availability row put before this scan is
+        // cut here, and one put after it re-reads this row and cuts
+        // itself, so the two writes cannot both miss each other.
         crate::commands::availability_reschedule::cut_rows_at_next_airing(
             &state.cache_pool,
             kitsu_id,

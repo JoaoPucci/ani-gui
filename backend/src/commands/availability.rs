@@ -1144,19 +1144,48 @@ fn put_availability_row(
     state: &AppState,
     kitsu_id: &str,
     mode: &str,
-    _status: Option<&str>,
+    status: Option<&str>,
     body: &AvailabilityResponse,
     ttl: u64,
 ) {
     let key = cache_key(kitsu_id, mode);
-    if let Ok(serialized) = serde_json::to_string(body) {
-        if meta_cache_put(&state.cache_pool, &key, &serialized, ttl).is_ok() && body.available {
-            // Counted so a negative out at this moment can tell, when
-            // it comes to write, that this proof landed meanwhile —
-            // even where it put the same bytes back.
-            state.availability_refreshes.note_positive(&key);
-        }
+    let Ok(serialized) = serde_json::to_string(body) else {
+        return;
+    };
+    if meta_cache_put(&state.cache_pool, &key, &serialized, ttl).is_err() {
+        return;
     }
+    if body.available {
+        // Counted so a negative out at this moment can tell, when
+        // it comes to write, that this proof landed meanwhile —
+        // even where it put the same bytes back.
+        state.availability_refreshes.note_positive(&key);
+    }
+    // A schedule put after this write read none has scanned for rows
+    // to cut before this one existed; re-read it and cut here, so
+    // whichever of the two writes lands second applies the cut. A
+    // finished show's window ignores the schedule by design.
+    if status != Some("finished") {
+        recut_after_put(state, kitsu_id, &key);
+    }
+}
+
+/// Apply the cached schedule to the row just put at `key`.
+fn recut_after_put(state: &AppState, kitsu_id: &str, key: &str) {
+    let Some(airing) = cached_airing(state, kitsu_id) else {
+        return;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    crate::commands::availability_reschedule::cut_row(
+        &state.cache_pool,
+        key,
+        airing.next_airing_at,
+        airing.aired,
+        now,
+    );
 }
 
 /// Cached-only batch lookup. Returns `cached[id] = available` for

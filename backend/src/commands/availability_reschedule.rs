@@ -32,30 +32,40 @@ pub(crate) fn cut_rows_at_next_airing(
     now: u64,
 ) {
     for mode in ["sub", "dub"] {
-        let key = cache_key(kitsu_id, mode);
-        let Ok(Some(row)) = meta_cache_row(pool, &key) else {
-            continue;
-        };
-        let Ok(body) = serde_json::from_str::<AvailabilityResponse>(&row.body) else {
-            continue;
-        };
-        let age = now.saturating_sub(row.fetched_at);
-        let cut = if body.available {
-            // A count the schedule has passed is cut as at a drop. Only
-            // while a next airing is scheduled: with none, the show may
-            // be finished, whose row a lagging count must not churn.
-            let at = next_airing_at.and_then(|_| {
-                next_airing_for_count(next_airing_at, body.episode_count, aired, now)
-            });
-            rescheduled_ttl(row.ttl_seconds, age, at, now)
-        } else {
-            rescheduled_negative_ttl(row.ttl_seconds, age, next_airing_at, now)
-        };
-        if let Some(ttl) = cut {
-            // Conditional on the row being the one read: a rewrite
-            // in between keeps the window its own write gave it.
-            let _ = meta_cache_shorten(pool, &key, &row, ttl);
-        }
+        cut_row(pool, &cache_key(kitsu_id, mode), next_airing_at, aired, now);
+    }
+}
+
+/// [`cut_rows_at_next_airing`] for the one row at `key` — what the
+/// availability put applies to the row it has just written.
+pub(crate) fn cut_row(
+    pool: &SqlitePool,
+    key: &str,
+    next_airing_at: Option<u64>,
+    aired: Option<u32>,
+    now: u64,
+) {
+    let Ok(Some(row)) = meta_cache_row(pool, key) else {
+        return;
+    };
+    let Ok(body) = serde_json::from_str::<AvailabilityResponse>(&row.body) else {
+        return;
+    };
+    let age = now.saturating_sub(row.fetched_at);
+    let cut = if body.available {
+        // A count the schedule has passed is cut as at a drop. Only
+        // while a next airing is scheduled: with none, the show may
+        // be finished, whose row a lagging count must not churn.
+        let at = next_airing_at
+            .and_then(|_| next_airing_for_count(next_airing_at, body.episode_count, aired, now));
+        rescheduled_ttl(row.ttl_seconds, age, at, now)
+    } else {
+        rescheduled_negative_ttl(row.ttl_seconds, age, next_airing_at, now)
+    };
+    if let Some(ttl) = cut {
+        // Conditional on the row being the one read: a rewrite
+        // in between keeps the window its own write gave it.
+        let _ = meta_cache_shorten(pool, key, &row, ttl);
     }
 }
 
