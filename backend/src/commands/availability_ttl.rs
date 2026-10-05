@@ -32,6 +32,26 @@ pub(crate) fn bounded_by_next_airing(base: u64, next_airing_at: Option<u64>, now
     cut.min(base)
 }
 
+/// A positive row already in the cache when the schedule arrives,
+/// re-cut as if it had been written knowing it: the row's remaining
+/// life is bounded by [`bounded_by_next_airing`], and the new total
+/// TTL (`age` + that) is returned when it is shorter than `ttl`.
+///
+/// `None` — leave the row as it is — when there is no schedule, when
+/// the row has expired, when the cut would not shorten it, and when
+/// `ttl` exceeds `ceiling`: only a finished show's row is written
+/// longer than the ongoing window, and its count does not move.
+#[must_use]
+pub(crate) fn rescheduled_ttl(
+    _ttl: u64,
+    _age: u64,
+    _ceiling: u64,
+    _next_airing_at: Option<u64>,
+    _now: u64,
+) -> Option<u64> {
+    None
+}
+
 #[cfg(test)]
 #[path = "availability_ttl_test.rs"]
 mod tests;

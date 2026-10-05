@@ -67,3 +67,85 @@ proptest::proptest! {
         );
     }
 }
+
+// --- a schedule that arrives after the row -------------------------------
+
+#[test]
+fn a_row_written_before_its_schedule_is_cut_at_the_drop() {
+    // Written an hour ago with the ongoing day; the drop is in two hours.
+    assert_eq!(
+        rescheduled_ttl(DAY, HOUR, DAY, Some(NOW + 2 * HOUR), NOW),
+        Some(HOUR + 2 * HOUR + GRACE_SECS)
+    );
+}
+
+#[test]
+fn a_row_already_inside_the_cut_is_left_alone() {
+    // Written knowing the schedule: two hours left, drop in five.
+    assert_eq!(
+        rescheduled_ttl(3 * HOUR, HOUR, DAY, Some(NOW + 5 * HOUR), NOW),
+        None
+    );
+}
+
+#[test]
+fn a_passed_airing_leaves_the_row_the_floor() {
+    assert_eq!(
+        rescheduled_ttl(DAY, HOUR, DAY, Some(NOW - HOUR), NOW),
+        Some(HOUR + FLOOR_SECS)
+    );
+}
+
+#[test]
+fn no_schedule_leaves_the_row_alone() {
+    assert_eq!(rescheduled_ttl(DAY, HOUR, DAY, None, NOW), None);
+}
+
+#[test]
+fn a_finished_show_s_month_is_left_alone() {
+    assert_eq!(
+        rescheduled_ttl(30 * DAY, HOUR, DAY, Some(NOW + 2 * HOUR), NOW),
+        None
+    );
+}
+
+#[test]
+fn an_expired_row_is_left_alone() {
+    assert_eq!(
+        rescheduled_ttl(DAY, 2 * DAY, DAY, Some(NOW + 2 * HOUR), NOW),
+        None
+    );
+    assert_eq!(
+        rescheduled_ttl(DAY, DAY, DAY, Some(NOW + 2 * HOUR), NOW),
+        None
+    );
+}
+
+proptest::proptest! {
+    #[test]
+    fn a_reschedule_only_ever_shortens_a_live_row(
+        ttl in 0u64..(60 * DAY),
+        age in 0u64..(60 * DAY),
+        at in proptest::option::of(0u64..(2 * NOW)),
+    ) {
+        if let Some(cut) = rescheduled_ttl(ttl, age, DAY, at, NOW) {
+            proptest::prop_assert!(cut < ttl);
+            // Still live when cut: never expired by the reschedule itself.
+            proptest::prop_assert!(cut > age);
+            proptest::prop_assert!(ttl <= DAY);
+        }
+    }
+
+    #[test]
+    fn a_reschedule_matches_a_write_made_now(
+        ttl in 1u64..=DAY,
+        age in 0u64..DAY,
+        at in 0u64..(2 * NOW),
+    ) {
+        proptest::prop_assume!(age < ttl);
+        let remaining = ttl - age;
+        let fresh = bounded_by_next_airing(remaining, Some(at), NOW);
+        let expected = (fresh < remaining).then_some(age + fresh);
+        proptest::prop_assert_eq!(rescheduled_ttl(ttl, age, DAY, Some(at), NOW), expected);
+    }
+}

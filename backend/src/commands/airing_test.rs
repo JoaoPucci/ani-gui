@@ -298,3 +298,106 @@ async fn a_refresh_skips_the_cached_row_and_stores_what_it_fetched() {
         .expect("served from the row the refresh wrote");
     assert_eq!(stored.aired, Some(2));
 }
+
+// --- a schedule that arrives after the availability row ---------------
+// A current show's positive row written before any airing row keeps
+// the ongoing day; every path that writes the airing row must cut it.
+
+fn epoch_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn seed_positive_day(state: &AppState, kitsu_id: &str) {
+    let key = crate::commands::availability::cache_key(kitsu_id, "sub");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &key,
+        r#"{"available":true,"episode_count":7}"#,
+        24 * 60 * 60,
+    )
+    .expect("seed availability row");
+}
+
+fn positive_ttl(state: &AppState, kitsu_id: &str) -> u64 {
+    let conn = state.cache_pool.get().expect("conn");
+    let ttl: i64 = conn
+        .query_row(
+            "SELECT ttl_seconds FROM meta_cache WHERE key = ?1",
+            [crate::commands::availability::cache_key(kitsu_id, "sub")],
+            |r| r.get(0),
+        )
+        .expect("row");
+    u64::try_from(ttl).expect("non-negative")
+}
+
+async fn mappings_and_anilist(body: String) -> (wiremock::MockServer, wiremock::MockServer) {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/50551"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_ONLY_MAPPING_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&anilist)
+        .await;
+    (kitsu, anilist)
+}
+
+fn releasing_in_two_hours() -> String {
+    let at = epoch_now() + 2 * 60 * 60;
+    format!(
+        r#"{{"data":{{"Media":{{"status":"RELEASING","episodes":12,
+        "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}}}}}"#
+    )
+}
+
+/// Two hours to the drop plus the provider's grace — not a day.
+fn assert_cut_at_the_drop(ttl: u64) {
+    assert!(ttl <= 3 * 60 * 60 + 5, "ttl {ttl}");
+    assert!(ttl > 2 * 60 * 60, "ttl {ttl}");
+}
+
+#[tokio::test]
+async fn a_detail_page_s_schedule_cuts_a_count_written_before_it() {
+    let (kitsu, anilist) = mappings_and_anilist(releasing_in_two_hours()).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "50551");
+    airing_get_with_anilist_base(&state, "50551", Some(&anilist.uri()))
+        .await
+        .expect("ok");
+    assert_cut_at_the_drop(positive_ttl(&state, "50551"));
+}
+
+#[tokio::test]
+async fn a_recheck_s_schedule_cuts_a_count_written_before_it() {
+    let (kitsu, anilist) = mappings_and_anilist(releasing_in_two_hours()).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "50551");
+    airing_refresh_with_anilist_base(&state, "50551", Some(&anilist.uri()))
+        .await
+        .expect("ok");
+    assert_cut_at_the_drop(positive_ttl(&state, "50551"));
+}
+
+#[tokio::test]
+async fn a_batch_seeded_schedule_cuts_a_count_written_before_it() {
+    let at = epoch_now() + 2 * 60 * 60;
+    let batch = format!(
+        r#"{{"data":{{"Page":{{"media":[
+        {{"id":207141,"status":"RELEASING","episodes":12,
+         "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}]}}}}}}"#
+    );
+    let (kitsu, anilist) = mappings_and_anilist(batch).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "50551");
+    seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
+    assert_cut_at_the_drop(positive_ttl(&state, "50551"));
+}
