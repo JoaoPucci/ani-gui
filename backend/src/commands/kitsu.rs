@@ -542,6 +542,15 @@ pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
     )
 }
 
+/// Persist the mapping a play stored: the show the user played, as
+/// against one a resolve guessed ([`crate::commands::kitsu_played`]).
+///
+/// # Errors
+/// SQLite write failures propagate.
+pub fn allmanga_kitsu_put_played(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
+    allmanga_kitsu_put(state, show_id, kitsu_id)
+}
+
 /// Evict a single `provider show_id → kitsu_id` mapping. Used by the
 /// frontend's `resolveKitsuMatch` step 0 to drop a binding to a music
 /// entry, the one binding provably wrong; a binding it merely doubts
@@ -605,7 +614,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
         if held.show_changed_since(begun, show_id) {
             return Ok(());
         }
-        allmanga_kitsu_put(state, show_id, kitsu_id)
+        allmanga_kitsu_put_played(state, show_id, kitsu_id)
     });
     if let Err(e) = stored {
         tracing::warn!(
