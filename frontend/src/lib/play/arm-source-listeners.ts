@@ -47,15 +47,21 @@ export function armSourceScopedListeners(input: {
 	// never a bare timeupdate: the resume seek below emits one at the
 	// old timestamp before the fresh source has delivered anything.
 	const markProgress = () => {
+		ended = false;
 		stallMachine.progressed();
 	};
 	// The position is only the stream's once its metadata is in: an
 	// element still opening reads zero, and writing that would forget
 	// where the episode was left.
 	let opened = false;
+	// An episode played to its end is forgotten, and the source's later
+	// writes — its pause, its flush — must not put it back: a length not
+	// known, or a clip ending in its first seconds, would record a point
+	// the end no longer judges. Playing again keeps it once more.
+	let ended = false;
 	let savedAt = Number.NEGATIVE_INFINITY;
 	const save = () => {
-		if (!opened) return;
+		if (!opened || ended) return;
 		savedAt = video.currentTime;
 		savePosition(showId, episode, video.currentTime, video.duration, positions);
 	};
@@ -98,6 +104,7 @@ export function armSourceScopedListeners(input: {
 		if (Math.abs(video.currentTime - savedAt) >= SAVE_EVERY_S) save();
 	};
 	const onEnded = () => {
+		ended = true;
 		clearPosition(showId, episode, positions);
 	};
 	scope.add(() => {
