@@ -127,6 +127,53 @@ describe('watchStripOverflow', () => {
 		expect(w.last()).toEqual({ canScrollLeft: false, canScrollRight: false });
 	});
 
+	it('drops the right arrow when the cards shrink inside an unchanged viewport', () => {
+		// Continue Watching renders a card per history row, then
+		// collapses rows that resolve to one show; a deleted card or a
+		// cleared history shrinks it the same way. The scroller's own
+		// box keeps its size throughout, so only the rail's change can
+		// tell the strip its content no longer overflows.
+		const scroller = new FakeScroller();
+		const rail = new FakeRail();
+		rail.children = [{}, {}, {}, {}, {}];
+		scroller.scrollWidth = 1400;
+		const fake = fakeObservers();
+		const w = watch(scroller, rail, fake.observers);
+		expect(w.last()).toEqual({ canScrollLeft: false, canScrollRight: true });
+
+		rail.children = [{}, {}];
+		scroller.scrollWidth = 800;
+		fake.mutated(rail);
+		expect(w.last()).toEqual({ canScrollLeft: false, canScrollRight: false });
+	});
+
+	it('offers the right arrow when cards arrive that overflow the viewport', () => {
+		const scroller = new FakeScroller();
+		const rail = new FakeRail();
+		const fake = fakeObservers();
+		const w = watch(scroller, rail, fake.observers);
+		expect(w.last()).toEqual({ canScrollLeft: false, canScrollRight: false });
+
+		rail.children = [{}, {}, {}, {}, {}];
+		scroller.scrollWidth = 1400;
+		fake.mutated(rail);
+		expect(w.last()).toEqual({ canScrollLeft: false, canScrollRight: true });
+	});
+
+	it('follows a card changing size without the card list changing', () => {
+		const scroller = new FakeScroller();
+		const card = {};
+		const rail = new FakeRail();
+		rail.children = [card];
+		scroller.scrollWidth = 1400;
+		const fake = fakeObservers();
+		const w = watch(scroller, rail, fake.observers);
+
+		scroller.scrollWidth = 600;
+		fake.resized(card);
+		expect(w.last()).toEqual({ canScrollLeft: false, canScrollRight: false });
+	});
+
 	it('stops reporting once torn down', () => {
 		const scroller = new FakeScroller();
 		const w = watch(scroller, new FakeRail(), fakeObservers().observers);
