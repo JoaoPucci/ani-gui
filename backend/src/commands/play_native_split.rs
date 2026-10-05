@@ -140,6 +140,7 @@ pub(crate) fn stitched(
     )],
     expected: u32,
     best_single: u32,
+    _entry_titles: &[&str],
 ) -> Option<super::play_native::PickedShow> {
     let cands: Vec<PartCandidate<'_>> = probed
         .iter()

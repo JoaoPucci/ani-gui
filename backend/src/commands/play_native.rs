@@ -90,6 +90,34 @@ pub async fn pick_candidate<P: Provider + ?Sized>(
     year: Option<u32>,
     subtype: Option<&str>,
 ) -> Result<PickedShow> {
+    pick_candidate_titled(
+        client,
+        hits,
+        expected,
+        search_title,
+        &[search_title],
+        year,
+        subtype,
+    )
+    .await
+}
+
+/// [`pick_candidate`] told every title the requested entry goes by —
+/// the canonical title and its fallbacks, not only the one searched —
+/// which the split-entry detection reads to tell the entry from its
+/// parts.
+///
+/// # Errors
+/// As [`pick_candidate`].
+pub async fn pick_candidate_titled<P: Provider + ?Sized>(
+    client: &P,
+    hits: &[BrowseHit],
+    expected: Option<u32>,
+    search_title: &str,
+    entry_titles: &[&str],
+    year: Option<u32>,
+    subtype: Option<&str>,
+) -> Result<PickedShow> {
     if hits.is_empty() {
         // Nothing to probe: a clean absence of candidates, distinct
         // from probes that failed below.
@@ -178,7 +206,9 @@ pub async fn pick_candidate<P: Provider + ?Sized>(
     // was probed, so stitching them costs nothing. Only with every
     // candidate heard — a dead probe may have been one of the parts.
     if !any_transport_failure {
-        if let Some(picked) = super::play_native_split::stitched(&probed_ok, expected, best_dist) {
+        if let Some(picked) =
+            super::play_native_split::stitched(&probed_ok, expected, best_dist, entry_titles)
+        {
             return Ok(picked);
         }
     }
