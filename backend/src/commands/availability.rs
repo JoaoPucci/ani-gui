@@ -1103,12 +1103,24 @@ pub fn write_cache_full(
     if kitsu_id.is_empty() {
         return;
     }
-    let key = cache_key(kitsu_id, mode);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let ttl = if body.available && status == Some("finished") {
+    let ttl = availability_row_ttl(state, kitsu_id, status, body, now);
+    put_availability_row(state, kitsu_id, mode, body, ttl);
+}
+
+/// The window a row written now gets, from the show's status and the
+/// cached schedule.
+fn availability_row_ttl(
+    state: &AppState,
+    kitsu_id: &str,
+    status: Option<&str>,
+    body: &AvailabilityResponse,
+    now: u64,
+) -> u64 {
+    if body.available && status == Some("finished") {
         positive_ttl_for(status)
     } else if body.available {
         // Still airing: the count goes stale at the next drop — or
@@ -1124,7 +1136,18 @@ pub fn write_cache_full(
         )
     } else {
         negative_ttl_for(status, cached_next_airing_at(state, kitsu_id), now)
-    };
+    }
+}
+
+/// Store a row under the window [`availability_row_ttl`] gave it.
+fn put_availability_row(
+    state: &AppState,
+    kitsu_id: &str,
+    mode: &str,
+    body: &AvailabilityResponse,
+    ttl: u64,
+) {
+    let key = cache_key(kitsu_id, mode);
     if let Ok(serialized) = serde_json::to_string(body) {
         if meta_cache_put(&state.cache_pool, &key, &serialized, ttl).is_ok() && body.available {
             // Counted so a negative out at this moment can tell, when
@@ -1185,27 +1208,8 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
 /// unavailable cards.
 pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
     use tokio::time::sleep;
-    // Batch-seed airing rows for the pre-premiere entries that will
-    // actually probe (no fresh availability row): one AniList request
-    // for the whole rail, so each probe's per-show seed below becomes
-    // a cache hit instead of its own AniList call.
-    let mut premiere_ids: Vec<String> = Vec::new();
-    for args in &items {
-        let mode = if args.mode == "dub" { "dub" } else { "sub" };
-        let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
-            continue;
-        };
-        if has_usable_row(&state, id, mode) {
-            continue;
-        }
-        if matches!(
-            args.status.as_deref(),
-            Some("unreleased" | "tba" | "upcoming")
-        ) {
-            premiere_ids.push(id.to_string());
-        }
-    }
-    crate::commands::airing::seed_airing_rows_batch(&state, &premiere_ids, None).await;
+    let seed_ids = schedule_seed_ids(&state, &items);
+    crate::commands::airing::seed_airing_rows_batch(&state, &seed_ids, None).await;
     for args in items {
         let mode = if args.mode == "dub" { "dub" } else { "sub" };
         let id = match args.kitsu_id.as_deref() {
@@ -1242,6 +1246,31 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
 /// [`cache_hit_is_usable`]: a count-less or approximate positive
 /// re-probes, and so does a negative row whose provider no longer
 /// stands behind it.
+/// The warm entries whose airing row is batch-seeded before they
+/// probe: the pre-premiere entries that will actually probe (no fresh
+/// availability row). One AniList request covers the whole rail, so
+/// each probe's per-show seed becomes a cache hit instead of its own
+/// AniList call.
+fn schedule_seed_ids(state: &AppState, items: &[AvailabilityArgs]) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    for args in items {
+        let mode = if args.mode == "dub" { "dub" } else { "sub" };
+        let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        if has_usable_row(state, id, mode) {
+            continue;
+        }
+        if matches!(
+            args.status.as_deref(),
+            Some("unreleased" | "tba" | "upcoming")
+        ) {
+            ids.push(id.to_string());
+        }
+    }
+    ids
+}
+
 fn has_usable_row(state: &AppState, kitsu_id: &str, mode: &str) -> bool {
     let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &cache_key(kitsu_id, mode)) else {
         return false;
