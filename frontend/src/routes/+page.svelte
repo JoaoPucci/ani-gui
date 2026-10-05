@@ -84,6 +84,7 @@
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
 	import { resolveKitsuMatch } from '$lib/history/match';
+	import { forgetMatchTrust, recordableKitsuId } from '$lib/history/match-trust';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
@@ -379,6 +380,7 @@
 				// the right Kitsu episode instead of collapsing onto
 				// Part 1's episode 1.
 				historyById.clear();
+				forgetMatchTrust();
 				for (const h of history) historyById.set(h.id, h);
 				void loadContinueWatchingState(history, {
 					resolveMatch: (entry) => resolveKitsuMatch(resolveHistoryEntry(entry, null)),
@@ -645,7 +647,7 @@
 		year: yearFromKitsuRef(a.match),
 		subtype: a.match.subtype ?? null,
 		alt_titles: altTitlesFromKitsu(a.match),
-		kitsu_id: a.match.id
+		kitsu_id: recordableKitsuId(a.match.id)
 	});
 	const startResume = makeStartResume({
 		leftPartWay,

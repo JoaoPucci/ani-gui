@@ -139,6 +139,7 @@
 	import LoadingOverlay from '$lib/components/LoadingOverlay.svelte';
 	import PosterCard from '$lib/components/PosterCard.svelte';
 	import Strip from '$lib/components/Strip.svelte';
+	import { recordableKitsuId } from '$lib/history/match-trust';
 
 	const id = $derived(page.params.id ?? '');
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
@@ -1871,7 +1872,7 @@
 						// switchToEpisode (the click path) does that
 						// directly via prefetch:false (default).
 						prefetch: true,
-						kitsu_id: id
+						kitsu_id: recordableKitsuId(id)
 					},
 					emit,
 					signal
@@ -1932,7 +1933,7 @@
 							year: yearFromKitsuRef(detail),
 							subtype: detail?.subtype ?? null,
 							alt_titles: altTitlesFromKitsu(detail),
-							kitsu_id: id
+							kitsu_id: recordableKitsuId(id)
 						},
 						emit,
 						signal
@@ -1973,7 +1974,7 @@
 				year: yearFromKitsuRef(detail),
 				subtype: detail?.subtype ?? null,
 				alt_titles: altTitlesFromKitsu(detail),
-				kitsu_id: id
+				kitsu_id: recordableKitsuId(id)
 			}).catch(() => {});
 			// Mirror the progress to any connected tracker (AniList / MAL).
 			// Best-effort and renderer-driven — the backend is stateless,
@@ -2215,7 +2216,15 @@
 		videoEl?.pause();
 		externalBusy = true;
 		try {
-			await playExternal(handoffArgs({ title, episode: episodeNum, kitsuId: id, config, detail }));
+			await playExternal(
+				handoffArgs({
+					title,
+					episode: episodeNum,
+					kitsuId: recordableKitsuId(id) ?? '',
+					config,
+					detail
+				})
+			);
 			// Success surfaces as a bottom-right toast (4s auto-
 			// dismiss owned by the toast store). The shape comes
 			// from externalLaunchSuccessToast so the message text
@@ -2260,7 +2269,15 @@
 		videoEl?.pause();
 		syncplayBusy = true;
 		try {
-			await playSyncplay(handoffArgs({ title, episode: episodeNum, kitsuId: id, config, detail }));
+			await playSyncplay(
+				handoffArgs({
+					title,
+					episode: episodeNum,
+					kitsuId: recordableKitsuId(id) ?? '',
+					config,
+					detail
+				})
+			);
 			toastStore.push(
 				syncplayLaunchSuccessToast({ episode: episodeNum, isSingleVideo: singleVideo })
 			);
