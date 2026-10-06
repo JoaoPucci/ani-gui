@@ -1007,3 +1007,86 @@ async fn a_listing_is_the_entry_s_own_when_it_reads_past_the_stem_as_the_entry_d
         );
     }
 }
+
+/// The whole of each title is read, by one reader on every side (the
+/// decision table in title-resolution.md): an ordinal inside the
+/// spanning listing's stem, a division the spanning listing shares
+/// with the entry, or a weaker alias cannot make a listing look like
+/// the entry's own; a numeral before a marker with its own ordinal is
+/// a division of its own; and the entry's exact title is its own
+/// whatever sits between the stem and its division.
+#[tokio::test]
+async fn the_whole_title_decides_the_entry_s_own_listing() {
+    type Case<'a> = (&'a [&'a str], &'a [(&'a str, &'a str, u32)], &'a str, usize);
+    let cases: [Case<'_>; 6] = [
+        (
+            &["Show 2nd Season"],
+            &[
+                ("w", "Show 2", 24),
+                ("a", "Show 2 Part 2", 12),
+                ("b", "Show 3", 12),
+            ],
+            "w",
+            12,
+        ),
+        (
+            &["Show 2nd Season Part 2"],
+            &[
+                ("w", "Show 2nd Season Part 2", 24),
+                ("a", "Show 2", 12),
+                ("b", "Show Season 3", 12),
+            ],
+            "w",
+            12,
+        ),
+        (
+            &["Show Part 2"],
+            &[
+                ("w", "Show Part 2", 24),
+                ("a", "Show Part 1", 12),
+                ("b", "Show Season 3", 12),
+            ],
+            "w",
+            12,
+        ),
+        (
+            &["Show 2", "Show Season 3"],
+            &[
+                ("w", "Show 2nd Season", 24),
+                ("a", "Show Part 2", 12),
+                ("b", "Show Season 1", 12),
+            ],
+            "a",
+            12,
+        ),
+        (
+            &["Show II Part 2: Arc"],
+            &[
+                ("w", "Show II", 24),
+                ("a", "Show II Part 1", 12),
+                ("b", "Show II Part 2", 12),
+            ],
+            "b",
+            12,
+        ),
+        (
+            &["Show: Final Arc Season 2"],
+            &[
+                ("w", "Show", 24),
+                ("a", "Show: Final Arc Season 2", 12),
+                ("b", "Show 2nd Season", 12),
+            ],
+            "a",
+            12,
+        ),
+    ];
+    for (titles, rows, want, len) in cases {
+        let site = pool_of(titles, Some(12), 2020, titles[0], rows);
+        let picked = walk_over(site).await.expect("picked");
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            (want, len),
+            "{titles:?} {rows:?}"
+        );
+    }
+}
