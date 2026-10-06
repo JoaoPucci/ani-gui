@@ -784,6 +784,10 @@ async fn post_play_cache_evict(
 mod kitsu_map_tests;
 
 #[cfg(test)]
+#[path = "kitsu_id_boundary_test.rs"]
+mod kitsu_id_boundary_test;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;
@@ -2584,7 +2588,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/history/by-kitsu/kid-unknown")
+                    .uri("/api/history/by-kitsu/99999999")
                     .body(Body::empty())
                     .expect("req"),
             )
@@ -2697,7 +2701,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/kitsu/anime/kid-1")
+                    .uri("/api/kitsu/anime/49877")
                     .body(Body::empty())
                     .expect("req"),
             )
@@ -2919,8 +2923,8 @@ mod tests {
         let router = build_api_router(Arc::new(test_app_state(&td)));
         let routes = [
             ("GET", "/api/kitsu/top-rated", ""),
-            ("GET", "/api/kitsu/episodes/kid-1?page=1", ""),
-            ("GET", "/api/aniskip/kid-1/1?episode_length=1440", ""),
+            ("GET", "/api/kitsu/episodes/49877?page=1", ""),
+            ("GET", "/api/aniskip/49877/1?episode_length=1440", ""),
             ("GET", "/api/title-match?title=Naruto&cour=1", ""),
             ("DELETE", "/api/cache", ""),
             ("DELETE", "/api/cache/images", ""),
@@ -2953,9 +2957,7 @@ mod tests {
                     .method("PUT")
                     .uri("/api/title-match")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"title":"Naruto","cour":1,"kitsu_id":"kid-1"}"#,
-                    ))
+                    .body(Body::from(r#"{"title":"Naruto","cour":1,"kitsu_id":"11"}"#))
                     .expect("req"),
             )
             .await

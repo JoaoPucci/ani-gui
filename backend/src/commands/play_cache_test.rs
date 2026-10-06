@@ -247,7 +247,7 @@ async fn a_cached_handoff_refreshes_the_providers_positive_row() {
     let td = tempfile::tempdir().expect("td");
     let state = state_in(&td);
     let args: crate::commands::play::PlayArgs = serde_json::from_value(
-        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "12" }),
     )
     .expect("args");
     let key = crate::commands::play_resolution_cache::cache_key(
@@ -280,7 +280,7 @@ async fn a_cached_handoff_refreshes_the_providers_positive_row() {
     let launched = super::try_launch_args_from_cache(&state, &args, &cfg).await;
     assert!(launched.is_some(), "the row is live and is served");
     assert_eq!(
-        crate::commands::availability::cached_provider(&state, "K12", "sub"),
+        crate::commands::availability::cached_provider(&state, "12", "sub"),
         Some(crate::scraper::provider::ProviderId::Hianime)
     );
 }
@@ -297,11 +297,11 @@ struct RefreshDuringCheck {
 
 impl wiremock::Respond for RefreshDuringCheck {
     fn respond(&self, _req: &wiremock::Request) -> wiremock::ResponseTemplate {
-        let key = crate::commands::availability::cache_key("K12", "sub");
+        let key = crate::commands::availability::cache_key("12", "sub");
         self.state.availability_refreshes.bump(&key);
         crate::commands::availability::write_cache_full(
             &self.state,
-            "K12",
+            "12",
             "sub",
             None,
             &refresh_verdict(),
@@ -323,7 +323,7 @@ fn refresh_verdict() -> crate::commands::availability::AvailabilityResponse {
     }
 }
 
-/// A live cached row for `K12` whose stream is served by `mock`.
+/// A live cached row for `12` whose stream is served by `mock`.
 fn seed_cached_row(
     state: &crate::app::AppState,
     args: &crate::commands::play::PlayArgs,
@@ -356,19 +356,19 @@ fn seed_cached_row(
 
 fn refresh_verdict_stands(state: &crate::app::AppState, what: &str) {
     assert_eq!(
-        crate::commands::availability::cached_provider(state, "K12", "sub"),
+        crate::commands::availability::cached_provider(state, "12", "sub"),
         Some(crate::scraper::provider::ProviderId::Anidb),
         "{what}: the refresh's provider stands"
     );
     let cached = crate::commands::availability::batch_cached(
         state,
         &crate::commands::availability::AvailabilityBatchArgs {
-            kitsu_ids: vec!["K12".into()],
+            kitsu_ids: vec!["12".into()],
             mode: "sub".into(),
         },
     );
     assert_eq!(
-        cached.playable_episode_counts.get("K12"),
+        cached.playable_episode_counts.get("12"),
         Some(&24),
         "{what}: the refresh's exact count stands"
     );
@@ -390,7 +390,7 @@ async fn a_handoff_replay_does_not_overwrite_a_refresh_that_landed_during_its_ch
         .mount(&mock)
         .await;
     let args: crate::commands::play::PlayArgs = serde_json::from_value(
-        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "12" }),
     )
     .expect("args");
     seed_cached_row(&state, &args, &mock);
@@ -419,7 +419,7 @@ async fn an_embedded_replay_does_not_overwrite_a_refresh_that_landed_during_its_
         .mount(&mock)
         .await;
     let args: crate::commands::play::PlayArgs = serde_json::from_value(
-        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "12" }),
     )
     .expect("args");
     seed_cached_row(&state, &args, &mock);
@@ -443,7 +443,7 @@ async fn a_replay_with_no_refresh_in_flight_still_refreshes_the_row() {
     let td = tempfile::tempdir().expect("td");
     let state = state_in(&td);
     let args: crate::commands::play::PlayArgs = serde_json::from_value(
-        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "K12" }),
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub", "kitsu_id": "12" }),
     )
     .expect("args");
     seed_cached_row(&state, &args, &mock);
@@ -455,7 +455,7 @@ async fn a_replay_with_no_refresh_in_flight_still_refreshes_the_row() {
         .await
         .is_some());
     assert_eq!(
-        crate::commands::availability::cached_provider(&state, "K12", "sub"),
+        crate::commands::availability::cached_provider(&state, "12", "sub"),
         Some(crate::scraper::provider::ProviderId::Hianime),
         "the replay remembers the provider the cached show key names"
     );
