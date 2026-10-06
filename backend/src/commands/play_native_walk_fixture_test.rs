@@ -810,3 +810,17 @@ async fn a_listing_named_for_the_entry_s_own_season_stops_a_cut() {
         );
     }
 }
+
+/// Japanese writes a division straight after the title as often as
+/// after a space: "ショー第2期" completes a span beside "ショー" as
+/// "ショー 第2期" does.
+#[tokio::test]
+async fn a_japanese_division_glued_to_the_title_completes_a_spanning_listing() {
+    let rows = [("show-1", "ショー", 24), ("show-2", "ショー第2期", 12)];
+    let site = pool_of(&["ショー"], Some(12), 2020, "ショー", &rows);
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!(
+        (picked.hit.slug.as_str(), picked.episodes.len()),
+        ("show-1", 12)
+    );
+}
