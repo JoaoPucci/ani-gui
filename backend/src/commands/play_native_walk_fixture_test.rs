@@ -41,6 +41,8 @@ fn fixture_dir() -> std::path::PathBuf {
 struct Recorded {
     id: String,
     doc: Fixture,
+    /// Listings whose probe dies in transport, as weather would.
+    dead: Vec<&'static str>,
 }
 
 impl Recorded {
@@ -50,6 +52,7 @@ impl Recorded {
         Self {
             id: id.to_string(),
             doc: serde_json::from_str(&body).unwrap_or_else(|e| panic!("parse {id}: {e}")),
+            dead: Vec::new(),
         }
     }
 }
@@ -75,6 +78,9 @@ impl Provider for Recorded {
             .collect())
     }
     async fn episodes(&self, slug: &str) -> Result<Vec<EpisodeRef>> {
+        if self.dead.contains(&slug) {
+            return Err(crate::error::AniError::Network);
+        }
         let rows = self
             .doc
             .episodes
@@ -113,7 +119,11 @@ impl Provider for Recorded {
 /// What the walk picks for fixture `id`, run with the entry's own
 /// arguments.
 async fn walk(id: &str) -> std::result::Result<PickedShow, NativeError> {
-    let site = Recorded::load(id);
+    walk_over(Recorded::load(id)).await
+}
+
+/// [`walk`] over a recording the test has altered.
+async fn walk_over(site: Recorded) -> std::result::Result<PickedShow, NativeError> {
     let e = &site.doc.kitsu;
     pick_native_walk(
         &site,
@@ -402,4 +412,23 @@ async fn a_listing_spanning_two_entries_serves_the_first_its_own_episodes() {
         ("42059", Some(("haikyu-to-the-top-933", 13))),
     ])
     .await;
+}
+
+/// The part tier ranks a candidate above the year, so a candidate
+/// whose part agrees and whose probe died unheard outranks a winner
+/// whose part does not: Slime's "Season 2" dying must not hand the
+/// pick to "2nd Season Part 2", which would then be cached as the
+/// entry's show.
+#[tokio::test]
+async fn a_dead_candidate_whose_part_agrees_blocks_the_one_whose_part_does_not() {
+    let mut site = Recorded::load("42196");
+    site.dead = vec!["that-time-i-got-reincarnated-as-a-slime-season-2-487"];
+    match walk_over(site).await {
+        Err(e) => assert!(
+            !e.clean_miss && matches!(e.error, crate::error::AniError::Network),
+            "the pick must be transient, got {:?}",
+            e.error
+        ),
+        Ok(p) => panic!("picked {} with the agreeing cour unheard", p.hit.slug),
+    }
 }
