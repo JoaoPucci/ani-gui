@@ -12,8 +12,10 @@ use super::play_native_wide_listing::Probed;
 pub(super) struct Span {
     /// The broad listing W.
     pub(super) wide: usize,
-    /// The siblings completing W that do not read as the entry — the
-    /// next entry, never picked.
+    /// The siblings completing W — the next entry, never picked. None
+    /// is an own listing that fits; beside a W the entry does not head,
+    /// none is the entry's own by title either, while beside one it
+    /// heads a sibling reading as the entry but not fitting is one.
     pub(super) later: Vec<usize>,
     /// Beside a W the entry is not the head of, the listings that open
     /// past W's stem on a first division alone — W's first half, never
@@ -31,8 +33,9 @@ pub(super) struct Span {
 /// W is admitted, carries the entry's own year, lists more than the
 /// entry has and has a stem; it is read only when a sibling completes
 /// it — one listing exactly the remainder, naming right after W's stem
-/// a later part than the entry's ([`EntryTitles::names_later_part`])
-/// and not reading as the entry — or an own listing fits beside it,
+/// a later part than the entry's ([`EntryTitles::names_later_part`]),
+/// and no own listing that fits — nor, beside a W the entry does not
+/// head, the entry's own by title — or an own listing fits beside it,
 /// or, the entry not being its head, a listing opens past its stem on
 /// a first division (W's first half).
 pub(super) fn spanning(

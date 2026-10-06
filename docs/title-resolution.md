@@ -159,7 +159,7 @@ The pools each row answers, E = 12:
 | Show: Final Arc Season 2 | "Show" 24, the exact title 12, "Show 2nd Season" 12 | not W's head; the exact title is an O | the exact title, by its exact-title rank among the O |
 | ショー２ | "ショー 第2期 第2部" 24, "ショー" 12, "ショー 第2期" 12 | not W's head; O | ショー 第2期 |
 | Show 2 | "Show Season 2" 22, "Show Part 2" 10, "Show" 12 | cut — "Show Part 2" reads as the entry but does not fit: an L | the span, cut |
-| Show 2 | "Show" 22, "Show 2" 10 | not W's head; "Show 2" is the entry's own by title, no L | Show 2 |
+| Show 2 | "Show" 22, "Show 2" 10 | no W — "Show 2" is the entry's own by title, so it is no L, and at 10 it is no O | Show 2 |
 | Show 2 | "Show 2" 24, "Show" 12, "Show Season 3" 12 | cut — "Show Season 3" names a season 3 past "Show", W's own 2 left out | the span, cut |
 | Show 2 | "Show 2" 24, "Show 2nd Season Part 2" 12 | cut — past "Show" it names W's 2 and a part 2 | the span, cut |
 | ショー２ | "ショー２" 24, "ショー" 12, "ショー 第3期" 12 | cut | the span, cut |
@@ -169,7 +169,7 @@ The pools each row answers, E = 12:
 
 Names are compared as written: the entry's titles have to carry the provider's name for the show for its broad listing to be read at all, which Kitsu's titles do for every recorded pool ("Gintama.: Silver Soul Arc" among Shirogane no Tamashii-hen's). The title rule that admits a candidate weighs only the divisions a title ends on and never its name, because the provider answers an alias with titles that share no words with the canonical one ("My Star" for "[Oshi no Ko]").
 
-Not decided by this rule: what follows the divisions a title opens with is read like the rest of it, so "Show 2nd Season Recap" reads `[2]` and is "Show 2"'s own beside "Show". One shape is recorded in `docs/deferred-work.md` instead: a broad listing completed by a sibling written in another script is never cut.
+Not decided by this rule: what follows the divisions a title opens with is read like the rest of it, so "Show 2nd Season Recap" reads `[2]` and is "Show 2"'s own beside "Show". One shape is recorded in `docs/deferred-work.md` instead: a broad listing completed by a sibling written in another script is never cut. A title that extends the entry's name after it still starts with that name, while one that extends it before does not: for "Show 2", "Show Other Season 2" (12) beside "Show Other" (24) reads as the entry and plays, while "Other Show Season 2" (12) beside "Other Show" (24) is an L and nothing plays. Which of the two a provider's subtitle is cannot be told from the words, and the table leaves the first as it stands.
 
 So a numbered spinoff ("Show Side Story 2") or a recap of W's own season ("Show Season 3 Recap") never completes a span, and a spinoff never stops one.
 
