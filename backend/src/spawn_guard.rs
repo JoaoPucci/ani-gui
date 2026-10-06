@@ -3,44 +3,49 @@
 //! the run ends or the guard is dropped. The trees themselves, which
 //! differ per platform, are in [`super::tree`].
 
+/// The child a guard owns: tokio's on Unix; on Windows the child
+/// `process-wrap` hands back, whose own job the guard ends the tree
+/// through.
+#[cfg(unix)]
+type GuardedChild = tokio::process::Child;
+#[cfg(windows)]
+type GuardedChild = Box<dyn process_wrap::tokio::ChildWrapper>;
+
 /// Owns a spawned child and kills its whole process tree when dropped
 /// mid-run. Ownership is the point: a struct's `Drop` body runs BEFORE
-/// its fields drop, so the tree walk / group signal fires while the
-/// child is still alive — on Windows `taskkill /T` can only discover
-/// descendants by a live parent pid, and `kill_on_drop`'s SIGKILL (the
-/// `Child` field's own drop) must come second under every cancellation
-/// mode: task abort, timeout, panic. The signal goes through `kill(1)`
-/// / `taskkill(1)` rather than a syscall — the crate forbids unsafe
-/// code, and both binaries ship with any host this app runs on. Each
-/// is run to completion, so neither lingers as a zombie; they exit in
-/// microseconds.
+/// its fields drop, so the tree's kill fires before `kill_on_drop`'s
+/// own kill of the child (the `Child` field's drop), under every
+/// cancellation mode: task abort, timeout, panic.
 ///
-/// Either command only asks: it returns once the kill is requested,
-/// and the processes exit when the kernel gets to them. Whatever
-/// follows a teardown — a respawn on the same resume state, a retry
-/// beside it, the sweep of what the tool wrote — needs the exit, so
-/// a teardown waits for it ([`Self::take_down`], and the drop, which
+/// A kill only asks: the processes exit when the kernel gets to them.
+/// Whatever follows a teardown — a respawn on the same resume state, a
+/// retry beside it, the sweep of what the tool wrote — needs the exit,
+/// so a teardown waits for it ([`Self::take_down`], and the drop, which
 /// waits the same way blocking), under [`TREE_EXIT_CEILING`].
 ///
-/// A child that exits by itself is not its whole tree. On Unix the
-/// guard keeps the group's id past the child's reap: a group with a
-/// process still in it keeps its id from being handed out again, so
-/// signalling the group stays safe until it is empty, and a helper
-/// left running in it is taken down too. The group is signalled only
+/// A child that exits by itself is not its whole tree, and the tool is
+/// in its tree before it runs (see [`super::GuardedCommand`]), so a
+/// helper it starts at once is in it too.
+///
+/// On Unix the tree is the tool's process group, killed with `kill(1)`
+/// rather than a syscall — the crate forbids unsafe code. The guard
+/// keeps the group's id past the child's reap: a group with a process
+/// still in it keeps its id from being handed out again, so signalling
+/// the group stays safe until it is empty. The group is signalled only
 /// after a look finds someone in it; an empty group answers that look
 /// with no such process, and nothing is sent. What the look cannot
 /// rule out is the id being freed and handed to a new group leader in
 /// the moment between it and the kill — a full turn of the pid space
-/// in milliseconds. On Windows the tool is put in two nested job
-/// objects as it starts, and the processes it starts after that join
-/// them: the tree is the outer job's members, there whether or not the
-/// tool itself is still running, and the kill closes the inner job
-/// when there is one.
-/// Both are made to kill their members when their last handle closes,
-/// which is the guard's, so a backend that ends without running any
-/// guard — a crash — still takes its tools with it.
+/// in milliseconds.
+///
+/// On Windows the tool runs in two nested job objects. The kill ends
+/// the inner one — the child's own — whole, with no pid looked up; the
+/// outer one lists the members until they have gone, whether or not
+/// the tool itself still runs, and ends them when its handle closes, so
+/// a backend that dies without running any guard takes its tools with
+/// it.
 pub(crate) struct TreeKillChild {
-    pub(crate) child: tokio::process::Child,
+    child: GuardedChild,
     /// The rest of the child's tree; `None` once it is known to be
     /// gone.
     tree: Option<Box<dyn Tree>>,
@@ -58,16 +63,12 @@ pub(crate) trait Tree: Send {
     fn running(&mut self) -> bool;
     /// Ask every process of the tree still running to die.
     fn kill(&mut self);
-    /// Whether the kill ends the whole tree at once, for a case.
-    #[cfg(all(test, windows))]
-    fn kills_at_once(&self) -> bool {
-        false
-    }
 }
 
 impl TreeKillChild {
-    pub(crate) fn new(child: tokio::process::Child) -> Self {
-        let tree = super::tree::platform_tree(&child);
+    /// A guard over a child already in its tree; see
+    /// [`super::GuardedCommand`], the one way a guard is made.
+    pub(super) fn guard(child: GuardedChild, tree: Option<Box<dyn Tree>>) -> Self {
         Self {
             child,
             tree,
@@ -79,28 +80,38 @@ impl TreeKillChild {
     /// decides what the tree does.
     #[cfg(test)]
     pub(crate) fn with_tree(child: tokio::process::Child, tree: Box<dyn Tree>) -> Self {
-        Self {
-            child,
-            tree: Some(tree),
-            given_up: false,
-        }
+        #[cfg(windows)]
+        let child: GuardedChild = Box::new(child);
+        Self::guard(child, Some(tree))
     }
 
-    /// The guarded child, for the caller's own I/O and wait.
-    pub(crate) fn child_mut(&mut self) -> &mut tokio::process::Child {
-        &mut self.child
+    /// The child's stderr, for the caller to read.
+    pub(crate) fn stderr_mut(&mut self) -> &mut Option<tokio::process::ChildStderr> {
+        #[cfg(unix)]
+        return &mut self.child.stderr;
+        #[cfg(windows)]
+        return self.child.stderr();
+    }
+
+    /// Wait for the child itself to exit, not the rest of its tree.
+    pub(crate) async fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        #[cfg(unix)]
+        return self.child.wait().await;
+        #[cfg(windows)]
+        return self.child.inner_mut().wait().await;
+    }
+
+    fn try_wait_child(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+        #[cfg(unix)]
+        return self.child.try_wait();
+        #[cfg(windows)]
+        return self.child.inner_mut().try_wait();
     }
 
     /// Whether anything of the tree is still running, for a case.
-    #[cfg(all(test, windows))]
+    #[cfg(test)]
     pub(crate) fn tree_running(&mut self) -> bool {
         self.tree.as_mut().is_some_and(|t| t.running())
-    }
-
-    /// Whether the tree's kill ends it at once, for a case.
-    #[cfg(all(test, windows))]
-    pub(crate) fn tree_kills_at_once(&self) -> bool {
-        self.tree.as_ref().is_some_and(|t| t.kills_at_once())
     }
 
     /// Take the tree down and wait until it has exited: the child
@@ -160,7 +171,7 @@ impl TreeKillChild {
     /// The child first, reaping it if it has exited, then the rest of
     /// its tree.
     fn tree_exited(&mut self) -> bool {
-        if matches!(self.child.try_wait(), Ok(None)) {
+        if matches!(self.try_wait_child(), Ok(None)) {
             return false;
         }
         !self.tree.as_mut().is_some_and(|t| t.running())
@@ -170,6 +181,10 @@ impl TreeKillChild {
         if let Some(tree) = self.tree.as_mut() {
             tree.kill();
         }
+        // On Windows the tree ends through the child: its own job,
+        // terminated whole, with no pid looked up.
+        #[cfg(windows)]
+        let _ = self.child.start_kill();
     }
 }
 
