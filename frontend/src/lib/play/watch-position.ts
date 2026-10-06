@@ -7,7 +7,7 @@
  */
 
 import { recoveryResume } from './resume-after-recovery';
-import { noteWrite, nextWrite, writtenSince } from './write-order';
+import { nextWrite, picks, writes } from './write-order';
 
 /** Below this, an episode is kept as started, at zero. */
 export const RESUME_MIN_S = 15;
@@ -86,13 +86,13 @@ export function savePosition(
 		store(storage, rest);
 		return;
 	}
-	if (store(storage, [...rest, row ? [key, point, row] : [key, point]])) noteWrite(storage, key);
+	if (store(storage, [...rest, row ? [key, point, row] : [key, point]])) writes.note(storage, key);
 }
 
 /** Marks `episode` of `showId` started, at zero, for `row` as
- *  savePosition does, unless a point is already kept for it — which
- *  the pick then makes the user's as of now, so a removal's cleanup
- *  begun before it leaves the point. */
+ *  savePosition does, unless a point is already kept for it. A pick
+ *  of such a point is noted: a removal's cleanup begun before it,
+ *  which forgets the point, leaves a started mark in its place. */
 export function markStarted(
 	showId: string,
 	episode: number,
@@ -102,7 +102,7 @@ export function markStarted(
 	if (readPosition(showId, episode, storage) === null) {
 		savePosition(showId, episode, 0, Number.NaN, storage, row);
 	} else {
-		noteWrite(storage, keyOf(showId, episode));
+		picks.note(storage, keyOf(showId, episode));
 	}
 }
 
@@ -152,10 +152,24 @@ export function clearShowPositions(
 ): void {
 	recoveryResume.forgetShow(showId, since);
 	const prefix = `${showId}:`;
-	store(
-		storage,
-		load(storage).filter(([k]) => !k.startsWith(prefix) || writtenSince(storage, k, since))
-	);
+	const kept: Positions = [];
+	for (const p of load(storage)) {
+		const left = p[0].startsWith(prefix) ? afterRemoval(p, storage, since) : p;
+		if (left) kept.push(left);
+	}
+	store(storage, kept);
+}
+
+/** What a removal's cleanup leaves of `p`, kept before `since`: all of
+ *  it when written since, a started mark when its episode was picked
+ *  since, and otherwise nothing. */
+function afterRemoval(
+	p: Position,
+	storage: PositionStorage | null,
+	since?: number
+): Position | null {
+	if (writes.since(storage, p[0], since)) return p;
+	return picks.since(storage, p[0], since) ? [p[0], 0] : null;
 }
 
 /** Forgets every kept episode last written by a session one of
@@ -173,12 +187,10 @@ export function clearRowPositions(
 	const kept: Positions = [];
 	for (const p of load(storage)) {
 		const show = p[0].slice(0, p[0].lastIndexOf(':'));
-		const theRows = p[2] !== undefined && removed.has(p[2]) && !writtenSince(storage, p[0], since);
-		if (theRows && !keepShows.has(show)) {
-			recoveryResume.forgetShow(show, since);
-		} else {
-			kept.push(p);
-		}
+		const theRows = p[2] !== undefined && removed.has(p[2]) && !keepShows.has(show);
+		const left = theRows ? afterRemoval(p, storage, since) : p;
+		if (left !== p) recoveryResume.forgetShow(show, since);
+		if (left) kept.push(left);
 	}
 	store(storage, kept);
 }

@@ -17,21 +17,29 @@ export function nextWrite(): number {
 	return last;
 }
 
-/** When this session last wrote each key, by the store written to.
+/** When this session last noted each key, by the store it lives in.
  *  A key an earlier session wrote has none. */
-const written = new WeakMap<object, Map<string, number>>();
+export class Moments {
+	private readonly at = new WeakMap<object, Map<string, number>>();
 
-/** Notes a write of `key` to `store`, now. */
-export function noteWrite(store: object | null, key: string): void {
-	if (!store) return;
-	const moments = written.get(store) ?? new Map<string, number>();
-	moments.set(key, nextWrite());
-	written.set(store, moments);
+	/** Notes `key` in `store`, now. */
+	note(store: object | null, key: string): void {
+		if (!store) return;
+		const moments = this.at.get(store) ?? new Map<string, number>();
+		moments.set(key, nextWrite());
+		this.at.set(store, moments);
+	}
+
+	/** Whether `key` in `store` was noted after `since`. Without
+	 *  `since`, it was not. */
+	since(store: object | null, key: string, since?: number): boolean {
+		const at = store ? this.at.get(store)?.get(key) : undefined;
+		return (at ?? 0) > (since ?? Infinity);
+	}
 }
 
-/** Whether this session wrote `key` to `store` after `since` — what a
- *  removal's cleanup leaves. Without `since`, nothing was. */
-export function writtenSince(store: object | null, key: string, since?: number): boolean {
-	const at = store ? written.get(store)?.get(key) : undefined;
-	return (at ?? 0) > (since ?? Infinity);
-}
+/** The session's writes of each key: what a removal's cleanup leaves. */
+export const writes = new Moments();
+/** The session's picks of a key's episode that kept the point there:
+ *  a cleanup that forgets the point restarts it instead. */
+export const picks = new Moments();
