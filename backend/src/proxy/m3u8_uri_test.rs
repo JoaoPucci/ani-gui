@@ -86,7 +86,9 @@ fn a_media_playlists_low_latency_hints_and_interstitials_are_dropped() {
         #EXTINF:4.0,\n\
         seg0.m4s\n\
         #EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"part1.m4s\"\n\
-        #EXT-X-RENDITION-REPORT:URI=\"../720/index.m3u8\",LAST-MSN=1\n";
+        #EXT-X-RENDITION-REPORT:URI=\"../720/index.m3u8\",LAST-MSN=1\n\
+        #EXTINF:4.0,\n\
+        seg1.m4s\n";
     let media = Url::parse("https://cdn.example/a/1080/index.m3u8").expect("url");
     let out = rewrite_media(
         body,
@@ -109,16 +111,32 @@ proptest::proptest! {
     fn every_uri_a_master_carries_comes_back_on_the_proxy(
         session_keys in 0usize..3,
         session_data in 0usize..3,
+        valued_data in proptest::bool::ANY,
+        unkeyed in proptest::bool::ANY,
         renditions in 0usize..3,
+        uriless_rendition in proptest::bool::ANY,
+        steering in proptest::bool::ANY,
         iframes in 0usize..3,
         variants in 1usize..4,
     ) {
         let mut body = String::from("#EXTM3U\n#EXT-X-VERSION:6\n");
+        if steering {
+            body.push_str("#EXT-X-CONTENT-STEERING:SERVER-URI=\"https://steer.example/s\"\n");
+        }
         for i in 0..session_keys {
             body.push_str(&format!("#EXT-X-SESSION-KEY:METHOD=AES-128,URI=\"k/{i}.key\"\n"));
         }
+        if unkeyed {
+            body.push_str("#EXT-X-SESSION-KEY:METHOD=NONE\n");
+        }
         for i in 0..session_data {
             body.push_str(&format!("#EXT-X-SESSION-DATA:DATA-ID=\"d{i}\",URI=\"d/{i}.json\"\n"));
+        }
+        if valued_data {
+            body.push_str("#EXT-X-SESSION-DATA:DATA-ID=\"v\",VALUE=\"kept\"\n");
+        }
+        if uriless_rendition {
+            body.push_str("#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID=\"cc\",NAME=\"cc\",INSTREAM-ID=\"CC1\"\n");
         }
         for i in 0..renditions {
             body.push_str(&format!(
@@ -137,6 +155,18 @@ proptest::proptest! {
         let out = rewrite_master(body.as_bytes(), &master, &origin(), SessionId::new(), &AppSecret::random())
             .expect("rewrite");
         proptest::prop_assert!(all_proxied(&out), "{}", out);
+        // Rewritten, not dropped: every session key and session data
+        // the master carried is still there, each URI resolved
+        // against the master.
+        let keys = session_keys + usize::from(unkeyed);
+        proptest::prop_assert_eq!(out.matches("#EXT-X-SESSION-KEY").count(), keys);
+        let data = session_data + usize::from(valued_data);
+        proptest::prop_assert_eq!(out.matches("#EXT-X-SESSION-DATA").count(), data);
+        for i in 0..session_keys {
+            let upstream = format!("https://cdn.example/a/k/{i}.key");
+            let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(upstream.as_bytes());
+            proptest::prop_assert!(out.contains(&encoded), "{} not resolved in {}", upstream, out);
+        }
     }
 
     /// Whatever URI-bearing tags a media playlist carries, every URI in
@@ -161,9 +191,12 @@ proptest::proptest! {
             }
             body.push_str(&format!("#EXTINF:4.0,\ns{i}.m4s\n"));
         }
+        // Hints and reports ahead of a segment: the parser drops tags
+        // after the last one, so only these reach the rewrite.
         if parts {
             body.push_str("#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"next.m4s\"\n");
             body.push_str("#EXT-X-RENDITION-REPORT:URI=\"../b/index.m3u8\",LAST-MSN=1\n");
+            body.push_str("#EXTINF:4.0,\nlast.m4s\n");
         }
         let media = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
         let out = rewrite_media(body.as_bytes(), &media, &origin(), SessionId::new(), &AppSecret::random())
