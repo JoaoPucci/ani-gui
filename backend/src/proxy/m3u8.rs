@@ -271,6 +271,10 @@ fn build_proxy_uri(
 }
 
 #[cfg(test)]
+#[path = "m3u8_uri_test.rs"]
+mod uri_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
