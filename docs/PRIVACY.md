@@ -129,7 +129,11 @@ ani-gui keeps the following on your computer only:
   as positions kept before rows were recorded do. Forgetting a
   show's positions, a card's, or all of them, also forgets where a
   stream that was recovering from a dropped connection stood, which
-  the app keeps in memory until that episode is opened again.
+  the app keeps in memory until that episode is opened again. What
+  removing a card forgets is what was kept when it was removed:
+  playing the show again afterwards keeps its positions again, and
+  where its stream stood while recovering, the same way the history
+  records a show played again after removing it.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's

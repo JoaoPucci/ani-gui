@@ -33,7 +33,8 @@
 //! keys' numbering, while the resolution rows that name those keys are
 //! still there; the resolution rows; the title matches under earlier
 //! titles that name the show's Kitsu ids; the mappings and title
-//! matches those ids are found by, all a retry in a later process has;
+//! matches those ids are found by, which a retry in a later process
+//! finds them by besides the id the row records;
 //! then the history file; then the
 //! removed rows' own offsets ([`sweep_offsets`]).
 
