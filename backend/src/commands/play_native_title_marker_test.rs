@@ -107,6 +107,19 @@ fn a_bare_number_a_title_ends_on_is_held_to_what_the_entry_names() {
     assert!(entry(&["Mob Psycho"]).admits("Mob Psycho 100"));
 }
 
+#[test]
+fn a_number_before_a_japanese_counter_is_named_by_the_entry() {
+    // Japanese writes the number of "No. 8" glued between the title
+    // and a counter, often full-width: an entry known only as
+    // "怪獣８号" names 8.
+    for title in ["怪獣８号", "怪獣8号", "ショー２話", "ショー2期"] {
+        assert!(!named_ordinals(title).is_empty(), "{title}");
+    }
+    assert!(entry(&["怪獣８号"]).admits("Kaiju No. 8"));
+    assert!(!entry(&["怪獣８号"]).admits("Kaiju No. 9"));
+    assert!(entry(&["ショー２話"]).admits("Show 2"));
+}
+
 proptest::proptest! {
     /// A title of plain words followed by a bare number is admitted by
     /// an entry of plain words exactly when the number is a first or
