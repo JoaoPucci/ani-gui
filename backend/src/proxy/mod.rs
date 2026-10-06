@@ -383,7 +383,8 @@ async fn handle_mp4(
 /// How a segment fetch is admitted: a player's media segment that
 /// names its stream and duration is noted at every host it reaches, so
 /// each host leaves the player what its streams need; anything else is
-/// admitted as the session's traffic.
+/// admitted as the session's traffic, and the player's counts toward
+/// its need at the rate it arrives.
 fn segment_admission(session: Admission, q: &SegmentQuery) -> Admission {
     match (session, q.r.as_deref().and_then(Stream::from_slot), q.d) {
         (Admission::Player, Some(stream), Some(ms)) => Admission::PlayerSegment {
