@@ -36,10 +36,27 @@ impl GuardedCommand {
         {
             let outer = std::sync::Arc::default();
             let mut wrap = process_wrap::tokio::CommandWrap::from(cmd);
+            // `JobObject` creates the tool suspended and resumes it once
+            // every post-spawn hook has run, the outer job's among them;
+            // `KillOnDrop` makes the tool's own job end its members when
+            // its handle closes.
             wrap.wrap(OuterJob(std::sync::Arc::clone(&outer)))
+                .wrap(process_wrap::tokio::KillOnDrop)
                 .wrap(process_wrap::tokio::JobObject);
             Self { wrap, outer }
         }
+    }
+
+    /// Whether the command carries the wrapper `W`, for a case.
+    #[cfg(all(test, windows))]
+    pub(crate) fn wraps<W: process_wrap::tokio::CommandWrapper + 'static>(&self) -> bool {
+        self.wrap.has_wrap::<W>()
+    }
+
+    /// Whether the command carries the outer job's wrapper, for a case.
+    #[cfg(all(test, windows))]
+    pub(crate) fn wraps_outer_job(&self) -> bool {
+        self.wrap.has_wrap::<OuterJob>()
     }
 
     /// Spawn the tool, in its tree before it runs, under its guard.
@@ -94,7 +111,10 @@ impl process_wrap::tokio::CommandWrapper for OuterJob {
         })();
         match joined {
             Ok(job) => *self.0.lock().expect("outer job slot") = Some(job),
-            Err(e) => tracing::warn!(error = ?e, "a tool could not be put in its outer job"),
+            Err(e) => {
+                *self.0.lock().expect("outer job slot") = None;
+                tracing::warn!(error = ?e, "a tool could not be put in its outer job");
+            }
         }
         Ok(())
     }

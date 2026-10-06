@@ -41,7 +41,8 @@ pub(super) fn process_group(child: &tokio::process::Child) -> Option<Box<dyn sup
 /// nested in this one, which the guard ends through the child — every
 /// member at once, with no pid looked up. This job is the one that can
 /// still be asked whether they have gone. Without it — it could not be
-/// made — the guard still ends the tree through the child, but can
+/// made — the guard still ends the tool's own job at every teardown,
+/// and that job ends its members when it closes, but the guard can
 /// only see the child itself go.
 #[cfg(windows)]
 struct JobTree {

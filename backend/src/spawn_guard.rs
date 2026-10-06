@@ -124,6 +124,11 @@ impl TreeKillChild {
         if self.tree.is_none() {
             return true;
         }
+        // On Windows the tool's own job is ended whatever is seen of
+        // the tree: ending it looks up no pid, and a helper left behind
+        // is in it even when no outer job could be made to see it.
+        #[cfg(windows)]
+        let _ = self.child.start_kill();
         if self.tree_exited() {
             self.tree = None;
             return true;
@@ -154,6 +159,11 @@ impl TreeKillChild {
             self.kill_tree();
             return;
         }
+        // On Windows the tool's own job is ended whatever is seen of
+        // the tree: ending it looks up no pid, and a helper left behind
+        // is in it even when no outer job could be made to see it.
+        #[cfg(windows)]
+        let _ = self.child.start_kill();
         if self.tree_exited() {
             return;
         }
