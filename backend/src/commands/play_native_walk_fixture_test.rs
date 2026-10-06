@@ -364,3 +364,13 @@ async fn a_sequel_named_for_another_season_is_never_picked_for_the_first() {
     ])
     .await;
 }
+
+/// Boruto's announced second part has no year and no count on Kitsu,
+/// and hianime carries no listing of it: the search answers with the
+/// 293-episode series before it, which the pick took as the provider's
+/// first hit. The part before the requested entry is never the entry,
+/// so the pool is refused.
+#[tokio::test]
+async fn an_announced_part_is_refused_rather_than_resolved_to_the_series_before_it() {
+    assert_picks(&[("47181", None)]).await;
+}
