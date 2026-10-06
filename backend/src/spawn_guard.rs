@@ -57,6 +57,11 @@ pub(crate) trait Tree: Send {
     fn running(&mut self) -> bool;
     /// Ask every process of the tree still running to die.
     fn kill(&mut self);
+    /// Whether the kill ends the whole tree at once, for a case.
+    #[cfg(all(test, windows))]
+    fn kills_at_once(&self) -> bool {
+        false
+    }
 }
 
 impl TreeKillChild {
@@ -89,6 +94,12 @@ impl TreeKillChild {
     #[cfg(all(test, windows))]
     pub(crate) fn tree_running(&mut self) -> bool {
         self.tree.as_mut().is_some_and(|t| t.running())
+    }
+
+    /// Whether the tree's kill ends it at once, for a case.
+    #[cfg(all(test, windows))]
+    pub(crate) fn tree_kills_at_once(&self) -> bool {
+        self.tree.as_ref().is_some_and(|t| t.kills_at_once())
     }
 
     /// Take the tree down and wait until it has exited: the child
