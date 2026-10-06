@@ -144,12 +144,6 @@ starting it, and delete it when you find it done.
   Repro: entry ["怪獣８号"], count 12, a pool of "怪獣８号" (24), "Kaiju
   No. 8 Season 2" (12) and "Kaiju No. 8 Recap" (12), picks the recap.
 
-  The title rule meets the same limit: a number an entry's titles
-  carry only inside a Japanese word (the ８ of "怪獣８号") is not read as
-  named, so an entry known only by that title refuses "Kaiju No. 8",
-  which ends on a bare 8. Real entries carry a Latin title naming the
-  number ("Kaiju No. 8", "Kaijuu 8-gou"), which admits it.
-
 ## Testing and CI
 
 - **The CRAP ratchet disagrees between CI and local** — 26 against 25 —
