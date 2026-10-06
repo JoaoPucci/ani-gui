@@ -916,3 +916,61 @@ fn the_players_other_requests_count_toward_its_need() {
     let later = now + Duration::from_secs(600);
     assert_eq!(demand.per_second(later), 0.0, "stopped: forgotten");
 }
+
+proptest! {
+    /// However the player's other requests arrive, they add no more
+    /// than their count over the shortest span the rate is taken over,
+    /// never a negative need, and nothing once a minute has passed
+    /// without one.
+    #[test]
+    fn the_other_requests_rate_is_bounded_and_forgets(
+        gaps in proptest::collection::vec(0u64..30_000, 1..40),
+    ) {
+        let start = Instant::now();
+        let mut demand = Demand::default();
+        let mut now = start;
+        for gap in &gaps {
+            now += Duration::from_millis(*gap);
+            demand.note_other(now);
+        }
+        let need = demand.per_second(now);
+        #[allow(clippy::cast_precision_loss)]
+        let most = gaps.len() as f64 / 10.0;
+        prop_assert!(need >= 0.0 && need <= most + 1e-9, "{need} over {most}");
+        prop_assert_eq!(demand.per_second(now + Duration::from_secs(61)), 0.0);
+    }
+}
+
+/// The rate is read off the requests seen so far, from the second one
+/// on: a key every five seconds reads as one every five seconds within
+/// ten seconds of the first, not as a fraction of the minute. The
+/// requests that start playback together read as a pace over the ten
+/// seconds the rate is never taken under — overstating it at first,
+/// on purpose, and less as the minute goes on.
+#[test]
+fn the_other_requests_rate_reads_the_pace_early_and_overstates_a_start() {
+    let start = Instant::now();
+    let mut periodic = Demand::default();
+    periodic.note_other(start);
+    periodic.note_other(start + Duration::from_secs(5));
+    let early = periodic.per_second(start + Duration::from_secs(10));
+    assert!(
+        (early - 0.2).abs() < 1e-9,
+        "one every five seconds: {early}"
+    );
+
+    let mut starting = Demand::default();
+    for _ in 0..4 {
+        starting.note_other(start);
+    }
+    let at_start = starting.per_second(start + Duration::from_secs(1));
+    assert!(
+        (at_start - 0.4).abs() < 1e-9,
+        "four at once over ten seconds"
+    );
+    let later = starting.per_second(start + Duration::from_secs(40));
+    assert!(
+        (later - 0.1).abs() < 1e-9,
+        "and over the forty since: {later}"
+    );
+}
