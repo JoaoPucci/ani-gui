@@ -177,3 +177,52 @@ manifest() {
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
     [[ "$output" == *"set/MANIFEST.json: is a symbolic link"* ]]
 }
+
+@test "a symbolic link to a directory beside a manifest is refused" {
+    rm "$root/tests/fixtures/set/x.txt"
+    ln -s ../other "$root/tests/fixtures/set/linked"
+    manifest "a.txt=$root/tests/fixtures/set/a.txt"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"linked: is a symbolic link"* ]]
+}
+
+@test "a MANIFEST.json that is a directory is refused, not descended into" {
+    # Otherwise the directory it sits in answers to no manifest at all.
+    mkdir "$root/tests/fixtures/other/MANIFEST.json"
+    manifest "a.txt=$root/tests/fixtures/set/a.txt" "x.txt=$root/tests/fixtures/set/x.txt"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"other/MANIFEST.json: is not a regular file"* ]]
+}
+
+@test "a tests/fixtures that is a symbolic link is refused" {
+    manifest "a.txt=$root/tests/fixtures/set/a.txt" "x.txt=$root/tests/fixtures/set/x.txt"
+    mkdir -p "$root/outside"
+    mv "$root/tests/fixtures" "$root/outside/fx"
+    ln -s ../outside/fx "$root/tests/fixtures"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"tests/fixtures: is not a directory"* ]]
+}
+
+@test "a tests that is a symbolic link is refused" {
+    manifest "a.txt=$root/tests/fixtures/set/a.txt" "x.txt=$root/tests/fixtures/set/x.txt"
+    mkdir -p "$root/outside"
+    mv "$root/tests" "$root/outside/tt"
+    ln -s outside/tt "$root/tests"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"tests: is not a directory"* ]]
+}
+
+@test "base64 text that does not round-trip is refused" {
+    # The decoder silently drops characters outside the alphabet, so
+    # this text decodes to the recorded bytes while the committed file
+    # says something else.
+    rm "$root/tests/fixtures/set/x.txt" "$root/tests/fixtures/set/a.txt"
+    printf 'aGVsbG8K\n' >"$root/tests/fixtures/set/a.b64"
+    printf 'aGVs#bG8K!\n' >"$root/tests/fixtures/set/b.b64"
+    digest=$(printf 'hello\n' | sha256sum | cut -d' ' -f1)
+    printf '{"a.b64": {"encoding": "base64", "sha256": "%s", "size": 6}, "b.b64": {"encoding": "base64", "sha256": "%s", "size": 6}}\n' \
+        "$digest" "$digest" >"$root/tests/fixtures/set/MANIFEST.json"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"b.b64: is not canonical base64"* ]]
+    [[ "$output" != *"a.b64"* ]]
+}
