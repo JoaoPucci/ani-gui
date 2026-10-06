@@ -222,3 +222,44 @@ test('--ccn naming a missing report fails instead of scoring without it', () => 
 	assert.notEqual(run.status, 0);
 	assert.match(run.stderr, /absent\.xml/);
 });
+
+// An item's name attribute is `<function>(...) at <file>:<line>`, XML-
+// escaped. The producers' function names carry no whitespace, so the
+// first ` at ` ends the name and everything up to the last `:` is the
+// file — whatever the file's path contains.
+test('a file path holding the delimiter, colons or escaped characters is read whole', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-path-'));
+	const file = 'src/a at b/x:y & "z" <w>.ts';
+	const escaped = file.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const xml = [
+		'<cppncss><measure type="Function">',
+		`<item name="f(...) at ${escaped}:3"><value>1</value><value>1</value><value>4</value></item>`,
+		`<item name="g(...) at ${escaped}:9"><value>2</value><value>1</value><value>2</value></item>`,
+		'</measure></cppncss>'
+	].join('\n');
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord(file, 10, 10));
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8'
+		})
+	);
+	assert.deepEqual(
+		out.top.map((r) => [r.file, r.ccn, r.cov]),
+		[[path.normalize(file), 6, 100]]
+	);
+});
+
+test('an item that names no file fails the run instead of dropping its complexity', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-unplaced-'));
+	const xml = '<cppncss><measure type="Function"><item name="f(...)"><value>1</value><value>1</value><value>4</value></item></measure></cppncss>';
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('src/a.rs', 10, 10));
+	const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+		cwd: tmpDir,
+		encoding: 'utf-8'
+	});
+	assert.notEqual(run.status, 0);
+	assert.match(run.stderr, /f\(\.\.\.\)/);
+});

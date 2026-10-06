@@ -155,3 +155,33 @@ test('decisions outside functions are declared in the summary', () => {
 	assert.equal(run.status, 0, run.stderr);
 	assert.match(run.stderr, /1 decisions outside any function not counted/);
 });
+
+test('a method name of any text keeps its decisions in its own file', () => {
+	// A quoted or computed name can hold the report's own ` at `
+	// delimiter, quotes or markup. Emitted raw, the scorer would read
+	// the tail of the name as the file and charge the decisions there.
+	const dir = scratch({
+		'k.ts': [
+			'export class K {',
+			"\t'parse at runtime'(x: boolean): number { return x ? 1 : 0; }",
+			"\t['a\" <b> & c at d:1'](x: boolean): number { if (x) return 1; return 0; }",
+			'\t"plain"(): void {}',
+			'}',
+			''
+		].join('\n')
+	});
+	const report = spawnSync('node', [tool, 'k.ts'], { cwd: dir, encoding: 'utf-8' });
+	assert.equal(report.status, 0, report.stderr);
+	fs.writeFileSync(path.join(dir, 'ccn.xml'), report.stdout);
+	fs.writeFileSync(path.join(dir, 'lcov.info'), ['TN:', 'SF:k.ts', 'LF:1', 'LH:1', 'end_of_record'].join('\n'));
+	const scored = JSON.parse(
+		execFileSync('node', [path.join(repoRoot, 'tools/crap-score.mjs'), '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: dir,
+			encoding: 'utf-8'
+		})
+	);
+	assert.deepEqual(
+		scored.top.map((r) => [r.file, r.ccn]),
+		[['k.ts', 5]]
+	);
+});

@@ -120,3 +120,28 @@ fn decisions_outside_functions_are_declared_in_the_summary() {
         "{stderr}"
     );
 }
+
+#[test]
+fn a_path_of_any_text_is_escaped_into_the_report() {
+    // The path sits inside an XML attribute; quotes, ampersands and
+    // angle brackets in it must not end or corrupt the attribute.
+    let dir = scratch("path", &[]);
+    let odd = dir.join("a at b & \"c\" <d>");
+    std::fs::create_dir_all(&odd).expect("mkdir");
+    std::fs::write(odd.join("e.rs"), "fn r#match() {}\n").expect("write");
+    let out = run(&odd);
+    assert!(out.status.success());
+    let xml = String::from_utf8(out.stdout).expect("utf-8");
+    let escaped = odd
+        .join("e.rs")
+        .display()
+        .to_string()
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    assert!(
+        xml.contains(&format!("<item name=\"r#match(...) at {escaped}:1\">")),
+        "{xml}"
+    );
+}
