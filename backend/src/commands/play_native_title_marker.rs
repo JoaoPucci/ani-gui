@@ -12,11 +12,13 @@ use std::collections::BTreeSet;
 use super::play_native_title_grammar::normalized;
 pub(crate) use super::play_native_title_grammar::stem;
 use super::play_native_title_grammar::{
-    later_divisions, named_ordinals, names_past_stem, opens_on_a_first_division, part_ordinals,
-    reading, stem_number, trailing_markers,
+    named_ordinals, part_ordinals, stem_number, trailing_markers,
 };
 #[cfg(test)]
 use super::play_native_title_grammar::{Kind, Marker};
+use super::play_native_title_reading::{
+    later_divisions, names_past_stem, opens_on_a_first_division, reading,
+};
 
 /// Every title the entry goes by: its canonical title, then the
 /// fallbacks the walk searches in order.
@@ -113,7 +115,7 @@ impl EntryTitles<'_> {
     /// it names a division of its own ([`later_divisions`]) beyond the
     /// part the entry's titles end on — part 1 when they end on none.
     ///
-    /// [`later_divisions`]: super::play_native_title_grammar::later_divisions
+    /// [`later_divisions`]: super::play_native_title_reading::later_divisions
     pub(crate) fn names_later_part(&self, sibling: &str, wide: &str) -> bool {
         let own = self.own_part();
         later_divisions(sibling, wide).iter().any(|n| *n > own)
@@ -130,7 +132,7 @@ impl EntryTitles<'_> {
     /// with. A spanning listing that reads as the entry has the entry
     /// for its head.
     ///
-    /// [`reading`]: super::play_native_title_grammar::reading
+    /// [`reading`]: super::play_native_title_reading::reading
     pub(crate) fn reads_as_entry(&self, title: &str) -> bool {
         let theirs = reading(title);
         self.all().any(|t| reading(t) == theirs)
@@ -141,7 +143,7 @@ impl EntryTitles<'_> {
     /// entry's own: beside a `wide` the entry is not the head of, that
     /// is `wide`'s first half, never the entry.
     ///
-    /// [`opens_on_a_first_division`]: super::play_native_title_grammar::opens_on_a_first_division
+    /// [`opens_on_a_first_division`]: super::play_native_title_reading::opens_on_a_first_division
     pub(crate) fn first_part_of(&self, listing: &str, wide: &str) -> bool {
         opens_on_a_first_division(listing, wide) && !self.names_own_part(listing, wide)
     }
@@ -156,7 +158,7 @@ impl EntryTitles<'_> {
     /// 2"'s; and a spinoff — "Show Side Story", "Show Side Story 2" —
     /// is another show of the franchise, numbered or not.
     ///
-    /// [`names_past_stem`]: super::play_native_title_grammar::names_past_stem
+    /// [`names_past_stem`]: super::play_native_title_reading::names_past_stem
     pub(crate) fn names_own_part(&self, listing: &str, wide: &str) -> bool {
         let exact = normalized(listing);
         self.all().any(|t| normalized(t) == exact)
