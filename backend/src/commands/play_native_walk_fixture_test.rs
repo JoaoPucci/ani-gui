@@ -824,3 +824,69 @@ async fn a_japanese_division_glued_to_the_title_completes_a_spanning_listing() {
         ("show-1", 12)
     );
 }
+
+/// What makes a listing beside a spanning one the entry's own is
+/// read against what the entry's titles name past the spanning
+/// listing's stem, by ordinal, whatever kind the catalogues give it.
+/// Each pool is `(entry titles, rows, the listing that must play, its
+/// length)`.
+#[tokio::test]
+async fn the_entry_s_own_listing_is_what_its_titles_name_past_the_spanning_stem() {
+    type Case<'a> = (&'a [&'a str], &'a [(&'a str, &'a str, u32)], &'a str, usize);
+    let cases: [Case<'_>; 4] = [
+        // A number inside the spanning listing's own stem names no
+        // season of the entry: "Lucky 2 2nd Season" is the next one.
+        (
+            &["Lucky 2"],
+            &[("w", "Lucky 2", 24), ("l", "Lucky 2 2nd Season", 12)],
+            "w",
+            12,
+        ),
+        // A number in the entry's titles does not stop a first
+        // season's listing being its own.
+        (
+            &["Kaiju No. 8", "怪獣８号"],
+            &[
+                ("w", "Kaiju No. 8", 23),
+                ("l", "Kaiju No. 8 Part 2", 11),
+                ("own", "Kaiju No. 8 Season 1", 12),
+            ],
+            "own",
+            12,
+        ),
+        // The catalogues disagree on the kind: an entry ending on
+        // Part 2 owns a listing named for a 2nd Season.
+        (
+            &["Show Part 2"],
+            &[
+                ("w", "Show Final Arc", 24),
+                ("l", "Show Final Arc Part 3", 12),
+                ("own", "Show Final Arc 2nd Season", 12),
+            ],
+            "own",
+            12,
+        ),
+        // The listing that completes a span is the next entry even
+        // when the entry's own listing stops the cut, whatever order
+        // the provider lists them in.
+        (
+            &["Show"],
+            &[
+                ("w", "Show", 24),
+                ("l", "Show Second Half", 12),
+                ("own", "Show First Half", 12),
+            ],
+            "own",
+            12,
+        ),
+    ];
+    for (titles, rows, want, len) in cases {
+        let site = pool_of(titles, Some(12), 2020, titles[0], rows);
+        let picked = walk_over(site).await.expect("picked");
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            (want, len),
+            "{titles:?}"
+        );
+    }
+}
