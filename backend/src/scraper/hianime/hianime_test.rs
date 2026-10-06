@@ -3855,7 +3855,7 @@ async fn a_lone_server_on_an_unnamed_host_runs_on_the_remainder() {
 /// remains after one chain's worth is held back for the last, so the
 /// stalled ones are cut short enough for the healthy one to be
 /// served inside the attempt.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn stalled_servers_share_the_attempts_remainder_so_the_last_server_is_still_served() {
     let c = client_with_server_budget(100);
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(180);
@@ -4098,7 +4098,7 @@ async fn a_client_told_no_deadline_keeps_the_fixed_bound_for_a_later_resolve() {
 /// remainder is the one whose master never answers: capped at
 /// nothing, the healthy server would be stepped over unasked and the
 /// attempt spent waiting on the silent one.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_healthy_server_is_still_asked_when_the_attempt_has_only_the_reserve_left() {
     let c = client_with_server_budget(100);
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(150);
