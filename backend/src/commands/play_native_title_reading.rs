@@ -106,34 +106,89 @@ fn scan(words: &[String], leading: bool) -> Vec<Marker> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < words.len() {
-        let w = &words[i];
-        let own_marker_follows = kind_of(w).is_none()
-            && words.get(i + 1).is_some_and(|k| kind_of(k).is_some())
-            && words
-                .get(i + 2)
-                .is_some_and(|o| ordinals_after_marker(o).is_some());
-        let pair = words.get(i + 1).and_then(|next| marker_of(w, next));
-        if let (Some(m), false) = (pair, own_marker_follows) {
-            out.push(m);
-            i += 2;
-            continue;
+        match division_at(words, i) {
+            Some((m, taken)) => {
+                out.push(m);
+                i += taken;
+            }
+            None if leading => break,
+            None => i += 1,
         }
-        if let Some((m, _)) = japanese_trailing(w) {
-            out.push(m);
-        } else if let Some(n) = spelled_ordinal(w)
-            .or_else(|| small_number(w))
-            .or_else(|| glued_number(w))
-        {
-            out.push(Marker {
-                kind: Kind::Season,
-                ordinals: vec![n],
-            });
-        } else if leading {
-            break;
-        }
-        i += 1;
     }
     out
+}
+
+/// The division `words` name starting at `i`, and how many words it
+/// takes: a marker pair, unless the first word is a numeral before a
+/// marker carrying its own ordinal ("II Part 2"); a Japanese division
+/// (a word of its own or glued to the end of one); or an ordinal
+/// standing alone — spelled, bare, or a number glued to a Japanese
+/// word.
+fn division_at(words: &[String], i: usize) -> Option<(Marker, usize)> {
+    let w = &words[i];
+    let own_marker_follows = kind_of(w).is_none()
+        && words.get(i + 1).is_some_and(|k| kind_of(k).is_some())
+        && words
+            .get(i + 2)
+            .is_some_and(|o| ordinals_after_marker(o).is_some());
+    if !own_marker_follows {
+        if let Some(m) = words.get(i + 1).and_then(|next| marker_of(w, next)) {
+            return Some((m, 2));
+        }
+    }
+    if let Some((m, _)) = japanese_trailing(w) {
+        return Some((m, 1));
+    }
+    let n = spelled_ordinal(w)
+        .or_else(|| small_number(w))
+        .or_else(|| glued_number(w))?;
+    Some((
+        Marker {
+            kind: Kind::Season,
+            ordinals: vec![n],
+        },
+        1,
+    ))
+}
+
+/// A title's name: its words up to the first division it names
+/// ([`division_at`]), with what a Japanese word holds before a
+/// division glued to it — the words a show's seasons and parts share
+/// however each is numbered. "Show", "Show 2", "Show 2nd Season Part
+/// 2" and "Show II Part 2: Arc" are all named "Show"; "Other Show
+/// Season 2" is named "Other Show"; "ショー２" and "ショー第2期" are
+/// named "ショー". A title that opens on a division ("86") is named by
+/// its stem.
+pub(super) fn name(title: &str) -> Vec<String> {
+    let words = words(title);
+    let mut out = Vec::new();
+    for (i, w) in words.iter().enumerate() {
+        if division_at(&words, i).is_none() {
+            out.push(w.clone());
+            continue;
+        }
+        let head = japanese_trailing(w).map_or_else(
+            || w.trim_end_matches(|c: char| c.is_ascii_digit()),
+            |(_, before)| before,
+        );
+        if !head.is_empty() && head != w {
+            out.push(head.to_string());
+        }
+        break;
+    }
+    if out.is_empty() {
+        stem(title)
+    } else {
+        out
+    }
+}
+
+/// Whether `title` starts with `other`'s name ([`name`]), on the terms
+/// of [`past_stem`]: "Show 2nd Season" and "Show Final Arc 2nd Season"
+/// start with the name of "Show Part 2"; "Other Show 2nd Season" and
+/// "Showtime 2" do not.
+pub(super) fn starts_with_name_of(title: &str, other: &str) -> bool {
+    rest_after(&words(title).join(" "), &name(other).join(" ")).is_some()
 }
 
 /// How a title reads: the ordinals of every division it names

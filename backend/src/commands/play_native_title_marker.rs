@@ -17,7 +17,7 @@ use super::play_native_title_grammar::{
 #[cfg(test)]
 use super::play_native_title_grammar::{Kind, Marker};
 use super::play_native_title_reading::{
-    later_divisions, names_past_stem, opens_on_a_first_division, reading,
+    later_divisions, name, names_past_stem, opens_on_a_first_division, reading, starts_with_name_of,
 };
 
 /// Every title the entry goes by: its canonical title, then the
@@ -128,15 +128,31 @@ impl EntryTitles<'_> {
         self.all().flat_map(part_ordinals).max().unwrap_or(1)
     }
 
-    /// Whether `title` reads as one of the entry's titles does
-    /// ([`reading`]) — the one reader the spanning cut compares titles
-    /// with. A spanning listing that reads as the entry has the entry
-    /// for its head.
+    /// Whether the broad listing `wide` has the entry for its head: it
+    /// carries the name one of the entry's titles carries ([`name`])
+    /// and reads as that title does ([`reading`]) — the one reader the
+    /// spanning cut compares titles with. "Show 2" and "Show Second
+    /// Cour" are headed by "Show 2nd Season"; "Other Show Season 2",
+    /// which reads alike, is another show.
     ///
+    /// [`name`]: super::play_native_title_reading::name
     /// [`reading`]: super::play_native_title_reading::reading
+    pub(crate) fn heads(&self, wide: &str) -> bool {
+        let (theirs, called) = (reading(wide), name(wide));
+        self.all()
+            .any(|t| reading(t) == theirs && name(t) == called)
+    }
+
+    /// Whether `title` reads as one of the entry's titles does and
+    /// starts with that title's name ([`starts_with_name_of`]): "Show
+    /// 2nd Season" and "Show Part 2" for "Show 2", but not "Other Show
+    /// 2nd Season".
+    ///
+    /// [`starts_with_name_of`]: super::play_native_title_reading::starts_with_name_of
     pub(crate) fn reads_as_entry(&self, title: &str) -> bool {
         let theirs = reading(title);
-        self.all().any(|t| reading(t) == theirs)
+        self.all()
+            .any(|t| reading(t) == theirs && starts_with_name_of(title, t))
     }
 
     /// Whether `listing` is the first part of the listing `wide` that

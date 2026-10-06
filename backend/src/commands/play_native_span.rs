@@ -51,7 +51,7 @@ pub(super) fn spanning(
             return None;
         }
         let own = |k: usize| entry.names_own_part(&probed[k].0.title, &h.title);
-        let head = entry.reads_as_entry(&h.title);
+        let head = entry.heads(&h.title);
         let own_fits: Vec<usize> = (0..probed.len())
             .filter(|&k| k != m && admitted[k] && probed[k].2 == 0 && own(k))
             .collect();
