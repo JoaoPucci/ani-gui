@@ -632,3 +632,74 @@ async fn an_unrelated_exact_count_hit_does_not_stop_a_spanning_cut() {
         ("show-s3-2", 12)
     );
 }
+
+/// Five listings named for seasons the entry is not, ranked ahead of
+/// its own: the bounded probe head must not be spent on them, with a
+/// count or without one.
+#[tokio::test]
+async fn refused_siblings_do_not_crowd_the_entry_out_of_the_probe_head() {
+    let rows = [
+        ("show-s2-1", "Show Season 2", 12),
+        ("show-s3-2", "Show Season 3", 12),
+        ("show-s4-3", "Show Season 4", 12),
+        ("show-s5-4", "Show Season 5", 12),
+        ("show-s6-5", "Show Season 6", 12),
+        ("show-6", "Show", 12),
+    ];
+    for count in [Some(12), None] {
+        let site = pool_of(&["Show"], count, 2020, "Show", &rows);
+        let picked = walk_over(site).await.expect("the entry's own listing");
+        assert_eq!(picked.hit.slug, "show-6", "count {count:?}");
+    }
+}
+
+/// Only a listing with the spanning listing's own stem is the entry's
+/// dedicated one: a same-year spinoff of the entry's length whose
+/// title merely starts with the franchise name does not stop the cut.
+#[tokio::test]
+async fn a_spinoff_of_the_entry_s_length_does_not_stop_a_spanning_cut() {
+    let rows = [
+        ("show-ss-1", "Show Side Story", 12),
+        ("show-s3-2", "Show Season 3", 22),
+        ("show-s3p2-3", "Show Season 3 Part 2", 10),
+    ];
+    let site = pool_of(&["Show Season 3"], Some(12), 2020, "Show Season 3", &rows);
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!(
+        (picked.hit.slug.as_str(), picked.episodes.len()),
+        ("show-s3-2", 12)
+    );
+}
+
+/// What completes a spanning listing is the next part, named as one
+/// right after the shared name — not a spinoff that happens to carry
+/// a number, nor a recap of the spanning listing's own season.
+#[tokio::test]
+async fn neither_a_numbered_spinoff_nor_a_recap_completes_a_spanning_listing() {
+    let cases: [(&str, [(&str, &str, u32); 2]); 2] = [
+        (
+            "Show",
+            [
+                ("show-1", "Show", 22),
+                ("show-ss2-2", "Show Side Story 2", 10),
+            ],
+        ),
+        (
+            "Show Season 3",
+            [
+                ("show-1", "Show Season 3", 22),
+                ("show-rc-2", "Show Season 3 Recap", 10),
+            ],
+        ),
+    ];
+    for (title, rows) in cases {
+        let site = pool_of(&[title], Some(12), 2020, title, &rows);
+        if let Ok(picked) = walk_over(site).await {
+            assert!(
+                !(picked.hit.slug == "show-1" && picked.episodes.len() == 12),
+                "{title}: the broad listing was cut on {:?}",
+                rows[1].1
+            );
+        }
+    }
+}
