@@ -347,42 +347,50 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
         .collect()
 }
 
-/// The ordinals `title` names past `wide`'s stem ([`named_ordinals`]
-/// of what follows it — "Show 2" beside "Show", "ショー２" beside
-/// "ショー", "Show 2nd Season" beside "Show"), leaving out a division
-/// `wide` ends on that the title names there too, of the same kind
-/// ("2nd Season" past "Show" beside "Show 2nd Season"; a bare number
-/// reads as a season). Empty when `title` does not start with the
-/// stem as whole words, a glued Japanese number or 第 aside, and for a
-/// number inside the stem itself ("Lucky 2" beside "Lucky 2").
-pub(super) fn ordinals_beyond(title: &str, wide: &str) -> BTreeSet<u32> {
+/// How `title` reads past `wide`'s stem: whether it names any
+/// division there, and the ordinals of those `wide` does not itself
+/// end on, in order, a first one left out as the whole — "Show 2" and
+/// "Show 2nd Season" beside "Show" both read `[2]`, "Show 2nd Season
+/// Part 1" `[2]`, "Show 2nd Season Part 2" beside "Show 2nd Season"
+/// `[2]` (its part), "Show Part 1" `[]`. A bare number reads as a
+/// season. `None` when `title` does not start with the stem at a
+/// word's end, or with a number or 第 glued to it as Japanese writes
+/// them ("ショー２", "ショー第2期"); "Showtime 2" does not start with
+/// "Show". Both an entry's titles and a listing are read this way, so
+/// a listing is the entry's own exactly when the two read alike.
+pub(super) fn reading_past(title: &str, wide: &str) -> Option<(bool, Vec<u32>)> {
     let own = stem(wide).join(" ");
     let text = words(title).join(" ");
-    let Some(rest) = text.strip_prefix(&own) else {
-        return BTreeSet::new();
-    };
-    // The stem ends at a word's end, or a number or a 第 is glued to
-    // it as Japanese writes them ("ショー2"): "Showtime" is not past
-    // "Show".
+    let rest = text.strip_prefix(&own)?;
     if !rest
         .chars()
         .next()
         .is_none_or(|c| c == ' ' || c.is_ascii_digit() || c == '第')
     {
-        return BTreeSet::new();
+        return None;
     }
-    // What the title names past the stem as `wide` ends on it — the
-    // same kind and ordinal, a bare number read as a season — is
-    // `wide`'s own division, not one past it.
     let wide_markers = trailing_markers(wide);
-    let shared: BTreeSet<u32> = leading_divisions(&words(rest), true)
-        .into_iter()
-        .filter(|m| wide_markers.contains(m))
-        .flat_map(|m| m.ordinals)
+    let divisions = leading_divisions(&words(rest), true);
+    let ordinals = divisions
+        .iter()
+        .filter(|m| !wide_markers.contains(m))
+        .flat_map(|m| m.ordinals.iter().copied())
+        .filter(|n| *n != 1)
         .collect();
-    named_ordinals(rest)
+    Some((!divisions.is_empty(), ordinals))
+}
+
+/// How a title reads on its own, as [`reading_past`] would past its
+/// stem: the ordinals of the markers it ends on, in order, a first one
+/// left out — the reading of an entry title that does not start with
+/// a spanning listing's stem ("Show Part 2" beside "Show Final Arc").
+pub(super) fn reading_alone(title: &str) -> Vec<u32> {
+    let mut markers = trailing_markers(title);
+    markers.reverse();
+    markers
         .into_iter()
-        .filter(|n| !shared.contains(n))
+        .flat_map(|m| m.ordinals)
+        .filter(|n| *n != 1)
         .collect()
 }
 
