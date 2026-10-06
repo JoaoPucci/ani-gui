@@ -251,6 +251,35 @@ async fn a_rejected_write_keeps_a_stored_mapping_the_title_agrees_with() {
     );
 }
 
+/// The refusal judges the mapping it read, and waits on Kitsu to do
+/// it. A Continue resolve can store another guess meanwhile, which
+/// moves no watch; that guess was never judged, and stays.
+#[tokio::test]
+async fn a_rejected_write_keeps_a_guess_stored_while_it_judged_another() {
+    let mock = MockServer::start().await;
+    serve_detail(&mock, "12", DETAIL_FIXTURE.to_vec()).await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = listing(state_with_kitsu_at(&mock.uri()), td.path(), "one-piece-69");
+    allmanga_kitsu_put(&state, "one-piece-69", "12").expect("seed");
+    drop_mapping_the_title_disagrees_with(
+        &state,
+        "one-piece-69",
+        "One Piece Part 2",
+        begun(&state),
+        |state| {
+            crate::commands::kitsu_played::store_guess(state, "one-piece-69", "14").expect("guess");
+        },
+    )
+    .await;
+    assert_eq!(
+        allmanga_kitsu_get(&state, "one-piece-69")
+            .expect("read")
+            .as_deref(),
+        Some("14"),
+        "the guess stored after the judged one stands"
+    );
+}
+
 /// Silence is not disagreement: a stored entry Kitsu does not answer
 /// for is neither proven nor disproven, and stays.
 #[tokio::test]
