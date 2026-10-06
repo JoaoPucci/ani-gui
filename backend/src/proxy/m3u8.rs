@@ -153,6 +153,19 @@ pub fn rewrite_master(
             *uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Playlist(stream));
         }
     }
+    for key in &mut out.session_key {
+        if let Some(uri) = key.0.uri.as_mut() {
+            let resolved = resolve(master_url, uri)?;
+            *uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Media);
+        }
+    }
+    for data in &mut out.session_data {
+        if let m3u8_rs::SessionDataField::Uri(uri) = &mut data.field {
+            let resolved = resolve(master_url, uri)?;
+            *uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Media);
+        }
+    }
+    out.unknown_tags.retain(|tag| !names_a_uri(tag));
 
     let mut buf = Vec::with_capacity(body.len());
     out.write_to(&mut buf).map_err(|e| AniError::ParseFailed {
@@ -229,7 +242,12 @@ pub fn rewrite_media_as(
                 *uri = build_proxy_uri(&r, origin, session, secret, Kind::Media);
             }
         }
+        seg.unknown_tags.retain(|tag| !names_a_uri(tag));
+        if seg.daterange.as_ref().is_some_and(daterange_names_a_uri) {
+            seg.daterange = None;
+        }
     }
+    out.unknown_tags.retain(|tag| !names_a_uri(tag));
 
     let mut buf = Vec::with_capacity(body.len());
     out.write_to(&mut buf).map_err(|e| AniError::ParseFailed {
@@ -238,6 +256,28 @@ pub fn rewrite_media_as(
     String::from_utf8(buf).map_err(|e| AniError::ParseFailed {
         detail: format!("media utf8: {e}"),
     })
+}
+
+/// Whether a tag the parser does not know carries a URI — a
+/// low-latency part, preload hint or rendition report, a content
+/// steering server. The rewrite cannot follow what it does not parse,
+/// so such a tag is dropped rather than left pointing upstream; the
+/// player and the tools fall back to whole segments and the master's
+/// own variants without it.
+fn names_a_uri(tag: &m3u8_rs::ExtTag) -> bool {
+    tag.rest
+        .as_deref()
+        .is_some_and(|rest| rest.contains("URI="))
+}
+
+/// Whether a date range points at something to fetch — an
+/// interstitial's asset or asset list. Dropped for the same reason.
+fn daterange_names_a_uri(range: &m3u8_rs::DateRange) -> bool {
+    [&range.x_prefixed, &range.other_attributes]
+        .into_iter()
+        .flatten()
+        .flat_map(std::collections::HashMap::keys)
+        .any(|name| name.ends_with("URI") || name.ends_with("-LIST"))
 }
 
 /// Resolve a URI string (absolute or relative) against a base URL.
