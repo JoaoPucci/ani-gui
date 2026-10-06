@@ -115,3 +115,65 @@ manifest() {
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
     [[ "$output" == *"C:x.txt: entry name is not a file beside the manifest"* ]]
 }
+
+@test "an entry that is a symbolic link is refused" {
+    # The name is a plain file name, but the link reaches outside the
+    # manifest's directory, so its digest would vouch for another file.
+    rm "$root/tests/fixtures/set/x.txt"
+    ln -s ../other/x.txt "$root/tests/fixtures/set/link.txt"
+    manifest "a.txt=$root/tests/fixtures/set/a.txt" \
+        "link.txt=$root/tests/fixtures/other/x.txt"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"link.txt: is a symbolic link"* ]]
+}
+
+@test "an unlisted symbolic link beside a manifest is refused" {
+    rm "$root/tests/fixtures/set/x.txt"
+    ln -s ../other/x.txt "$root/tests/fixtures/set/link.txt"
+    manifest "a.txt=$root/tests/fixtures/set/a.txt"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"link.txt: is a symbolic link"* ]]
+}
+
+@test "a subdirectory beside a manifest with no manifest of its own is refused" {
+    rm "$root/tests/fixtures/set/x.txt"
+    mkdir "$root/tests/fixtures/set/sub"
+    printf 'deeper\n' >"$root/tests/fixtures/set/sub/y.txt"
+    manifest "a.txt=$root/tests/fixtures/set/a.txt"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"sub: is a directory with no MANIFEST.json"* ]]
+}
+
+@test "a subdirectory beside a manifest with a manifest of its own passes" {
+    rm "$root/tests/fixtures/set/x.txt"
+    mkdir "$root/tests/fixtures/set/sub"
+    printf 'deeper\n' >"$root/tests/fixtures/set/sub/y.txt"
+    printf '{"y.txt": {"sha256": "%s"}}\n' "$(sha "$root/tests/fixtures/set/sub/y.txt")" \
+        >"$root/tests/fixtures/set/sub/MANIFEST.json"
+    manifest "a.txt=$root/tests/fixtures/set/a.txt"
+    ARCH_REPO_ROOT="$root" run sh "$CHECK"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"OK (2 manifests)"* ]]
+}
+
+@test "a symbolic link to a directory is not followed into a manifest elsewhere" {
+    # The linked directory's manifest is wrong; following the link would
+    # report it as though it were part of tests/fixtures/.
+    mkdir -p "$root/outside"
+    printf 'out\n' >"$root/outside/z.txt"
+    printf '{"z.txt": {"sha256": "%s"}}\n' "$(sha "$root/tests/fixtures/set/a.txt")" \
+        >"$root/outside/MANIFEST.json"
+    manifest "a.txt=$root/tests/fixtures/set/a.txt" "x.txt=$root/tests/fixtures/set/x.txt"
+    ln -s ../../outside "$root/tests/fixtures/linked"
+    ARCH_REPO_ROOT="$root" run sh "$CHECK"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"outside"* && "$output" != *"linked/"* ]]
+}
+
+@test "a MANIFEST.json that is a symbolic link is refused" {
+    manifest "a.txt=$root/tests/fixtures/set/a.txt" "x.txt=$root/tests/fixtures/set/x.txt"
+    mv "$root/tests/fixtures/set/MANIFEST.json" "$root/tests/fixtures/other/real.json"
+    ln -s ../other/real.json "$root/tests/fixtures/set/MANIFEST.json"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"set/MANIFEST.json: is a symbolic link"* ]]
+}
