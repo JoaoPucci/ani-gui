@@ -10,12 +10,15 @@
 //! player that need, with [`PLAYER_HEADROOM`], before a waiting
 //! background request gets a turn ([`player_turns`]).
 //!
-//! Init segments and keys carry no kind and are not counted. A level
-//! switch fetches one init segment, and hls.js loads a key once per
-//! key URI, so in the masters the player meets they are a handful of
-//! requests against a segment per stream per few seconds.
+//! The player's other requests — playlists, keys, init segments, mp4
+//! ranges, a segment whose URI names no kind — buy no playback the
+//! budget can read, but each is a token the player waits for and that
+//! counts toward its turns. So they count toward its need too, at the
+//! rate they arrive ([`Demand::note_other`]): a playlist that names a
+//! fresh key for every segment doubles what the player asks for, and
+//! a live playlist refreshes as often as it has segments.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -64,6 +67,15 @@ const SHORTEST_SEGMENT: Duration = Duration::from_millis(500);
 /// The longest segment counted as itself; a longer one counts as this,
 /// which overstates the need rather than understating it.
 const LONGEST_SEGMENT: Duration = Duration::from_secs(60);
+
+/// How far back the player's other requests are counted. A request
+/// older than this no longer says anything about the pace it asks at.
+const OTHERS_WINDOW: Duration = Duration::from_secs(60);
+
+/// The shortest span the other requests' rate is taken over, so the
+/// first few, arriving together as playback starts, do not claim a
+/// pace of several a second; it overstates rather than understates.
+const OTHERS_FLOOR: Duration = Duration::from_secs(10);
 
 /// How many tokens the player waited for go before a waiting background
 /// request gets one, given what the player's streams need, as requests
@@ -114,6 +126,9 @@ impl Rendition {
 #[derive(Debug, Default)]
 pub(crate) struct Demand {
     streams: HashMap<Stream, Rendition>,
+    /// When the player's other requests arrived, within
+    /// [`OTHERS_WINDOW`].
+    others: VecDeque<Instant>,
 }
 
 impl Demand {
@@ -132,13 +147,43 @@ impl Demand {
         );
     }
 
-    /// What the player's streams need, as requests a second; streams it
-    /// no longer plays are forgotten.
+    /// The player made a request that is not a segment of a stream.
+    /// Requests past the window are dropped here as well as when the
+    /// need is read, which happens only while background traffic
+    /// waits.
+    pub(crate) fn note_other(&mut self, now: Instant) {
+        self.forget_others(now);
+        self.others.push_back(now);
+    }
+
+    fn forget_others(&mut self, now: Instant) {
+        while self
+            .others
+            .front()
+            .is_some_and(|&at| now.saturating_duration_since(at) > OTHERS_WINDOW)
+        {
+            self.others.pop_front();
+        }
+    }
+
+    /// What the player needs, as requests a second: its streams'
+    /// segments, and its other requests at the rate they arrived over
+    /// the last [`OTHERS_WINDOW`]. Streams it no longer plays and
+    /// requests older than the window are forgotten.
     pub(crate) fn per_second(&mut self, now: Instant) -> f64 {
         self.streams.retain(|_, r| r.playing(now));
-        self.streams
+        self.forget_others(now);
+        let segments: f64 = self
+            .streams
             .values()
             .map(|r| 1.0 / r.segment.as_secs_f64())
-            .sum()
+            .sum();
+        let others = self.others.front().map_or(0.0, |&oldest| {
+            let span = now.saturating_duration_since(oldest).max(OTHERS_FLOOR);
+            #[allow(clippy::cast_precision_loss)]
+            let count = self.others.len() as f64;
+            count / span.as_secs_f64()
+        });
+        segments + others
     }
 }
