@@ -49,6 +49,21 @@ test('the count is lizard’s: if, for, while, catch, case, a conditional, && an
 	assert.deepEqual(units(src), [['all', 12]]);
 });
 
+test('logical assignments count as their operators do', () => {
+	const src = 'function f(a: { x?: number; y?: boolean }): void { a.x ||= 1; a.y &&= false; }';
+	assert.deepEqual(units(src), [['f', 3]]);
+});
+
+test('decisions outside any function are reported, not counted', () => {
+	const src = "const ready = typeof window !== 'undefined' ? 1 : 0;\nif (ready) {}\nexport function f(): void {}";
+	const { units: measured, outside } = measure('probe.ts', src);
+	assert.deepEqual(
+		measured.map((u) => [u.name, u.ccn]),
+		[['f', 1]]
+	);
+	assert.equal(outside, 2);
+});
+
 test('optional markers, ?. and ?? are not conditionals, and text is text', () => {
 	const src = 'function f(a?: string, o?: { b?: number }): string {\n' + '\treturn `${a ?? "if"} && ${o?.b} || while` + "if (x) for";\n' + '}';
 	assert.deepEqual(units(src), [['f', 1]]);
@@ -99,6 +114,7 @@ test('the report is lizard’s XML shape, and says what it did not measure', () 
 	assert.ok(!run.stdout.includes('ambient'));
 	assert.match(run.stderr, /1 TypeScript files, 1 functions measured/);
 	assert.match(run.stderr, /not measured — 1 \.svelte components/);
+	assert.match(run.stderr, /Thing\.svelte/);
 });
 
 test('a file that does not parse fails the run and names the file', () => {
@@ -113,4 +129,29 @@ test('the tool runs from any working directory', () => {
 	const dir = scratch({ 'a.ts': 'export function one(): void {}\n' });
 	const out = execFileSync('node', [tool, 'a.ts'], { cwd: dir, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
 	assert.match(out, /one\(\.\.\.\) at a\.ts:1/);
+});
+
+test('a root that does not exist fails the run', () => {
+	const run = spawnSync('node', [tool, '/nonexistent/ts-ccn-root'], { encoding: 'utf-8' });
+	assert.notEqual(run.status, 0);
+	assert.equal(run.stdout, '');
+	assert.match(run.stderr, /ts-ccn: \/nonexistent\/ts-ccn-root: /);
+});
+
+test('a root with no TypeScript files fails the run', () => {
+	// A mistyped or emptied root would otherwise score as a language
+	// with nothing in it, and the gate would read green on half a
+	// repository.
+	const dir = scratch({ 'notes.txt': 'nothing here\n' });
+	const run = spawnSync('node', [tool, dir], { encoding: 'utf-8' });
+	assert.notEqual(run.status, 0);
+	assert.equal(run.stdout, '');
+	assert.match(run.stderr, /no TypeScript files/);
+});
+
+test('decisions outside functions are declared in the summary', () => {
+	const dir = scratch({ 'a.ts': "if (typeof window !== 'undefined') {}\nexport function one(): void {}\n" });
+	const run = spawnSync('node', [tool, dir], { encoding: 'utf-8' });
+	assert.equal(run.status, 0, run.stderr);
+	assert.match(run.stderr, /1 decisions outside any function not counted/);
 });

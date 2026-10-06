@@ -77,3 +77,46 @@ fn item_position_macros_are_declared_in_the_summary() {
         "{stderr}"
     );
 }
+
+#[test]
+fn a_root_that_does_not_exist_fails_the_run() {
+    let out = Command::new(env!("CARGO_BIN_EXE_rust-ccn"))
+        .arg("/nonexistent/rust-ccn-root")
+        .output()
+        .expect("runs");
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8(out.stderr).expect("utf-8");
+    assert!(stderr.contains("/nonexistent/rust-ccn-root"), "{stderr}");
+}
+
+#[test]
+fn a_root_with_no_rust_files_fails_the_run() {
+    // A mistyped or emptied root would otherwise score as a language
+    // with nothing in it, and the gate would read green on half a
+    // repository.
+    let dir = scratch("empty", &[("notes.txt", "nothing here\n")]);
+    let out = run(&dir);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8(out.stderr).expect("utf-8");
+    assert!(stderr.contains("no .rs files"), "{stderr}");
+}
+
+#[test]
+fn decisions_outside_functions_are_declared_in_the_summary() {
+    let dir = scratch(
+        "outside",
+        &[(
+            "o.rs",
+            "struct S;\ntrait T {}\nimpl T for S {}\nfn f() {}\n",
+        )],
+    );
+    let out = run(&dir);
+    assert!(out.status.success());
+    let stderr = String::from_utf8(out.stderr).expect("utf-8");
+    assert!(
+        stderr.contains("1 decisions outside any function not counted"),
+        "{stderr}"
+    );
+}

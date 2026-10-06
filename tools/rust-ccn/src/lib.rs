@@ -50,6 +50,23 @@ pub enum UnitKind {
     Macro,
 }
 
+/// Every unit in a file, and how many decision tokens sat outside all
+/// of them — the `for` of `impl Trait for Type`, a constant's
+/// initializer — which no unit is charged with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Measurement {
+    pub units: Vec<Unit>,
+    pub outside: u32,
+}
+
+/// Measure one source file. (Not yet counting what lies outside units.)
+pub fn measure_file(source: &str) -> syn::Result<Measurement> {
+    Ok(Measurement {
+        units: measure(source)?,
+        outside: 0,
+    })
+}
+
 /// A source position, as (line, column).
 type Pos = (usize, usize);
 

@@ -3,7 +3,7 @@
 //! used to drop functions, or decisions, from the totals without a word.
 
 use proptest::prelude::*;
-use rust_ccn::{measure, Unit, UnitKind};
+use rust_ccn::{measure, measure_file, Unit, UnitKind};
 
 fn units(source: &str) -> Vec<(String, u32)> {
     measure(source)
@@ -39,7 +39,9 @@ fn a_quote_character_literal_is_one_token() {
 
 #[test]
 fn a_raw_string_is_text_however_it_reads() {
-    // lizard dropped the function holding the raw string outright.
+    // On this shape lizard dropped the function holding the raw
+    // string outright; elsewhere it kept the function and lost the
+    // decisions on the raw string's line.
     let src = r###"
         fn page() -> &'static str { r#"<a href="x"> fn if && || match "#; "" }
         fn after(x: bool) -> u32 { if x { 1 } else { 2 } }
@@ -49,8 +51,10 @@ fn a_raw_string_is_text_however_it_reads() {
 
 #[test]
 fn a_declaration_without_a_body_is_not_a_function() {
-    // lizard folded the default method into the bodiless one before it,
-    // and an extern block's declaration into the function after it.
+    // lizard read each bodiless declaration as a function running on
+    // into the next body: the default method under the trait
+    // declaration's name, the function after the extern block under
+    // the extern declaration's.
     let src = r#"
         trait Probe {
             fn required(&self) -> u32;
@@ -151,6 +155,18 @@ fn a_unit_spans_from_its_fn_keyword_to_its_closing_brace() {
             },
         ]
     );
+}
+
+#[test]
+fn decisions_outside_any_function_are_reported_not_counted() {
+    // The `for` of an impl header and a constant's initializer belong
+    // to no function; they are not charged to one, and the count of
+    // them is kept so the report can say what it left out.
+    let src = "struct S;\ntrait T {}\nimpl T for S {}\nconst N: u32 = if true { 1 } else { 2 };\nfn f() {}\n";
+    let measured = measure_file(src).expect("parses");
+    assert_eq!(measured.units.len(), 1);
+    assert_eq!(measured.units[0].ccn, 1);
+    assert_eq!(measured.outside, 2);
 }
 
 #[test]
