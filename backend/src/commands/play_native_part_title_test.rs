@@ -223,3 +223,11 @@ proptest::proptest! {
         proptest::prop_assert_eq!(precedes_entry(&stem, &refs), later);
     }
 }
+
+#[test]
+fn the_part_reader_reads_every_marker_form_the_title_rules_read() {
+    assert_eq!(part_ordinal("The Show", "The Show Season Two"), Some(2));
+    assert_eq!(part_ordinal("The Show", "The Show VI"), Some(6));
+    assert_eq!(part_ordinal("The Show", "The Show Sixth Season"), Some(6));
+    assert_eq!(part_ordinal("The Show", "The Show Part ２"), Some(2));
+}

@@ -193,3 +193,41 @@ fn a_numeral_or_number_inside_the_entry_s_title_names_its_season() {
     assert!(e.admits("Mushoku Tensei: Jobless Reincarnation Season 2"));
     assert!(entry(&["Show 2: The Return"]).admits("Show Season 2"));
 }
+
+#[test]
+fn the_rules_read_every_marker_form_the_part_reader_reads() {
+    // A sequel numbered by a numeral or an ordinal alone, or by a
+    // stage, is named for a season its predecessor's titles never
+    // name — as hianime lists Mob Psycho 100's and Overlord's later
+    // seasons, and Steel Ball Run's weekly run.
+    assert!(!entry(&["Mob Psycho 100"]).admits("Mob Psycho 100 II"));
+    assert!(entry(&["Mob Psycho 100 II"]).admits("Mob Psycho 100 II"));
+    assert!(!entry(&["Overlord II"]).admits("Overlord III"));
+    let stone_ocean = entry(&["JoJo no Kimyou na Bouken: Stone Ocean", "Jojo part 6"]);
+    assert!(!stone_ocean.admits("Steel Ball Run: JoJo's Bizarre Adventure 2nd Stage"));
+    assert!(!entry(&["Show"]).part_agrees("Show 2nd Stage"));
+}
+
+#[test]
+fn spelled_full_width_and_japanese_cour_forms_are_read() {
+    assert!(!entry(&["Show"]).admits("Show Season Two"));
+    assert!(entry(&["Show 2nd Season"]).admits("Show Season Two"));
+    assert_eq!(
+        trailing_markers("無職転生 第2クール"),
+        vec![Marker {
+            kind: Kind::Part,
+            ordinals: vec![2]
+        }]
+    );
+    assert_eq!(
+        trailing_markers("ショー 第10期"),
+        vec![Marker {
+            kind: Kind::Season,
+            ordinals: vec![10]
+        }]
+    );
+    // Full-width digits, as Kitsu's Japanese titles write them, also
+    // where they follow the title with no space.
+    assert!(entry(&["Show", "ショー 第２期"]).admits("Show Season 2"));
+    assert!(entry(&["Show", "ショー２"]).admits("Show Season 2"));
+}
