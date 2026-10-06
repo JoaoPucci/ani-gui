@@ -2898,7 +2898,7 @@
 				</div>
 			{/if}
 		{/if}
-		{#if switchBusy || (resumeHolding && !playerError)}
+		{#if (switchBusy || resumeHolding) && !playerError}
 			<span class="player-spinner" aria-hidden="true">…</span>
 		{/if}
 	</section>
