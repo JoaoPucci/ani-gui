@@ -6,6 +6,8 @@
 use crate::error::{AniError, Result};
 use crate::scraper::provider::BrowseHit;
 
+use super::markup::attr;
+
 /// The search page's result cards. The list lives inside
 /// `film_list-wrap`; the top-10 widget and the sidebar carry the same
 /// `film-detail` markup and are not the answer. Cards are split at
@@ -195,27 +197,6 @@ fn heading_anchor(detail: &str) -> Option<&str> {
             return Some(&detail[at..=at + 2 + close]);
         }
         from = at + 2;
-    }
-    None
-}
-
-/// The value of the first `name="…"` attribute in `s`, `name` given
-/// with its `="` — read by the whole attribute name: a match is taken
-/// only where the character before it cannot be part of a name, so
-/// `data-title="…"` ahead of `title="…"` is stepped over rather than
-/// read as the title.
-fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
-    let mut from = 0;
-    while let Some(found) = s[from..].find(name) {
-        let at = from + found;
-        let bounded = s[..at]
-            .chars()
-            .next_back()
-            .is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ':'));
-        if bounded {
-            return s[at + name.len()..].split('"').next();
-        }
-        from = at + 1;
     }
     None
 }

@@ -22,6 +22,7 @@
 pub mod ajax;
 pub mod detail;
 pub mod embed;
+mod markup;
 pub mod megaplay;
 pub mod megaplay_cipher;
 pub mod megaplay_sources;
