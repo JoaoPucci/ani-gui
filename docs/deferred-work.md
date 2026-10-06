@@ -133,8 +133,14 @@ starting it, and delete it when you find it done.
 
 ## Testing and CI
 
-- **The CRAP ratchet disagrees between CI and local** — 26 against 25 —
-  and three files sit at 29.7–30.0, right on the high-risk boundary.
+- **The CRAP ratchet can disagree between CI and local.** Coverage
+  attribution differs between the runner's toolchain and local ones,
+  and once put the high-risk count at 26 in one and 25 in the other.
+  It matters because the count sits at its ceiling of 25 with files on
+  the boundary: `frontend/src/lib/play/play-cache.ts` and
+  `backend/src/scraper/gate.rs` at exactly 30.0 (a complexity of 30 at
+  full coverage), `backend/src/commands/play_native.rs` at 29.05. A
+  sliver of coverage moved either way decides whether the gate passes.
 - **The pre-commit hook and strict TDD are in tension — for frontend
   commits.** `frontend-test` is the only hook command that runs tests,
   so a frontend `test(red):` commit fails by construction and is
