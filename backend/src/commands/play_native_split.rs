@@ -29,6 +29,10 @@ pub(crate) struct PartCandidate<'a> {
     ///
     /// [`numbering_offset`]: super::play_native_numbering::numbering_offset
     pub offset: u32,
+    /// The entry's titles admit the candidate. One they refuse may be
+    /// a later part of a chain, never its lead — the lead is the show
+    /// picked.
+    pub admitted: bool,
 }
 
 /// The parts that follow candidate `lead`, in order, while each next
@@ -97,7 +101,8 @@ fn stands_over_single(
 /// accepted where it fits the expected count within the picker's
 /// tolerance, or falls short of it — an airing entry, which has not
 /// aired everything Kitsu counts.
-/// A lead must also pass [`lead_may_stitch`].
+/// A lead must also be admitted by the entry's titles and pass
+/// [`lead_may_stitch`].
 #[must_use]
 pub(crate) fn split_chain(
     cands: &[PartCandidate<'_>],
@@ -109,7 +114,10 @@ pub(crate) fn split_chain(
     let mut best: Option<(u32, Vec<usize>)> = None;
     let leads = (0..cands.len()).filter(|&i| {
         let c = &cands[i];
-        c.confirmed && c.count > 0 && lead_may_stitch(c, expected, tolerance, single_fits)
+        c.admitted
+            && c.confirmed
+            && c.count > 0
+            && lead_may_stitch(c, expected, tolerance, single_fits)
     });
     for lead in leads {
         let chain = chain_from(cands, lead);
@@ -143,11 +151,12 @@ pub(crate) fn stitched(
 ) -> Option<super::play_native::PickedShow> {
     let cands: Vec<PartCandidate<'_>> = probed
         .iter()
-        .map(|(h, eps, _, confirmed)| PartCandidate {
+        .map(|(h, eps, distance, confirmed)| PartCandidate {
             title: &h.title,
             count: super::play_native_numbering::regular_episode_count(eps),
             confirmed: *confirmed,
             offset: super::play_native_numbering::numbering_offset(eps),
+            admitted: *distance != super::play_native_wide_listing::UNFIT,
         })
         .collect();
     let chain = split_chain(&cands, expected, best_single)?;
