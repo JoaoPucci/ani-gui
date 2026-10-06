@@ -9,12 +9,10 @@
 
 use std::collections::BTreeSet;
 
-#[path = "play_native_title_grammar.rs"]
-mod grammar;
-pub(crate) use grammar::stem;
-use grammar::{named_ordinals, part_ordinals, trailing_markers};
+pub(crate) use super::play_native_title_grammar::stem;
+use super::play_native_title_grammar::{named_ordinals, part_ordinals, trailing_markers};
 #[cfg(test)]
-use grammar::{Kind, Marker};
+use super::play_native_title_grammar::{Kind, Marker};
 
 /// Every title the entry goes by: its canonical title, then the
 /// fallbacks the walk searches in order.
