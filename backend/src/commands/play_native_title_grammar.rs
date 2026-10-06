@@ -316,9 +316,9 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
 }
 
 /// What follows `wide`'s stem in `title`, when `title` starts with it
-/// at a word's end or with a number or 第 glued to it as Japanese
-/// writes them ("ショー２", "ショー第2期"). "Showtime 2" does not start
-/// with "Show".
+/// at a word's end or with a digit or 第 glued to it — as Japanese
+/// writes them ("ショー２", "ショー第2期"), though any glued digit
+/// counts ("Show2"). "Showtime 2" does not start with "Show".
 fn past_stem(title: &str, wide: &str) -> Option<String> {
     let own = stem(wide).join(" ");
     let text = words(title).join(" ");
