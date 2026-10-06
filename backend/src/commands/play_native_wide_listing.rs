@@ -43,11 +43,24 @@ type Probed<'h> = (&'h BrowseHit, Vec<EpisodeRef>, u32, bool);
 ///
 /// Candidates keep their listings, years and places, so a rule that
 /// reads the pool as parts of one entry still sees every part.
-pub(super) fn fit_to_entry(probed: &mut [Probed<'_>], expected: u32, entry: EntryTitles<'_>) {
+///
+/// Returns whether the titles refused a candidate the count alone
+/// would have accepted: a pool rejected after that is
+/// [`refused_by_title`], not a clean miss.
+pub(super) fn fit_to_entry(
+    probed: &mut [Probed<'_>],
+    expected: u32,
+    entry: EntryTitles<'_>,
+) -> bool {
     let admitted: Vec<bool> = probed
         .iter()
         .map(|(h, _, _, _)| entry.admits(&h.title))
         .collect();
+    let tolerance = super::play_native::ep_count_threshold(expected);
+    let refused_a_fit = probed
+        .iter()
+        .zip(&admitted)
+        .any(|(row, ok)| !ok && row.2 <= tolerance);
     let span = spanning(probed, expected, &admitted);
     for (row, ok) in probed.iter_mut().zip(&admitted) {
         if !ok {
@@ -61,6 +74,18 @@ pub(super) fn fit_to_entry(probed: &mut [Probed<'_>], expected: u32, entry: Entr
         probed[wide].1 = head_of(&probed[wide].1, expected);
         probed[wide].2 = 0;
     }
+    refused_a_fit
+}
+
+/// The verdict on a pool rejected because the entry's titles refused
+/// a candidate the count accepted, or without a count refused every
+/// candidate. Refusing by title is an inference from how titles are
+/// written, and a wrong one must not be persisted as the show's
+/// absence: the verdict is the answered dead end the walk moves on
+/// from without a clean miss — never weather, which would open the
+/// breaker on a provider that answered.
+pub(super) fn refused_by_title() -> crate::error::AniError {
+    crate::error::AniError::Upstream { status: 404 }
 }
 
 /// Whether a probed candidate may be rescued as an airing part: its

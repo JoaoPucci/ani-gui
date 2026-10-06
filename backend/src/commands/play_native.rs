@@ -19,7 +19,7 @@ use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_wide_listing::{fit_to_entry, rescuable};
+use super::play_native_wide_listing::{fit_to_entry, refused_by_title, rescuable};
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -83,9 +83,10 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// - A candidate the searched title names a later part of ("X" when
 ///   asked for "X Season 2") is the season before, and never picked;
 ///   [`pick_candidate_titled`] reads every title the entry goes by.
-/// - With `expected = Some(n)`, a candidate the entry's titles do
-///   not admit — named for a season or part the entry is not — is
-///   probed but never picked; a listing that spans this entry and
+/// - A candidate the entry's titles do not admit — named for a
+///   season or part the entry is not — is never picked (with a
+///   count it is still probed); a pool rejected for that alone is
+///   not a clean miss; a listing that spans this entry and
 ///   the next is cut to this entry's episodes (see
 ///   `play_native_wide_listing`).
 /// - Probe errors skip the candidate rather than abort the pick; a
@@ -151,7 +152,17 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     }
 
     let Some(expected) = expected else {
-        return pick_without_count(client, &head, &needle, year_excluded_any).await;
+        // Without a count, the titles are the only identity: a hit
+        // named for another season or part is not this entry.
+        let admitted: Vec<_> = head
+            .iter()
+            .copied()
+            .filter(|(h, _)| entry.admits(&h.title))
+            .collect();
+        if admitted.is_empty() {
+            return Err(refused_by_title());
+        }
+        return pick_without_count(client, &admitted, &needle, year_excluded_any).await;
     };
 
     // Probe the surviving head; a failing probe removes the
@@ -213,7 +224,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // that spans this entry and the next is cut to this one's
     // episodes (see play_native_wide_listing). Before the split
     // stitching below, which still sees every part.
-    fit_to_entry(&mut probed_ok, expected, entry);
+    let refused_a_fit = fit_to_entry(&mut probed_ok, expected, entry);
     // An empty pool splits by what killed the probes: any transport
     // death means nothing was learned (the transient Network), while
     // all-answered not-found means the pool is dead but the provider
@@ -274,6 +285,9 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // persistable clean miss. Weather stays weather.
         if any_transport_failure {
             return Err(crate::error::AniError::Network);
+        }
+        if refused_a_fit {
+            return Err(refused_by_title());
         }
         return Err(crate::error::AniError::NoResults);
     }
