@@ -40,8 +40,11 @@ impl MediaRef {
     /// mappings also carry AniList's own id. `None` otherwise — an
     /// AniList-id lookup has nothing left to try.
     #[must_use]
-    pub fn retry_after_missing(self, _anilist: Option<u32>) -> Option<Self> {
-        None
+    pub fn retry_after_missing(self, anilist: Option<u32>) -> Option<Self> {
+        match self {
+            Self::Mal(_) => anilist.map(Self::AniList),
+            Self::AniList(_) => None,
+        }
     }
 }
 
