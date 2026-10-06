@@ -50,7 +50,14 @@ pub(crate) fn note_failure(state: &AppState, begun: Epoch, id: &str, err: &AniEr
 /// or a read begun before now is answered. A detail served from the
 /// cache counts, and takes a mark left beside it.
 pub(crate) fn note_served(state: &AppState, id: &str) {
+    note_served_then(state, id, |_| {});
+}
+
+/// [`note_served`], running `served` once the serving is recorded —
+/// the point a test fails another read of `id` at.
+pub(crate) fn note_served_then(state: &AppState, id: &str, served: impl FnOnce(&AppState)) {
     crate::history::guard::hold(&state.history_path, |held| held.kitsu_served(id));
+    served(state);
     if is_gone(state, id).unwrap_or(true) {
         let _ = meta_cache_delete(&state.cache_pool, &gone_key(id));
     }

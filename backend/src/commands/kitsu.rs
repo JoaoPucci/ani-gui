@@ -643,7 +643,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             show_title = %show_title,
             "play: provider→kitsu mapping rejected (cross-cour mismatch)",
         );
-        drop_mapping_the_title_disagrees_with(state, show_id, show_title, begun).await;
+        drop_mapping_the_title_disagrees_with(state, show_id, show_title, begun, |_| {}).await;
         return false;
     }
     let stored = crate::history::guard::hold(&state.history_path, |held| {
@@ -672,11 +672,15 @@ pub async fn try_put_allmanga_kitsu_mapping(
 /// whose entry cannot be fetched, since silence is not disagreement,
 /// and so does one a row changed since `begun` is read through: a
 /// later watch stored it, past its own guard.
+///
+/// `judged` runs once the stored mapping is condemned and before the
+/// drop — the point a test stores another mapping at.
 async fn drop_mapping_the_title_disagrees_with(
     state: &AppState,
     show_id: &str,
     show_title: &str,
     begun: crate::history::guard::Epoch,
+    judged: impl FnOnce(&AppState),
 ) {
     let stored = match allmanga_kitsu_get(state, show_id) {
         Ok(Some(stored)) => stored,
@@ -693,6 +697,7 @@ async fn drop_mapping_the_title_disagrees_with(
     if !cour_pairing_disagrees(state, show_title, &stored).await {
         return;
     }
+    judged(state);
     let dropped = crate::history::guard::hold(&state.history_path, |held| {
         if held.show_changed_since(begun, show_id) {
             return Ok(false);
