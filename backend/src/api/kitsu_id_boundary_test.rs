@@ -299,3 +299,52 @@ async fn a_stored_value_that_is_not_an_id_reaches_neither_the_renderer_nor_kitsu
     let (_, text) = send(s, "GET", "/api/allmanga-kitsu-map/show-b", "").await;
     assert_eq!(text, "\"49877\"");
 }
+
+/// Evicting a reverse mapping "only while it is still this id" takes
+/// that id from the renderer. A value that is not an id is refused
+/// rather than read as absent, which would remove whatever mapping
+/// stands; a padded one is its digits.
+#[tokio::test]
+async fn a_named_eviction_refuses_a_value_that_is_not_an_id() {
+    use crate::commands::kitsu as k;
+    let td = TempDir::new().expect("tempdir");
+    let s = state(&td, "http://127.0.0.1:1");
+    k::allmanga_kitsu_put(&s, "show-a", "49877").expect("seed");
+    for id in ["..%2F49877", "49877%2Fx", "12:21", "kid-1", ""] {
+        let uri = format!("/api/allmanga-kitsu-map/show-a?kitsu_id={id}");
+        let (status, text) = send(s.clone(), "DELETE", &uri, "").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}: {text}");
+        let v: serde_json::Value = serde_json::from_str(&text).expect("json error body");
+        assert_eq!(v["kind"], "invalid_kitsu_id", "{uri}: {text}");
+        assert_eq!(
+            k::allmanga_kitsu_get(&s, "show-a")
+                .expect("read")
+                .as_deref(),
+            Some("49877"),
+            "{uri} left the mapping"
+        );
+    }
+    let uri = "/api/allmanga-kitsu-map/show-a?kitsu_id=%2049877%20";
+    let (status, _) = send(s.clone(), "DELETE", uri, "").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(k::allmanga_kitsu_get(&s, "show-a").expect("read"), None);
+}
+
+/// The played-mapping read hands the renderer a stored value too, and
+/// holds it to the same rule.
+#[tokio::test]
+async fn a_played_mapping_that_is_not_an_id_reads_as_none() {
+    use crate::commands::kitsu as k;
+    let td = TempDir::new().expect("tempdir");
+    let s = state(&td, "http://127.0.0.1:1");
+    k::allmanga_kitsu_put(&s, "show-a", "../49877").expect("seed");
+    crate::cache::meta_cache_put(
+        &s.cache_pool,
+        &k::allmanga_kitsu_played_key("show-a"),
+        "../49877",
+        3600,
+    )
+    .expect("seed");
+    let (status, text) = send(s, "GET", "/api/allmanga-kitsu-map/show-a/played", "").await;
+    assert_eq!((status, text.as_str()), (StatusCode::OK, "null"));
+}
