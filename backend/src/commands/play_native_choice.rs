@@ -79,21 +79,27 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
 
 /// The winner among best-distance candidates, plus its identity
 /// rank. An exact title match is the user's own words and stays
-/// dominant; below it, a detail year that matched Kitsu's exactly
-/// outranks a merely tolerated neighbor; only a full tie falls to
-/// provider order (min_by_key keeps the first of equals).
+/// dominant; below it, a candidate whose part marker agrees with the
+/// entry's ([`EntryTitles::part_agrees`]) outranks one that names
+/// another part; below that, a detail year that matched Kitsu's
+/// exactly outranks a merely tolerated neighbor; only a full tie
+/// falls to provider order (min_by_key keeps the first of equals).
 pub(super) fn select_winner(
     probed_ok: &[(&BrowseHit, Vec<EpisodeRef>, u32, bool)],
     best_dist: u32,
     needle: &str,
-    _entry: EntryTitles<'_>,
+    entry: EntryTitles<'_>,
 ) -> (usize, u8) {
     let winner_idx = probed_ok
         .iter()
         .enumerate()
         .filter(|(_, (_, _, d, _))| *d == best_dist)
         .min_by_key(|(_, (h, _, _, confirmed))| {
-            (h.title.trim().to_lowercase() != needle, !*confirmed)
+            (
+                h.title.trim().to_lowercase() != needle,
+                !entry.part_agrees(&h.title),
+                !*confirmed,
+            )
         })
         .map(|(i, _)| i)
         .expect("best_dist came from this list");
