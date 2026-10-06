@@ -1,0 +1,49 @@
+{
+ "kitsu": {
+  "id": "44289",
+  "name": "Dr Stone NW",
+  "canonical": "Dr.STONE: NEW WORLD",
+  "alt_titles": ["Dr. Stone: New World", "石纪元第三季", "Dr.STONE Season 3"],
+  "episode_count": 11,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Dr.STONE: NEW WORLD": [
+    ["dr-stone-new-world-1104", "Dr. Stone: New World", "TV"],
+    ["dr-stone-new-world-part-2-1080", "Dr. Stone 3rd Season Part 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "dr-stone-new-world-1104": [
+    [18465, 1, null],
+    [18466, 2, null],
+    [18467, 3, null],
+    [18468, 4, null],
+    [18469, 5, null],
+    [18470, 6, null],
+    [18471, 7, null],
+    [18472, 8, null],
+    [18473, 9, null],
+    [18474, 10, null],
+    [18475, 11, null]
+  ],
+  "dr-stone-new-world-part-2-1080": [
+    [18245, 1, null],
+    [18246, 2, null],
+    [18247, 3, null],
+    [18248, 4, null],
+    [18249, 5, null],
+    [18250, 6, null],
+    [18251, 7, null],
+    [18252, 8, null],
+    [18253, 9, null],
+    [18254, 10, null],
+    [18255, 11, null]
+  ]
+ },
+ "years": {
+  "dr-stone-new-world-1104": 2023,
+  "dr-stone-new-world-part-2-1080": 2023
+ }
+}

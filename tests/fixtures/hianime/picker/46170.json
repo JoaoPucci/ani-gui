@@ -1,0 +1,61 @@
+{
+ "kitsu": {
+  "id": "46170",
+  "name": "Oshi no Ko S1",
+  "canonical": "[Oshi no Ko]",
+  "alt_titles": ["【推しの子】", "Oshi no Ko", "【OSHI NO KO】", "[Mein*Star]", "Favorite Girl", "My Idol's Child", "เกิดใหม่เป็นลูกโอชิ", "Anak Idola", "【推しの子】Mother and Children", "[Oshi no Ko] Mother and Children", "【MOJA GWIAZDA】", "我推的孩子"],
+  "episode_count": 11,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "[Oshi no Ko]": [
+    ["oshi-no-ko-final-7206", "[Oshi no Ko] Final Season", "TV (? eps)"],
+    ["oshi-no-ko-season-2-682", "My Star: Season 2", "TV"],
+    ["oshi-no-ko-season-3-672", "My Star Season 3", "TV"],
+    ["my-star-specials-9656", "My Star: Specials", "SPECIAL"]
+  ],
+  "【推しの子】": [
+    ["oshi-no-ko-675", "My Star", "TV"],
+    ["oshi-no-ko-season-3-672", "My Star Season 3", "TV"],
+    ["oshi-no-ko-season-2-682", "My Star: Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "oshi-no-ko-675": [
+    [12117, 1, null],
+    [12118, 2, null],
+    [12119, 3, null],
+    [12120, 4, null],
+    [12121, 5, null],
+    [12122, 6, null],
+    [12123, 7, null],
+    [12124, 8, null],
+    [12125, 9, null],
+    [12126, 10, null],
+    [12127, 11, null]
+  ],
+  "oshi-no-ko-final-7206": [],
+  "oshi-no-ko-season-2-682": [
+    [12169, 1, null],
+    [12170, 2, null],
+    [12171, 3, null],
+    [12172, 4, null],
+    [12173, 5, null],
+    [12174, 6, null],
+    [12175, 7, null],
+    [12176, 8, null],
+    [12177, 9, null],
+    [12178, 10, null],
+    [12179, 11, null],
+    [12180, 12, null],
+    [12181, 13, null]
+  ]
+ },
+ "years": {
+  "oshi-no-ko-675": 2023,
+  "oshi-no-ko-final-7206": null,
+  "oshi-no-ko-season-2-682": 2024,
+  "oshi-no-ko-season-3-672": 2026
+ }
+}

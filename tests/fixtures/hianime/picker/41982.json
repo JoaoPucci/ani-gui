@@ -1,0 +1,33 @@
+{
+ "kitsu": {
+  "id": "41982",
+  "name": "AoT S3P2",
+  "canonical": "Attack on Titan Season 3 Part 2",
+  "alt_titles": ["Shingeki no Kyojin Season 3 Part 2", "進撃の巨人 Season 3 Part 2"],
+  "episode_count": 10,
+  "year": 2019,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Attack on Titan Season 3 Part 2": [
+    ["attack-on-titan-season-3-part-2-1895", "Attack on Titan Season 3 Part 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "attack-on-titan-season-3-part-2-1895": [
+    [31466, 1, null],
+    [31467, 2, null],
+    [31468, 3, null],
+    [31469, 4, null],
+    [31470, 5, null],
+    [31471, 6, null],
+    [31472, 7, null],
+    [31473, 8, null],
+    [31474, 9, null],
+    [31475, 10, null]
+  ]
+ },
+ "years": {
+  "attack-on-titan-season-3-part-2-1895": 2019
+ }
+}

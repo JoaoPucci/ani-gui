@@ -1,0 +1,69 @@
+{
+ "kitsu": {
+  "id": "7442",
+  "name": "AoT S1",
+  "canonical": "Attack on Titan",
+  "alt_titles": ["Shingeki no Kyojin", "進撃の巨人", "AoT"],
+  "episode_count": 25,
+  "year": 2013,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Attack on Titan": [
+    ["attack-on-titan-240", "Attack on Titan", "TV"],
+    ["attack-on-titan-the-last-attack-3690", "Attack on Titan: The Last Attack", "MOVIE"],
+    ["attack-on-titan-season-2-865", "Attack on Titan Season 2", "TV"],
+    ["attack-on-titan-season-3-866", "Attack on Titan Season 3", "TV"],
+    ["attack-on-titan-season-3-part-2-1895", "Attack on Titan Season 3 Part 2", "TV"],
+    ["attack-on-titan-final-season-1372", "Attack on Titan: Final Season, Part 1", "TV"],
+    ["attack-on-titan-final-season-part-2-868", "Attack on Titan: Final Season, Part 2", "TV"],
+    ["attack-on-titan-final-season-the-final-chapters-867", "Attack on Titan: The Final Season Part 3", "TV"],
+    ["attack-on-titan-no-regrets-908", "Attack on Titan: No Regrets", "OVA"],
+    ["attack-on-titan-oad-1897", "Attack on Titan OVA", "OVA"],
+    ["attack-on-titan-lost-girls-1824", "Attack on Titan: Lost Girls", "OVA"],
+    ["attack-on-titan-junior-high-2969", "Attack on Titan: Junior High", "TV"],
+    ["attack-on-titan-wings-of-freedom-1786", "Attack on Titan: Wings of Freedom", "MOVIE"],
+    ["attack-on-titan-since-that-day-5127", "Attack on Titan: Since That Day", "TV"],
+    ["attack-on-titan-crimson-bow-and-arrow-2028", "Attack on Titan: Crimson Bow and Arrow", "MOVIE"],
+    ["attack-on-titan-chronicle-2051", "Attack on Titan: Chronicle", "MOVIE"],
+    ["attack-on-titan-the-roar-of-awakening-2027", "Attack on Titan: The Roar of Awakening", "MOVIE"],
+    ["attack-on-titan-in-the-dome-soldiers-starry-sky-3243", "Attack on Titan in the Dome: Soldiers' Starry Sky", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "attack-on-titan-240": [
+    [4402, 1, null],
+    [4403, 2, null],
+    [4404, 3, null],
+    [4405, 4, null],
+    [4406, 5, null],
+    [4407, 6, null],
+    [4408, 7, null],
+    [4409, 8, null],
+    [4410, 9, null],
+    [4411, 10, null],
+    [4412, 11, null],
+    [4413, 12, null],
+    [4414, 13, null],
+    [4415, 14, null],
+    [4416, 15, null],
+    [4417, 16, null],
+    [4418, 17, null],
+    [4419, 18, null],
+    [4420, 19, null],
+    [4421, 20, null],
+    [4422, 21, null],
+    [4423, 22, null],
+    [4424, 23, null],
+    [4425, 24, null],
+    [4426, 25, null]
+  ]
+ },
+ "years": {
+  "attack-on-titan-240": 2013,
+  "attack-on-titan-final-season-1372": 2020,
+  "attack-on-titan-season-2-865": 2017,
+  "attack-on-titan-season-3-866": 2018,
+  "attack-on-titan-season-3-part-2-1895": 2019
+ }
+}

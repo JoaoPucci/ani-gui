@@ -1,0 +1,34 @@
+{
+ "kitsu": {
+  "id": "49264",
+  "name": "Oshi no Ko S3",
+  "canonical": "[Oshi no Ko] 3rd Season",
+  "alt_titles": ["【推しの子】第3期", "Oshi no Ko Season 3"],
+  "episode_count": 11,
+  "year": 2026,
+  "subtype": "TV"
+ },
+ "searches": {
+  "[Oshi no Ko] 3rd Season": [
+    ["oshi-no-ko-season-3-672", "My Star Season 3", "TV"]
+  ]
+ },
+ "episodes": {
+  "oshi-no-ko-season-3-672": [
+    [12069, 1, null],
+    [12070, 2, null],
+    [12071, 3, null],
+    [12072, 4, null],
+    [12073, 5, null],
+    [12074, 6, null],
+    [12075, 7, null],
+    [12076, 8, null],
+    [12077, 9, null],
+    [12078, 10, null],
+    [12079, 11, null]
+  ]
+ },
+ "years": {
+  "oshi-no-ko-season-3-672": 2026
+ }
+}

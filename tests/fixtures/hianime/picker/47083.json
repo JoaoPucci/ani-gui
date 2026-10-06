@@ -1,0 +1,54 @@
+{
+ "kitsu": {
+  "id": "47083",
+  "name": "Apothecary",
+  "canonical": "Kusuriya no Hitorigoto",
+  "alt_titles": ["薬屋のひとりごと", "The Apothecary Diaries", "Drugstore Soliloquy"],
+  "episode_count": 24,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Kusuriya no Hitorigoto": [
+    ["the-apothecary-diaries-438", "The Apothecary Diaries", "TV"],
+    ["kusuriya-no-hitorigoto-7209", "Kusuriya no Hitorigoto Movie", "MOVIE (1 eps)"],
+    ["the-apothecary-diaries-season-2-296", "The Apothecary Diaries Season 2", "TV"],
+    ["the-apothecary-diaries-movie-2836", "The Apothecary Diaries Movie", "MOVIE"],
+    ["kusuriya-no-hitorigoto-3rd-season-1898", "The Apothecary Diaries Season 3", "TV"]
+  ]
+ },
+ "episodes": {
+  "the-apothecary-diaries-438": [
+    [8616, 1, null],
+    [8617, 2, null],
+    [8618, 3, null],
+    [8619, 4, null],
+    [8620, 5, null],
+    [8621, 6, null],
+    [8622, 7, null],
+    [8623, 8, null],
+    [8624, 9, null],
+    [8625, 10, null],
+    [8626, 11, null],
+    [8627, 12, null],
+    [8628, 13, null],
+    [8629, 14, null],
+    [8630, 15, null],
+    [8631, 16, null],
+    [8632, 17, null],
+    [8633, 18, null],
+    [8634, 19, null],
+    [8635, 20, null],
+    [8636, 21, null],
+    [8637, 22, null],
+    [8638, 23, null],
+    [8639, 24, null]
+  ]
+ },
+ "years": {
+  "kusuriya-no-hitorigoto-3rd-season-1898": 2026,
+  "kusuriya-no-hitorigoto-7209": 2026,
+  "the-apothecary-diaries-438": 2023,
+  "the-apothecary-diaries-season-2-296": 2025
+ }
+}

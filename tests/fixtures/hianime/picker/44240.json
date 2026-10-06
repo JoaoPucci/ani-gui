@@ -1,0 +1,35 @@
+{
+ "kitsu": {
+  "id": "44240",
+  "name": "AoT FS P2",
+  "canonical": "Attack on Titan: The Final Season Part 2",
+  "alt_titles": ["Shingeki no Kyojin The Final Season Part 2", "進撃の巨人 The Final Season Part 2", "Shingeki no Kyojin Season 4 Part 2", "Attack on Titan Season 4 Part 2"],
+  "episode_count": 12,
+  "year": 2022,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Attack on Titan: The Final Season Part 2": [
+    ["attack-on-titan-final-season-part-2-868", "Attack on Titan: Final Season, Part 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "attack-on-titan-final-season-part-2-868": [
+    [14512, 1, null],
+    [14513, 2, null],
+    [14514, 3, null],
+    [14515, 4, null],
+    [14516, 5, null],
+    [14517, 6, null],
+    [14518, 7, null],
+    [14519, 8, null],
+    [14520, 9, null],
+    [14521, 10, null],
+    [14522, 11, null],
+    [14523, 12, null]
+  ]
+ },
+ "years": {
+  "attack-on-titan-final-season-part-2-868": 2022
+ }
+}

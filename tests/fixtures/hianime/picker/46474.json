@@ -1,0 +1,83 @@
+{
+ "kitsu": {
+  "id": "46474",
+  "name": "Frieren",
+  "canonical": "Sousou no Frieren",
+  "alt_titles": ["葬送のフリーレン", "Frieren: Beyond Journey’s End", "Frieren at the Funeral"],
+  "episode_count": 28,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Sousou no Frieren": [
+    ["frieren-beyond-journeys-end-481", "Frieren: Beyond Journey's End", "TV"],
+    ["frieren-beyond-journeys-end-mini-anime-2851", "Sousou no Frieren - Marumaru no Mahou (Mini Anime)", "ONA"],
+    ["sousou-no-frieren-3rd-7220", "Sousou no Frieren 3rd Season", "TV (? eps)"],
+    ["frieren-beyond-journeys-end-season-2-808", "Frieren: Beyond Journey's End Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "frieren-beyond-journeys-end-481": [
+    [9227, 1, null],
+    [9228, 2, null],
+    [9229, 3, null],
+    [9230, 4, null],
+    [9231, 5, null],
+    [9232, 6, null],
+    [9233, 7, null],
+    [9234, 8, null],
+    [9235, 9, null],
+    [9236, 10, null],
+    [9237, 11, null],
+    [9238, 12, null],
+    [9239, 13, null],
+    [9240, 14, null],
+    [9241, 15, null],
+    [9242, 16, null],
+    [9243, 17, null],
+    [9244, 18, null],
+    [9245, 19, null],
+    [9246, 20, null],
+    [9247, 21, null],
+    [9248, 22, null],
+    [9249, 23, null],
+    [9250, 24, null],
+    [9251, 25, null],
+    [9252, 26, null],
+    [9253, 27, null],
+    [9254, 28, null]
+  ],
+  "frieren-beyond-journeys-end-mini-anime-2851": [
+    [36845, 1, null],
+    [36846, 2, null],
+    [36847, 3, null],
+    [36848, 4, null],
+    [36849, 5, null],
+    [36850, 6, null],
+    [36851, 7, null],
+    [36852, 8, null],
+    [36853, 9, null],
+    [36854, 10, null],
+    [36855, 11, null],
+    [36856, 12, null],
+    [36857, 13, null],
+    [36858, 14, null],
+    [36859, 15, null],
+    [36860, 16, null],
+    [36861, 17, null],
+    [36862, 18, null],
+    [36863, 19, null],
+    [36864, 20, null],
+    [36865, 21, null],
+    [36866, 22, null],
+    [36867, 23, null],
+    [36868, 24, null]
+  ]
+ },
+ "years": {
+  "frieren-beyond-journeys-end-481": 2023,
+  "frieren-beyond-journeys-end-mini-anime-2851": 2023,
+  "frieren-beyond-journeys-end-season-2-808": 2026,
+  "sousou-no-frieren-3rd-7220": 2027
+ }
+}

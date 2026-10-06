@@ -1,0 +1,70 @@
+{
+ "kitsu": {
+  "id": "6589",
+  "name": "SAO",
+  "canonical": "Sword Art Online",
+  "alt_titles": ["ソードアート・オンライン", "S.A.O", "SAO"],
+  "episode_count": 25,
+  "year": 2012,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Sword Art Online": [
+    ["sword-art-online-874", "Sword Art Online", "TV"],
+    ["sword-art-online-unansweredbutterfly-5209", "Unanswered//butterfly: Sword Art Online", "MOVIE"],
+    ["sword-art-online-ii-877", "Sword Art Online II", "TV"],
+    ["sword-art-online-alicization-879", "Sword Art Online: Alicization", "TV"],
+    ["sword-art-online-alicization-war-of-underworld-881", "Sword Art Online Alicization War of Underworld", "TV"],
+    ["sword-art-online-the-movie-ordinal-scale-3809", "Sword Art Online the Movie -Ordinal Scale-", "MOVIE"],
+    ["sword-art-online-alicization-war-of-underworld-part-2-880", "Sword Art Online: Alicization War of Underworld (Part 2)", "TV"],
+    ["sword-art-online-alternative-gun-gale-online-876", "Sword Art Online Alternative: Gun Gale Online", "TV"],
+    ["sword-art-online-extra-edition-3750", "Sword Art Online: Extra Edition", "SPECIAL"],
+    ["sword-art-online-the-movie-progressive-aria-of-a-starless-night-1567", "Sword Art Online: Progressive", "MOVIE"],
+    ["sword-art-online-the-movie-progressive-scherzo-of-deep-night-1568", "Sword Art Online: Progressive - Scherzo of Deep Night", "MOVIE"],
+    ["sword-art-online-ii-debriefing-6875", "Sword Art Online II: Debriefing", "SPECIAL"],
+    ["sword-art-online-alternative-gun-gale-online-ii-2953", "Sword Art Online Alternative: Gun Gale Online II", "TV"],
+    ["sword-art-online-alicization-recollection-3741", "Sword Art Online: Alicization - Recollection", "SPECIAL"],
+    ["sword-art-online-movie-integral-domain-3274", "Sword Art Online Movie: Integral Domain", "MOVIE"],
+    ["sword-art-online-alicization-war-of-underworld-reminiscence-6029", "Sword Art Online: Alicization - War of Underworld Recap", "SPECIAL"],
+    ["sword-art-online-alternative-gun-gale-online-refrain-8300", "Sword Art Online Alternative: Gun Gale Online - Refrain", "SPECIAL"],
+    ["sword-art-online-movie-ordinal-scale-sword-art-offline-7868", "Sword Art Online Movie: Ordinal Scale - Sword Art Offline", "SPECIAL"],
+    ["sword-art-online-alicization-war-of-underworld-reflection-3743", "Sword Art Online: Alicization - War of Underworld Reflection", "TV"]
+  ]
+ },
+ "episodes": {
+  "sword-art-online-874": [
+    [14634, 1, null],
+    [14635, 2, null],
+    [14636, 3, null],
+    [14637, 4, null],
+    [14638, 5, null],
+    [14639, 6, null],
+    [14640, 7, null],
+    [14641, 8, null],
+    [14642, 9, null],
+    [14643, 10, null],
+    [14644, 11, null],
+    [14645, 12, null],
+    [14646, 13, null],
+    [14647, 14, null],
+    [14648, 15, null],
+    [14649, 16, null],
+    [14650, 17, null],
+    [14651, 18, null],
+    [14652, 19, null],
+    [14653, 20, null],
+    [14654, 21, null],
+    [14655, 22, null],
+    [14656, 23, null],
+    [14657, 24, null],
+    [14658, 25, null]
+  ]
+ },
+ "years": {
+  "sword-art-online-874": 2012,
+  "sword-art-online-alicization-879": 2018,
+  "sword-art-online-alicization-war-of-underworld-881": 2019,
+  "sword-art-online-alicization-war-of-underworld-part-2-880": 2020,
+  "sword-art-online-ii-877": 2014
+ }
+}

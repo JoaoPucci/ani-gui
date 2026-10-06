@@ -1,0 +1,34 @@
+{
+ "kitsu": {
+  "id": "44081",
+  "name": "Demon Slayer Ent",
+  "canonical": "Kimetsu no Yaiba: Yuukaku-hen",
+  "alt_titles": ["鬼滅の刃 遊郭編", "Demon Slayer: Kimetsu no Yaiba - Entertainment District Arc", "Kimetsu no Yaiba 2", "Demon Slayer: Kimetsu no Yaiba Season 2", "Demon Slayer 2", "Demon Slayer: Kimetsu no Yaiba - Yuukaku-hen"],
+  "episode_count": 11,
+  "year": 2021,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Kimetsu no Yaiba: Yuukaku-hen": [
+    ["demon-slayer-kimetsu-no-yaiba-entertainment-district-arc-749", "Demon Slayer: Entertainment District Arc", "TV"]
+  ]
+ },
+ "episodes": {
+  "demon-slayer-kimetsu-no-yaiba-entertainment-district-arc-749": [
+    [12919, 1, null],
+    [12920, 2, null],
+    [12921, 3, null],
+    [12922, 4, null],
+    [12923, 5, null],
+    [12924, 6, null],
+    [12925, 7, null],
+    [12926, 8, null],
+    [12927, 9, null],
+    [12928, 10, null],
+    [12929, 11, null]
+  ]
+ },
+ "years": {
+  "demon-slayer-kimetsu-no-yaiba-entertainment-district-arc-749": 2021
+ }
+}

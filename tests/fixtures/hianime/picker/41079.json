@@ -1,0 +1,67 @@
+{
+ "kitsu": {
+  "id": "41079",
+  "name": "Gintama Silver Soul 2",
+  "canonical": "Gintama.: Shirogane no Tamashii-hen 2",
+  "alt_titles": ["銀魂. 銀ノ魂篇 2", "Gintama.: Silver Soul Arc 2"],
+  "episode_count": 14,
+  "year": 2018,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Gintama.: Shirogane no Tamashii-hen 2": [
+    ["gintama-silver-soul-arc-1155", "Gintama.: Silver Soul Arc", "TV"],
+    ["gintama-silver-soul-arc-second-half-war-1157", "Gintama.: Silver Soul Arc - Second Half War", "TV"]
+  ]
+ },
+ "episodes": {
+  "gintama-silver-soul-arc-1155": [
+    [19427, 1, null],
+    [19428, 2, null],
+    [19429, 3, null],
+    [19430, 4, null],
+    [19431, 5, null],
+    [19432, 6, null],
+    [19433, 7, null],
+    [19434, 8, null],
+    [19435, 9, null],
+    [19436, 10, null],
+    [19437, 11, null],
+    [19438, 12, null],
+    [106583, 13, null],
+    [106584, 14, null],
+    [106585, 15, null],
+    [106586, 16, null],
+    [106587, 17, null],
+    [106588, 18, null],
+    [106589, 19, null],
+    [106590, 20, null],
+    [106591, 21, null],
+    [106592, 22, null],
+    [106593, 23, null],
+    [106594, 24, null],
+    [106595, 25, null],
+    [106596, 26, null]
+  ],
+  "gintama-silver-soul-arc-second-half-war-1157": [
+    [19476, 1, null],
+    [19477, 2, null],
+    [19478, 3, null],
+    [19479, 4, null],
+    [19480, 5, null],
+    [19481, 6, null],
+    [19482, 7, null],
+    [19483, 8, null],
+    [19484, 9, null],
+    [19485, 10, null],
+    [19486, 11, null],
+    [19487, 12, null],
+    [19488, 13, null],
+    [19489, 14, null]
+  ]
+ },
+ "years": {
+  "gintama-silver-soul-arc-1155": 2018,
+  "gintama-silver-soul-arc-second-half-war-1157": 2018
+ }
+}

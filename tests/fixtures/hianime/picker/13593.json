@@ -1,0 +1,56 @@
+{
+ "kitsu": {
+  "id": "13593",
+  "name": "Shield Hero",
+  "canonical": "Tate no Yuusha no Nariagari",
+  "alt_titles": ["盾の勇者の成り上がり", "The Rising of the Shield Hero"],
+  "episode_count": 25,
+  "year": 2019,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Tate no Yuusha no Nariagari": [
+    ["the-rising-of-the-shield-hero-885", "The Rising of the Shield Hero", "TV"],
+    ["the-rising-of-the-shield-hero-season-2-882", "The Rising of the Shield Hero 2nd Season", "TV"],
+    ["the-rising-of-the-shield-hero-season-3-883", "The Rising of the Shield Hero Season 3", "TV"],
+    ["the-rising-of-the-shield-hero-season-4-271", "The Rising of the Shield Hero Season 4", "TV"],
+    ["tate-no-yuusha-no-nariagari-season-5-4178", "The Rising of the Shield Hero Season 5", "TV (? eps)"]
+  ]
+ },
+ "episodes": {
+  "the-rising-of-the-shield-hero-885": [
+    [14771, 1, null],
+    [14772, 2, null],
+    [14773, 3, null],
+    [14774, 4, null],
+    [14775, 5, null],
+    [14776, 6, null],
+    [14777, 7, null],
+    [14778, 8, null],
+    [14779, 9, null],
+    [14780, 10, null],
+    [14781, 11, null],
+    [14782, 12, null],
+    [14783, 13, null],
+    [14784, 14, null],
+    [14785, 15, null],
+    [14786, 16, null],
+    [14787, 17, null],
+    [14788, 18, null],
+    [14789, 19, null],
+    [14790, 20, null],
+    [14791, 21, null],
+    [14792, 22, null],
+    [14793, 23, null],
+    [14794, 24, null],
+    [14795, 25, null]
+  ]
+ },
+ "years": {
+  "tate-no-yuusha-no-nariagari-season-5-4178": 2027,
+  "the-rising-of-the-shield-hero-885": 2019,
+  "the-rising-of-the-shield-hero-season-2-882": 2022,
+  "the-rising-of-the-shield-hero-season-3-883": 2023,
+  "the-rising-of-the-shield-hero-season-4-271": 2025
+ }
+}

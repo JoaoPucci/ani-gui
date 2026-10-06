@@ -1,0 +1,59 @@
+{
+ "kitsu": {
+  "id": "6028",
+  "name": "Fate Zero",
+  "canonical": "Fate/Zero",
+  "alt_titles": ["フェイト/ゼロ"],
+  "episode_count": 13,
+  "year": 2011,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Fate/Zero": [
+    ["fatezero-1115", "Fate/Zero", "TV"],
+    ["fatezero-season-2-1117", "Fate/Zero Season 2", "TV"],
+    ["fate-zero-remix-7186", "Fate/Zero Remix", "TV"],
+    ["fatezero-cafe-3036", "Fate/Zero Cafe", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "fate-zero-remix-7186": [
+    [101476, 1, null],
+    [101477, 2, null]
+  ],
+  "fatezero-1115": [
+    [18716, 1, null],
+    [18717, 2, null],
+    [18718, 3, null],
+    [18719, 4, null],
+    [18720, 5, null],
+    [18721, 6, null],
+    [18722, 7, null],
+    [18723, 8, null],
+    [18724, 9, null],
+    [18725, 10, null],
+    [18726, 11, null],
+    [18727, 12, null],
+    [18728, 13, null]
+  ],
+  "fatezero-season-2-1117": [
+    [18729, 1, null],
+    [18730, 2, null],
+    [18731, 3, null],
+    [18732, 4, null],
+    [18733, 5, null],
+    [18734, 6, null],
+    [18735, 7, null],
+    [18736, 8, null],
+    [18737, 9, null],
+    [18738, 10, null],
+    [18739, 11, null],
+    [18740, 12, null]
+  ]
+ },
+ "years": {
+  "fate-zero-remix-7186": 2012,
+  "fatezero-1115": 2011,
+  "fatezero-season-2-1117": 2012
+ }
+}

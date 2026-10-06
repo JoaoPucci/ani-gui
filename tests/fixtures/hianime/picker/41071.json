@@ -1,0 +1,38 @@
+{
+ "kitsu": {
+  "id": "41071",
+  "name": "Mob II",
+  "canonical": "Mob Psycho 100 II",
+  "alt_titles": ["モブサイコ100 II", "Mob Psycho 100 2nd Season", "Mob Psycho Hyaku", "Mob Psycho One Hundred"],
+  "episode_count": 13,
+  "year": 2019,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Mob Psycho 100 II": [
+    ["mob-psycho-100-ii-918", "Mob Psycho 100 II", "TV"],
+    ["mob-psycho-100-iii-917", "Mob Psycho 100 III", "TV"]
+  ]
+ },
+ "episodes": {
+  "mob-psycho-100-ii-918": [
+    [15321, 1, null],
+    [15322, 2, null],
+    [15323, 3, null],
+    [15324, 4, null],
+    [15325, 5, null],
+    [15326, 6, null],
+    [15327, 7, null],
+    [15328, 8, null],
+    [15329, 9, null],
+    [15330, 10, null],
+    [15331, 11, null],
+    [15332, 12, null],
+    [15333, 13, null]
+  ]
+ },
+ "years": {
+  "mob-psycho-100-ii-918": 2019,
+  "mob-psycho-100-iii-917": 2022
+ }
+}

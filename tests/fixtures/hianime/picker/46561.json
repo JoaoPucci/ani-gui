@@ -1,0 +1,35 @@
+{
+ "kitsu": {
+  "id": "46561",
+  "name": "Witch from Mercury S2",
+  "canonical": "Kidou Senshi Gundam: Suisei no Majo Season 2",
+  "alt_titles": ["機動戦士ガンダム 水星の魔女 Season2", "Mobile Suit Gundam: The Witch from Mercury Season 2", "G-Witch 2", "Mobile Suit Gundam: The Witch from Mercury Cour 2", "Kidou Senshi Gundam: Suisei no Majo Part 2", "機動戦士ガンダム 水星の魔女 2クール"],
+  "episode_count": 12,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Kidou Senshi Gundam: Suisei no Majo Season 2": [
+    ["mobile-suit-gundam-the-witch-from-mercury-season-2-5101", "Mobile Suit Gundam: The Witch from Mercury Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "mobile-suit-gundam-the-witch-from-mercury-season-2-5101": [
+    [67021, 1, null],
+    [67022, 2, null],
+    [67023, 3, null],
+    [67024, 4, null],
+    [67025, 5, null],
+    [67026, 6, null],
+    [67027, 7, null],
+    [67028, 8, null],
+    [67029, 9, null],
+    [67030, 10, null],
+    [67031, 11, null],
+    [67032, 12, null]
+  ]
+ },
+ "years": {
+  "mobile-suit-gundam-the-witch-from-mercury-season-2-5101": 2023
+ }
+}

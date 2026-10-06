@@ -1,0 +1,71 @@
+{
+ "kitsu": {
+  "id": "13569",
+  "name": "AoT S3",
+  "canonical": "Attack on Titan Season 3",
+  "alt_titles": ["Shingeki no Kyojin Season 3", "進撃の巨人 Season 3"],
+  "episode_count": 12,
+  "year": 2018,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Attack on Titan Season 3": [
+    ["attack-on-titan-season-3-866", "Attack on Titan Season 3", "TV"],
+    ["attack-on-titan-season-3-part-2-1895", "Attack on Titan Season 3 Part 2", "TV"],
+    ["attack-on-titan-final-season-the-final-chapters-867", "Attack on Titan: The Final Season Part 3", "TV"]
+  ],
+  "Shingeki no Kyojin Season 3": [
+    ["attack-on-titan-season-3-866", "Attack on Titan Season 3", "TV"],
+    ["attack-on-titan-season-3-part-2-1895", "Attack on Titan Season 3 Part 2", "TV"],
+    ["attack-on-titan-final-season-the-final-chapters-867", "Attack on Titan: The Final Season Part 3", "TV"]
+  ],
+  "進撃の巨人 Season 3": [
+    ["attack-on-titan-season-3-866", "Attack on Titan Season 3", "TV"],
+    ["attack-on-titan-season-3-part-2-1895", "Attack on Titan Season 3 Part 2", "TV"],
+    ["attack-on-titan-final-season-the-final-chapters-867", "Attack on Titan: The Final Season Part 3", "TV"]
+  ]
+ },
+ "episodes": {
+  "attack-on-titan-season-3-866": [
+    [14486, 1, null],
+    [14487, 2, null],
+    [14488, 3, null],
+    [14489, 4, null],
+    [14490, 5, null],
+    [14491, 6, null],
+    [14492, 7, null],
+    [14493, 8, null],
+    [14494, 9, null],
+    [14495, 10, null],
+    [14496, 11, null],
+    [14497, 12, null],
+    [106597, 13, null],
+    [106598, 14, null],
+    [106599, 15, null],
+    [106600, 16, null],
+    [106601, 17, null],
+    [106602, 18, null],
+    [106603, 19, null],
+    [106604, 20, null],
+    [106605, 21, null],
+    [106606, 22, null]
+  ],
+  "attack-on-titan-season-3-part-2-1895": [
+    [31466, 1, null],
+    [31467, 2, null],
+    [31468, 3, null],
+    [31469, 4, null],
+    [31470, 5, null],
+    [31471, 6, null],
+    [31472, 7, null],
+    [31473, 8, null],
+    [31474, 9, null],
+    [31475, 10, null]
+  ]
+ },
+ "years": {
+  "attack-on-titan-final-season-the-final-chapters-867": 2023,
+  "attack-on-titan-season-3-866": 2018,
+  "attack-on-titan-season-3-part-2-1895": 2019
+ }
+}

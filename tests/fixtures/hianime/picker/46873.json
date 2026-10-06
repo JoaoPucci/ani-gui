@@ -1,0 +1,35 @@
+{
+ "kitsu": {
+  "id": "46873",
+  "name": "SxF S2",
+  "canonical": "SPY×FAMILY Season 2",
+  "alt_titles": ["SPY x FAMILY Season 2"],
+  "episode_count": 12,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "SPY×FAMILY Season 2": [
+    ["anime-13-255", "Spy x Family Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "anime-13-255": [
+    [4654, 1, null],
+    [4655, 2, null],
+    [4656, 3, null],
+    [4657, 4, null],
+    [4658, 5, null],
+    [4659, 6, null],
+    [4660, 7, null],
+    [4661, 8, null],
+    [4662, 9, null],
+    [4663, 10, null],
+    [4664, 11, null],
+    [4665, 12, null]
+  ]
+ },
+ "years": {
+  "anime-13-255": 2023
+ }
+}

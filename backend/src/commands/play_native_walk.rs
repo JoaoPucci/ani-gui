@@ -125,3 +125,7 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
 #[cfg(test)]
 #[path = "play_native_walk_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "play_native_walk_fixture_test.rs"]
+mod fixture_tests;

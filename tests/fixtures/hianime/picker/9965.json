@@ -1,0 +1,56 @@
+{
+ "kitsu": {
+  "id": "9965",
+  "name": "Overlord",
+  "canonical": "Overlord",
+  "alt_titles": ["オーバーロード"],
+  "episode_count": 13,
+  "year": 2015,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Overlord": [
+    ["overlord-464", "Overlord", "TV"],
+    ["overlord-ii-856", "Overlord II", "TV"],
+    ["overlord-iii-1501", "Overlord III", "TV"],
+    ["overlord-iv-1502", "Overlord IV", "TV"],
+    ["overlord-the-sacred-kingdom-2701", "Overlord: The Sacred Kingdom", "MOVIE"],
+    ["overlord-the-undead-king-2689", "Overlord Movie 1: The Undead King", "MOVIE"],
+    ["overlord-the-dark-hero-115", "Overlord Movie 2: The Dark Hero", "MOVIE"],
+    ["overlord-ple-ple-pleiades-4877", "Overlord: Ple Ple Pleiades", "SPECIAL"],
+    ["overlord-ple-ple-pleiades-nazaricks-greatest-crisis-2678", "Overlord: Ple Ple Pleiades - Nazarick's Greatest Crisis", "OVA"],
+    ["overlord-ple-ple-pleiades-2-4878", "Overlord: Ple Ple Pleiades 2", "ONA"],
+    ["overlord-ple-ple-pleiades-3-4879", "Overlord: Ple Ple Pleiades 3", "ONA"],
+    ["overlord-ple-ple-pleiades-fugitive-clementine-4876", "Overlord: Ple Ple Pleiades - Clementine Toubou-hen", "ONA"],
+    ["overlord-ple-ple-pleiades-4-4880", "Overlord: Ple Ple Pleiades 4", "ONA"],
+    ["overlord-the-maid-tea-party-5349", "Overlord: The Maid Tea Party", "ONA"],
+    ["overlord-ple-ple-pleiades-special-edition-4883", "Overlord: Ple Ple Pleiades - Special Edition", "ONA"],
+    ["overlord-movie-ple-ple-pleiades-4874", "Overlord Movie: Ple Ple Pleiades", "MOVIE"],
+    ["overlord-movie-manner-movie-5348", "Overlord Movie: Manner Movie", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "overlord-464": [
+    [8848, 1, null],
+    [8849, 2, null],
+    [8850, 3, null],
+    [8851, 4, null],
+    [8852, 5, null],
+    [8853, 6, null],
+    [8854, 7, null],
+    [8855, 8, null],
+    [8856, 9, null],
+    [8857, 10, null],
+    [8858, 11, null],
+    [8859, 12, null],
+    [8860, 13, null]
+  ]
+ },
+ "years": {
+  "overlord-464": 2015,
+  "overlord-ii-856": 2018,
+  "overlord-iii-1501": 2018,
+  "overlord-iv-1502": 2022,
+  "overlord-ple-ple-pleiades-2-4878": 2018
+ }
+}

@@ -1,0 +1,37 @@
+{
+ "kitsu": {
+  "id": "43907",
+  "name": "Mushoku P2",
+  "canonical": "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2",
+  "alt_titles": ["無職転生 ～異世界行ったら本気だす～ 第2クール", "Mushoku Tensei: Jobless Reincarnation Part 2"],
+  "episode_count": 12,
+  "year": 2021,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Mushoku Tensei: Isekai Ittara Honki Dasu Part 2": [
+    ["mushoku-tensei-jobless-reincarnation-part-2-453", "Mushoku Tensei: Jobless Reincarnation Part 2", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-season-2-part-2-147", "Mushoku Tensei: Jobless Reincarnation Season 2 Part 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "mushoku-tensei-jobless-reincarnation-part-2-453": [
+    [8737, 1, null],
+    [8738, 2, null],
+    [8739, 3, null],
+    [8740, 4, null],
+    [8741, 5, null],
+    [8742, 6, null],
+    [8743, 7, null],
+    [8744, 8, null],
+    [8745, 9, null],
+    [8746, 10, null],
+    [8747, 11, null],
+    [8748, 12, null]
+  ]
+ },
+ "years": {
+  "mushoku-tensei-jobless-reincarnation-part-2-453": 2021,
+  "mushoku-tensei-jobless-reincarnation-season-2-part-2-147": 2024
+ }
+}

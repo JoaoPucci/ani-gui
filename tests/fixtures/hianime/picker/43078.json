@@ -1,0 +1,64 @@
+{
+ "kitsu": {
+  "id": "43078",
+  "name": "Bleach TYBW",
+  "canonical": "BLEACH: Sennen Kessen-hen",
+  "alt_titles": ["BLEACH 千年血戦篇", "BLEACH: Thousand-Year Blood War", "BLEACH: The Blood Warfare", "BLEACH: Thousand-Year Blood War Part 1 - The Blood Warfare", "BLEACH: Thousand-Year Blood War Part 1 - The Warfare"],
+  "episode_count": 13,
+  "year": 2022,
+  "subtype": "TV"
+ },
+ "searches": {
+  "BLEACH: Sennen Kessen-hen": [
+    ["bleach-thousand-year-blood-war-1234", "Bleach: Thousand-Year Blood War Arc", "TV"],
+    ["bleach-thousand-year-blood-war-the-separation-1009", "Bleach: Thousand-Year Blood War - The Separation", "TV"],
+    ["bleach-thousand-year-blood-war-the-conflict-3859", "Bleach: Thousand-Year Blood War - The Conflict", "TV"],
+    ["bleach-thousand-year-blood-war-the-calamity-5", "Bleach: Thousand-Year Blood War - The Calamity", "TV"],
+    ["bleach-thousand-year-blood-war-the-separation-recap-3863", "Bleach: Thousand-Year Blood War - The Separation Recap", "TV"],
+    ["bleach-thousand-year-blood-war-the-calamity-1-7225", "BLEACH: Thousand-Year Blood War - The Calamity", "MOVIE"],
+    ["bleach-tybw-movie-5955", "BLEACH: Thousand-Year Blood War - The Calamity", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "bleach-thousand-year-blood-war-1234": [
+    [20550, 1, null],
+    [20551, 2, null],
+    [20552, 3, null],
+    [20553, 4, null],
+    [20554, 5, null],
+    [20555, 6, null],
+    [20556, 7, null],
+    [20557, 8, null],
+    [20558, 9, null],
+    [20559, 10, null],
+    [20560, 11, null],
+    [20561, 12, null],
+    [20562, 13, null]
+  ],
+  "bleach-thousand-year-blood-war-the-separation-1009": [
+    [16932, 1, null],
+    [16933, 2, null],
+    [16934, 3, null],
+    [16935, 4, null],
+    [16936, 5, null],
+    [16937, 6, null],
+    [16938, 7, null],
+    [16939, 8, null],
+    [16940, 9, null],
+    [16941, 10, null],
+    [16942, 11, null],
+    [16943, 12, null],
+    [16944, 13, null]
+  ],
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": [
+    [50279, 1, null]
+  ]
+ },
+ "years": {
+  "bleach-thousand-year-blood-war-1234": 2022,
+  "bleach-thousand-year-blood-war-the-calamity-5": 2026,
+  "bleach-thousand-year-blood-war-the-conflict-3859": 2024,
+  "bleach-thousand-year-blood-war-the-separation-1009": 2023,
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": 2023
+ }
+}

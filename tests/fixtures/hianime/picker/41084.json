@@ -1,0 +1,53 @@
+{
+ "kitsu": {
+  "id": "41084",
+  "name": "Vinland",
+  "canonical": "Vinland Saga",
+  "alt_titles": ["ヴィンランド・サガ"],
+  "episode_count": 24,
+  "year": 2019,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Vinland Saga": [
+    ["vinland-saga-901", "Vinland Saga", "TV"],
+    ["vinland-saga-season-2-902", "Vinland Saga: 2nd Season", "TV"],
+    ["vinland-saga-season-2-drowning-in-the-shadow-5185", "Vinland Saga Season 2: Drowning in the Shadow", "ONA"],
+    ["vinland-saga-season-2-same-old-story-3420", "Vinland Saga Season 2: Same Old Story", "ONA"]
+  ]
+ },
+ "episodes": {
+  "vinland-saga-901": [
+    [15040, 1, null],
+    [15041, 2, null],
+    [15042, 3, null],
+    [15043, 4, null],
+    [15044, 5, null],
+    [15045, 6, null],
+    [15046, 7, null],
+    [15047, 8, null],
+    [15048, 9, null],
+    [15049, 10, null],
+    [15050, 11, null],
+    [15051, 12, null],
+    [15052, 13, null],
+    [15053, 14, null],
+    [15054, 15, null],
+    [15055, 16, null],
+    [15056, 17, null],
+    [15057, 18, null],
+    [15058, 19, null],
+    [15059, 20, null],
+    [15060, 21, null],
+    [15061, 22, null],
+    [15062, 23, null],
+    [15063, 24, null]
+  ]
+ },
+ "years": {
+  "vinland-saga-901": 2019,
+  "vinland-saga-season-2-902": 2023,
+  "vinland-saga-season-2-drowning-in-the-shadow-5185": 2023,
+  "vinland-saga-season-2-same-old-story-3420": 2023
+ }
+}

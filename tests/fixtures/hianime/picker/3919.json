@@ -1,0 +1,43 @@
+{
+ "kitsu": {
+  "id": "3919",
+  "name": "Bakemonogatari",
+  "canonical": "Bakemonogatari",
+  "alt_titles": ["化物語", "Ghostory"],
+  "episode_count": 15,
+  "year": 2009,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Bakemonogatari": [
+    ["bakemonogatari-976", "Bakemonogatari (The Monogatari Series)", "TV"],
+    ["bakemonogatari-recap-979", "Bakemonogatari Recap", "TV"]
+  ]
+ },
+ "episodes": {
+  "bakemonogatari-976": [
+    [16360, 1, null],
+    [16361, 2, null],
+    [16362, 3, null],
+    [16363, 4, null],
+    [16364, 5, null],
+    [16365, 6, null],
+    [16366, 7, null],
+    [16367, 8, null],
+    [16368, 9, null],
+    [16369, 10, null],
+    [16370, 11, null],
+    [16371, 12, null],
+    [16372, 13, null],
+    [16373, 14, null],
+    [16374, 15, null]
+  ],
+  "bakemonogatari-recap-979": [
+    [16578, 1, null]
+  ]
+ },
+ "years": {
+  "bakemonogatari-976": 2009,
+  "bakemonogatari-recap-979": 2009
+ }
+}

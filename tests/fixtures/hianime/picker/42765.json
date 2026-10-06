@@ -1,0 +1,57 @@
+{
+ "kitsu": {
+  "id": "42765",
+  "name": "JJK",
+  "canonical": "Jujutsu Kaisen",
+  "alt_titles": ["呪術廻戦", "Sorcery Fight"],
+  "episode_count": 24,
+  "year": 2020,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Jujutsu Kaisen": [
+    ["jujutsu-kaisen-the-culling-game-part-1-809", "Jujutsu Kaisen 3rd Season: The Culling Game Part 1", "TV"],
+    ["jujutsu-kaisen-237", "Jujutsu Kaisen (TV)", "TV"],
+    ["jujutsu-kaisen-season-2-415", "Jujutsu Kaisen 2nd Season", "TV"],
+    ["jujutsu-kaisen-0-413", "Jujutsu Kaisen 0 Movie", "MOVIE"],
+    ["jujutsu-kaisen-hidden-inventorypremature-death-3651", "Jujutsu Kaisen: Hidden Inventory/Premature Death", "MOVIE"],
+    ["jujutsu-kaisen-official-pvs-714", "Jujutsu Kaisen Official PVs", "TV"],
+    ["jujutsu-kaisen-execution-1943", "Jujutsu Kaisen: Execution", "MOVIE"],
+    ["jujutsu-kaisen-season-2-recaps-3513", "Jujutsu Kaisen: Specials", "SPECIAL"]
+  ]
+ },
+ "episodes": {
+  "jujutsu-kaisen-237": [
+    [4365, 1, null],
+    [4366, 2, null],
+    [4367, 3, null],
+    [4368, 4, null],
+    [4369, 5, null],
+    [4370, 6, null],
+    [4371, 7, null],
+    [4372, 8, null],
+    [4373, 9, null],
+    [4374, 10, null],
+    [4375, 11, null],
+    [4376, 12, null],
+    [4377, 13, null],
+    [4378, 14, null],
+    [4379, 15, null],
+    [4380, 16, null],
+    [4381, 17, null],
+    [4382, 18, null],
+    [4383, 19, null],
+    [4384, 20, null],
+    [4385, 21, null],
+    [4386, 22, null],
+    [4387, 23, null],
+    [4388, 24, null]
+  ]
+ },
+ "years": {
+  "jujutsu-kaisen-237": 2020,
+  "jujutsu-kaisen-official-pvs-714": 2018,
+  "jujutsu-kaisen-season-2-415": 2023,
+  "jujutsu-kaisen-the-culling-game-part-1-809": 2026
+ }
+}

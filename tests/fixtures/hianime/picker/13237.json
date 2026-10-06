@@ -1,0 +1,53 @@
+{
+ "kitsu": {
+  "id": "13237",
+  "name": "Overlord II",
+  "canonical": "Overlord II",
+  "alt_titles": ["オーバーロードⅡ"],
+  "episode_count": 13,
+  "year": 2018,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Overlord II": [
+    ["overlord-ii-856", "Overlord II", "TV"],
+    ["overlord-iii-1501", "Overlord III", "TV"]
+  ]
+ },
+ "episodes": {
+  "overlord-ii-856": [
+    [14350, 1, null],
+    [14351, 2, null],
+    [14352, 3, null],
+    [14353, 4, null],
+    [14354, 5, null],
+    [14355, 6, null],
+    [14356, 7, null],
+    [14357, 8, null],
+    [14358, 9, null],
+    [14359, 10, null],
+    [14360, 11, null],
+    [14361, 12, null],
+    [14362, 13, null]
+  ],
+  "overlord-iii-1501": [
+    [25826, 1, null],
+    [25827, 2, null],
+    [25828, 3, null],
+    [25829, 4, null],
+    [25830, 5, null],
+    [25831, 6, null],
+    [25832, 7, null],
+    [25833, 8, null],
+    [25834, 9, null],
+    [25835, 10, null],
+    [25836, 11, null],
+    [25837, 12, null],
+    [25838, 13, null]
+  ]
+ },
+ "years": {
+  "overlord-ii-856": 2018,
+  "overlord-iii-1501": 2018
+ }
+}
