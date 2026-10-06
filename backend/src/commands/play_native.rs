@@ -19,6 +19,7 @@ use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
+use super::play_native_wide_listing::{fit_to_entry, UNFIT};
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -81,6 +82,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// - A candidate the searched title names a later part of ("X" when
 ///   asked for "X Season 2") is the season before, and never picked;
 ///   [`pick_candidate_titled`] reads every title the entry goes by.
+/// - With `expected = Some(n)`, a candidate the entry's titles do
+///   not admit — named for a season or part the entry is not — is
+///   probed but never picked (see `play_native_wide_listing`).
 /// - Probe errors skip the candidate rather than abort the pick; a
 ///   pick only fails when no probed candidate survives.
 ///
@@ -129,12 +133,6 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         return Err(crate::error::AniError::NoResults);
     }
     let entry = EntryTitles::new(entry_titles);
-    tracing::debug!(
-        entry = entry.canonical,
-        aliases = entry.alts.len(),
-        search = search_title,
-        "pick: choosing among the pool"
-    );
     let needle = search_title.trim().to_lowercase();
     // Format disproof in both directions, over the RAW list — the
     // badge is free, so incompatible formats never crowd the bounded
@@ -192,9 +190,13 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                 }
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
+                    // A candidate the entry's titles refuse could
+                    // never have won, so its death blocks no winner;
+                    // it still leaves the pool unheard.
                     let failed =
                         identity_rank(h.title.trim().to_lowercase() == needle, year_confirmed);
-                    if best_failed.is_none_or(|best| (failed, pos) < best) {
+                    if entry.admits(&h.title) && best_failed.is_none_or(|best| (failed, pos) < best)
+                    {
                         best_failed = Some((failed, pos));
                     }
                 }
@@ -202,6 +204,10 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
             }
         }
     }
+    // The entry's own titles over what the probes heard: a sibling
+    // named for another season or part is scored out (see
+    // play_native_wide_listing).
+    fit_to_entry(&mut probed_ok, expected, entry);
     // An empty pool splits by what killed the probes: any transport
     // death means nothing was learned (the transient Network), while
     // all-answered not-found means the pool is dead but the provider
@@ -235,8 +241,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         if let Some(idx) = probed_ok
             .iter()
             .enumerate()
-            .filter(|(_, (_, eps, _, confirmed))| {
-                *confirmed && regular_episode_count(eps) < expected
+            .filter(|(_, (_, eps, d, confirmed))| {
+                *confirmed && *d != UNFIT && regular_episode_count(eps) < expected
             })
             // Distance first, then the user's own words — the same
             // dominance winner selection keeps — with provider order
