@@ -237,3 +237,18 @@ fn a_zeroth_part_is_no_later_part() {
     assert_eq!(part_ordinal("The Show", "The Show Season 0"), None);
     assert_eq!(part_ordinal("The Show", "The Show Part 0"), None);
 }
+
+#[test]
+fn a_japanese_division_names_a_later_part_too() {
+    // Kitsu can know a later entry by its Japanese title alone; the
+    // predecessor guard reads the same grammar the title rules do.
+    assert_eq!(part_ordinal("X", "X 第2期"), Some(2));
+    assert_eq!(part_ordinal("X", "X第2期"), Some(2));
+    assert_eq!(part_ordinal("X", "X 第２クール"), Some(2));
+    assert_eq!(
+        part_ordinal("X", "X 第一部"),
+        None,
+        "a first part is no later one"
+    );
+    assert!(precedes_entry("X", &["X 第2期"]));
+}
