@@ -277,12 +277,10 @@ pub(super) fn part_ordinals(title: &str) -> BTreeSet<u32> {
         .collect()
 }
 
-/// A title's words with the markers it ends on removed: the name the
-/// show's seasons and parts share ("Attack on Titan" for "Attack on
-/// Titan Season 3 Part 2").
 /// The markers `words` open with, in order: marker pairs ("season 3
-/// part 2", "2nd season") and ordinals standing alone ("second half
-/// war" opens with its second), up to the first word that is neither.
+/// part 2", "2nd season"), ordinals standing alone ("second half war"
+/// opens with its second) and Japanese divisions written as one word
+/// ("第2期"), up to the first word that is none of them.
 fn leading_markers(words: &[String]) -> Vec<Marker> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -290,6 +288,9 @@ fn leading_markers(words: &[String]) -> Vec<Marker> {
         if let Some(m) = words.get(i + 1).and_then(|next| marker_of(&words[i], next)) {
             out.push(m);
             i += 2;
+        } else if let Some((m, "")) = japanese_trailing(&words[i]) {
+            out.push(m);
+            i += 1;
         } else if let Some(n) = spelled_ordinal(&words[i]) {
             out.push(Marker {
                 kind: Kind::Season,
