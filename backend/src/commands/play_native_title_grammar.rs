@@ -312,6 +312,14 @@ fn leading_markers(words: &[String]) -> Vec<Marker> {
 /// beside "Show Season 3" and "Show Side Story 2" beside "Show" name
 /// nothing. Empty when `sibling` does not start with the stem.
 pub(super) fn later_divisions(sibling: &str, wide: &str) -> Vec<u32> {
+    later_division_markers(sibling, wide)
+        .into_iter()
+        .flat_map(|m| m.ordinals)
+        .collect()
+}
+
+/// The divisions behind [`later_divisions`], with their kinds.
+pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
     let own = stem(wide);
     let words = words(sibling);
     if words.len() < own.len() || words[..own.len()] != *own {
@@ -321,8 +329,22 @@ pub(super) fn later_divisions(sibling: &str, wide: &str) -> Vec<u32> {
     leading_markers(&words[own.len()..])
         .into_iter()
         .filter(|m| !wide_markers.contains(m))
-        .flat_map(|m| m.ordinals)
         .collect()
+}
+
+/// The ordinals a title names other than as a part: every ordinal its
+/// stem names ([`named_ordinals`] — "Show 2", "ショー２", "Overlord
+/// II") and each season marker it ends on ("Show 2nd Season").
+pub(super) fn season_ordinals(title: &str) -> BTreeSet<u32> {
+    let (before, markers) = parse_tail(title);
+    let mut out = named_ordinals(&before.join(" "));
+    out.extend(
+        markers
+            .into_iter()
+            .filter(|m| m.kind == Kind::Season)
+            .flat_map(|m| m.ordinals),
+    );
+    out
 }
 
 /// A title's words with the markers it ends on removed: the name the

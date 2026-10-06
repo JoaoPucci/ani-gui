@@ -11,10 +11,9 @@ use std::collections::BTreeSet;
 
 pub(crate) use super::play_native_title_grammar::stem;
 use super::play_native_title_grammar::{
-    later_divisions, named_ordinals, part_ordinals, trailing_markers,
+    later_division_markers, later_divisions, named_ordinals, part_ordinals, season_ordinals,
+    trailing_markers, Kind, Marker,
 };
-#[cfg(test)]
-use super::play_native_title_grammar::{Kind, Marker};
 
 /// Every title the entry goes by: its canonical title, then the
 /// fallbacks the walk searches in order.
@@ -116,21 +115,41 @@ impl EntryTitles<'_> {
     }
 
     /// Whether `listing` is this entry's own beside the listing `wide`
-    /// that would span it. It names no division beyond the entry's
-    /// part right after `wide`'s stem ([`later_divisions`]) — that is
-    /// the later entry completing the span, which shares `wide`'s stem
-    /// ("Show 2nd Season Part 2" beside "Show 2nd Season") — and
-    /// either carries that stem and nothing more ("Show Part 1" beside
-    /// "Show"), or names the entry's own part and no other right after
-    /// it ("… - First Half War" beside "Gintama.: Silver Soul Arc"). A
-    /// title that adds anything else ("Show Side Story") is another
-    /// show of the franchise.
+    /// that would span it: it carries `wide`'s stem and nothing more
+    /// ("Show Part 1" beside "Show"), or every division it names right
+    /// after that stem ([`later_division_markers`]) is one the entry's
+    /// titles name as theirs ([`Self::owns`]) — "Show 2nd Season"
+    /// beside "Show" for "Show 2", "… - First Half War" beside
+    /// "Gintama.: Silver Soul Arc". A division the entry does not name
+    /// makes the listing the later entry completing the span ("Show 2nd
+    /// Season Part 2" beside "Show 2nd Season"), and a title that adds
+    /// anything but divisions ("Show Side Story") is another show of
+    /// the franchise.
     ///
-    /// [`later_divisions`]: super::play_native_title_grammar::later_divisions
+    /// [`later_division_markers`]: super::play_native_title_grammar::later_division_markers
     pub(crate) fn names_own_part(&self, listing: &str, wide: &str) -> bool {
-        let own = self.own_part();
-        let named = later_divisions(listing, wide);
-        named.iter().all(|n| *n <= own) && (stem(listing) == stem(wide) || named == [own])
+        let named = later_division_markers(listing, wide);
+        (stem(listing) == stem(wide) || !named.is_empty()) && named.iter().all(|m| self.owns(m))
+    }
+
+    /// Whether a division is the entry's own, by kind: a part only when
+    /// it is the part the entry's titles end on ([`Self::own_part`]); a
+    /// season when the entry's titles name its every ordinal other than
+    /// as a part ([`season_ordinals`]: "Show 2", "Show 2nd Season",
+    /// "ショー２"), or when it is the first and they name no season.
+    ///
+    /// [`season_ordinals`]: super::play_native_title_grammar::season_ordinals
+    fn owns(&self, division: &Marker) -> bool {
+        match division.kind {
+            Kind::Part => division.ordinals == [self.own_part()],
+            Kind::Season => {
+                let seasons: BTreeSet<u32> = self.all().flat_map(season_ordinals).collect();
+                division
+                    .ordinals
+                    .iter()
+                    .all(|n| seasons.contains(n) || (*n == 1 && seasons.is_empty()))
+            }
+        }
     }
 }
 
