@@ -34,25 +34,51 @@
 /// with no such process, and nothing is sent. What the look cannot
 /// rule out is the id being freed and handed to a new group leader in
 /// the moment between it and the kill — a full turn of the pid space
-/// in milliseconds. On Windows the tree is found
-/// through the live root, so once the root has exited what it left
-/// running is out of the guard's reach.
+/// in milliseconds. On Windows the tool is put in a job object as it
+/// starts, and the processes it starts after that join the job: the
+/// tree is the job's members, there whether or not the tool itself is
+/// still running. The job is made to kill its members when its last
+/// handle closes, which is the guard's, so a backend that ends
+/// without running any guard — a crash — still takes its tools with
+/// it.
 pub(crate) struct TreeKillChild {
     pub(crate) child: tokio::process::Child,
-    /// The child's pid, which on Unix is its group's id; `None` once
-    /// the tree is known to be gone.
-    pid: Option<u32>,
+    /// The rest of the child's tree; `None` once it is known to be
+    /// gone.
+    tree: Option<Box<dyn Tree>>,
     /// A teardown already waited the ceiling out: the drop asks for
     /// the kill again but does not wait a second time.
     given_up: bool,
 }
 
+/// What a guard can do with a child's tree beyond the child itself:
+/// look for anything of it still running, and ask all of it to die.
+/// The guard's logic is the same on every platform; this is what
+/// differs.
+pub(crate) trait Tree: Send {
+    /// Whether any process of the tree is still running.
+    fn running(&mut self) -> bool;
+    /// Ask every process of the tree still running to die.
+    fn kill(&mut self);
+}
+
 impl TreeKillChild {
     pub(crate) fn new(child: tokio::process::Child) -> Self {
-        let pid = child.id();
+        let tree = platform_tree(&child);
         Self {
             child,
-            pid,
+            tree,
+            given_up: false,
+        }
+    }
+
+    /// A guard over `child` whose tree is `tree`, for a case that
+    /// decides what the tree does.
+    #[cfg(test)]
+    pub(crate) fn with_tree(child: tokio::process::Child, tree: Box<dyn Tree>) -> Self {
+        Self {
+            child,
+            tree: Some(tree),
             given_up: false,
         }
     }
@@ -62,6 +88,12 @@ impl TreeKillChild {
         &mut self.child
     }
 
+    /// Whether anything of the tree is still running, for a case.
+    #[cfg(all(test, windows))]
+    pub(crate) fn tree_running(&mut self) -> bool {
+        self.tree.as_mut().is_some_and(|t| t.running())
+    }
+
     /// Take the tree down and wait until it has exited: the child
     /// reaped and, of the rest of its tree, nothing left — which is
     /// also what it checks first, so a tree already gone is not
@@ -69,22 +101,22 @@ impl TreeKillChild {
     /// asked for, but the tree cannot be said to be gone, and nothing
     /// that would meet it should start.
     pub(crate) async fn take_down(&mut self) -> bool {
-        let Some(pid) = self.pid else {
-            return true;
-        };
-        if self.tree_exited(pid, &[]) {
-            self.pid = None;
+        if self.tree.is_none() {
             return true;
         }
-        let tree = kill_process_tree(pid);
+        if self.tree_exited() {
+            self.tree = None;
+            return true;
+        }
+        self.kill_tree();
         let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
         loop {
-            if self.tree_exited(pid, &tree) {
-                self.pid = None;
+            if self.tree_exited() {
+                self.tree = None;
                 return true;
             }
             if std::time::Instant::now() >= deadline {
-                tracing::warn!(pid, "a tool's process tree outlived its teardown");
+                tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
                 self.given_up = true;
                 return false;
             }
@@ -95,19 +127,21 @@ impl TreeKillChild {
     /// [`Self::take_down`] for the drop, which cannot await: the same
     /// wait, sleeping the thread. A teardown's exit takes milliseconds.
     fn take_down_blocking(&mut self) {
-        let Some(pid) = self.pid else { return };
+        if self.tree.is_none() {
+            return;
+        }
         if self.given_up {
-            kill_process_tree(pid);
+            self.kill_tree();
             return;
         }
-        if self.tree_exited(pid, &[]) {
+        if self.tree_exited() {
             return;
         }
-        let tree = kill_process_tree(pid);
+        self.kill_tree();
         let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
-        while !self.tree_exited(pid, &tree) {
+        while !self.tree_exited() {
             if std::time::Instant::now() >= deadline {
-                tracing::warn!(pid, "a tool's process tree outlived its teardown");
+                tracing::warn!(pid = ?self.child.id(), "a tool's process tree outlived its teardown");
                 return;
             }
             std::thread::sleep(TREE_EXIT_POLL);
@@ -115,13 +149,18 @@ impl TreeKillChild {
     }
 
     /// The child first, reaping it if it has exited, then the rest of
-    /// its tree: on Unix the process group it leads, on Windows the
-    /// processes `taskkill` named as it took the tree down.
-    fn tree_exited(&mut self, pid: u32, tree: &[u32]) -> bool {
+    /// its tree.
+    fn tree_exited(&mut self) -> bool {
         if matches!(self.child.try_wait(), Ok(None)) {
             return false;
         }
-        !tree_alive(pid, tree)
+        !self.tree.as_mut().is_some_and(|t| t.running())
+    }
+
+    fn kill_tree(&mut self) {
+        if let Some(tree) = self.tree.as_mut() {
+            tree.kill();
+        }
     }
 }
 
@@ -143,96 +182,119 @@ pub(crate) const TREE_EXIT_CEILING: std::time::Duration = std::time::Duration::f
 
 const TREE_EXIT_POLL: std::time::Duration = std::time::Duration::from_millis(10);
 
-/// Whether anything of a taken-down tree is still running, the child
-/// itself aside. Unix: the process group the child led — its helpers
-/// are in it, and a group no process is in no longer exists. Windows:
-/// the processes the teardown named, each looked up by pid.
-fn tree_alive(pid: u32, tree: &[u32]) -> bool {
-    if cfg!(windows) {
-        return tree.iter().any(|&p| {
-            std::process::Command::new("tasklist")
-                .args(tasklist_args(p))
-                .output()
-                .is_ok_and(|o| tasklist_shows(&String::from_utf8_lossy(&o.stdout), p))
-        });
+/// The tree of a child spawned in a process group of its own: the
+/// group, whose id is the child's pid. A group with a process still
+/// in it keeps its id from being handed out again, so it can be
+/// looked at and signalled past the child's reap.
+#[cfg(unix)]
+struct ProcessGroup {
+    pgid: u32,
+}
+
+#[cfg(unix)]
+impl Tree for ProcessGroup {
+    fn running(&mut self) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", "--", &format!("-{}", self.pgid)])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
     }
-    std::process::Command::new("kill")
-        .args(["-0", "--", &format!("-{pid}")])
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+
+    fn kill(&mut self) {
+        kill_process_tree(self.pgid);
+    }
 }
 
-/// `tasklist`'s query for one pid, as CSV without a header, so a
-/// running process is a row whose second field is its pid whatever
-/// the system's language.
-fn tasklist_args(pid: u32) -> [String; 5] {
-    [
-        "/FI".into(),
-        format!("PID eq {pid}"),
-        "/FO".into(),
-        "CSV".into(),
-        "/NH".into(),
-    ]
+#[cfg(unix)]
+fn platform_tree(child: &tokio::process::Child) -> Option<Box<dyn Tree>> {
+    Some(Box::new(ProcessGroup { pgid: child.id()? }))
 }
 
-/// Whether `tasklist`'s CSV answer lists `pid`. Every field is
-/// quoted, and a field may hold a comma — an image name can — but no
-/// quote, so fields part at `","`. An answer naming no process is a
-/// sentence in the system's language, with no quoted field in it.
-fn tasklist_shows(stdout: &str, pid: u32) -> bool {
-    let field = pid.to_string();
-    stdout
-        .lines()
-        .any(|row| row.starts_with('"') && row.split("\",\"").nth(1) == Some(field.as_str()))
+/// The tree of a child on Windows: the members of a job object the
+/// child was put in as it started, which the processes it starts
+/// join. The kill is `taskkill /T` on the child, for anything started
+/// in the moment before it joined the job, and `taskkill` on each
+/// member. Without a job — creating or joining one failed — the tree
+/// is what `taskkill /T` reaches through the child while it runs.
+#[cfg(windows)]
+struct JobTree {
+    root: u32,
+    job: Option<win32job::Job>,
 }
 
-/// The processes `taskkill /T` reports taking down, to be looked up
-/// until they are gone: every pid its report names, whatever the
-/// language it is written in — a line per process, naming it and the
-/// parent it was found under. Left out: the backend, which the report
-/// names as the root's parent and is not part of the tree; the root,
-/// whose own handle says when it has exited; and 0 and 4, the idle
-/// process and System, which never exit.
-fn pids_taken_down(stdout: &str, own: u32, root: u32) -> Vec<u32> {
-    let mut pids: Vec<u32> = stdout
-        .split(|c: char| !c.is_ascii_digit())
-        .filter_map(|n| n.parse().ok())
-        .filter(|&p| p != own && p != root && p != 0 && p != 4)
-        .collect();
-    pids.sort_unstable();
-    pids.dedup();
-    pids
+#[cfg(windows)]
+impl JobTree {
+    fn members(&self) -> Vec<u32> {
+        let Some(job) = &self.job else {
+            return Vec::new();
+        };
+        match job.query_process_id_list() {
+            Ok(pids) => pids
+                .into_iter()
+                .filter_map(|p| u32::try_from(p).ok())
+                .collect(),
+            Err(e) => {
+                tracing::warn!(error = %e, "a tool's job could not be read");
+                Vec::new()
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Tree for JobTree {
+    fn running(&mut self) -> bool {
+        !self.members().is_empty()
+    }
+
+    fn kill(&mut self) {
+        kill_process_tree(self.root);
+        for pid in self.members() {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/F"])
+                .output();
+        }
+    }
+}
+
+#[cfg(windows)]
+fn platform_tree(child: &tokio::process::Child) -> Option<Box<dyn Tree>> {
+    let root = child.id()?;
+    let joined = (|| {
+        let mut limits = win32job::ExtendedLimitInfo::new();
+        limits.limit_kill_on_job_close();
+        let job = win32job::Job::create_with_limit_info(&limits)?;
+        let handle = child.raw_handle().ok_or_else(|| {
+            win32job::JobError::AssignFailed(std::io::Error::other("the tool has already exited"))
+        })?;
+        job.assign_process(handle as isize)?;
+        Ok::<_, win32job::JobError>(job)
+    })();
+    let job = match joined {
+        Ok(job) => Some(job),
+        Err(e) => {
+            tracing::warn!(error = %e, "a tool could not be put in a job");
+            None
+        }
+    };
+    Some(Box::new(JobTree { root, job }))
 }
 
 /// Take down a spawned downloader's whole process tree.
 ///
 /// Shared by the drop guard and by the in-flight stop, so both paths
-/// use the same platform command and the same test seam. Returns the
-/// processes the teardown named, which only Windows reports and only
-/// Windows needs: a tree there has no group to look for afterwards.
-pub(crate) fn kill_process_tree(pid: u32) -> Vec<u32> {
+/// use the same platform command and the same test seam.
+pub(crate) fn kill_process_tree(pid: u32) {
     #[cfg(test)]
     if let Some(probe) = tree_kill_probe() {
         let _ = std::process::Command::new(probe)
             .arg(pid.to_string())
             .status();
-        return Vec::new();
+        return;
     }
-    let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) else {
-        return Vec::new();
-    };
-    let Ok(out) = std::process::Command::new(prog).args(&args).output() else {
-        return Vec::new();
-    };
-    if cfg!(windows) {
-        pids_taken_down(
-            &String::from_utf8_lossy(&out.stdout),
-            std::process::id(),
-            pid,
-        )
-    } else {
-        Vec::new()
+    if let Some((prog, args)) = tree_kill_args(pid, cfg!(windows)) {
+        let _ = std::process::Command::new(prog).args(&args).output();
     }
 }
 
