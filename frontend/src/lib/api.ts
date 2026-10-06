@@ -1096,9 +1096,14 @@ export function allmangaKitsuMapPlayed(showId: string): Promise<string | null> {
  * music entry, which no provider show is. Dropping it lets subsequent
  * lookups re-resolve and the next successful play rewrite the mapping
  * correctly. A binding step 0 merely doubts is passed over and kept.
+ *
+ * `kitsuId` names the id the caller judged: the row goes only while it
+ * is still that one, so a mapping a play stored after the caller read
+ * it stays. Without it, whatever mapping stands goes.
  */
-export function allmangaKitsuMapDelete(showId: string): Promise<void> {
-	return deleteJson<void>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}`);
+export function allmangaKitsuMapDelete(showId: string, kitsuId?: string): Promise<void> {
+	const query = kitsuId === undefined ? '' : `?${new URLSearchParams({ kitsu_id: kitsuId })}`;
+	return deleteJson<void>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}${query}`);
 }
 
 /**

@@ -581,6 +581,21 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
     crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_key(show_id))
 }
 
+/// Evict the show's mapping while it is still `kitsu_id`, the id the
+/// caller judged. The caller read the mapping and then waited on Kitsu,
+/// and a play can store another one meanwhile; that mapping, and the
+/// mark beside it, are not the one judged and stay. Held against the
+/// history, as a play's write is, so the check and the delete see the
+/// same mapping. SQLite errors propagate.
+pub fn allmanga_kitsu_delete_named(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
+    crate::history::guard::hold(&state.history_path, |_| {
+        if allmanga_kitsu_get(state, show_id)?.as_deref() != Some(kitsu_id) {
+            return Ok(());
+        }
+        allmanga_kitsu_delete(state, show_id)
+    })
+}
+
 /// Persist the reverse mapping with a cross-cour integrity guard.
 /// Compares the cour suffix on `show_title` against the cour suffix
 /// on the Kitsu detail's slug; on disagreement the write is skipped

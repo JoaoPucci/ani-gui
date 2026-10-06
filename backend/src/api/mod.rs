@@ -709,13 +709,26 @@ async fn get_allmanga_kitsu_map_played(
 /// Evict a single reverse-mapping row. Fired by the frontend when
 /// step 0 finds the mapping bound to a music entry; the next
 /// successful play rewrites the row through the (guarded) mark-watched
-/// path. 204 on success.
+/// path. With `?kitsu_id=`, the row goes only while it is still that
+/// id ([`kitsu_inner::allmanga_kitsu_delete_named`]). 204 on success.
 async fn delete_allmanga_kitsu_map(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
+    Query(q): Query<DeleteAllmangaKitsuMapQuery>,
 ) -> Result<StatusCode, AniError> {
-    kitsu_inner::allmanga_kitsu_delete(&state, &show_id)?;
+    match q.kitsu_id {
+        Some(kitsu_id) => kitsu_inner::allmanga_kitsu_delete_named(&state, &show_id, &kitsu_id)?,
+        None => kitsu_inner::allmanga_kitsu_delete(&state, &show_id)?,
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct DeleteAllmangaKitsuMapQuery {
+    /// The id the caller judged; the mapping is removed only while it
+    /// is still this one. Absent, whatever mapping stands is removed.
+    #[serde(default)]
+    kitsu_id: Option<String>,
 }
 
 /// Resolve a history-recorded show id to its full [`KitsuAnimeRef`]:

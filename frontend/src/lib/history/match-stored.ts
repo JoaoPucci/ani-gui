@@ -46,8 +46,9 @@ export async function storedBinding(
 		// Provably wrong (a music entry). Awaited: the enrichment step
 		// reads this same reverse cache first, so the delete must commit
 		// before the row falls through to it. A failing delete is
-		// tolerated.
-		await allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
+		// tolerated. It names the id judged: a mapping a play stored
+		// while the detail was in flight is not this one, and stays.
+		await allmangaKitsuMapDelete(preliminary.allmangaShowId, kitsuId).catch(() => {});
 		return null;
 	}
 	// A provider title Kitsu does not use doubts the right binding on
