@@ -780,3 +780,33 @@ async fn a_japanese_division_completes_a_spanning_listing() {
         );
     }
 }
+
+/// An entry named for its season by a bare number ("Show 2", "ショー２")
+/// beside a listing of the whole show that runs past it: the listing
+/// named for that season is the entry's own and stops the cut, though
+/// it is exactly the remainder of the broad listing too. Only a
+/// division the entry does not name — a later part — makes it the next
+/// entry.
+#[tokio::test]
+async fn a_listing_named_for_the_entry_s_own_season_stops_a_cut() {
+    type Pool<'a> = [(&'a str, &'a str, u32); 2];
+    let cases: [(&str, Pool<'_>); 2] = [
+        (
+            "Show 2",
+            [("show-1", "Show", 24), ("show-s2-2", "Show 2nd Season", 12)],
+        ),
+        (
+            "ショー２",
+            [("show-1", "ショー", 24), ("show-s2-2", "ショー 第2期", 12)],
+        ),
+    ];
+    for (title, rows) in cases {
+        let site = pool_of(&[title], Some(12), 2020, title, &rows);
+        let picked = walk_over(site).await.expect("the entry's own listing");
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            ("show-s2-2", 12),
+            "{title}"
+        );
+    }
+}
