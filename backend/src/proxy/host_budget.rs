@@ -22,8 +22,8 @@
 //! background traffic, one request at a time, which while no one waits
 //! takes a token only above the last [`BACKGROUND_RESERVE`] of the
 //! bucket, so the player's next requests find them there, and while the
-//! player waits takes a turn only once the player has taken what its
-//! streams need with room to spare ([`player_turns`]) — none while
+//! player waits takes a turn only once the player has taken what it
+//! needs with room to spare ([`player_turns`]) — none while
 //! that need with its room is the whole refill or more, when it waits
 //! for the player to stop asking — so the player keeps pace and the
 //! download takes the rest. The bucket is per host: a download from a
@@ -245,7 +245,8 @@ impl HostBudget {
         self.with_state(host, |state| state.demand.note_other(Instant::now()));
     }
 
-    /// What the player's streams at `host` need, as requests a second.
+    /// What the player needs from `host`, as requests a second: its
+    /// streams' segments and its other requests.
     #[cfg(test)]
     pub(crate) fn player_demand(&self, host: &str) -> f64 {
         self.with_state(host, |state| state.demand.per_second(Instant::now()))
@@ -310,7 +311,7 @@ impl HostBudget {
     /// player's next requests find the reserve there. With the player
     /// waiting in the line it yields until the player has taken its
     /// turns ([`player_turns`]) and then takes the next: while both
-    /// wait, the player gets what its streams need with room and the
+    /// wait, the player gets what it needs with room and the
     /// background request the rest of the refill. While the player's
     /// need with its room is the whole refill or more there is no rest,
     /// and the background request waits until the player stops asking.

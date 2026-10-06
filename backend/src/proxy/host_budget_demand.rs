@@ -54,7 +54,7 @@ impl Stream {
     }
 }
 
-/// How much more than its streams need the player's share of a waiting
+/// How much more than it needs the player's share of a waiting
 /// line has to be: the room a player behind its own playback has to
 /// catch up in, and a buffer still filling has to grow in.
 pub(crate) const PLAYER_HEADROOM: f64 = 1.25;
@@ -74,11 +74,17 @@ const OTHERS_WINDOW: Duration = Duration::from_secs(60);
 
 /// The shortest span the other requests' rate is taken over, so the
 /// first few, arriving together as playback starts, do not claim a
-/// pace of several a second; it overstates rather than understates.
+/// pace of several a second. They still read as a pace over it — four
+/// as 0.4 a second, which with the player's headroom is three quarters
+/// of the refill and leaves a download one turn in four, and with a
+/// stream's segments added can leave it none — and as less as the
+/// minute goes on: it overstates rather than understates, so a
+/// download beside a starting player gets fewer turns for that first
+/// minute.
 const OTHERS_FLOOR: Duration = Duration::from_secs(10);
 
 /// How many tokens the player waited for go before a waiting background
-/// request gets one, given what the player's streams need, as requests
+/// request gets one, given what the player needs, as requests
 /// a second. One while alternating leaves the player its need with
 /// [`PLAYER_HEADROOM`]; more while it needs more of the refill, enough
 /// that its share covers the need with that headroom; `None` once the
@@ -121,8 +127,8 @@ impl Rendition {
     }
 }
 
-/// The streams the player plays from one host: at most one of each
-/// kind.
+/// What the player asks one host for: the streams it plays, at most
+/// one of each kind, and its other requests.
 #[derive(Debug, Default)]
 pub(crate) struct Demand {
     streams: HashMap<Stream, Rendition>,
