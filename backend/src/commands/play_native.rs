@@ -19,7 +19,7 @@ use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_wide_listing::{fit_to_entry, UNFIT};
+use super::play_native_wide_listing::{fit_to_entry, rescuable};
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -195,10 +195,14 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                     // A candidate the entry's titles refuse could
                     // never have won, so its death blocks no winner;
                     // it still leaves the pool unheard.
-                    let failed =
-                        identity_rank(h.title.trim().to_lowercase() == needle, year_confirmed);
-                    if entry.admits(&h.title) && best_failed.is_none_or(|best| (failed, pos) < best)
-                    {
+                    let failed = entry
+                        .admits(&h.title)
+                        .then_some(identity_rank(
+                            h.title.trim().to_lowercase() == needle,
+                            year_confirmed,
+                        ))
+                        .filter(|failed| best_failed.is_none_or(|best| (*failed, pos) < best));
+                    if let Some(failed) = failed {
                         best_failed = Some((failed, pos));
                     }
                 }
@@ -245,9 +249,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         if let Some(idx) = probed_ok
             .iter()
             .enumerate()
-            .filter(|(_, (_, eps, d, confirmed))| {
-                *confirmed && *d != UNFIT && regular_episode_count(eps) < expected
-            })
+            .filter(|(_, row)| rescuable(row, expected))
             // Distance first, then the user's own words — the same
             // dominance winner selection keeps — with provider order
             // as the final tie (min_by_key keeps the first of
