@@ -15,8 +15,8 @@ proptest::proptest! {
     #[test]
     fn keys_are_distinct_and_prefixed(a: String, b: String) {
         let ka = anime_detail_key(&a);
-        proptest::prop_assert!(ka.starts_with("kitsu:v4:anime:"));
-        proptest::prop_assert_eq!(ka.trim_start_matches("kitsu:v4:anime:"), a.as_str());
+        proptest::prop_assert!(ka.starts_with("kitsu:v5:anime:"));
+        proptest::prop_assert_eq!(ka.trim_start_matches("kitsu:v5:anime:"), a.as_str());
         proptest::prop_assert_eq!(ka == anime_detail_key(&b), a == b);
     }
 }

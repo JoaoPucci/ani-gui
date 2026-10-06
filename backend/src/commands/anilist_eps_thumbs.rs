@@ -1,7 +1,7 @@
 //! Per-episode thumbnail backfill from AniList's `streamingEpisodes`
 //! (Crunchyroll listings), used to fill nulls in Kitsu's episode
 //! list. Keyed by `kitsu_id` so a cache hit skips BOTH the Kitsu
-//! `/mappings` round-trip AND the AniList GraphQL call — the
+//! mappings round-trip AND the AniList GraphQL call — the
 //! difference between "instant" and "a few seconds" on the home
 //! Continue Watching strip after a cold start.
 //!
@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use crate::app::AppState;
 use crate::cache::ttl::{ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::meta::anilist_media::MediaRef;
+use crate::meta::anilist_streaming_eps::streaming_eps_map_for_ids;
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
 /// Stable key for the per-show AniList episode-thumbnail backfill.
@@ -45,42 +47,59 @@ fn cache_anilist_eps_thumbs(
 
 /// Read-through cache for AniList streamingEpisodes thumbnails keyed
 /// by `kitsu_id`. On hit, returns instantly with no network calls.
-/// On miss, resolves the MAL id then fetches AniList, caches the
+/// On miss, resolves Kitsu's mappings then fetches AniList, caches the
 /// outcome (positive or negative), and returns it.
 pub async fn thumbs_for_show(state: &AppState, kitsu_id: &str) -> HashMap<u32, String> {
+    thumbs_for_show_with_anilist_base(state, kitsu_id, None).await
+}
+
+/// [`thumbs_for_show`] with the AniList endpoint overridable, so
+/// tests can point the lookup at wiremock. Production passes `None`.
+pub(crate) async fn thumbs_for_show_with_anilist_base(
+    state: &AppState,
+    kitsu_id: &str,
+    anilist_base: Option<&str>,
+) -> HashMap<u32, String> {
     let key = anilist_eps_thumbs_key(kitsu_id);
     if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
         if let Ok(map) = serde_json::from_str::<HashMap<u32, String>>(&body) {
             return map;
         }
     }
-    let outcome = fetch_anilist_eps_thumbs(state, kitsu_id).await;
+    let outcome = fetch_anilist_eps_thumbs(state, kitsu_id, anilist_base).await;
     cache_anilist_eps_thumbs(&state.cache_pool, kitsu_id, &outcome);
     outcome.unwrap_or_default()
 }
 
-/// One-shot lookup: `kitsu_id` → `mal_id` → AniList streamingEpisodes
-/// → `(ep_number, thumbnail_url)` map. Any failure step (no MAL
-/// mapping, AniList rate limit, parse failure) yields `Err(())` so
-/// the caller can negative-cache an empty result. The pair-list →
-/// map dedup lives in `meta::anilist::streaming_eps_map_for_mal_id`
-/// where its wiremock test suite covers the merge.
+/// One-shot lookup: `kitsu_id` → Kitsu's external-id mappings →
+/// AniList streamingEpisodes → `(ep_number, thumbnail_url)` map. Any
+/// failure step (no usable mapping, AniList rate limit, parse
+/// failure) yields `Err(())` so the caller can negative-cache an
+/// empty result. The pair-list → map dedup lives in
+/// `meta::anilist_streaming_eps` where its wiremock test suite covers
+/// the merge.
 async fn fetch_anilist_eps_thumbs(
     state: &AppState,
     kitsu_id: &str,
+    anilist_base: Option<&str>,
 ) -> std::result::Result<HashMap<u32, String>, ()> {
-    let mal_id = state
+    let ids = state
         .kitsu
-        .mal_id_for_kitsu_id(kitsu_id)
+        .external_ids_for_kitsu_id(kitsu_id)
         .await
-        .map_err(|e| tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mal_id lookup failed"))?
-        .ok_or(())?;
-    crate::meta::anilist_streaming_eps::streaming_eps_map_for_mal_id(&state.meta_http, mal_id, None)
+        .map_err(
+            |e| tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed"),
+        )?;
+    // Neither id: nothing to ask AniList. Err so the empty result
+    // takes the short negative TTL, as a failed lookup does.
+    MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(())?;
+    streaming_eps_map_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
         .await
         .map_err(|e| {
             tracing::warn!(
                 kitsu_id,
-                mal_id,
+                mal_id = ?ids.mal,
+                anilist_id = ?ids.anilist,
                 error = ?e,
                 "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
             );

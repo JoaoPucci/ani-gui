@@ -870,3 +870,30 @@ async fn refresh_returns_metadata_error_no_network_call() {
         "expected AniError::Metadata, got {err:?}"
     );
 }
+
+#[tokio::test]
+async fn current_entry_keeps_anilists_not_found_reply_an_error() {
+    // AniList answers `Media(id:)` for an id it does not index with a
+    // 404 carrying `data.Media: null`. The public lookups read that as
+    // absence (`anilist_media::graphql_body`); this one deliberately
+    // does not. `mediaId` here is the id the write is about to target,
+    // so a 404 means the push resolved to a media AniList does not
+    // have. Reading it as "not on the list" would hide that and send
+    // the write anyway with the monotonic guard switched off; keeping
+    // it an error stops the push before any write is attempted.
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .current_entry(&dummy_tokens(), ProviderMediaId(999_999_999))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AniError::Upstream { status: 404 }));
+}

@@ -366,8 +366,9 @@ pub async fn kitsu_episodes_with(
 }
 
 /// Wall-clock budget the `/api/kitsu/episodes` route gives the AniList
-/// enrichment chain (Kitsu /mappings round-trip + AniList GraphQL +
-/// cache write). Tight on purpose — the underlying `proxy_http` has a
+/// enrichment chain (Kitsu /mappings round-trip + AniList GraphQL,
+/// asked again by AniList id when AniList lacks the MAL id + cache
+/// write). Tight on purpose — the underlying `proxy_http` has a
 /// 120s timeout, which would stall the route when the user just wants
 /// the Kitsu data we already loaded. On budget exhaustion the route
 /// degrades to a Kitsu-only response.
@@ -855,12 +856,17 @@ pub fn watched_at_all(state: &AppState) -> Result<std::collections::HashMap<Stri
 /// v3: `cover_image` is now backfilled from AniList's `bannerImage`
 /// when Kitsu's is null. v2 rows have null covers for new ongoing
 /// shows; bumping the version forces a refresh.
-fn anime_detail_key(id: &str) -> String {
+pub(crate) fn anime_detail_key(id: &str) -> String {
     // v4: the row's lifetime follows the show's status (see
     // `anime_detail_ttl`). v3 rows were all written for a week, so an
     // airing show's row would hold its old status and count for up to
     // seven days after upgrade; re-keying refetches.
-    format!("kitsu:v4:anime:{id}")
+    //
+    // v5: the banner backfill also reaches AniList by AniList id. v4
+    // rows hold null covers for shows only that path can fill — a
+    // finished show's for a week — so re-keying refetches them on the
+    // next open.
+    format!("kitsu:v5:anime:{id}")
 }
 
 /// How long a detail row is served. The row carries the show's status
@@ -909,6 +915,17 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
 /// # Errors
 /// Inherits from [`crate::meta::kitsu::KitsuClient::anime_detail`] on miss.
 pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnimeRef> {
+    kitsu_anime_detail_with_anilist_base(state, id, None).await
+}
+
+/// [`kitsu_anime_detail`] with the AniList endpoint overridable, so
+/// tests can point the banner backfill at wiremock. Production passes
+/// `None`.
+pub(crate) async fn kitsu_anime_detail_with_anilist_base(
+    state: &AppState,
+    id: &str,
+    anilist_base: Option<&str>,
+) -> Result<KitsuAnimeRef> {
     let key = anime_detail_key(id);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(detail) = serde_json::from_str::<KitsuAnimeRef>(&body) {
@@ -920,23 +937,21 @@ pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnime
 
     // Banner enrichment: Kitsu cataloguers upload coverImage lazily,
     // so newer ongoing shows often arrive with cover_image=null.
-    // Bridge through the MAL id to AniList where banners are
-    // user-uploaded reliably. Failures are silent — the detail
-    // still loads with the null-cover fallback (blurred poster) on
-    // the frontend. One extra round-trip on cold cache; the result
-    // is cached for the detail row's lifetime.
+    // Bridge to AniList where banners are user-uploaded reliably.
+    // Failures are silent — the detail still loads with the
+    // null-cover fallback (blurred poster) on the frontend. Two extra
+    // round-trips on cold cache (Kitsu's mappings, then AniList), or
+    // three when AniList lacks the MAL id and is asked again by
+    // AniList's own id; the result is cached for the detail row's
+    // lifetime.
     if detail.cover_image.is_none() {
-        if let Ok(Some(mal_id)) = state.kitsu.mal_id_for_kitsu_id(id).await {
-            if let Ok(Some(banner)) =
-                crate::meta::anilist::banner_for_mal_id(&state.meta_http, mal_id, None).await
-            {
-                detail.cover_image = Some(KitsuCoverImage {
-                    tiny: None,
-                    small: None,
-                    large: Some(banner.clone()),
-                    original: Some(banner),
-                });
-            }
+        if let Some(banner) = anilist_banner_for(state, id, anilist_base).await {
+            detail.cover_image = Some(KitsuCoverImage {
+                tiny: None,
+                small: None,
+                large: Some(banner.clone()),
+                original: Some(banner),
+            });
         }
     }
 
@@ -946,6 +961,21 @@ pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnime
         warm_signed_image_urls(state, &body);
     }
     Ok(detail)
+}
+
+/// AniList's `bannerImage` for a Kitsu anime, reached through the
+/// ids Kitsu's mappings carry. `None` on any failure or when AniList
+/// has no banner — the caller keeps its null-cover fallback.
+async fn anilist_banner_for(
+    state: &AppState,
+    kitsu_id: &str,
+    anilist_base: Option<&str>,
+) -> Option<String> {
+    let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await.ok()?;
+    crate::meta::anilist_media::banner_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
+        .await
+        .ok()
+        .flatten()
 }
 
 /// Lowercase + collapse internal whitespace + trim. Stable cache key
@@ -969,6 +999,10 @@ mod title_match_tests;
 #[cfg(test)]
 #[path = "kitsu_show_key_test.rs"]
 mod show_key_tests;
+
+#[cfg(test)]
+#[path = "kitsu_banner_test.rs"]
+mod banner_tests;
 
 #[cfg(test)]
 mod tests {

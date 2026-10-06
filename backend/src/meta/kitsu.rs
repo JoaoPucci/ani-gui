@@ -576,8 +576,8 @@ impl KitsuClient {
     /// Reverse of [`Self::lookup_by_mal_id`] — finds the MyAnimeList id
     /// for a known Kitsu anime. Returns `None` when Kitsu has no MAL
     /// mapping recorded (rare for popular shows; possible for niche
-    /// entries). Used by the detail-page banner enrichment chain
-    /// (Kitsu null cover → here → AniList by MAL id).
+    /// entries). Used by the aniskip lookup, whose API is keyed by
+    /// MAL id alone.
     ///
     /// # Errors
     /// - [`AniError::Upstream`] on non-2xx HTTP.

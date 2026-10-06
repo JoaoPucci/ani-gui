@@ -1,5 +1,7 @@
 //! aniskip command — bridges Kitsu id → MAL id → aniskip skip
-//! times, cached so subsequent visits skip both round-trips.
+//! times. The intervals are cached by MAL id and episode, so a repeat
+//! visit skips the aniskip request; the Kitsu mappings lookup that
+//! finds the MAL id still runs every time.
 //!
 //! The frontend player uses this on `loadedmetadata` to learn
 //! when to render the Skip OP / Skip Outro overlay buttons.

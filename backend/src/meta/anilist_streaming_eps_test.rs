@@ -206,7 +206,8 @@ async fn streaming_episodes_for_mal_id_returns_empty_when_media_unmapped() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+            wiremock::ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
         )
         .mount(&server)
         .await;
@@ -215,4 +216,136 @@ async fn streaming_episodes_for_mal_id_returns_empty_when_media_unmapped() {
         .await
         .expect("ok");
     assert!(got.is_empty());
+}
+
+#[tokio::test]
+async fn streaming_eps_map_for_media_by_anilist_id_queries_media_by_id() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("Media(id: $id"))
+        .and(wiremock::matchers::body_partial_json(serde_json::json!({
+            "variables": { "id": 207_141 },
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 2 - Two","thumbnail":"https://x.cdn/2.jpg"}]}}}"#,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = streaming_eps_map_for_media(&client, MediaRef::AniList(207_141), Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&2).map(String::as_str), Some("https://x.cdn/2.jpg"));
+}
+
+#[tokio::test]
+async fn streaming_eps_map_for_media_by_mal_id_keeps_the_idmal_query() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_json(serde_json::json!({
+            "query": STREAMING_EPS_BY_MAL_GQL,
+            "variables": { "idMal": 918 },
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 1 - One","thumbnail":"https://x.cdn/1.jpg"}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = streaming_eps_map_for_media(&client, MediaRef::Mal(918), Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&1).map(String::as_str), Some("https://x.cdn/1.jpg"));
+}
+
+async fn mount_media(
+    server: &wiremock::MockServer,
+    variables: serde_json::Value,
+    body: &str,
+    times: u64,
+) {
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_partial_json(
+            serde_json::json!({ "variables": variables }),
+        ))
+        .respond_with(
+            // An `errors` body is AniList's not-found answer, sent as 404.
+            wiremock::ResponseTemplate::new(if body.contains("\"errors\"") {
+                404
+            } else {
+                200
+            })
+            .set_body_string(body.to_string()),
+        )
+        .expect(times)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn streaming_eps_map_for_ids_retries_by_anilist_id_when_anilist_lacks_the_mal_id() {
+    let server = wiremock::MockServer::start().await;
+    mount_media(
+        &server,
+        serde_json::json!({ "idMal": 21 }),
+        crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY,
+        1,
+    )
+    .await;
+    mount_media(
+        &server,
+        serde_json::json!({ "id": 30 }),
+        r#"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 3 - Three","thumbnail":"https://x.cdn/3.jpg"}]}}}"#,
+        1,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let got = streaming_eps_map_for_ids(&client, Some(21), Some(30), Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&3).map(String::as_str), Some("https://x.cdn/3.jpg"));
+}
+
+#[tokio::test]
+async fn streaming_eps_map_for_ids_does_not_retry_a_media_without_episodes() {
+    let server = wiremock::MockServer::start().await;
+    mount_media(
+        &server,
+        serde_json::json!({ "idMal": 21 }),
+        r#"{"data":{"Media":{"streamingEpisodes":[]}}}"#,
+        1,
+    )
+    .await;
+    mount_media(
+        &server,
+        serde_json::json!({ "id": 30 }),
+        crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY,
+        0,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let got = streaming_eps_map_for_ids(&client, Some(21), Some(30), Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert!(got.is_empty());
+}
+
+proptest::proptest! {
+    /// Every episode number AniList listed keeps the URL it was listed
+    /// with first, and nothing else appears. Episode numbers come from
+    /// a small range so duplicates are the common case.
+    #[test]
+    fn dedup_keeps_each_episodes_first_url(
+        pairs in proptest::collection::vec((0u32..12, "[a-z]{0,6}"), 0..40),
+    ) {
+        let got = dedup_first_wins(pairs.clone());
+        let mut want = HashMap::new();
+        for (n, url) in &pairs {
+            if !want.contains_key(n) {
+                want.insert(*n, url.clone());
+            }
+        }
+        proptest::prop_assert_eq!(got, want);
+    }
 }

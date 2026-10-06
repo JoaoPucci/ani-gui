@@ -233,3 +233,21 @@ async fn airing_status_batch_skips_the_network_for_no_ids() {
         .expect("recorded")
         .is_empty());
 }
+
+#[tokio::test]
+async fn airing_status_is_none_for_anilists_not_found_reply() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = airing_status(&client, None, Some(99_999_999), Some(&server.uri()))
+        .await
+        .expect("absence is not an upstream failure");
+    assert!(got.is_none());
+}
