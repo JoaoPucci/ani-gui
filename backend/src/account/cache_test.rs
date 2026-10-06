@@ -1,7 +1,7 @@
 //! Tests for `crate::account::cache`. Extracted via `#[path]` so the
 //! module's complexity stays out of `cache.rs`'s CCN budget — per
-//! `project_crap_inline_test_gotcha`, lizard counts `mod tests {}`
-//! inline as production complexity.
+//! `project_crap_inline_test_gotcha`, the CRAP gate's complexity
+//! count includes an inline `mod tests {}` as production complexity.
 
 use super::*;
 use crate::account::status::ListStatus;

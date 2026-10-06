@@ -1,6 +1,6 @@
 //! Abort-on-drop wrapper for SSE response streams.
 //!
-//! Lives in its own module so the router file's lizard count stays
+//! Lives in its own module so the router file's complexity count stays
 //! under the firm CRAP ceiling; `api::mod` just calls
 //! [`abort_on_drop`] from its two stream handlers.
 

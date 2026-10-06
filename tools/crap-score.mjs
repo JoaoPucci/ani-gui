@@ -93,8 +93,8 @@ function parseLcov(file, prefix = '') {
 	return byFile;
 }
 
-/** Should this file count toward CRAP? Excludes test files since lizard
- *  scores their complexity but lcov never covers them — they'd
+/** Should this file count toward CRAP? Excludes test files since the
+ *  complexity tools score them but lcov never covers them — they'd
  *  artifact-dominate the rankings. */
 function isProductionFile(file) {
 	if (/\.(test|spec)\.[jt]sx?$/.test(file)) return false;
@@ -130,7 +130,7 @@ const rows = [];
 for (const [file, ccn] of ccnByFile) {
 	if (!isProductionFile(file)) continue;
 	const c = cov.get(file);
-	// Files lizard saw but no lcov entry → assume zero coverage, full
+	// Files measured for complexity but with no lcov entry → assume zero coverage, full
 	// risk. Conversely lcov-only files have no complexity to reason
 	// about; skip those.
 	const lf = c?.LF ?? 0;
