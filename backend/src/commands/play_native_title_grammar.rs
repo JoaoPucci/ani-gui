@@ -155,27 +155,36 @@ fn last_marker(words: &[String]) -> Option<(Marker, usize)> {
     ))
 }
 
-/// The markers `words` end on, last first, and the words before them.
+/// The markers `words` end on, last first, and the words before them:
+/// English markers ([`last_marker`]) and Japanese divisions (第N期,
+/// 第N部, 第Nクール — a word of their own or glued to the word before),
+/// in any number and order.
 fn split_markers(mut words: Vec<String>) -> (Vec<String>, Vec<Marker>) {
     let mut out = Vec::new();
-    while let Some((marker, taken)) = last_marker(&words) {
-        out.push(marker);
-        words.truncate(words.len() - taken);
+    loop {
+        if let Some((marker, before)) = words
+            .last()
+            .and_then(|w| japanese_trailing(w).map(|(m, before)| (m, before.to_string())))
+        {
+            out.push(marker);
+            words.pop();
+            if !before.is_empty() {
+                words.push(before);
+            }
+        } else if let Some((marker, taken)) = last_marker(&words) {
+            out.push(marker);
+            words.truncate(words.len() - taken);
+        } else {
+            return (words, out);
+        }
     }
-    (words, out)
 }
 
 /// A title's tail parsed: the words before the markers it ends on,
-/// and those markers, last first — a Japanese division (第N期, 第N部,
-/// 第Nクール) and then the English markers before it. The one parse
+/// and those markers, last first ([`split_markers`]). The one parse
 /// every reader of a title's tail goes through.
 fn parse_tail(title: &str) -> (Vec<String>, Vec<Marker>) {
-    let (text, japanese) = match japanese_trailing(title) {
-        Some((marker, before)) => (before, Some(marker)),
-        None => (title, None),
-    };
-    let (before, english) = split_markers(words(text));
-    (before, japanese.into_iter().chain(english).collect())
+    split_markers(words(title))
 }
 
 /// The markers a title ends on, last first: "Season 3 Part 2" ends on
