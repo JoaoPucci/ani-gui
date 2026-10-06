@@ -318,15 +318,20 @@ pub(super) fn later_divisions(sibling: &str, wide: &str) -> Vec<u32> {
         .collect()
 }
 
-/// The divisions behind [`later_divisions`], with their kinds.
+/// The divisions behind [`later_divisions`], with their kinds. A
+/// Japanese division glued to the stem ("ショー第2期" beside "ショー")
+/// is read as one written after a space.
 pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
     let own = stem(wide);
-    let words = words(sibling);
-    if words.len() < own.len() || words[..own.len()] != *own {
-        return Vec::new();
-    }
     let wide_markers = trailing_markers(wide);
-    leading_markers(&words[own.len()..])
+    let sibling_words = words(sibling);
+    if sibling_words.len() < own.len() || sibling_words[..own.len()] != *own {
+        return match japanese_trailing(sibling) {
+            Some((m, before)) if words(before) == own && !wide_markers.contains(&m) => vec![m],
+            _ => Vec::new(),
+        };
+    }
+    leading_markers(&sibling_words[own.len()..])
         .into_iter()
         .filter(|m| !wide_markers.contains(m))
         .collect()
