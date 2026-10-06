@@ -131,31 +131,6 @@ starting it, and delete it when you find it done.
   (`electron/lib/backend-handshake.cjs` has the measurement). Whatever
   bounds the wait has to be sized for "never", not for "slow".
 
-- **The picker admits a sequel numbered with a bare number.** The
-  title rule in `play_native_title_marker.rs` (`admits`) reads only the
-  season and part markers a title ends on, so "Show 2" is admitted for
-  an entry titled "Show" whose titles name no 2. Alone in a pool at the
-  entry's count it plays as the first season, and beside "Show" itself
-  it can win on provider order. The fix is the obvious one: hold a bare
-  number a title ends on to what the entry's titles name, as a marker
-  already is ("Kaiju No. 8" stays admitted for an entry naming 8).
-
-  It waited on the recorded pools, not the rule. Refusing those titles
-  changes which hits fill the bounded probe head, and the head then
-  reaches hits the recordings under `tests/fixtures/hianime/picker/`
-  never captured: Overlord's pool refuses "Ple Ple Pleiades 2/3/4" and
-  probes "Overlord: The Maid Tea Party", whose entry-page year was
-  never recorded. A recording cannot say what the site answers for a
-  request it never held, so the affected pools need re-capturing from
-  the live site before the rule can land. Repro: entry "Show", count
-  12, a pool of "Show 2" (12) alone, picks "Show 2".
-
-  The same root leaves a broad listing that ends on a bare number
-  uncut: a bare number is no marker, so it stays in the listing's stem,
-  and a sibling naming the next season by a marker does not start with
-  that stem. Repro: entry "Show 2", count 12, a pool of "Show 2" (24),
-  "Show" (12) and "Show Season 3" (12), picks "Show".
-
 - **A broad listing completed by a sibling in another script is never
   cut.** The spanning cut finds the sibling that completes a broad
   listing by the broad listing's stem, so a sibling written in another
