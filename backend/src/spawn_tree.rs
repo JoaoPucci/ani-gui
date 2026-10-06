@@ -32,10 +32,12 @@ pub(super) fn platform_tree(child: &tokio::process::Child) -> Option<Box<dyn sup
 
 /// The tree of a child on Windows: the members of a job object the
 /// child was put in as it started, which the processes it starts
-/// join. The kill is `taskkill /T` on the child, for anything started
-/// in the moment before it joined the job, and `taskkill` on each
-/// member. Without a job — creating or joining one failed — the tree
-/// is what `taskkill /T` reaches through the child while it runs.
+/// join. The kill is `taskkill` on each member and, while the child
+/// itself is still one of them, `taskkill /T` on the child, for
+/// anything it started in the moment before it joined the job — see
+/// [`kills_root_tree`]. Without a job — creating or joining one
+/// failed — the tree is what `taskkill /T` reaches through the child
+/// while it runs.
 #[cfg(windows)]
 struct JobTree {
     root: u32,
@@ -54,7 +56,7 @@ impl JobTree {
                 .filter_map(|p| u32::try_from(p).ok())
                 .collect(),
             Err(e) => {
-                tracing::warn!(error = %e, "a tool's job could not be read");
+                tracing::warn!(error = ?e, "a tool's job could not be read");
                 Vec::new()
             }
         }
@@ -68,13 +70,29 @@ impl super::Tree for JobTree {
     }
 
     fn kill(&mut self) {
-        super::kill_process_tree(self.root);
-        for pid in self.members() {
+        let members = self.members();
+        let members = self.job.as_ref().map(|_| members.as_slice());
+        if kills_root_tree(members, self.root) {
+            super::kill_process_tree(self.root);
+        }
+        for pid in members.unwrap_or_default() {
             let _ = std::process::Command::new("taskkill")
                 .args(["/PID", &pid.to_string(), "/F"])
                 .output();
         }
     }
+}
+
+/// Whether a Windows teardown sends `taskkill /T` to the root: only
+/// while the root is still running, so its pid is still its own. With
+/// a job (`members` is its member list), that is while the root is a
+/// member — it leaves the list as it exits, and after that its pid may
+/// belong to another program, whose tree `/T` would take down. With no
+/// job, the guard only asks for a kill while it holds the child
+/// unreaped, so the root is alive.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(super) fn kills_root_tree(members: Option<&[u32]>, root: u32) -> bool {
+    members.is_none_or(|m| m.contains(&root))
 }
 
 #[cfg(windows)]
@@ -93,7 +111,7 @@ pub(super) fn platform_tree(child: &tokio::process::Child) -> Option<Box<dyn sup
     let job = match joined {
         Ok(job) => Some(job),
         Err(e) => {
-            tracing::warn!(error = %e, "a tool could not be put in a job");
+            tracing::warn!(error = ?e, "a tool could not be put in a job");
             None
         }
     };
