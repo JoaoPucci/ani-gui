@@ -69,7 +69,10 @@ fn every_marker_a_title_ends_on_must_be_named() {
 fn japanese_divisions_are_read_as_markers() {
     assert_eq!(
         trailing_markers("推しの子 第2期"),
-        vec![Marker { ordinals: vec![2] }]
+        vec![Marker {
+            kind: Kind::Season,
+            ordinals: vec![2]
+        }]
     );
     assert!(entry(&["Shingeki no Kyojin", "進撃の巨人 第3期"]).admits("Attack on Titan Season 3"));
 }
@@ -121,5 +124,44 @@ proptest::proptest! {
     ) {
         proptest::prop_assume!(trailing_markers(&a).is_empty() && trailing_markers(&b).is_empty());
         proptest::prop_assert!(EntryTitles::bare(&a).admits(&b));
+    }
+}
+
+// ── which part a candidate's title agrees on ────────────────────────
+
+#[test]
+fn a_part_marker_agrees_only_with_the_part_the_entry_ends_on() {
+    // Slime's second season: Kitsu's titles end on "Part 1" or on no
+    // part at all; hianime lists "Season 2" and "2nd Season Part 2"
+    // at the same length and year.
+    let e = entry(&[
+        "Tensei shitara Slime Datta Ken 2",
+        "Tensei Shitara Slime Datta Ken 2nd Season Part 1",
+    ]);
+    assert!(e.part_agrees("That Time I Got Reincarnated as a Slime Season 2"));
+    assert!(!e.part_agrees("That Time I Got Reincarnated as a Slime 2nd Season Part 2"));
+    let e = entry(&["Tensei shitara Slime Datta Ken 2nd Season Part 2"]);
+    assert!(!e.part_agrees("That Time I Got Reincarnated as a Slime Season 2"));
+    assert!(e.part_agrees("That Time I Got Reincarnated as a Slime 2nd Season Part 2"));
+    // No part on either side is agreement.
+    assert!(entry(&["Vinland Saga Season 2"]).part_agrees("Vinland Saga: 2nd Season"));
+}
+
+proptest::proptest! {
+    /// An entry agrees with the part its own title ends on, whatever
+    /// that title is.
+    #[test]
+    fn an_entry_agrees_with_its_own_part(
+        stem in "[A-Za-z]{1,8}( [A-Za-z]{1,8}){0,2}",
+        marker in proptest::prop_oneof![
+            proptest::strategy::Just(""),
+            proptest::strategy::Just(" Part 2"),
+            proptest::strategy::Just(" Season 2 Part 3"),
+            proptest::strategy::Just(" (Part 1+2)"),
+            proptest::strategy::Just(" 2nd Cour"),
+        ],
+    ) {
+        let title = format!("{stem}{marker}");
+        proptest::prop_assert!(EntryTitles::bare(&title).part_agrees(&title));
     }
 }

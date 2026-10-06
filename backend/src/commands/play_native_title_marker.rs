@@ -66,12 +66,37 @@ impl EntryTitles<'_> {
             .iter()
             .all(|m| m.ordinals.iter().any(|n| *n < 2 || named.contains(n)))
     }
+
+    /// Whether the part a candidate's title ends on agrees with the
+    /// part the entry's titles end on — no part marker reading as the
+    /// first part. Two same-year, same-length cours ("2nd Season" and
+    /// "2nd Season Part 2") are told apart by nothing else.
+    pub(crate) fn part_agrees(&self, candidate: &str) -> bool {
+        let mut entry_parts: BTreeSet<u32> = self.all().flat_map(part_ordinals).collect();
+        if entry_parts.is_empty() {
+            entry_parts.insert(1);
+        }
+        let parts = part_ordinals(candidate);
+        if parts.is_empty() {
+            entry_parts.contains(&1)
+        } else {
+            !parts.is_disjoint(&entry_parts)
+        }
+    }
 }
 
-/// One season or part marker: the ordinals it names — several for a
-/// span ("Part 1+2").
+/// Which kind of division a marker word names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Season,
+    Part,
+}
+
+/// One season or part marker: its kind and the ordinals it names —
+/// several for a span ("Part 1+2").
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Marker {
+    kind: Kind,
     ordinals: Vec<u32>,
 }
 
@@ -86,8 +111,12 @@ fn words(title: &str) -> Vec<String> {
         .collect()
 }
 
-fn is_marker_word(word: &str) -> bool {
-    matches!(word, "season" | "part" | "cour")
+fn kind_of(word: &str) -> Option<Kind> {
+    match word {
+        "season" => Some(Kind::Season),
+        "part" | "cour" => Some(Kind::Part),
+        _ => None,
+    }
 }
 
 /// The ordinal a word spells as an ordinal: "2nd", "second". A bare
@@ -143,16 +172,17 @@ fn ordinals_after_marker(word: &str) -> Option<Vec<u32>> {
 /// The marker two consecutive words make, if they make one: "season
 /// 2", "part 1+2", "2nd season", "second cour".
 fn marker_of(first: &str, second: &str) -> Option<Marker> {
-    if is_marker_word(first) {
+    if let Some(kind) = kind_of(first) {
         if let Some(ordinals) = ordinals_after_marker(second) {
-            return Some(Marker { ordinals });
+            return Some(Marker { kind, ordinals });
         }
     }
-    if !is_marker_word(second) {
-        return None;
-    }
+    let kind = kind_of(second)?;
     let n = spelled_ordinal(first)?;
-    Some(Marker { ordinals: vec![n] })
+    Some(Marker {
+        kind,
+        ordinals: vec![n],
+    })
 }
 
 /// The markers a title ends on, last first: "Season 3 Part 2" ends on
@@ -177,11 +207,16 @@ fn trailing_markers(title: &str) -> Vec<Marker> {
 fn japanese_trailing(title: &str) -> Option<Marker> {
     let trimmed = title.trim_end_matches(|c: char| c.is_whitespace() || ")）]】".contains(c));
     let mut chars = trimmed.chars().rev();
-    if !matches!(chars.next()?, '期' | '部') {
-        return None;
-    }
+    let kind = match chars.next()? {
+        '期' => Kind::Season,
+        '部' => Kind::Part,
+        _ => return None,
+    };
     let n = kanji_or_digit(chars.next()?)?;
-    (chars.next()? == '第').then(|| Marker { ordinals: vec![n] })
+    (chars.next()? == '第').then(|| Marker {
+        kind,
+        ordinals: vec![n],
+    })
 }
 
 fn kanji_or_digit(c: char) -> Option<u32> {
@@ -210,6 +245,15 @@ fn named_ordinals(title: &str) -> BTreeSet<u32> {
         }
     }
     out
+}
+
+/// The part ordinals a title ends on.
+fn part_ordinals(title: &str) -> BTreeSet<u32> {
+    trailing_markers(title)
+        .into_iter()
+        .filter(|m| m.kind == Kind::Part)
+        .flat_map(|m| m.ordinals)
+        .collect()
 }
 
 #[cfg(test)]
