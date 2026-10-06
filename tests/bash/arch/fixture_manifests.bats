@@ -104,3 +104,14 @@ manifest() {
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
     [[ "$output" == *"entry name is not a file beside the manifest"* ]]
 }
+
+@test "a Windows drive-relative entry name is refused" {
+    # On Windows `C:x.txt` names x.txt in the current directory of
+    # drive C, wherever that is, not a file beside the manifest.
+    rm "$root/tests/fixtures/set/x.txt"
+    cp "$root/tests/fixtures/set/a.txt" "$root/tests/fixtures/set/C:x.txt"
+    manifest "a.txt=$root/tests/fixtures/set/a.txt" \
+        "C:x.txt=$root/tests/fixtures/set/C:x.txt"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"C:x.txt: entry name is not a file beside the manifest"* ]]
+}
