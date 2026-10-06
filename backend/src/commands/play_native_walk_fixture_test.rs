@@ -1201,3 +1201,35 @@ async fn a_first_part_beside_a_broad_listing_the_entry_does_not_head_is_not_the_
         panic!("picked {} for a later season", p.hit.slug);
     }
 }
+
+/// Beside a broad listing the entry is the head of, the sibling that
+/// completes it is the next entry even when it reads as the entry —
+/// "Show Part 2" reads 2 as "Show 2" does, kind aside — so the broad
+/// "Show Season 2" is cut rather than the first season playing. Beside
+/// one the entry does not head, a sibling that reads as the entry is
+/// its own: "Show 2" at ten episodes beside "Show" still plays.
+#[tokio::test]
+async fn the_sibling_completing_a_listing_the_entry_heads_is_the_next_entry() {
+    let site = pool_of(
+        &["Show 2"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[
+            ("w", "Show Season 2", 22),
+            ("l", "Show Part 2", 10),
+            ("s1", "Show", 12),
+        ],
+    );
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!((picked.hit.slug.as_str(), picked.episodes.len()), ("w", 12));
+    let site = pool_of(
+        &["Show 2"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[("w", "Show", 22), ("s2", "Show 2", 10)],
+    );
+    let picked = walk_over(site).await.expect("the entry's own listing");
+    assert_eq!(picked.hit.slug, "s2");
+}
