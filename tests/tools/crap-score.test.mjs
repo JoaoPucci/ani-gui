@@ -263,3 +263,35 @@ test('an item that names no file fails the run instead of dropping its complexit
 	assert.notEqual(run.status, 0);
 	assert.match(run.stderr, /f\(\.\.\.\)/);
 });
+
+// Every <item> in a report is complexity; one the scorer cannot read
+// whole — another attribute layout, a line that is not a number, a
+// value that is not a count — would otherwise vanish from the totals.
+for (const [why, item] of [
+	['an unexpected layout', '<item name="k(...) at e.ts:1" ><value>1</value><value>1</value><value>5</value></item>'],
+	['a negative count', '<item name="k(...) at e.ts:1"><value>1</value><value>1</value><value>-1</value></item>'],
+	['no line number', '<item name="f(...) at a:b.ts"><value>1</value><value>1</value><value>5</value></item>'],
+	['a line that is not a number', '<item name="g(...) at c.ts:x"><value>1</value><value>1</value><value>5</value></item>']
+]) {
+	test(`an item with ${why} fails the run instead of dropping its complexity`, () => {
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-shape-'));
+		fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${item}</measure></cppncss>`);
+		fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('e.ts', 10, 10));
+		const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8'
+		});
+		assert.notEqual(run.status, 0, run.stdout);
+	});
+}
+
+test('numeric character references in a path are decoded like named ones', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-numeric-'));
+	const xml = `<cppncss><measure type="Function"><item name="f(...) at a&#39;b&#x26;c.ts:1"><value>1</value><value>1</value><value>3</value></item></measure></cppncss>`;
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord("a'b&c.ts", 10, 10));
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], { cwd: tmpDir, encoding: 'utf-8' })
+	);
+	assert.deepEqual(out.top.map((r) => [r.file, r.ccn, r.cov]), [["a'b&c.ts", 3, 100]]);
+});
