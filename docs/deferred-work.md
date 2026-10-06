@@ -158,7 +158,10 @@ starting it, and delete it when you find it done.
   backend looks both up as a bare name or an `.exe`, neither of which
   a script can be on Windows. The Windows leg does run the parent
   watch and the cases for a dead parent's pipes; what it never does
-  is stop a tool.
+  is stop a tool. Nor, so, does it wait for one to exit: a teardown
+  there waits on the processes `taskkill` reports taking down, looked
+  up with `tasklist`, and only the reading of those two answers is
+  under test.
 
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
