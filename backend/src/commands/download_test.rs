@@ -4352,13 +4352,30 @@ struct SlowTreeKill {
 #[cfg(unix)]
 impl SlowTreeKill {
     async fn register(delay: &str) -> Self {
+        Self::register_script(&format!(
+            "( sleep {delay}; kill -s KILL -- -\"$1\" ) >/dev/null 2>&1 &\nexit 0"
+        ))
+        .await
+    }
+
+    /// The late kill for the tools staged in `bin` only; any other
+    /// tree is killed at once. For a delay past the teardown's
+    /// ceiling, which would fail any other test's teardown that the
+    /// probe happened to serve.
+    async fn register_for(delay: &str, bin: &std::path::Path) -> Self {
+        Self::register_script(&format!(
+            "if ps -o args= -p \"$1\" | grep -q '{bin}'; then\n\
+             ( sleep {delay}; kill -s KILL -- -\"$1\" ) >/dev/null 2>&1 &\n\
+             else kill -s KILL -- -\"$1\"; fi\nexit 0",
+            bin = bin.display()
+        ))
+        .await
+    }
+
+    async fn register_script(script: &str) -> Self {
         let scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
         let dir = tempfile::tempdir().expect("probe dir");
-        stage_tool(
-            dir.path(),
-            "slow-kill",
-            &format!("( sleep {delay}; kill -s KILL -- -\"$1\" ) >/dev/null 2>&1 &\nexit 0"),
-        );
+        stage_tool(dir.path(), "slow-kill", script);
         *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") =
             Some(dir.path().join("slow-kill"));
         Self {
@@ -4559,6 +4576,108 @@ async fn a_cancelled_download_leaves_nothing_its_dying_tool_wrote() {
         .filter(|n| n != ".ani-gui-locks")
         .collect();
     assert!(left.is_empty(), "the cancelled run left {left:?} behind");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_tree_that_outlives_its_teardown_gets_no_retry_beside_it() {
+    // The wait for a taken-down tree is bounded. A tree still running
+    // past it is still a writer in the destination and a connection
+    // to the host, so the download ends there: no ffmpeg retry is
+    // started beside it, as none would be beside a tree still alive
+    // for any other reason.
+    let bin = tempfile::tempdir().expect("bin");
+    let _slow = SlowTreeKill::register_for("3", bin.path()).await;
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = bin.path().join("ffmpeg-ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "sleep 30 >/dev/null 2>&1 &\n\
+         echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+         wait",
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "touch '{ran}'\nlast=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            ran = ran.display()
+        ),
+    );
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 8",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(got.is_err(), "the download ends: {got:?}");
+    assert!(
+        !ran.exists(),
+        "ffmpeg was started beside a tree that had not exited"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_failed_tools_helpers_are_gone_before_the_retry_starts() {
+    // yt-dlp can fail with a helper of its own still running — the
+    // ffmpeg it spawned for a merge, outliving a crash. The tool's
+    // exit is not its tree's: the retry starts only once the rest of
+    // the group is gone too.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let pidf = bin.path().join("helper.pid");
+    let seen = bin.path().join("overlap");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "sleep 30 >/dev/null 2>&1 &\necho $! > '{pidf}'\nexit 1",
+            pidf = pidf.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "kill -0 \"$(cat '{pidf}')\" 2>/dev/null && echo overlap > '{seen}'\n\
+             last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            pidf = pidf.display(),
+            seen = seen.display()
+        ),
+    );
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 9",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    let helper = std::fs::read_to_string(&pidf).unwrap_or_default();
+    let _ = std::process::Command::new("kill")
+        .args(["-9", helper.trim()])
+        .status();
+    assert_eq!(got.expect("the retry publishes"), Transferred::Episode);
+    assert!(
+        !seen.exists(),
+        "ffmpeg started while the failed yt-dlp's helper was still running"
+    );
 }
 
 /// Two transfers over one stub, told apart in the log by the
