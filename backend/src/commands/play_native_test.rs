@@ -50,19 +50,22 @@ fn typed_hit(slug: &str, title: &str, kind: &str) -> BrowseHit {
 
 proptest::proptest! {
     /// The dead-candidate decision table: a strictly stronger
-    /// identity always blocks, an equal identity-bearing rank blocks
-    /// exactly from an earlier position, plain rank-2 ties never
-    /// block, weaker never blocks, and no failure never blocks.
+    /// identity always blocks, an equal identity-bearing rank — an
+    /// exact title (0) or a matched year (odd: 1 with the entry's
+    /// part, 3 without) — blocks exactly from an earlier position,
+    /// ties without either (2, 4) never block, weaker never blocks,
+    /// and no failure never blocks.
     #[test]
     fn dead_outranks_holds_over_all_ranks_and_positions(
-        failed_rank in 0u8..=2,
+        failed_rank in 0u8..=4,
         failed_pos in 0usize..8,
-        winner_rank in 0u8..=2,
+        winner_rank in 0u8..=4,
         winner_pos in 0usize..8,
     ) {
         let got = dead_outranks(Some((failed_rank, failed_pos)), winner_rank, winner_pos);
+        let bearing = failed_rank == 0 || failed_rank % 2 == 1;
         let expected = failed_rank < winner_rank
-            || (failed_rank == winner_rank && failed_rank <= 1 && failed_pos < winner_pos);
+            || (failed_rank == winner_rank && bearing && failed_pos < winner_pos);
         proptest::prop_assert_eq!(got, expected);
         proptest::prop_assert!(!dead_outranks(None, winner_rank, winner_pos));
     }
