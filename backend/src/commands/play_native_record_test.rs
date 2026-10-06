@@ -599,3 +599,54 @@ async fn a_resolve_written_while_a_watch_waits_does_not_drop_it() {
         row.watched_at
     );
 }
+
+/// A refused play keeps an id the title agrees with even when the
+/// history could not be read a moment before the row's write: the id
+/// the row held is read with the history held, so a read that failed
+/// and recovered is never taken for a row with no id.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_history_unreadable_before_the_write_keeps_the_rows_id() {
+    use std::os::unix::fs::PermissionsExt;
+    let kitsu = MockServer::start().await;
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), &kitsu.uri());
+    cache_detail(&state, "44294", "jojo-no-kimyou-na-bouken-stone-ocean");
+    cache_detail(
+        &state,
+        "45412",
+        "jojo-no-kimyou-na-bouken-stone-ocean-part-2",
+    );
+    let watch = part_two();
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: watch.show_id.clone(),
+            title: watch.title.clone(),
+            watched_at: None,
+            kitsu_id: Some("45412".into()),
+        },
+    )
+    .expect("seed row");
+    let begun = crate::history::guard::epoch(&state.history_path);
+    // Another writer holds the history with the file unreadable, and
+    // makes it readable again before letting go.
+    let path = state.history_path.clone();
+    let (ready, held) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        crate::history::guard::hold(&path, |_| {
+            let mode = |m| std::fs::set_permissions(&path, std::fs::Permissions::from_mode(m));
+            mode(0o000).expect("unreadable");
+            ready.send(()).expect("ready");
+            std::thread::sleep(Duration::from_millis(300));
+            mode(0o600).expect("readable");
+        });
+    });
+    held.recv().expect("held");
+
+    record_watch_requested_at(&state, &watch, Some("44294"), begun).await;
+    holder.join().expect("holder");
+
+    assert_eq!(row_id(&state, &watch.show_id).as_deref(), Some("45412"));
+}
