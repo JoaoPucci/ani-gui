@@ -99,16 +99,19 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// What was measured, and what was not: functions written inside an
-/// item-position macro's input are counted as part of that macro's
-/// block, not one by one, and decisions outside every function are not
-/// counted at all.
+/// What was measured, and what was not: closures written inside macro
+/// input are not parsed and count for the enclosing unit, functions
+/// written inside an item-position macro's input are counted as part of
+/// that macro's block, not one by one, and decisions outside every unit
+/// are not counted at all.
 fn summary(measured: &[(PathBuf, Vec<Unit>)], outside: u32) -> String {
     let all = measured.iter().flat_map(|(_, units)| units);
     let functions = all.clone().filter(|u| u.kind == UnitKind::Function).count();
+    let closures = all.clone().filter(|u| u.kind == UnitKind::Closure).count();
     let macros = all.filter(|u| u.kind == UnitKind::Macro).count();
     let mut line = format!(
-        "rust-ccn: {} files, {functions} functions measured",
+        "rust-ccn: {} files, {functions} functions measured; {closures} closures measured as \
+         units of their own (closures written inside macro input count for the enclosing unit)",
         measured.len()
     );
     if outside > 0 {
@@ -164,6 +167,7 @@ fn render_tsv(measured: &[(PathBuf, Vec<Unit>)]) -> String {
             let kind = match u.kind {
                 UnitKind::Function => "fn",
                 UnitKind::Macro => "macro",
+                UnitKind::Closure => "closure",
             };
             out.push_str(&format!(
                 "{}\t{}\t{}\t{}\t{}\t{}\n",

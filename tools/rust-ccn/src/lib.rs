@@ -14,8 +14,15 @@
 //!
 //! Here `syn` parses each file. A file it cannot parse is an error, not
 //! a smaller number. Function boundaries come from the syntax tree:
-//! every `fn` item, every `impl` method and every trait method with a
-//! default body is a unit. Within a unit the count is lizard's, kept so
+//! every `fn` item, every `impl` method, every trait method with a
+//! default body and every closure, wherever it is written, is a unit —
+//! a closure as an arrow function is in the TypeScript count. The two
+//! pipes of an empty closure parameter list are its opening, not a
+//! `||` decision — except inside macro input, where the closure is not
+//! parsed and the pipes read as the operator, as lizard read them. An
+//! async block is an expression its function
+//! evaluates, not something called, so it is charged to the unit
+//! around it. Within a unit the count is lizard's, kept so
 //! the numbers stay continuous with the ceilings recorded against it:
 //! 1, plus one for each `if`, `for`, `while`, `match` and `where`
 //! keyword, each `?`, and each `&&` and `||` token. Counting is over the
@@ -30,6 +37,9 @@
 //! unit of its own, named `name!` and counted like a function (1 plus
 //! the decision tokens it contains), and is listed as such: the
 //! complexity is measured, the function boundaries inside it are not.
+//! For the same reason a closure written inside macro input — an
+//! `assert!`, a `tokio::select!` — is not seen as one: its decisions
+//! count for the enclosing unit, without a base path of its own.
 //! Decisions outside every unit — the `for` of `impl Trait for Type`, a
 //! constant's initializer — are charged to none, as lizard charged
 //! them to none; [`Measurement::outside`] counts them so the report can
@@ -38,7 +48,8 @@
 use proc_macro2::{Spacing, TokenStream, TokenTree};
 use syn::visit::{self, Visit};
 
-/// One measured unit: a function, or an item-position macro invocation.
+/// One measured unit: a function, a closure, or an item-position macro
+/// invocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Unit {
     pub name: String,
@@ -54,6 +65,9 @@ pub enum UnitKind {
     /// An item-position macro invocation, measured as one block because
     /// its contents are not parseable as Rust.
     Macro,
+    /// A closure: a callable body of its own, as an arrow function is in
+    /// TypeScript.
+    Closure,
 }
 
 /// Every unit in a file, and how many decision tokens sat outside all
@@ -92,6 +106,7 @@ pub fn measure_file(source: &str) -> syn::Result<Measurement> {
         .map_err(|e: proc_macro2::LexError| syn::Error::new(e.span(), e.to_string()))?;
     let mut decision_positions = Vec::new();
     decisions(tokens, &mut decision_positions);
+    decision_positions.retain(|p| !census.closure_pipes.contains(p));
 
     let mut own = vec![0u32; census.units.len()];
     let mut outside = 0;
@@ -171,8 +186,12 @@ struct Open {
 #[derive(Default)]
 struct Census {
     units: Vec<Open>,
-    /// Depth of function bodies currently being walked.
+    /// Depth of function and closure bodies currently being walked.
     depth: usize,
+    /// The second pipe of each empty closure parameter list (`||`).
+    /// It lexes as the `||` operator, but with closures measured as
+    /// units of their own it is a unit's opening, not a decision.
+    closure_pipes: Vec<Pos>,
 }
 
 impl Census {
@@ -234,6 +253,22 @@ impl<'ast> Visit<'ast> for Census {
             Some(body) => self.function(&node.sig, body, |v| visit::visit_trait_item_fn(v, node)),
             None => visit::visit_trait_item_fn(self, node),
         }
+    }
+
+    fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
+        use syn::spanned::Spanned;
+        if node.inputs.is_empty() {
+            self.closure_pipes.push(pos(node.or2_token.span.start()));
+        }
+        self.units.push(Open {
+            name: "(closure)".to_owned(),
+            start: pos(node.span().start()),
+            end: pos(node.body.span().end()),
+            kind: UnitKind::Closure,
+        });
+        self.depth += 1;
+        visit::visit_expr_closure(self, node);
+        self.depth -= 1;
     }
 
     fn visit_item_macro(&mut self, node: &'ast syn::ItemMacro) {
