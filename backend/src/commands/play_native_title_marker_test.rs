@@ -184,3 +184,12 @@ fn the_stem_drops_every_marker_a_title_ends_on() {
         words("gintama silver soul arc")
     );
 }
+
+#[test]
+fn a_numeral_or_number_inside_the_entry_s_title_names_its_season() {
+    // Kitsu calls Mushoku Tensei's second season "Mushoku Tensei II:
+    // Isekai Ittara Honki Dasu"; hianime calls it "… Season 2".
+    let e = entry(&["Mushoku Tensei II: Isekai Ittara Honki Dasu"]);
+    assert!(e.admits("Mushoku Tensei: Jobless Reincarnation Season 2"));
+    assert!(entry(&["Show 2: The Return"]).admits("Show Season 2"));
+}
