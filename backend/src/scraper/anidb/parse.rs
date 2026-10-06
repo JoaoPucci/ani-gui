@@ -34,11 +34,17 @@ pub fn parse_detail_year(html: &str) -> Option<u32> {
 /// deliberately narrow and the unrecognized direction fails loud:
 /// a marker drift breaks no-result searches visibly and
 /// transiently, while a page wrongly read as absence is cached for
-/// the negative TTL. The grid is the results grid's own attribute,
-/// `class="grid"`, and not any class list that opens with `grid`:
-/// a utility-class layout (`class="grid grid-cols-…"`) is markup
-/// nearly every site carries, and the unrelated home page anidb.app
-/// once redirected its search to passed on it.
+/// the negative TTL. The grid marker is the exact `class="grid"`
+/// the synthesized fixtures carry, not any class list opening with
+/// `grid`: a utility-class layout (`class="grid grid-cols-…"`) is
+/// markup nearly every site carries, and the unrelated home page
+/// anidb.app once redirected its search to passed on it. Nothing
+/// confirms the live page's grid is spelled that way; if it is not,
+/// and its empty page carries no no-results copy, a genuine miss
+/// fails over to the next provider and counts against anidb's
+/// breaker instead of being cached — the loud direction this check
+/// chooses. The client's origin guard, not this marker, is what
+/// keeps a redirected answer from reading as absence.
 fn shows_browse_shape(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
     lower.contains("no results") || lower.contains("class=\"grid\"")

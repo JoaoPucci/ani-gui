@@ -167,7 +167,11 @@ requires it; the exception is the update check that runs on launch
   only if connected), and the streaming catalogues playback resolves
   against: anidb.app first, and hianime (reached at hianime.at) when the
   walk moves on from anidb.app — because it was unreachable, refused or
-  rate-limited the request, answered a page the app cannot read, or its
+  rate-limited the request, answered a page the app cannot read — an
+  answer from another site included: requests to anidb.app follow its
+  redirects, so when it redirects one elsewhere (at the time of writing
+  its search redirects to anilab.so) that site receives the request too,
+  and the app sets its answer aside — or its
   own gate turned a background request away, or because it answered
   without settling the question: it found the show but said nothing about
   the audio asked for, or it denied a show a live record remembers it

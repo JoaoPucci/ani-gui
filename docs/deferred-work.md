@@ -526,6 +526,25 @@ starting it, and delete it when you find it done.
   planned: affinity already remembers where each show and its
   audio were listed, and starts there.
 
+## Not following anidb.app's redirects off its origin
+
+- **Stop anidb.app requests at an off-origin redirect instead of
+  following it.** The transport follows every redirect (`curl -L`),
+  so when anidb.app redirects a request to another site, that site
+  receives the request (the user's address and the impersonated
+  fingerprint) before the client refuses the answer for coming from
+  another origin. anidb.app's search redirects to anilab.so at the
+  time of writing, so every walk that asks anidb.app reaches it,
+  until anidb.app's breaker opens and again at each half-open trial.
+  `docs/PRIVACY.md` discloses it.
+
+  Why it waited: it changes how the transport is driven for one
+  provider (no automatic redirects, the client following a
+  same-origin `Location` itself), and whether anidb.app should stay
+  in the provider order at all while it redirects is an open
+  question for the maintainer, whose answer decides how much of this
+  is worth building.
+
 ## Retiring the legacy-script sweep — the v1.0 marker
 
 - **Remove the boot sweep that cleans the retired script from old
