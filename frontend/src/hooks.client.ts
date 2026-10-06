@@ -5,8 +5,10 @@ import { bootLocaleFromConfig } from '$lib/settings/boot-locale';
 // The decision is `bootLocaleFromConfig`'s (and unit-tested there);
 // this file only wires it to the preload bridge and Paraglide, since
 // SvelteKit runs `hooks.client.ts` once at module init, ahead of any
-// route module.
-if (typeof window !== 'undefined') {
+// route module. The wiring sits in a function rather than at module
+// scope so its one branch is measured by the CRAP gate.
+function bootLocale(): void {
+	if (typeof window === 'undefined') return;
 	const aniGui = (window as unknown as { aniGui?: { getConfigLocale?: () => string | null } })
 		.aniGui;
 	bootLocaleFromConfig({
@@ -16,3 +18,5 @@ if (typeof window !== 'undefined') {
 		setLocale: (locale) => setLocale(locale as (typeof locales)[number], { reload: false })
 	});
 }
+
+bootLocale();
