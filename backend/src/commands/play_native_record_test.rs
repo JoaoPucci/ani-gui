@@ -59,7 +59,7 @@ fn cache_detail(state: &AppState, id: &str, slug: &str) {
     };
     crate::cache::meta_cache_put(
         &state.cache_pool,
-        &format!("kitsu:v5:anime:{id}"),
+        &crate::commands::kitsu::anime_detail_key(id),
         &serde_json::to_string(&detail).expect("ser"),
         3600,
     )
