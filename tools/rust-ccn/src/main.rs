@@ -126,7 +126,7 @@ fn render_tsv(measured: &[(PathBuf, Vec<Unit>)]) -> String {
                 "{}\t{}\t{}\t{}\t{}\t{}\n",
                 file.display(),
                 kind,
-                u.name,
+                report_name(&u.name),
                 u.line,
                 u.end_line,
                 u.ccn
@@ -134,6 +134,29 @@ fn render_tsv(measured: &[(PathBuf, Vec<Unit>)]) -> String {
         }
     }
     out
+}
+
+/// A unit's name as the report carries it: name characters only, so
+/// the scorer can find where the name ends. Rust names already are
+/// (`r#match`, `proptest!`); this keeps the contract explicit.
+fn report_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "_$#()!".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// A path inside the report's XML attribute.
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn render_xml(measured: &[(PathBuf, Vec<Unit>)]) -> String {
@@ -145,8 +168,8 @@ fn render_xml(measured: &[(PathBuf, Vec<Unit>)]) -> String {
             nr += 1;
             out.push_str(&format!(
                 "\t\t<item name=\"{}(...) at {}:{}\">\n\t\t\t<value>{nr}</value>\n\t\t\t<value>{}</value>\n\t\t\t<value>{}</value>\n\t\t</item>\n",
-                u.name,
-                file.display(),
+                report_name(&u.name),
+                xml_escape(&file.display().to_string()),
                 u.line,
                 u.end_line + 1 - u.line,
                 u.ccn

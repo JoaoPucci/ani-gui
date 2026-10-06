@@ -48,14 +48,31 @@ if (lcovPaths.length === 0) {
 
 /** Parse lizard-shaped XML for per-file complexity totals, adding to `ccnByFile`. */
 function parseLizardXml(xml, ccnByFile) {
-	// Each function is <item name="fn(...) at file:line"><value>nr</value><value>NCSS</value><value>CCN</value></item>
-	const re = /<item name="[^"]*?at ([^:]+):\d+">\s*<value>\d+<\/value>\s*<value>\d+<\/value>\s*<value>(\d+)<\/value>/g;
+	// Each function is <item name="fn(...) at file:line"><value>nr</value><value>NCSS</value><value>CCN</value></item>,
+	// the name attribute XML-escaped. Function names carry no whitespace
+	// (tools/rust-ccn and tools/ts-ccn.mjs reduce them to name
+	// characters), so the first ` at ` ends the name; the line number
+	// follows the last `:`, and the file is everything between, however
+	// many ` at `s or colons its path holds.
+	const re = /<item name="([^"]*)">\s*<value>\d+<\/value>\s*<value>\d+<\/value>\s*<value>(\d+)<\/value>/g;
 	let m;
 	while ((m = re.exec(xml)) !== null) {
-		const file = path.normalize(m[1]);
+		const label = xmlUnescape(m[1]);
+		const at = label.indexOf(' at ');
+		const colon = label.lastIndexOf(':');
+		if (at < 0 || colon < at) {
+			// An item the scorer cannot place is complexity it would drop.
+			console.error(`crap-score: complexity item without "<name> at <file>:<line>": ${label}`);
+			process.exit(2);
+		}
+		const file = path.normalize(label.slice(at + ' at '.length, colon));
 		const ccn = Number(m[2]);
 		ccnByFile.set(file, (ccnByFile.get(file) ?? 0) + ccn);
 	}
+}
+
+function xmlUnescape(s) {
+	return s.replace(/&(lt|gt|quot|apos|amp);/g, (_, e) => ({ lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' })[e]);
 }
 
 /** Parse one lcov.info, return { file → { LF, LH } } keyed by repo-relative path. */

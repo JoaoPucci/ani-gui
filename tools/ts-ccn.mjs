@@ -137,6 +137,14 @@ function collect(p, out) {
 	}
 }
 
+/** A function's name as the report carries it: name characters only.
+ *  A quoted or computed method name can be any text — the report's own
+ *  ` at ` delimiter, quotes, markup — and the scorer finds the file by
+ *  where the name ends. */
+function reportName(name) {
+	return name.replace(/[^A-Za-z0-9_$#()!]/g, '_');
+}
+
 function xmlEscape(s) {
 	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -181,14 +189,14 @@ function main(argv) {
 	if (failed) return 1;
 	let out = '';
 	if (tsv) {
-		for (const [file, units] of measured) for (const u of units) out += `${file}\tfn\t${u.name}\t${u.line}\t${u.endLine}\t${u.ccn}\n`;
+		for (const [file, units] of measured) for (const u of units) out += `${file}\tfn\t${reportName(u.name)}\t${u.line}\t${u.endLine}\t${u.ccn}\n`;
 	} else {
 		out += '<?xml version="1.0" ?>\n<cppncss>\n\t<measure type="Function">\n';
 		let nr = 0;
 		for (const [file, units] of measured) {
 			for (const u of units) {
 				nr += 1;
-				out += `\t\t<item name="${xmlEscape(u.name)}(...) at ${file}:${u.line}">\n\t\t\t<value>${nr}</value>\n\t\t\t<value>${u.endLine + 1 - u.line}</value>\n\t\t\t<value>${u.ccn}</value>\n\t\t</item>\n`;
+				out += `\t\t<item name="${reportName(u.name)}(...) at ${xmlEscape(file)}:${u.line}">\n\t\t\t<value>${nr}</value>\n\t\t\t<value>${u.endLine + 1 - u.line}</value>\n\t\t\t<value>${u.ccn}</value>\n\t\t</item>\n`;
 			}
 		}
 		out += '\t</measure>\n</cppncss>\n';
