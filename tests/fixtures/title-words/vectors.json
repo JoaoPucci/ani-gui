@@ -1859,5 +1859,44 @@
    "slug": "here-is-greenwood"
   },
   "accept": true
+ },
+ {
+  "case": "one shared word of three on both sides is a third of both, and shares",
+  "row": [
+   "Alpha Bravo Charlie"
+  ],
+  "hit": {
+   "canonical_title": "Charlie Delta Echo",
+   "titles": {},
+   "abbreviated_titles": [],
+   "slug": "charlie-delta-echo"
+  },
+  "accept": true
+ },
+ {
+  "case": "one shared word of three in the row and four in the hit is under a third of the hit, and refuses",
+  "row": [
+   "Alpha Bravo Charlie"
+  ],
+  "hit": {
+   "canonical_title": "Charlie Delta Echo Foxtrot",
+   "titles": {},
+   "abbreviated_titles": [],
+   "slug": "charlie-delta-echo-foxtrot"
+  },
+  "accept": false
+ },
+ {
+  "case": "one shared word of four in the row and three in the hit is under a third of the row, and refuses",
+  "row": [
+   "Alpha Bravo Charlie Golf"
+  ],
+  "hit": {
+   "canonical_title": "Charlie Delta Echo",
+   "titles": {},
+   "abbreviated_titles": [],
+   "slug": "charlie-delta-echo"
+  },
+  "accept": false
  }
 ]
