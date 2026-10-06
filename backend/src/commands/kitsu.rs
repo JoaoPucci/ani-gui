@@ -1064,7 +1064,9 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
 /// Fetch a single anime by Kitsu id, cached under [`anime_detail_key`].
 ///
 /// # Errors
-/// Inherits from [`crate::meta::kitsu::KitsuClient::anime_detail`] on miss.
+/// [`crate::error::AniError::InvalidKitsuId`] when `id` is not a Kitsu
+/// id; otherwise inherits from
+/// [`crate::meta::kitsu::KitsuClient::anime_detail`] on miss.
 pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnimeRef> {
     kitsu_anime_detail_with_anilist_base(state, id, None).await
 }
@@ -1101,6 +1103,11 @@ async fn anime_detail_read(
     anilist_base: Option<&str>,
     past_cache: impl FnOnce(&AppState),
 ) -> Result<KitsuAnimeRef> {
+    // The routes refuse a non-id before it gets here; the stored
+    // mappings the reverse resolver and the cour guard read can
+    // predate that rule, and this is where an id becomes a key and a
+    // request path.
+    let id = crate::kitsu_id::require(id)?;
     // A 404 or 410 is Kitsu answering the entry is gone, which a
     // history row that recorded the id needs to know (kitsu_gone.rs) —
     // unless the history removed the id's show while the read was in

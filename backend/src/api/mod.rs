@@ -360,9 +360,18 @@ async fn get_title_match(
 ) -> Result<Json<Option<String>>, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(q.provider.as_deref().unwrap_or(""));
-    Ok(Json(kitsu_inner::title_match_get(
-        &state, provider, &q.title, q.cour,
-    )?))
+    let stored = kitsu_inner::title_match_get(&state, provider, &q.title, q.cour)?;
+    Ok(Json(stored_kitsu_id(stored)))
+}
+
+/// A stored mapping's value as the renderer receives it: the Kitsu id
+/// it carries, or no mapping. A row written before the routes refused
+/// non-ids ([`crate::kitsu_id`]) can hold a value that is not one.
+fn stored_kitsu_id(stored: Option<String>) -> Option<String> {
+    stored
+        .as_deref()
+        .and_then(crate::kitsu_id::kitsu_id_in)
+        .map(ToOwned::to_owned)
 }
 
 #[derive(Deserialize)]
@@ -695,7 +704,8 @@ async fn get_allmanga_kitsu_map(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
 ) -> Result<Json<Option<String>>, AniError> {
-    Ok(Json(kitsu_inner::allmanga_kitsu_get(&state, &show_id)?))
+    let stored = kitsu_inner::allmanga_kitsu_get(&state, &show_id)?;
+    Ok(Json(stored_kitsu_id(stored)))
 }
 
 /// The Kitsu id of the show's reverse mapping when a play stored it,
