@@ -20,3 +20,7 @@ pub(super) fn answered_elsewhere(base: &str, requested: &str, landed: &str) -> b
     };
     origin(requested).as_ref() == Some(&base) && origin(landed).as_ref() != Some(&base)
 }
+
+#[cfg(test)]
+#[path = "origin_prop_test.rs"]
+mod tests;
