@@ -60,7 +60,9 @@ impl EntryTitles<'_> {
     ///   kind names it does not matter: the catalogues disagree on
     ///   it, and "86 Part 2" is listed as "Eighty Six: 2nd Season".
     ///   An ordinal of 1 never disqualifies ("Final Season, Part 1"),
-    ///   nor does a span that includes 1 ("(Part 1+2)").
+    ///   nor does a span that includes 1 ("(Part 1+2)"). Zero is an
+    ///   ordinal like any other: "Season 0" is admitted only where the
+    ///   entry names 0 ("Jujutsu Kaisen 0").
     ///
     /// Only markers that end a title are read as the title's own, so
     /// "JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable" names
@@ -69,7 +71,7 @@ impl EntryTitles<'_> {
         let named: BTreeSet<u32> = self.all().flat_map(named_ordinals).collect();
         trailing_markers(candidate)
             .iter()
-            .all(|m| m.ordinals.iter().any(|n| *n < 2 || named.contains(n)))
+            .all(|m| m.ordinals.iter().any(|n| *n == 1 || named.contains(n)))
     }
 
     /// Whether the part a candidate's title ends on agrees with the
