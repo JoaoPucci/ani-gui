@@ -76,7 +76,8 @@ impl EntryTitles<'_> {
     ///   Ple Ple Pleiades 2" is not Overlord, "Show 2 Part 1" is not
     ///   "Show", while "Kaiju No. 8" is admitted for an entry naming 8.
     ///   A 1 never disqualifies, and three digits ("Mob Psycho 100")
-    ///   number no sequel.
+    ///   number no sequel. An entry names a number written before a
+    ///   Japanese counter too: "怪獣８号" admits "Kaiju No. 8".
     ///
     /// Only markers that end a title are read as the title's own, so
     /// "JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable" names
