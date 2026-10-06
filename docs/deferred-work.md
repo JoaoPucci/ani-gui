@@ -131,6 +131,38 @@ starting it, and delete it when you find it done.
   (`electron/lib/backend-handshake.cjs` has the measurement). Whatever
   bounds the wait has to be sized for "never", not for "slow".
 
+- **The picker admits a sequel numbered with a bare number.** The
+  title rule in `play_native_title_marker.rs` (`admits`) reads only the
+  season and part markers a title ends on, so "Show 2" is admitted for
+  an entry titled "Show" whose titles name no 2. Alone in a pool at the
+  entry's count it plays as the first season, and beside "Show" itself
+  it can win on provider order. The fix is the obvious one: hold a bare
+  number a title ends on to what the entry's titles name, as a marker
+  already is ("Kaiju No. 8" stays admitted for an entry naming 8).
+
+  It waited on the recorded pools, not the rule. Refusing those titles
+  changes which hits fill the bounded probe head, and the head then
+  reaches hits the recordings under `tests/fixtures/hianime/picker/`
+  never captured: Overlord's pool refuses "Ple Ple Pleiades 2/3/4" and
+  probes "Overlord: The Maid Tea Party", whose entry-page year was
+  never recorded. A recording cannot say what the site answers for a
+  request it never held, so the affected pools need re-capturing from
+  the live site before the rule can land. Repro: entry "Show", count
+  12, a pool of "Show 2" (12) alone, picks "Show 2".
+
+- **A broad listing completed by a sibling in another script is never
+  cut.** The spanning cut finds the sibling that completes a broad
+  listing by the broad listing's stem, so a sibling written in another
+  script cannot complete it: for an entry known only as "怪獣８号", a
+  24-episode "怪獣８号" beside "Kaiju No. 8 Season 2" (12) is not cut,
+  and any other listing of the entry's length plays instead. It needs a
+  way to tell that two titles in different scripts name one show, which
+  the title rules do not have; the provider's catalogue is in Latin
+  script, so the shape has not been seen in a real pool. A dedicated
+  listing in the other script is unaffected — it still wins on count.
+  Repro: entry ["怪獣８号"], count 12, a pool of "怪獣８号" (24), "Kaiju
+  No. 8 Season 2" (12) and "Kaiju No. 8 Recap" (12), picks the recap.
+
 ## Testing and CI
 
 - **The CRAP ratchet disagrees between CI and local** — 26 against 25 —
