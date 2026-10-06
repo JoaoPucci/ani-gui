@@ -302,3 +302,39 @@ describe("a removal's cleanup, as of when its rows were gone", () => {
 		expect(recoveryResume.consume('B', 1)).toBeNull();
 	});
 });
+
+describe("a removal's cleanup and a pick or write since", () => {
+	it('keeps a point the user picked its episode again at since', () => {
+		// The pick keeps the point rather than restarting it, and the
+		// episode stays the Continue target with its point.
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s);
+		const since = snapshotPositions();
+		markStarted('A', 3, s);
+
+		clearShowPositions('A', s, since);
+
+		expect(readPosition('A', 3, s)).toBe(600);
+	});
+
+	it('forgets a point whose rewrite since the storage refused', () => {
+		const s = memory();
+		let refuse = false;
+		const flaky: PositionStorage = {
+			getItem: (k) => s.getItem(k),
+			setItem: (k, v) => {
+				if (refuse) throw new Error('quota');
+				s.setItem(k, v);
+			}
+		};
+		savePosition('A', 3, 600, 1420, flaky);
+		const since = snapshotPositions();
+		refuse = true;
+		savePosition('A', 3, 700, 1420, flaky);
+		refuse = false;
+
+		clearShowPositions('A', flaky, since);
+
+		expect(readPosition('A', 3, flaky)).toBeNull();
+	});
+});
