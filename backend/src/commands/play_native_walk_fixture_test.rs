@@ -346,3 +346,21 @@ async fn a_series_one_catalogue_calls_tv_and_the_other_ona_is_found() {
     ])
     .await;
 }
+
+/// The search for the canonical title leaves the first season's own
+/// listing out of the pool, and its sequel sits within the count
+/// tolerance and a year of it: `[Oshi no Ko]` picked "My Star:
+/// Season 2", The Witch from Mercury its Season 2. A sibling named for
+/// a season the entry never names must not be picked, and the walk
+/// goes on to the alias whose pool holds the first season.
+#[tokio::test]
+async fn a_sequel_named_for_another_season_is_never_picked_for_the_first() {
+    assert_picks(&[
+        ("46170", Some(("oshi-no-ko-675", 11))),
+        (
+            "45217",
+            Some(("mobile-suit-gundam-the-witch-from-mercury-3596", 12)),
+        ),
+    ])
+    .await;
+}
