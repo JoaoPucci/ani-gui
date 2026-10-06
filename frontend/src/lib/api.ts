@@ -1079,12 +1079,14 @@ export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
 }
 
 /**
- * Whether a play stored the show's reverse mapping, rather than a
- * resolve that guessed. Continue Watching keeps a played mapping when
- * only the provider's title doubts it.
+ * The Kitsu id of the show's reverse mapping when a play stored it,
+ * rather than a resolve that guessed; null otherwise. Continue
+ * Watching keeps a played mapping when only the provider's title
+ * doubts it. The mapping can change after a caller read it, so the
+ * answer vouches only for the id it names.
  */
-export function allmangaKitsuMapPlayed(showId: string): Promise<boolean> {
-	return getJson<boolean>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}/played`);
+export function allmangaKitsuMapPlayed(showId: string): Promise<string | null> {
+	return getJson<string | null>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}/played`);
 }
 
 /**

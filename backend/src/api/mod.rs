@@ -693,15 +693,15 @@ async fn get_allmanga_kitsu_map(
     Ok(Json(kitsu_inner::allmanga_kitsu_get(&state, &show_id)?))
 }
 
-/// Whether a play stored the show's reverse mapping
-/// ([`crate::commands::kitsu_played::mapping_played`]). Continue
-/// Watching keeps such a mapping when only the provider's title doubts
-/// it.
+/// The Kitsu id of the show's reverse mapping when a play stored it,
+/// else `null` ([`crate::commands::kitsu_played::played_mapping`]).
+/// Continue Watching keeps such a mapping when only the provider's
+/// title doubts it, and trusts it only when the id is the one it read.
 async fn get_allmanga_kitsu_map_played(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
-) -> Result<Json<bool>, AniError> {
-    Ok(Json(crate::commands::kitsu_played::mapping_played(
+) -> Result<Json<Option<String>>, AniError> {
+    Ok(Json(crate::commands::kitsu_played::played_mapping(
         &state, &show_id,
     )?))
 }

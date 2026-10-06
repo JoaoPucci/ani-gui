@@ -26,16 +26,27 @@ use crate::cache::meta_cache_get;
 use crate::commands::kitsu::{allmanga_kitsu_get, allmanga_kitsu_played_key};
 use crate::error::Result;
 
+/// The Kitsu id of the show's stored mapping when a play wrote it,
+/// else `None`. A caller that read the mapping earlier compares this
+/// with the id it read: the mapping can change between the two reads,
+/// and the mark vouches only for the one standing now.
+///
+/// # Errors
+/// Cache I/O errors propagate.
+pub(crate) fn played_mapping(state: &AppState, show_id: &str) -> Result<Option<String>> {
+    let Some(played) = meta_cache_get(&state.cache_pool, &allmanga_kitsu_played_key(show_id))?
+    else {
+        return Ok(None);
+    };
+    Ok(allmanga_kitsu_get(state, show_id)?.filter(|mapped| *mapped == played))
+}
+
 /// Whether the show's stored mapping was written by a play.
 ///
 /// # Errors
 /// Cache I/O errors propagate.
 pub(crate) fn mapping_played(state: &AppState, show_id: &str) -> Result<bool> {
-    let Some(played) = meta_cache_get(&state.cache_pool, &allmanga_kitsu_played_key(show_id))?
-    else {
-        return Ok(false);
-    };
-    Ok(allmanga_kitsu_get(state, show_id)?.is_some_and(|mapped| mapped == played))
+    Ok(played_mapping(state, show_id)?.is_some())
 }
 
 /// Store a resolve's guess as the show's mapping, with the history
