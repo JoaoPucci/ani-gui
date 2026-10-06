@@ -52,11 +52,14 @@ function load(storage: PositionStorage | null): Positions {
 	}
 }
 
-function store(storage: PositionStorage | null, positions: Positions): void {
+/** Whether the storage took the write. */
+function store(storage: PositionStorage | null, positions: Positions): boolean {
 	try {
 		storage?.setItem(KEY, JSON.stringify(positions.slice(-MAX_POSITIONS)));
+		return true;
 	} catch {
 		// A storage that refuses only loses the resume point.
+		return false;
 	}
 }
 
@@ -83,12 +86,13 @@ export function savePosition(
 		store(storage, rest);
 		return;
 	}
-	store(storage, [...rest, row ? [key, point, row] : [key, point]]);
-	noteWrite(storage, key);
+	if (store(storage, [...rest, row ? [key, point, row] : [key, point]])) noteWrite(storage, key);
 }
 
 /** Marks `episode` of `showId` started, at zero, for `row` as
- *  savePosition does, unless a point is already kept for it. */
+ *  savePosition does, unless a point is already kept for it — which
+ *  the pick then makes the user's as of now, so a removal's cleanup
+ *  begun before it leaves the point. */
 export function markStarted(
 	showId: string,
 	episode: number,
@@ -97,6 +101,8 @@ export function markStarted(
 ): void {
 	if (readPosition(showId, episode, storage) === null) {
 		savePosition(showId, episode, 0, Number.NaN, storage, row);
+	} else {
+		noteWrite(storage, keyOf(showId, episode));
 	}
 }
 
