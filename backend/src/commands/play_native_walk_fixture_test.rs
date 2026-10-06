@@ -1118,3 +1118,24 @@ async fn the_completing_sibling_is_read_by_the_one_reader() {
         panic!("the completing sibling was picked: {}", p.hit.slug);
     }
 }
+
+/// A title's stem drops every division it ends on, Japanese ones
+/// stacked one after another included: "ショー 第2期 第2部" has the
+/// stem "ショー", so "ショー 第2期" beside it is read past that stem
+/// and is "ショー２"'s own.
+#[tokio::test]
+async fn stacked_japanese_divisions_all_leave_the_stem() {
+    let site = pool_of(
+        &["ショー２"],
+        Some(12),
+        2020,
+        "ショー２",
+        &[
+            ("w", "ショー 第2期 第2部", 24),
+            ("a", "ショー", 12),
+            ("b", "ショー 第2期", 12),
+        ],
+    );
+    let picked = walk_over(site).await.expect("picked");
+    assert_eq!((picked.hit.slug.as_str(), picked.episodes.len()), ("b", 12));
+}
