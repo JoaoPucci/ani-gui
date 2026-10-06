@@ -2,6 +2,31 @@
 //! from the client so its file stays inside the complexity ratchet's
 //! per-file bar.
 
+use crate::error::{AniError, Result};
+use crate::scraper::fetch::{Fetch, FetchResponse};
+
+/// GET `url`, refusing an answer to a request on the provider's
+/// origin (`base`) that another origin served, as a parse failure:
+/// the walk fails over past it and the gate hears distress, rather
+/// than a parser reading another site's page as anidb's answer.
+///
+/// # Errors
+/// [`AniError::ParseFailed`] when [`answered_elsewhere`], plus the
+/// transport errors of [`Fetch::get`].
+pub(super) async fn get_from_origin<F: Fetch>(
+    fetch: &F,
+    base: &str,
+    url: &str,
+) -> Result<FetchResponse> {
+    let resp = fetch.get(url).await?;
+    if answered_elsewhere(base, url, &resp.url) {
+        return Err(AniError::ParseFailed {
+            detail: "anidb: a request to its origin was answered from another origin".into(),
+        });
+    }
+    Ok(resp)
+}
+
 /// Whether a request to the provider's origin was answered from
 /// another one. The transport follows redirects and reports the URL
 /// the transfer ended on; when anidb.app began redirecting its search

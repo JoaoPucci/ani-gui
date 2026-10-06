@@ -154,9 +154,9 @@ pub struct AvailabilityResponse {
     #[serde(default)]
     pub provider: Option<crate::scraper::provider::ProviderId>,
     /// The reading of the provider's pages the row was written under
-    /// ([`ROW_READING`]). Rows from before the field existed read as
-    /// 0. The read rule holds an anidb negative to it
-    /// ([`negative_row_is_backed`]).
+    /// (`ROW_READING`). Rows from before the field existed read as 0.
+    /// The read rule holds an anidb negative to it
+    /// (`negative_row_is_backed`).
     #[serde(default)]
     pub reading: u32,
 }

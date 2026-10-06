@@ -30,7 +30,6 @@ use crate::scraper::provider::{
     encode_query, is_cloudflare_interstitial, BrowseHit, EpisodeRef, Provider, ProviderId,
     StreamSource,
 };
-use origin::answered_elsewhere;
 pub use parse::{parse_browse, parse_detail_year};
 pub use parse_api::{extract_master_url, parse_episodes, parse_languages, preferred_embed};
 
@@ -80,17 +79,12 @@ impl<F: Fetch> AnidbClient<F> {
         &self.fetch
     }
 
-    /// Fetch `url` and hand back content, refusing challenge pages
-    /// and non-success statuses as typed upstream errors, and an
-    /// answer to a request on the provider's origin that another
-    /// origin served ([`answered_elsewhere`]) as a parse failure.
+    /// Fetch `url` and hand back content, refusing an answer to a
+    /// request on the provider's origin that another origin served
+    /// ([`origin::get_from_origin`]), and challenge pages and
+    /// non-success statuses as typed upstream errors.
     async fn content(&self, url: &str) -> Result<String> {
-        let resp = self.fetch.get(url).await?;
-        if answered_elsewhere(&self.base, url, &resp.url) {
-            return Err(AniError::ParseFailed {
-                detail: "anidb: a request to its origin was answered from another origin".into(),
-            });
-        }
+        let resp = origin::get_from_origin(&self.fetch, &self.base, url).await?;
         if is_cloudflare_interstitial(&resp.body) {
             let status = if resp.status >= 400 { resp.status } else { 403 };
             return Err(AniError::Upstream { status });
