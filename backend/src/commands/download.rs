@@ -2002,7 +2002,7 @@ where
 }
 
 /// [`run_tool`], interruptible: when `stop` resolves before the tool
-/// exits, the tool's process group is taken down and the run reports
+/// exits, the tool's tree is taken down and the run reports
 /// itself interrupted rather than failed.
 ///
 /// Every way a run ends — a stop, the deadline, a report that

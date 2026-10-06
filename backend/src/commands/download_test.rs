@@ -4339,8 +4339,8 @@ async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
 
 /// A tree kill that lands late: the teardown's command returns at
 /// once and the process group dies a moment later, as a real kill
-/// does — `kill(1)` and `taskkill` only ask, and a process exits when
-/// the kernel gets to it. Stretching that moment is what lets a case
+/// does — a kill only asks, and a process exits when the kernel gets
+/// to it. Stretching that moment is what lets a case
 /// see whether the supervisor waited for the exit or only for the
 /// request. Holds the probe's scope for as long as it is registered.
 #[cfg(unix)]
