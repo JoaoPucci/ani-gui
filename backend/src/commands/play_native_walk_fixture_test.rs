@@ -1310,3 +1310,30 @@ async fn the_sibling_completing_a_listing_the_entry_heads_is_the_next_entry() {
     let picked = walk_over(site).await.expect("the entry's own listing");
     assert_eq!(picked.hit.slug, "s2");
 }
+
+/// Reading alike is not enough: a broad listing is the entry's to cut
+/// only when it carries the name one of the entry's titles carries,
+/// and a listing is the entry's own only when it starts with that
+/// name. "Other Show Season 2" reads 2 as "Show Season 2" does, but it
+/// is another show; neither it nor its second half plays.
+#[tokio::test]
+async fn another_show_reading_alike_is_not_the_entry() {
+    for (titles, rows) in [
+        (
+            &["Show Season 2"][..],
+            &[
+                ("w", "Other Show Season 2", 24),
+                ("l", "Other Show Season 2 Part 2", 12),
+            ][..],
+        ),
+        (
+            &["Show 2"][..],
+            &[("w", "Other Show", 24), ("o", "Other Show 2nd Season", 12)][..],
+        ),
+    ] {
+        let site = pool_of(titles, Some(12), 2020, titles[0], rows);
+        if let Ok(p) = walk_over(site).await {
+            panic!("{titles:?}: picked {} ({})", p.hit.slug, p.episodes.len());
+        }
+    }
+}
