@@ -57,6 +57,9 @@
     [4424, 23, null],
     [4425, 24, null],
     [4426, 25, null]
+  ],
+  "attack-on-titan-since-that-day-5127": [
+    [67711, 1, null]
   ]
  },
  "years": {
@@ -64,6 +67,8 @@
   "attack-on-titan-final-season-1372": 2020,
   "attack-on-titan-season-2-865": 2017,
   "attack-on-titan-season-3-866": 2018,
-  "attack-on-titan-season-3-part-2-1895": 2019
+  "attack-on-titan-season-3-part-2-1895": 2019,
+  "attack-on-titan-junior-high-2969": 2015,
+  "attack-on-titan-since-that-day-5127": 2013
  }
 }

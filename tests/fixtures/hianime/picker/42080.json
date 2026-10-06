@@ -48,6 +48,9 @@
     [20547, 22, null],
     [20548, 23, null],
     [20549, 24, null]
+  ],
+  "snickers-x-dr-stone-2849": [
+    [36832, 1, null]
   ]
  },
  "years": {
@@ -55,6 +58,8 @@
   "dr-stone-new-world-1104": 2023,
   "dr-stone-new-world-part-2-1080": 2023,
   "dr-stone-science-future-part-3-98": 2026,
-  "dr-stone-stone-wars-1100": 2021
+  "dr-stone-stone-wars-1100": 2021,
+  "dr-stone-science-future-2583": 2025,
+  "snickers-x-dr-stone-2849": 2020
  }
 }
