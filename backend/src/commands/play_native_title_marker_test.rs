@@ -231,3 +231,22 @@ fn spelled_full_width_and_japanese_cour_forms_are_read() {
     assert!(entry(&["Show", "ショー 第２期"]).admits("Show Season 2"));
     assert!(entry(&["Show", "ショー２"]).admits("Show Season 2"));
 }
+
+#[test]
+fn only_the_first_part_is_admitted_unnamed_and_zero_is_an_ordinal_like_any_other() {
+    // Ordinal 1 — or a span through it — needs no naming. Zero is a
+    // marker like any other: admitted only where the entry names it.
+    let e = entry(&["Show"]);
+    assert!(e.admits("Show Part 1"));
+    assert!(e.admits("Show (Part 1+2)"));
+    assert!(!e.admits("Show Season 0"));
+    assert!(!e.admits("Show Part 0+2"));
+    assert!(entry(&["Jujutsu Kaisen 0"]).admits("Jujutsu Kaisen Season 0"));
+    assert_eq!(
+        trailing_markers("Show Part 0+2"),
+        vec![Marker {
+            kind: Kind::Part,
+            ordinals: vec![0, 2]
+        }]
+    );
+}

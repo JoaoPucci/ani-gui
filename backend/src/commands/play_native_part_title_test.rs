@@ -231,3 +231,9 @@ fn the_part_reader_reads_every_marker_form_the_title_rules_read() {
     assert_eq!(part_ordinal("The Show", "The Show Sixth Season"), Some(6));
     assert_eq!(part_ordinal("The Show", "The Show Part ２"), Some(2));
 }
+
+#[test]
+fn a_zeroth_part_is_no_later_part() {
+    assert_eq!(part_ordinal("The Show", "The Show Season 0"), None);
+    assert_eq!(part_ordinal("The Show", "The Show Part 0"), None);
+}
