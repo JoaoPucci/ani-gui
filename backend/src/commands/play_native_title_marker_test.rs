@@ -115,11 +115,15 @@ proptest::proptest! {
     fn a_bare_number_the_entry_never_names_is_refused(
         a in "[A-Za-z]{1,8}( [A-Za-z]{1,8}){0,3}",
         b in "[A-Za-z]{1,8}( [A-Za-z]{1,8}){0,3}",
-        n in 0u32..1000,
+        n in proptest::prop_oneof![0u32..100, 100u32..1000],
+        padded in proptest::bool::ANY,
     ) {
         proptest::prop_assume!(trailing_markers(&a).is_empty() && trailing_markers(&b).is_empty());
         proptest::prop_assume!(named_ordinals(&a).is_empty());
-        let candidate = format!("{b} {n}");
+        // A one-digit number written with a leading zero ("02") is
+        // the same number.
+        let number = if padded && n < 10 { format!("0{n}") } else { n.to_string() };
+        let candidate = format!("{b} {number}");
         // "Show Season" and a number make a marker, read by the rule
         // above; only a bare number is under test.
         proptest::prop_assume!(trailing_markers(&candidate).is_empty());
