@@ -31,13 +31,14 @@
 /// with no such process, and nothing is sent. What the look cannot
 /// rule out is the id being freed and handed to a new group leader in
 /// the moment between it and the kill — a full turn of the pid space
-/// in milliseconds. On Windows the tool is put in a job object as it
-/// starts, and the processes it starts after that join the job: the
-/// tree is the job's members, there whether or not the tool itself is
-/// still running. The job is made to kill its members when its last
-/// handle closes, which is the guard's, so a backend that ends
-/// without running any guard — a crash — still takes its tools with
-/// it.
+/// in milliseconds. On Windows the tool is put in two nested job
+/// objects as it starts, and the processes it starts after that join
+/// them: the tree is the outer job's members, there whether or not the
+/// tool itself is still running, and the kill closes the inner job
+/// when there is one.
+/// Both are made to kill their members when their last handle closes,
+/// which is the guard's, so a backend that ends without running any
+/// guard — a crash — still takes its tools with it.
 pub(crate) struct TreeKillChild {
     pub(crate) child: tokio::process::Child,
     /// The rest of the child's tree; `None` once it is known to be
