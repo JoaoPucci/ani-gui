@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::meta::anilist::BANNER_BY_MAL_GQL;
+use proptest::strategy::Strategy as _;
 
 // --- MediaRef: which id an AniList query is keyed by ---------------
 
@@ -133,6 +134,124 @@ fn media_is_absent_only_for_a_null_media() {
         br#"{"data":{"Media":{"bannerImage":null}}}"#
     ));
     assert!(!media_is_absent(b"not json"));
+}
+
+/// Any JSON value, `null` included, nested a few levels deep.
+fn arb_json() -> impl proptest::strategy::Strategy<Value = serde_json::Value> {
+    use proptest::prelude::*;
+    let leaf = prop_oneof![
+        Just(serde_json::Value::Null),
+        any::<bool>().prop_map(serde_json::Value::from),
+        any::<i64>().prop_map(serde_json::Value::from),
+        ".{0,8}".prop_map(serde_json::Value::from),
+    ];
+    leaf.prop_recursive(3, 24, 4, |inner| {
+        prop_oneof![
+            proptest::collection::vec(inner.clone(), 0..4).prop_map(serde_json::Value::from),
+            proptest::collection::btree_map("[a-z]{1,6}", inner, 0..4)
+                .prop_map(|m| serde_json::Value::Object(m.into_iter().collect())),
+        ]
+    })
+}
+
+/// Any JSON value but `null`: what AniList puts at `data.Media` for a
+/// media it does index.
+fn arb_present_json() -> impl proptest::strategy::Strategy<Value = serde_json::Value> {
+    use proptest::prelude::*;
+    arb_json().prop_filter("not null", |v| !v.is_null())
+}
+
+/// Sibling keys an envelope may carry beside `Media` / `data`, none of
+/// them the key the classifier reads.
+fn arb_siblings() -> impl proptest::strategy::Strategy<Value = Vec<(String, serde_json::Value)>> {
+    proptest::collection::vec(
+        (
+            "[a-zA-Z]{1,6}".prop_filter("not a key the classifier reads", |k| {
+                k != "data" && k != "Media"
+            }),
+            arb_json(),
+        ),
+        0..3,
+    )
+}
+
+fn envelope(
+    media: Option<serde_json::Value>,
+    data_siblings: &[(String, serde_json::Value)],
+    top_siblings: &[(String, serde_json::Value)],
+    errors: Option<serde_json::Value>,
+) -> serde_json::Value {
+    let mut data = serde_json::Map::new();
+    for (k, v) in data_siblings {
+        data.insert(k.clone(), v.clone());
+    }
+    if let Some(m) = media {
+        data.insert("Media".into(), m);
+    }
+    let mut top = serde_json::Map::new();
+    for (k, v) in top_siblings {
+        top.insert(k.clone(), v.clone());
+    }
+    if let Some(e) = errors {
+        top.insert("errors".into(), e);
+    }
+    top.insert("data".into(), serde_json::Value::Object(data));
+    serde_json::Value::Object(top)
+}
+
+proptest::proptest! {
+    /// `data.Media: null` is absence whatever else the envelope
+    /// carries — AniList's 404 puts an `errors` array beside it.
+    #[test]
+    fn a_null_media_is_absent_whatever_surrounds_it(
+        data_siblings in arb_siblings(),
+        top_siblings in arb_siblings(),
+        errors in proptest::option::of(arb_json()),
+    ) {
+        let body = envelope(Some(serde_json::Value::Null), &data_siblings, &top_siblings, errors);
+        proptest::prop_assert!(media_is_absent(&serde_json::to_vec(&body).unwrap()));
+    }
+
+    /// A media AniList returned, whatever its shape, is never absent —
+    /// nor is an envelope with no `Media` key at all.
+    #[test]
+    fn a_present_or_missing_media_is_not_absent(
+        media in proptest::option::of(arb_present_json()),
+        data_siblings in arb_siblings(),
+        top_siblings in arb_siblings(),
+        errors in proptest::option::of(arb_json()),
+    ) {
+        let body = envelope(media, &data_siblings, &top_siblings, errors);
+        proptest::prop_assert!(!media_is_absent(&serde_json::to_vec(&body).unwrap()));
+    }
+
+    /// `data` that is not an object holding `Media` says nothing about
+    /// a media, `null` included.
+    #[test]
+    fn a_data_that_is_not_an_object_is_not_absent(
+        data in arb_json().prop_filter("not an object", |v| !v.is_object()),
+        errors in proptest::option::of(arb_json()),
+    ) {
+        let mut top = serde_json::Map::new();
+        top.insert("data".into(), data);
+        if let Some(e) = errors {
+            top.insert("errors".into(), e);
+        }
+        let body = serde_json::to_vec(&serde_json::Value::Object(top)).unwrap();
+        proptest::prop_assert!(!media_is_absent(&body));
+    }
+
+    /// A body cut short is unreadable, not absent, even when the whole
+    /// of it would have said `Media: null`.
+    #[test]
+    fn a_truncated_absent_body_is_not_absent(
+        errors in proptest::option::of(arb_json()),
+        cut in proptest::num::usize::ANY,
+    ) {
+        let body = serde_json::to_vec(&envelope(Some(serde_json::Value::Null), &[], &[], errors)).unwrap();
+        let cut = cut % body.len();
+        proptest::prop_assert!(!media_is_absent(&body[..cut]));
+    }
 }
 
 /// AniList mock answering `body` to queries whose variables match
