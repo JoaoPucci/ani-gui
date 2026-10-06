@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use crate::app::AppState;
 use crate::cache::ttl::{ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
+use crate::meta::anilist::MediaRef;
+use crate::meta::anilist_streaming_eps::streaming_eps_map_for_media;
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
 /// Stable key for the per-show AniList episode-thumbnail backfill.
@@ -88,21 +90,17 @@ async fn fetch_anilist_eps_thumbs(
         .map_err(
             |e| tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed"),
         )?;
-    let mal_id = ids.mal.ok_or(())?;
-    crate::meta::anilist_streaming_eps::streaming_eps_map_for_mal_id(
-        &state.meta_http,
-        mal_id,
-        anilist_base,
-    )
-    .await
-    .map_err(|e| {
-        tracing::warn!(
-            kitsu_id,
-            mal_id,
-            error = ?e,
-            "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
-        );
-    })
+    let media = MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(())?;
+    streaming_eps_map_for_media(&state.meta_http, media, anilist_base)
+        .await
+        .map_err(|e| {
+            tracing::warn!(
+                kitsu_id,
+                ?media,
+                error = ?e,
+                "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
+            );
+        })
 }
 
 /// Returns `true` when at least one episode in the page has a

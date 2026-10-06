@@ -219,6 +219,45 @@ pub async fn banner_for_mal_id(
     parse_banner_response(&bytes)
 }
 
+/// How a show is identified to AniList: by its MyAnimeList id
+/// (`Media(idMal:)`) or by AniList's own id (`Media(id:)`). Kitsu
+/// maps most shows to both; fresh seasonal titles often carry only
+/// the `anilist/anime` mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaRef {
+    /// A MyAnimeList id, queried through `idMal`.
+    Mal(u32),
+    /// AniList's own numeric media id, queried through `id`.
+    AniList(u32),
+}
+
+impl MediaRef {
+    /// The MAL id when there is one, else AniList's own id; `None`
+    /// when neither is known. Preferring MAL keeps every show that
+    /// already resolved on the exact query it used before.
+    #[must_use]
+    pub fn preferring_mal(mal: Option<u32>, _anilist: Option<u32>) -> Option<Self> {
+        mal.map(Self::Mal)
+    }
+}
+
+/// The AniList banner for a show identified either way — see
+/// [`MediaRef`]. `None` when AniList has no media for the id, or the
+/// media has no banner.
+///
+/// # Errors
+/// Network / Upstream / ParseFailed — same as [`banner_for_mal_id`].
+pub async fn banner_for_media(
+    client: &reqwest::Client,
+    media: MediaRef,
+    base_override: Option<&str>,
+) -> Result<Option<String>> {
+    match media {
+        MediaRef::Mal(mal_id) => banner_for_mal_id(client, mal_id, base_override).await,
+        MediaRef::AniList(_) => Ok(None),
+    }
+}
+
 /// By-MAL-id query resolving AniList's numeric `mediaId`. The
 /// write-back path needs it: mark-watched knows the show's MAL id
 /// (via Kitsu mappings) but `SaveMediaListEntry` keys on AniList's

@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::error::{AniError, Result};
+use crate::meta::anilist::MediaRef;
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
 
@@ -89,6 +90,22 @@ pub async fn streaming_eps_map_for_mal_id(
         map.entry(n).or_insert(url);
     }
     Ok(map)
+}
+
+/// [`streaming_eps_map_for_mal_id`] for a show identified either
+/// way — see [`MediaRef`].
+///
+/// # Errors
+/// Same as [`streaming_episodes_for_mal_id`].
+pub async fn streaming_eps_map_for_media(
+    client: &reqwest::Client,
+    media: MediaRef,
+    base_override: Option<&str>,
+) -> Result<HashMap<u32, String>> {
+    match media {
+        MediaRef::Mal(mal_id) => streaming_eps_map_for_mal_id(client, mal_id, base_override).await,
+        MediaRef::AniList(_) => Ok(HashMap::new()),
+    }
 }
 
 /// Pure parser for the `streamingEpisodes` response body.

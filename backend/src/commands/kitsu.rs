@@ -963,8 +963,10 @@ async fn anilist_banner_for(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Option<String> {
+    use crate::meta::anilist::{banner_for_media, MediaRef};
     let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await.ok()?;
-    crate::meta::anilist::banner_for_mal_id(&state.meta_http, ids.mal?, anilist_base)
+    let media = MediaRef::preferring_mal(ids.mal, ids.anilist)?;
+    banner_for_media(&state.meta_http, media, anilist_base)
         .await
         .ok()
         .flatten()
@@ -991,6 +993,10 @@ mod title_match_tests;
 #[cfg(test)]
 #[path = "kitsu_show_key_test.rs"]
 mod show_key_tests;
+
+#[cfg(test)]
+#[path = "kitsu_banner_test.rs"]
+mod banner_tests;
 
 #[cfg(test)]
 mod tests {

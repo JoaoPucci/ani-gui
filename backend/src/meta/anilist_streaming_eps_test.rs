@@ -216,3 +216,44 @@ async fn streaming_episodes_for_mal_id_returns_empty_when_media_unmapped() {
         .expect("ok");
     assert!(got.is_empty());
 }
+
+#[tokio::test]
+async fn streaming_eps_map_for_media_by_anilist_id_queries_media_by_id() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_string_contains("Media(id: $id"))
+        .and(wiremock::matchers::body_partial_json(serde_json::json!({
+            "variables": { "id": 207_141 },
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 2 - Two","thumbnail":"https://x.cdn/2.jpg"}]}}}"#,
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = streaming_eps_map_for_media(&client, MediaRef::AniList(207_141), Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&2).map(String::as_str), Some("https://x.cdn/2.jpg"));
+}
+
+#[tokio::test]
+async fn streaming_eps_map_for_media_by_mal_id_keeps_the_idmal_query() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_json(serde_json::json!({
+            "query": STREAMING_EPS_BY_MAL_GQL,
+            "variables": { "idMal": 918 },
+        })))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 1 - One","thumbnail":"https://x.cdn/1.jpg"}]}}}"#,
+        ))
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let got = streaming_eps_map_for_media(&client, MediaRef::Mal(918), Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&1).map(String::as_str), Some("https://x.cdn/1.jpg"));
+}
