@@ -16,8 +16,13 @@ pub(crate) fn part_ordinal(stem: &str, title: &str) -> Option<u32> {
         return Some(1);
     }
     let rest = title.strip_prefix(&stem)?;
-    // "The Showdown" is not a part of "The Show".
-    if rest.chars().next().is_some_and(char::is_alphanumeric) {
+    // "The Showdown" is not a part of "The Show" — but Japanese
+    // writes its 第 straight after the title.
+    if rest
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphanumeric() && c != '第')
+    {
         return None;
     }
     let rest = rest.trim_start_matches(|c: char| !c.is_alphanumeric());
