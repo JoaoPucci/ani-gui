@@ -1068,6 +1068,7 @@ async fn anime_detail_read(
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(detail) = serde_json::from_str::<KitsuAnimeRef>(&body) {
             warm_signed_image_urls(state, &body);
+            super::kitsu_gone::note_served(state, id);
             return Ok(detail);
         }
     }

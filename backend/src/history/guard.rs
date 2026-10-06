@@ -104,6 +104,9 @@ struct Removals {
     /// far as this process saw. A row records its page only once the
     /// watch's verdict is in, and a removal before that has to know it.
     pages: HashMap<String, BTreeSet<String>>,
+    /// The moment Kitsu last served each id, as far as this process
+    /// saw: a failure of a read begun before it says nothing newer.
+    served: HashMap<String, u64>,
 }
 
 /// Every history this process has held, by its file. One lock for all
@@ -288,5 +291,19 @@ impl Held<'_> {
     pub fn kitsu_removed_since(&self, begun: Epoch, kitsu_id: &str) -> bool {
         let removed = self.removals.kitsu.get(kitsu_id).copied().unwrap_or(0);
         removed.max(self.removals.cleared) > begun.0
+    }
+
+    /// Record that Kitsu served `kitsu_id`, now.
+    pub fn kitsu_served(&mut self, kitsu_id: &str) {
+        self.removals.moment += 1;
+        self.removals
+            .served
+            .insert(kitsu_id.to_owned(), self.removals.moment);
+    }
+
+    /// Whether Kitsu served `kitsu_id` after `begun`.
+    #[must_use]
+    pub fn kitsu_served_since(&self, begun: Epoch, kitsu_id: &str) -> bool {
+        self.removals.served.get(kitsu_id).copied().unwrap_or(0) > begun.0
     }
 }

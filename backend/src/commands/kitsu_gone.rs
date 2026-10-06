@@ -4,8 +4,10 @@
 //! before anything else. The mark is written by any detail fetch a
 //! user action makes — never by a warm or background path — and only
 //! for a 404 or 410; every other failure says nothing about the id. A
-//! later fetch that succeeds clears it, and removing history takes it
-//! ([`super::history_forget`]): a clear takes every mark, a delete the
+//! later fetch that succeeds clears it, as does a detail served from
+//! the cache, and a failure of a read begun before Kitsu last served
+//! the id marks nothing: an older answer never outlives a newer one.
+//! Removing history takes it ([`super::history_forget`]): a clear takes every mark, a delete the
 //! marks of the ids the show was known by that no remaining row claims.
 //! A read begun before such a removal writes no mark after it
 //! ([`crate::history::guard`]); a clear after one only takes data, so
@@ -38,15 +40,20 @@ pub(crate) fn note_failure(state: &AppState, begun: Epoch, id: &str, err: &AniEr
         return;
     }
     crate::history::guard::hold(&state.history_path, |held| {
-        if !held.kitsu_removed_since(begun, id) {
+        if !held.kitsu_removed_since(begun, id) && !held.kitsu_served_since(begun, id) {
             let _ = meta_cache_put(&state.cache_pool, &gone_key(id), "1", GONE_TTL_SECS);
         }
     });
 }
 
-/// Kitsu served `id`: it is not gone, whatever an earlier answer said.
+/// Kitsu served `id`: it is not gone, whatever an earlier answer said,
+/// or a read begun before now is answered. A detail served from the
+/// cache counts, and takes a mark left beside it.
 pub(crate) fn note_served(state: &AppState, id: &str) {
-    let _ = meta_cache_delete(&state.cache_pool, &gone_key(id));
+    crate::history::guard::hold(&state.history_path, |held| held.kitsu_served(id));
+    if is_gone(state, id).unwrap_or(true) {
+        let _ = meta_cache_delete(&state.cache_pool, &gone_key(id));
+    }
 }
 
 /// Whether Kitsu last answered that `id` is gone.
