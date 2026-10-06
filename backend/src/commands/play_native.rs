@@ -156,7 +156,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // Without a count, the titles are the only identity: a hit
         // named for another season or part is not this entry.
         let admitted = admitted_head(&head, entry)?;
-        return pick_without_count(client, &admitted, &needle, year_excluded_any).await;
+        return pick_without_count(client, &admitted, &needle, year_excluded_any, entry).await;
     };
 
     // Probe the surviving head; a failing probe removes the
@@ -231,7 +231,9 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // was probed, so stitching them costs nothing. Only with every
     // candidate heard — a dead probe may have been one of the parts.
     if !any_transport_failure {
-        if let Some(picked) = super::play_native_split::stitched(&probed_ok, expected, best_dist) {
+        if let Some(picked) =
+            super::play_native_split::stitched(&probed_ok, expected, best_dist, entry)
+        {
             return Ok(picked);
         }
     }
@@ -245,11 +247,17 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
             .iter()
             .enumerate()
             .filter(|(_, row)| rescuable(row, expected))
-            // Distance first, then the user's own words — the same
-            // dominance winner selection keeps — with provider order
-            // as the final tie (min_by_key keeps the first of
-            // equals).
-            .min_by_key(|(_, (h, _, d, _))| (*d, h.title.trim().to_lowercase() != needle))
+            // Distance first, then the user's own words and the
+            // entry's part — the dominance winner selection keeps —
+            // with provider order as the final tie (min_by_key keeps
+            // the first of equals).
+            .min_by_key(|(_, (h, _, d, _))| {
+                (
+                    *d,
+                    h.title.trim().to_lowercase() != needle,
+                    !entry.part_agrees(&h.title),
+                )
+            })
             .map(|(i, _)| i)
         {
             let (h, _, _, c) = &probed_ok[idx];

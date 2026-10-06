@@ -58,8 +58,10 @@ pub(super) fn strongest_dead(
 }
 
 /// The pick without a count signal: an exact title beats positional
-/// order, then a candidate whose own year matched Kitsu's beats the
-/// rest. When the year disproved part of the pool and no survivor
+/// order, then a candidate whose part agrees with the entry's
+/// ([`EntryTitles::part_agrees`]) beats one naming another part, and
+/// within each a candidate whose own year matched Kitsu's beats the
+/// rest — the order winner selection keeps. When the year disproved part of the pool and no survivor
 /// carries positive identity evidence, the pool is token-search
 /// garbage — reject it so the next alias gets its chance (the live
 /// Tai-Ari mispick: three decades-off hits excluded, an unknown-year
@@ -72,25 +74,33 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     head: &[(&BrowseHit, bool)],
     needle: &str,
     year_excluded_any: bool,
+    entry: EntryTitles<'_>,
 ) -> Result<PickedShow> {
     let exact = head
         .iter()
         .map(|(h, _)| *h)
         .filter(|h| h.title.trim().to_lowercase() == needle);
-    let confirmed = head.iter().filter(|(_, c)| *c).map(|(h, _)| *h);
-    let positional: Box<dyn Iterator<Item = &BrowseHit> + Send> = if year_excluded_any {
-        // No survivor carries positive identity and the year
-        // disproved part of the pool: token-search garbage, no
-        // positional fallback.
-        Box::new(std::iter::empty())
-    } else {
-        Box::new(head.iter().map(|(h, _)| *h))
+    // Below an exact title, a candidate whose part agrees with the
+    // entry's comes before one naming another part, as in winner
+    // selection; within each, a matched year before the provider's
+    // order. When the year disproved part of the pool, only a matched
+    // year vouches for a candidate: the rest is token-search garbage
+    // with no positional fallback.
+    let tier = move |agrees: bool, confirmed: bool| {
+        head.iter()
+            .filter(move |(h, c)| *c == confirmed && entry.part_agrees(&h.title) == agrees)
+            .map(|(h, _)| *h)
     };
+    let positional_ok = !year_excluded_any;
+    let positional = tier(true, true)
+        .chain(tier(true, false).filter(move |_| positional_ok))
+        .chain(tier(false, true))
+        .chain(tier(false, false).filter(move |_| positional_ok));
     // Preference order, deduplicated by walking: a candidate whose
     // listing answers 404 is a stale slug, not the pool's verdict —
     // the next eligible candidate may carry the live listing.
     let mut seen: Vec<&str> = Vec::new();
-    for chosen in exact.chain(confirmed).chain(positional) {
+    for chosen in exact.chain(positional) {
         if seen.contains(&chosen.slug.as_str()) {
             continue;
         }
