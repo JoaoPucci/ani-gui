@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::error::{AniError, Result};
-use crate::meta::anilist::MediaRef;
+use crate::meta::anilist_media::MediaRef;
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
 

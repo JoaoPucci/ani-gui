@@ -963,7 +963,7 @@ async fn anilist_banner_for(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Option<String> {
-    use crate::meta::anilist::{banner_for_media, MediaRef};
+    use crate::meta::anilist_media::{banner_for_media, MediaRef};
     let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await.ok()?;
     let media = MediaRef::preferring_mal(ids.mal, ids.anilist)?;
     banner_for_media(&state.meta_http, media, anilist_base)

@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use crate::app::AppState;
 use crate::cache::ttl::{ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
-use crate::meta::anilist::MediaRef;
+use crate::meta::anilist_media::MediaRef;
 use crate::meta::anilist_streaming_eps::streaming_eps_map_for_media;
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
