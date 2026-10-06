@@ -182,15 +182,18 @@ fn tasklist_shows(stdout: &str, pid: u32) -> bool {
         .any(|row| row.starts_with('"') && row.split("\",\"").nth(1) == Some(field.as_str()))
 }
 
-/// The processes `taskkill /T` reports taking down: every pid its
-/// report names, whatever the language it is written in — a line per
-/// process, naming it and the parent it was found under. The backend
-/// names itself as the root's parent, and is not part of the tree.
-fn pids_taken_down(stdout: &str, own: u32) -> Vec<u32> {
+/// The processes `taskkill /T` reports taking down, to be looked up
+/// until they are gone: every pid its report names, whatever the
+/// language it is written in — a line per process, naming it and the
+/// parent it was found under. Left out: the backend, which the report
+/// names as the root's parent and is not part of the tree; the root,
+/// whose own handle says when it has exited; and 0 and 4, the idle
+/// process and System, which never exit.
+fn pids_taken_down(stdout: &str, own: u32, root: u32) -> Vec<u32> {
     let mut pids: Vec<u32> = stdout
         .split(|c: char| !c.is_ascii_digit())
         .filter_map(|n| n.parse().ok())
-        .filter(|&p| p != own)
+        .filter(|&p| p != own && p != root && p != 0 && p != 4)
         .collect();
     pids.sort_unstable();
     pids.dedup();
@@ -218,7 +221,11 @@ pub(crate) fn kill_process_tree(pid: u32) -> Vec<u32> {
         return Vec::new();
     };
     if cfg!(windows) {
-        pids_taken_down(&String::from_utf8_lossy(&out.stdout), std::process::id())
+        pids_taken_down(
+            &String::from_utf8_lossy(&out.stdout),
+            std::process::id(),
+            pid,
+        )
     } else {
         Vec::new()
     }
