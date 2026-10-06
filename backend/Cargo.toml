@@ -98,6 +98,14 @@ fs4 = { version = "1.1.0", default-features = false, features = ["sync"] }
 # AniList GraphQL — added in M3, listed here so cargo-deny audits the dep tree
 # cynic = { version = "3.10", features = ["http-reqwest"] }
 
+# Windows job objects: a downloader's yt-dlp and ffmpeg are put in
+# one as they start, so the guard can find and take down what they
+# start even after they have exited, and the job's kill-on-close takes
+# them down with a backend that dies without running its guards. A safe
+# wrapper, so the crate's ban on unsafe code holds.
+[target.'cfg(windows)'.dependencies]
+win32job = "2.0"
+
 [dev-dependencies]
 proptest = "1.5"
 wiremock = "0.6"
