@@ -94,9 +94,16 @@ function kitsuEpisodes(count: number) {
 	}));
 }
 
-function useShowHandlers() {
+function useShowHandlers(
+	opts: {
+		autoSkipOp?: boolean;
+		skips?: { skip_type: string; start_time: number; end_time: number }[];
+	} = {}
+) {
 	server.use(
-		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/settings`, () =>
+			HttpResponse.json({ ...appConfig(), auto_skip_op: opts.autoSkipOp === true })
+		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
 		),
@@ -116,7 +123,7 @@ function useShowHandlers() {
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json([]))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(opts.skips ?? []))
 	);
 }
 
@@ -130,8 +137,11 @@ const inert = (el: Element | null) => el?.closest('[inert]') != null;
 
 /** The page's video, with `play` counted. Starting playback the way
  *  Chromium does fires the element's `play` and `playing`. */
-async function openEpisode(kind: 'hls' | 'mp4') {
-	useShowHandlers();
+async function openEpisode(
+	kind: 'hls' | 'mp4',
+	handlers: Parameters<typeof useShowHandlers>[0] = {}
+) {
+	useShowHandlers(handlers);
 	setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind });
 	app = mount(PlayPage, { target });
 	await until(() => playerVideoInSlot(), 'the video in its slot');
@@ -195,5 +205,29 @@ describe('play route — a resumed episode opens at its point', () => {
 		expect(frame().classList.contains('player-resuming')).toBe(false);
 		expect(inert(playButton())).toBe(false);
 		expect(video.autoplay).toBe(true);
+	});
+
+	it('a point inside an auto-skipped opening is not skipped from under the hold', async () => {
+		// Auto-skip seeks past the opening as soon as the playhead is in
+		// it. During the hold that seek would move the playhead off the
+		// point, and the hold would never see its seek land; the skip
+		// waits for the reveal instead.
+		savePosition(KITSU_ID, 1, 612.5, 1420);
+		const { video, play } = await openEpisode('hls', {
+			autoSkipOp: true,
+			skips: [{ skip_type: 'op', start_time: 600, end_time: 690 }]
+		});
+		await until(() => busy(), 'the frame to hold');
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+		video.dispatchEvent(new Event('durationchange'));
+		expect(video.currentTime).toBe(612.5);
+		video.dispatchEvent(new Event('timeupdate'));
+		await new Promise((r) => setTimeout(r, 100));
+		expect(video.currentTime).toBe(612.5);
+		video.dispatchEvent(new Event('seeked'));
+		expect(play).toHaveBeenCalledTimes(1);
+		await until(() => !busy(), 'the frame to reveal');
+		await until(() => video.currentTime > 690, 'the opening to be skipped after the reveal');
 	});
 });

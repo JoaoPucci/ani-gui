@@ -616,7 +616,10 @@ describe('a resume point holds the picture until the seek lands', () => {
 		expect(pause).not.toHaveBeenCalled();
 	});
 
-	it('a seek or a length that never arrives reveals after fifteen seconds, playing from where it is', () => {
+	it('a length that never arrives reveals after fifteen seconds, and the point outlives it', () => {
+		// The bound only stops hiding the picture. Where the episode
+		// was left is not given up: nothing the stream plays writes over
+		// it, and a length that does arrive still seeks there.
 		vi.useFakeTimers();
 		savePosition('show-a', 6, 600, Number.NaN, positions);
 		armHolding('show-a', 6);
@@ -626,13 +629,36 @@ describe('a resume point holds the picture until the seek lands', () => {
 		vi.advanceTimersByTime(1);
 		expect(holding()).toBe(false);
 		expect(play).toHaveBeenCalledTimes(1);
-		// The resume is given up: a length arriving now moves nothing,
-		// and the stream's own position is kept from here.
 		video.currentTime = 40;
+		video.dispatchEvent(new Event('pause'));
+		expect(readPosition('show-a', 6, positions)).toBe(600);
 		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
 		video.dispatchEvent(new Event('durationchange'));
-		expect(video.currentTime).toBe(40);
-		video.dispatchEvent(new Event('pause'));
-		expect(readPosition('show-a', 6, positions)).toBe(40);
+		expect(video.currentTime).toBe(600);
+	});
+
+	it('metadata that never arrives reveals after fifteen seconds, and leaving keeps the point', () => {
+		vi.useFakeTimers();
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		vi.advanceTimersByTime(15_000);
+		expect(holding()).toBe(false);
+		scope.flush();
+		expect(readPosition('show-a', 6, positions)).toBe(600);
+	});
+
+	it('the bound starts over when the seek is issued', () => {
+		// Opening and landing are each waits on one fragment: the first
+		// brings the metadata, the one at the point lands the seek.
+		vi.useFakeTimers();
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		vi.advanceTimersByTime(10_000);
+		metadataWith(1420);
+		vi.advanceTimersByTime(14_999);
+		expect(holding()).toBe(true);
+		vi.advanceTimersByTime(1);
+		expect(holding()).toBe(false);
+		expect(play).toHaveBeenCalledTimes(1);
 	});
 });
