@@ -150,6 +150,12 @@ starting it, and delete it when you find it done.
   the live site before the rule can land. Repro: entry "Show", count
   12, a pool of "Show 2" (12) alone, picks "Show 2".
 
+  The same root leaves a broad listing that ends on a bare number
+  uncut: a bare number is no marker, so it stays in the listing's stem,
+  and a sibling naming the next season by a marker does not start with
+  that stem. Repro: entry "Show 2", count 12, a pool of "Show 2" (24),
+  "Show" (12) and "Show Season 3" (12), picks "Show".
+
 - **A broad listing completed by a sibling in another script is never
   cut.** The spanning cut finds the sibling that completes a broad
   listing by the broad listing's stem, so a sibling written in another
@@ -159,7 +165,7 @@ starting it, and delete it when you find it done.
   way to tell that two titles in different scripts name one show, which
   the title rules do not have; the provider's catalogue is in Latin
   script, so the shape has not been seen in a real pool. A dedicated
-  listing in the other script is unaffected — it still wins on count.
+  listing in the other script competes on count like any exact fit.
   Repro: entry ["怪獣８号"], count 12, a pool of "怪獣８号" (24), "Kaiju
   No. 8 Season 2" (12) and "Kaiju No. 8 Recap" (12), picks the recap.
 
