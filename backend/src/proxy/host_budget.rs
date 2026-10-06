@@ -322,6 +322,14 @@ impl HostBudget {
         });
     }
 
+    /// The player made a request of `host` that is not a segment of a
+    /// stream — a playlist, a key, an init segment, an mp4 range: it
+    /// counts toward what the player needs from the host at the rate
+    /// such requests arrive, as it counts toward the turns it takes.
+    pub(crate) fn note_player_request(&self, host: &str) {
+        self.with_state(host, |state| state.demand.note_other(Instant::now()));
+    }
+
     /// What the player's streams at `host` need, as requests a second.
     #[cfg(test)]
     pub(crate) fn player_demand(&self, host: &str) -> f64 {

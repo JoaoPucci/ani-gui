@@ -145,7 +145,10 @@ pub(crate) async fn send_paced_as(
     for _ in 0..=REDIRECT_HOP_CAP {
         let host = host_key(&url);
         match admission {
-            Admission::Player => budget.admit(&host).await,
+            Admission::Player => {
+                budget.note_player_request(&host);
+                budget.admit(&host).await;
+            }
             Admission::PlayerSegment { stream, segment } => {
                 budget.note_player_segment(&host, stream, segment);
                 budget.admit(&host).await;
