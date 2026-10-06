@@ -176,6 +176,10 @@ async fn a_windows_tool_that_exits_leaving_a_helper_has_the_helper_taken_down() 
     let mut guard = TreeKillChild::new(child);
     guard.child_mut().wait().await.expect("cmd exits");
     assert!(
+        guard.tree_kills_at_once(),
+        "the tool is in its inner job, so the kill closes it"
+    );
+    assert!(
         guard.tree_running(),
         "the helper is still running in the tree"
     );
@@ -268,4 +272,26 @@ fn a_windows_kill_without_any_job_reaches_the_tree_through_the_root() {
     assert!(plan.tree_kill_root);
     assert!(!plan.close_inner);
     assert!(plan.each_member.is_empty());
+}
+
+proptest::proptest! {
+    // The Windows teardown's decision, for any members, root and job
+    // state: the inner job is closed exactly while it is open; members
+    // are killed one by one only without it, and then every listed
+    // one; the root gets its tree kill exactly while it is listed, or
+    // when there is no job to list it.
+    #[test]
+    fn the_windows_kill_plan_holds_for_any_tree(
+        members in proptest::option::of(proptest::collection::vec(1u32..50, 0..8)),
+        root in 1u32..50,
+        inner_open in proptest::bool::ANY,
+    ) {
+        let plan = tree::kill_plan(members.as_deref(), root, inner_open);
+        proptest::prop_assert_eq!(plan.close_inner, inner_open);
+        let want_each = if inner_open { Vec::new() } else { members.clone().unwrap_or_default() };
+        proptest::prop_assert_eq!(&plan.each_member, &want_each);
+        let listed = members.as_ref().is_none_or(|m| m.contains(&root));
+        proptest::prop_assert_eq!(plan.tree_kill_root, listed);
+        proptest::prop_assert_eq!(tree::kills_root_tree(members.as_deref(), root), listed);
+    }
 }

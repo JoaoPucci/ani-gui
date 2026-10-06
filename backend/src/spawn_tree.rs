@@ -75,6 +75,11 @@ impl super::Tree for JobTree {
         !self.members().is_empty()
     }
 
+    #[cfg(test)]
+    fn kills_at_once(&self) -> bool {
+        self.inner.is_some()
+    }
+
     fn kill(&mut self) {
         let members = self.members();
         let listed = self.outer.as_ref().map(|_| members.as_slice());
