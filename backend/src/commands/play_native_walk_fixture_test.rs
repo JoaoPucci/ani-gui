@@ -1080,3 +1080,41 @@ async fn the_whole_title_decides_the_entry_s_own_listing() {
         );
     }
 }
+
+/// The sibling that completes a broad listing is read by the same
+/// reader as every other title: "II Part 2" right after the stem is a
+/// season 2 and a part 2, never a lone part 2 that the broad listing's
+/// own part could set aside.
+#[tokio::test]
+async fn the_completing_sibling_is_read_by_the_one_reader() {
+    let site = pool_of(
+        &["Show 2nd Season"],
+        Some(12),
+        2020,
+        "Show 2nd Season",
+        &[
+            ("w", "Show Second Cour", 24),
+            ("a", "Show 3", 12),
+            ("b", "Show II Part 2", 12),
+        ],
+    );
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!((picked.hit.slug.as_str(), picked.episodes.len()), ("w", 12));
+    let mut site = pool_of(
+        &["Show 2", "Show Season 3"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[
+            ("w", "Show Season 3 Part 2", 24),
+            ("a", "Show", 12),
+            ("b", "Show II Part 2", 12),
+        ],
+    );
+    // The walk searches the alias next with the same answer.
+    let pool = site.doc.searches["Show 2"].clone();
+    site.doc.searches.insert("Show Season 3".to_string(), pool);
+    if let Ok(p) = walk_over(site).await {
+        panic!("the completing sibling was picked: {}", p.hit.slug);
+    }
+}
