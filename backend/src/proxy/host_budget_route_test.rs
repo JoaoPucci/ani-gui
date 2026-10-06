@@ -693,3 +693,91 @@ async fn a_rendition_playlist_names_its_segments_by_the_stream_the_master_gave_i
         .expect("a segment");
     assert!(segment.contains("&r=audio&d=5000"), "{segment}");
 }
+
+/// A player's request that buys no playback the budget can read — a
+/// key, an init segment, a segment whose URI names no kind — still
+/// takes a token its turns count, so it counts toward what the player
+/// needs. A download's through the proxy counts toward nothing.
+#[tokio::test]
+async fn a_players_other_request_notes_its_need_and_a_downloads_does_not() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/key.bin"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![1u8; 16]))
+        .mount(&server)
+        .await;
+    let host = host_budget::host_key(&url::Url::parse(&server.uri()).expect("server url"));
+    let key = format!("{}/key.bin", server.uri());
+
+    let player_budget = host_budget::HostBudget::fresh();
+    let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", player_budget.clone());
+    assert_eq!(
+        get_drained(router, &seg_uri(&secret, id, &key)).await,
+        StatusCode::OK
+    );
+    assert!(
+        player_budget.player_demand(&host) > 0.0,
+        "the key counts toward the player's need"
+    );
+
+    let download_budget = host_budget::HostBudget::fresh();
+    let (router, _sessions, id, secret) =
+        background_proxy("https://cdn.example/master.m3u8", download_budget.clone());
+    assert_eq!(
+        get_drained(router, &seg_uri(&secret, id, &key)).await,
+        StatusCode::OK
+    );
+    assert_eq!(download_budget.player_demand(&host), 0.0);
+}
+
+/// A player's playlist fetch counts toward its need too: a live
+/// playlist is fetched again as often as it gains a segment.
+#[tokio::test]
+async fn a_players_playlist_fetch_notes_its_need() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/v/index.m3u8"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("#EXTM3U\n#EXT-X-TARGETDURATION:5\n#EXTINF:5.0,\nseg.ts\n"),
+        )
+        .mount(&server)
+        .await;
+    let host = host_budget::host_key(&url::Url::parse(&server.uri()).expect("server url"));
+    let budget = host_budget::HostBudget::fresh();
+    let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", budget.clone());
+    let playlist = format!("{}/v/index.m3u8", server.uri());
+    let uri = format!("{}&k=pl&s=main", seg_uri(&secret, id, &playlist));
+    assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
+    assert!(budget.player_demand(&host) > 0.0);
+}
+
+/// A key the CDN redirects to an edge is noted at the edge, the host
+/// that counts the request that took the token.
+#[tokio::test]
+async fn a_redirected_key_notes_the_players_need_at_the_host_it_lands_on() {
+    let origin = MockServer::start().await;
+    let edge = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/key.bin"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/key.bin", edge.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/key.bin"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![1u8; 16]))
+        .mount(&edge)
+        .await;
+    let budget = host_budget::HostBudget::fresh();
+    let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", budget.clone());
+    let key = format!("{}/key.bin", origin.uri());
+    assert_eq!(
+        get_drained(router, &seg_uri(&secret, id, &key)).await,
+        StatusCode::OK
+    );
+    let edge_host = host_budget::host_key(&url::Url::parse(&edge.uri()).expect("edge url"));
+    assert!(budget.player_demand(&edge_host) > 0.0, "the edge knows");
+}
