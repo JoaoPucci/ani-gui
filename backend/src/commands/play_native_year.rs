@@ -4,8 +4,6 @@
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, Provider};
 
-use super::play_native::MAX_PROBED_CANDIDATES;
-
 /// The considered head of `hits`, narrowed by Kitsu's year when it
 /// is known: each candidate's detail page names its premiere year,
 /// and a known year more than one off Kitsu's excludes the
@@ -25,7 +23,9 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
     hits: &'a [BrowseHit],
     year: Option<u32>,
 ) -> Result<(Vec<(&'a BrowseHit, bool)>, bool)> {
-    let head = hits.iter().take(MAX_PROBED_CANDIDATES);
+    // The caller bounds the head (`probe_head`); every hit given is
+    // one the pick means to consider.
+    let head = hits.iter();
     let Some(year) = year else {
         return Ok((head.map(|h| (h, false)).collect(), false));
     };

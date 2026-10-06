@@ -676,7 +676,8 @@ async fn a_spinoff_of_the_entry_s_length_does_not_stop_a_spanning_cut() {
 /// a number, nor a recap of the spanning listing's own season.
 #[tokio::test]
 async fn neither_a_numbered_spinoff_nor_a_recap_completes_a_spanning_listing() {
-    let cases: [(&str, [(&str, &str, u32); 2]); 2] = [
+    type Pool<'a> = [(&'a str, &'a str, u32); 2];
+    let cases: [(&str, Pool<'_>); 2] = [
         (
             "Show",
             [

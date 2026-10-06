@@ -19,7 +19,7 @@ use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_title_verdict::{admitted_head, rejection, rescuable};
+use super::play_native_title_verdict::{probe_head, rejection, rescuable};
 use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
@@ -63,7 +63,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// Pick the show a query meant from browse `hits`, using Kitsu's
 /// `expected` episode count and premiere `year` when known.
 ///
-/// - Considers at most [`MAX_PROBED_CANDIDATES`] hits.
+/// - Considers at most [`MAX_PROBED_CANDIDATES`] hits the entry's
+///   titles admit — plus, with a count, the refused ones among the
+///   first [`MAX_PROBED_CANDIDATES`] as evidence about the pool.
 /// - With `year = Some(y)`: candidates whose detail page names a
 ///   premiere year more than one off `y` are excluded before any
 ///   scoring — the identity signal that separates cour and
@@ -147,16 +149,16 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // the pick would use it: alone, rescued as airing, or heading a
     // stitched chain.
     hits.retain(|h| !precedes_entry(&h.title, entry_titles));
+    // The bounded head, by the entry's titles (see
+    // play_native_title_verdict::probe_head).
+    let hits = probe_head(hits, expected.is_some(), entry)?;
     let (head, year_excluded_any) = year_filtered(client, &hits, year).await?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
 
     let Some(expected) = expected else {
-        // Without a count, the titles are the only identity: a hit
-        // named for another season or part is not this entry.
-        let admitted = admitted_head(&head, entry)?;
-        return pick_without_count(client, &admitted, &needle, year_excluded_any, entry).await;
+        return pick_without_count(client, &head, &needle, year_excluded_any, entry).await;
     };
 
     // Probe the surviving head; a failing probe removes the
