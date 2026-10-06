@@ -86,7 +86,50 @@ fn a_bare_number_is_not_an_ordinal_beside_a_marker() {
     assert_eq!(named_ordinals("Mob Psycho 100"), BTreeSet::new());
 }
 
+#[test]
+fn a_bare_number_a_title_ends_on_is_held_to_what_the_entry_names() {
+    // A sequel is numbered with a bare number as often as with a
+    // marker: Overlord's titles name no 2.
+    let e = entry(&["Overlord", "オーバーロード"]);
+    assert!(!e.admits("Overlord: Ple Ple Pleiades 2"));
+    assert!(e.admits("Overlord: Ple Ple Pleiades"));
+    let e = entry(&["Show"]);
+    assert!(!e.admits("Show 2"));
+    assert!(!e.admits("Show 2 Part 1"), "the number before the markers");
+    assert!(!e.admits("ショー２"), "a number glued to a Japanese title");
+    assert!(e.admits("Show 1"), "a first never disqualifies");
+    assert!(entry(&["Show 2"]).admits("Show 2"));
+    assert!(entry(&["ショー２"]).admits("Show 2"));
+    // A number the entry's titles name is admitted; three digits name
+    // no sequel.
+    assert!(entry(&["Kaijuu 8-gou", "Kaiju No. 8"]).admits("Kaiju No. 8"));
+    assert!(entry(&["Mob Psycho 100"]).admits("Mob Psycho 100"));
+    assert!(entry(&["Mob Psycho"]).admits("Mob Psycho 100"));
+}
+
 proptest::proptest! {
+    /// A title of plain words followed by a bare number is admitted by
+    /// an entry of plain words exactly when the number is a first or
+    /// has three digits — the entry names nothing else.
+    #[test]
+    fn a_bare_number_the_entry_never_names_is_refused(
+        a in "[A-Za-z]{1,8}( [A-Za-z]{1,8}){0,3}",
+        b in "[A-Za-z]{1,8}( [A-Za-z]{1,8}){0,3}",
+        n in 0u32..1000,
+    ) {
+        proptest::prop_assume!(trailing_markers(&a).is_empty() && trailing_markers(&b).is_empty());
+        proptest::prop_assume!(named_ordinals(&a).is_empty());
+        let candidate = format!("{b} {n}");
+        // "Show Season" and a number make a marker, read by the rule
+        // above; only a bare number is under test.
+        proptest::prop_assume!(trailing_markers(&candidate).is_empty());
+        proptest::prop_assert_eq!(
+            EntryTitles::bare(&a).admits(&candidate),
+            n == 1 || n >= 100,
+            "{:?} for {:?}", candidate, a
+        );
+    }
+
     /// Over titles built from plain words and markers in any order,
     /// an entry admits its own title, whatever the markers say — no
     /// rule can refuse the very title the entry goes by.
