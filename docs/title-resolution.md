@@ -94,7 +94,7 @@ Without a count, a pool from which the title rule dropped a hit it refuses is ne
 
 | Input | Required of W | Required of the completing sibling L |
 |---|---|---|
-| Titles | admitted | right after W's stem, L's title names a division of its own (a marker pair, a spelled ordinal or a Japanese division — "Part 2", "2nd Season", "Second Half War", "第2期") that W's title does not end on, with an ordinal above the entry's part |
+| Titles | admitted | right after W's stem, L's title names a division of its own (a marker pair, a spelled ordinal or a Japanese division — "Part 2", "2nd Season", "Second Half War", "第2期" apart from the stem or glued to it) that W's title does not end on, with an ordinal above the entry's part |
 | Count | more than E | exactly W's count minus E |
 | Year | equal to Kitsu's | — |
 
