@@ -95,7 +95,8 @@ struct Span {
     cut: bool,
 }
 
-/// Scores the pool as `span` decided: the later siblings out; with an
+/// Scores the pool as `span` decided: the later siblings and W's
+/// first half out; with an
 /// own listing that fits, every other exact fit one behind it; with a
 /// cut, W cut to the entry's episodes and every other exact fit one
 /// behind it — an unrelated title or a spinoff sharing the franchise
@@ -141,18 +142,24 @@ fn spanning(
             return None;
         }
         let own = |k: usize| entry.names_own_part(&probed[k].0.title, &h.title);
+        let head = entry.reads_as_entry(&h.title);
+        let own_fits: Vec<usize> = (0..probed.len())
+            .filter(|&k| k != m && admitted[k] && probed[k].2 == 0 && own(k))
+            .collect();
+        // A sibling completing W is never an own listing that fits
+        // (an O). Beside a W the entry does not head, one that is the
+        // entry's own by title is not one either, whatever its count;
+        // beside a W the entry heads, it is the next entry, the kind
+        // set aside ("Show Part 2" beside "Show Season 2" for "Show 2").
         let later: Vec<usize> = (0..probed.len())
             .filter(|&j| {
                 j != m
                     && counts[j] == counts[m] - expected
                     && entry.names_later_part(&probed[j].0.title, &h.title)
-                    && !own(j)
+                    && !own_fits.contains(&j)
+                    && (head || !own(j))
             })
             .collect();
-        let own_fits: Vec<usize> = (0..probed.len())
-            .filter(|&k| k != m && admitted[k] && probed[k].2 == 0 && own(k))
-            .collect();
-        let head = entry.reads_as_entry(&h.title);
         let firsts: Vec<usize> = (0..probed.len())
             .filter(|&k| !head && k != m && entry.first_part_of(&probed[k].0.title, &h.title))
             .collect();
