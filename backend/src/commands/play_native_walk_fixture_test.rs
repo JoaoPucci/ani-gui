@@ -811,6 +811,83 @@ async fn a_listing_named_for_the_entry_s_own_season_stops_a_cut() {
     }
 }
 
+/// A sequel numbered with a bare number is held to what the entry's
+/// titles name, as one numbered by a marker is: "Show 2" is not
+/// "Show", alone in a pool at the entry's count or listed first beside
+/// it.
+#[tokio::test]
+async fn a_sequel_numbered_with_a_bare_number_is_not_the_first_season() {
+    let rows = [("show-2-1", "Show 2", 12)];
+    let site = pool_of(&["Show"], Some(12), 2020, "Show", &rows);
+    match walk_over(site).await {
+        Err(e) => assert!(!e.clean_miss, "a refusal by title persisted"),
+        Ok(p) => panic!("picked {}", p.hit.slug),
+    }
+    let rows = [("show-2-1", "Show 2", 12), ("show-2", "Show", 12)];
+    let site = pool_of(&["Show: Arc"], Some(12), 2020, "Show: Arc", &rows);
+    let picked = walk_over(site).await.expect("the first season");
+    assert_eq!(picked.hit.slug, "show-2");
+}
+
+/// A broad listing ending on a bare number ("Show 2", "ショー２") is
+/// read past its stem without the number by a sibling that does not
+/// carry it, the number one of the broad listing's own divisions: a
+/// sibling naming the next season by a marker completes it, and one
+/// naming the broad listing's own season by a marker is the entry's
+/// own. Each pool is `(entry titles, rows, the listing that must
+/// play, its length)`.
+#[tokio::test]
+async fn a_broad_listing_ending_on_a_bare_number_is_read_past_it() {
+    type Case<'a> = (&'a [&'a str], &'a [(&'a str, &'a str, u32)], &'a str, usize);
+    let cases: [Case<'_>; 4] = [
+        (
+            &["Show 2"],
+            &[
+                ("w", "Show 2", 24),
+                ("s1", "Show", 12),
+                ("l", "Show Season 3", 12),
+            ],
+            "w",
+            12,
+        ),
+        (
+            &["Show 2"],
+            &[("w", "Show 2", 24), ("l", "Show 2nd Season Part 2", 12)],
+            "w",
+            12,
+        ),
+        (
+            &["ショー２"],
+            &[
+                ("w", "ショー２", 24),
+                ("s1", "ショー", 12),
+                ("l", "ショー 第3期", 12),
+            ],
+            "w",
+            12,
+        ),
+        (
+            &["Show 2"],
+            &[
+                ("w", "Show 2", 24),
+                ("own", "Show 2nd Season", 12),
+                ("l", "Show Season 3", 12),
+            ],
+            "own",
+            12,
+        ),
+    ];
+    for (titles, rows, want, len) in cases {
+        let site = pool_of(titles, Some(12), 2020, titles[0], rows);
+        let picked = walk_over(site).await.expect("picked");
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            (want, len),
+            "{titles:?} {rows:?}"
+        );
+    }
+}
+
 /// Japanese writes a division straight after the title as often as
 /// after a space: "ショー第2期" completes a span beside "ショー" as
 /// "ショー 第2期" does.
