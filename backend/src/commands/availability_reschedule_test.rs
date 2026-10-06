@@ -22,6 +22,7 @@ fn body(available: bool) -> String {
         episode_count_approximate: false,
         gate_refused: false,
         provider: None,
+        reading: crate::commands::availability::ROW_READING,
     })
     .expect("serializes")
 }
@@ -226,6 +227,7 @@ fn positive_with(count: u32) -> String {
         episode_count_approximate: false,
         gate_refused: false,
         provider: None,
+        reading: crate::commands::availability::ROW_READING,
     })
     .expect("serializes")
 }

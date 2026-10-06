@@ -31,6 +31,7 @@ fn positive_row(provider: ProviderId, cap: Option<u32>) -> AvailabilityResponse 
         episode_count_approximate: false,
         gate_refused: false,
         provider: Some(provider),
+        reading: ROW_READING,
     }
 }
 

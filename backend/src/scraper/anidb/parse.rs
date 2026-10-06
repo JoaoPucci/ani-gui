@@ -34,10 +34,14 @@ pub fn parse_detail_year(html: &str) -> Option<u32> {
 /// deliberately narrow and the unrecognized direction fails loud:
 /// a marker drift breaks no-result searches visibly and
 /// transiently, while a page wrongly read as absence is cached for
-/// the negative TTL.
+/// the negative TTL. The grid is the results grid's own attribute,
+/// `class="grid"`, and not any class list that opens with `grid`:
+/// a utility-class layout (`class="grid grid-cols-…"`) is markup
+/// nearly every site carries, and the unrelated home page anidb.app
+/// once redirected its search to passed on it.
 fn shows_browse_shape(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
-    lower.contains("no results") || lower.contains("class=\"grid")
+    lower.contains("no results") || lower.contains("class=\"grid\"")
 }
 
 /// Extract browse hits from the search page HTML. Titles are

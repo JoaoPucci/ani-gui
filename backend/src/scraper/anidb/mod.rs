@@ -79,9 +79,16 @@ impl<F: Fetch> AnidbClient<F> {
     }
 
     /// Fetch `url` and hand back content, refusing challenge pages
-    /// and non-success statuses as typed upstream errors.
+    /// and non-success statuses as typed upstream errors, and an
+    /// answer to a request on the provider's origin that another
+    /// origin served ([`answered_elsewhere`]) as a parse failure.
     async fn content(&self, url: &str) -> Result<String> {
         let resp = self.fetch.get(url).await?;
+        if answered_elsewhere(&self.base, url, &resp.url) {
+            return Err(AniError::ParseFailed {
+                detail: "anidb: a request to its origin was answered from another origin".into(),
+            });
+        }
         if is_cloudflare_interstitial(&resp.body) {
             let status = if resp.status >= 400 { resp.status } else { 403 };
             return Err(AniError::Upstream { status });
@@ -93,6 +100,25 @@ impl<F: Fetch> AnidbClient<F> {
         }
         Ok(resp.body)
     }
+}
+
+/// Whether a request to the provider's origin was answered from
+/// another one. The transport follows redirects and reports the URL
+/// the transfer ended on; when anidb.app began redirecting its search
+/// to an unrelated site, that site's home page was parsed as an empty
+/// search and the walk persisted it as anidb's clean miss. A page
+/// another origin served says nothing about anidb's catalogue,
+/// whatever it contains, so every parser is spared from having to
+/// tell. Requests the provider sends off its origin by design — the
+/// embed page, the playlist — are not held to it. A landing URL that
+/// does not parse cannot be shown to be the origin, and counts as
+/// elsewhere.
+fn answered_elsewhere(base: &str, requested: &str, landed: &str) -> bool {
+    let origin = |u: &str| url::Url::parse(u).ok().map(|u| u.origin());
+    let Some(base) = origin(base) else {
+        return false;
+    };
+    origin(requested).as_ref() == Some(&base) && origin(landed).as_ref() != Some(&base)
 }
 
 #[async_trait::async_trait]

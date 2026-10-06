@@ -615,6 +615,7 @@ pub(crate) mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: crate::commands::availability::ROW_READING,
             },
         );
         let args = PlayArgs {
@@ -1544,6 +1545,7 @@ pub(crate) mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: Some(crate::scraper::provider::ProviderId::Hianime),
+                reading: crate::commands::availability::ROW_READING,
             },
         );
         seed_play_cache_from(

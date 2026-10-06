@@ -16,6 +16,7 @@ fn negative_row(provider: Option<crate::scraper::provider::ProviderId>) -> Avail
         episode_count_approximate: false,
         gate_refused: false,
         provider,
+        reading: ROW_READING,
     }
 }
 

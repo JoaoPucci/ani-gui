@@ -320,6 +320,7 @@ fn refresh_verdict() -> crate::commands::availability::AvailabilityResponse {
         episode_count_approximate: false,
         gate_refused: false,
         provider: Some(crate::scraper::provider::ProviderId::Anidb),
+        reading: crate::commands::availability::ROW_READING,
     }
 }
 

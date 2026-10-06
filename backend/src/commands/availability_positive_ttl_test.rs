@@ -20,6 +20,7 @@ fn positive(count: u32) -> AvailabilityResponse {
         episode_count_approximate: false,
         gate_refused: false,
         provider: None,
+        reading: ROW_READING,
     }
 }
 
@@ -172,6 +173,7 @@ fn negative() -> AvailabilityResponse {
         episode_count_approximate: false,
         gate_refused: false,
         provider: None,
+        reading: ROW_READING,
     }
 }
 

@@ -153,7 +153,30 @@ pub struct AvailabilityResponse {
     /// field existed.
     #[serde(default)]
     pub provider: Option<crate::scraper::provider::ProviderId>,
+    /// The reading of the provider's pages the row was written under
+    /// ([`ROW_READING`]). Rows from before the field existed read as
+    /// 0. The read rule holds an anidb negative to it
+    /// ([`negative_row_is_backed`]).
+    #[serde(default)]
+    pub reading: u32,
 }
+
+/// The reading anidb's negatives must have been written under to be
+/// served. Before it, anidb.app's search began redirecting to an
+/// unrelated site, the transport followed, and that site's home page
+/// was read as an empty search: a clean miss, persisted as anidb's
+/// negative. Such a row is byte-for-byte a genuine miss, so no anidb
+/// negative written before the guard is served; the next look probes
+/// again and writes a row this reading stands behind. A key bump would
+/// have done the same by re-probing every row, positives and the
+/// fallback's negatives included, none of which that reading wrote.
+pub(crate) const ANIDB_ORIGIN_GUARD_READING: u32 = 1;
+
+/// The reading rows are written under now. 1: anidb's client refuses
+/// an answer another origin served, and a zero-hit browse page must
+/// carry the results grid's own `class="grid"`
+/// ([`ANIDB_ORIGIN_GUARD_READING`]).
+pub(crate) const ROW_READING: u32 = ANIDB_ORIGIN_GUARD_READING;
 
 /// Whether a cached response may be served as-is, or has to re-probe.
 ///
@@ -196,7 +219,10 @@ fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool 
 /// the fallback's row yield to the trial. Otherwise the row is not
 /// served and the probe runs again. An unattributed negative counts
 /// as the primary's; one naming a provider the state no longer lists
-/// has nobody to stand behind it.
+/// has nobody to stand behind it. And an anidb negative written
+/// before [`ANIDB_ORIGIN_GUARD_READING`] has nothing to stand behind:
+/// the reading that wrote it took another site's page for anidb's
+/// answer.
 fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bool {
     let order = &state.provider_order;
     let Some(provider) = parsed.provider.or_else(|| order.first().copied()) else {
@@ -205,6 +231,11 @@ fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bo
     let Some(position) = order.iter().position(|p| *p == provider) else {
         return false;
     };
+    if provider == crate::scraper::provider::ProviderId::Anidb
+        && parsed.reading < ANIDB_ORIGIN_GUARD_READING
+    {
+        return false;
+    }
     let gate =
         |p: &crate::scraper::provider::ProviderId| crate::commands::providers::gate_of(state, *p);
     gate(&provider).is_recovered() && order[..position].iter().all(|p| gate(p).is_refusing())
@@ -426,6 +457,7 @@ pub async fn stamp_after_native(
                             episode_count_approximate: false,
                             gate_refused: false,
                             provider: verdict.provider,
+                            reading: ROW_READING,
                         },
                     );
                 }
@@ -805,6 +837,7 @@ pub(crate) async fn check_availability_with_base(
                 episode_count_approximate,
                 gate_refused,
                 provider,
+                reading: ROW_READING,
             });
         };
         // A verdict is measured against the row as it stands now,
@@ -824,6 +857,7 @@ pub(crate) async fn check_availability_with_base(
                 episode_count_approximate,
                 gate_refused,
                 provider,
+                reading: ROW_READING,
             });
         }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
@@ -842,6 +876,7 @@ pub(crate) async fn check_availability_with_base(
                 // Cached: a cache hit must still say whose catalogue
                 // carries the show.
                 provider,
+                reading: ROW_READING,
             },
         );
     }
@@ -853,6 +888,7 @@ pub(crate) async fn check_availability_with_base(
         episode_count_approximate,
         gate_refused,
         provider,
+        reading: ROW_READING,
     })
 }
 
@@ -988,6 +1024,7 @@ pub fn write_cache(
             episode_count_approximate: false,
             gate_refused: false,
             provider,
+            reading: ROW_READING,
         },
     );
 }
@@ -1389,6 +1426,7 @@ mod tests {
             gate_refused: false,
             provider: None,
             extra_episodes: Vec::new(),
+            reading: ROW_READING,
         });
         assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
         let other: Result<AvailabilityResponse> = Err(crate::error::AniError::Network);
@@ -1420,6 +1458,7 @@ mod tests {
             gate_refused: false,
             provider: None,
             extra_episodes: vec!["1061.5".into()],
+            reading: ROW_READING,
         };
         let json = serde_json::to_string(&r).expect("serialize");
         let back: AvailabilityResponse = serde_json::from_str(&json).expect("deserialize");
@@ -2795,6 +2834,7 @@ mod tests {
                         episode_count_approximate: false,
                         gate_refused: false,
                         provider,
+                        reading: ROW_READING,
                     };
                     let anidb_refusing = anidb_broken || anidb_paused;
                     let hianime_refusing = hianime_broken || hianime_paused;
@@ -2823,6 +2863,7 @@ mod tests {
             episode_count_approximate: false,
             gate_refused: false,
             provider,
+            reading: ROW_READING,
         };
         write_cache_full(
             &state,
@@ -3568,6 +3609,7 @@ mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
         let resp = batch_cached(
@@ -3599,6 +3641,7 @@ mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
         // No row in the cache → batch_cached returns an empty map
@@ -3739,6 +3782,7 @@ mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
         write_cache_full(
@@ -3753,6 +3797,7 @@ mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
         // Cached as unavailable — no playable count to surface.
@@ -3768,6 +3813,7 @@ mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
         let resp = batch_cached(
@@ -3829,6 +3875,7 @@ mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
 
@@ -3922,6 +3969,7 @@ mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
 
@@ -3999,6 +4047,7 @@ mod tests {
                 episode_count_approximate: false,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
         drop(guard);
@@ -4071,6 +4120,7 @@ mod tests {
             episode_count_approximate: false,
             gate_refused: false,
             provider: None,
+            reading: ROW_READING,
         };
         assert!(
             cache_hit_is_usable(&state, &exact),
@@ -4106,6 +4156,7 @@ mod tests {
             episode_count_approximate: false,
             gate_refused: false,
             provider: None,
+            reading: ROW_READING,
         };
         assert!(
             !cache_hit_is_usable(&state, &legacy),
@@ -4119,6 +4170,7 @@ mod tests {
             episode_count_approximate: false,
             gate_refused: false,
             provider: None,
+            reading: ROW_READING,
         };
         assert!(
             cache_hit_is_usable(&state, &negative),
@@ -4159,6 +4211,7 @@ mod tests {
                     episode_count_approximate: approximate,
                     gate_refused: false,
                     provider: None,
+                    reading: ROW_READING,
                 };
                 proptest::prop_assert_eq!(
                     cache_hit_is_usable(&state, &row),
@@ -4189,6 +4242,7 @@ mod tests {
                     episode_count_approximate: approximate,
                     gate_refused: false,
                     provider: None,
+                    reading: ROW_READING,
                 };
                 proptest::prop_assert!(!cache_hit_is_usable(&state, &row));
                 Ok(())
@@ -4214,6 +4268,7 @@ mod tests {
                 episode_count_approximate: true,
                 gate_refused: false,
                 provider: None,
+                reading: ROW_READING,
             },
         );
         let raw = meta_cache_get(&state.cache_pool, &cache_key("kid-approx", "sub"))
