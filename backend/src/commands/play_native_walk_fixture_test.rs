@@ -325,3 +325,24 @@ fn fixture_manifest_matches_the_fixtures() {
         );
     }
 }
+
+/// Stone Ocean is TV on Kitsu and ONA on hianime: every listing of it
+/// was disproven by format, and all three parts were unplayable.
+#[tokio::test]
+async fn a_series_one_catalogue_calls_tv_and_the_other_ona_is_found() {
+    assert_picks(&[
+        (
+            "44294",
+            Some(("jojos-bizarre-adventure-stone-ocean-1460", 12)),
+        ),
+        (
+            "46010",
+            Some(("jojos-bizarre-adventure-stone-ocean-part-2-1464", 12)),
+        ),
+        (
+            "46598",
+            Some(("jojos-bizarre-adventure-stone-ocean-part-3-2834", 14)),
+        ),
+    ])
+    .await;
+}

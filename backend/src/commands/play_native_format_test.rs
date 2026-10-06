@@ -33,8 +33,9 @@ proptest::proptest! {
     /// are always an order-preserving subsequence, unknown badges
     /// never exclude, a signal-less call is the identity, and when
     /// both the subtype and the badge name known categories the two
-    /// must agree — with the count-derived movie exclusion applying
-    /// only when the subtype gives no category.
+    /// must agree, TV and ONA counting as agreeing — with the
+    /// count-derived movie exclusion applying only when the subtype
+    /// gives no category.
     #[test]
     fn the_disproof_holds_over_arbitrary_pools(
         kinds in proptest::collection::vec(kind_strategy(), 0..10),
@@ -72,7 +73,9 @@ proptest::proptest! {
         for h in &hits {
             let have = h.kind.as_deref().and_then(cat);
             let survive = match (want, have) {
-                (Some(w), Some(hc)) => w == hc,
+                (Some(w), Some(hc)) => {
+                    w == hc || matches!((w, hc), ("tv", "ona") | ("ona", "tv"))
+                }
                 _ => {
                     let expects_non_movie =
                         want.is_none() && matches!(expected, Some(n) if n > 1);
