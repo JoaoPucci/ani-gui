@@ -33,7 +33,13 @@ pub(super) fn platform_tree(child: &tokio::process::Child) -> Option<Box<dyn sup
 /// The tree of a child on Windows: the members of two job objects the
 /// child was put in as it started, the inner nested in the outer, both
 /// made to end their members when their last handle — the guard's —
-/// closes. The processes the child starts join them too.
+/// closes. The processes the child starts join them too — except any
+/// it might start in the moment between the two joins, which are in
+/// the outer job only. Closing the inner job does not end those; unless
+/// the root's tree kill reaches them, the teardown waits to its
+/// ceiling and gives up, which ends the download, and the guard's drop
+/// then kills each member the outer job still lists and closes it.
+/// The joins are microseconds apart.
 ///
 /// The kill closes the inner job: the kernel ends every member at once,
 /// and no pid is looked up, so none can have been handed to another
