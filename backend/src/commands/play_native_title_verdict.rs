@@ -1,10 +1,11 @@
 //! What a pool the entry's titles narrowed answers — split from
 //! `play_native_wide_listing` for the per-file complexity bar: which
-//! candidate an airing-part rescue may take, the countless pick's
-//! admitted head, and the verdict on a pool nothing fit.
+//! candidate an airing-part rescue may take, the bounded head the
+//! pick probes, and the verdict on a pool nothing fit.
 
 use crate::scraper::provider::BrowseHit;
 
+use super::play_native::MAX_PROBED_CANDIDATES;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_title_marker::EntryTitles;
 use super::play_native_wide_listing::{Probed, UNFIT};
@@ -17,24 +18,41 @@ pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
     *confirmed && *distance != UNFIT && regular_episode_count(eps) < expected
 }
 
-/// The countless pick's head narrowed to the hits the entry's titles
-/// admit — the only identity a pick without a count has.
+/// The hits the pick considers, in the provider's order: up to
+/// [`MAX_PROBED_CANDIDATES`] the entry's titles admit, so listings
+/// named for other seasons never crowd the entry's own out of the
+/// bounded head. With a count, the refused hits among the first
+/// [`MAX_PROBED_CANDIDATES`] are kept too — they are probed as
+/// evidence (a span's later part, a split's parts) and never picked.
+/// Without one they are dropped: the titles are the only identity.
 ///
 /// # Errors
-/// [`refused_by_title`] when the titles refuse every hit.
-pub(super) fn admitted_head<'h>(
-    head: &[(&'h BrowseHit, bool)],
+/// [`refused_by_title`] when hits there were and the titles refused
+/// them all without a count to probe them for.
+pub(super) fn probe_head(
+    hits: Vec<BrowseHit>,
+    counted: bool,
     entry: EntryTitles<'_>,
-) -> crate::error::Result<Vec<(&'h BrowseHit, bool)>> {
-    let admitted: Vec<_> = head
-        .iter()
-        .copied()
-        .filter(|(h, _)| entry.admits(&h.title))
+) -> crate::error::Result<Vec<BrowseHit>> {
+    let any = !hits.is_empty();
+    let mut admitted = 0;
+    let head: Vec<BrowseHit> = hits
+        .into_iter()
+        .enumerate()
+        .filter(|(pos, h)| {
+            if entry.admits(&h.title) {
+                admitted += 1;
+                admitted <= MAX_PROBED_CANDIDATES
+            } else {
+                counted && *pos < MAX_PROBED_CANDIDATES
+            }
+        })
+        .map(|(_, h)| h)
         .collect();
-    if admitted.is_empty() {
+    if any && head.is_empty() && !counted {
         return Err(refused_by_title());
     }
-    Ok(admitted)
+    Ok(head)
 }
 
 /// The verdict on a pool no candidate fit: weather when a probe died

@@ -280,16 +280,53 @@ pub(super) fn part_ordinals(title: &str) -> BTreeSet<u32> {
 /// A title's words with the markers it ends on removed: the name the
 /// show's seasons and parts share ("Attack on Titan" for "Attack on
 /// Titan Season 3 Part 2").
-/// The words of `title` after `stem`, joined — what a title adds to a
-/// stem it starts with. Empty when it does not start with it.
-pub(super) fn tail_after(title: &str, stem: &[String]) -> String {
-    let words = words(title);
-    if words.len() < stem.len() || words[..stem.len()] != *stem {
-        return String::new();
+/// The markers `words` open with, in order: marker pairs ("season 3
+/// part 2", "2nd season") and ordinals standing alone ("second half
+/// war" opens with its second), up to the first word that is neither.
+fn leading_markers(words: &[String]) -> Vec<Marker> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < words.len() {
+        if let Some(m) = words.get(i + 1).and_then(|next| marker_of(&words[i], next)) {
+            out.push(m);
+            i += 2;
+        } else if let Some(n) = spelled_ordinal(&words[i]) {
+            out.push(Marker {
+                kind: Kind::Season,
+                ordinals: vec![n],
+            });
+            i += 1;
+        } else {
+            break;
+        }
     }
-    words[stem.len()..].join(" ")
+    out
 }
 
+/// The ordinals `sibling` names as divisions of its own right after
+/// `wide`'s stem, leaving out any division `wide` itself ends on:
+/// "Attack on Titan Season 3 Part 2" beside "Attack on Titan Season
+/// 3" names part 2; "Gintama.: Silver Soul Arc - Second Half War"
+/// beside "Gintama.: Silver Soul Arc" names 2; "Show Season 3 Recap"
+/// beside "Show Season 3" and "Show Side Story 2" beside "Show" name
+/// nothing. Empty when `sibling` does not start with the stem.
+pub(super) fn later_divisions(sibling: &str, wide: &str) -> Vec<u32> {
+    let own = stem(wide);
+    let words = words(sibling);
+    if words.len() < own.len() || words[..own.len()] != *own {
+        return Vec::new();
+    }
+    let wide_markers = trailing_markers(wide);
+    leading_markers(&words[own.len()..])
+        .into_iter()
+        .filter(|m| !wide_markers.contains(m))
+        .flat_map(|m| m.ordinals)
+        .collect()
+}
+
+/// A title's words with the markers it ends on removed: the name the
+/// show's seasons and parts share ("Attack on Titan" for "Attack on
+/// Titan Season 3 Part 2").
 pub(crate) fn stem(title: &str) -> Vec<String> {
     parse_tail(title).0
 }

@@ -118,23 +118,21 @@ fn spanning(
             .filter(|&j| {
                 j != m
                     && counts[j] == counts[m] - expected
-                    && extends(&stem(&probed[j].0.title), &own)
-                    && entry.names_later_part(&probed[j].0.title, &own)
+                    && entry.names_later_part(&probed[j].0.title, &h.title)
             })
             .collect();
         (!own.is_empty() && !later.is_empty()).then_some((m, later))
     })?;
-    // An admitted listing sharing the spanning listing's stem that
-    // already fits exactly is the entry's own: nothing is cut.
-    let own = stem(&probed[wide].0.title);
-    let dedicated = (0..probed.len())
-        .any(|k| admitted[k] && probed[k].2 == 0 && extends(&stem(&probed[k].0.title), &own));
+    // An admitted listing that already fits exactly and is the
+    // entry's own beside the spanning listing
+    // ([`EntryTitles::names_own_part`]) stops the cut. A title that
+    // merely starts with the stem ("Show Side Story") is another show
+    // of the franchise, not this entry.
+    let wide_title = &probed[wide].0.title;
+    let dedicated = (0..probed.len()).any(|k| {
+        admitted[k] && probed[k].2 == 0 && entry.names_own_part(&probed[k].0.title, wide_title)
+    });
     (!dedicated).then_some((wide, later))
-}
-
-/// Whether `longer` starts with every word of `stem`.
-fn extends(longer: &[String], stem: &[String]) -> bool {
-    longer.len() >= stem.len() && longer[..stem.len()] == *stem
 }
 
 /// The listing's rows up to its `expected + 1`-th regular episode:
