@@ -70,6 +70,7 @@ mod play_native_split;
 #[cfg(test)]
 pub(crate) mod play_native_test_provider;
 pub(crate) mod play_native_title_marker;
+mod play_native_title_verdict;
 pub mod play_native_walk;
 mod play_native_wide_listing;
 pub mod play_native_year;
