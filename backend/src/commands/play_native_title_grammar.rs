@@ -404,6 +404,15 @@ pub(super) fn reading(title: &str) -> Vec<u32> {
         .collect()
 }
 
+/// Whether `title` opens what follows `wide`'s stem ([`past_stem`])
+/// on first divisions alone — "Show Part 1", "Show Season 1", "Show
+/// First Half" beside "Show" — leaving out any `wide` itself ends on:
+/// `wide`'s own first part.
+pub(super) fn opens_on_a_first_division(title: &str, wide: &str) -> bool {
+    let named = later_division_markers(title, wide);
+    !named.is_empty() && named.iter().all(|m| m.ordinals.first() == Some(&1))
+}
+
 /// Whether `title` starts with `wide`'s stem ([`past_stem`]) and
 /// opens what follows it with a division ([`scan`], a first one
 /// included): "Show 2", "Show Part 1" and "Show 2nd Season Part 2"

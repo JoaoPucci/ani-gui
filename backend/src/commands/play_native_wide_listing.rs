@@ -83,6 +83,10 @@ struct Span {
     /// The siblings completing W that do not read as the entry — the
     /// next entry, never picked.
     later: Vec<usize>,
+    /// Beside a W the entry is not the head of, the listings that open
+    /// past W's stem on a first division alone — W's first half, never
+    /// the entry ([`EntryTitles::first_part_of`]).
+    firsts: Vec<usize>,
     /// Every candidate that is the entry's own beside W
     /// ([`EntryTitles::names_own_part`]) and fits exactly.
     own_fits: Vec<usize>,
@@ -97,7 +101,7 @@ struct Span {
 /// behind it — an unrelated title or a spinoff sharing the franchise
 /// name ("Show Side Story") is a fallback, never ahead on order.
 fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span) {
-    for &j in &span.later {
+    for &j in span.later.iter().chain(&span.firsts) {
         probed[j].2 = UNFIT;
     }
     if !span.own_fits.is_empty() || span.cut {
@@ -118,7 +122,9 @@ fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span) {
 /// entry has and has a stem; it is read only when a sibling completes
 /// it — one listing exactly the remainder, naming right after W's stem
 /// a later part than the entry's ([`EntryTitles::names_later_part`])
-/// and not reading as the entry — or an own listing fits beside it.
+/// and not reading as the entry — or an own listing fits beside it,
+/// or, the entry not being its head, a listing opens past its stem on
+/// a first division (W's first half).
 fn spanning(
     probed: &[Probed<'_>],
     expected: u32,
@@ -146,13 +152,18 @@ fn spanning(
         let own_fits: Vec<usize> = (0..probed.len())
             .filter(|&k| k != m && admitted[k] && probed[k].2 == 0 && own(k))
             .collect();
-        if later.is_empty() && own_fits.is_empty() {
+        let head = entry.reads_as_entry(&h.title);
+        let firsts: Vec<usize> = (0..probed.len())
+            .filter(|&k| !head && k != m && entry.first_part_of(&probed[k].0.title, &h.title))
+            .collect();
+        if later.is_empty() && own_fits.is_empty() && firsts.is_empty() {
             return None;
         }
-        let cut = !later.is_empty() && own_fits.is_empty() && entry.reads_as_entry(&h.title);
+        let cut = head && !later.is_empty() && own_fits.is_empty();
         Some(Span {
             wide: m,
             later,
+            firsts,
             own_fits,
             cut,
         })
