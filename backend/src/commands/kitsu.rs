@@ -1120,7 +1120,8 @@ async fn anime_detail_read(
         .inspect_err(|e| super::kitsu_gone::note_failure(state, begun, id, e))?;
     // Served, but not published: the row is cached and the mark taken
     // only once the backfill below is done, in one step with this
-    // verdict, and not at all if a newer read is answered gone first.
+    // verdict; if a newer read is answered gone first, neither happens
+    // and this read reports that answer instead.
     let fetched = super::kitsu_gone::note_fetched(state, id);
 
     // Banner enrichment: Kitsu cataloguers upload coverImage lazily,

@@ -69,11 +69,15 @@ pub(crate) fn note_fetched(state: &AppState, id: &str) -> Epoch {
 /// Publish what a read Kitsu served at `fetched` found: take the id's
 /// mark and run `cache` (the detail row's write), as one step —
 /// unless Kitsu has since answered a newer read that the id is gone.
-/// That answer stands, and the older success caches nothing over it.
+/// That answer stands: the older success caches nothing over it and
+/// reports it.
 ///
 /// # Errors
-/// A mark that cannot be deleted: the id is not reported served while
-/// its mark still says it is gone, and no row is cached beside it.
+/// - A not-found error when a newer read was answered gone: the read
+///   answers as the mark does.
+/// - A mark that cannot be deleted: the id is not reported served
+///   while its mark still says it is gone, and no row is cached
+///   beside it.
 pub(crate) fn publish_served(
     state: &AppState,
     id: &str,
@@ -82,7 +86,7 @@ pub(crate) fn publish_served(
 ) -> Result<()> {
     crate::history::guard::hold(&state.history_path, |held| {
         if held.kitsu_gone_since(fetched, id) {
-            return Ok(());
+            return Err(AniError::Upstream { status: 404 });
         }
         take_mark(state, id)?;
         cache();
