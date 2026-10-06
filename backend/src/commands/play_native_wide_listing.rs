@@ -2,16 +2,28 @@
 //! entry's own titles — split from `play_native` for the per-file
 //! complexity bar.
 //!
-//! When the provider's search leaves the entry's own listing out of a
-//! pool, its sequel can sit within the count tolerance and a year of
-//! the entry ("My Star: Season 2" for `[Oshi no Ko]`). A candidate
-//! whose title the entry's titles do not admit
-//! ([`EntryTitles::admits`]) is still probed — it is evidence about
-//! the pool — but it can never be picked.
+//! Two shapes the episode count alone gets wrong:
+//!
+//! - **A sibling named for another season or part.** When the
+//!   provider's search leaves the entry's own listing out of a pool,
+//!   its sequel can sit within the count tolerance and a year of the
+//!   entry ("My Star: Season 2" for `[Oshi no Ko]`). A candidate whose
+//!   title the entry's titles do not admit
+//!   ([`EntryTitles::admits`]) is still probed — it is evidence about
+//!   the pool — but it can never be picked.
+//! - **One listing that spans this entry and the next.** Kitsu keeps
+//!   "Attack on Titan Season 3" (12) and its "Part 2" (10) apart;
+//!   hianime lists a 22-episode "Season 3" beside a 10-episode
+//!   "Season 3 Part 2". Scored on count the Part 2 listing wins the
+//!   first entry. The spanning listing is recognised by the sibling
+//!   that completes it — a later part, sharing its stem, whose count
+//!   is exactly what the spanning listing holds beyond this entry —
+//!   and is cut to this entry's episodes, which it numbers from 1.
 
 use crate::scraper::provider::{BrowseHit, EpisodeRef};
 
-use super::play_native_title_marker::EntryTitles;
+use super::play_native_numbering::regular_episode_count;
+use super::play_native_title_marker::{stem, EntryTitles};
 
 /// The distance a candidate that may not be picked is scored at:
 /// beyond every tolerance, so it never wins on count and never sets
@@ -24,16 +36,88 @@ pub(super) const UNFIT: u32 = u32::MAX;
 type Probed<'h> = (&'h BrowseHit, Vec<EpisodeRef>, u32, bool);
 
 /// Fit the probed pool to the entry: a candidate the entry's titles
-/// do not admit is scored [`UNFIT`].
+/// do not admit is scored [`UNFIT`], and a listing that spans this
+/// entry and the next is cut to this entry's episodes and scored as
+/// the exact fit it then is, its later part scored [`UNFIT`] — that
+/// part is the next entry, not this one.
 ///
 /// Candidates keep their listings, years and places, so a rule that
 /// reads the pool as parts of one entry still sees every part.
-pub(super) fn fit_to_entry(probed: &mut [Probed<'_>], _expected: u32, entry: EntryTitles<'_>) {
-    for row in probed.iter_mut() {
-        if !entry.admits(&row.0.title) {
+pub(super) fn fit_to_entry(probed: &mut [Probed<'_>], expected: u32, entry: EntryTitles<'_>) {
+    let admitted: Vec<bool> = probed
+        .iter()
+        .map(|(h, _, _, _)| entry.admits(&h.title))
+        .collect();
+    let span = spanning(probed, expected, &admitted);
+    for (row, ok) in probed.iter_mut().zip(&admitted) {
+        if !ok {
             row.2 = UNFIT;
         }
     }
+    if let Some((wide, later)) = span {
+        for j in later {
+            probed[j].2 = UNFIT;
+        }
+        probed[wide].1 = head_of(&probed[wide].1, expected);
+        probed[wide].2 = 0;
+    }
+}
+
+/// The listing that spans this entry and the next, with the later
+/// parts that complete it. It must be admitted, carry the entry's own
+/// year, and list more than the entry has; its later part must share
+/// its stem and list exactly the remainder. A listing that already
+/// fits exactly elsewhere in the pool is the entry's own, and nothing
+/// is cut.
+fn spanning(
+    probed: &[Probed<'_>],
+    expected: u32,
+    admitted: &[bool],
+) -> Option<(usize, Vec<usize>)> {
+    let counts: Vec<u32> = probed
+        .iter()
+        .map(|(_, eps, _, _)| regular_episode_count(eps))
+        .collect();
+    let (wide, later) = (0..probed.len()).find_map(|m| {
+        let (h, _, _, confirmed) = &probed[m];
+        if !admitted[m] || !confirmed || counts[m] <= expected {
+            return None;
+        }
+        let own = stem(&h.title);
+        let later: Vec<usize> = (0..probed.len())
+            .filter(|&j| {
+                j != m
+                    && counts[j] == counts[m] - expected
+                    && extends(&stem(&probed[j].0.title), &own)
+            })
+            .collect();
+        (!own.is_empty() && !later.is_empty()).then_some((m, later))
+    })?;
+    let dedicated = (0..probed.len())
+        .any(|k| k != wide && !later.contains(&k) && admitted[k] && probed[k].2 == 0);
+    (!dedicated).then_some((wide, later))
+}
+
+/// Whether `longer` starts with every word of `stem`.
+fn extends(longer: &[String], stem: &[String]) -> bool {
+    longer.len() >= stem.len() && longer[..stem.len()] == *stem
+}
+
+/// The listing's rows up to its `expected`-th regular episode, with
+/// any recap tagged among them.
+fn head_of(episodes: &[EpisodeRef], expected: u32) -> Vec<EpisodeRef> {
+    let mut regular = 0;
+    let mut out = Vec::new();
+    for e in episodes {
+        if regular_episode_count(std::slice::from_ref(e)) == 1 {
+            if regular == expected {
+                break;
+            }
+            regular += 1;
+        }
+        out.push(e.clone());
+    }
+    out
 }
 
 #[cfg(test)]

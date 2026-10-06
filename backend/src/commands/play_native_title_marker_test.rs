@@ -165,3 +165,22 @@ proptest::proptest! {
         proptest::prop_assert!(EntryTitles::bare(&title).part_agrees(&title));
     }
 }
+
+// ── the name the seasons share ──────────────────────────────────────
+
+#[test]
+fn the_stem_drops_every_marker_a_title_ends_on() {
+    let words = |t: &str| t.split(' ').map(str::to_string).collect::<Vec<_>>();
+    assert_eq!(
+        stem("Attack on Titan Season 3 Part 2"),
+        words("attack on titan")
+    );
+    assert_eq!(
+        stem("Haikyuu!!: To the Top (Part 1+2)"),
+        words("haikyuu to the top")
+    );
+    assert_eq!(
+        stem("Gintama.: Silver Soul Arc"),
+        words("gintama silver soul arc")
+    );
+}

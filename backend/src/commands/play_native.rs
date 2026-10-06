@@ -84,7 +84,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   [`pick_candidate_titled`] reads every title the entry goes by.
 /// - With `expected = Some(n)`, a candidate the entry's titles do
 ///   not admit — named for a season or part the entry is not — is
-///   probed but never picked (see `play_native_wide_listing`).
+///   probed but never picked; a listing that spans this entry and
+///   the next is cut to this entry's episodes (see
+///   `play_native_wide_listing`).
 /// - Probe errors skip the candidate rather than abort the pick; a
 ///   pick only fails when no probed candidate survives.
 ///
@@ -205,8 +207,10 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         }
     }
     // The entry's own titles over what the probes heard: a sibling
-    // named for another season or part is scored out (see
-    // play_native_wide_listing).
+    // named for another season or part is scored out, and a listing
+    // that spans this entry and the next is cut to this one's
+    // episodes (see play_native_wide_listing). Before the split
+    // stitching below, which still sees every part.
     fit_to_entry(&mut probed_ok, expected, entry);
     // An empty pool splits by what killed the probes: any transport
     // death means nothing was learned (the transient Network), while
