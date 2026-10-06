@@ -176,3 +176,25 @@ fn a_file_of_a_kind_nobody_decided_on_fails_the_run_and_names_it() {
         "{stderr}"
     );
 }
+
+#[test]
+fn closures_are_counted_and_the_ones_in_macro_input_declared() {
+    let dir = scratch(
+        "closures",
+        &[(
+            "c.rs",
+            "fn f(xs: &[u32]) -> usize { xs.iter().filter(|x| **x > 1).count() }\n",
+        )],
+    );
+    let out = run(&dir);
+    assert!(out.status.success());
+    let stderr = String::from_utf8(out.stderr).expect("utf-8");
+    assert!(
+        stderr.contains("1 files, 1 functions measured; 1 closures measured as units of their own"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("closures written inside macro input count for the enclosing unit"),
+        "{stderr}"
+    );
+}

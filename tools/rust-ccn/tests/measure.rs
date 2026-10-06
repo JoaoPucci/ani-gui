@@ -84,7 +84,8 @@ fn methods_and_nested_functions_are_units_of_their_own() {
 #[test]
 fn the_count_is_lizards() {
     // 1 + if + else-if's if + && + || + match (once, not per arm)
-    //   + while + for + ? + where + the empty closure's `||`.
+    //   + while + for + ? + where. The empty closure is a unit of its
+    //   own, and its `||` is its parameter list, not a decision.
     let src = r#"
         fn all<T>(t: T, xs: &[u32], o: Option<u32>) -> Option<u32>
         where
@@ -103,7 +104,62 @@ fn the_count_is_lizards() {
             Some(o? + f())
         }
     "#;
-    assert_eq!(units(src), named(&[("all", 11)]));
+    assert_eq!(units(src), named(&[("all", 10), ("(closure)", 1)]));
+}
+
+#[test]
+fn a_closure_is_a_unit_of_its_own() {
+    // As an arrow function is in TypeScript: its own base path, and its
+    // decisions are its own, not the function's around it.
+    let src = r#"
+        fn outer(xs: &[u32]) -> Vec<u32> {
+            let keep = |x: &u32| *x > 1 && *x < 9;
+            xs.iter().copied().filter(|x| keep(x)).map(|x| if x > 3 { x } else { 0 }).collect()
+        }
+    "#;
+    assert_eq!(
+        units(src),
+        named(&[
+            ("outer", 1),
+            ("(closure)", 2),
+            ("(closure)", 1),
+            ("(closure)", 2)
+        ])
+    );
+}
+
+#[test]
+fn a_closure_in_a_constant_is_a_unit_not_an_outside_decision() {
+    let src = "static PICK: fn(u32) -> u32 = |x| if x > 1 { x } else { 0 };\nconst ID: fn(u32) -> u32 = |x| x;\n";
+    let measured = measure_file(src).expect("parses");
+    let got: Vec<(String, u32)> = measured
+        .units
+        .into_iter()
+        .map(|u| (u.name, u.ccn))
+        .collect();
+    assert_eq!(got, named(&[("(closure)", 2), ("(closure)", 1)]));
+    assert_eq!(measured.outside, 0);
+}
+
+#[test]
+fn an_async_block_is_charged_to_the_function_around_it() {
+    // An async block is an expression the function evaluates, not
+    // something called: no unit of its own.
+    let src = r#"
+        fn spawn(x: bool) { let _f = async move { if x { 1 } else { 0 } }; }
+    "#;
+    assert_eq!(units(src), named(&[("spawn", 2)]));
+}
+
+#[test]
+fn a_closure_inside_macro_input_stays_with_the_function_around_it() {
+    // Macro input is not parsed, so a closure written there is not seen
+    // as one: its decisions count for the enclosing function, without a
+    // base path of its own.
+    let src = r#"
+        fn checks(a: bool, b: bool) { assert!((|x: bool| x && b)(a)); }
+    "#;
+    assert_eq!(units(src), named(&[("checks", 2)]));
 }
 
 #[test]
