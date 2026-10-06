@@ -706,6 +706,14 @@ mod budget_props {
             let total = Duration::from_secs(total_secs);
             let attempt = Duration::from_secs(attempt_secs);
             let elapsed = Duration::from_secs(elapsed_secs);
+            // A paused clock holds still between the two readings, so
+            // what the budget sees elapsed is exactly what was set.
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .start_paused(true)
+                .build()
+                .expect("runtime");
+            let _clock = rt.enter();
             let overall = tokio::time::Instant::now() - elapsed;
             let remaining = total.saturating_sub(elapsed);
             let reserve = attempt * u32::try_from(owed).expect("small");
@@ -713,16 +721,13 @@ mod budget_props {
             if remaining.is_zero() {
                 prop_assert_eq!(got, None);
             } else if last && owed == 0 {
-                // The clock moved between the two readings by at most
-                // a few microseconds; compare loosely.
-                let budget = got.expect("the remainder");
-                prop_assert!(remaining.abs_diff(budget) < Duration::from_millis(50));
+                prop_assert_eq!(got, Some(remaining));
             } else if remaining <= reserve {
                 prop_assert_eq!(got, None);
             } else {
                 let budget = got.expect("an attempt");
                 prop_assert!(budget <= attempt);
-                prop_assert!(budget + reserve <= remaining + Duration::from_millis(50));
+                prop_assert!(budget + reserve <= remaining);
             }
         }
     }
