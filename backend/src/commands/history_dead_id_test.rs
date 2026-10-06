@@ -378,6 +378,23 @@ async fn a_404_after_the_id_was_served_since_the_read_began_marks_nothing() {
     assert!(!marked(&state, "999"));
 }
 
+// A success and a failure of one id can interleave the other way: a
+// read that begins once a success is noted is newer than it, and a 404
+// that read is answered stands, whatever the success goes on to do.
+
+#[tokio::test]
+async fn a_404_begun_after_a_success_was_noted_keeps_its_mark() {
+    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+
+    crate::commands::kitsu_gone::note_served_then(&state, "999", |state| {
+        let begun = crate::history::guard::epoch(&state.history_path);
+        let gone = crate::error::AniError::Upstream { status: 404 };
+        crate::commands::kitsu_gone::note_failure(state, begun, "999", &gone);
+    });
+
+    assert!(marked(&state, "999"), "the newer answer is not erased");
+}
+
 /// A detail row in the cache is Kitsu serving the id: a read it
 /// answers takes a mark left beside it.
 #[tokio::test]
