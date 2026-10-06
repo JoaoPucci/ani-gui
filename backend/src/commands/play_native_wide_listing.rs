@@ -69,78 +69,94 @@ pub(super) fn fit_to_entry(
             row.2 = UNFIT;
         }
     }
-    if let Some((wide, later, dedicated)) = span {
-        // The sibling completing the span is the next entry, whether
-        // the cut is made or the entry's own listing stops it.
-        for j in later {
-            probed[j].2 = UNFIT;
-        }
-        if dedicated {
-            return refused_a_fit;
-        }
-        // Any other exact-count hit is no listing of this entry's
-        // own — that would have stopped the cut
-        // ([`EntryTitles::names_own_part`]) — be it unrelated or a
-        // spinoff sharing the franchise name ("Show Side Story"). It
-        // stays a fallback just behind the cut, never ahead of it on
-        // order.
-        for (k, row) in probed.iter_mut().enumerate() {
-            if k != wide && row.2 == 0 {
-                row.2 = 1;
-            }
-        }
-        probed[wide].1 = head_of(&probed[wide].1, expected);
-        probed[wide].2 = 0;
+    if let Some(span) = span {
+        apply_span(probed, expected, &span);
     }
     refused_a_fit
 }
 
-/// The listing that spans this entry and the next, with the later
-/// parts that complete it, and whether the entry's own listing stops
-/// the cut. It must be admitted, carry the entry's own year, and list
-/// more than the entry has; a sibling completing it must name, right
-/// after the spanning listing's stem, a later part than the entry's
-/// ([`EntryTitles::names_later_part`]), not be the entry's own
-/// ([`EntryTitles::names_own_part`]), and list exactly the remainder.
-/// An admitted listing that already fits exactly and is the entry's
-/// own beside the spanning listing stops the cut; any other exact fit
-/// is no such evidence.
+/// What the spanning-cut decision table (title-resolution.md) decided
+/// beside one broad listing.
+struct Span {
+    /// The broad listing W.
+    wide: usize,
+    /// The siblings completing W that do not read as the entry — the
+    /// next entry, never picked.
+    later: Vec<usize>,
+    /// Every candidate that is the entry's own beside W
+    /// ([`EntryTitles::names_own_part`]) and fits exactly.
+    own_fits: Vec<usize>,
+    /// Whether W is cut: the entry is its head, a later sibling
+    /// completes it, and no own listing fits.
+    cut: bool,
+}
+
+/// Scores the pool as `span` decided: the later siblings out; with an
+/// own listing that fits, every other exact fit one behind it; with a
+/// cut, W cut to the entry's episodes and every other exact fit one
+/// behind it — an unrelated title or a spinoff sharing the franchise
+/// name ("Show Side Story") is a fallback, never ahead on order.
+fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span) {
+    for &j in &span.later {
+        probed[j].2 = UNFIT;
+    }
+    if !span.own_fits.is_empty() || span.cut {
+        for (k, row) in probed.iter_mut().enumerate() {
+            if row.2 == 0 && !span.own_fits.contains(&k) {
+                row.2 = 1;
+            }
+        }
+    }
+    if span.cut {
+        probed[span.wide].1 = head_of(&probed[span.wide].1, expected);
+        probed[span.wide].2 = 0;
+    }
+}
+
+/// The broad listing W the decision table reads, and what it decides.
+/// W is admitted, carries the entry's own year, lists more than the
+/// entry has and has a stem; it is read only when a sibling completes
+/// it — one listing exactly the remainder, naming right after W's stem
+/// a later part than the entry's ([`EntryTitles::names_later_part`])
+/// and not reading as the entry — or an own listing fits beside it.
 fn spanning(
     probed: &[Probed<'_>],
     expected: u32,
     admitted: &[bool],
     entry: EntryTitles<'_>,
-) -> Option<(usize, Vec<usize>, bool)> {
+) -> Option<Span> {
     let counts: Vec<u32> = probed
         .iter()
         .map(|(_, eps, _, _)| regular_episode_count(eps))
         .collect();
-    let (wide, later) = (0..probed.len()).find_map(|m| {
+    (0..probed.len()).find_map(|m| {
         let (h, _, _, confirmed) = &probed[m];
-        if !admitted[m] || !confirmed || counts[m] <= expected {
+        if !admitted[m] || !confirmed || counts[m] <= expected || stem(&h.title).is_empty() {
             return None;
         }
-        let own = stem(&h.title);
+        let own = |k: usize| entry.names_own_part(&probed[k].0.title, &h.title);
         let later: Vec<usize> = (0..probed.len())
             .filter(|&j| {
                 j != m
                     && counts[j] == counts[m] - expected
                     && entry.names_later_part(&probed[j].0.title, &h.title)
-                    && !entry.names_own_part(&probed[j].0.title, &h.title)
+                    && !own(j)
             })
             .collect();
-        (!own.is_empty() && !later.is_empty()).then_some((m, later))
-    })?;
-    // An admitted listing that already fits exactly and is the
-    // entry's own beside the spanning listing
-    // ([`EntryTitles::names_own_part`]) stops the cut. A title that
-    // merely starts with the stem ("Show Side Story") is another show
-    // of the franchise, not this entry.
-    let wide_title = &probed[wide].0.title;
-    let dedicated = (0..probed.len()).any(|k| {
-        admitted[k] && probed[k].2 == 0 && entry.names_own_part(&probed[k].0.title, wide_title)
-    });
-    Some((wide, later, dedicated))
+        let own_fits: Vec<usize> = (0..probed.len())
+            .filter(|&k| k != m && admitted[k] && probed[k].2 == 0 && own(k))
+            .collect();
+        if later.is_empty() && own_fits.is_empty() {
+            return None;
+        }
+        let cut = !later.is_empty() && own_fits.is_empty() && entry.reads_as_entry(&h.title);
+        Some(Span {
+            wide: m,
+            later,
+            own_fits,
+            cut,
+        })
+    })
 }
 
 /// The listing's rows up to its `expected + 1`-th regular episode:

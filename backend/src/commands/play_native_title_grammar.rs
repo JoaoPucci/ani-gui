@@ -282,13 +282,6 @@ pub(super) fn part_ordinals(title: &str) -> BTreeSet<u32> {
 /// opens with its second) and Japanese divisions written as one word
 /// ("第2期"), up to the first word that is none of them.
 fn leading_markers(words: &[String]) -> Vec<Marker> {
-    leading_divisions(words, false)
-}
-
-/// [`leading_markers`], reading a bare number as a season too when
-/// `bare_numbers` holds — how an entry's title names its season past
-/// a stem ("Show 2").
-fn leading_divisions(words: &[String], bare_numbers: bool) -> Vec<Marker> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < words.len() {
@@ -298,9 +291,7 @@ fn leading_divisions(words: &[String], bare_numbers: bool) -> Vec<Marker> {
         } else if let Some((m, "")) = japanese_trailing(&words[i]) {
             out.push(m);
             i += 1;
-        } else if let Some(n) =
-            spelled_ordinal(&words[i]).or_else(|| small_number(&words[i]).filter(|_| bare_numbers))
-        {
+        } else if let Some(n) = spelled_ordinal(&words[i]) {
             out.push(Marker {
                 kind: Kind::Season,
                 ordinals: vec![n],
@@ -347,51 +338,89 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
         .collect()
 }
 
-/// How `title` reads past `wide`'s stem: whether it names any
-/// division there, and the ordinals of those `wide` does not itself
-/// end on, in order, a first one left out as the whole — "Show 2" and
-/// "Show 2nd Season" beside "Show" both read `[2]`, "Show 2nd Season
-/// Part 1" `[2]`, "Show 2nd Season Part 2" beside "Show 2nd Season"
-/// `[2]` (its part), "Show Part 1" `[]`. A bare number reads as a
-/// season. `None` when `title` does not start with the stem at a
-/// word's end, or with a number or 第 glued to it as Japanese writes
-/// them ("ショー２", "ショー第2期"); "Showtime 2" does not start with
-/// "Show". Both an entry's titles and a listing are read this way, so
-/// a listing is the entry's own exactly when the two read alike.
-pub(super) fn reading_past(title: &str, wide: &str) -> Option<(bool, Vec<u32>)> {
-    let own = stem(wide).join(" ");
-    let text = words(title).join(" ");
-    let rest = text.strip_prefix(&own)?;
-    if !rest
-        .chars()
-        .next()
-        .is_none_or(|c| c == ' ' || c.is_ascii_digit() || c == '第')
-    {
-        return None;
+/// Every division `words` name, first word to last: a marker pair, a
+/// Japanese division (apart or glued to the word before it), and an
+/// ordinal standing alone — spelled ("Second", "II"), bare ("2") or a
+/// number glued to a Japanese title ("ショー2"). A numeral right
+/// before a marker that carries its own ordinal is a division of its
+/// own: "II Part 2" is a season 2 and a part 2, not a part 2 and a
+/// stray 2.
+fn divisions(words: &[String]) -> Vec<Marker> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < words.len() {
+        let w = &words[i];
+        let own_marker_follows = kind_of(w).is_none()
+            && words.get(i + 1).is_some_and(|k| kind_of(k).is_some())
+            && words
+                .get(i + 2)
+                .is_some_and(|o| ordinals_after_marker(o).is_some());
+        let pair = words.get(i + 1).and_then(|next| marker_of(w, next));
+        if let (Some(m), false) = (pair, own_marker_follows) {
+            out.push(m);
+            i += 2;
+            continue;
+        }
+        if let Some((m, _)) = japanese_trailing(w) {
+            out.push(m);
+        } else if let Some(n) = spelled_ordinal(w)
+            .or_else(|| small_number(w))
+            .or_else(|| glued_number(w))
+        {
+            out.push(Marker {
+                kind: Kind::Season,
+                ordinals: vec![n],
+            });
+        }
+        i += 1;
     }
-    let wide_markers = trailing_markers(wide);
-    let divisions = leading_divisions(&words(rest), true);
-    let ordinals = divisions
-        .iter()
-        .filter(|m| !wide_markers.contains(m))
-        .flat_map(|m| m.ordinals.iter().copied())
-        .filter(|n| *n != 1)
-        .collect();
-    Some((!divisions.is_empty(), ordinals))
+    out
 }
 
-/// How a title reads on its own, as [`reading_past`] would past its
-/// stem: the ordinals of the markers it ends on, in order, a first one
-/// left out — the reading of an entry title that does not start with
-/// a spanning listing's stem ("Show Part 2" beside "Show Final Arc").
-pub(super) fn reading_alone(title: &str) -> Vec<u32> {
-    let mut markers = trailing_markers(title);
-    markers.reverse();
-    markers
+/// A one- or two-digit number glued to the end of a Japanese word
+/// ("ショー2", "怪獣8号" aside — that one ends on a kanji).
+fn glued_number(word: &str) -> Option<u32> {
+    let digits = word.len() - word.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+    let (head, tail) = word.split_at(word.len() - digits);
+    head.chars()
+        .last()
+        .is_some_and(|c| !c.is_ascii())
+        .then(|| small_number(tail))
+        .flatten()
+}
+
+/// How a title reads: the ordinals of every division it names
+/// ([`divisions`]), in order, a division whose first ordinal is 1 left
+/// out as the whole ("Part 1", "First Half", "(Part 1+2)"). The one
+/// reader the spanning cut compares titles with: "Show 2", "Show 2nd
+/// Season" and "ショー 第2期" read `[2]`; "Show", "Show Part 1" and
+/// "Show First Half" read `[]`; "Lucky 2 2nd Season" reads `[2, 2]`;
+/// "Show II Part 2: Arc" reads `[2, 2]`. What follows a division is
+/// read too, so "Show 2nd Season Recap" reads `[2]`.
+pub(super) fn reading(title: &str) -> Vec<u32> {
+    divisions(&words(title))
         .into_iter()
+        .filter(|m| m.ordinals.first() != Some(&1))
         .flat_map(|m| m.ordinals)
-        .filter(|n| *n != 1)
         .collect()
+}
+
+/// Whether `title` starts with `wide`'s stem — at a word's end, or
+/// with a number or 第 glued to it as Japanese writes them ("ショー２",
+/// "ショー第2期") — and names a division past it ([`divisions`], a
+/// first one included): "Show 2", "Show Part 1" and "Show: Final Arc
+/// Season 2" beside "Show" do; "Show Side Story" and "Showtime 2" do
+/// not.
+pub(super) fn names_past_stem(title: &str, wide: &str) -> bool {
+    let own = stem(wide).join(" ");
+    let text = words(title).join(" ");
+    let Some(rest) = text.strip_prefix(&own) else {
+        return false;
+    };
+    rest.chars()
+        .next()
+        .is_none_or(|c| c == ' ' || c.is_ascii_digit() || c == '第')
+        && !divisions(&words(rest)).is_empty()
 }
 
 /// A title's words with the markers it ends on removed: the name the
