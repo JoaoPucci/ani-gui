@@ -204,3 +204,7 @@ impl<F: Fetch> Provider for AnidbClient<F> {
 #[cfg(test)]
 #[path = "anidb_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "anidb_foreign_page_test.rs"]
+mod foreign_page_tests;

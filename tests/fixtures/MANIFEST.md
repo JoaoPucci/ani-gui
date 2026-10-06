@@ -11,7 +11,7 @@ git-LFS is not configured.
 
 | Path | Contents |
 |---|---|
-| `anidb/` | Synthesized anidb.app response shapes the native resolver scrapes: browse pages (results, empty, cloudflare interstitial), a detail page (MAL link + Seasons), episodes JSON, languages JSON, an embed page, and a master playlist. |
+| `anidb/` | Synthesized anidb.app response shapes the native resolver scrapes: browse pages (results, empty, cloudflare interstitial), a detail page (MAL link + Seasons), episodes JSON, languages JSON, an embed page, and a master playlist. One recorded page beside them: the unrelated site anidb.app's search began redirecting to, which the resolver must never read as an empty search. |
 | `kitsu/` | JSON:API responses for `/anime?filter[text]=`, `/anime/:id` (with and without a cover image), and `/anime/:id/episodes`. |
 | `history/` | Watch-history samples for the GUI's reader: empty, single-entry, multi-entry. |
 | `hls/` | Synthesized MPEG-TS samples for the player's demuxer regression tests, as base64 text: a stream whose video starts under one second and whose audio starts after it. |

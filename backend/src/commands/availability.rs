@@ -1344,6 +1344,10 @@ pub struct AvailabilityWarmArgs {
 mod backed_tests;
 
 #[cfg(test)]
+#[path = "availability_foreign_page_test.rs"]
+mod foreign_page_tests;
+
+#[cfg(test)]
 #[path = "availability_stamp_race_test.rs"]
 mod stamp_race_tests;
 

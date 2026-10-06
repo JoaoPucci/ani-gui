@@ -30,5 +30,11 @@
   "master_op.m3u8": {
     "sha256": "1224c9b6620cb1bef9beb616d87cfc0837dc792467a68c80106d9c4054afed1d",
     "source": "synthesized for tests (anidb.app response shapes)"
+  },
+  "redirected_browse_anilab.html": {
+    "sha256": "55b2cd9da39d0ed4ceb096118980f77f3c7e314e72f3829f5c5ae123ba3dfb7e",
+    "size": 47587,
+    "captured_at": "2026-10-07",
+    "source": "recorded: the page a GET of anidb.app/browse?q= ended on once anidb.app began answering it with a 302 to https://anilab.so — an unrelated site's home page, not anidb's"
   }
 }

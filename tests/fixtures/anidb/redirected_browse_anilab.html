@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watch Anime Free - No Ads, No Subscription | Anilab2</title>
+    <meta name="description"
+        content="Download the ultimate free anime streaming app for Android. Watch unlimited anime in HD with no ads, no subscriptions, and no paywalls. 100% Free forever.">
+    <meta name="keywords"
+        content="free anime app, android streaming, no ads anime, watch anime free, hd anime streaming, free apk download">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://www.anilab2.app/">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.anilab2.app/">
+    <meta property="og:title" content="Watch Anime Free - No Ads, No Subscription | Anilab2">
+    <meta property="og:description"
+        content="Unlimited free anime on Android. No ads, no sign-up required. Download the APK now.">
+    <meta property="og:image" content="/assets/logo.svg">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://www.anilab2.app/">
+    <meta property="twitter:title" content="Watch Anime Free - No Ads, No Subscription | Anilab2">
+    <meta property="twitter:description"
+        content="Unlimited free anime on Android. No ads, no sign-up required. Download the APK now.">
+    <meta property="twitter:image" content="/assets/logo.svg">
+
+    <!-- Favicon Placeholder -->
+    <link rel="icon" href="/assets/favicon.ico">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            red: '#e50914',
+                            dark: '#141414',
+                            gray: '#2f2f2f'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Structured Data: MobileApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "MobileApplication",
+      "name": "Anilab2",
+      "operatingSystem": "Android",
+      "applicationCategory": "EntertainmentApplication",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "description": "Free Android app for streaming anime without ads or subscriptions."
+    }
+    </script>
+
+    <style>
+        body {
+            background-color: #141414;
+            color: #ffffff;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #141414;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #e50914;
+        }
+    </style>
+</head>
+
+<body class="font-sans antialiased selection:bg-brand-red selection:text-white">
+
+    <!-- HEADER -->
+    <header class="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-md border-b border-white/10">
+        <div class="container mx-auto px-4 h-16 flex items-center justify-between">
+            <!-- Logo -->
+            <a href="/" class="flex items-center gap-2 group">
+                <div style="width: 100px;"
+                    class="w-12 h-12 rounded flex items-center justify-center text-white font-bold">
+                    <img src="/assets/logo.svg" alt="Anilab2">
+                </div>
+            </a>
+
+            <!-- Desktop Nav -->
+            <nav class="hidden md:flex items-center gap-8" id="desktop-nav">
+                <a href="/#hero" class="text-sm font-medium text-gray-300 hover:text-white transition-colors">Home</a>
+                <a href="/#features"
+                    class="text-sm font-medium text-gray-300 hover:text-white transition-colors">Features</a>
+                <a href="/#screenshots"
+                    class="text-sm font-medium text-gray-300 hover:text-white transition-colors">Screenshots</a>
+                <a href="/#why-free" class="text-sm font-medium text-gray-300 hover:text-white transition-colors">Why
+                    Free?</a>
+                <a href="/#faq" class="text-sm font-medium text-gray-300 hover:text-white transition-colors">FAQ</a>
+            </nav>
+
+            <!-- CTA & Mobile Menu Toggle -->
+            <div class="flex items-center gap-4">
+                <a href="/#download"
+                    class="hidden sm:inline-flex items-center justify-center px-5 py-2 text-sm font-bold text-white transition-all duration-200 bg-brand-red rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-red focus:ring-offset-gray-900">
+                    Download APK
+                </a>
+                <!-- Mobile Menu Button -->
+                <button id="mobile-menu-btn" class="md:hidden text-gray-300 hover:text-white focus:outline-none">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MOBILE MENU OVERLAY -->
+    <div id="mobile-menu"
+        class="fixed inset-0 z-[60] bg-black/95 backdrop-blur-xl transform translate-x-full transition-transform duration-300 ease-in-out md:hidden flex flex-col">
+        <div class="flex items-center justify-between px-4 h-16 border-b border-white/10">
+            <span class="text-xl font-bold text-white">Menu</span>
+            <button id="close-menu-btn" class="text-gray-300 hover:text-white focus:outline-none">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div class="flex flex-col p-8 gap-6 overflow-y-auto">
+            <a href="/#hero" class="text-2xl font-bold text-gray-300 hover:text-brand-red transition-colors">Home</a>
+            <a href="/#features"
+                class="text-2xl font-bold text-gray-300 hover:text-brand-red transition-colors">Features</a>
+            <a href="/#screenshots"
+                class="text-2xl font-bold text-gray-300 hover:text-brand-red transition-colors">Screenshots</a>
+            <a href="/#why-free" class="text-2xl font-bold text-gray-300 hover:text-brand-red transition-colors">Why
+                Free?</a>
+            <a href="/#faq" class="text-2xl font-bold text-gray-300 hover:text-brand-red transition-colors">FAQ</a>
+            <a href="/#download" class="text-2xl font-bold text-brand-red hover:text-white transition-colors">Download
+                APK</a>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <main class="pt-16">
+
+        <section id="hero" class="relative bg-gray-950 pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+            <div class="container mx-auto px-4">
+                <div class="flex flex-col lg:flex-row items-center gap-12">
+                    <div class="lg:w-1/2 text-center lg:text-left">
+                        <span
+                            class="inline-block py-1 px-3 rounded-full bg-red-900/30 text-red-400 text-sm font-semibold mb-6 border border-red-900/50">
+                            100% Free Forever
+                        </span>
+                        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight mb-6">
+                            Watch Anime Free <span class="text-red-600">No Ads, No Subscription</span>
+                        </h1>
+                        <p class="text-lg text-gray-400 mb-8 max-w-2xl mx-auto lg:mx-0">
+                            Stream unlimited HD anime without paying a dime. Enjoy a seamless, ad-free experience
+                            designed for true anime fans.
+                        </p>
+                        <div class="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+                            <a href="/#download"
+                                class="inline-flex items-center justify-center px-8 py-4 text-base font-bold text-white transition-all duration-200 bg-red-600 rounded-full hover:bg-red-700 hover:shadow-lg hover:shadow-red-600/30 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 focus:ring-offset-gray-900">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                                </svg>
+                                Download APK
+                            </a>
+                            <a href="/#features"
+                                class="inline-flex items-center justify-center px-8 py-4 text-base font-bold text-gray-300 transition-all duration-200 bg-gray-800 border border-gray-700 rounded-full hover:bg-gray-700 hover:text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700 focus:ring-offset-gray-900">
+                                View Features
+                            </a>
+                        </div>
+                        <div class="mt-8 flex items-center justify-center lg:justify-start gap-4 text-sm text-gray-500">
+                            <div class="flex items-center"><svg class="w-4 h-4 mr-1 text-green-500" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7"></path>
+                                </svg> Safe & Secure</div>
+                            <div class="flex items-center"><svg class="w-4 h-4 mr-1 text-green-500" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M5 13l4 4L19 7"></path>
+                                </svg> Android 7.0+</div>
+                        </div>
+                    </div>
+                    <div class="lg:w-1/2 w-full relative">
+                        <div class="absolute -inset-4 bg-red-600/20 blur-3xl rounded-full opacity-30 animate-pulse">
+                        </div>
+                        <img data-ai="generate" data-slot="hero-app-mockup"
+                            data-prompt="High quality 3D mockup of a sleek dark-mode Android anime streaming app interface showing a popular anime poster, play button, and clean UI, floating in dark space with red accent lighting"
+                            data-ar="4:3" src="/assets/hero-app-mockup.png" alt="App Interface Mockup" width="800"
+                            height="600" class="relative w-full rounded-2xl shadow-2xl border border-gray-800/50"
+                            loading="eager" />
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="features" class="py-20 bg-gray-900">
+            <div class="container mx-auto px-4">
+                <div class="text-center max-w-3xl mx-auto mb-16">
+                    <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Premium Features, <span
+                            class="text-red-500">Zero Cost</span></h2>
+                    <p class="text-gray-400 text-lg">Why pay for subscriptions? Get everything you need for the ultimate
+                        anime binge-watching experience.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    <!-- Feature 1 -->
+                    <div
+                        class="bg-gray-800 p-8 rounded-2xl border border-gray-700 hover:border-red-500/50 transition-colors duration-300 group">
+                        <div
+                            class="w-12 h-12 bg-red-900/20 rounded-lg flex items-center justify-center mb-6 group-hover:bg-red-600 transition-colors duration-300">
+                            <svg class="w-6 h-6 text-red-500 group-hover:text-white" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636">
+                                </path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-3">No Ads Forever</h3>
+                        <p class="text-gray-400">Enjoy uninterrupted viewing. No pop-ups, no banners, no video
+                            interruptions. Just pure anime.</p>
+                    </div>
+                    <!-- Feature 2 -->
+                    <div
+                        class="bg-gray-800 p-8 rounded-2xl border border-gray-700 hover:border-red-500/50 transition-colors duration-300 group">
+                        <div
+                            class="w-12 h-12 bg-red-900/20 rounded-lg flex items-center justify-center mb-6 group-hover:bg-red-600 transition-colors duration-300">
+                            <svg class="w-6 h-6 text-red-500 group-hover:text-white" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
+                                </path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-3">HD Streaming</h3>
+                        <p class="text-gray-400">Crystal clear 1080p quality playback optimized for mobile screens
+                            without buffering.</p>
+                    </div>
+                    <!-- Feature 3 -->
+                    <div
+                        class="bg-gray-800 p-8 rounded-2xl border border-gray-700 hover:border-red-500/50 transition-colors duration-300 group">
+                        <div
+                            class="w-12 h-12 bg-red-900/20 rounded-lg flex items-center justify-center mb-6 group-hover:bg-red-600 transition-colors duration-300">
+                            <svg class="w-6 h-6 text-red-500 group-hover:text-white" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-3">Continue Watching</h3>
+                        <p class="text-gray-400">Pick up exactly where you left off. We save your progress automatically
+                            across all episodes.</p>
+                    </div>
+                    <!-- Feature 4 -->
+                    <div
+                        class="bg-gray-800 p-8 rounded-2xl border border-gray-700 hover:border-red-500/50 transition-colors duration-300 group">
+                        <div
+                            class="w-12 h-12 bg-red-900/20 rounded-lg flex items-center justify-center mb-6 group-hover:bg-red-600 transition-colors duration-300">
+                            <svg class="w-6 h-6 text-red-500 group-hover:text-white" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-3">Smart Search</h3>
+                        <p class="text-gray-400">Find your favorite actors, genres, or titles instantly with our
+                            optimized search engine.</p>
+                    </div>
+                    <!-- Feature 5 -->
+                    <div
+                        class="bg-gray-800 p-8 rounded-2xl border border-gray-700 hover:border-red-500/50 transition-colors duration-300 group">
+                        <div
+                            class="w-12 h-12 bg-red-900/20 rounded-lg flex items-center justify-center mb-6 group-hover:bg-red-600 transition-colors duration-300">
+                            <svg class="w-6 h-6 text-red-500 group-hover:text-white" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-3">Fast Servers</h3>
+                        <p class="text-gray-400">Global CDN ensures low latency and instant loading times, no matter
+                            where you are.</p>
+                    </div>
+                    <!-- Feature 6 -->
+                    <div
+                        class="bg-gray-800 p-8 rounded-2xl border border-gray-700 hover:border-red-500/50 transition-colors duration-300 group">
+                        <div
+                            class="w-12 h-12 bg-red-900/20 rounded-lg flex items-center justify-center mb-6 group-hover:bg-red-600 transition-colors duration-300">
+                            <svg class="w-6 h-6 text-red-500 group-hover:text-white" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129">
+                                </path>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-3">Multi-Language</h3>
+                        <p class="text-gray-400">Subtitles available in multiple languages so you can enjoy anime from
+                            around the world.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="why-free" class="py-20 bg-gray-950 overflow-hidden">
+            <div class="container mx-auto px-4">
+                <div class="flex flex-col lg:flex-row items-center gap-16">
+                    <div class="lg:w-1/2 order-2 lg:order-1">
+                        <img data-ai="generate" data-slot="trust-illustration"
+                            data-prompt="Abstract 3D illustration representing trust, openness, and community, dark theme with red accents, minimalist style"
+                            data-ar="1:1" src="/assets/trust.png" alt="Community Trust Illustration" width="600"
+                            height="600" class="w-full max-w-md mx-auto rounded-2xl shadow-2xl" loading="lazy" />
+                    </div>
+                    <div class="lg:w-1/2 order-1 lg:order-2">
+                        <h2 class="text-3xl md:text-4xl font-bold text-white mb-6">Why is Anilab2 <span
+                                class="text-red-500">Free?</span></h2>
+                        <div class="space-y-6">
+                            <div class="flex items-start">
+                                <div
+                                    class="flex-shrink-0 w-6 h-6 mt-1 rounded-full bg-green-500/20 flex items-center justify-center">
+                                    <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </div>
+                                <div class="ml-4">
+                                    <h3 class="text-xl font-semibold text-white">Built for Anime Fans, By Anime Fans
+                                    </h3>
+                                    <p class="text-gray-400 mt-2">We believe anime should be accessible to
+                                        everyone. Our project is community-driven and supported by passion, not
+                                        corporate greed.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div
+                                    class="flex-shrink-0 w-6 h-6 mt-1 rounded-full bg-green-500/20 flex items-center justify-center">
+                                    <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </div>
+                                <div class="ml-4">
+                                    <h3 class="text-xl font-semibold text-white">No Hidden Costs</h3>
+                                    <p class="text-gray-400 mt-2">When we say free, we mean it. No in-app purchases, no
+                                        "premium" tiers, and absolutely no credit card required.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start">
+                                <div
+                                    class="flex-shrink-0 w-6 h-6 mt-1 rounded-full bg-green-500/20 flex items-center justify-center">
+                                    <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </div>
+                                <div class="ml-4">
+                                    <h3 class="text-xl font-semibold text-white">Privacy First</h3>
+                                    <p class="text-gray-400 mt-2">We don't sell your data. You don't even need to create
+                                        an account to start watching. Just download and play.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="screenshots" class="py-20 bg-gray-900 text-white">
+            <div class="container mx-auto px-4">
+                <div class="text-center mb-16">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4">Experience Premium Anime Streaming</h2>
+                    <p class="text-gray-400 max-w-2xl mx-auto">Take a sneak peek inside. A clean, intuitive interface
+                        designed for the ultimate anime binge-watching experience.</p>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                    <!-- Screenshot 1 -->
+                    <div class="group relative">
+                        <div
+                            class="aspect-[6/13] overflow-hidden rounded-2xl border border-gray-800 bg-gray-800 shadow-2xl">
+                            <img data-ai="generate" data-slot="screenshot-1"
+                                data-prompt="Mobile app interface showing a home screen of an anime streaming app with trending anime posters, dark theme, sleek UI"
+                                data-ar="9:16" src="/assets/screen1.jpg" alt="Home Screen Interface" width="1440"
+                                height="3120"
+                                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                loading="lazy" decoding="async" />
+                        </div>
+                        <div class="mt-4 text-center">
+                            <h3 class="text-lg font-semibold text-white">Trending Anime</h3>
+                            <p class="text-sm text-gray-500">Discover what's hot instantly</p>
+                        </div>
+                    </div>
+
+                    <!-- Screenshot 2 -->
+                    <div class="group relative">
+                        <div
+                            class="aspect-[6/13] overflow-hidden rounded-2xl border border-gray-800 bg-gray-800 shadow-2xl">
+                            <img data-ai="generate" data-slot="screenshot-2"
+                                data-prompt="Mobile app video player interface with playback controls, subtitles enabled, high definition quality indicator"
+                                data-ar="9:16" src="/assets/screen2.jpg" alt="HD Video Player" width="1440"
+                                height="3120"
+                                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                loading="lazy" decoding="async" />
+                        </div>
+                        <div class="mt-4 text-center">
+                            <h3 class="text-lg font-semibold text-white">Browse by Genre</h3>
+                            <p class="text-sm text-gray-500">Find anime by your mood</p>
+                        </div>
+                    </div>
+
+                    <!-- Screenshot 3 -->
+                    <div class="group relative">
+                        <div
+                            class="aspect-[6/13] overflow-hidden rounded-2xl border border-gray-800 bg-gray-800 shadow-2xl">
+                            <img data-ai="generate" data-slot="screenshot-3"
+                                data-prompt="Mobile app search page showing categories like Shonen, Isekai, Romance with anime search results"
+                                data-ar="9:16" src="/assets/screen3.jpg" alt="Smart Search" width="1440" height="3120"
+                                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                loading="lazy" decoding="async" />
+                        </div>
+                        <div class="mt-4 text-center">
+                            <h3 class="text-lg font-semibold text-white">Latest Anime</h3>
+                            <p class="text-sm text-gray-500">Stay up to date with new releases</p>
+                        </div>
+                    </div>
+
+                    <!-- Screenshot 4 -->
+                    <div class="group relative">
+                        <div
+                            class="aspect-[6/13] overflow-hidden rounded-2xl border border-gray-800 bg-gray-800 shadow-2xl">
+                            <img data-ai="generate" data-slot="screenshot-4"
+                                data-prompt="Mobile app user profile screen with 'Continue Watching' list and personalized recommendations"
+                                data-ar="9:16" src="/assets/screen4.jpg" alt="Personalized Library" width="1440"
+                                height="3120"
+                                class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                loading="lazy" decoding="async" />
+                        </div>
+                        <div class="mt-4 text-center">
+                            <h3 class="text-lg font-semibold text-white">Anime Details</h3>
+                            <p class="text-sm text-gray-500">Episodes, info & more at a glance</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="download" class="relative py-24 bg-black text-white overflow-hidden">
+            <!-- Background Glow -->
+            <div
+                class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-red-900/20 rounded-full blur-[100px] pointer-events-none">
+            </div>
+
+            <div class="container mx-auto px-4 relative z-10 text-center">
+                <h2 class="text-3xl md:text-5xl font-bold mb-6">Start Watching Anime for Free Today</h2>
+                <p class="text-xl text-gray-300 mb-10 max-w-2xl mx-auto">
+                    No subscriptions. No ads. Just unlimited anime at your fingertips.
+                </p>
+
+                <div
+                    class="bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-3xl p-8 max-w-lg mx-auto shadow-2xl">
+                    <div class="flex flex-col items-center">
+                        <div class="mb-6 flex items-center space-x-4 text-sm text-gray-400">
+                            <span class="flex items-center"><svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                </svg> Version 1.0.5</span>
+                            <span class="w-1 h-1 bg-gray-600 rounded-full"></span>
+                            <span>3.8 MB</span>
+                            <span class="w-1 h-1 bg-gray-600 rounded-full"></span>
+                            <span>Android 7.0+</span>
+                        </div>
+
+                        <a href="/assets/Anilab2-1.0.5.apk"
+                            class="group relative inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-white transition-all duration-200 bg-red-600 rounded-full hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-600 focus:ring-offset-gray-900 w-full sm:w-auto">
+                            <svg class="w-6 h-6 mr-3" fill="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    d="M3 20.5v-9l6 4.5-6 4.5zM21.9 12.6l-2.1-1.2-4.8 2.7 4.8 2.7c1.2-.7 2.1-2.3 2.1-4.2zm-9.6-2l-7.9-4.5L17.1 12l-4.8-1.4zm-7.9 9l7.9-4.5 4.8 1.4-12.7 3.1z" />
+                            </svg>
+                            Download APK Now
+                            <div
+                                class="absolute inset-0 rounded-full ring-2 ring-white/20 group-hover:ring-white/40 transition-all">
+                            </div>
+                        </a>
+
+                        <p class="mt-6 text-xs text-gray-500 flex items-center justify-center">
+                            <svg class="w-4 h-4 mr-1.5 text-green-500" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            100% Safe & Secure. Scanned for malware.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="faq" class="py-20 bg-gray-900 text-white">
+            <div class="container mx-auto px-4 max-w-3xl">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4">Frequently Asked Questions</h2>
+                    <p class="text-gray-400">Everything you need to know before you start watching anime.</p>
+                </div>
+
+                <div class="space-y-4">
+                    <!-- FAQ Item 1 -->
+                    <details
+                        class="group bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-300 open:bg-gray-800/80">
+                        <summary class="flex items-center justify-between p-5 cursor-pointer list-none">
+                            <span class="font-semibold text-lg">Is the app really 100% free?</span>
+                            <span class="transition-transform duration-300 group-open:rotate-180">
+                                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </span>
+                        </summary>
+                        <div class="px-5 pb-5 text-gray-300 leading-relaxed">
+                            Yes! Anilab2 is completely free to use. We believe anime should be accessible to
+                            everyone. There are no subscription fees, no paywalls, and no credit card required.
+                        </div>
+                    </details>
+
+                    <!-- FAQ Item 2 -->
+                    <details
+                        class="group bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-300 open:bg-gray-800/80">
+                        <summary class="flex items-center justify-between p-5 cursor-pointer list-none">
+                            <span class="font-semibold text-lg">Is it safe to install?</span>
+                            <span class="transition-transform duration-300 group-open:rotate-180">
+                                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </span>
+                        </summary>
+                        <div class="px-5 pb-5 text-gray-300 leading-relaxed">
+                            Absolutely. We prioritize user security. The APK file is scanned regularly for malware and
+                            viruses. We do not collect sensitive personal data from your device.
+                        </div>
+                    </details>
+
+                    <!-- FAQ Item 2.1 -->
+                    <details
+                        class="group bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-300 open:bg-gray-800/80">
+                        <summary class="flex items-center justify-between p-5 cursor-pointer list-none">
+                            <span class="font-semibold text-lg">How do I install the APK?</span>
+                            <span class="transition-transform duration-300 group-open:rotate-180">
+                                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </span>
+                        </summary>
+                        <div class="px-5 pb-5 text-gray-300 leading-relaxed">
+                            Download the file from our homepage. Open the file and tap "Install". If prompted, allow
+                            installation from "Unknown Sources" in your Android settings.
+                        </div>
+                    </details>
+
+                    <!-- FAQ Item 3 -->
+                    <details
+                        class="group bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-300 open:bg-gray-800/80">
+                        <summary class="flex items-center justify-between p-5 cursor-pointer list-none">
+                            <span class="font-semibold text-lg">Are there really no ads?</span>
+                            <span class="transition-transform duration-300 group-open:rotate-180">
+                                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </span>
+                        </summary>
+                        <div class="px-5 pb-5 text-gray-300 leading-relaxed">
+                            Unlike other "free" apps that interrupt you every few minutes, Anilab2 is designed to
+                            be completely ad-free for an uninterrupted anime viewing experience.
+                        </div>
+                    </details>
+
+                    <!-- FAQ Item 4 -->
+                    <details
+                        class="group bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-300 open:bg-gray-800/80">
+                        <summary class="flex items-center justify-between p-5 cursor-pointer list-none">
+                            <span class="font-semibold text-lg">Do I need to create an account?</span>
+                            <span class="transition-transform duration-300 group-open:rotate-180">
+                                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </span>
+                        </summary>
+                        <div class="px-5 pb-5 text-gray-300 leading-relaxed">
+                            No login is required. You can download Anilab2 and start watching anime immediately. We do
+                            offer
+                            an optional login if you want to sync your watchlist across devices.
+                        </div>
+                    </details>
+
+                    <!-- FAQ Item 5 -->
+                    <details
+                        class="group bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-300 open:bg-gray-800/80">
+                        <summary class="flex items-center justify-between p-5 cursor-pointer list-none">
+                            <span class="font-semibold text-lg">Is it available on the Play Store?</span>
+                            <span class="transition-transform duration-300 group-open:rotate-180">
+                                <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </span>
+                        </summary>
+                        <div class="px-5 pb-5 text-gray-300 leading-relaxed">
+                            Currently, we distribute Anilab2 directly via our website to ensure we can offer all premium
+                            anime features for free without platform restrictions. Simply download the APK here to
+                            install.
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-black border-t border-white/10 pt-16 pb-8">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
+                <!-- Brand Column -->
+                <div class="col-span-1 md:col-span-1">
+                    <!-- Logo -->
+                    <a href="/" class="flex items-center gap-2 group">
+                        <div style="width: 100px;"
+                            class="w-12 h-12 rounded flex items-center justify-center text-white font-bold">
+                            <img src="/assets/logo.svg" alt="Anilab2">
+                        </div>
+                    </a>
+                    <p class="text-gray-400 text-sm leading-relaxed">
+                        Watch your favorite anime anytime, anywhere. 100% Free, No Ads, No Strings Attached.
+                    </p>
+                </div>
+
+                <!-- Links Column 1 -->
+                <div>
+                    <h4 class="text-white font-semibold mb-4">App</h4>
+                    <ul class="space-y-2">
+                        <li><a href="/#features"
+                                class="text-gray-400 hover:text-brand-red text-sm transition-colors">Features</a></li>
+                        <li><a href="/#screenshots"
+                                class="text-gray-400 hover:text-brand-red text-sm transition-colors">Screenshots</a>
+                        </li>
+                        <li><a href="/#download"
+                                class="text-gray-400 hover:text-brand-red text-sm transition-colors">Download APK</a>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Links Column 2 -->
+                <div>
+                    <h4 class="text-white font-semibold mb-4">Support</h4>
+                    <ul class="space-y-2">
+                        <li><a href="/#faq" class="text-gray-400 hover:text-brand-red text-sm transition-colors">FAQ</a>
+                        </li>
+                        <li><a href="contact.html"
+                                class="text-gray-400 hover:text-brand-red text-sm transition-colors">Contact Us</a></li>
+                        <li><a href="report.html"
+                                class="text-gray-400 hover:text-brand-red text-sm transition-colors">Report Issue</a>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Links Column 3 -->
+                <div>
+                    <h4 class="text-white font-semibold mb-4">Legal</h4>
+                    <ul class="space-y-2">
+                        <li><a href="privacy.html"
+                                class="text-gray-400 hover:text-brand-red text-sm transition-colors">Privacy Policy</a>
+                        </li>
+                        <li><a href="terms.html"
+                                class="text-gray-400 hover:text-brand-red text-sm transition-colors">Terms of
+                                Service</a></li>
+                        <li><a href="dmca.html"
+                                class="text-gray-400 hover:text-brand-red text-sm transition-colors">DMCA</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="border-t border-white/10 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+                <p class="text-gray-500 text-sm text-center md:text-left">
+                    &copy; 2026 Anilab2. All rights reserved.
+                </p>
+                <div class="flex items-center gap-4">
+                    <a href="/" class="text-gray-400 hover:text-white transition-colors">
+                        <i data-lucide="twitter" class="w-5 h-5"></i>
+                    </a>
+                    <a href="/" class="text-gray-400 hover:text-white transition-colors">
+                        <i data-lucide="facebook" class="w-5 h-5"></i>
+                    </a>
+                    <a href="/" class="text-gray-400 hover:text-white transition-colors">
+                        <i data-lucide="instagram" class="w-5 h-5"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Navigation & Interaction Scripts -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Mobile Menu Logic
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const mobileMenu = document.getElementById('mobile-menu');
+            const closeMenuBtn = document.getElementById('close-menu-btn');
+            const mobileLinks = mobileMenu.querySelectorAll('a');
+
+            function toggleMenu() {
+                const isClosed = mobileMenu.classList.contains('translate-x-full');
+                if (isClosed) {
+                    mobileMenu.classList.remove('translate-x-full');
+                    document.body.classList.add('overflow-hidden');
+                } else {
+                    mobileMenu.classList.add('translate-x-full');
+                    document.body.classList.remove('overflow-hidden');
+                }
+            }
+
+            mobileMenuBtn.addEventListener('click', toggleMenu);
+            closeMenuBtn.addEventListener('click', toggleMenu);
+            mobileLinks.forEach(link => link.addEventListener('click', toggleMenu));
+
+            // Scroll Spy & Active Link Highlighting
+            const sections = document.querySelectorAll('section');
+            const navLinks = document.querySelectorAll('#desktop-nav a');
+
+            window.addEventListener('scroll', () => {
+                let current = '';
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop;
+                    const sectionHeight = section.clientHeight;
+                    // Offset of 100px for fixed header
+                    if (scrollY >= (sectionTop - 100)) {
+                        current = section.getAttribute('id');
+                    }
+                });
+
+                navLinks.forEach(link => {
+                    link.classList.remove('text-white');
+                    link.classList.add('text-gray-300');
+                    if (link.getAttribute('href').includes(current)) {
+                        link.classList.remove('text-gray-300');
+                        link.classList.add('text-white');
+                    }
+                });
+            });
+
+            // Initialize Lucide Icons
+            lucide.createIcons();
+        });
+    </script>
+</body>
+
+</html>
