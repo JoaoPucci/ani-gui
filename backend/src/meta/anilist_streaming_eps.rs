@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::error::{AniError, Result};
-use crate::meta::anilist_media::{media_is_absent, with_missing_retry, MediaRef};
+use crate::meta::anilist_media::{graphql_body, media_is_absent, with_missing_retry, MediaRef};
 
 const ANILIST_API: &str = "https://graphql.anilist.co";
 
@@ -79,13 +79,7 @@ async fn post_streaming_episodes(
         .send()
         .await
         .map_err(|_| AniError::Network)?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(AniError::Upstream {
-            status: status.as_u16(),
-        });
-    }
-    let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+    let bytes = graphql_body(resp).await?;
     if media_is_absent(&bytes) {
         return Ok(None);
     }

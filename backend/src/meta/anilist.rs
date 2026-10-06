@@ -165,13 +165,7 @@ pub(crate) async fn post_graphql_public(
         tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
         resp = send().await.map_err(|_| AniError::Network)?;
     }
-    let status = resp.status();
-    if !status.is_success() {
-        return Err(AniError::Upstream {
-            status: status.as_u16(),
-        });
-    }
-    resp.bytes().await.map_err(|_| AniError::Network)
+    crate::meta::anilist_media::graphql_body(resp).await
 }
 
 /// Fetch the AniList trending feed, top `limit` entries.

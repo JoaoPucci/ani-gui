@@ -3,7 +3,7 @@
 //! inside it so that file's ccn stays under the CRAP ceiling, the same
 //! reason `anilist_streaming_eps` lives apart.
 
-use crate::error::Result;
+use crate::error::{AniError, Result};
 use crate::meta::anilist::{
     parse_banner_response, post_graphql_public, ANILIST_API, BANNER_BY_MAL_GQL,
 };
@@ -57,6 +57,33 @@ pub(crate) fn media_is_absent(body: &[u8]) -> bool {
         v.pointer("/data/Media")
             .is_some_and(serde_json::Value::is_null)
     })
+}
+
+/// The body of an AniList GraphQL response, or the failure it stands
+/// for. A 2xx is the body. A 404 whose body says `data.Media: null` is
+/// also the body: that is how AniList answers a single-`Media` query
+/// for an id it does not index, and every parser reads it as absence.
+/// Any other status, a 404 without that shape included, is
+/// [`AniError::Upstream`].
+///
+/// # Errors
+/// [`AniError::Upstream`] as above; [`AniError::Network`] when the
+/// body cannot be read.
+pub(crate) async fn graphql_body(resp: reqwest::Response) -> Result<bytes::Bytes> {
+    let status = resp.status();
+    if !status.is_success() && status != reqwest::StatusCode::NOT_FOUND {
+        return Err(AniError::Upstream {
+            status: status.as_u16(),
+        });
+    }
+    let bytes = resp.bytes().await.map_err(|_| AniError::Network)?;
+    if status.is_success() || media_is_absent(&bytes) {
+        Ok(bytes)
+    } else {
+        Err(AniError::Upstream {
+            status: status.as_u16(),
+        })
+    }
 }
 
 /// Runs `lookup` on the preferred id and, only when AniList answered
