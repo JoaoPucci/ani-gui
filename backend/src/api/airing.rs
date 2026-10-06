@@ -32,10 +32,11 @@ async fn get_airing(
     Path(kitsu_id): Path<String>,
     Query(q): Query<AiringQuery>,
 ) -> Result<Json<AiringStatus>, AniError> {
+    let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
     let status = if q.refresh {
-        crate::commands::airing::airing_refresh(&state, &kitsu_id).await?
+        crate::commands::airing::airing_refresh(&state, kitsu_id).await?
     } else {
-        crate::commands::airing::airing_get(&state, &kitsu_id).await?
+        crate::commands::airing::airing_get(&state, kitsu_id).await?
     };
     Ok(Json(status))
 }

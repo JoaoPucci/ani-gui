@@ -99,7 +99,8 @@ impl From<Tokens> for TokensResponse {
 /// form (`watching`, `completed`, …).
 #[derive(Debug, Deserialize)]
 pub struct UpdateProgressRequest {
-    /// Kitsu id of the show being marked watched.
+    /// Kitsu id of the show being marked watched. The route refuses a value that is not
+    /// one ([`crate::kitsu_id::require`]).
     pub kitsu_id: String,
     /// New episodes-watched count.
     #[serde(default)]
@@ -133,7 +134,8 @@ pub struct DisconnectFallbackQuery {
 /// `status` / `progress` must be present (enforced by `build_entry_update`).
 #[derive(Debug, Deserialize)]
 pub struct SetEntryRequest {
-    /// Kitsu id of the show being edited.
+    /// Kitsu id of the show being edited. The route refuses a value that is not
+    /// one ([`crate::kitsu_id::require`]).
     pub kitsu_id: String,
     /// New unified status (snake_case), or `None` to leave unchanged.
     #[serde(default)]
@@ -147,7 +149,8 @@ pub struct SetEntryRequest {
 /// (`GET`/`DELETE /entry/:provider?kitsu_id=…`).
 #[derive(Debug, Deserialize)]
 pub struct EntryQuery {
-    /// Kitsu id of the show whose entry is read or removed.
+    /// Kitsu id of the show whose entry is read or removed. The route refuses a value that is not
+    /// one ([`crate::kitsu_id::require`]).
     pub kitsu_id: String,
 }
 

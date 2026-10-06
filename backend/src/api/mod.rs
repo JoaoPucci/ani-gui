@@ -189,7 +189,8 @@ async fn get_history_by_kitsu(
     State(state): State<Arc<AppState>>,
     Path(kitsu_id): Path<String>,
 ) -> Result<Json<Option<HistoryEntry>>, AniError> {
-    Ok(Json(h_inner::history_by_kitsu(&state, &kitsu_id)?))
+    let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
+    Ok(Json(h_inner::history_by_kitsu(&state, kitsu_id)?))
 }
 
 async fn post_external_player(
@@ -231,7 +232,8 @@ async fn get_kitsu_anime_detail(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<KitsuAnimeRef>, AniError> {
-    Ok(Json(kitsu_inner::kitsu_anime_detail(&state, &id).await?))
+    let id = crate::kitsu_id::require(&id)?;
+    Ok(Json(kitsu_inner::kitsu_anime_detail(&state, id).await?))
 }
 
 async fn get_kitsu_anime_by_slug(
@@ -301,8 +303,9 @@ async fn get_aniskip(
     Path((kitsu_id, episode)): Path<(String, String)>,
     Query(q): Query<AniskipQuery>,
 ) -> Result<Json<Vec<crate::meta::aniskip::SkipInterval>>, AniError> {
+    let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
     Ok(Json(
-        aniskip_inner::aniskip_get(&state, &kitsu_id, &episode, q.episode_length).await?,
+        aniskip_inner::aniskip_get(&state, kitsu_id, &episode, q.episode_length).await?,
     ))
 }
 
@@ -326,9 +329,10 @@ async fn get_kitsu_episodes(
     Path(anime_id): Path<String>,
     Query(q): Query<EpisodesQuery>,
 ) -> Result<Json<Vec<KitsuEpisode>>, AniError> {
+    let anime_id = crate::kitsu_id::require(&anime_id)?;
     let page = q.page.unwrap_or(1);
     Ok(Json(
-        kitsu_inner::kitsu_episodes_with(&state, &anime_id, page, q.refresh).await?,
+        kitsu_inner::kitsu_episodes_with(&state, anime_id, page, q.refresh).await?,
     ))
 }
 
@@ -377,12 +381,13 @@ async fn put_title_match(
 ) -> Result<StatusCode, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
+    let kitsu_id = crate::kitsu_id::require(&body.kitsu_id)?;
     crate::commands::title_match_store::store_title_match(
         &state,
         provider,
         &body.title,
         body.cour,
-        &body.kitsu_id,
+        kitsu_id,
     )?;
     Ok(StatusCode::NO_CONTENT)
 }

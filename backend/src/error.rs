@@ -159,6 +159,14 @@ pub enum AniError {
     #[error("unsupported pkce method for this provider")]
     UnsupportedPkce,
 
+    /// The renderer named a Kitsu id that is not one: anything but
+    /// ASCII digits once surrounding whitespace is trimmed. Refused
+    /// at the route boundary ([`crate::kitsu_id`]) before the value
+    /// reaches a cache key, a row, or an outbound URL. 400, like
+    /// [`Self::UnsupportedPkce`]: the caller sent the bad value.
+    #[error("invalid kitsu id")]
+    InvalidKitsuId,
+
     /// Stream session token was missing, expired, or signature-invalid.
     #[error("invalid stream token")]
     InvalidToken,
@@ -191,6 +199,7 @@ impl AniError {
             Self::Config => "error.config.parse",
             Self::Metadata => "error.metadata.source",
             Self::UnsupportedPkce => "error.account.unsupported_pkce",
+            Self::InvalidKitsuId => crate::i18n::keys::REQUEST_INVALID_KITSU_ID,
             Self::InvalidToken => "error.stream.invalid_token",
         }
     }
@@ -240,7 +249,7 @@ impl AniError {
             Self::Network => 503,
             Self::GateRefused => 503,
             Self::Timeout => 504,
-            Self::UnsupportedPkce => 400,
+            Self::UnsupportedPkce | Self::InvalidKitsuId => 400,
             Self::ParseFailed { .. }
             | Self::FfmpegMissing
             | Self::PlayerSpawnFailed { .. }

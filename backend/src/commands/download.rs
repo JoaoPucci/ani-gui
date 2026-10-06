@@ -55,7 +55,8 @@ pub struct DownloadArgs {
     #[serde(default, deserialize_with = "deserialize_alt_titles")]
     pub alt_titles: Vec<String>,
     /// Kitsu id of the show being downloaded; logged for traceability.
-    #[serde(default)]
+    /// A value that is not an id ([`crate::kitsu_id`]) reads as `None`.
+    #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub kitsu_id: Option<String>,
     /// Absolute path to the directory the download lands in. The
     /// frontend's confirmation modal opens on `paths::download_dir()`

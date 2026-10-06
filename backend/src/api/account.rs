@@ -161,7 +161,8 @@ async fn post_update(
     // push_progress writes the cache through under its per-show lock
     // (Codex P2 #3412673593 reflects a started title; #3423108941 keeps
     // it under the lock so a stale write can't clobber an explicit edit).
-    let entry = account::push_progress(&state, kind, &tokens, &req.kitsu_id, update).await?;
+    let kitsu_id = crate::kitsu_id::require(&req.kitsu_id)?;
+    let entry = account::push_progress(&state, kind, &tokens, kitsu_id, update).await?;
     Ok(Json(entry))
 }
 
@@ -181,7 +182,8 @@ async fn post_set(
     let update = account::build_entry_update(req.status.as_deref(), req.progress, None)?;
     // set_entry writes verbatim (no monotonic guard) and force-upserts
     // the cache so a downward correction reflects immediately.
-    let entry = account_edit::set_entry(&state, kind, &tokens, &req.kitsu_id, update).await?;
+    let kitsu_id = crate::kitsu_id::require(&req.kitsu_id)?;
+    let entry = account_edit::set_entry(&state, kind, &tokens, kitsu_id, update).await?;
     Ok(Json(entry))
 }
 
@@ -197,7 +199,8 @@ async fn get_entry(
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let current = account_edit::get_entry(&state, kind, &tokens, &q.kitsu_id).await?;
+    let kitsu_id = crate::kitsu_id::require(&q.kitsu_id)?;
+    let current = account_edit::get_entry(&state, kind, &tokens, kitsu_id).await?;
     let view = current.map(|c| EntryView {
         status: account::status_to_snake(c.status).to_owned(),
         progress: c.progress_episodes,
@@ -232,7 +235,8 @@ async fn delete_entry(
     let kind = parse_provider(&provider)?;
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
-    let removed = account_edit::remove_entry(&state, kind, &tokens, &q.kitsu_id).await?;
+    let kitsu_id = crate::kitsu_id::require(&q.kitsu_id)?;
+    let removed = account_edit::remove_entry(&state, kind, &tokens, kitsu_id).await?;
     Ok(remove_entry_status(removed))
 }
 

@@ -23,8 +23,8 @@ use crate::error::AniError;
 /// The digits `raw` carries, or `None` when it is not a Kitsu id.
 #[must_use]
 pub fn kitsu_id_in(raw: &str) -> Option<&str> {
-    // Red: every value passes, as every route takes one today.
-    Some(raw)
+    let id = raw.trim();
+    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then_some(id)
 }
 
 /// The id a route requires, or the error the route answers with.
@@ -32,7 +32,7 @@ pub fn kitsu_id_in(raw: &str) -> Option<&str> {
 /// # Errors
 /// [`AniError::InvalidKitsuId`] when `raw` is not a Kitsu id.
 pub fn require(raw: &str) -> Result<&str, AniError> {
-    kitsu_id_in(raw).ok_or(AniError::Metadata)
+    kitsu_id_in(raw).ok_or(AniError::InvalidKitsuId)
 }
 
 /// Serde adapter for an optional id field: the id when the value is
@@ -46,7 +46,7 @@ where
     D: Deserializer<'de>,
 {
     let raw = Option::<String>::deserialize(d)?;
-    Ok(raw)
+    Ok(raw.as_deref().and_then(kitsu_id_in).map(ToOwned::to_owned))
 }
 
 /// Serde adapter for a list of ids: the ids among the values, each
@@ -60,7 +60,11 @@ where
     D: Deserializer<'de>,
 {
     let raw = Vec::<String>::deserialize(d)?;
-    Ok(raw)
+    Ok(raw
+        .iter()
+        .filter_map(|s| kitsu_id_in(s))
+        .map(ToOwned::to_owned)
+        .collect())
 }
 
 #[cfg(test)]
