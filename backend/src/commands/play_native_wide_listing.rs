@@ -63,6 +63,14 @@ pub(super) fn fit_to_entry(probed: &mut [Probed<'_>], expected: u32, entry: Entr
     }
 }
 
+/// Whether a probed candidate may be rescued as an airing part: its
+/// own year matched the entry's, its titles were admitted, and it
+/// lists fewer episodes than the entry will have.
+pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
+    let (_, eps, distance, confirmed) = row;
+    *confirmed && *distance != UNFIT && regular_episode_count(eps) < expected
+}
+
 /// The listing that spans this entry and the next, with the later
 /// parts that complete it. It must be admitted, carry the entry's own
 /// year, and list more than the entry has; its later part must share
