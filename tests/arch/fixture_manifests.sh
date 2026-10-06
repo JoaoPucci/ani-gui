@@ -22,8 +22,8 @@
 #     records a `size`;
 #   - both are taken over the file's bytes, or, when the entry declares
 #     `"encoding": "base64"`, over the bytes its text decodes to. That
-#     text must be canonical base64 — with spaces and line breaks
-#     removed, exactly the encoding of the decoded bytes — so it cannot
+#     text must be canonical base64 — with spaces, tabs and line
+#     breaks removed, exactly the encoding of the decoded bytes — so it cannot
 #     carry text the decoder would drop. Any other encoding value fails
 #     rather than being skipped.
 #
@@ -114,7 +114,7 @@ for (const file of manifests) {
     if (e.encoding === "base64") {
       // The decoder drops characters outside the alphabet, so the text
       // must be exactly the encoding of what it decodes to, give or take
-      // line breaks and spaces; otherwise it could change unnoticed.
+      // spaces, tabs and line breaks; otherwise it could change unnoticed.
       const text = bytes.toString("latin1").replace(/[\t\n\r ]/g, "");
       bytes = Buffer.from(text, "base64");
       if (bytes.toString("base64") !== text) {

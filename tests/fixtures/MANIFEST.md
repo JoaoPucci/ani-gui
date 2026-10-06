@@ -27,8 +27,8 @@ matches its recorded SHA-256, and its size where the entry records one; each
 file beside a manifest is listed; a subdirectory beside a manifest carries its
 own; and nothing beside a manifest is a symbolic link. An entry whose file is
 base64 text declares `"encoding": "base64"`. Its size and digest are then of
-the decoded bytes, and the text must be canonical base64 apart from line breaks
-and spaces.
+the decoded bytes, and the text must be canonical base64 apart from spaces,
+tabs and line breaks.
 
 Reviewers should look for *unexpected* diffs (e.g. a Kitsu response that
 gained a new field — investigate before accepting), and for changes in
