@@ -184,3 +184,20 @@ proptest::proptest! {
         proptest::prop_assert_eq!(regular, expected.min(total));
     }
 }
+
+#[test]
+fn a_candidate_the_entry_does_not_admit_is_never_rescued_as_airing() {
+    // A same-year sequel short of the entry's count is what an airing
+    // part looks like; refused by title, it must not be rescued.
+    let sequel = hit("show-s2-1", "Show Season 2");
+    let mut probed = pool(&[(&sequel, 5, true)], 24);
+    fit_to_entry(&mut probed, 24, EntryTitles::bare("Show"));
+    assert!(!rescuable(&probed[0], 24));
+    let own = hit("show-1", "Show");
+    let mut probed = pool(&[(&own, 5, true)], 24);
+    fit_to_entry(&mut probed, 24, EntryTitles::bare("Show"));
+    assert!(
+        rescuable(&probed[0], 24),
+        "the entry's own airing listing is"
+    );
+}

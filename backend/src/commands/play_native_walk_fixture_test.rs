@@ -477,3 +477,27 @@ async fn a_pool_the_titles_refused_a_fitting_candidate_from_is_not_a_clean_miss(
         }
     }
 }
+
+/// A candidate the entry's titles refuse could never have won, so its
+/// probe dying unheard blocks no winner, however early it ranked.
+#[tokio::test]
+async fn a_refused_candidate_s_dead_probe_blocks_no_winner() {
+    let rows = (1..=12)
+        .map(|n| format!("[{n}, {n}, null]"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let json = format!(
+        r#"{{
+ "kitsu": {{"canonical": "Show", "alt_titles": [], "episode_count": 12,
+            "year": 2020, "subtype": "TV"}},
+ "searches": {{"Show": [["show-season-2-1", "Show Season 2", "TV"],
+                       ["show-tv-2", "Show TV", "TV"]]}},
+ "episodes": {{"show-tv-2": [{rows}]}},
+ "years": {{"show-season-2-1": 2020, "show-tv-2": 2020}}
+}}"#
+    );
+    let mut site = Recorded::inline("inline", &json);
+    site.dead = vec!["show-season-2-1"];
+    let picked = walk_over(site).await.expect("the admitted candidate wins");
+    assert_eq!(picked.hit.slug, "show-tv-2");
+}
