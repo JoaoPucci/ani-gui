@@ -41,9 +41,9 @@ type GuardedChild = Box<dyn process_wrap::tokio::ChildWrapper>;
 /// On Windows the tool runs in two nested job objects. The kill ends
 /// the inner one — the child's own — whole, with no pid looked up; the
 /// outer one lists the members until they have gone, whether or not
-/// the tool itself still runs, and ends them when its handle closes, so
-/// a backend that dies without running any guard takes its tools with
-/// it.
+/// the tool itself still runs. Both end their members when their
+/// handle closes, so a backend that dies without running any guard
+/// takes its tools with it.
 pub(crate) struct TreeKillChild {
     child: GuardedChild,
     /// The rest of the child's tree; `None` once it is known to be
