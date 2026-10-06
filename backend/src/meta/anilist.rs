@@ -120,6 +120,12 @@ const BANNER_BY_MAL_GQL: &str = "query BannerByMal($idMal: Int!) { \
         Media(idMal: $idMal, type: ANIME) { bannerImage } \
     }";
 
+/// [`BANNER_BY_MAL_GQL`] keyed by AniList's own id, for shows Kitsu
+/// maps to AniList but not yet to MAL.
+const BANNER_BY_ID_GQL: &str = "query BannerById($id: Int!) { \
+        Media(id: $id, type: ANIME) { bannerImage } \
+    }";
+
 /// User-agent for every AniList request. The proxy client mimics
 /// Firefox, but AniList's Cloudflare layer 403s browser UAs that lack
 /// a full fingerprint — an app-style identifier passes through.
@@ -236,8 +242,8 @@ impl MediaRef {
     /// when neither is known. Preferring MAL keeps every show that
     /// already resolved on the exact query it used before.
     #[must_use]
-    pub fn preferring_mal(mal: Option<u32>, _anilist: Option<u32>) -> Option<Self> {
-        mal.map(Self::Mal)
+    pub fn preferring_mal(mal: Option<u32>, anilist: Option<u32>) -> Option<Self> {
+        mal.map(Self::Mal).or(anilist.map(Self::AniList))
     }
 }
 
@@ -254,7 +260,15 @@ pub async fn banner_for_media(
 ) -> Result<Option<String>> {
     match media {
         MediaRef::Mal(mal_id) => banner_for_mal_id(client, mal_id, base_override).await,
-        MediaRef::AniList(_) => Ok(None),
+        MediaRef::AniList(id) => {
+            let url = base_override.unwrap_or(ANILIST_API);
+            let body = serde_json::json!({
+                "query": BANNER_BY_ID_GQL,
+                "variables": { "id": id },
+            });
+            let bytes = post_graphql_public(client, url, &body).await?;
+            parse_banner_response(&bytes)
+        }
     }
 }
 

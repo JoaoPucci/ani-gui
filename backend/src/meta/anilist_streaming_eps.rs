@@ -26,6 +26,12 @@ const STREAMING_EPS_BY_MAL_GQL: &str = "query StreamingEpsByMal($idMal: Int!) { 
         Media(idMal: $idMal, type: ANIME) { streamingEpisodes { title thumbnail } } \
     }";
 
+/// [`STREAMING_EPS_BY_MAL_GQL`] keyed by AniList's own id, for shows
+/// Kitsu maps to AniList but not yet to MAL.
+const STREAMING_EPS_BY_ID_GQL: &str = "query StreamingEpsById($id: Int!) { \
+        Media(id: $id, type: ANIME) { streamingEpisodes { title thumbnail } } \
+    }";
+
 /// Fetch the list of `streamingEpisodes` AniList has for a show
 /// identified by its MyAnimeList id. Each entry yields a
 /// `(episode_number, thumbnail_url)` pair; the parser drops any
@@ -44,11 +50,20 @@ pub async fn streaming_episodes_for_mal_id(
     mal_id: u32,
     base_override: Option<&str>,
 ) -> Result<Vec<(u32, String)>> {
-    let url = base_override.unwrap_or(ANILIST_API);
     let body = serde_json::json!({
         "query": STREAMING_EPS_BY_MAL_GQL,
         "variables": { "idMal": mal_id },
     });
+    post_streaming_episodes(client, &body, base_override).await
+}
+
+/// Shared POST + parse behind both `streamingEpisodes` queries.
+async fn post_streaming_episodes(
+    client: &reqwest::Client,
+    body: &serde_json::Value,
+    base_override: Option<&str>,
+) -> Result<Vec<(u32, String)>> {
+    let url = base_override.unwrap_or(ANILIST_API);
     let resp = client
         .post(url)
         .header(
@@ -57,7 +72,7 @@ pub async fn streaming_episodes_for_mal_id(
         )
         .header("content-type", "application/json")
         .header("accept", "application/json")
-        .json(&body)
+        .json(body)
         .send()
         .await
         .map_err(|_| AniError::Network)?;
@@ -85,11 +100,16 @@ pub async fn streaming_eps_map_for_mal_id(
     base_override: Option<&str>,
 ) -> Result<HashMap<u32, String>> {
     let pairs = streaming_episodes_for_mal_id(client, mal_id, base_override).await?;
+    Ok(dedup_first_wins(pairs))
+}
+
+/// `(ep_number, url)` pairs → map, keeping the first URL per episode.
+fn dedup_first_wins(pairs: Vec<(u32, String)>) -> HashMap<u32, String> {
     let mut map = HashMap::with_capacity(pairs.len());
     for (n, url) in pairs {
         map.entry(n).or_insert(url);
     }
-    Ok(map)
+    map
 }
 
 /// [`streaming_eps_map_for_mal_id`] for a show identified either
@@ -104,7 +124,15 @@ pub async fn streaming_eps_map_for_media(
 ) -> Result<HashMap<u32, String>> {
     match media {
         MediaRef::Mal(mal_id) => streaming_eps_map_for_mal_id(client, mal_id, base_override).await,
-        MediaRef::AniList(_) => Ok(HashMap::new()),
+        MediaRef::AniList(id) => {
+            let body = serde_json::json!({
+                "query": STREAMING_EPS_BY_ID_GQL,
+                "variables": { "id": id },
+            });
+            Ok(dedup_first_wins(
+                post_streaming_episodes(client, &body, base_override).await?,
+            ))
+        }
     }
 }
 
