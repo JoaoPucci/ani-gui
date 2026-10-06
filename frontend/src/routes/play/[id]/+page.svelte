@@ -2898,8 +2898,17 @@
 				</div>
 			{/if}
 		{/if}
-		{#if (switchBusy || resumeHolding) && !playerError}
-			<span class="player-spinner" aria-hidden="true">
+		<!-- Mounted across a switch and the resume hold that follows it,
+		     and toggled: the two states are set in different places, and
+		     the moment between them must not restart the indicator. An
+		     error unmounts it outright, so nothing lingers over the
+		     panel. -->
+		{#if !playerError}
+			<span
+				class="player-spinner"
+				class:player-spinner-on={switchBusy || resumeHolding}
+				aria-hidden="true"
+			>
 				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
 			</span>
 		{/if}
@@ -4443,18 +4452,36 @@
 	   hairline (the search bar's and the download bar's sweep), set
 	   in the show's accent and centred in the frame. It waits a beat
 	   before fading in, so a switch or a resume that lands quickly
-	   never flashes it. The sweep travels on inset-inline-start, so
-	   it runs with the reading direction; the track contains its own
-	   layout, so that costs the page nothing while the video decodes.
+	   never flashes it, and it holds a beat before fading out, so the
+	   moment between a switch and the resume hold that follows it
+	   passes without it leaving: switched back on inside that hold,
+	   it never moved. It leaves the layout (display: none, as a
+	   discrete transition) once faded, so the sweep stops with it.
+	   The sweep travels on inset-inline-start, so it runs with the
+	   reading direction; the track contains its own layout, so that
+	   costs the page nothing while the video decodes.
 	   A soft dark halo is invisible on the black frame of a resume
 	   hold and lifts the line off a half-dimmed picture. */
 	.player-spinner {
 		position: absolute;
 		inset: 0;
-		display: grid;
 		place-items: center;
 		pointer-events: none;
-		animation: player-spinner-in var(--dur-slow) var(--ease-out-soft) 240ms both;
+		display: none;
+		opacity: 0;
+		transition:
+			opacity var(--dur-slow) var(--ease-out-soft) 200ms,
+			display var(--dur-slow) allow-discrete 200ms;
+	}
+	.player-spinner.player-spinner-on {
+		display: grid;
+		opacity: 1;
+		transition-delay: 240ms;
+	}
+	@starting-style {
+		.player-spinner.player-spinner-on {
+			opacity: 0;
+		}
 	}
 	.player-spinner-track {
 		position: relative;
@@ -4471,11 +4498,17 @@
 	}
 	/* Windowed, a switch already has the page-wide loading overlay;
 	   a second indicator in the frame would peek out beside its band.
-	   In fullscreen that overlay is outside the top layer, so the
-	   frame's own indicator is the one the viewer sees, scaled up
-	   for the larger picture. */
-	.player-frame.player-busy:not(:fullscreen) .player-spinner {
-		display: none;
+	   So windowed, the frame's indicator is seen only during a resume
+	   hold, and goes at once when the hold reveals rather than
+	   lingering over the picture. It is only invisible, not gone:
+	   switched on through the switch, it keeps running underneath,
+	   so when the switch hands over to a hold and the overlay lifts,
+	   the line is already there. In fullscreen that overlay is
+	   outside the top layer, so the frame's own indicator is the one
+	   the viewer sees throughout, scaled up for the larger picture. */
+	.player-frame.player-busy:not(:fullscreen) .player-spinner,
+	.player-frame:not(.player-resuming):not(:fullscreen) .player-spinner {
+		visibility: hidden;
 	}
 	.player-frame:fullscreen .player-spinner-track {
 		inline-size: clamp(8rem, 22%, 16rem);
@@ -4494,14 +4527,6 @@
 			transparent
 		);
 		animation: player-spinner-sweep 1.4s var(--ease-in-out) infinite;
-	}
-	@keyframes player-spinner-in {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
 	}
 	@keyframes player-spinner-sweep {
 		from {
