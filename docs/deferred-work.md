@@ -418,7 +418,8 @@ starting it, and delete it when you find it done.
   show, which is most of the time.
 
   It waited on a measurement. A miss costs a full walk — every alias
-  searched, up to five candidates probed per alias — and the union
+  searched, up to five candidates the entry's titles admit probed per
+  alias, and with a count up to five refused ones besides — and the union
   makes every genuinely absent show cost one such walk per provider
   on the page's probe; the background warm holds back for a show the
   probe found absent, so it adds none. What hianime tolerates at
