@@ -2034,11 +2034,11 @@ where
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-    // Own process group, so cancellation can address the tool's
-    // whole tree: yt-dlp spawns helpers kill_on_drop cannot reach.
-    #[cfg(unix)]
-    cmd.process_group(0);
-    let child = loop {
+    // In its tree before it runs — its own process group on Unix, its
+    // jobs on Windows — so cancellation can address the tool's whole
+    // tree: yt-dlp spawns helpers kill_on_drop cannot reach.
+    let mut cmd = crate::spawn::GuardedCommand::new(cmd);
+    let mut child = loop {
         // The retry lives before the child exists, so the wait below
         // cannot cover it — the deadline has to, or a tool that
         // never becomes runnable spins here forever.
@@ -2059,11 +2059,9 @@ where
         }
     };
     // Dropped unreaped — the dock's Cancel aborting the SSE task, or
-    // the transfer deadline elapsing — the guard takes the process
-    // group down; a waited child is already reaped and the guard
-    // stands down by itself.
-    let mut child = crate::spawn::TreeKillChild::new(child);
-    let stderr = child.child_mut().stderr.take().ok_or(AniError::Io)?;
+    // the transfer deadline elapsing — the guard takes the tool's
+    // tree down; a tree already gone is left alone.
+    let stderr = child.stderr_mut().take().ok_or(AniError::Io)?;
     let drive = async {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(raw)) = lines.next_line().await {
@@ -2082,7 +2080,7 @@ where
             }
             on_line(&line);
         }
-        child.child_mut().wait().await.map_err(|_| AniError::Io)
+        child.wait().await.map_err(|_| AniError::Io)
     };
     // Whichever resolves first: the tool running to its end (or the
     // deadline), or the caller's stop. The drive is dropped here
