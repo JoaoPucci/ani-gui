@@ -1715,8 +1715,13 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:44294", &body, 60 * 60)
-            .expect("put");
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &crate::commands::kitsu::anime_detail_key("44294"),
+            &body,
+            60 * 60,
+        )
+        .expect("put");
 
         let pool = state.cache_pool.clone();
         let router = build_api_router(Arc::new(state));
@@ -1808,8 +1813,13 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:99001", &body, 60 * 60)
-            .expect("put");
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &crate::commands::kitsu::anime_detail_key("99001"),
+            &body,
+            60 * 60,
+        )
+        .expect("put");
 
         let pool = state.cache_pool.clone();
         let router = build_api_router(Arc::new(state));
@@ -1892,8 +1902,13 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:99002", &body, 60 * 60)
-            .expect("put");
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &crate::commands::kitsu::anime_detail_key("99002"),
+            &body,
+            60 * 60,
+        )
+        .expect("put");
 
         let pool = state.cache_pool.clone();
         let router = build_api_router(Arc::new(state));

@@ -855,7 +855,7 @@ pub fn watched_at_all(state: &AppState) -> Result<std::collections::HashMap<Stri
 /// v3: `cover_image` is now backfilled from AniList's `bannerImage`
 /// when Kitsu's is null. v2 rows have null covers for new ongoing
 /// shows; bumping the version forces a refresh.
-fn anime_detail_key(id: &str) -> String {
+pub(crate) fn anime_detail_key(id: &str) -> String {
     // v4: the row's lifetime follows the show's status (see
     // `anime_detail_ttl`). v3 rows were all written for a week, so an
     // airing show's row would hold its old status and count for up to
