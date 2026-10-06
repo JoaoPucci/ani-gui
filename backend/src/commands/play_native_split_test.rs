@@ -25,6 +25,7 @@ fn cand(title: &str, count: u32, confirmed: bool) -> PartCandidate<'_> {
         count,
         confirmed,
         offset: 0,
+        admitted: true,
     }
 }
 
@@ -383,6 +384,7 @@ proptest::proptest! {
                 count: *count,
                 confirmed: *confirmed,
                 offset: *offset,
+                admitted: true,
             })
             .collect();
         let best_single = cands
