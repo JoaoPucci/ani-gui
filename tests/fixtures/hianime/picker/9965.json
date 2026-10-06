@@ -44,6 +44,12 @@
     [8858, 11, null],
     [8859, 12, null],
     [8860, 13, null]
+  ],
+  "overlord-the-maid-tea-party-5349": [
+    [68742, 1, null]
+  ],
+  "overlord-ple-ple-pleiades-special-edition-4883": [
+    [64561, 1, null]
   ]
  },
  "years": {
@@ -54,6 +60,8 @@
   "overlord-ple-ple-pleiades-2-4878": 2018,
   "overlord-ple-ple-pleiades-3-4879": 2018,
   "overlord-ple-ple-pleiades-4-4880": 2022,
-  "overlord-ple-ple-pleiades-fugitive-clementine-4876": 2018
+  "overlord-ple-ple-pleiades-fugitive-clementine-4876": 2018,
+  "overlord-the-maid-tea-party-5349": 2014,
+  "overlord-ple-ple-pleiades-special-edition-4883": 2015
  }
 }
