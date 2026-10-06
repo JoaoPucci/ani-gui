@@ -597,7 +597,10 @@ pub fn allmanga_kitsu_delete_named(state: &AppState, show_id: &str, kitsu_id: &s
 /// whether it was. The caller holds the history, so the check and the
 /// delete see the same mapping.
 fn delete_while_named(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<bool> {
-    if allmanga_kitsu_get(state, show_id)?.as_deref() != Some(kitsu_id) {
+    // Compared as its digits, the way the mapping read hands it to the
+    // renderer that names it here.
+    let stored = allmanga_kitsu_get(state, show_id)?;
+    if stored.as_deref().and_then(crate::history::kitsu_id_in) != Some(kitsu_id) {
         return Ok(false);
     }
     allmanga_kitsu_delete(state, show_id).map(|()| true)
