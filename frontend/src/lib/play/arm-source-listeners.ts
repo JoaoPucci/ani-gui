@@ -53,16 +53,7 @@ export function armSourceScopedListeners(input: {
 	const point = recovered ?? kept;
 	const hold: ResumeHold | null =
 		point !== null && point > 0
-			? holdForResume({
-					video,
-					onHold: (holding) => onResumeHold?.(holding),
-					// The bound gave the resume up: the stream plays from
-					// where it is, and its position is the viewer's from here.
-					onGiveUp: () => {
-						stopWaiting();
-						opened = true;
-					}
-				})
+			? holdForResume({ video, onHold: (holding) => onResumeHold?.(holding) })
 			: null;
 	// Progress means frames actually rendered — the `playing` event —
 	// never a bare timeupdate: the resume seek below emits one at the
@@ -96,11 +87,14 @@ export function armSourceScopedListeners(input: {
 		}
 		// The length is not known yet — hls.js sets it from the playlist,
 		// and a playlist without an end grows it — so the kept point
-		// cannot be judged. Wait for the first known length. The element
-		// autoplays and the engine seeks it on its own, so neither its
-		// `playing` nor its `seeking` drops the wait; the player's own
-		// seek controls need a known length, so nothing the viewer does
-		// through them can either. Until then nothing is written.
+		// cannot be judged. Wait for the first known length. The engine
+		// seeks the element on its own, so its `seeking` does not drop
+		// the wait, and while the hold is on nothing plays and the
+		// player's controls are inert. Once the hold's bound has revealed
+		// the stream it plays from where it is, and still nothing drops
+		// the wait: the player's own seek controls need a known length.
+		// Until the length comes nothing is written, so the kept point
+		// outlives the wait.
 		video.addEventListener('durationchange', onDuration);
 	};
 	const stopWaiting = () => {

@@ -14,26 +14,27 @@
 import { HLS_STALL_LOAD_POLICY } from './hls-load-policy';
 
 /** How far from its point a seek may land and count as landed: a
- *  seek snapped to a keyframe or nudged over a gap lands within it,
- *  and it is well short of the 15 seconds a kept point is past zero,
- *  so the engine placing the playhead at the stream's start never
- *  reads as the resume. */
+ *  seek snapped to a keyframe or nudged over a gap lands within it.
+ *  A kept point is at least 15 seconds in, so the engine placing the
+ *  playhead at the stream's start never reads as its resume; a
+ *  recovery's point may be nearer zero than this, where the start is
+ *  as good as the point. */
 export const SEEK_LANDED_WITHIN_S = 2;
 
-/** How long the hold waits before it reveals anyway and plays from
- *  where the stream is. It is the engine's own budget for loading one
- *  fragment: a healthy host has the fragment at the point in well
- *  before, and past it the stall handling has declared the load
- *  failed and owns what the viewer sees — a picture held back past
- *  that would only hide it. */
+/** How long each wait of the hold lasts before it reveals anyway:
+ *  the wait for a seek to issue — the metadata, or a known length —
+ *  and, once it is issued, the wait for it to land and play. Each is
+ *  a wait on one fragment, the first one or the one at the point, and
+ *  this is how long the engine lets one fragment take to load before
+ *  it counts the load as timed out. */
 export const RESUME_HOLD_BOUND_MS = HLS_STALL_LOAD_POLICY.fragLoadPolicy.default.maxLoadTimeMs;
 
 /** `HTMLMediaElement.HAVE_CURRENT_DATA`: the frame at the playhead is in. */
 const HAVE_CURRENT_DATA = 2;
 
 export type ResumeHold = {
-	/** Seeks to `seconds`; the hold reveals once that seek landed and
-	 *  playback started. */
+	/** Seeks to `seconds`; while the hold is on, it reveals once that
+	 *  seek landed and playback started. */
 	seekTo(seconds: number): void;
 	/** Nothing is to be sought after all: reveal and play from here. */
 	release(): void;
@@ -44,10 +45,8 @@ export type ResumeHold = {
 export function holdForResume(input: {
 	video: HTMLVideoElement;
 	onHold: (holding: boolean) => void;
-	/** The bound ran out before a seek landed. */
-	onGiveUp: () => void;
 }): ResumeHold {
-	const { video, onHold, onGiveUp } = input;
+	const { video, onHold } = input;
 	const autoplay = video.autoplay;
 	let target: number | null = null;
 	// Set once the hold starts playback itself, so its own `play` is
@@ -61,17 +60,21 @@ export function holdForResume(input: {
 	const onSeeked = () => {
 		if (target !== null && Math.abs(video.currentTime - target) <= SEEK_LANDED_WITHIN_S) start();
 	};
-	// The frame at the point shows once frames play; a seek reported
-	// done before the stream buffered there has nothing to show yet.
+	// The picture is revealed once frames play at the point, not at
+	// the seek's own event: what the element shows between the two is
+	// not yet a frame playing at the point.
 	const onPlaying = () => finish();
 	const onFrame = () => {
 		if (video.readyState >= HAVE_CURRENT_DATA) finish();
 	};
-	const timer = setTimeout(() => {
-		onGiveUp();
+	// The bound only stops hiding the picture: the seek, issued or
+	// not, still happens when its turn comes, and where the episode
+	// was left is not given up.
+	const reveal = () => {
 		start();
 		finish();
-	}, RESUME_HOLD_BOUND_MS);
+	};
+	let timer = setTimeout(reveal, RESUME_HOLD_BOUND_MS);
 
 	const detach = () => {
 		clearTimeout(timer);
@@ -106,15 +109,15 @@ export function holdForResume(input: {
 
 	return {
 		seekTo(seconds) {
-			if (done) return;
-			target = seconds;
-			video.addEventListener('seeked', onSeeked);
+			if (!done) {
+				target = seconds;
+				video.addEventListener('seeked', onSeeked);
+				clearTimeout(timer);
+				timer = setTimeout(reveal, RESUME_HOLD_BOUND_MS);
+			}
 			video.currentTime = seconds;
 		},
-		release() {
-			start();
-			finish();
-		},
+		release: reveal,
 		end: finish
 	};
 }

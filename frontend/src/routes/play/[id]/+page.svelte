@@ -305,6 +305,9 @@
 	// the click).
 	let lastAutoSkipped = $state<string | null>(null);
 	$effect(() => {
+		// A resume seek on its way is not to be moved off its point;
+		// the skip comes once the hold reveals.
+		if (resumeHolding) return;
 		if (!activeSkip || !videoEl || !config) {
 			if (!activeSkip) lastAutoSkipped = null;
 			return;
@@ -2395,7 +2398,7 @@
 		class="player-frame"
 		class:player-busy={switchBusy}
 		class:player-resuming={resumeHolding}
-		aria-busy={switchBusy || resumeHolding}
+		aria-busy={switchBusy || (resumeHolding && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
 		style:--player-letterbox-y="{letterboxY}px"
@@ -2895,7 +2898,7 @@
 				</div>
 			{/if}
 		{/if}
-		{#if switchBusy || resumeHolding}
+		{#if switchBusy || (resumeHolding && !playerError)}
 			<span class="player-spinner" aria-hidden="true">…</span>
 		{/if}
 	</section>
