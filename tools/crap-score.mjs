@@ -5,13 +5,17 @@
 // and cov = line coverage % for that file (0..1).
 //
 // We aggregate per FILE rather than per function — function-level
-// CRAP needs precise line ranges that lizard's XML doesn't expose,
+// CRAP needs precise line ranges that the complexity XML doesn't expose,
 // and the per-file signal already surfaces the same anti-pattern:
 // a file with high total complexity AND poor coverage is the place
 // to look.
 //
 // Inputs:
-//   - lizard XML on stdin (run: `lizard --xml <paths> | crap-score.mjs`)
+//   - per-function complexity in lizard's XML shape, from each file
+//     named by `--ccn=<path>` (one or more times), or from stdin when
+//     none is named. The gate names two: tools/rust-ccn's report for
+//     backend/src and tools/ts-ccn.mjs's for frontend/src. A named
+//     report that cannot be read fails the run.
 //   - lcov.info path via `--lcov=<path>[:<prefix>]` (one or more times).
 //     The optional `:prefix` is prepended to every relative SF: path
 //     in that lcov so paths line up across the repo. Frontend lcov
@@ -19,8 +23,8 @@
 //     absolute paths (handled separately).
 //   - --root=<repoRoot> to make file paths comparable across inputs
 //
-// Filters out test files (*.test.{ts,js}, *_test.rs, tests/) — lizard
-// counts their complexity but lcov never covers them, so they'd
+// Filters out test files (*.test.{ts,js}, *_test.rs, tests/) — the
+// complexity tools count them but lcov never covers them, so they'd
 // dominate the CRAP rankings as artifacts.
 //
 // Output: a sorted-by-CRAP-desc table on stdout, plus aggregate
@@ -35,25 +39,23 @@ const lcovPaths = args.filter((a) => a.startsWith('--lcov=')).map((a) => a.slice
 const rootFlag = args.find((a) => a.startsWith('--root='));
 const root = rootFlag ? rootFlag.slice('--root='.length) : process.cwd();
 const jsonFlag = args.includes('--json');
+const ccnPaths = args.filter((a) => a.startsWith('--ccn=')).map((a) => a.slice('--ccn='.length));
 
 if (lcovPaths.length === 0) {
-	console.error('usage: lizard --xml <paths> | crap-score.mjs --lcov=<path> [--lcov=<path> ...] [--root=<dir>] [--json]');
+	console.error('usage: crap-score.mjs [--ccn=<xml> ...] --lcov=<path> [--lcov=<path> ...] [--root=<dir>] [--json]  (complexity XML on stdin when no --ccn)');
 	process.exit(2);
 }
 
-/** Parse lizard's XML output for per-file complexity totals. */
-function parseLizardXml(xml) {
+/** Parse lizard-shaped XML for per-file complexity totals, adding to `ccnByFile`. */
+function parseLizardXml(xml, ccnByFile) {
 	// Each function is <item name="fn(...) at file:line"><value>nr</value><value>NCSS</value><value>CCN</value></item>
 	const re = /<item name="[^"]*?at ([^:]+):\d+">\s*<value>\d+<\/value>\s*<value>\d+<\/value>\s*<value>(\d+)<\/value>/g;
-	/** @type {Map<string, number>} */
-	const ccnByFile = new Map();
 	let m;
 	while ((m = re.exec(xml)) !== null) {
 		const file = path.normalize(m[1]);
 		const ccn = Number(m[2]);
 		ccnByFile.set(file, (ccnByFile.get(file) ?? 0) + ccn);
 	}
-	return ccnByFile;
 }
 
 /** Parse one lcov.info, return { file → { LF, LH } } keyed by repo-relative path. */
@@ -101,8 +103,22 @@ function isProductionFile(file) {
 	return true;
 }
 
-const xml = fs.readFileSync(0, 'utf-8');
-const ccnByFile = parseLizardXml(xml);
+/** @type {Map<string, number>} */
+const ccnByFile = new Map();
+if (ccnPaths.length === 0) {
+	parseLizardXml(fs.readFileSync(0, 'utf-8'), ccnByFile);
+} else {
+	for (const p of ccnPaths) {
+		let xml;
+		try {
+			xml = fs.readFileSync(p, 'utf-8');
+		} catch (err) {
+			console.error(`crap-score: cannot read complexity report ${p}: ${err.message}`);
+			process.exit(2);
+		}
+		parseLizardXml(xml, ccnByFile);
+	}
+}
 /** @type {Map<string, { LF: number, LH: number }>} */
 const cov = new Map();
 for (const spec of lcovPaths) {
