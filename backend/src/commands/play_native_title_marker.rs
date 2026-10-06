@@ -10,9 +10,11 @@
 use std::collections::BTreeSet;
 
 pub(crate) use super::play_native_title_grammar::stem;
+#[cfg(test)]
+use super::play_native_title_grammar::Kind;
 use super::play_native_title_grammar::{
-    later_division_markers, later_divisions, named_ordinals, part_ordinals, season_ordinals,
-    trailing_markers, Kind, Marker,
+    later_division_markers, later_divisions, named_ordinals, ordinals_beyond, part_ordinals,
+    trailing_markers, Marker,
 };
 
 /// Every title the entry goes by: its canonical title, then the
@@ -115,41 +117,39 @@ impl EntryTitles<'_> {
     }
 
     /// Whether `listing` is this entry's own beside the listing `wide`
-    /// that would span it: it carries `wide`'s stem and nothing more
-    /// ("Show Part 1" beside "Show"), or every division it names right
-    /// after that stem ([`later_division_markers`]) is one the entry's
-    /// titles name as theirs ([`Self::owns`]) — "Show 2nd Season"
-    /// beside "Show" for "Show 2", "… - First Half War" beside
-    /// "Gintama.: Silver Soul Arc". A division the entry does not name
-    /// makes the listing the later entry completing the span ("Show 2nd
-    /// Season Part 2" beside "Show 2nd Season"), and a title that adds
-    /// anything but divisions ("Show Side Story") is another show of
-    /// the franchise.
+    /// that would span it: it carries `wide`'s stem and names no
+    /// division of its own right after it ("Show Season 2" beside
+    /// "Show 2nd Season"), or every division it names there
+    /// ([`later_division_markers`]) is one the entry's titles name as
+    /// theirs ([`Self::owns`]) — "Show Part 1" beside "Show", "Show 2nd
+    /// Season" beside "Show" for "Show 2", "… - First Half War" beside
+    /// "Gintama.: Silver Soul Arc". What follows those divisions is not
+    /// read. A title that adds no division ("Show Side Story") is
+    /// another show of the franchise.
     ///
     /// [`later_division_markers`]: super::play_native_title_grammar::later_division_markers
     pub(crate) fn names_own_part(&self, listing: &str, wide: &str) -> bool {
         let named = later_division_markers(listing, wide);
-        (stem(listing) == stem(wide) || !named.is_empty()) && named.iter().all(|m| self.owns(m))
+        (stem(listing) == stem(wide) || !named.is_empty())
+            && named.iter().all(|m| self.owns(m, wide))
     }
 
-    /// Whether a division is the entry's own, by kind: a part only when
-    /// it is the part the entry's titles end on ([`Self::own_part`]); a
-    /// season when the entry's titles name its every ordinal other than
-    /// as a part ([`season_ordinals`]: "Show 2", "Show 2nd Season",
-    /// "ショー２"), or when it is the first and they name no season.
+    /// Whether a division named beside `wide` is the entry's own, by
+    /// ordinal whatever its kind, since the catalogues disagree on the
+    /// kind: one the entry's titles end on as a part, or one they name
+    /// past `wide`'s stem ([`ordinals_beyond`] — "Show 2" beside "Show",
+    /// "ショー２" beside "ショー"); a first one when they name neither.
+    /// A number inside `wide`'s own stem ("Lucky 2") names nothing.
     ///
-    /// [`season_ordinals`]: super::play_native_title_grammar::season_ordinals
-    fn owns(&self, division: &Marker) -> bool {
-        match division.kind {
-            Kind::Part => division.ordinals == [self.own_part()],
-            Kind::Season => {
-                let seasons: BTreeSet<u32> = self.all().flat_map(season_ordinals).collect();
-                division
-                    .ordinals
-                    .iter()
-                    .all(|n| seasons.contains(n) || (*n == 1 && seasons.is_empty()))
-            }
-        }
+    /// [`ordinals_beyond`]: super::play_native_title_grammar::ordinals_beyond
+    fn owns(&self, division: &Marker, wide: &str) -> bool {
+        let parts: BTreeSet<u32> = self.all().flat_map(part_ordinals).collect();
+        let beyond: BTreeSet<u32> = self.all().flat_map(|t| ordinals_beyond(t, wide)).collect();
+        division.ordinals.iter().all(|n| {
+            parts.contains(n)
+                || beyond.contains(n)
+                || (*n == 1 && parts.is_empty() && beyond.is_empty())
+        })
     }
 }
 
