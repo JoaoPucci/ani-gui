@@ -123,7 +123,12 @@ function useShowHandlers() {
 	);
 }
 
+// The indicator stays mounted across a switch and the hold that
+// follows it and is toggled on and off, so a short gap between the two
+// never restarts it; `player-spinner-on` is its showing state. An
+// error unmounts it outright.
 const indicator = () => target.querySelector('.player-spinner');
+const indicatorOn = () => target.querySelector('.player-spinner.player-spinner-on');
 const errorPanel = () => target.querySelector('.player-error');
 
 describe('play route — the loading indicator never sits over the error', () => {
@@ -141,7 +146,7 @@ describe('play route — the loading indicator never sits over the error', () =>
 		// The switch's stream never answers, so the switch stays on
 		// its way for the rest of the scenario.
 		(target.querySelector('li[data-ep-num="3"] button') as HTMLButtonElement).click();
-		await until(() => indicator() !== null, 'the indicator during the switch');
+		await until(() => indicatorOn() !== null, 'the indicator during the switch');
 
 		const video = playerVideo();
 		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });

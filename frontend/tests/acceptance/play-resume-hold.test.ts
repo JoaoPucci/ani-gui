@@ -172,7 +172,7 @@ describe('play route — a resumed episode opens at its point', () => {
 			// Opening: busy, the picture hidden, nothing to press.
 			await until(() => busy(), 'the frame to hold');
 			expect(frame().classList.contains('player-resuming')).toBe(true);
-			expect(target.querySelector('.player-spinner')).not.toBeNull();
+			expect(target.querySelector('.player-spinner.player-spinner-on')).not.toBeNull();
 			expect(inert(playButton())).toBe(true);
 			expect(video.autoplay).toBe(false);
 			// Neither the shortcut nor a click on the picture starts
@@ -192,7 +192,7 @@ describe('play route — a resumed episode opens at its point', () => {
 			expect(play).toHaveBeenCalledTimes(1);
 			await until(() => !busy(), 'the frame to reveal');
 			expect(frame().classList.contains('player-resuming')).toBe(false);
-			expect(target.querySelector('.player-spinner')).toBeNull();
+			expect(target.querySelector('.player-spinner.player-spinner-on')).toBeNull();
 			expect(inert(target.querySelector('.player-controls'))).toBe(false);
 			expect(video.currentTime).toBe(612.5);
 		});
