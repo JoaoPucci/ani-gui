@@ -9,7 +9,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -183,4 +183,42 @@ test('per-line DA data outranks a disagreeing LF/LH summary', () => {
 	);
 	assert.equal(out.top[0].cov, 100, 'ten DA lines, ten hits: the file is fully covered');
 	assert.equal(out.top[0].crap, 6, 'full coverage leaves only the bare complexity');
+});
+
+// The gate measures each language with its own parser, so complexity
+// arrives as one report per tool. Named on the command line, every
+// report is read; a report that is not there is a measurement that did
+// not happen, and the score refuses rather than ranking without it.
+test('--ccn reads every complexity report it is given', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-ccn-'));
+	const report = (items) => ['<?xml version="1.0" ?>', '<cppncss><measure type="Function">', ...items, '</measure></cppncss>'].join('\n');
+	fs.writeFileSync(path.join(tmpDir, 'rust.xml'), report([lizardItem('backend/src/a.rs', 4)]));
+	fs.writeFileSync(path.join(tmpDir, 'ts.xml'), report([lizardItem('frontend/src/b.ts', 3), lizardItem('frontend/src/b.ts', 2)]));
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), [lcovRecord('backend/src/a.rs', 10, 10), lcovRecord('frontend/src/b.ts', 10, 10)].join('\n'));
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--ccn=rust.xml', '--ccn=ts.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8',
+			stdio: ['ignore', 'pipe', 'pipe']
+		})
+	);
+	assert.equal(out.count, 2);
+	assert.deepEqual(
+		out.top.map((r) => [r.file, r.ccn]),
+		[
+			['frontend/src/b.ts', 5],
+			['backend/src/a.rs', 4]
+		]
+	);
+});
+
+test('--ccn naming a missing report fails instead of scoring without it', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-ccn-missing-'));
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('src/a.rs', 10, 10));
+	const run = spawnSync('node', [scriptUnderTest, '--ccn=absent.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+		cwd: tmpDir,
+		encoding: 'utf-8'
+	});
+	assert.notEqual(run.status, 0);
+	assert.match(run.stderr, /absent\.xml/);
 });
