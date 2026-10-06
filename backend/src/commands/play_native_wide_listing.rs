@@ -73,6 +73,15 @@ pub(super) fn fit_to_entry(
         for j in later {
             probed[j].2 = UNFIT;
         }
+        // An exact-count hit that shares nothing with the spanning
+        // pair is no listing of this entry's own — that would share
+        // the stem, and would have stopped the cut. It stays a
+        // fallback just behind the cut, never ahead of it on order.
+        for (k, row) in probed.iter_mut().enumerate() {
+            if k != wide && row.2 == 0 {
+                row.2 = 1;
+            }
+        }
         probed[wide].1 = head_of(&probed[wide].1, expected);
         probed[wide].2 = 0;
     }
@@ -85,19 +94,16 @@ pub(super) fn fit_to_entry(
 /// must have a stem that starts with its stem, name a later part than
 /// the entry's in what it adds to that stem
 /// ([`EntryTitles::names_later_part`]), and list exactly the
-/// remainder. An admitted listing that already fits exactly is the
-/// entry's own, checked before anything else, and nothing is cut.
+/// remainder. An admitted listing that already fits exactly and
+/// shares the spanning listing's stem is the entry's own, and nothing
+/// is cut; an exact fit that shares nothing with the pair is no such
+/// evidence.
 fn spanning(
     probed: &[Probed<'_>],
     expected: u32,
     admitted: &[bool],
     entry: EntryTitles<'_>,
 ) -> Option<(usize, Vec<usize>)> {
-    // An admitted listing that already fits exactly is the entry's
-    // own, whatever else the pool holds: nothing is cut.
-    if (0..probed.len()).any(|k| admitted[k] && probed[k].2 == 0) {
-        return None;
-    }
     let counts: Vec<u32> = probed
         .iter()
         .map(|(_, eps, _, _)| regular_episode_count(eps))
@@ -118,7 +124,12 @@ fn spanning(
             .collect();
         (!own.is_empty() && !later.is_empty()).then_some((m, later))
     })?;
-    Some((wide, later))
+    // An admitted listing sharing the spanning listing's stem that
+    // already fits exactly is the entry's own: nothing is cut.
+    let own = stem(&probed[wide].0.title);
+    let dedicated = (0..probed.len())
+        .any(|k| admitted[k] && probed[k].2 == 0 && extends(&stem(&probed[k].0.title), &own));
+    (!dedicated).then_some((wide, later))
 }
 
 /// Whether `longer` starts with every word of `stem`.
