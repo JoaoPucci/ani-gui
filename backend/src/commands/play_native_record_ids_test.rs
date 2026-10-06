@@ -197,4 +197,29 @@ fn a_404_for_an_id_that_is_not_digits_marks_nothing() {
             "{not_id}"
         );
     }
+    assert!(
+        !crate::commands::kitsu_gone::is_gone(&state, "49877").expect("read"),
+        "nothing marked under digits the value carried"
+    );
+}
+
+/// A detail read asks Kitsu for exactly the value it was given, so a
+/// 404 to a padded value says nothing about the digits inside it: the
+/// id a history row recorded is not marked gone, and its detail row
+/// stays.
+#[test]
+fn a_404_for_a_padded_id_marks_nothing_under_its_digits() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let state = state_at(td.path(), "http://127.0.0.1:9");
+    let key = crate::commands::kitsu::anime_detail_key("49877");
+    crate::cache::meta_cache_put(&state.cache_pool, &key, "{}", 3600).unwrap();
+    let gone = crate::error::AniError::Upstream { status: 404 };
+
+    let begun = crate::history::guard::epoch(&state.history_path);
+    crate::commands::kitsu_gone::note_failure(&state, begun, " 49877 ", &gone);
+
+    assert!(!crate::commands::kitsu_gone::is_gone(&state, "49877").expect("read"));
+    assert!(crate::cache::meta_cache_get(&state.cache_pool, &key)
+        .expect("read")
+        .is_some());
 }
