@@ -1691,6 +1691,10 @@ where
                         "download: playback changed; resuming yt-dlp at the other pace",
                     );
                 }
+                // The old tree may still be writing here and holds a
+                // connection to the host: the download ends rather than
+                // start a retry beside it.
+                Ok(ToolRun::Outlived) => return Err(AniError::Io),
                 Err(e) => break (e, repackage_failed),
             }
         };
@@ -1958,11 +1962,15 @@ fn ytdlp_command(
 
 /// How a tool run ended when it did not fail: the tool exited
 /// successfully, or the caller's `stop` resolved first and the tool
-/// was taken down mid-run for the caller to start again.
+/// was taken down mid-run for the caller to start again — or, however
+/// it ended, its tree was still running when the teardown's wait ran
+/// out, and nothing that would meet it may start: not a respawn, not
+/// a retry.
 #[derive(Debug, PartialEq, Eq)]
 enum ToolRun {
     Exited,
     Interrupted,
+    Outlived,
 }
 
 /// Run one download tool to completion, streaming stderr lines.
@@ -1987,19 +1995,24 @@ where
         std::future::pending(),
     )
     .await
-    .map(|_| ())
+    .and_then(|run| match run {
+        ToolRun::Outlived => Err(AniError::Io),
+        ToolRun::Exited | ToolRun::Interrupted => Ok(()),
+    })
 }
 
 /// [`run_tool`], interruptible: when `stop` resolves before the tool
 /// exits, the tool's process group is taken down and the run reports
 /// itself interrupted rather than failed.
 ///
-/// Every way a run ends short of the tool's own exit — a stop, the
-/// deadline, a report that condemns the output — returns only once
-/// the tool's tree has exited. What the caller does next is start
+/// Every way a run ends — a stop, the deadline, a report that
+/// condemns the output, the tool's own exit — returns only once the
+/// tool's tree has exited, or as [`ToolRun::Outlived`] when it has
+/// not by the teardown's ceiling. What the caller does next is start
 /// another run on the same resume state, start the ffmpeg retry
 /// beside it, or sweep what it wrote, and none of those is safe
-/// beside a tool that has only been asked to die.
+/// beside a tool that has only been asked to die, or beside a helper
+/// a failed tool left running.
 async fn run_tool_until<F>(
     mut cmd: tokio::process::Command,
     deadline: tokio::time::Instant,
@@ -2079,21 +2092,16 @@ where
         run = tokio::time::timeout_at(deadline, drive) => Some(run),
         () = stop => None,
     };
+    // However the run ended, the tree goes before anything follows
+    // it: taken down when the tool is still running, and checked for
+    // helpers still in it when the tool exited by itself.
+    if !child.take_down().await {
+        return Ok(ToolRun::Outlived);
+    }
     let Some(run) = outcome else {
-        if child.take_down().await {
-            return Ok(ToolRun::Interrupted);
-        }
-        // Still running past the ceiling: nothing may resume on its
-        // state, so the run fails instead of being resumed.
-        return Err(AniError::Io);
+        return Ok(ToolRun::Interrupted);
     };
-    let status = match run.map_err(|_| AniError::Timeout).and_then(|r| r) {
-        Ok(status) => status,
-        Err(e) => {
-            child.take_down().await;
-            return Err(e);
-        }
-    };
+    let status = run.map_err(|_| AniError::Timeout)??;
     if status.success() {
         Ok(ToolRun::Exited)
     } else {

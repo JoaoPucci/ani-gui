@@ -12,14 +12,11 @@
 /// child is still alive — on Windows `taskkill /T` can only discover
 /// descendants by a live parent pid, and `kill_on_drop`'s SIGKILL (the
 /// `Child` field's own drop) must come second under every cancellation
-/// mode: task abort, timeout, panic. A child that has been waited to
-/// completion is already reaped, so `id()` reads `None` and the guard
-/// stands down by itself — past the reap the pid may be recycled and
-/// must not be signalled. The signal goes through `kill(1)` /
-/// `taskkill(1)` rather than a syscall — the crate forbids unsafe
-/// code, and both binaries ship with any host this app runs on.
-/// `.status()` (not `.spawn()`) so the helper can't linger as a
-/// zombie; it exits in microseconds.
+/// mode: task abort, timeout, panic. The signal goes through `kill(1)`
+/// / `taskkill(1)` rather than a syscall — the crate forbids unsafe
+/// code, and both binaries ship with any host this app runs on. Each
+/// is run to completion, so neither lingers as a zombie; they exit in
+/// microseconds.
 ///
 /// Either command only asks: it returns once the kill is requested,
 /// and the processes exit when the kernel gets to them. Whatever
@@ -27,39 +24,63 @@
 /// beside it, the sweep of what the tool wrote — needs the exit, so
 /// a teardown waits for it ([`Self::take_down`], and the drop, which
 /// waits the same way blocking), under [`TREE_EXIT_CEILING`].
+///
+/// A child that exits by itself is not its whole tree. On Unix the
+/// guard keeps the group's id past the child's reap: a group with a
+/// process still in it keeps its id from being handed out again, so
+/// signalling the group stays safe until it is empty, and a helper
+/// left running in it is taken down too. On Windows the tree is found
+/// through the live root, so once the root has exited what it left
+/// running is out of the guard's reach.
 pub(crate) struct TreeKillChild {
     pub(crate) child: tokio::process::Child,
+    /// The child's pid, which on Unix is its group's id; `None` once
+    /// the tree is known to be gone.
+    pid: Option<u32>,
+    /// A teardown already waited the ceiling out: the drop asks for
+    /// the kill again but does not wait a second time.
+    given_up: bool,
 }
 
 impl TreeKillChild {
     pub(crate) fn new(child: tokio::process::Child) -> Self {
-        Self { child }
+        let pid = child.id();
+        Self {
+            child,
+            pid,
+            given_up: false,
+        }
     }
 
-    /// The guarded child, for the caller's own I/O and wait. A child
-    /// the caller has waited to completion is reaped, so the drop
-    /// guard reads `id() == None` and stands down by itself.
+    /// The guarded child, for the caller's own I/O and wait.
     pub(crate) fn child_mut(&mut self) -> &mut tokio::process::Child {
         &mut self.child
     }
 
     /// Take the tree down and wait until it has exited: the child
-    /// reaped and, of the rest of its tree, nothing left. `false` when
-    /// the ceiling passed first — the kill was asked for, but the
-    /// tree cannot be said to be gone, and what would follow it
-    /// should not start.
+    /// reaped and, of the rest of its tree, nothing left — which is
+    /// also what it checks first, so a tree already gone is not
+    /// signalled. `false` when the ceiling passed first: the kill was
+    /// asked for, but the tree cannot be said to be gone, and nothing
+    /// that would meet it should start.
     pub(crate) async fn take_down(&mut self) -> bool {
-        let Some(pid) = self.child.id() else {
+        let Some(pid) = self.pid else {
             return true;
         };
+        if self.tree_exited(pid, &[]) {
+            self.pid = None;
+            return true;
+        }
         let tree = kill_process_tree(pid);
         let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
         loop {
             if self.tree_exited(pid, &tree) {
+                self.pid = None;
                 return true;
             }
             if std::time::Instant::now() >= deadline {
                 tracing::warn!(pid, "a tool's process tree outlived its teardown");
+                self.given_up = true;
                 return false;
             }
             tokio::time::sleep(TREE_EXIT_POLL).await;
@@ -69,7 +90,14 @@ impl TreeKillChild {
     /// [`Self::take_down`] for the drop, which cannot await: the same
     /// wait, sleeping the thread. A teardown's exit takes milliseconds.
     fn take_down_blocking(&mut self) {
-        let Some(pid) = self.child.id() else { return };
+        let Some(pid) = self.pid else { return };
+        if self.given_up {
+            kill_process_tree(pid);
+            return;
+        }
+        if self.tree_exited(pid, &[]) {
+            return;
+        }
         let tree = kill_process_tree(pid);
         let deadline = std::time::Instant::now() + TREE_EXIT_CEILING;
         while !self.tree_exited(pid, &tree) {
@@ -94,16 +122,18 @@ impl TreeKillChild {
 
 impl Drop for TreeKillChild {
     fn drop(&mut self) {
-        // A child the caller waited on, or took down, is reaped and
-        // reads `None`: there is nothing left to stop.
+        // A tree already known to be gone reads `None` and is left
+        // alone; anything else is taken down, or checked to be gone.
         self.take_down_blocking();
     }
 }
 
 /// How long a teardown waits for the tree to exit. A killed process
-/// exits in milliseconds; this bounds one stuck in the kernel, and
-/// stays under the backend's teardown limit, which a guard dropped
-/// at shutdown runs inside.
+/// exits in milliseconds; this bounds one stuck in the kernel. One
+/// guard's wait stays under the backend's teardown limit, which a
+/// guard dropped at shutdown runs inside; several stuck trees at once
+/// would not, and the limit then cuts their waits short — the kills
+/// were already asked for.
 pub(crate) const TREE_EXIT_CEILING: std::time::Duration = std::time::Duration::from_secs(2);
 
 const TREE_EXIT_POLL: std::time::Duration = std::time::Duration::from_millis(10);
