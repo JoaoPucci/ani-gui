@@ -2803,11 +2803,19 @@ mod tests {
             proptest::bool::ANY,
             proptest::bool::ANY,
             0u8..3,
+            proptest::bool::ANY,
         );
         proptest::test_runner::TestRunner::default()
             .run(
                 &cases,
-                |(anidb_broken, anidb_paused, hianime_broken, hianime_paused, row_provider)| {
+                |(
+                    anidb_broken,
+                    anidb_paused,
+                    hianime_broken,
+                    hianime_paused,
+                    row_provider,
+                    pre_guard,
+                )| {
                     close_breaker(&state.anidb_gate);
                     close_breaker(&state.hianime_gate);
                     if anidb_broken {
@@ -2834,12 +2842,15 @@ mod tests {
                         episode_count_approximate: false,
                         gate_refused: false,
                         provider,
-                        reading: ROW_READING,
+                        // A row from before the origin guard reads as 0.
+                        reading: if pre_guard { 0 } else { ROW_READING },
                     };
                     let anidb_refusing = anidb_broken || anidb_paused;
                     let hianime_refusing = hianime_broken || hianime_paused;
                     let expected = match provider {
-                        None | Some(ProviderId::Anidb) => !anidb_refusing,
+                        // An anidb negative from before the guard, or an
+                        // unattributed one with anidb first, is never backed.
+                        None | Some(ProviderId::Anidb) => !anidb_refusing && !pre_guard,
                         Some(ProviderId::Hianime) => !hianime_refusing && anidb_refusing,
                     };
                     proptest::prop_assert_eq!(negative_row_is_backed(&state, &row), expected);
