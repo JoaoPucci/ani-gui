@@ -304,15 +304,27 @@ describe("a removal's cleanup, as of when its rows were gone", () => {
 });
 
 describe("a removal's cleanup and a pick or write since", () => {
-	it('keeps a point the user picked its episode again at since', () => {
-		// The pick keeps the point rather than restarting it, and the
-		// episode stays the Continue target with its point.
+	it('restarts a point kept before when its episode was picked again since', () => {
+		// The removal forgets what was kept then, the old point with it;
+		// the pick is new, so the episode stays started, at zero.
 		const s = memory();
 		savePosition('A', 3, 600, 1420, s);
+		savePosition('A', 4, 600, 1420, s, 'row-x');
 		const since = snapshotPositions();
 		markStarted('A', 3, s);
+		markStarted('A', 4, s);
 
 		clearShowPositions('A', s, since);
+		clearRowPositions(['row-x'], s, new Set(), since);
+
+		expect(readPosition('A', 3, s)).toBe(0);
+		expect(readPosition('A', 4, s)).toBe(0);
+	});
+
+	it('leaves a picked point alone when no removal is under way', () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s);
+		markStarted('A', 3, s);
 
 		expect(readPosition('A', 3, s)).toBe(600);
 	});
