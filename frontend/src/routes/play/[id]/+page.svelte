@@ -1987,9 +1987,17 @@
 			// /anime/[id], not to the previously-watched episode.
 			// Episode navigation already lives in the player's prev/
 			// next controls; the back button is for leaving the show.
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
+			//
+			// Awaited, so the switch stays busy until the navigation has
+			// landed: the next stream attaches there, and starts its
+			// resume hold if it has a point, before `finally` clears the
+			// flag, so the loading indicator runs from one into the other
+			// without going out between them. A navigation that fails is
+			// not a failed play, so it does not reach the play-failure
+			// overlay below.
+			await goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
 				replaceState: true
-			});
+			}).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			// switchToEpisode is the play *call* failing — the user
@@ -4452,15 +4460,15 @@
 	   hairline (the search bar's and the download bar's sweep), set
 	   in the show's accent and centred in the frame. It waits a beat
 	   before fading in, so a switch or a resume that lands quickly
-	   never flashes it, and it holds a beat before fading out, so the
-	   moment between a switch and the resume hold that follows it
-	   passes without it leaving: switched back on inside that hold,
-	   it never moved. It leaves the layout (display: none, as a
-	   discrete transition) once faded, so the sweep stops with it.
-	   The sweep travels on inset-inline-start, so it runs with the
-	   reading direction; the track contains its own layout, so that
-	   costs the page nothing while the video decodes.
-	   A soft dark halo is invisible on the black frame of a resume
+	   never flashes it, and goes at once when the load ends, so it
+	   never lingers over the picture. Toggled rather than remounted,
+	   it runs on unbroken from a switch into the resume hold that
+	   follows it: the switch stays busy until the next stream has
+	   attached and started its hold. Off, it leaves the layout, so
+	   the sweep stops with it. The sweep travels on
+	   inset-inline-start, so it runs with the reading direction; the
+	   track contains its own layout, so that costs the page nothing
+	   while the video decodes. A soft dark halo is invisible on the black frame of a resume
 	   hold and lifts the line off a half-dimmed picture. */
 	.player-spinner {
 		position: absolute;
@@ -4469,14 +4477,11 @@
 		pointer-events: none;
 		display: none;
 		opacity: 0;
-		transition:
-			opacity var(--dur-slow) var(--ease-out-soft) 200ms,
-			display var(--dur-slow) allow-discrete 200ms;
 	}
 	.player-spinner.player-spinner-on {
 		display: grid;
 		opacity: 1;
-		transition-delay: 240ms;
+		transition: opacity var(--dur-slow) var(--ease-out-soft) 240ms;
 	}
 	@starting-style {
 		.player-spinner.player-spinner-on {
@@ -4498,17 +4503,15 @@
 	}
 	/* Windowed, a switch already has the page-wide loading overlay;
 	   a second indicator in the frame would peek out beside its band.
-	   So windowed, the frame's indicator is seen only during a resume
-	   hold, and goes at once when the hold reveals rather than
-	   lingering over the picture. It is only invisible, not gone:
-	   switched on through the switch, it keeps running underneath,
-	   so when the switch hands over to a hold and the overlay lifts,
-	   the line is already there. In fullscreen that overlay is
-	   outside the top layer, so the frame's own indicator is the one
-	   the viewer sees throughout, scaled up for the larger picture. */
-	.player-frame.player-busy:not(:fullscreen) .player-spinner,
-	.player-frame:not(.player-resuming):not(:fullscreen) .player-spinner {
-		visibility: hidden;
+	   So windowed, the frame's indicator stays off through a switch;
+	   when the overlay lifts into a resume hold, it enters as it does
+	   on a fresh open, after the same beat, so a hold that lands
+	   quickly does not flash it there either. In fullscreen that
+	   overlay is outside the top layer, so the frame's own indicator
+	   is the one the viewer sees throughout, scaled up for the larger
+	   picture. */
+	.player-frame.player-busy:not(:fullscreen) .player-spinner {
+		display: none;
 	}
 	.player-frame:fullscreen .player-spinner-track {
 		inline-size: clamp(8rem, 22%, 16rem);
