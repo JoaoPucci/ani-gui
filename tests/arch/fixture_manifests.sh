@@ -21,8 +21,11 @@
 #   - its sha256 matches, and its byte size matches when the entry
 #     records a `size`;
 #   - both are taken over the file's bytes, or, when the entry declares
-#     `"encoding": "base64"`, over the bytes its text decodes to. Any
-#     other encoding value fails rather than being skipped.
+#     `"encoding": "base64"`, over the bytes its text decodes to. That
+#     text must be canonical base64 — with spaces and line breaks
+#     removed, exactly the encoding of the decoded bytes — so it cannot
+#     carry text the decoder would drop. Any other encoding value fails
+#     rather than being skipped.
 #
 # And nothing beside a manifest escapes it. Every regular file there is
 # listed in it, the same two-way rule the anidb/ Rust test
@@ -33,14 +36,17 @@
 # symbolic link, a fifo, a socket — fails.
 #
 # Manifests are found by walking tests/fixtures/ through real
-# directories only; a symbolic link is never followed, and a
+# directories only. tests/ and tests/fixtures/ must themselves be real
+# directories, no symbolic link below them is followed, and a
 # MANIFEST.json that is not a regular file fails.
 #
 # What this does not cover: a directory under tests/fixtures/ with no
 # MANIFEST.json and no manifest-carrying parent (history/ and arch/
 # hold hand-written inputs and carry none) — its contents, links
 # included, are not examined. Size is checked only where an entry
-# records it; anidb/'s entries record a digest alone.
+# records it; anidb/'s entries record a digest alone. A name repeated
+# within one manifest is not reported: JSON.parse keeps the last of
+# duplicate keys, and that entry is the one checked.
 
 set -eu
 
@@ -56,19 +62,26 @@ const fixtures = path.join(root, "tests/fixtures");
 const fail = [];
 const notRegular = (s) => (s.isSymbolicLink() ? "is a symbolic link" : "is not a regular file");
 // Walk real directories only: a Dirent describes the entry itself, so
-// a symbolic link to a directory is never descended into.
+// a symbolic link to a directory is never descended into. The name is
+// tested first, so a MANIFEST.json that is a directory is refused
+// rather than entered.
 const manifests = [];
 const walk = (d) => {
   for (const f of fs.readdirSync(d, { withFileTypes: true })) {
     const p = path.join(d, f.name);
-    if (f.isDirectory()) walk(p);
-    else if (f.name === "MANIFEST.json") {
+    if (f.name === "MANIFEST.json") {
       if (f.isFile()) manifests.push(p);
       else fail.push(`${path.relative(root, p)}: ${notRegular(f)}`);
-    }
+    } else if (f.isDirectory()) walk(p);
   }
 };
-walk(fixtures);
+// The walk starts from a joined path, which the system resolves link
+// by link; tests/ and tests/fixtures/ must be real directories or
+// every byte hashed could come from wherever a link points.
+const realDir = (p) => { try { return fs.lstatSync(p).isDirectory(); } catch { return false; } };
+const start = ["tests", "tests/fixtures"].find((p) => !realDir(path.join(root, p)));
+if (start !== undefined) fail.push(`${start}: is not a directory`);
+else walk(fixtures);
 manifests.sort();
 for (const file of manifests) {
   const dir = path.dirname(file);
@@ -98,8 +111,16 @@ for (const file of manifests) {
     catch { fail.push(`${at}: listed file does not exist`); continue; }
     if (!st.isFile()) { fail.push(`${at}: ${notRegular(st)}`); continue; }
     let bytes = fs.readFileSync(target);
-    if (e.encoding === "base64") bytes = Buffer.from(bytes.toString("latin1"), "base64");
-    else if (e.encoding !== undefined) {
+    if (e.encoding === "base64") {
+      // The decoder drops characters outside the alphabet, so the text
+      // must be exactly the encoding of what it decodes to, give or take
+      // line breaks and spaces; otherwise it could change unnoticed.
+      const text = bytes.toString("latin1").replace(/[\t\n\r ]/g, "");
+      bytes = Buffer.from(text, "base64");
+      if (bytes.toString("base64") !== text) {
+        fail.push(`${at}: is not canonical base64`); continue;
+      }
+    } else if (e.encoding !== undefined) {
       fail.push(`${at}: unknown encoding ${JSON.stringify(e.encoding)}`); continue;
     }
     const of = e.encoding ? "decoded " : "";
