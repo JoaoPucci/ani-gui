@@ -43,7 +43,9 @@ pub(super) fn process_group(child: &tokio::process::Child) -> Option<Box<dyn sup
 /// still be asked whether they have gone. Without it — it could not be
 /// made — the guard still ends the tool's own job at every teardown,
 /// and that job ends its members when it closes, but the guard can
-/// only see the child itself go.
+/// only see the child itself go: a teardown then returns once the kill
+/// is asked for and the child has exited, without waiting on the rest
+/// of the tree to exit as it does everywhere else.
 #[cfg(windows)]
 struct JobTree {
     job: Option<win32job::Job>,
