@@ -195,6 +195,11 @@
 	let detailError = $state<string | null>(null);
 	let playerError = $state<string | null>(null);
 	let switchBusy = $state(false);
+	// The stream's picture is held back while its resume seek is on
+	// its way ($lib/play/resume-hold): the frame keeps its loading
+	// treatment, the picture is hidden and the controls are inert, so
+	// neither the first frame nor a play from it comes before the point.
+	let resumeHolding = $state(false);
 	let switchProgress = $state<string | null>(null);
 
 	// The page's own video element: made with the page, put in the
@@ -300,6 +305,9 @@
 	// the click).
 	let lastAutoSkipped = $state<string | null>(null);
 	$effect(() => {
+		// A resume seek on its way is not to be moved off its point;
+		// the skip comes once the hold reveals.
+		if (resumeHolding) return;
 		if (!activeSkip || !videoEl || !config) {
 			if (!activeSkip) lastAutoSkipped = null;
 			return;
@@ -413,7 +421,8 @@
 	});
 
 	function togglePlay() {
-		if (!videoEl) return;
+		// The resume starts playback itself once its seek lands.
+		if (!videoEl || resumeHolding) return;
 		if (videoEl.paused) {
 			// `play()` returns a promise that can reject with AbortError
 			// when a pause() lands on top of an in-flight play() — the
@@ -619,6 +628,13 @@
 	// idle timer to drive a class that overrides the hover rule.
 	// See $lib/play/fullscreen-idle for the keep-alive matrix.
 	let isFullscreen = $state(false);
+	// Whether the fullscreen element is the <video> itself rather than
+	// the frame: Chromium's own controls fullscreen the element, and
+	// so does the toggle with the custom controls off. Only the video
+	// reaches the top layer then, so the frame's indicator cannot be
+	// seen, and the resume hold keeps the picture rather than leave a
+	// black screen with nothing to explain it.
+	let videoFullscreen = $state(false);
 	let mouseIdle = $state(false);
 	// `isPaused` already declared above (driven by the video's
 	// play/pause events) — reuse it as a keep-alive input.
@@ -656,6 +672,7 @@
 		// the inline path goes straight back to the CSS-hover rule.
 		function onFullscreenChange() {
 			isFullscreen = !!document.fullscreenElement;
+			videoFullscreen = document.fullscreenElement === ownVideo;
 			if (isFullscreen) {
 				// Clear focus from inside .player-controls so the
 				// :focus-within keep-alive doesn't pin the chrome
@@ -1394,7 +1411,7 @@
 	$effect(() => {
 		if (!frameTargetEl) return;
 		const v = placePlayerVideo(ownVideo, frameTargetEl);
-		v.controls = !USE_CUSTOM_PLAYER_CONTROLS;
+		v.controls = !USE_CUSTOM_PLAYER_CONTROLS && !untrack(() => resumeHolding);
 		videoEl = v;
 
 		// Sync initial state from the element: the slot can come back
@@ -1500,7 +1517,9 @@
 	// Reactively swap the controls type when the user flips the
 	// settings toggle; the listeners above don't re-run for that.
 	$effect(() => {
-		ownVideo.controls = !USE_CUSTOM_PLAYER_CONTROLS;
+		// Chromium's own bar stays off while the resume holds, as the
+		// custom controls go inert.
+		ownVideo.controls = !USE_CUSTOM_PLAYER_CONTROLS && !resumeHolding;
 	});
 
 	$effect(() => {
@@ -1529,7 +1548,10 @@
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
-			scope: sourceScope
+			scope: sourceScope,
+			onResumeHold: (holding) => {
+				resumeHolding = holding;
+			}
 		});
 		playerError = null;
 
@@ -1973,9 +1995,17 @@
 			// /anime/[id], not to the previously-watched episode.
 			// Episode navigation already lives in the player's prev/
 			// next controls; the back button is for leaving the show.
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
+			//
+			// Awaited, so the switch stays busy until the navigation has
+			// landed: the next stream attaches there, and starts its
+			// resume hold if it has a point, before `finally` clears the
+			// flag, so the loading indicator runs from one into the other
+			// without going out between them. A navigation that fails is
+			// not a failed play, so it does not reach the play-failure
+			// overlay below.
+			await goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, targetEp), {
 				replaceState: true
-			});
+			}).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			// switchToEpisode is the play *call* failing — the user
@@ -2321,7 +2351,7 @@
 					togglePlay();
 					break;
 				case 'seek':
-					if (videoEl && duration > 0) {
+					if (videoEl && duration > 0 && !resumeHolding) {
 						seekToFraction((videoEl.currentTime + action.deltaSeconds) / duration);
 					}
 					break;
@@ -2383,6 +2413,8 @@
 	<section
 		class="player-frame"
 		class:player-busy={switchBusy}
+		class:player-resuming={resumeHolding && !videoFullscreen}
+		aria-busy={switchBusy || (resumeHolding && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
 		style:--player-letterbox-y="{letterboxY}px"
@@ -2427,7 +2459,7 @@
 			     seeks just past `end_time`. Positioned bottom-right
 			     above native + custom controls so it never overlaps
 			     the timeline. -->
-			{#if activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
+			{#if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
 				<button
 					type="button"
 					class="player-skip-btn"
@@ -2447,6 +2479,7 @@
 			{#if USE_CUSTOM_PLAYER_CONTROLS}
 				<div
 					class="player-controls"
+					inert={resumeHolding}
 					class:scrubber-hover={scrubberHover}
 					class:volume-revealed={volumeRevealed}
 					onfocusin={() => (controlsFocusWithin = true)}
@@ -2881,8 +2914,19 @@
 				</div>
 			{/if}
 		{/if}
-		{#if switchBusy}
-			<span class="player-spinner" aria-hidden="true">…</span>
+		<!-- Mounted across a switch and the resume hold that follows it,
+		     and toggled: the two states are set in different places, and
+		     the moment between them must not restart the indicator. An
+		     error unmounts it outright, so nothing lingers over the
+		     panel. -->
+		{#if !playerError}
+			<span
+				class="player-spinner"
+				class:player-spinner-on={switchBusy || resumeHolding}
+				aria-hidden="true"
+			>
+				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
+			</span>
 		{/if}
 	</section>
 
@@ -3975,6 +4019,13 @@
 	.player-frame.fs-controls-hidden:hover .player-controls {
 		opacity: 0;
 	}
+	/* While the resume seek is on its way the controls stay out of
+	   sight as well as inert: a scrubber shown at zero would jump to
+	   the point when it lands. */
+	.player-frame.player-resuming .player-controls,
+	.player-frame.player-resuming:hover .player-controls {
+		opacity: 0;
+	}
 	.player-frame.fs-controls-hidden,
 	.player-frame.fs-controls-hidden :global(*) {
 		cursor: none;
@@ -4403,15 +4454,120 @@
 		opacity: 0.5;
 		transition: opacity var(--dur-med) var(--ease-out-soft);
 	}
+	/* The picture is hidden at once while the resume holds, and fades
+	   in at the point when it reveals: the reveal takes the transition
+	   from the slot's rule, the hide from none. */
+	:global(.player-video-slot video) {
+		transition: opacity var(--dur-med) var(--ease-out-soft);
+	}
+	:global(.player-frame.player-resuming video) {
+		opacity: 0;
+		transition: none;
+	}
+	/* Loading indicator over the player: the app's indeterminate
+	   hairline (the search bar's and the download bar's sweep), set
+	   in the show's accent and centred in the frame. It waits a beat
+	   before fading in, so a switch or a resume that lands quickly
+	   never flashes it, and goes at once when the load ends, so it
+	   never lingers over the picture. Toggled rather than remounted,
+	   it runs on unbroken from a switch into the resume hold that
+	   follows it: the switch stays busy until the next stream has
+	   attached and started its hold. Off, it leaves the layout, so
+	   the sweep stops with it. The sweep travels on
+	   inset-inline-start, so it runs with the reading direction; the
+	   track contains its own layout, so that costs the page nothing
+	   while the video decodes. A soft dark halo is invisible on the black frame of a resume
+	   hold and lifts the line off a half-dimmed picture. */
 	.player-spinner {
 		position: absolute;
 		inset: 0;
-		display: grid;
 		place-items: center;
-		color: var(--accent);
-		font-family: var(--font-body);
-		font-size: var(--type-display-l);
 		pointer-events: none;
+		display: none;
+		opacity: 0;
+	}
+	.player-spinner.player-spinner-on {
+		display: grid;
+		opacity: 1;
+		transition: opacity var(--dur-slow) var(--ease-out-soft) 240ms;
+	}
+	@starting-style {
+		.player-spinner.player-spinner-on {
+			opacity: 0;
+		}
+	}
+	.player-spinner-track {
+		position: relative;
+		display: block;
+		inline-size: clamp(6rem, 22%, 12rem);
+		block-size: 3px;
+		border-radius: var(--radius-pill);
+		background: color-mix(in oklab, var(--bone-100) 16%, transparent);
+		box-shadow:
+			0 0 0 1px rgb(0 0 0 / 0.45),
+			0 0 16px 4px rgb(0 0 0 / 0.55);
+		overflow: hidden;
+		contain: layout paint;
+	}
+	/* Windowed, a switch already has the page-wide loading overlay;
+	   a second indicator in the frame would peek out beside its band.
+	   So windowed, the frame's indicator stays off through a switch;
+	   when the overlay lifts into a resume hold, it enters as it does
+	   on a fresh open, after the same beat, so a hold that lands
+	   quickly does not flash it there either. In fullscreen that
+	   overlay is outside the top layer, so the frame's own indicator
+	   is the one the viewer sees throughout, scaled up for the larger
+	   picture. */
+	.player-frame.player-busy:not(:fullscreen) .player-spinner {
+		display: none;
+	}
+	.player-frame:fullscreen .player-spinner-track {
+		inline-size: clamp(8rem, 22%, 16rem);
+		block-size: 4px;
+	}
+	.player-spinner-sweep {
+		position: absolute;
+		inset-block: 0;
+		inline-size: 40%;
+		background: linear-gradient(
+			to right,
+			transparent,
+			var(--accent) 35%,
+			color-mix(in oklab, var(--accent), white 35%) 50%,
+			var(--accent) 65%,
+			transparent
+		);
+		animation: player-spinner-sweep 1.4s var(--ease-in-out) infinite;
+	}
+	@keyframes player-spinner-sweep {
+		from {
+			inset-inline-start: -40%;
+		}
+		to {
+			inset-inline-start: 100%;
+		}
+	}
+	/* Reduced motion: nothing travels. The whole track takes the
+	   accent and breathes slowly in opacity, so the frame still reads
+	   as working rather than stopped. The search bar holds a static
+	   bar instead; that one rides the topbar's edge, where a still
+	   line reads as chrome, while this one is alone in a dark frame. */
+	@media (prefers-reduced-motion: reduce) {
+		.player-spinner-sweep {
+			inset-inline-start: 0;
+			inline-size: 100%;
+			background: var(--accent);
+			animation: player-spinner-breathe 2.4s var(--ease-in-out) infinite;
+		}
+	}
+	@keyframes player-spinner-breathe {
+		0%,
+		100% {
+			opacity: 0.35;
+		}
+		50% {
+			opacity: 0.85;
+		}
 	}
 
 	/* Similar Titles wrapper — fills the watch-column (no per-section

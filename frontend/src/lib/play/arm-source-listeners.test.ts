@@ -4,7 +4,7 @@
 // specs run against happy-dom and the module's actual collaborators
 // (the shared machine, the recovery carrier, a page's source scope
 // and a position store), reset around each case.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { armSourceScopedListeners } from './arm-source-listeners';
 import { recoveryResume } from './resume-after-recovery';
 import { stallMachine } from './stall-machine';
@@ -402,5 +402,263 @@ describe('armSourceScopedListeners', () => {
 		video.currentTime = 600;
 		video.dispatchEvent(new Event('pause'));
 		expect(readPosition('show-a', 6, positions)).toBe(600);
+	});
+});
+
+describe('a resume point holds the picture until the seek lands', () => {
+	// The viewer must not see the stream's first frame, nor play it,
+	// before the resume seek lands. The page shows its loading
+	// treatment while the attach holds, and reveals at the point once
+	// the seek landed there and playback started.
+	let holds: boolean[];
+	let play: ReturnType<typeof vi.fn>;
+	let pause: ReturnType<typeof vi.fn>;
+	let readyState: number;
+
+	beforeEach(() => {
+		holds = [];
+		readyState = 1;
+		Object.defineProperty(video, 'readyState', { configurable: true, get: () => readyState });
+		play = vi.fn(() => {
+			video.dispatchEvent(new Event('play'));
+			video.dispatchEvent(new Event('playing'));
+			return Promise.resolve();
+		});
+		pause = vi.fn();
+		video.play = play as unknown as HTMLVideoElement['play'];
+		video.pause = pause as unknown as HTMLVideoElement['pause'];
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	function armHolding(showId: string, episode: number) {
+		// Built apart from the call, so the option the hold adds is not
+		// an excess property of the input's literal.
+		const input = {
+			video,
+			showId,
+			episode,
+			scope,
+			positions,
+			onResumeHold: (holding: boolean) => holds.push(holding)
+		};
+		armSourceScopedListeners(input);
+	}
+
+	const holding = () => holds.at(-1) === true;
+
+	function metadataWith(duration: number) {
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => duration });
+		video.currentTime = 0;
+		video.dispatchEvent(new Event('loadedmetadata'));
+	}
+
+	function seekedAt(seconds: number) {
+		video.currentTime = seconds;
+		video.dispatchEvent(new Event('seeked'));
+	}
+
+	const settle = () => new Promise<void>((r) => setTimeout(r, 0));
+
+	it('holds from the attach, with autoplay off, when a kept point waits to be sought', () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		video.autoplay = true;
+		armHolding('show-a', 6);
+		expect(holding()).toBe(true);
+		expect(video.autoplay).toBe(false);
+	});
+
+	it('reveals at the point only once the seek landed there and playback started', async () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		video.autoplay = true;
+		armHolding('show-a', 6);
+		metadataWith(1420);
+		expect(video.currentTime).toBe(600);
+		expect(holding()).toBe(true);
+		expect(play).not.toHaveBeenCalled();
+		seekedAt(600);
+		expect(play).toHaveBeenCalledTimes(1);
+		await settle();
+		expect(holding()).toBe(false);
+		expect(video.autoplay).toBe(true);
+		// Our own start is not held back.
+		expect(pause).not.toHaveBeenCalled();
+	});
+
+	it('a seek landing short of the point does not reveal; one slightly off it does', async () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		// The engine places the playhead at the stream's start before
+		// the resume seeks; that is not the resume landing.
+		seekedAt(0.2);
+		metadataWith(1420);
+		seekedAt(0.3);
+		expect(play).not.toHaveBeenCalled();
+		expect(holding()).toBe(true);
+		// A seek snapped to a nearby keyframe has landed.
+		seekedAt(599.2);
+		expect(play).toHaveBeenCalledTimes(1);
+		await settle();
+		expect(holding()).toBe(false);
+	});
+
+	it('a seek landing before the stream buffered there reveals when frames play, not at the seek', async () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		// HLS reports the seek done before the fragment at the point is
+		// in: playback has not started yet.
+		play.mockImplementation(() => new Promise<void>(() => {}));
+		metadataWith(1420);
+		seekedAt(600);
+		await settle();
+		expect(holding()).toBe(true);
+		video.dispatchEvent(new Event('playing'));
+		expect(holding()).toBe(false);
+	});
+
+	it('autoplay refused reveals paused at the point once its frame is in', async () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		play.mockImplementation(() => Promise.reject(new DOMException('blocked', 'NotAllowedError')));
+		metadataWith(1420);
+		seekedAt(600);
+		await settle();
+		expect(holding()).toBe(true);
+		readyState = 2;
+		video.dispatchEvent(new Event('canplay'));
+		expect(holding()).toBe(false);
+		expect(video.currentTime).toBe(600);
+	});
+
+	it('autoplay refused with the frame already in reveals at once', async () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		play.mockImplementation(() => Promise.reject(new DOMException('blocked', 'NotAllowedError')));
+		metadataWith(1420);
+		readyState = 4;
+		seekedAt(600);
+		await settle();
+		expect(holding()).toBe(false);
+	});
+
+	it('playback started by anything else during the hold is held back: the resume wins', () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		video.dispatchEvent(new Event('play'));
+		expect(pause).toHaveBeenCalledTimes(1);
+		metadataWith(1420);
+		video.dispatchEvent(new Event('play'));
+		expect(pause).toHaveBeenCalledTimes(2);
+	});
+
+	it('a length known late holds until it arrives, then reveals at the point', async () => {
+		savePosition('show-a', 6, 600, Number.NaN, positions);
+		armHolding('show-a', 6);
+		metadataWith(Number.POSITIVE_INFINITY);
+		expect(holding()).toBe(true);
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
+		video.dispatchEvent(new Event('durationchange'));
+		expect(video.currentTime).toBe(600);
+		expect(holding()).toBe(true);
+		seekedAt(600);
+		await settle();
+		expect(holding()).toBe(false);
+	});
+
+	it('a point in the last 90 seconds is forgotten and the stream revealed from its start', () => {
+		savePosition('show-a', 6, 1400, Number.NaN, positions);
+		armHolding('show-a', 6);
+		metadataWith(1420);
+		expect(holding()).toBe(false);
+		expect(play).toHaveBeenCalledTimes(1);
+		expect(video.currentTime).toBe(0);
+	});
+
+	it('a started mark, at zero, holds nothing', () => {
+		savePosition('show-a', 6, 0, 1420, positions);
+		video.autoplay = true;
+		armHolding('show-a', 6);
+		metadataWith(1420);
+		expect(holds).not.toContain(true);
+		expect(video.autoplay).toBe(true);
+	});
+
+	it('no point holds nothing', () => {
+		video.autoplay = true;
+		armHolding('show-a', 6);
+		metadataWith(1420);
+		expect(holds).not.toContain(true);
+		expect(video.autoplay).toBe(true);
+	});
+
+	it("a pending recovery's point holds too, and reveals where it lands", async () => {
+		recoveryResume.capture('show-a', 6, 432.5);
+		armHolding('show-a', 6);
+		expect(holding()).toBe(true);
+		metadataWith(1420);
+		expect(video.currentTime).toBe(432.5);
+		seekedAt(432.5);
+		await settle();
+		expect(holding()).toBe(false);
+	});
+
+	it('the next attach ends the hold and gives autoplay back', () => {
+		savePosition('show-a', 6, 600, 1420, positions);
+		video.autoplay = true;
+		armHolding('show-a', 6);
+		scope.flush();
+		expect(holding()).toBe(false);
+		expect(video.autoplay).toBe(true);
+		// The retired hold holds nothing back any more.
+		video.dispatchEvent(new Event('play'));
+		expect(pause).not.toHaveBeenCalled();
+	});
+
+	it('a length that never arrives reveals after fifteen seconds, and the point outlives it', () => {
+		// The bound only stops hiding the picture. Where the episode
+		// was left is not given up: nothing the stream plays writes over
+		// it, and a length that does arrive still seeks there.
+		vi.useFakeTimers();
+		savePosition('show-a', 6, 600, Number.NaN, positions);
+		armHolding('show-a', 6);
+		metadataWith(Number.POSITIVE_INFINITY);
+		vi.advanceTimersByTime(14_999);
+		expect(holding()).toBe(true);
+		vi.advanceTimersByTime(1);
+		expect(holding()).toBe(false);
+		expect(play).toHaveBeenCalledTimes(1);
+		video.currentTime = 40;
+		video.dispatchEvent(new Event('pause'));
+		expect(readPosition('show-a', 6, positions)).toBe(600);
+		Object.defineProperty(video, 'duration', { configurable: true, get: () => 1420 });
+		video.dispatchEvent(new Event('durationchange'));
+		expect(video.currentTime).toBe(600);
+	});
+
+	it('metadata that never arrives reveals after fifteen seconds, and leaving keeps the point', () => {
+		vi.useFakeTimers();
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		vi.advanceTimersByTime(15_000);
+		expect(holding()).toBe(false);
+		scope.flush();
+		expect(readPosition('show-a', 6, positions)).toBe(600);
+	});
+
+	it('the bound starts over when the seek is issued', () => {
+		// Opening and landing are each waits on one fragment: the first
+		// brings the metadata, the one at the point lands the seek.
+		vi.useFakeTimers();
+		savePosition('show-a', 6, 600, 1420, positions);
+		armHolding('show-a', 6);
+		vi.advanceTimersByTime(10_000);
+		metadataWith(1420);
+		vi.advanceTimersByTime(14_999);
+		expect(holding()).toBe(true);
+		vi.advanceTimersByTime(1);
+		expect(holding()).toBe(false);
+		expect(play).toHaveBeenCalledTimes(1);
 	});
 });
