@@ -144,8 +144,10 @@ fn kanji_or_digit(c: char) -> Option<u32> {
 }
 
 /// Every ordinal a title names anywhere: each season or part marker,
-/// a small number or numeral the title ends on ("Tokyo Ghoul:re 2",
-/// "Overlord II"), and a Japanese 第N.
+/// every small number or numeral in it ("Tokyo Ghoul:re 2", "Mushoku
+/// Tensei II: Isekai Ittara Honki Dasu"), and a Japanese 第N. Read as
+/// evidence of what an entry names, so reading too much only ever
+/// admits more.
 pub(super) fn named_ordinals(title: &str) -> BTreeSet<u32> {
     let words = words(title);
     let mut out: BTreeSet<u32> = words
@@ -153,9 +155,11 @@ pub(super) fn named_ordinals(title: &str) -> BTreeSet<u32> {
         .filter_map(|w| marker_of(&w[0], &w[1]))
         .flat_map(|m| m.ordinals)
         .collect();
-    if let Some(last) = words.last() {
-        out.extend(small_number(last).or_else(|| roman(last)));
-    }
+    out.extend(
+        words
+            .iter()
+            .filter_map(|w| small_number(w).or_else(|| roman(w))),
+    );
     let chars: Vec<char> = title.chars().collect();
     for w in chars.windows(2) {
         if w[0] == '第' {
