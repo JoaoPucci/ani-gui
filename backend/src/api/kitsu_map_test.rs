@@ -135,3 +135,64 @@ async fn a_mapping_no_watch_stored_reads_as_not_played() {
         "no mapping"
     );
 }
+
+async fn delete_status(state: &Arc<AppState>, uri: &str) -> StatusCode {
+    build_api_router(Arc::clone(state))
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(uri)
+                .body(Body::empty())
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot")
+        .status()
+}
+
+/// An eviction names the id it judged. Continue Watching judges the
+/// mapping it read, and a play can store another while it waits on
+/// Kitsu; that one, and its mark, are not the one judged and stay.
+#[tokio::test]
+async fn an_eviction_removes_only_the_mapping_it_names() {
+    let td = TempDir::new().expect("tempdir");
+    let state = Arc::new(test_app_state(&td));
+    crate::commands::kitsu::allmanga_kitsu_put_played(&state, "hianime:x-1", "1623").expect("put");
+
+    let status = delete_status(&state, "/api/allmanga-kitsu-map/hianime:x-1?kitsu_id=49877").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "hianime:x-1")
+            .expect("get")
+            .as_deref(),
+        Some("1623"),
+        "another id's eviction leaves the mapping"
+    );
+    assert!(
+        crate::commands::kitsu_played::mapping_played(&state, "hianime:x-1").expect("played"),
+        "and its mark"
+    );
+
+    let status = delete_status(&state, "/api/allmanga-kitsu-map/hianime:x-1?kitsu_id=1623").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "hianime:x-1").expect("get"),
+        None,
+        "its own eviction removes it"
+    );
+}
+
+/// An eviction that names no id removes whatever mapping stands.
+#[tokio::test]
+async fn an_eviction_naming_no_id_removes_the_mapping() {
+    let td = TempDir::new().expect("tempdir");
+    let state = Arc::new(test_app_state(&td));
+    crate::commands::kitsu::allmanga_kitsu_put(&state, "hianime:x-1", "1623").expect("put");
+
+    let status = delete_status(&state, "/api/allmanga-kitsu-map/hianime:x-1").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&state, "hianime:x-1").expect("get"),
+        None
+    );
+}

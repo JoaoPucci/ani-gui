@@ -590,7 +590,7 @@ describe('resolveKitsuMatch', () => {
 		const got = await resolveKitsuMatch(preliminary);
 
 		expect(got?.id).toBe('real');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('allmanga-id');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('allmanga-id', 'music-id');
 	});
 
 	it('cour > 1 reverse-map hit with matching slug keeps the cache + skips re-resolve', async () => {
@@ -723,7 +723,9 @@ describe('resolveKitsuMatch', () => {
 		const got = await resolveKitsuMatch(preliminary);
 
 		expect(got?.id).toBe('love-live');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('9mJyPki2Hm4NmSrhG');
+		// The eviction names the id it judged: a mapping a play stored
+		// while the detail was in flight is not the one judged.
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('9mJyPki2Hm4NmSrhG', '47328');
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
@@ -821,7 +823,7 @@ describe('resolveKitsuMatch', () => {
 		const got = await p;
 
 		expect(got?.id).toBe('11061');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('vDTSJHSpYnrkZnAvG');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('vDTSJHSpYnrkZnAvG', 'wrong-kitsu');
 		// Enrichment must have observed the eviction as already committed.
 		expect(enrichmentSawDeleteDone).toBe(true);
 	});
