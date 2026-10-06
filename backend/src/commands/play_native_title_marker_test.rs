@@ -121,6 +121,27 @@ fn a_number_before_a_japanese_counter_is_named_by_the_entry() {
 }
 
 proptest::proptest! {
+    /// A number of one or two digits written straight before a
+    /// Japanese counter is named, in ASCII or full-width digits; three
+    /// digits name nothing.
+    #[test]
+    fn a_number_before_a_counter_is_named_exactly_when_small(
+        head in "[ぁ-んァ-ン一-龥]{1,4}",
+        n in proptest::prop_oneof![0u32..100, 100u32..1000],
+        wide in proptest::bool::ANY,
+        counter in proptest::sample::select(vec!['号', '期', '話']),
+    ) {
+        let digits: String = n
+            .to_string()
+            .chars()
+            .map(|c| if wide { char::from_u32(c as u32 - '0' as u32 + '０' as u32).unwrap() } else { c })
+            .collect();
+        // 第 before the number makes a division, read by its own rule.
+        proptest::prop_assume!(!head.ends_with('第'));
+        let title = format!("{head}{digits}{counter}");
+        proptest::prop_assert_eq!(named_ordinals(&title).contains(&n), n < 100, "{:?}", title);
+    }
+
     /// A title of plain words followed by a bare number is admitted by
     /// an entry of plain words exactly when the number is a first or
     /// has three digits — the entry names nothing else.
