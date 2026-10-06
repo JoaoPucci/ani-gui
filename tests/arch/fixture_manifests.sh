@@ -13,7 +13,7 @@
 # has one, and otherwise the whole object (the flat form anidb/ uses).
 # For every entry:
 #
-#   - its name is a plain file name — no `/`, no `\`, not `.` or `..`,
+#   - its name is a plain file name — no `/`, `\` or `:`, not `.` or `..`,
 #     not absolute — so it cannot reach a file outside the manifest's
 #     directory, on Linux or on Windows;
 #   - the named file exists beside the manifest;
@@ -68,7 +68,7 @@ for (const rel of manifests) {
     if (e === null || typeof e !== "object" || typeof e.sha256 !== "string") {
       fail.push(`${at}: entry has no sha256`); continue;
     }
-    if (name === "" || name === "." || name === ".." || /[\/\\]/.test(name)
+    if (name === "" || name === "." || name === ".." || /[\/\\:]/.test(name)
       || path.isAbsolute(name) || path.basename(name) !== name) {
       fail.push(`${at}: entry name is not a file beside the manifest`); continue;
     }
