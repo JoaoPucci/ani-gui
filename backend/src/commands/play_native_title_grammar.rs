@@ -319,8 +319,9 @@ pub(super) fn later_divisions(sibling: &str, wide: &str) -> Vec<u32> {
 }
 
 /// The divisions behind [`later_divisions`], with their kinds. A
-/// Japanese division glued to the stem ("ショー第2期" beside "ショー")
-/// is read as one written after a space.
+/// single Japanese division glued to the stem and ending the title
+/// ("ショー第2期" beside "ショー") is read as one written after a
+/// space; one followed by more text, or by a second division, is not.
 pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
     let own = stem(wide);
     let wide_markers = trailing_markers(wide);
