@@ -321,8 +321,8 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
 /// the divisions `wide` ends on, which are `wide`'s own.
 ///
 /// A bare number `wide`'s stem ends on stays in the stem, so "Lucky 2
-/// 2nd Season" is read past "Lucky 2". A title that does not carry the
-/// number is read past the stem without it, the number then one of
+/// 2nd Season" is read past "Lucky 2". A title that does not start
+/// with the whole stem is read past it without the number, then one of
 /// `wide`'s own divisions: "Show Season 3" beside "Show 2" names a
 /// season 3, as it does beside "Show 2nd Season".
 fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
