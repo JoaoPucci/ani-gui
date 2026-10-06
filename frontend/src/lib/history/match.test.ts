@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveKitsuMatch, resolveKitsuMatchWithTrust } from './match';
 import { resolveHistoryEntry } from './resolve';
 import {
@@ -34,10 +34,7 @@ vi.mock('$lib/api', () => ({
 
 const mockedAllmangaDelete = vi.mocked(allmangaKitsuMapDelete);
 const mockedAllmangaMap = vi.mocked(allmangaKitsuMapGet);
-// The played read answers the Kitsu id the play's mark names, or null.
-const mockedPlayed = vi.mocked(allmangaKitsuMapPlayed) as unknown as Mock<
-	(showId: string) => Promise<string | null>
->;
+const mockedPlayed = vi.mocked(allmangaKitsuMapPlayed);
 const mockedSlug = vi.mocked(kitsuAnimeBySlug);
 const mockedDetail = vi.mocked(kitsuAnimeDetail);
 const mockedResolveAllmanga = vi.mocked(kitsuResolveAllmangaShowId);
