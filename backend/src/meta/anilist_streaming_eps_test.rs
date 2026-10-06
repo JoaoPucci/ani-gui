@@ -330,3 +330,22 @@ async fn streaming_eps_map_for_ids_does_not_retry_a_media_without_episodes() {
         .expect("ok");
     assert!(got.is_empty());
 }
+
+proptest::proptest! {
+    /// Every episode number AniList listed keeps the URL it was listed
+    /// with first, and nothing else appears. Episode numbers come from
+    /// a small range so duplicates are the common case.
+    #[test]
+    fn dedup_keeps_each_episodes_first_url(
+        pairs in proptest::collection::vec((0u32..12, "[a-z]{0,6}"), 0..40),
+    ) {
+        let got = dedup_first_wins(pairs.clone());
+        let mut want = HashMap::new();
+        for (n, url) in &pairs {
+            if !want.contains_key(n) {
+                want.insert(*n, url.clone());
+            }
+        }
+        proptest::prop_assert_eq!(got, want);
+    }
+}
