@@ -156,20 +156,31 @@ fn split_markers(mut words: Vec<String>) -> (Vec<String>, Vec<Marker>) {
     (words, out)
 }
 
+/// A title's tail parsed: the words before the markers it ends on,
+/// and those markers, last first — a Japanese division (第N期, 第N部,
+/// 第Nクール) and then the English markers before it. The one parse
+/// every reader of a title's tail goes through.
+fn parse_tail(title: &str) -> (Vec<String>, Vec<Marker>) {
+    let (text, japanese) = match japanese_trailing(title) {
+        Some((marker, before)) => (before, Some(marker)),
+        None => (title, None),
+    };
+    let (before, english) = split_markers(words(text));
+    (before, japanese.into_iter().chain(english).collect())
+}
+
 /// The markers a title ends on, last first: "Season 3 Part 2" ends on
-/// both, "Part 4: Diamond is Unbreakable" on none. Japanese titles
-/// end on 第N期 (a season), 第N部 or 第Nクール (a part).
+/// both, "Part 4: Diamond is Unbreakable" on none, "進撃の巨人 第3期"
+/// on its season.
 pub(super) fn trailing_markers(title: &str) -> Vec<Marker> {
-    let (_, mut out) = split_markers(words(title));
-    out.extend(japanese_trailing(title));
-    out
+    parse_tail(title).1
 }
 
 /// The ordinal `rest` names when it is nothing but one marker naming
-/// one ordinal — "2nd Stage", "Part 3", ": Season 2", "II". `None`
-/// for anything else, a span or two markers included.
+/// one ordinal — "2nd Stage", "Part 3", ": Season 2", "II", "第2期".
+/// `None` for anything else, a span or two markers included.
 pub(crate) fn sole_ordinal(rest: &str) -> Option<u32> {
-    let (before, markers) = split_markers(words(rest));
+    let (before, markers) = parse_tail(rest);
     match (before.is_empty(), markers.as_slice()) {
         (true, [only]) if only.ordinals.len() == 1 => Some(only.ordinals[0]),
         _ => None,
@@ -177,13 +188,9 @@ pub(crate) fn sole_ordinal(rest: &str) -> Option<u32> {
 }
 
 /// The 第N期 / 第N部 / 第Nクール a title ends on, closing brackets
-/// aside.
-fn japanese_trailing(title: &str) -> Option<Marker> {
-    let trimmed: String = title
-        .trim_end_matches(|c: char| c.is_whitespace() || ")）]】".contains(c))
-        .chars()
-        .map(half_width)
-        .collect();
+/// aside, with the text before its 第.
+fn japanese_trailing(title: &str) -> Option<(Marker, &str)> {
+    let trimmed = title.trim_end_matches(|c: char| c.is_whitespace() || ")）]】".contains(c));
     let (body, kind) = [
         ("期", Kind::Season),
         ("部", Kind::Part),
@@ -191,11 +198,13 @@ fn japanese_trailing(title: &str) -> Option<Marker> {
     ]
     .iter()
     .find_map(|(suffix, kind)| trimmed.strip_suffix(suffix).map(|b| (b, *kind)))?;
-    let (_, number) = body.rsplit_once('第')?;
-    Some(Marker {
+    let (before, number) = body.rsplit_once('第')?;
+    let number: String = number.chars().map(half_width).collect();
+    let marker = Marker {
         kind,
-        ordinals: vec![japanese_number(number)?],
-    })
+        ordinals: vec![japanese_number(&number)?],
+    };
+    Some((marker, before))
 }
 
 fn kanji_or_digit(c: char) -> Option<u32> {
@@ -263,15 +272,7 @@ pub(super) fn part_ordinals(title: &str) -> BTreeSet<u32> {
 /// show's seasons and parts share ("Attack on Titan" for "Attack on
 /// Titan Season 3 Part 2").
 pub(crate) fn stem(title: &str) -> Vec<String> {
-    let mut words = words(title);
-    while words.len() >= 2 {
-        let n = words.len();
-        if marker_of(&words[n - 2], &words[n - 1]).is_none() {
-            break;
-        }
-        words.truncate(n - 2);
-    }
-    words
+    parse_tail(title).0
 }
 
 /// A title with its whitespace runs collapsed, lowercased.
