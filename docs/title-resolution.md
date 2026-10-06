@@ -97,9 +97,9 @@ Without a count, a pool from which the title rule dropped a hit it refuses is ne
 | W admitted, from Kitsu's year | W reads as the entry (the entry is W's head) | L exists that does not read as the entry | O exists that reads as the entry and names a division past W's stem or carries it alone | Outcome |
 |---|---|---|---|---|
 | no | — | — | — | nothing is cut |
-| yes | — | no | — | nothing is cut; a sibling that reads as the entry is the entry's own, not the next one |
-| yes | no | yes | — | nothing is cut; every such L is the next entry beside W and is never picked |
-| yes | yes | yes | yes | nothing is cut; every L is never picked; O competes as an exact fit |
+| yes | — | no | — | nothing is cut; a sibling that reads as the entry is the entry's own, not the next one; an O scores every other exact fit one behind it |
+| yes | no | yes | — | nothing is cut; every such L is the next entry beside W and is never picked; an O scores every other exact fit one behind it |
+| yes | yes | yes | yes | nothing is cut; every L is never picked; O scores every other exact fit one behind it |
 | yes | yes | yes | no | W is cut to the entry's episodes and scored exact; every L is never picked; every other exact-count candidate is scored one behind the cut |
 
 A refused candidate is never picked, whatever the table says of it.
