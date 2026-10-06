@@ -98,7 +98,8 @@ fn a_removal_takes_the_play_mark() {
     let state = listed_state(&tmp);
     watched_at_put(&state, "the-show-77", now_ms()).unwrap();
     allmanga_kitsu_put_played(&state, "the-show-77", "21").unwrap();
-    crate::commands::history_forget::forget_finders(&state, "the-show-77", "The Show").unwrap();
+    crate::commands::history_forget::forget_finders(&state, "the-show-77", "The Show", &[])
+        .unwrap();
     allmanga_kitsu_put(&state, "the-show-77", "21").unwrap();
     assert!(!mapping_played(&state, "the-show-77").unwrap(), "removed");
 

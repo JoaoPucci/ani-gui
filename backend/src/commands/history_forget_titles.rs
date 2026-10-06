@@ -6,18 +6,39 @@ use crate::app::AppState;
 use crate::cache::{meta_cache_delete, meta_cache_entries_prefix};
 use crate::commands::kitsu::{title_match_prefix, TITLE_MATCH_VERSION};
 use crate::error::Result;
+use crate::history::HistoryEntry;
 use crate::scraper::provider::ShowKey;
+use std::collections::HashSet;
 
 use super::history_title_tail::{all_digits, without_episode_tail};
 
 /// Delete the title-match rows, every version and cour, stored for
-/// the row `id` titled `title`.
+/// the row `id` titled `title` — but for those a row in `remaining`
+/// searches too. The rows are keyed by what was searched, not by the
+/// row: a legacy opaque-id row and a newer slug of one show search the
+/// same key, and so does one title on two providers under a version
+/// before the provider joined the key. Such a row stays with the row
+/// that still searches it.
 ///
 /// # Errors
 /// Cache failures propagate.
-pub(crate) fn forget_title_matches(state: &AppState, id: &str, title: &str) -> Result<()> {
-    for (key, _) in own_matches(state, id, title)? {
-        meta_cache_delete(&state.cache_pool, &key)?;
+pub(crate) fn forget_title_matches(
+    state: &AppState,
+    id: &str,
+    title: &str,
+    remaining: &[HistoryEntry],
+) -> Result<()> {
+    let searched: HashSet<String> = remaining
+        .iter()
+        .flat_map(|e| title_match_prefixes(&e.id, &e.title))
+        .collect();
+    for prefix in title_match_prefixes(id, title) {
+        if searched.contains(&prefix) {
+            continue;
+        }
+        for (key, _) in cour_entries(state, &prefix)? {
+            meta_cache_delete(&state.cache_pool, &key)?;
+        }
     }
     Ok(())
 }

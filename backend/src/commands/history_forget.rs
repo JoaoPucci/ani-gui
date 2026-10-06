@@ -7,8 +7,10 @@
 //! - its reverse mapping to Kitsu (`allmanga2kitsu:`), under every
 //!   version's key, with the mark a play left beside it;
 //! - the title-match rows Continue Watching stored for the row's title
-//!   (`title-match:`), under every version's key, and those under any
-//!   earlier title that name a Kitsu id the show is known by;
+//!   (`title-match:`), under every version's key, but for one a
+//!   remaining row searches too — those are keyed by the title
+//!   searched, not by the row — and those under any earlier title that
+//!   name a Kitsu id the show is known by and no remaining row claims;
 //! - the resolution rows whose stream played the show (`play:`), found
 //!   by the show id their value carries, and the ones a page of the
 //!   show resolved under another key, found by the page their value
@@ -98,13 +100,20 @@ pub(crate) fn forget_show(
 
 /// Delete the row `id`'s reverse mapping under every version's key,
 /// with the mark a play left beside it, and the title-match rows
-/// stored for it, titled `title`: what [`forget_show`] finds the
-/// show's Kitsu ids by, so a removal deletes them once nothing it
-/// finds by those ids is left to delete.
+/// stored for it, titled `title`, that no row in `remaining` searches
+/// too: what [`forget_show`] finds the show's Kitsu ids by, so a
+/// removal deletes them once nothing it finds by those ids is left to
+/// delete. The mapping and its mark are keyed by the row's own show
+/// id, which no other row has.
 ///
 /// # Errors
 /// Cache write failures propagate.
-pub(crate) fn forget_finders(state: &AppState, id: &str, title: &str) -> Result<()> {
+pub(crate) fn forget_finders(
+    state: &AppState,
+    id: &str,
+    title: &str,
+    remaining: &[crate::history::HistoryEntry],
+) -> Result<()> {
     meta_cache_delete(
         &state.cache_pool,
         &crate::commands::kitsu::allmanga_kitsu_played_key(id),
@@ -115,7 +124,7 @@ pub(crate) fn forget_finders(state: &AppState, id: &str, title: &str) -> Result<
             &format!("allmanga2kitsu:v{version}:{id}"),
         )?;
     }
-    super::history_forget_titles::forget_title_matches(state, id, title)?;
+    super::history_forget_titles::forget_title_matches(state, id, title, remaining)?;
     Ok(())
 }
 

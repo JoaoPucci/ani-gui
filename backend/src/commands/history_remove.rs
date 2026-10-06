@@ -85,7 +85,7 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         let titles: Vec<&str> = removed.iter().map(|(title, _)| title.as_str()).collect();
         super::history_forget_titles::forget_title_matches_naming(state, id, &titles, &known_by)?;
         for title in &titles {
-            super::history_forget::forget_finders(state, id, title)?;
+            super::history_forget::forget_finders(state, id, title, &entries)?;
         }
         held.write(&entries)?;
         super::history_forget::sweep_offsets(state, &[id]);
