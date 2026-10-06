@@ -589,11 +589,18 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
 /// same mapping. SQLite errors propagate.
 pub fn allmanga_kitsu_delete_named(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
     crate::history::guard::hold(&state.history_path, |_| {
-        if allmanga_kitsu_get(state, show_id)?.as_deref() != Some(kitsu_id) {
-            return Ok(());
-        }
-        allmanga_kitsu_delete(state, show_id)
+        delete_while_named(state, show_id, kitsu_id).map(drop)
     })
+}
+
+/// Evict the show's mapping if it is still `kitsu_id`, returning
+/// whether it was. The caller holds the history, so the check and the
+/// delete see the same mapping.
+fn delete_while_named(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<bool> {
+    if allmanga_kitsu_get(state, show_id)?.as_deref() != Some(kitsu_id) {
+        return Ok(false);
+    }
+    allmanga_kitsu_delete(state, show_id).map(|()| true)
 }
 
 /// Persist the reverse mapping with a cross-cour integrity guard.
@@ -671,7 +678,9 @@ pub async fn try_put_allmanga_kitsu_mapping(
 /// mapping the evidence does not condemn stays, and so does one
 /// whose entry cannot be fetched, since silence is not disagreement,
 /// and so does one a row changed since `begun` is read through: a
-/// later watch stored it, past its own guard.
+/// later watch stored it, past its own guard. Nor does a mapping
+/// stored while the judged one was being judged go: a resolve's guess
+/// moves no watch, so only comparing the mapping finds it.
 ///
 /// `judged` runs once the stored mapping is condemned and before the
 /// drop — the point a test stores another mapping at.
@@ -702,7 +711,7 @@ async fn drop_mapping_the_title_disagrees_with(
         if held.show_changed_since(begun, show_id) {
             return Ok(false);
         }
-        allmanga_kitsu_delete(state, show_id).map(|()| true)
+        delete_while_named(state, show_id, &stored)
     });
     match dropped {
         Ok(false) => {}
