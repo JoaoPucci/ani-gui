@@ -4,9 +4,10 @@
   "fixtures": {
     "video-before-audio.mpegts.b64": {
       "source": "ffmpeg -f lavfi -i \"color=c=0x202020:s=64x36:r=12:d=2.4\" -itsoffset 1.0 -f lavfi -i \"sine=frequency=440:sample_rate=48000:d=1.4\" -map 0:v -map 1:a -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 12 -x264-params \"bframes=0:keyint=12:min-keyint=12:scenecut=0\" -b:v 40k -c:a aac -b:a 24k -ac 1 -muxdelay 0 -muxpreload 0 -output_ts_offset 0.184 -f mpegts video-before-audio.mpegts (ffmpeg 7, x264 core 164 r3108), then base64 -w 76",
+      "encoding": "base64",
       "size": 26696,
       "sha256": "b9c698207903d5f4b1a123d163f7852ef9e7e244f068a7931416e22be95bfa77",
-      "notes": "One program: H.264 (Constrained Baseline, 64x36 @ 12 fps, IDR first) from 0.184 s, AAC-LC 48 kHz mono from 1.163 s, 2.42 s long. The provider's shape — video under one second, audio after it — that hls.js 1.6.16 misread as a 33-bit rollover, dropping the first segment's video. `size` and `sha256` are of the decoded stream."
+      "notes": "One program: H.264 (Constrained Baseline, 64x36 @ 12 fps, IDR first) from 0.184 s, AAC-LC 48 kHz mono from 1.163 s, 2.42 s long. The provider's shape — video under one second, audio after it — that hls.js 1.6.16 misread as a 33-bit rollover, dropping the first segment's video. `encoding` says the file is base64 text, so `size` and `sha256` are of the decoded stream."
     }
   }
 }
