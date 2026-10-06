@@ -412,8 +412,9 @@ async fn a_cached_detail_takes_a_stale_gone_mark() {
 // only as one step with the verdict it rests on. A read Kitsu served
 // and that is still finishing (the banner backfill, the cache write)
 // is older than a 404 to a read begun after Kitsu served it, so it
-// leaves that newer mark standing and caches nothing a later read
-// would take as Kitsu serving the id again.
+// leaves that newer mark standing, caches nothing a later read would
+// take as Kitsu serving the id again, and answers its caller as the
+// mark does: the entry is gone.
 
 fn detail_row(state: &AppState, id: &str) -> Option<String> {
     crate::cache::meta_cache_get(
@@ -481,7 +482,12 @@ async fn a_success_still_finishing_leaves_a_newer_404_standing() {
     };
     let (served, ()) = tokio::join!(read, newer_404);
 
-    assert!(served.is_ok(), "the read itself was served");
+    assert!(
+        served
+            .as_ref()
+            .is_err_and(crate::error::AniError::is_not_found_shaped),
+        "the read reports the newer answer, as the mark does: {served:?}"
+    );
     assert!(marked(&state, "999"), "the newer 404 stands");
     assert_eq!(detail_row(&state, "999"), None, "nothing cached over it");
 }
