@@ -1,6 +1,7 @@
 //! Running an external tool and reading what it prints.
 //!
-//! Process-group lifecycle and output cleaning for the binaries this
+//! A spawned tool's tree and its teardown — a process group on Unix,
+//! job objects on Windows — and output cleaning for the binaries this
 //! backend spawns: the downloader's yt-dlp and ffmpeg, the external
 //! player, and Syncplay. It lived under `anicli/` only because the
 //! first subprocess driver was written there, and the native paths
