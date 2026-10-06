@@ -2096,14 +2096,18 @@ where
     // Whichever resolves first: the tool running to its end (or the
     // deadline), or the caller's stop. The drive is dropped here
     // either way; a run that did not end in the tool's exit takes the
-    // tree down and waits for it to be gone before returning.
+    // tree down and waits, up to the teardown's ceiling, for it to be
+    // gone before returning.
     let outcome = tokio::select! {
         run = tokio::time::timeout_at(deadline, drive) => Some(run),
         () = stop => None,
     };
-    // However the run ended, the tree goes before anything follows
-    // it: taken down when the tool is still running, and checked for
-    // helpers still in it when the tool exited by itself.
+    // However the run ended, the tree is taken down before anything
+    // follows it: when the tool is still running, and for helpers still
+    // in it when the tool exited by itself. A tree that outlives the
+    // teardown's ceiling ends the run as outlived — nothing respawns or
+    // retries beside it, though the caller's sweep of its scratch then
+    // runs beside it.
     if !child.take_down().await {
         return Ok(ToolRun::Outlived);
     }
