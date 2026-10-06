@@ -2899,7 +2899,9 @@
 			{/if}
 		{/if}
 		{#if (switchBusy || resumeHolding) && !playerError}
-			<span class="player-spinner" aria-hidden="true">…</span>
+			<span class="player-spinner" aria-hidden="true">
+				<span class="player-spinner-track"><span class="player-spinner-sweep"></span></span>
+			</span>
 		{/if}
 	</section>
 
@@ -4437,15 +4439,99 @@
 		opacity: 0;
 		transition: none;
 	}
+	/* Loading indicator over the player: the app's indeterminate
+	   hairline (the search bar's and the download bar's sweep), set
+	   in the show's accent and centred in the frame. It waits a beat
+	   before fading in, so a switch or a resume that lands quickly
+	   never flashes it. The sweep travels on inset-inline-start, so
+	   it runs with the reading direction; the track contains its own
+	   layout, so that costs the page nothing while the video decodes.
+	   A soft dark halo is invisible on the black frame of a resume
+	   hold and lifts the line off a half-dimmed picture. */
 	.player-spinner {
 		position: absolute;
 		inset: 0;
 		display: grid;
 		place-items: center;
-		color: var(--accent);
-		font-family: var(--font-body);
-		font-size: var(--type-display-l);
 		pointer-events: none;
+		animation: player-spinner-in var(--dur-slow) var(--ease-out-soft) 240ms both;
+	}
+	.player-spinner-track {
+		position: relative;
+		display: block;
+		inline-size: clamp(6rem, 22%, 12rem);
+		block-size: 3px;
+		border-radius: var(--radius-pill);
+		background: color-mix(in oklab, var(--bone-100) 16%, transparent);
+		box-shadow:
+			0 0 0 1px rgb(0 0 0 / 0.45),
+			0 0 16px 4px rgb(0 0 0 / 0.55);
+		overflow: hidden;
+		contain: layout paint;
+	}
+	/* Windowed, a switch already has the page-wide loading overlay;
+	   a second indicator in the frame would peek out beside its band.
+	   In fullscreen that overlay is outside the top layer, so the
+	   frame's own indicator is the one the viewer sees, scaled up
+	   for the larger picture. */
+	.player-frame.player-busy:not(:fullscreen) .player-spinner {
+		display: none;
+	}
+	.player-frame:fullscreen .player-spinner-track {
+		inline-size: clamp(8rem, 22%, 16rem);
+		block-size: 4px;
+	}
+	.player-spinner-sweep {
+		position: absolute;
+		inset-block: 0;
+		inline-size: 40%;
+		background: linear-gradient(
+			to right,
+			transparent,
+			var(--accent) 35%,
+			color-mix(in oklab, var(--accent), white 35%) 50%,
+			var(--accent) 65%,
+			transparent
+		);
+		animation: player-spinner-sweep 1.4s var(--ease-in-out) infinite;
+	}
+	@keyframes player-spinner-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@keyframes player-spinner-sweep {
+		from {
+			inset-inline-start: -40%;
+		}
+		to {
+			inset-inline-start: 100%;
+		}
+	}
+	/* Reduced motion: nothing travels. The whole track takes the
+	   accent and breathes slowly in opacity, so the frame still reads
+	   as working rather than stopped. The search bar holds a static
+	   bar instead; that one rides the topbar's edge, where a still
+	   line reads as chrome, while this one is alone in a dark frame. */
+	@media (prefers-reduced-motion: reduce) {
+		.player-spinner-sweep {
+			inset-inline-start: 0;
+			inline-size: 100%;
+			background: var(--accent);
+			animation: player-spinner-breathe 2.4s var(--ease-in-out) infinite;
+		}
+	}
+	@keyframes player-spinner-breathe {
+		0%,
+		100% {
+			opacity: 0.35;
+		}
+		50% {
+			opacity: 0.85;
+		}
 	}
 
 	/* Similar Titles wrapper — fills the watch-column (no per-section
