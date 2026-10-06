@@ -28,6 +28,7 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+import { goto } from '$app/navigation';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
@@ -49,6 +50,10 @@ class FakeEventSource {
 		(this.listeners[name] ??= []).push(handler);
 	}
 	close() {}
+	dispatch(name: string, data?: string) {
+		const ev = { data: data ?? '', type: name } as unknown as MessageEvent;
+		for (const h of this.listeners[name] ?? []) h(ev);
+	}
 }
 type GlobalLike = { EventSource?: typeof FakeEventSource };
 const g = globalThis as unknown as GlobalLike;
@@ -60,6 +65,7 @@ beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	__resetPlayCacheForTests();
 	window.localStorage.clear();
+	vi.mocked(goto).mockClear();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
@@ -131,6 +137,11 @@ const indicator = () => target.querySelector('.player-spinner');
 const indicatorOn = () => target.querySelector('.player-spinner.player-spinner-on');
 const errorPanel = () => target.querySelector('.player-error');
 
+const session = (id: string) =>
+	JSON.stringify({ id, kind: 'mp4', has_subtitles: false, quality: '1080', mode: 'sub' });
+const busy = () =>
+	target.querySelector('section.player-frame')?.getAttribute('aria-busy') === 'true';
+
 describe('play route — the loading indicator never sits over the error', () => {
 	it('a playback error during a switch replaces the indicator', async () => {
 		useShowHandlers();
@@ -154,5 +165,45 @@ describe('play route — the loading indicator never sits over the error', () =>
 		await until(() => errorPanel() !== null, 'the error in place of the picture');
 
 		expect(indicator()).toBeNull();
+	});
+});
+
+describe('play route — the loading indicator runs from a switch into the hold after it', () => {
+	it('a switch stays busy until its navigation has landed', async () => {
+		// The next episode's stream attaches, and a resume hold starts,
+		// when the navigation lands. A switch that stopped being busy
+		// as soon as it asked for the navigation left a moment between
+		// the two with nothing loading, and the indicator went out in
+		// it.
+		useShowHandlers();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('episode=2')),
+			'the next-episode warm stream'
+		);
+		FakeEventSource.instances
+			.filter((i) => i.url.includes('episode=2'))
+			.at(-1)!
+			.dispatch('done', session('session-2'));
+		await new Promise((r) => setTimeout(r, 20));
+
+		let land: () => void = () => {};
+		vi.mocked(goto).mockImplementationOnce(
+			() =>
+				new Promise<void>((r) => {
+					land = r;
+				})
+		);
+		(target.querySelector('li[data-ep-num="2"] button') as HTMLButtonElement).click();
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
+		await new Promise((r) => setTimeout(r, 20));
+		expect(busy()).toBe(true);
+		expect(indicatorOn()).not.toBeNull();
+
+		land();
+		await until(() => !busy(), 'the switch to finish once the navigation lands');
+		expect(indicatorOn()).toBeNull();
 	});
 });
