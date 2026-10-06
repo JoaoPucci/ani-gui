@@ -890,3 +890,67 @@ async fn the_entry_s_own_listing_is_what_its_titles_name_past_the_spanning_stem(
         );
     }
 }
+
+/// Each ordinal the entry's titles name past the spanning stem makes
+/// one division the entry's own, read the way the spanning listing
+/// reads its own: "Show 2" owns the season of "Show 2nd Season Part 1"
+/// and not the part of "… Part 2" besides; it owns a "2nd Season"
+/// beside a "Show Part 2" whose 2 is a part; and a title that merely
+/// starts with the stem's letters ("Showtime 2") names nothing past it.
+#[tokio::test]
+async fn each_ordinal_past_the_spanning_stem_owns_one_division() {
+    type Case<'a> = (&'a [&'a str], &'a [(&'a str, &'a str, u32)], &'a str, usize);
+    let cases: [Case<'_>; 5] = [
+        (
+            &["Show 2"],
+            &[
+                ("w", "Show", 24),
+                ("own", "Show 2nd Season Part 1", 12),
+                ("l", "Show 2nd Season Part 2", 12),
+            ],
+            "own",
+            12,
+        ),
+        (
+            &["Show 2"],
+            &[
+                ("w", "Show", 24),
+                ("l", "Show 2nd Season Part 2", 12),
+                ("own", "Show 2nd Season Part 1", 12),
+            ],
+            "own",
+            12,
+        ),
+        (
+            &["Show 2"],
+            &[("w", "Show", 24), ("own", "Show 2nd Season Part 1", 12)],
+            "own",
+            12,
+        ),
+        (
+            &["Show 2"],
+            &[
+                ("w", "Show Part 2", 24),
+                ("own", "Show 2nd Season", 12),
+                ("l", "Show 3rd Season", 12),
+            ],
+            "own",
+            12,
+        ),
+        (
+            &["Showtime 2"],
+            &[("w", "Show", 24), ("l", "Show 2nd Season", 12)],
+            "w",
+            12,
+        ),
+    ];
+    for (titles, rows, want, len) in cases {
+        let site = pool_of(titles, Some(12), 2020, titles[0], rows);
+        let picked = walk_over(site).await.expect("picked");
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            (want, len),
+            "{titles:?} {rows:?}"
+        );
+    }
+}
