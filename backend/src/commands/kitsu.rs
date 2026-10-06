@@ -518,7 +518,12 @@ pub fn title_match_put(
 ///   so one bad row keeps steering a show to the wrong page for its
 ///   whole TTL. Re-keying orphans them; the next successful resolve
 ///   stamps a fresh v3 row.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 3;
+/// - v4: the entry's titles rule the pick. A v3 row can bind a
+///   sibling's key to the entry the user asked for — Gintama's
+///   "Second Half War" to Shirogane no Tamashii-hen — where the
+///   sibling's title carries no cour marker the guard could refuse
+///   it on; re-keying lets the next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 4;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
