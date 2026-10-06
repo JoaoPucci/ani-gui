@@ -1,7 +1,8 @@
 //! The guard a spawned tool runs under: it owns the child, and takes
-//! the child's whole tree down — and waits for it to be gone — when
-//! the run ends or the guard is dropped. The trees themselves, which
-//! differ per platform, are in [`super::tree`].
+//! the child's whole tree down — and waits, for up to a ceiling, for
+//! it to be gone — when the run ends or the guard is dropped. The
+//! trees themselves, which differ per platform, are in
+//! [`super::tree`].
 
 /// The child a guard owns: tokio's on Unix; on Windows the child
 /// `process-wrap` hands back, whose own job the guard ends the tree
