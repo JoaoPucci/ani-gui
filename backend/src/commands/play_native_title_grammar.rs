@@ -244,7 +244,8 @@ fn japanese_number(text: &str) -> Option<u32> {
 
 /// Every ordinal a title names anywhere: each season or part marker,
 /// every small number or numeral in it ("Tokyo Ghoul:re 2", "Mushoku
-/// Tensei II: Isekai Ittara Honki Dasu"), and a Japanese 第N. Read as
+/// Tensei II: Isekai Ittara Honki Dasu"), a Japanese 第N, and a number
+/// written before a Japanese counter (the ８ of "怪獣８号"). Read as
 /// evidence of what an entry names, so reading too much only ever
 /// admits more.
 pub(super) fn named_ordinals(title: &str) -> BTreeSet<u32> {
