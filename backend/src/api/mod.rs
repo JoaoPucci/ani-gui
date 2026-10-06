@@ -716,9 +716,8 @@ async fn get_allmanga_kitsu_map_played(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
 ) -> Result<Json<Option<String>>, AniError> {
-    Ok(Json(crate::commands::kitsu_played::played_mapping(
-        &state, &show_id,
-    )?))
+    let stored = crate::commands::kitsu_played::played_mapping(&state, &show_id)?;
+    Ok(Json(stored_kitsu_id(stored)))
 }
 
 /// Evict a single reverse-mapping row. Fired by the frontend when
@@ -731,8 +730,13 @@ async fn delete_allmanga_kitsu_map(
     Path(show_id): Path<String>,
     Query(q): Query<DeleteAllmangaKitsuMapQuery>,
 ) -> Result<StatusCode, AniError> {
-    match q.kitsu_id {
-        Some(kitsu_id) => kitsu_inner::allmanga_kitsu_delete_named(&state, &show_id, &kitsu_id)?,
+    match q
+        .kitsu_id
+        .as_deref()
+        .map(crate::kitsu_id::require)
+        .transpose()?
+    {
+        Some(kitsu_id) => kitsu_inner::allmanga_kitsu_delete_named(&state, &show_id, kitsu_id)?,
         None => kitsu_inner::allmanga_kitsu_delete(&state, &show_id)?,
     }
     Ok(StatusCode::NO_CONTENT)
@@ -742,6 +746,8 @@ async fn delete_allmanga_kitsu_map(
 struct DeleteAllmangaKitsuMapQuery {
     /// The id the caller judged; the mapping is removed only while it
     /// is still this one. Absent, whatever mapping stands is removed.
+    /// Present, it must be a Kitsu id ([`crate::kitsu_id::require`]):
+    /// a value that is not one is refused, never read as absent.
     #[serde(default)]
     kitsu_id: Option<String>,
 }
