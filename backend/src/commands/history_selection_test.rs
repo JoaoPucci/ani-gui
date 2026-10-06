@@ -473,7 +473,7 @@ fn a_failed_mapping_read_is_the_callers_error_not_a_skipped_row() {
     let s = make_state(path.clone());
     two_rows_for_one_show(&s, &path);
     crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
-    break_cache_row(&s, "allmanga2kitsu:v3:hianime:the-show-9");
+    break_cache_row(&s, "allmanga2kitsu:v4:hianime:the-show-9");
     let got = history_by_kitsu(&s, "1001");
     assert!(
         got.is_err(),

@@ -478,7 +478,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None, None);
-        assert!(k.starts_with("play:v15:"), "got {k}");
+        assert!(k.starts_with("play:v16:"), "got {k}");
     }
 
     #[test]
@@ -516,6 +516,32 @@ mod tests {
             get(&pool, &current).expect("ok").is_none(),
             "a row keyed under the previous schema must not answer the current key"
         );
+    }
+
+    #[test]
+    fn a_row_resolved_before_the_titles_ruled_the_pick_is_not_served() {
+        // The picker's choice among a pool changed: a sibling named for
+        // another season or part is never picked, a listing spanning
+        // two entries is cut to the first, and TV and ONA no longer
+        // disprove each other. A v15 row can hold the sibling's stream
+        // under the entry's key — Attack on Titan Season 3's episode 1
+        // cached as Season 3 Part 2's — and nothing in a row says which
+        // pool it came from, so the whole schema retires.
+        let pool = pool();
+        let current = cache_key(
+            "Attack on Titan Season 3",
+            "sub",
+            "best",
+            "1",
+            Some(2018),
+            Some(12),
+            Some("TV"),
+        );
+        let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v15:", 1);
+        assert_ne!(previous, current, "the schema must have moved past v15");
+        let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+        meta_cache_put(&pool, &previous, &body, 60).unwrap();
+        assert!(get(&pool, &current).expect("ok").is_none());
     }
 
     #[test]

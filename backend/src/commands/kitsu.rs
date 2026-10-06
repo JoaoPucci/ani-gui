@@ -1676,6 +1676,26 @@ mod tests {
     // ids) and the home page reads it directly by show_id.
 
     #[test]
+    fn a_mapping_stamped_by_the_picker_before_the_titles_ruled_it_is_not_read() {
+        // A play stamps the picked show's key with the entry the user
+        // asked for. Before titles ruled the pick, Gintama's "Silver
+        // Soul Arc - Second Half War" was picked for Shirogane no
+        // Tamashii-hen and its key stamped with that entry; the title
+        // carries no cour marker, so the cross-cour guard let it
+        // through. Nothing in a row says which pick wrote it.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:gintama-silver-soul-arc-second-half-war-1157";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v3:{key}"),
+            "14095",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
     fn allmanga_kitsu_cache_round_trips_for_a_given_show_id() {
         let state = state_with_kitsu_at("http://unused");
         allmanga_kitsu_put(&state, "vDTSJHSpYnrkZnAvG", "11469").expect("put ok");
