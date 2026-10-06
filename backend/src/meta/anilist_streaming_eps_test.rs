@@ -257,3 +257,67 @@ async fn streaming_eps_map_for_media_by_mal_id_keeps_the_idmal_query() {
         .expect("ok");
     assert_eq!(got.get(&1).map(String::as_str), Some("https://x.cdn/1.jpg"));
 }
+
+async fn mount_media(
+    server: &wiremock::MockServer,
+    variables: serde_json::Value,
+    body: &str,
+    times: u64,
+) {
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .and(wiremock::matchers::body_partial_json(
+            serde_json::json!({ "variables": variables }),
+        ))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body.to_string()))
+        .expect(times)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn streaming_eps_map_for_ids_retries_by_anilist_id_when_anilist_lacks_the_mal_id() {
+    let server = wiremock::MockServer::start().await;
+    mount_media(
+        &server,
+        serde_json::json!({ "idMal": 21 }),
+        r#"{"data":{"Media":null}}"#,
+        1,
+    )
+    .await;
+    mount_media(
+        &server,
+        serde_json::json!({ "id": 30 }),
+        r#"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 3 - Three","thumbnail":"https://x.cdn/3.jpg"}]}}}"#,
+        1,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let got = streaming_eps_map_for_ids(&client, Some(21), Some(30), Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(got.get(&3).map(String::as_str), Some("https://x.cdn/3.jpg"));
+}
+
+#[tokio::test]
+async fn streaming_eps_map_for_ids_does_not_retry_a_media_without_episodes() {
+    let server = wiremock::MockServer::start().await;
+    mount_media(
+        &server,
+        serde_json::json!({ "idMal": 21 }),
+        r#"{"data":{"Media":{"streamingEpisodes":[]}}}"#,
+        1,
+    )
+    .await;
+    mount_media(
+        &server,
+        serde_json::json!({ "id": 30 }),
+        r#"{"data":{"Media":null}}"#,
+        0,
+    )
+    .await;
+    let client = reqwest::Client::new();
+    let got = streaming_eps_map_for_ids(&client, Some(21), Some(30), Some(&server.uri()))
+        .await
+        .expect("ok");
+    assert!(got.is_empty());
+}

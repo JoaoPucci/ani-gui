@@ -196,3 +196,49 @@ async fn anilist_knowing_nothing_by_anilist_id_leaves_the_cover_null_and_caches_
     assert!(first.cover_image.is_none());
     assert_eq!(first, second);
 }
+
+#[tokio::test]
+async fn a_mal_id_anilist_lacks_falls_back_to_the_anilist_id() {
+    let kitsu = kitsu_null_cover_show(&[("anilist/anime", 30), ("myanimelist/anime", 21)]).await;
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_partial_json(
+            serde_json::json!({ "variables": { "idMal": 21 } }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    mount_banner(
+        &anilist,
+        serde_json::json!({ "id": 30 }),
+        "https://al/30.jpg",
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = kitsu_anime_detail_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+    assert_eq!(banner_of(&got), Some("https://al/30.jpg"));
+}
+
+#[tokio::test]
+async fn both_ids_unknown_to_anilist_cache_the_null_cover_after_two_requests() {
+    let kitsu = kitsu_null_cover_show(&[("anilist/anime", 30), ("myanimelist/anime", 21)]).await;
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#))
+        .expect(2)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let first = kitsu_anime_detail_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+    let second = kitsu_anime_detail_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("cached detail");
+    assert!(first.cover_image.is_none());
+    assert_eq!(first, second);
+}

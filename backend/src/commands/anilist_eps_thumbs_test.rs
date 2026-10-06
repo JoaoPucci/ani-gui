@@ -459,3 +459,40 @@ async fn anilist_knowing_nothing_by_anilist_id_is_cached_as_empty() {
     assert!(first.is_empty());
     assert!(second.is_empty());
 }
+
+#[tokio::test]
+async fn a_mal_id_anilist_lacks_falls_back_to_the_anilist_id_for_thumbs() {
+    let kitsu =
+        kitsu_with_mappings("12", &[("anilist/anime", 30), ("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 21 }),
+        r#"{"data":{"Media":null}}"#,
+        1,
+    )
+    .await;
+    mount_anilist(&anilist, serde_json::json!({ "id": 30 }), ONE_EP_BODY, 1).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    assert_eq!(got, one_ep_map());
+}
+
+#[tokio::test]
+async fn both_ids_unknown_to_anilist_cache_empty_thumbs_after_two_requests() {
+    let kitsu =
+        kitsu_with_mappings("12", &[("anilist/anime", 30), ("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+        )
+        .expect(2)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let first = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let second = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    assert!(first.is_empty());
+    assert!(second.is_empty());
+}
