@@ -257,3 +257,18 @@ fn the_stem_drops_a_japanese_division_too() {
     assert_eq!(stem("進撃の巨人 第3期"), words("進撃の巨人"));
     assert_eq!(stem("Show Season 2 第2部"), words("show"));
 }
+
+#[test]
+fn a_span_without_the_first_part_needs_every_ordinal_named() {
+    // A span through part 1 stays the first-part exception; any other
+    // span is admitted only when the entry names every part in it.
+    assert!(!entry(&["Show 2"]).admits("Show Part 0+2"));
+    assert!(!entry(&["Show 2"]).admits("Show Part 2+3"));
+    assert!(entry(&["Show 2", "Show 3"]).admits("Show Part 2+3"));
+    assert!(entry(&["Show"]).admits("Show (Part 1+2)"));
+    // Agreement on a part reads a span the same way.
+    let e = entry(&["Show Part 2"]);
+    assert!(!e.part_agrees("Show Part 0+2"));
+    assert!(!e.part_agrees("Show Part 2+3"));
+    assert!(entry(&["Show Part 2", "Show Part 3"]).part_agrees("Show Part 2+3"));
+}
