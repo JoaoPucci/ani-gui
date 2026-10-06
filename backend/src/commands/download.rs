@@ -54,8 +54,11 @@ pub struct DownloadArgs {
     /// provider hits. Same wire forms as [`PlayArgs::alt_titles`].
     #[serde(default, deserialize_with = "deserialize_alt_titles")]
     pub alt_titles: Vec<String>,
-    /// Kitsu id of the show being downloaded; logged for traceability.
-    /// A value that is not an id ([`crate::kitsu_id`]) reads as `None`.
+    /// Kitsu id of the show being downloaded. It keys the availability
+    /// row the resolve starts from (its remembered provider) and the
+    /// row the walk's verdict is stamped into. A value that is not an
+    /// id ([`crate::kitsu_id`]) reads as `None`: the download walks the
+    /// default provider order and stamps nothing.
     #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub kitsu_id: Option<String>,
     /// Absolute path to the directory the download lands in. The
