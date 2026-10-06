@@ -124,7 +124,7 @@ When Kitsu's `coverImage` is null (common for shows currently airing — roughly
 | Availability probe (negative — a clean miss, or the requested mode absent, from the provider that answered; served while that provider's gate has been seen answering and every gate ahead of it is refusing) — finished show | SQLite `meta_cache` | 7 days when the probe wrote the row; 24 hours at most when a resolve did (below) |
 | Availability probe (negative) — ongoing show, or one with no airing schedule known | SQLite `meta_cache` | 24 hours at most: with the next airing known — when the row is written, or once the schedule is cached after it — until 3 hours after it when that is sooner, and 1 hour when that airing time has already passed |
 | Availability probe (negative) — unreleased show with a known premiere | SQLite `meta_cache` | until 3 hours after the premiere, within 1 hour to 7 days |
-| aniskip OP/ED skip-time intervals (per MAL id + episode) | SQLite `meta_cache` | 7 days |
+| aniskip OP/ED skip-time intervals (per Kitsu id + MAL id + episode) | SQLite `meta_cache` | 7 days |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
 | Long-term play resolution (resolved stream URLs) | SQLite `meta_cache` (`play:` rows) | 7 days, or until upstream rotates |
 | In-flight play-resolution coalescer (`play-cache.getOrFire`) | Renderer-side `Map` | 4 hours (also dedupes concurrent calls) |
@@ -170,7 +170,7 @@ An "Open in external player" button on the player chrome launches the user's `mp
 
 ### Skip OP / ED via aniskip
 
-The player surfaces "Skip Opening" / "Skip Outro" buttons during their respective intervals. The skip times come from [aniskip.com](https://aniskip.com)'s community-submitted database, keyed by MyAnimeList id rather than Kitsu. The backend bridges Kitsu → MAL using Kitsu's mappings endpoint, then asks aniskip for `(mal_id, episode)` skip intervals and caches the response for 7 days (skip times stabilize quickly once submitted). When auto-skip is enabled in settings, the player jumps the playhead past the interval automatically; otherwise it just shows the button.
+The player surfaces "Skip Opening" / "Skip Outro" buttons during their respective intervals. The skip times come from [aniskip.com](https://aniskip.com)'s community-submitted database, keyed by MyAnimeList id rather than Kitsu. The backend bridges Kitsu → MAL using Kitsu's mappings endpoint, then asks aniskip for `(mal_id, episode)` skip intervals and caches the response for 7 days (skip times stabilize quickly once submitted). The cached row is keyed by the Kitsu id the player asked with as well as the MAL id and episode, so two Kitsu entries that map to the same MAL entry keep separate rows, and removing a show from history finds its skip times by its Kitsu id without asking Kitsu for the MAL id again. When auto-skip is enabled in settings, the player jumps the playhead past the interval automatically; otherwise it just shows the button.
 
 ### Leaving the player
 
