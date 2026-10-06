@@ -55,12 +55,18 @@ pub(crate) fn note_served(state: &AppState, id: &str) {
 
 /// [`note_served`], running `served` once the serving is recorded —
 /// the point a test fails another read of `id` at.
+///
+/// The served moment and the mark go in one hold: a read begun after
+/// the moment is newer than this answer, and the mark its failure
+/// writes must not be the one taken here.
 pub(crate) fn note_served_then(state: &AppState, id: &str, served: impl FnOnce(&AppState)) {
-    crate::history::guard::hold(&state.history_path, |held| held.kitsu_served(id));
+    crate::history::guard::hold(&state.history_path, |held| {
+        held.kitsu_served(id);
+        if is_gone(state, id).unwrap_or(true) {
+            let _ = meta_cache_delete(&state.cache_pool, &gone_key(id));
+        }
+    });
     served(state);
-    if is_gone(state, id).unwrap_or(true) {
-        let _ = meta_cache_delete(&state.cache_pool, &gone_key(id));
-    }
 }
 
 /// Whether Kitsu last answered that `id` is gone.
