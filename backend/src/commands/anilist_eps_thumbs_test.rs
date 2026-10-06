@@ -374,7 +374,15 @@ async fn mount_anilist(
         .and(wiremock::matchers::body_partial_json(
             serde_json::json!({ "variables": variables }),
         ))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body.to_string()))
+        .respond_with(
+            // An `errors` body is AniList's not-found answer, sent as 404.
+            wiremock::ResponseTemplate::new(if body.contains("\"errors\"") {
+                404
+            } else {
+                200
+            })
+            .set_body_string(body.to_string()),
+        )
         .expect(times)
         .mount(server)
         .await;
@@ -449,7 +457,7 @@ async fn anilist_knowing_nothing_by_anilist_id_is_cached_as_empty() {
     mount_anilist(
         &anilist,
         serde_json::json!({ "id": 207141 }),
-        r#"{"data":{"Media":null}}"#,
+        crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY,
         1,
     )
     .await;
@@ -468,7 +476,7 @@ async fn a_mal_id_anilist_lacks_falls_back_to_the_anilist_id_for_thumbs() {
     mount_anilist(
         &anilist,
         serde_json::json!({ "idMal": 21 }),
-        r#"{"data":{"Media":null}}"#,
+        crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY,
         1,
     )
     .await;
@@ -485,7 +493,8 @@ async fn both_ids_unknown_to_anilist_cache_empty_thumbs_after_two_requests() {
     let anilist = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+            wiremock::ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
         )
         .expect(2)
         .mount(&anilist)

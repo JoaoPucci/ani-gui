@@ -143,6 +143,13 @@ async fn banner_lookup(
     parse_banner_response(&bytes).map(Some)
 }
 
+/// AniList's real answer to a single-`Media` query for an id it does
+/// not index: HTTP 404 with a GraphQL `errors` array beside
+/// `data.Media: null` (captured from graphql.anilist.co). Tests mock
+/// with it so the absent case is exercised as production sees it.
+#[cfg(test)]
+pub(crate) const ANILIST_NOT_FOUND_BODY: &str = r#"{"errors":[{"message":"Not Found.","status":404,"locations":[{"line":1,"column":20}]}],"data":{"Media":null}}"#;
+
 #[cfg(test)]
 #[path = "anilist_media_test.rs"]
 mod tests;

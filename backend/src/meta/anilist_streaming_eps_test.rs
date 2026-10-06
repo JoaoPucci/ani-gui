@@ -206,7 +206,8 @@ async fn streaming_episodes_for_mal_id_returns_empty_when_media_unmapped() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+            wiremock::ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
         )
         .mount(&server)
         .await;
@@ -268,7 +269,15 @@ async fn mount_media(
         .and(wiremock::matchers::body_partial_json(
             serde_json::json!({ "variables": variables }),
         ))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body.to_string()))
+        .respond_with(
+            // An `errors` body is AniList's not-found answer, sent as 404.
+            wiremock::ResponseTemplate::new(if body.contains("\"errors\"") {
+                404
+            } else {
+                200
+            })
+            .set_body_string(body.to_string()),
+        )
         .expect(times)
         .mount(server)
         .await;
@@ -280,7 +289,7 @@ async fn streaming_eps_map_for_ids_retries_by_anilist_id_when_anilist_lacks_the_
     mount_media(
         &server,
         serde_json::json!({ "idMal": 21 }),
-        r#"{"data":{"Media":null}}"#,
+        crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY,
         1,
     )
     .await;
@@ -311,7 +320,7 @@ async fn streaming_eps_map_for_ids_does_not_retry_a_media_without_episodes() {
     mount_media(
         &server,
         serde_json::json!({ "id": 30 }),
-        r#"{"data":{"Media":null}}"#,
+        crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY,
         0,
     )
     .await;

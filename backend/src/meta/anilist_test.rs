@@ -246,11 +246,14 @@ async fn banner_for_mal_id_propagates_upstream_5xx() {
 async fn banner_for_mal_id_returns_none_when_media_unmapped() {
     // End-to-end through the network layer for the "AniList
     // doesn't have this MAL id" case — the most common failure
-    // mode in production for niche shows.
+    // mode in production for niche shows. AniList answers it with a
+    // 404 carrying `data.Media: null`, which is absence, not an
+    // upstream failure.
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+            wiremock::ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
         )
         .mount(&server)
         .await;
@@ -311,7 +314,8 @@ async fn media_id_for_mal_returns_none_when_unmapped() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+            wiremock::ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
         )
         .mount(&server)
         .await;
@@ -559,4 +563,43 @@ async fn post_graphql_public_does_not_retry_other_upstream_errors() {
     .await
     .expect_err("500 must fail without a retry");
     assert!(matches!(err, AniError::Upstream { status: 500 }));
+}
+
+/// One mock answering every POST with AniList's real not-found reply.
+async fn not_found_server() -> wiremock::MockServer {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(404)
+                .set_body_string(crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY),
+        )
+        .mount(&server)
+        .await;
+    server
+}
+
+#[tokio::test]
+async fn mal_id_for_media_id_returns_none_for_anilists_not_found_reply() {
+    let server = not_found_server().await;
+    let client = reqwest::Client::new();
+    let got = mal_id_for_media_id(&client, 99_999_999, Some(&server.uri()))
+        .await
+        .expect("absence is not an upstream failure");
+    assert!(got.is_none());
+}
+
+#[tokio::test]
+async fn a_404_without_an_absent_media_stays_an_upstream_failure() {
+    // Only `data.Media: null` makes a 404 mean "no such media"; any
+    // other 404 (a proxy page, an unknown route) is still an error.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(404).set_body_string("<html>nope</html>"))
+        .mount(&server)
+        .await;
+    let client = reqwest::Client::new();
+    let err = banner_for_mal_id(&client, 21, Some(&server.uri()))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AniError::Upstream { status: 404 }));
 }

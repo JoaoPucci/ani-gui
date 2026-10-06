@@ -147,13 +147,21 @@ async fn mount_media(
         .and(wiremock::matchers::body_partial_json(
             serde_json::json!({ "variables": variables }),
         ))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body.to_string()))
+        .respond_with(
+            // An `errors` body is AniList's not-found answer, sent as 404.
+            wiremock::ResponseTemplate::new(if body.contains("\"errors\"") {
+                404
+            } else {
+                200
+            })
+            .set_body_string(body.to_string()),
+        )
         .expect(times)
         .mount(server)
         .await;
 }
 
-const MEDIA_NULL: &str = r#"{"data":{"Media":null}}"#;
+const MEDIA_NULL: &str = crate::meta::anilist_media::ANILIST_NOT_FOUND_BODY;
 
 #[tokio::test]
 async fn banner_for_ids_retries_by_anilist_id_when_anilist_lacks_the_mal_id() {
