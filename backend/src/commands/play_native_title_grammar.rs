@@ -282,6 +282,13 @@ pub(super) fn part_ordinals(title: &str) -> BTreeSet<u32> {
 /// opens with its second) and Japanese divisions written as one word
 /// ("第2期"), up to the first word that is none of them.
 fn leading_markers(words: &[String]) -> Vec<Marker> {
+    leading_divisions(words, false)
+}
+
+/// [`leading_markers`], reading a bare number as a season too when
+/// `bare_numbers` holds — how an entry's title names its season past
+/// a stem ("Show 2").
+fn leading_divisions(words: &[String], bare_numbers: bool) -> Vec<Marker> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < words.len() {
@@ -291,7 +298,9 @@ fn leading_markers(words: &[String]) -> Vec<Marker> {
         } else if let Some((m, "")) = japanese_trailing(&words[i]) {
             out.push(m);
             i += 1;
-        } else if let Some(n) = spelled_ordinal(&words[i]) {
+        } else if let Some(n) =
+            spelled_ordinal(&words[i]).or_else(|| small_number(&words[i]).filter(|_| bare_numbers))
+        {
             out.push(Marker {
                 kind: Kind::Season,
                 ordinals: vec![n],
@@ -340,23 +349,40 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
 
 /// The ordinals `title` names past `wide`'s stem ([`named_ordinals`]
 /// of what follows it — "Show 2" beside "Show", "ショー２" beside
-/// "ショー", "Show 2nd Season" beside "Show"), leaving out those the
-/// divisions `wide` ends on name. Empty when `title` does not start
-/// with the stem, and for a number inside the stem itself ("Lucky 2"
-/// beside "Lucky 2").
+/// "ショー", "Show 2nd Season" beside "Show"), leaving out a division
+/// `wide` ends on that the title names there too, of the same kind
+/// ("2nd Season" past "Show" beside "Show 2nd Season"; a bare number
+/// reads as a season). Empty when `title` does not start with the
+/// stem as whole words, a glued Japanese number or 第 aside, and for a
+/// number inside the stem itself ("Lucky 2" beside "Lucky 2").
 pub(super) fn ordinals_beyond(title: &str, wide: &str) -> BTreeSet<u32> {
     let own = stem(wide).join(" ");
     let text = words(title).join(" ");
     let Some(rest) = text.strip_prefix(&own) else {
         return BTreeSet::new();
     };
-    let wide_named: BTreeSet<u32> = trailing_markers(wide)
+    // The stem ends at a word's end, or a number or a 第 is glued to
+    // it as Japanese writes them ("ショー2"): "Showtime" is not past
+    // "Show".
+    if !rest
+        .chars()
+        .next()
+        .is_none_or(|c| c == ' ' || c.is_ascii_digit() || c == '第')
+    {
+        return BTreeSet::new();
+    }
+    // What the title names past the stem as `wide` ends on it — the
+    // same kind and ordinal, a bare number read as a season — is
+    // `wide`'s own division, not one past it.
+    let wide_markers = trailing_markers(wide);
+    let shared: BTreeSet<u32> = leading_divisions(&words(rest), true)
         .into_iter()
+        .filter(|m| wide_markers.contains(m))
         .flat_map(|m| m.ordinals)
         .collect();
     named_ordinals(rest)
         .into_iter()
-        .filter(|n| !wide_named.contains(n))
+        .filter(|n| !shared.contains(n))
         .collect()
 }
 
