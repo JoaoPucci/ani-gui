@@ -9,8 +9,9 @@
 //!   marked it `k=pl` (with its kind of stream, `s=`), or, for a URL
 //!   without a mark, when its path ends in lowercase `.m3u8`.
 //! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>&k=md[&r=<stream>&d=<ms>]`
-//!   — proxy a segment, key or init object a media playlist named, or an
-//!   unmarked URL whose path does not end in `.m3u8`; a media segment names its kind of stream and
+//!   — proxy a segment, key or init object a media playlist named, a
+//!   master's session key or session data, or an unmarked URL whose
+//!   path does not end in `.m3u8`; a media segment names its kind of stream and
 //!   its duration, which the player's fetch of it notes to the budget.
 //!
 //! Every fetch upstream uses the [`StreamSession`]'s stored `Referer:`
