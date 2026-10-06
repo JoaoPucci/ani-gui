@@ -40,3 +40,76 @@ proptest::proptest! {
         proptest::prop_assert!(named, "{} args {:?} missing {}", prog, args, want);
     }
 }
+
+#[test]
+fn taskkill_report_names_the_tree_and_not_the_backend() {
+    // The root's line names the backend as its parent; the backend
+    // is not part of the tree it is waiting on.
+    let report = "SUCCESS: The process with PID 4120 (child process of PID 3008) has been terminated.\r\n\
+                  SUCCESS: The process with PID 3008 (child process of PID 77) has been terminated.\r\n";
+    assert_eq!(pids_taken_down(report, 77), vec![3008, 4120]);
+}
+
+#[test]
+fn taskkill_report_in_another_language_names_the_same_tree() {
+    let report = "ERFOLGREICH: Der Prozess mit PID 4120 (untergeordneter Prozess von PID 3008) wurde beendet.\r\n\
+                  ERFOLGREICH: Der Prozess mit PID 3008 (untergeordneter Prozess von PID 77) wurde beendet.\r\n";
+    assert_eq!(pids_taken_down(report, 77), vec![3008, 4120]);
+}
+
+#[test]
+fn tasklist_query_asks_for_one_pid_as_csv_without_a_header() {
+    assert_eq!(
+        tasklist_args(4120),
+        ["/FI", "PID eq 4120", "/FO", "CSV", "/NH"].map(String::from)
+    );
+}
+
+#[test]
+fn tasklist_row_for_the_pid_is_a_running_process() {
+    let row = "\"yt-dlp.exe\",\"4120\",\"Console\",\"1\",\"12,345 K\"\r\n";
+    assert!(tasklist_shows(row, 4120));
+    assert!(!tasklist_shows(row, 412));
+    assert!(!tasklist_shows(row, 1));
+    let comma = "\"a,1.exe\",\"4120\",\"Console\",\"1\",\"12,345 K\"\r\n";
+    assert!(tasklist_shows(comma, 4120));
+    assert!(!tasklist_shows(comma, 1));
+}
+
+#[test]
+fn tasklist_answer_naming_no_process_is_not_a_running_one() {
+    let none = "INFO: No tasks are running which match the specified criteria.\r\n";
+    assert!(!tasklist_shows(none, 4120));
+}
+
+proptest::proptest! {
+    // Whatever the report's wording, every pid in it is waited on but
+    // the backend's own, each once.
+    #[test]
+    fn taskkill_report_yields_each_pid_once_but_the_backend(
+        pids in proptest::collection::vec(1u32..100_000, 0..8),
+        own in 1u32..100_000,
+        words in "[A-Za-zÄÖÜäöü :().-]{0,20}",
+    ) {
+        let report: String = pids
+            .iter()
+            .map(|p| format!("{words} PID {p} {words}\r\n"))
+            .collect();
+        let mut want: Vec<u32> = pids.iter().copied().filter(|&p| p != own).collect();
+        want.sort_unstable();
+        want.dedup();
+        proptest::prop_assert_eq!(pids_taken_down(&report, own), want);
+    }
+
+    // A row is a running process exactly when its pid field is the
+    // pid asked about, whatever the image name around it.
+    #[test]
+    fn tasklist_row_shows_exactly_its_own_pid(
+        image in "[A-Za-z0-9_., -]{1,20}",
+        row_pid in 1u32..100_000,
+        asked in 1u32..100_000,
+    ) {
+        let row = format!("\"{image}\",\"{row_pid}\",\"Console\",\"1\",\"1 K\"\r\n");
+        proptest::prop_assert_eq!(tasklist_shows(&row, asked), row_pid == asked);
+    }
+}
