@@ -11,9 +11,10 @@ use std::collections::BTreeSet;
 
 pub(crate) use super::play_native_title_grammar::stem;
 use super::play_native_title_grammar::{
-    later_division_markers, later_divisions, named_ordinals, ordinals_beyond, part_ordinals,
-    trailing_markers, Kind, Marker,
+    later_divisions, named_ordinals, part_ordinals, reading_alone, reading_past, trailing_markers,
 };
+#[cfg(test)]
+use super::play_native_title_grammar::{Kind, Marker};
 
 /// Every title the entry goes by: its canonical title, then the
 /// fallbacks the walk searches in order.
@@ -115,46 +116,29 @@ impl EntryTitles<'_> {
     }
 
     /// Whether `listing` is this entry's own beside the listing `wide`
-    /// that would span it: it carries `wide`'s stem and names no
-    /// division of its own right after it ("Show Season 2" beside
-    /// "Show 2nd Season"), or every division it names there
-    /// ([`later_division_markers`]) is one the entry's titles name as
-    /// theirs ([`Self::owns_all`]) — "Show Part 1" beside "Show", "Show 2nd
-    /// Season" beside "Show" for "Show 2", "… - First Half War" beside
-    /// "Gintama.: Silver Soul Arc". What follows those divisions is not
-    /// read. A title that adds no division ("Show Side Story") is
-    /// another show of the franchise.
+    /// that would span it: past `wide`'s stem it names some division,
+    /// or carries that stem alone, and it reads there as one of the
+    /// entry's titles does ([`reading_past`]; a title that does not
+    /// start with the stem reads as its trailing markers,
+    /// [`reading_alone`]). The kind of each division is not compared,
+    /// since the catalogues disagree on it. So "Show 2" and "Show 2nd
+    /// Season" are "Show 2"'s own beside "Show", "Show Part 1" is not,
+    /// and "Show 2nd Season Part 2" is not "Show 2nd Season"'s; "Lucky
+    /// 2 2nd Season" is not "Lucky 2"'s, whose 2 is inside the stem;
+    /// and a title that names no division past the stem ("Show Side
+    /// Story") is another show of the franchise. What follows the
+    /// divisions is not read ("… - First Half War").
     ///
-    /// [`later_division_markers`]: super::play_native_title_grammar::later_division_markers
+    /// [`reading_past`]: super::play_native_title_grammar::reading_past
+    /// [`reading_alone`]: super::play_native_title_grammar::reading_alone
     pub(crate) fn names_own_part(&self, listing: &str, wide: &str) -> bool {
-        let named = later_division_markers(listing, wide);
-        (stem(listing) == stem(wide) || !named.is_empty()) && self.owns_all(&named, wide)
-    }
-
-    /// Whether the divisions `listing` names beside `wide` are all the
-    /// entry's own, in order, by ordinal whatever their kind, since the
-    /// catalogues disagree on the kind. A part is the entry's own when
-    /// it is the part the entry's titles end on (part 1 when they end
-    /// on none). Otherwise each ordinal the entry's titles name — a
-    /// part they end on, or one past `wide`'s stem ([`ordinals_beyond`]:
-    /// "Show 2" beside "Show", "ショー２" beside "ショー") — owns one
-    /// division and is used up by it, so the 2 of "Show 2" owns the
-    /// season of "Show 2nd Season Part 1" and not the part of "… Part
-    /// 2" besides. A first division is the entry's own when its titles
-    /// name no ordinal at all. A number inside `wide`'s own stem
-    /// ("Lucky 2") names nothing.
-    ///
-    /// [`ordinals_beyond`]: super::play_native_title_grammar::ordinals_beyond
-    fn owns_all(&self, divisions: &[Marker], wide: &str) -> bool {
-        let own_part = self.own_part();
-        let mut named: BTreeSet<u32> = self.all().flat_map(part_ordinals).collect();
-        named.extend(self.all().flat_map(|t| ordinals_beyond(t, wide)));
-        let none_named = named.is_empty();
-        divisions.iter().all(|d| {
-            (d.kind == Kind::Part && d.ordinals == [own_part])
-                || (none_named && d.ordinals == [1])
-                || d.ordinals.iter().all(|n| named.remove(n))
-        })
+        let Some((named_any, theirs)) = reading_past(listing, wide) else {
+            return false;
+        };
+        (named_any || stem(listing) == stem(wide))
+            && self.all().any(|t| {
+                reading_past(t, wide).map_or_else(|| reading_alone(t), |(_, r)| r) == theirs
+            })
     }
 }
 
