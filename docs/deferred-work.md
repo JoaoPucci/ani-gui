@@ -161,7 +161,12 @@ starting it, and delete it when you find it done.
   is stop a tool. Nor, so, does it wait for one to exit: a teardown
   there waits on the processes `taskkill` reports taking down, looked
   up with `tasklist`, and only the reading of those two answers is
-  under test.
+  under test. And a tool that exits by itself there is not checked
+  for helpers it left running, which on Linux are taken down before
+  the ffmpeg retry starts: `taskkill /T` finds a tree through its
+  running root, and the backend has no other handle on the tree.
+  A job object would be one, but its calls are unsafe, which the
+  crate forbids, so it needs a dependency that wraps them.
 
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux

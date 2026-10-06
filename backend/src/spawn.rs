@@ -29,7 +29,12 @@
 /// guard keeps the group's id past the child's reap: a group with a
 /// process still in it keeps its id from being handed out again, so
 /// signalling the group stays safe until it is empty, and a helper
-/// left running in it is taken down too. On Windows the tree is found
+/// left running in it is taken down too. The group is signalled only
+/// after a look finds someone in it; an empty group answers that look
+/// with no such process, and nothing is sent. What the look cannot
+/// rule out is the id being freed and handed to a new group leader in
+/// the moment between it and the kill — a full turn of the pid space
+/// in milliseconds. On Windows the tree is found
 /// through the live root, so once the root has exited what it left
 /// running is out of the guard's reach.
 pub(crate) struct TreeKillChild {
