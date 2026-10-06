@@ -158,10 +158,10 @@ async fn post_update(
     // Reject empty / typo'd payloads before they reach the upsert
     // (Codex P2 #3381617932).
     let update = account::build_entry_update(req.status.as_deref(), req.progress, req.score)?;
+    let kitsu_id = crate::kitsu_id::require(&req.kitsu_id)?;
     // push_progress writes the cache through under its per-show lock
     // (Codex P2 #3412673593 reflects a started title; #3423108941 keeps
     // it under the lock so a stale write can't clobber an explicit edit).
-    let kitsu_id = crate::kitsu_id::require(&req.kitsu_id)?;
     let entry = account::push_progress(&state, kind, &tokens, kitsu_id, update).await?;
     Ok(Json(entry))
 }
@@ -180,9 +180,9 @@ async fn post_set(
     let bearer = bearer_from_headers(&headers)?;
     let tokens = account::tokens_from_bearer(&bearer);
     let update = account::build_entry_update(req.status.as_deref(), req.progress, None)?;
+    let kitsu_id = crate::kitsu_id::require(&req.kitsu_id)?;
     // set_entry writes verbatim (no monotonic guard) and force-upserts
     // the cache so a downward correction reflects immediately.
-    let kitsu_id = crate::kitsu_id::require(&req.kitsu_id)?;
     let entry = account_edit::set_entry(&state, kind, &tokens, kitsu_id, update).await?;
     Ok(Json(entry))
 }
