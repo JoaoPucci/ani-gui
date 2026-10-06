@@ -16,9 +16,10 @@
 //!   hianime lists a 22-episode "Season 3" beside a 10-episode
 //!   "Season 3 Part 2". Scored on count the Part 2 listing wins the
 //!   first entry. The spanning listing is recognised by the sibling
-//!   that completes it — a later part, sharing its stem, whose count
-//!   is exactly what the spanning listing holds beyond this entry —
-//!   and is cut to this entry's episodes, which it numbers from 1.
+//!   that completes it — one whose stem starts with the spanning
+//!   listing's, whose count is exactly what that listing holds
+//!   beyond this entry — and is cut to this entry's episodes, under
+//!   the listing's own numbers.
 
 use crate::scraper::provider::{BrowseHit, EpisodeRef};
 
@@ -38,8 +39,8 @@ type Probed<'h> = (&'h BrowseHit, Vec<EpisodeRef>, u32, bool);
 /// Fit the probed pool to the entry: a candidate the entry's titles
 /// do not admit is scored [`UNFIT`], and a listing that spans this
 /// entry and the next is cut to this entry's episodes and scored as
-/// the exact fit it then is, its later part scored [`UNFIT`] — that
-/// part is the next entry, not this one.
+/// the exact fit it then is, the sibling completing it scored
+/// [`UNFIT`] — that sibling is the next entry, not this one.
 ///
 /// Candidates keep their listings, years and places, so a rule that
 /// reads the pool as parts of one entry still sees every part.
@@ -98,8 +99,9 @@ pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
 
 /// The listing that spans this entry and the next, with the later
 /// parts that complete it. It must be admitted, carry the entry's own
-/// year, and list more than the entry has; its later part must share
-/// its stem and list exactly the remainder. A listing that already
+/// year, and list more than the entry has; a sibling completing it
+/// must have a stem that starts with its stem and list exactly the
+/// remainder. A listing that already
 /// fits exactly elsewhere in the pool is the entry's own, and nothing
 /// is cut.
 fn spanning(
@@ -136,8 +138,9 @@ fn extends(longer: &[String], stem: &[String]) -> bool {
     longer.len() >= stem.len() && longer[..stem.len()] == *stem
 }
 
-/// The listing's rows up to its `expected`-th regular episode, with
-/// any recap tagged among them.
+/// The listing's rows up to its `expected + 1`-th regular episode:
+/// the entry's episodes with any recap tagged among or right after
+/// them.
 fn head_of(episodes: &[EpisodeRef], expected: u32) -> Vec<EpisodeRef> {
     let mut regular = 0;
     let mut out = Vec::new();
