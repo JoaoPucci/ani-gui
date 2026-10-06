@@ -11,7 +11,8 @@ name: 'crap score'
 # the counts without saying so. Each tool here fails the run on a file it
 # cannot parse, a root with nothing to measure, or a file of a kind it
 # neither measures nor declares, and states on stderr what it does not
-# measure: functions inside item-position macros (as blocks), decisions
+# measure: functions inside item-position macros (as blocks), closures
+# inside macro input (charged to the enclosing function), decisions
 # outside any function, and the files it lists as not measured.
 #
 # Always fires; the `filter` job decides whether downstream steps run
