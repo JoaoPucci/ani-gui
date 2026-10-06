@@ -116,13 +116,21 @@ impl EntryTitles<'_> {
     }
 
     /// Whether `listing` is this entry's own beside the listing `wide`
-    /// that would span it: it carries `wide`'s stem and nothing more
-    /// ("Show Part 1" beside "Show"), or right after that stem it names
-    /// the entry's own part and no other ("… - First Half War" beside
-    /// "Gintama.: Silver Soul Arc"). A title that adds anything else
-    /// ("Show Side Story") is another show of the franchise.
+    /// that would span it. It names no division beyond the entry's
+    /// part right after `wide`'s stem ([`later_divisions`]) — that is
+    /// the later entry completing the span, which shares `wide`'s stem
+    /// ("Show 2nd Season Part 2" beside "Show 2nd Season") — and
+    /// either carries that stem and nothing more ("Show Part 1" beside
+    /// "Show"), or names the entry's own part and no other right after
+    /// it ("… - First Half War" beside "Gintama.: Silver Soul Arc"). A
+    /// title that adds anything else ("Show Side Story") is another
+    /// show of the franchise.
+    ///
+    /// [`later_divisions`]: super::play_native_title_grammar::later_divisions
     pub(crate) fn names_own_part(&self, listing: &str, wide: &str) -> bool {
-        stem(listing) == stem(wide) || later_divisions(listing, wide) == [self.own_part()]
+        let own = self.own_part();
+        let named = later_divisions(listing, wide);
+        named.iter().all(|n| *n <= own) && (stem(listing) == stem(wide) || named == [own])
     }
 }
 
