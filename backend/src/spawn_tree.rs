@@ -30,24 +30,30 @@ pub(super) fn platform_tree(child: &tokio::process::Child) -> Option<Box<dyn sup
     Some(Box::new(ProcessGroup { pgid: child.id()? }))
 }
 
-/// The tree of a child on Windows: the members of a job object the
-/// child was put in as it started, which the processes it starts
-/// join. The kill is `taskkill` on each member and, while the child
-/// itself is still one of them, `taskkill /T` on the child, for
-/// anything it started in the moment before it joined the job — see
-/// [`kills_root_tree`]. Without a job — creating or joining one
-/// failed — the tree is what `taskkill /T` reaches through the child
-/// while it runs.
+/// The tree of a child on Windows: the members of two job objects the
+/// child was put in as it started, the inner nested in the outer, both
+/// made to end their members when their last handle — the guard's —
+/// closes. The processes the child starts join them too.
+///
+/// The kill closes the inner job: the kernel ends every member at once,
+/// and no pid is looked up, so none can have been handed to another
+/// program in the meantime. The outer job stays open, so the guard can
+/// still ask whether the members have gone; closing it would end them
+/// the same way but leave nothing to ask, and the crate has no call
+/// that ends a job's members while keeping the job. The outer job also
+/// ends them when the backend dies without running its guards. See
+/// [`kill_plan`] for the rest of the decision.
 #[cfg(windows)]
 struct JobTree {
     root: u32,
-    job: Option<win32job::Job>,
+    outer: Option<win32job::Job>,
+    inner: Option<win32job::Job>,
 }
 
 #[cfg(windows)]
 impl JobTree {
     fn members(&self) -> Vec<u32> {
-        let Some(job) = &self.job else {
+        let Some(job) = &self.outer else {
             return Vec::new();
         };
         match job.query_process_id_list() {
@@ -71,15 +77,49 @@ impl super::Tree for JobTree {
 
     fn kill(&mut self) {
         let members = self.members();
-        let members = self.job.as_ref().map(|_| members.as_slice());
-        if kills_root_tree(members, self.root) {
+        let listed = self.outer.as_ref().map(|_| members.as_slice());
+        let plan = kill_plan(listed, self.root, self.inner.is_some());
+        if plan.tree_kill_root {
             super::kill_process_tree(self.root);
         }
-        for pid in members.unwrap_or_default() {
+        if plan.close_inner {
+            drop(self.inner.take());
+        }
+        for pid in plan.each_member {
             let _ = std::process::Command::new("taskkill")
                 .args(["/PID", &pid.to_string(), "/F"])
                 .output();
         }
+    }
+}
+
+/// What a Windows teardown does to a tool's tree.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct KillPlan {
+    /// `taskkill /T` to the root, for anything it started before it
+    /// joined its jobs — see [`kills_root_tree`].
+    pub(super) tree_kill_root: bool,
+    /// Close the inner job, which ends every member at once.
+    pub(super) close_inner: bool,
+    /// `taskkill /F` to each of these. Only without an inner job to
+    /// close — never made, or closed by an earlier kill whose members
+    /// outlived the wait — and only what the outer job lists then.
+    pub(super) each_member: Vec<u32>,
+}
+
+/// The Windows teardown's decision, from the outer job's members
+/// (`None` with no job), the root's pid and whether the inner job is
+/// still open.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(super) fn kill_plan(members: Option<&[u32]>, root: u32, inner_open: bool) -> KillPlan {
+    KillPlan {
+        tree_kill_root: kills_root_tree(members, root),
+        close_inner: inner_open,
+        each_member: if inner_open {
+            Vec::new()
+        } else {
+            members.unwrap_or_default().to_vec()
+        },
     }
 }
 
@@ -95,25 +135,30 @@ pub(super) fn kills_root_tree(members: Option<&[u32]>, root: u32) -> bool {
     members.is_none_or(|m| m.contains(&root))
 }
 
+/// A job that ends its members when its last handle closes, with the
+/// child in it. Joining a second job nests it in the first.
+#[cfg(windows)]
+fn job_with(child: &tokio::process::Child) -> Result<win32job::Job, win32job::JobError> {
+    let mut limits = win32job::ExtendedLimitInfo::new();
+    limits.limit_kill_on_job_close();
+    let job = win32job::Job::create_with_limit_info(&limits)?;
+    let handle = child.raw_handle().ok_or_else(|| {
+        win32job::JobError::AssignFailed(std::io::Error::other("the tool has already exited"))
+    })?;
+    job.assign_process(handle as isize)?;
+    Ok(job)
+}
+
 #[cfg(windows)]
 pub(super) fn platform_tree(child: &tokio::process::Child) -> Option<Box<dyn super::Tree>> {
     let root = child.id()?;
-    let joined = (|| {
-        let mut limits = win32job::ExtendedLimitInfo::new();
-        limits.limit_kill_on_job_close();
-        let job = win32job::Job::create_with_limit_info(&limits)?;
-        let handle = child.raw_handle().ok_or_else(|| {
-            win32job::JobError::AssignFailed(std::io::Error::other("the tool has already exited"))
-        })?;
-        job.assign_process(handle as isize)?;
-        Ok::<_, win32job::JobError>(job)
-    })();
-    let job = match joined {
-        Ok(job) => Some(job),
-        Err(e) => {
-            tracing::warn!(error = ?e, "a tool could not be put in a job");
-            None
-        }
-    };
-    Some(Box::new(JobTree { root, job }))
+    let outer = job_with(child)
+        .map_err(|e| tracing::warn!(error = ?e, "a tool could not be put in a job"))
+        .ok();
+    let inner = outer.as_ref().and_then(|_| {
+        job_with(child)
+            .map_err(|e| tracing::warn!(error = ?e, "a tool could not be put in its inner job"))
+            .ok()
+    });
+    Some(Box::new(JobTree { root, outer, inner }))
 }
