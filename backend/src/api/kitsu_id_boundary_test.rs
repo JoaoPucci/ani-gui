@@ -267,3 +267,37 @@ fn availability_args_read_a_non_id_as_no_id() {
             .expect("batch json");
     assert_eq!(batch.kitsu_ids, vec!["1", "3"]);
 }
+
+/// A row written before the boundary rule existed can still hold a
+/// value that is not an id. The routes that read those rows hand it
+/// back as no mapping, and the detail read the reverse resolver and
+/// the cour guard make from a stored id asks Kitsu nothing for it.
+#[tokio::test]
+async fn a_stored_value_that_is_not_an_id_reaches_neither_the_renderer_nor_kitsu() {
+    use crate::commands::kitsu as k;
+    use crate::scraper::provider::ProviderId;
+    let (kitsu, asked) = counting_kitsu().await;
+    let td = TempDir::new().expect("tempdir");
+    let s = state(&td, &kitsu);
+    k::allmanga_kitsu_put(&s, "show-a", "../49877").expect("seed");
+    k::title_match_put(&s, ProviderId::Anidb, "Naruto", 1, "12:21").expect("seed");
+
+    let (status, text) = send(s.clone(), "GET", "/api/allmanga-kitsu-map/show-a", "").await;
+    assert_eq!((status, text.as_str()), (StatusCode::OK, "null"));
+    let (status, text) = send(s.clone(), "GET", "/api/title-match?title=Naruto&cour=1", "").await;
+    assert_eq!((status, text.as_str()), (StatusCode::OK, "null"));
+
+    let err = k::kitsu_anime_detail(&s, "../49877")
+        .await
+        .expect_err("not an id");
+    assert_eq!(err.key(), "error.request.invalid_kitsu_id");
+    assert_eq!(
+        asked.load(Ordering::SeqCst),
+        0,
+        "a stored non-id asked Kitsu"
+    );
+
+    k::allmanga_kitsu_put(&s, "show-b", " 49877 ").expect("seed");
+    let (_, text) = send(s, "GET", "/api/allmanga-kitsu-map/show-b", "").await;
+    assert_eq!(text, "\"49877\"");
+}
