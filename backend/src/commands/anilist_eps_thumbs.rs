@@ -1,7 +1,7 @@
 //! Per-episode thumbnail backfill from AniList's `streamingEpisodes`
 //! (Crunchyroll listings), used to fill nulls in Kitsu's episode
 //! list. Keyed by `kitsu_id` so a cache hit skips BOTH the Kitsu
-//! `/mappings` round-trip AND the AniList GraphQL call — the
+//! mappings round-trip AND the AniList GraphQL call — the
 //! difference between "instant" and "a few seconds" on the home
 //! Continue Watching strip after a cold start.
 //!

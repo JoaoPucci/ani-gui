@@ -3,7 +3,7 @@
 `ani-gui` reads from five catalogues that don't share an id space:
 
 - **Kitsu** (REST/JSON:API) — discovery surface (search, trending fallback, top rated, recently released, detail pages, episode metadata).
-- **AniList** (GraphQL) — recency-weighted "Trending Now" row and banner backfill when Kitsu's banner is null.
+- **AniList** (GraphQL) — recency-weighted "Trending Now" row, banner backfill when Kitsu's banner is null, and episode stills Kitsu lacks.
 - **anidb.app** — the streaming catalogue the backend resolves playback against first.
 - **hianime** — the streaming catalogue the backend resolves against when the walk moves on from anidb.app (unreachable, refusing or rate-limiting, a page the app cannot read, a background request its gate turned away, or an answer that settles nothing — the show found with nothing said about the audio asked for, or a denial of a show a live record remembers it carrying), and first for a show it was found on while that memory lasts — the availability record's lifetime: at most a day from the last resolve that found the show there — a play, a download, a hand-off, or the background warm a page runs as it follows what is in view: the detail page for the episode its Play button targets, the play page for the next episode, or with resolution caching on for every aired episode in view, again as the grid or strip is paged — or, for a show a probe alone found and nothing resolved since, at most a day for an ongoing one and thirty days for a finished one; a play, hand-off or page warm served from the resolution cache leaves a live record as it is and writes a record with the ongoing window again once it has lapsed, and a download never reads that cache (see [Providers and failover](./architecture.md#providers-and-failover)).
 - **aniskip** (REST) — community OP / ED skip-time intervals, keyed by MyAnimeList id.
@@ -29,7 +29,7 @@ Every interaction other than discovery has to find the same show in two or more 
                                   │                   │
                   ┌───────────────┴───────────────────┘
                   │       Kitsu mappings endpoint
-                  │       (kitsu id ↔ mal id)
+                  │       (kitsu id ↔ mal / anilist id)
                   ▼
        ┌──────────────────┐                ┌──────────────────────┐
        │     aniskip      │                │    stream provider   │
@@ -45,7 +45,7 @@ Four distinct lookups, each with its own gotchas:
 1. **Kitsu → provider title match** — the native walk searches the provider's catalogue: anidb.app's browse page, or hianime's search page when the walk moved on from anidb.app — unreachable, refusing or rate-limiting the request, answering a page the app cannot read, its own gate turning a background request away, or answering without settling the question: the show found with every sampled row silent about the requested audio, or a denial of a show a live positive row remembers it carrying, which the row outranks until the rest of the order has been asked — or when the show's still-live availability record names hianime. Kitsu canonical titles (often the licensed English form) and the provider's index don't always agree, so the bridge tries the canonical first and falls back to romanized Japanese, native script, and known synonyms before giving up.
 2. **Candidate disambiguation** — multiple browse hits can match the same query string ("Gintama" returns the series and its movies in the provider's own ranking). The browse page carries titles only, so the picker probes each considered hit's episode list — bounded to the first few hits, since real queries put the right show near the top and every probe is an upstream request — and Kitsu's authoritative `episode_count` picks the candidate whose count is closest.
 3. **Kitsu ↔ MAL / AniList** — neither Kitsu's id nor the provider's slug matches MAL's or AniList's. Kitsu publishes a mappings endpoint that exposes the third-party ids it knows about; the backend fetches `kitsu/anime/:id?include=mappings` and walks the included documents for the MyAnimeList and AniList rows.
-4. **MAL / AniList → aniskip / AniList** — once the ids are in hand, aniskip (MAL id only) and AniList's `Media(idMal:)` query are direct lookups. AniList lookups fall back to `Media(id:)` when Kitsu carries the AniList mapping but no MAL one, which is common for fresh seasonal shows.
+4. **MAL / AniList → aniskip / AniList** — once the ids are in hand, aniskip (MAL id only) and AniList's `Media(idMal:)` query are direct lookups. The banner and episode-thumbnail backfills fall back to AniList's `Media(id:)` when Kitsu carries the AniList mapping but no MAL one, which is common for fresh seasonal shows.
 
 ## Title resolution: Kitsu → the provider
 
@@ -80,7 +80,7 @@ The picked show's episode list arrives with the probe, so the availability cap i
 
 The Kitsu API exposes its known third-party ids on the `mappings` relationship of an anime resource. The backend queries `GET /anime/:id?include=mappings` and walks the `included` documents for the ones whose `attributes.externalSite` is `"myanimelist/anime"` or `"anilist/anime"`; their `attributes.externalId` values are the MAL and AniList ids.
 
-The mappings response is not cached on its own; consumers cache what they derived from it. The detail row with its backfilled banner and the episode-thumbnail map are keyed by the Kitsu id, so a hit skips the mappings round-trip along with the AniList lookup it fed, and the row stays unambiguous whichever id space that lookup used. aniskip caches its intervals by MAL id and episode, so it reads the mappings on every request.
+The mappings response is not cached on its own. The detail row with its backfilled banner and the episode-thumbnail map are keyed by the Kitsu id, so a hit skips the mappings round-trip along with the AniList lookup it fed, and the row stays unambiguous whichever id space that lookup used. aniskip caches its intervals by MAL id and episode, so it reads the mappings on every request.
 
 ## What this enables
 

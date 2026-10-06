@@ -125,8 +125,8 @@ pub(crate) const BANNER_BY_MAL_GQL: &str = "query BannerByMal($idMal: Int!) { \
 /// a full fingerprint — an app-style identifier passes through.
 const ANILIST_UA: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
 
-/// Shared POST to AniList's public GraphQL endpoint. The three public
-/// fetchers (`trending`, `banner_for_mal_id`, `media_id_for_mal`) only
+/// Shared POST to AniList's public GraphQL endpoint. The public
+/// fetchers (`trending`, the banner lookups, the id lookups) only
 /// differ in query body + parser, so the request build + status
 /// mapping live here once.
 ///
@@ -409,7 +409,7 @@ pub fn parse_media_id_response(body: &[u8]) -> Result<Option<u32>> {
     Ok(parsed.data.media.map(|m| m.id))
 }
 
-/// Pure parser for the by-MAL banner response.
+/// Pure parser for a banner response, by MAL id or by AniList id.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't the

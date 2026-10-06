@@ -933,9 +933,9 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
     // so newer ongoing shows often arrive with cover_image=null.
     // Bridge to AniList where banners are user-uploaded reliably.
     // Failures are silent — the detail still loads with the
-    // null-cover fallback (blurred poster) on the frontend. One extra
-    // round-trip on cold cache; the result is cached for the detail
-    // row's lifetime.
+    // null-cover fallback (blurred poster) on the frontend. Two extra
+    // round-trips on cold cache (Kitsu's mappings, then AniList); the
+    // result is cached for the detail row's lifetime.
     if detail.cover_image.is_none() {
         if let Some(banner) = anilist_banner_for(state, id, anilist_base).await {
             detail.cover_image = Some(KitsuCoverImage {
