@@ -4337,6 +4337,230 @@ async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
     assert!(dest.path().join("Show Episode 4.mp4").exists());
 }
 
+/// A tree kill that lands late: the teardown's command returns at
+/// once and the process group dies a moment later, as a real kill
+/// does — `kill(1)` and `taskkill` only ask, and a process exits when
+/// the kernel gets to it. Stretching that moment is what lets a case
+/// see whether the supervisor waited for the exit or only for the
+/// request. Holds the probe's scope for as long as it is registered.
+#[cfg(unix)]
+struct SlowTreeKill {
+    _scope: tokio::sync::MutexGuard<'static, ()>,
+    _dir: tempfile::TempDir,
+}
+
+#[cfg(unix)]
+impl SlowTreeKill {
+    async fn register(delay: &str) -> Self {
+        let scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
+        let dir = tempfile::tempdir().expect("probe dir");
+        stage_tool(
+            dir.path(),
+            "slow-kill",
+            &format!("( sleep {delay}; kill -s KILL -- -\"$1\" ) >/dev/null 2>&1 &\nexit 0"),
+        );
+        *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") =
+            Some(dir.path().join("slow-kill"));
+        Self {
+            _scope: scope,
+            _dir: dir,
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for SlowTreeKill {
+    fn drop(&mut self) {
+        *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") = None;
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_respawn_at_the_other_pace_waits_for_the_old_tree_to_exit() {
+    // The respawn resumes from the fragments and resume state the
+    // run it replaces left behind, at the same path. Asking for the
+    // old tree's death is not its death: a replacement started on the
+    // request has two yt-dlps writing one `.part` and one `.ytdl`
+    // until the old one is gone. The replacement starts only once the
+    // old tree has exited.
+    let _slow = SlowTreeKill::register("0.4").await;
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    let go = dest.path().join("go");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "for p in $(cut -d' ' -f1 '{log}' 2>/dev/null); do case \"$p\" in *[!0-9]*) ;; *) kill -s 0 -- -\"$p\" 2>/dev/null && echo \"overlap $p\" >> '{log}';; esac; done\n\
+             sleep 3 >/dev/null 2>&1 &\n\
+             echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\n{write}\necho \"done $$\" >> '{log}'\nexit 0",
+            log = log.display(),
+            go = go.display(),
+            write = writes_its_output("video"),
+        ),
+    );
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut on_line = |_l: &str| {};
+    let transfer = spawn_download_tool_paced(
+        &source,
+        dest.path(),
+        "Show Episode 5",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line,
+        &pacing,
+    );
+    let spawns = |l: &[String]| {
+        l.iter()
+            .filter(|l| !l.starts_with("done") && !l.starts_with("overlap"))
+            .count()
+    };
+    let drive = async {
+        until_log(&log, "the first spawn", |l| spawns(l) == 1).await;
+        live.store(true, std::sync::atomic::Ordering::Relaxed);
+        until_log(&log, "the paced respawn", |l| spawns(l) == 2).await;
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (got, ()) = tokio::join!(transfer, drive);
+    assert_eq!(
+        got.expect("the resumed transfer completes"),
+        Transferred::Episode
+    );
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    assert!(
+        !calls.contains("overlap"),
+        "the respawn started while the run it replaces was still alive: {calls}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_ffmpeg_retry_waits_for_the_condemned_ytdlp_to_exit() {
+    // A run condemned by its own report is taken down and the retry
+    // goes to ffmpeg. Until the old tree has exited it is still a
+    // connection to the host and a writer in the destination, so the
+    // fallback starts only once it is gone.
+    let _slow = SlowTreeKill::register("0.4").await;
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let pidf = bin.path().join("ytdlp.pid");
+    let seen = bin.path().join("overlap");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "sleep 30 &\necho $! > '{pidf}'\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             wait",
+            pidf = pidf.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "kill -0 \"$(cat '{pidf}')\" 2>/dev/null && echo overlap > '{seen}'\n\
+             last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            pidf = pidf.display(),
+            seen = seen.display()
+        ),
+    );
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 6",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert_eq!(got.expect("the retry publishes"), Transferred::Episode);
+    assert!(
+        !seen.exists(),
+        "ffmpeg started while the condemned yt-dlp was still alive"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_cancelled_download_leaves_nothing_its_dying_tool_wrote() {
+    // Cancel drops the transfer: the tool's tree is taken down and the
+    // scratch files are swept. A sweep that runs between the kill and
+    // the exit misses whatever the tool writes in that moment, and
+    // nothing will ever know to remove it. The sweep comes after the
+    // exit.
+    let _slow = SlowTreeKill::register("0.4").await;
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let started = bin.path().join("started");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "out=\"\"\nprev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then out=\"$a\"; fi; prev=\"$a\"; done\n\
+             touch '{started}'\n\
+             ( while :; do printf x >> \"$out.part\"; sleep 0.02; done ) &\nwait",
+            started = started.display()
+        ),
+    );
+    let path_env = bin.path().display().to_string();
+    let dest_dir = dest.path().to_path_buf();
+    let task = tokio::spawn(async move {
+        let _ = spawn_download_tool(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            &dest_dir,
+            "Show Episode 7",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(60),
+            &mut |_l: &str| {},
+        )
+        .await;
+    });
+    let mut waited_ms = 0u32;
+    while !started.exists() {
+        assert!(waited_ms < 5_000, "the tool never started");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        waited_ms += 20;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    task.abort();
+    let _ = task.await;
+    // Past the slow kill: whatever the tool could write, it has.
+    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+    let left: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok().map(|e| e.file_name()))
+        .filter(|n| n != ".ani-gui-locks")
+        .collect();
+    assert!(left.is_empty(), "the cancelled run left {left:?} behind");
+}
+
 /// Two transfers over one stub, told apart in the log by the
 /// destination each spawn's output path sits in.
 #[cfg(unix)]
