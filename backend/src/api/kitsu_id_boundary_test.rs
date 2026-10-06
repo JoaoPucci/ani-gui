@@ -90,6 +90,16 @@ async fn counting_kitsu() -> (String, Arc<AtomicUsize>) {
     (base, count)
 }
 
+/// The connections the stand-in has seen, once anything a route left
+/// running has had its turn. The test runs on one thread: a request a
+/// handler awaits is counted while it waits, but one spawned and not
+/// awaited reaches the accept loop only when the test yields, so the
+/// count waits a moment first.
+async fn connections(count: &AtomicUsize) -> usize {
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    count.load(Ordering::SeqCst)
+}
+
 /// Each call runs against fresh state, so nothing one refusal could
 /// have written is visible to the next; the stand-in Kitsu is shared
 /// so the test can assert at the end that nothing reached it.
@@ -162,11 +172,7 @@ async fn the_id_routes_refuse_a_value_that_is_not_an_id() {
     for method in ["GET", "DELETE"] {
         assert_refused(kitsu, method, "/api/account/entry/anilist?kitsu_id=", "").await;
     }
-    assert_eq!(
-        asked.load(Ordering::SeqCst),
-        0,
-        "a refused route asked Kitsu"
-    );
+    assert_eq!(connections(&asked).await, 0, "a refused route asked Kitsu");
 }
 
 #[tokio::test]
@@ -196,11 +202,7 @@ async fn the_id_bodies_refuse_a_value_that_is_not_an_id() {
         )
         .await;
     }
-    assert_eq!(
-        asked.load(Ordering::SeqCst),
-        0,
-        "a refused route asked Kitsu"
-    );
+    assert_eq!(connections(&asked).await, 0, "a refused route asked Kitsu");
 }
 
 #[tokio::test]
@@ -291,11 +293,7 @@ async fn a_stored_value_that_is_not_an_id_reaches_neither_the_renderer_nor_kitsu
         .await
         .expect_err("not an id");
     assert_eq!(err.key(), "error.request.invalid_kitsu_id");
-    assert_eq!(
-        asked.load(Ordering::SeqCst),
-        0,
-        "a stored non-id asked Kitsu"
-    );
+    assert_eq!(connections(&asked).await, 0, "a stored non-id asked Kitsu");
 
     k::allmanga_kitsu_put(&s, "show-b", " 49877 ").expect("seed");
     let (_, text) = send(s, "GET", "/api/allmanga-kitsu-map/show-b", "").await;
