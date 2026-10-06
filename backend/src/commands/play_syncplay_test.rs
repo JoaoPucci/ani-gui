@@ -241,7 +241,7 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
     )
     .expect("write config");
     let args = PlayArgs {
-        kitsu_id: Some("K42".into()),
+        kitsu_id: Some("42".into()),
         ..play_args()
     };
     let key = crate::commands::play_resolution_cache::cache_key(
@@ -280,7 +280,7 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
 
     assert_eq!(
         crate::commands::kitsu::allmanga_kitsu_get(&state, "cached-show-9").expect("mapping read"),
-        Some("K42".into()),
+        Some("42".into()),
         "the spawn persists the show's reverse mapping"
     );
 }

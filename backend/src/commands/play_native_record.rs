@@ -288,3 +288,7 @@ pub(crate) async fn record_watch(state: &AppState, watch: &Watch, kitsu_id: Opti
 #[cfg(test)]
 #[path = "play_native_record_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "play_native_record_ids_test.rs"]
+mod ids_tests;

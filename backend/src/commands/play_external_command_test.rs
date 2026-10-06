@@ -399,7 +399,7 @@ async fn an_external_play_persists_the_shows_kitsu_mapping() {
     )
     .expect("write config");
     let args = PlayArgs {
-        kitsu_id: Some("K42".into()),
+        kitsu_id: Some("42".into()),
         ..play_args()
     };
 
@@ -408,10 +408,10 @@ async fn an_external_play_persists_the_shows_kitsu_mapping() {
 
     assert_eq!(
         crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
-        Some("K42".into()),
+        Some("42".into()),
         "the spawn persists the show's reverse mapping"
     );
-    let resumed = crate::commands::history::history_by_kitsu(&state, "K42")
+    let resumed = crate::commands::history::history_by_kitsu(&state, "42")
         .expect("history read")
         .expect("the row is found by its Kitsu id");
     assert_eq!(resumed.id, "the-show-77");
@@ -437,7 +437,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
     )
     .expect("write config");
     let args = PlayArgs {
-        kitsu_id: Some("K42".into()),
+        kitsu_id: Some("42".into()),
         ..play_args()
     };
     let key = crate::commands::play_resolution_cache::cache_key(
@@ -471,7 +471,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
 
     assert_eq!(
         crate::commands::kitsu::allmanga_kitsu_get(&state, "cached-show-9").expect("mapping read"),
-        Some("K42".into()),
+        Some("42".into()),
         "a cached handoff persists the mapping too"
     );
 }
@@ -492,7 +492,7 @@ async fn a_watch_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
         title: "The Show".into(),
         ep_no: "3".into(),
     };
-    crate::commands::play_native_record::record_watch(&state, &watch, Some("K42")).await;
+    crate::commands::play_native_record::record_watch(&state, &watch, Some("42")).await;
     assert_eq!(
         crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
         None,
@@ -516,7 +516,7 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
         title: "The Show".into(),
         ep_no: "3".into(),
     };
-    crate::commands::play_native_record::record_watch(&state, &watch, Some("K42")).await;
+    crate::commands::play_native_record::record_watch(&state, &watch, Some("42")).await;
     let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
     assert!(hsts.contains("the-show-77"), "{hsts}");
     assert!(
@@ -529,7 +529,7 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
         crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77")
             .expect("mapping read")
             .as_deref(),
-        Some("K42")
+        Some("42")
     );
 }
 
