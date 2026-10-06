@@ -12,7 +12,8 @@ use std::collections::BTreeSet;
 use super::play_native_title_grammar::normalized;
 pub(crate) use super::play_native_title_grammar::stem;
 use super::play_native_title_grammar::{
-    later_divisions, named_ordinals, names_past_stem, part_ordinals, reading, trailing_markers,
+    later_divisions, named_ordinals, names_past_stem, opens_on_a_first_division, part_ordinals,
+    reading, trailing_markers,
 };
 #[cfg(test)]
 use super::play_native_title_grammar::{Kind, Marker};
@@ -125,6 +126,16 @@ impl EntryTitles<'_> {
     pub(crate) fn reads_as_entry(&self, title: &str) -> bool {
         let theirs = reading(title);
         self.all().any(|t| reading(t) == theirs)
+    }
+
+    /// Whether `listing` is the first part of the listing `wide` that
+    /// would span it ([`opens_on_a_first_division`]) and not the
+    /// entry's own: beside a `wide` the entry is not the head of, that
+    /// is `wide`'s first half, never the entry.
+    ///
+    /// [`opens_on_a_first_division`]: super::play_native_title_grammar::opens_on_a_first_division
+    pub(crate) fn first_part_of(&self, listing: &str, wide: &str) -> bool {
+        opens_on_a_first_division(listing, wide) && !self.names_own_part(listing, wide)
     }
 
     /// Whether `listing` is this entry's own beside the listing `wide`
