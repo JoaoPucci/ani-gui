@@ -580,3 +580,37 @@ async fn a_stitched_chain_is_led_by_the_cour_whose_part_agrees() {
         "both parts of the agreeing chain"
     );
 }
+
+/// A spanning listing twice the entry's length beside an exact
+/// listing of the entry: "Show" (24) and "Show Part 1" (12) for a
+/// 12-episode entry. The exact listing is the entry's own and wins;
+/// nothing is cut.
+#[tokio::test]
+async fn an_exact_listing_wins_over_cutting_one_twice_its_length() {
+    let rows = [("show-1", "Show", 24), ("show-p1-2", "Show Part 1", 12)];
+    let site = pool_of(&["Show"], Some(12), 2020, "Show", &rows);
+    let picked = walk_over(site).await.expect("the exact listing");
+    assert_eq!(
+        (picked.hit.slug.as_str(), picked.episodes.len()),
+        ("show-p1-2", 12)
+    );
+}
+
+/// The sibling that completes a spanning listing is the next entry —
+/// a later part than this one. A same-stem listing whose title names
+/// no later part is no proof the broad listing holds two entries, and
+/// nothing is cut for it.
+#[tokio::test]
+async fn only_a_later_part_completes_a_spanning_listing() {
+    let rows = [
+        ("show-1", "Show", 22),
+        ("show-c-2", "Show Special Collection", 10),
+    ];
+    let site = pool_of(&["Show"], Some(12), 2020, "Show", &rows);
+    if let Ok(picked) = walk_over(site).await {
+        assert!(
+            !(picked.hit.slug == "show-1" && picked.episodes.len() == 12),
+            "the broad listing was cut on a sibling that names no later part"
+        );
+    }
+}
