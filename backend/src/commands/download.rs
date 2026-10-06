@@ -1997,6 +1997,13 @@ where
 /// [`run_tool`], interruptible: when `stop` resolves before the tool
 /// exits, the tool's process group is taken down and the run reports
 /// itself interrupted rather than failed.
+///
+/// Every way a run ends short of the tool's own exit — a stop, the
+/// deadline, a report that condemns the output — returns only once
+/// the tool's tree has exited. What the caller does next is start
+/// another run on the same resume state, start the ffmpeg retry
+/// beside it, or sweep what it wrote, and none of those is safe
+/// beside a tool that has only been asked to die.
 async fn run_tool_until<F>(
     mut cmd: tokio::process::Command,
     deadline: tokio::time::Instant,
@@ -2069,17 +2076,28 @@ where
         child.child_mut().wait().await.map_err(|_| AniError::Io)
     };
     // Whichever resolves first: the tool running to its end (or the
-    // deadline), or the caller's stop. On a stop the drive is dropped
-    // here and the guard takes the tool's process group down as the
-    // child goes out of scope below.
+    // deadline), or the caller's stop. The drive is dropped here
+    // either way; a run that did not end in the tool's exit takes the
+    // tree down and waits for it to be gone before returning.
     let outcome = tokio::select! {
         run = tokio::time::timeout_at(deadline, drive) => Some(run),
         () = stop => None,
     };
     let Some(run) = outcome else {
-        return Ok(ToolRun::Interrupted);
+        if child.take_down().await {
+            return Ok(ToolRun::Interrupted);
+        }
+        // Still running past the ceiling: nothing may resume on its
+        // state, so the run fails instead of being resumed.
+        return Err(AniError::Io);
     };
-    let status = run.map_err(|_| AniError::Timeout)??;
+    let status = match run.map_err(|_| AniError::Timeout).and_then(|r| r) {
+        Ok(status) => status,
+        Err(e) => {
+            child.take_down().await;
+            return Err(e);
+        }
+    };
     if status.success() {
         Ok(ToolRun::Exited)
     } else {
