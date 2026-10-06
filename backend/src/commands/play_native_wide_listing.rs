@@ -69,9 +69,14 @@ pub(super) fn fit_to_entry(
             row.2 = UNFIT;
         }
     }
-    if let Some((wide, later)) = span {
+    if let Some((wide, later, dedicated)) = span {
+        // The sibling completing the span is the next entry, whether
+        // the cut is made or the entry's own listing stops it.
         for j in later {
             probed[j].2 = UNFIT;
+        }
+        if dedicated {
+            return refused_a_fit;
         }
         // Any other exact-count hit is no listing of this entry's
         // own — that would have stopped the cut
@@ -91,20 +96,21 @@ pub(super) fn fit_to_entry(
 }
 
 /// The listing that spans this entry and the next, with the later
-/// parts that complete it. It must be admitted, carry the entry's own
-/// year, and list more than the entry has; a sibling completing it
-/// must name, right after the spanning listing's stem, a later part
-/// than the entry's ([`EntryTitles::names_later_part`]), and list
-/// exactly the remainder. An admitted listing that already fits
-/// exactly and is the entry's own beside the spanning listing
-/// ([`EntryTitles::names_own_part`]) stops the cut; any other exact
-/// fit is no such evidence.
+/// parts that complete it, and whether the entry's own listing stops
+/// the cut. It must be admitted, carry the entry's own year, and list
+/// more than the entry has; a sibling completing it must name, right
+/// after the spanning listing's stem, a later part than the entry's
+/// ([`EntryTitles::names_later_part`]), not be the entry's own
+/// ([`EntryTitles::names_own_part`]), and list exactly the remainder.
+/// An admitted listing that already fits exactly and is the entry's
+/// own beside the spanning listing stops the cut; any other exact fit
+/// is no such evidence.
 fn spanning(
     probed: &[Probed<'_>],
     expected: u32,
     admitted: &[bool],
     entry: EntryTitles<'_>,
-) -> Option<(usize, Vec<usize>)> {
+) -> Option<(usize, Vec<usize>, bool)> {
     let counts: Vec<u32> = probed
         .iter()
         .map(|(_, eps, _, _)| regular_episode_count(eps))
@@ -120,6 +126,7 @@ fn spanning(
                 j != m
                     && counts[j] == counts[m] - expected
                     && entry.names_later_part(&probed[j].0.title, &h.title)
+                    && !entry.names_own_part(&probed[j].0.title, &h.title)
             })
             .collect();
         (!own.is_empty() && !later.is_empty()).then_some((m, later))
@@ -133,7 +140,7 @@ fn spanning(
     let dedicated = (0..probed.len()).any(|k| {
         admitted[k] && probed[k].2 == 0 && entry.names_own_part(&probed[k].0.title, wide_title)
     });
-    (!dedicated).then_some((wide, later))
+    Some((wide, later, dedicated))
 }
 
 /// The listing's rows up to its `expected + 1`-th regular episode:

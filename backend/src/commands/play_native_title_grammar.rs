@@ -337,19 +337,26 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
         .collect()
 }
 
-/// The ordinals a title names other than as a part: every ordinal its
-/// stem names ([`named_ordinals`] — "Show 2", "ショー２", "Overlord
-/// II") and each season marker it ends on ("Show 2nd Season").
-pub(super) fn season_ordinals(title: &str) -> BTreeSet<u32> {
-    let (before, markers) = parse_tail(title);
-    let mut out = named_ordinals(&before.join(" "));
-    out.extend(
-        markers
-            .into_iter()
-            .filter(|m| m.kind == Kind::Season)
-            .flat_map(|m| m.ordinals),
-    );
-    out
+/// The ordinals `title` names past `wide`'s stem ([`named_ordinals`]
+/// of what follows it — "Show 2" beside "Show", "ショー２" beside
+/// "ショー", "Show 2nd Season" beside "Show"), leaving out those the
+/// divisions `wide` ends on name. Empty when `title` does not start
+/// with the stem, and for a number inside the stem itself ("Lucky 2"
+/// beside "Lucky 2").
+pub(super) fn ordinals_beyond(title: &str, wide: &str) -> BTreeSet<u32> {
+    let own = stem(wide).join(" ");
+    let text = words(title).join(" ");
+    let Some(rest) = text.strip_prefix(&own) else {
+        return BTreeSet::new();
+    };
+    let wide_named: BTreeSet<u32> = trailing_markers(wide)
+        .into_iter()
+        .flat_map(|m| m.ordinals)
+        .collect();
+    named_ordinals(rest)
+        .into_iter()
+        .filter(|n| !wide_named.contains(n))
+        .collect()
 }
 
 /// A title's words with the markers it ends on removed: the name the
