@@ -359,3 +359,60 @@ async fn a_404_after_a_deletion_between_the_cache_read_and_kitsu_marks_nothing()
     assert!(read.is_err());
     assert!(!marked(&state, "999"));
 }
+
+// Two reads of one id can overlap: one that misses the cache and waits
+// on Kitsu, and a later one served meanwhile. Kitsu serving the id
+// after the waiting read began says it is not gone, whatever the
+// waiting read is answered.
+
+#[tokio::test]
+async fn a_404_after_the_id_was_served_since_the_read_began_marks_nothing() {
+    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+
+    let read = crate::commands::kitsu::anime_detail_past_cache(&state, "999", |state| {
+        crate::commands::kitsu::warm_anime_detail_cache(state, &served("999"));
+    })
+    .await;
+
+    assert!(read.is_err());
+    assert!(!marked(&state, "999"));
+}
+
+/// A detail row in the cache is Kitsu serving the id: a read it
+/// answers takes a mark left beside it.
+#[tokio::test]
+async fn a_cached_detail_takes_a_stale_gone_mark() {
+    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    crate::commands::kitsu::warm_anime_detail_cache(&state, &served("999"));
+    crate::cache::meta_cache_put(&state.cache_pool, "kitsu:dead:999", "1", 3600).unwrap();
+
+    assert!(!kitsu_anime_detail_fails(&state, "999").await);
+
+    assert!(!marked(&state, "999"));
+}
+
+fn served(id: &str) -> crate::meta::kitsu::KitsuAnimeRef {
+    crate::meta::kitsu::KitsuAnimeRef {
+        id: id.into(),
+        canonical_title: TITLE.into(),
+        titles: std::collections::HashMap::new(),
+        abbreviated_titles: Vec::new(),
+        slug: None,
+        synopsis: None,
+        start_date: None,
+        end_date: None,
+        episode_count: Some(26),
+        average_rating: None,
+        subtype: None,
+        status: Some("finished".into()),
+        age_rating: None,
+        popularity_rank: None,
+        poster_image: None,
+        cover_image: Some(crate::meta::kitsu::KitsuCoverImage {
+            tiny: None,
+            small: None,
+            large: None,
+            original: None,
+        }),
+    }
+}
