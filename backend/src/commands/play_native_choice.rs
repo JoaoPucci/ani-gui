@@ -22,6 +22,21 @@ pub(super) fn identity_rank(title_matches: bool, confirmed: bool) -> u8 {
     }
 }
 
+/// The rank a candidate is weighed by against the entry, in the
+/// order winner selection prefers: 0 for an exact title; then, for a
+/// candidate whose part agrees with the entry's
+/// ([`EntryTitles::part_agrees`]), 1 with a matched year and 2
+/// without; then 3 and 4 the same way for one naming another part.
+/// An exact title or a matched year is identity — ranks 0 and odd.
+pub(super) fn entry_rank(entry: EntryTitles<'_>, title: &str, needle: &str, confirmed: bool) -> u8 {
+    let rank = identity_rank(title.trim().to_lowercase() == needle, confirmed);
+    if rank == 0 || entry.part_agrees(title) {
+        rank
+    } else {
+        rank + 2
+    }
+}
+
 /// The pick without a count signal: an exact title beats positional
 /// order, then a candidate whose own year matched Kitsu's beats the
 /// rest. When the year disproved part of the pool and no survivor
@@ -77,8 +92,8 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     Err(crate::error::AniError::NoResults)
 }
 
-/// The winner among best-distance candidates, plus its identity
-/// rank. An exact title match is the user's own words and stays
+/// The winner among best-distance candidates, plus its rank
+/// ([`entry_rank`]). An exact title match is the user's own words and stays
 /// dominant; below it, a candidate whose part marker agrees with the
 /// entry's ([`EntryTitles::part_agrees`]) outranks one that names
 /// another part; below that, a detail year that matched Kitsu's
@@ -104,6 +119,5 @@ pub(super) fn select_winner(
         .map(|(i, _)| i)
         .expect("best_dist came from this list");
     let (h, _, _, confirmed) = &probed_ok[winner_idx];
-    let rank = identity_rank(h.title.trim().to_lowercase() == needle, *confirmed);
-    (winner_idx, rank)
+    (winner_idx, entry_rank(entry, &h.title, needle, *confirmed))
 }

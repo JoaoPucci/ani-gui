@@ -14,7 +14,7 @@
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
-use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
+use super::play_native_choice::{entry_rank, pick_without_count, select_winner};
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
@@ -48,7 +48,8 @@ fn dead_outranks(best_failed: Option<(u8, usize)>, winner_rank: u8, winner_pos: 
     let Some((rank, pos)) = best_failed else {
         return false;
     };
-    rank < winner_rank || (rank == winner_rank && rank <= 1 && pos < winner_pos)
+    let identity = rank == 0 || rank % 2 == 1;
+    rank < winner_rank || (rank == winner_rank && identity && pos < winner_pos)
 }
 
 /// Distance tolerance: long-running shows get proportional slack,
@@ -159,7 +160,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     let mut probed_ok: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = Vec::new();
     let mut any_transport_failure = false;
     // Identity carried by transport-DEAD candidates
-    // ([`identity_rank`]), with their provider position: a dead
+    // ([`entry_rank`]), with their provider position: a dead
     // candidate that outranks the eventual winner — or ties an
     // identity-bearing rank from an earlier position, where provider
     // order would have decided for it — makes the whole pick
@@ -197,10 +198,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                     // it still leaves the pool unheard.
                     let failed = entry
                         .admits(&h.title)
-                        .then_some(identity_rank(
-                            h.title.trim().to_lowercase() == needle,
-                            year_confirmed,
-                        ))
+                        .then(|| entry_rank(entry, &h.title, &needle, year_confirmed))
                         .filter(|failed| best_failed.is_none_or(|best| (*failed, pos) < best));
                     if let Some(failed) = failed {
                         best_failed = Some((failed, pos));
@@ -258,7 +256,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
             .map(|(i, _)| i)
         {
             let (h, _, _, c) = &probed_ok[idx];
-            let rescue_rank = identity_rank(h.title.trim().to_lowercase() == needle, *c);
+            let rescue_rank = entry_rank(entry, &h.title, &needle, *c);
             if dead_outranks(best_failed, rescue_rank, positions[idx]) {
                 // An identity-bearing candidate died unheard; the
                 // rescue must not outrank it on weather.

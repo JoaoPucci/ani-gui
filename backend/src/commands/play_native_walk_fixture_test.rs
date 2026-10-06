@@ -423,6 +423,10 @@ async fn a_listing_spanning_two_entries_serves_the_first_its_own_episodes() {
 async fn a_dead_candidate_whose_part_agrees_blocks_the_one_whose_part_does_not() {
     let mut site = Recorded::load("42196");
     site.dead = vec!["that-time-i-got-reincarnated-as-a-slime-season-2-487"];
+    // A transient pool sends the walk to the next alias, which the
+    // live run never needed and the recording does not hold; the
+    // canonical title's pool is the one under test.
+    site.doc.kitsu.alt_titles.clear();
     match walk_over(site).await {
         Err(e) => assert!(
             !e.clean_miss && matches!(e.error, crate::error::AniError::Network),

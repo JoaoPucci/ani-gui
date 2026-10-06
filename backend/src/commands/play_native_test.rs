@@ -120,7 +120,7 @@ proptest::proptest! {
         let (h, _, _, c) = &probed[idx];
         proptest::prop_assert_eq!(
             rank,
-            identity_rank(h.title.trim().to_lowercase() == needle, *c)
+            super::super::play_native_choice::identity_rank(h.title.trim().to_lowercase() == needle, *c)
         );
     }
 }
