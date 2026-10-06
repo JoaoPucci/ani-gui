@@ -845,3 +845,74 @@ async fn background_traffic_waits_out_a_player_that_needs_every_token() {
     );
     player.await.expect("player");
 }
+
+/// The player's other requests count toward what it needs, as they
+/// count toward the turns it takes. A playlist that names a fresh key
+/// for every five-second segment has the player asking for a key and a
+/// segment every five seconds — twenty-four requests a minute — and
+/// counting only the segment's twelve chose alternation, which gives
+/// the player twenty a minute beside a download, and its buffer
+/// drained. Every token the player waited for counts toward its turns;
+/// so every request it makes counts toward its need, the segments by
+/// the playback they buy and the rest as they arrive.
+#[tokio::test(start_paused = true)]
+async fn a_player_fetching_a_key_per_segment_keeps_pace_beside_background_traffic() {
+    let budget = HostBudget::fresh();
+    let fetchers = background_fetchers(&budget, 4);
+    let start = tokio::time::Instant::now();
+    let player = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move {
+            let segment = Duration::from_secs(5);
+            let mut buffered = Duration::ZERO;
+            while start.elapsed() < Duration::from_secs(900) {
+                let ahead = buffered.saturating_sub(start.elapsed());
+                if ahead > Duration::from_secs(60) {
+                    tokio::time::sleep(ahead - Duration::from_secs(60)).await;
+                }
+                // The segment's key, then the segment.
+                budget.note_player_request("cdn.example:443");
+                tokio::time::timeout(SEGMENT_REFILL * 8, budget.admit("cdn.example:443"))
+                    .await
+                    .expect("the key was admitted");
+                budget.note_player_segment("cdn.example:443", Stream::Main, segment);
+                tokio::time::timeout(SEGMENT_REFILL * 8, budget.admit("cdn.example:443"))
+                    .await
+                    .expect("the segment was admitted");
+                assert!(
+                    buffered == Duration::ZERO || buffered >= start.elapsed(),
+                    "the player ran dry {:?} into playback",
+                    start.elapsed()
+                );
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                buffered += segment;
+            }
+        })
+    };
+    let played = player.await;
+    for fetcher in &fetchers {
+        fetcher.abort();
+    }
+    played.expect("the player kept pace");
+}
+
+/// What the player needs counts its other requests at the rate they
+/// arrive, beside its segments' pace, and forgets them once they stop.
+#[test]
+fn the_players_other_requests_count_toward_its_need() {
+    let start = Instant::now();
+    let mut demand = Demand::default();
+    let mut now = start;
+    for _ in 0..12 {
+        demand.note(Stream::Main, Duration::from_secs(5), now);
+        demand.note_other(now);
+        now += Duration::from_secs(5);
+    }
+    let need = demand.per_second(now);
+    assert!(
+        (need - 0.4).abs() < 0.05,
+        "a key and a segment every five seconds: {need}"
+    );
+    let later = now + Duration::from_secs(600);
+    assert_eq!(demand.per_second(later), 0.0, "stopped: forgotten");
+}
