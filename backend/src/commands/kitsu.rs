@@ -1028,23 +1028,34 @@ pub(crate) fn anime_detail_ttl(status: Option<&str>) -> u64 {
 /// backfill for the row's whole lifetime — trading one request for days
 /// of blurred-poster fallback on exactly the newer ongoing shows the
 /// backfill exists for.
+///
+/// Kitsu served the ref just now, so the id's gone mark goes with the
+/// write, in one step (`kitsu_gone`). Seeding is best-effort: when the
+/// mark cannot be taken it stays and nothing is cached, so the next
+/// detail read asks Kitsu and fails on the mark the same way.
 pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) {
-    super::kitsu_gone::note_served(state, &detail.id);
-    if detail.cover_image.is_none() {
-        return;
-    }
-    if let Ok(body) = serde_json::to_string(detail) {
-        let _ = meta_cache_put(
-            &state.cache_pool,
-            &anime_detail_key(&detail.id),
-            &body,
-            anime_detail_ttl(detail.status.as_deref()),
-        );
+    let body = detail
+        .cover_image
+        .is_some()
+        .then(|| serde_json::to_string(detail).ok())
+        .flatten();
+    let cache = || {
+        if let Some(body) = &body {
+            let _ = meta_cache_put(
+                &state.cache_pool,
+                &anime_detail_key(&detail.id),
+                body,
+                anime_detail_ttl(detail.status.as_deref()),
+            );
+        }
+    };
+    let _ = super::kitsu_gone::served_now_then(state, &detail.id, cache, |_| {});
+    if let Some(body) = &body {
         // Same pairing the other writer has, and for the same reason:
         // these URLs can be Backblaze presigned links whose signature
         // expires long before the row does. Fetching the bytes now is
         // what stops the card rendering broken artwork later.
-        warm_signed_image_urls(state, &body);
+        warm_signed_image_urls(state, body);
     }
 }
 
@@ -1094,12 +1105,12 @@ async fn anime_detail_read(
     // flight, which it is from its first step: the cache read.
     let begun = crate::history::guard::epoch(&state.history_path);
     let key = anime_detail_key(id);
-    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
-        if let Ok(detail) = serde_json::from_str::<KitsuAnimeRef>(&body) {
-            warm_signed_image_urls(state, &body);
-            super::kitsu_gone::note_served(state, id);
-            return Ok(detail);
-        }
+    let cached = super::kitsu_gone::served_from_cache(state, id, &key, |body| {
+        serde_json::from_str::<KitsuAnimeRef>(body).ok()
+    })?;
+    if let Some((detail, body)) = cached {
+        warm_signed_image_urls(state, &body);
+        return Ok(detail);
     }
     past_cache(state);
     let mut detail = state
@@ -1107,7 +1118,10 @@ async fn anime_detail_read(
         .anime_detail(id)
         .await
         .inspect_err(|e| super::kitsu_gone::note_failure(state, begun, id, e))?;
-    super::kitsu_gone::note_served(state, id);
+    // Served, but not published: the row is cached and the mark taken
+    // only once the backfill below is done, in one step with this
+    // verdict, and not at all if a newer read is answered gone first.
+    let fetched = super::kitsu_gone::note_fetched(state, id);
 
     // Banner enrichment: Kitsu cataloguers upload coverImage lazily,
     // so newer ongoing shows often arrive with cover_image=null.
@@ -1129,10 +1143,15 @@ async fn anime_detail_read(
         }
     }
 
-    if let Ok(body) = serde_json::to_string(&detail) {
-        let ttl = anime_detail_ttl(detail.status.as_deref());
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ttl);
-        warm_signed_image_urls(state, &body);
+    let body = serde_json::to_string(&detail).ok();
+    super::kitsu_gone::publish_served(state, id, fetched, || {
+        if let Some(body) = &body {
+            let ttl = anime_detail_ttl(detail.status.as_deref());
+            let _ = meta_cache_put(&state.cache_pool, &key, body, ttl);
+        }
+    })?;
+    if let Some(body) = &body {
+        warm_signed_image_urls(state, body);
     }
     Ok(detail)
 }

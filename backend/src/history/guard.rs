@@ -107,6 +107,9 @@ struct Removals {
     /// The moment Kitsu last served each id, as far as this process
     /// saw: a failure of a read begun before it says nothing newer.
     served: HashMap<String, u64>,
+    /// The moment Kitsu last answered each id gone, as far as this
+    /// process saw: a success served before it says nothing newer.
+    gone: HashMap<String, u64>,
 }
 
 /// Every history this process has held, by its file. One lock for all
