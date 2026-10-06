@@ -366,8 +366,9 @@ pub async fn kitsu_episodes_with(
 }
 
 /// Wall-clock budget the `/api/kitsu/episodes` route gives the AniList
-/// enrichment chain (Kitsu /mappings round-trip + AniList GraphQL +
-/// cache write). Tight on purpose — the underlying `proxy_http` has a
+/// enrichment chain (Kitsu /mappings round-trip + AniList GraphQL,
+/// asked again by AniList id when AniList lacks the MAL id + cache
+/// write). Tight on purpose — the underlying `proxy_http` has a
 /// 120s timeout, which would stall the route when the user just wants
 /// the Kitsu data we already loaded. On budget exhaustion the route
 /// degrades to a Kitsu-only response.
@@ -939,8 +940,10 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
     // Bridge to AniList where banners are user-uploaded reliably.
     // Failures are silent — the detail still loads with the
     // null-cover fallback (blurred poster) on the frontend. Two extra
-    // round-trips on cold cache (Kitsu's mappings, then AniList); the
-    // result is cached for the detail row's lifetime.
+    // round-trips on cold cache (Kitsu's mappings, then AniList), or
+    // three when AniList lacks the MAL id and is asked again by
+    // AniList's own id; the result is cached for the detail row's
+    // lifetime.
     if detail.cover_image.is_none() {
         if let Some(banner) = anilist_banner_for(state, id, anilist_base).await {
             detail.cover_image = Some(KitsuCoverImage {
