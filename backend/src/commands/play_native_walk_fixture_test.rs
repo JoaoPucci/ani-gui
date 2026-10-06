@@ -1139,3 +1139,43 @@ async fn stacked_japanese_divisions_all_leave_the_stem() {
     let picked = walk_over(site).await.expect("picked");
     assert_eq!((picked.hit.slug.as_str(), picked.episodes.len()), ("b", 12));
 }
+
+/// A spinoff — a title whose stem goes on past the broad listing's
+/// with a word that names no division ("Side Story") — is another
+/// show of the franchise, numbered or not: it never stops a cut and is
+/// never the entry's own.
+#[tokio::test]
+async fn a_numbered_spinoff_is_never_the_entry_s_own() {
+    type Case<'a> = (&'a [&'a str], &'a [(&'a str, &'a str, u32)], &'a str, usize);
+    let cases: [Case<'_>; 2] = [
+        (
+            &["Show Season 3"],
+            &[
+                ("w", "Show Season 3", 22),
+                ("l", "Show Season 3 Part 2", 10),
+                ("s", "Show Side Story 3", 12),
+            ],
+            "w",
+            12,
+        ),
+        (
+            &["Show 2"],
+            &[
+                ("w", "Show", 24),
+                ("s", "Show Side Story 2", 12),
+                ("own", "Show 2nd Season", 12),
+            ],
+            "own",
+            12,
+        ),
+    ];
+    for (titles, rows, want, len) in cases {
+        let site = pool_of(titles, Some(12), 2020, titles[0], rows);
+        let picked = walk_over(site).await.expect("picked");
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            (want, len),
+            "{titles:?}"
+        );
+    }
+}
