@@ -1,0 +1,60 @@
+{
+ "kitsu": {
+  "id": "42080",
+  "name": "Dr Stone",
+  "canonical": "Dr. Stone",
+  "alt_titles": ["Dr.STONE", "Dr. STONE"],
+  "episode_count": 24,
+  "year": 2019,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Dr. Stone": [
+    ["dr-stone-1235", "Dr. Stone", "TV"],
+    ["dr-stone-stone-wars-1100", "Dr. Stone: Stone Wars", "TV"],
+    ["dr-stone-science-future-part-3-98", "Dr. Stone: Science Future Part 3", "TV"],
+    ["dr-stone-stone-wars-eve-of-the-battle-special-feature-2584", "Dr. Stone: Stone Wars Eve of the Battle Special Feature", "SPECIAL"],
+    ["dr-stone-new-world-1104", "Dr. Stone: New World", "TV"],
+    ["dr-stone-new-world-part-2-1080", "Dr. Stone 3rd Season Part 2", "TV"],
+    ["dr-stone-ryusui-1081", "Dr. Stone: Ryuusui", "SPECIAL"],
+    ["dr-stone-science-future-2583", "Dr. Stone: Science Future", "TV"],
+    ["dr-stone-science-future-part-2-74", "Dr. Stone: Science Future Part 2", "TV"],
+    ["snickers-x-dr-stone-2849", "Snickers x Dr. Stone", "TV"]
+  ]
+ },
+ "episodes": {
+  "dr-stone-1235": [
+    [20526, 1, null],
+    [20527, 2, null],
+    [20528, 3, null],
+    [20529, 4, null],
+    [20530, 5, null],
+    [20531, 6, null],
+    [20532, 7, null],
+    [20533, 8, null],
+    [20534, 9, null],
+    [20535, 10, null],
+    [20536, 11, null],
+    [20537, 12, null],
+    [20538, 13, null],
+    [20539, 14, null],
+    [20540, 15, null],
+    [20541, 16, null],
+    [20542, 17, null],
+    [20543, 18, null],
+    [20544, 19, null],
+    [20545, 20, null],
+    [20546, 21, null],
+    [20547, 22, null],
+    [20548, 23, null],
+    [20549, 24, null]
+  ]
+ },
+ "years": {
+  "dr-stone-1235": 2019,
+  "dr-stone-new-world-1104": 2023,
+  "dr-stone-new-world-part-2-1080": 2023,
+  "dr-stone-science-future-part-3-98": 2026,
+  "dr-stone-stone-wars-1100": 2021
+ }
+}

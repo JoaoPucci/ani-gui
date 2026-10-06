@@ -1,0 +1,35 @@
+{
+ "kitsu": {
+  "id": "43361",
+  "name": "Slime S2P2",
+  "canonical": "Tensei shitara Slime Datta Ken 2nd Season Part 2",
+  "alt_titles": ["転生したらスライムだった件", "That Time I Got Reincarnated as a Slime Season 2 Part 2", "Tensura 2"],
+  "episode_count": 12,
+  "year": 2021,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Tensei shitara Slime Datta Ken 2nd Season Part 2": [
+    ["that-time-i-got-reincarnated-as-a-slime-season-2-part-2-492", "That Time I Got Reincarnated as a Slime 2nd Season Part 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "that-time-i-got-reincarnated-as-a-slime-season-2-part-2-492": [
+    [9511, 1, null],
+    [9512, 2, null],
+    [9513, 3, null],
+    [9514, 4, null],
+    [9515, 5, null],
+    [9516, 6, null],
+    [9517, 7, null],
+    [9518, 8, null],
+    [9519, 9, null],
+    [9520, 10, null],
+    [9521, 11, null],
+    [9522, 12, null]
+  ]
+ },
+ "years": {
+  "that-time-i-got-reincarnated-as-a-slime-season-2-part-2-492": 2021
+ }
+}

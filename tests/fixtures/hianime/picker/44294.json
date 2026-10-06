@@ -1,0 +1,138 @@
+{
+ "kitsu": {
+  "id": "44294",
+  "name": "Stone Ocean",
+  "canonical": "JoJo's Bizarre Adventure: Stone Ocean",
+  "alt_titles": ["JoJo no Kimyou na Bouken: Stone Ocean", "ジョジョの奇妙な冒険 ストーンオーシャン", "JoJo no Kimyou na Bouken: Sutōn Ōshan", "Jojo part 6"],
+  "episode_count": 12,
+  "year": 2021,
+  "subtype": "TV"
+ },
+ "searches": {
+  "JoJo no Kimyou na Bouken: Stone Ocean": [
+    ["jojos-bizarre-adventure-stone-ocean-1460", "JoJo's Bizarre Adventure Part 6: Stone Ocean", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-2-1464", "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-3-2834", "JoJo's Bizarre Adventure: Stone Ocean Part 3", "ONA"]
+  ],
+  "JoJo no Kimyou na Bouken: Sutōn Ōshan": [
+    ["jojos-bizarre-adventure-706", "JoJo's Bizarre Adventure", "OVA"],
+    ["jojo-s-bizarre-adventure-9761", "JoJo's Bizarre Adventure", "TV"],
+    ["jojos-bizarre-adventure-2012-708", "JoJo's Bizarre Adventure (Uncensored)", "TV"],
+    ["jojos-bizarre-adventure-stardust-crusaders-718", "JoJo's Bizarre Adventure Part 2: Stardust Crusaders (Uncensored)", "TV"],
+    ["jojos-bizarre-adventure-diamond-is-unbreakable-1388", "JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable (Uncensored)", "TV"],
+    ["jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710", "JoJo's Bizarre Adventure Part 3: Stardust Crusaders 2nd Season (Uncensored)", "TV"],
+    ["jojos-bizarre-adventure-golden-wind-695", "JoJo's Bizarre Adventure Part 5: Golden Wind (Uncensored)", "TV"],
+    ["jojos-bizarre-adventure-stone-ocean-1460", "JoJo's Bizarre Adventure Part 6: Stone Ocean", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-2-1464", "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-3-2834", "JoJo's Bizarre Adventure: Stone Ocean Part 3", "ONA"],
+    ["steel-ball-run-jojos-bizarre-adventure-4", "Steel Ball Run: JoJo's Bizarre Adventure", "ONA"],
+    ["jojos-bizarre-adventure-2000-5182", "JoJo's Bizarre Adventure", "OVA"],
+    ["jojos-bizarre-adventure-phantom-blood-5183", "JoJo's Bizarre Adventure: Phantom Blood", "MOVIE"],
+    ["steel-ball-run-jojo-s-bizarre-adventure-2nd-stage-10465", "Steel Ball Run: JoJo's Bizarre Adventure 2nd Stage", "ONA"],
+    ["jojo-s-bizarre-adventure-part-2-stardust-crusaders-9760", "JoJo's Bizarre Adventure Part 2: Stardust Crusaders", "TV"],
+    ["jojo-s-bizarre-adventure-part-3-stardust-crusaders-2nd-season-9759", "JoJo's Bizarre Adventure Part 3: Stardust Crusaders 2nd Season", "TV"],
+    ["jojo-s-bizarre-adventure-part-4-diamond-is-unbreakable-9758", "JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable", "TV"],
+    ["jojo-s-bizarre-adventure-part-5-golden-wind-9757", "JoJo's Bizarre Adventure Part 5: Golden Wind", "TV"],
+    ["jojo-s-bizarre-adventure-battle-tendency-9719", "JoJo's Bizarre Adventure: Battle Tendency", "MOVIE"]
+  ],
+  "JoJo's Bizarre Adventure: Stone Ocean": [
+    ["jojos-bizarre-adventure-stone-ocean-part-3-2834", "JoJo's Bizarre Adventure: Stone Ocean Part 3", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-1460", "JoJo's Bizarre Adventure Part 6: Stone Ocean", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-2-1464", "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", "ONA"]
+  ],
+  "Jojo part 6": [
+    ["jojos-bizarre-adventure-stone-ocean-1460", "JoJo's Bizarre Adventure Part 6: Stone Ocean", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-2-1464", "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-3-2834", "JoJo's Bizarre Adventure: Stone Ocean Part 3", "ONA"]
+  ],
+  "ジョジョの奇妙な冒険 ストーンオーシャン": [
+    ["jojos-bizarre-adventure-stone-ocean-1460", "JoJo's Bizarre Adventure Part 6: Stone Ocean", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-2-1464", "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-3-2834", "JoJo's Bizarre Adventure: Stone Ocean Part 3", "ONA"]
+  ]
+ },
+ "episodes": {
+  "jojo-s-bizarre-adventure-9761": [
+    [140836, 1, null],
+    [140837, 2, null],
+    [140838, 3, null],
+    [140839, 4, null],
+    [140840, 5, null],
+    [140841, 6, null],
+    [140842, 7, null],
+    [140843, 8, null],
+    [140844, 9, null],
+    [140845, 10, null],
+    [140846, 11, null],
+    [140847, 12, null],
+    [140848, 13, null],
+    [140849, 14, null],
+    [140850, 15, null],
+    [140851, 16, null],
+    [140852, 17, null],
+    [140853, 18, null],
+    [140854, 19, null],
+    [140855, 20, null],
+    [140856, 21, null],
+    [140857, 22, null],
+    [140859, 23, null],
+    [140861, 24, null],
+    [140862, 25, null],
+    [140864, 26, null]
+  ],
+  "jojos-bizarre-adventure-stone-ocean-1460": [
+    [25438, 1, null],
+    [25439, 2, null],
+    [25440, 3, null],
+    [25441, 4, null],
+    [25442, 5, null],
+    [25443, 6, null],
+    [25444, 7, null],
+    [25445, 8, null],
+    [25446, 9, null],
+    [25447, 10, null],
+    [25448, 11, null],
+    [25449, 12, null]
+  ],
+  "jojos-bizarre-adventure-stone-ocean-part-2-1464": [
+    [25460, 1, null],
+    [25461, 2, null],
+    [25462, 3, null],
+    [25463, 4, null],
+    [25464, 5, null],
+    [25465, 6, null],
+    [25466, 7, null],
+    [25467, 8, null],
+    [25468, 9, null],
+    [25469, 10, null],
+    [25470, 11, null],
+    [25471, 12, null]
+  ],
+  "jojos-bizarre-adventure-stone-ocean-part-3-2834": [
+    [36737, 1, null],
+    [36738, 2, null],
+    [36739, 3, null],
+    [36740, 4, null],
+    [36741, 5, null],
+    [36742, 6, null],
+    [36743, 7, null],
+    [36744, 8, null],
+    [36745, 9, null],
+    [36746, 10, null],
+    [36747, 11, null],
+    [36748, 12, null],
+    [36749, 13, null],
+    [36750, 14, null]
+  ]
+ },
+ "years": {
+  "jojo-s-bizarre-adventure-9761": null,
+  "jojos-bizarre-adventure-2012-708": 2012,
+  "jojos-bizarre-adventure-diamond-is-unbreakable-1388": 2016,
+  "jojos-bizarre-adventure-stardust-crusaders-718": 2014,
+  "jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710": 2015,
+  "jojos-bizarre-adventure-stone-ocean-1460": 2021,
+  "jojos-bizarre-adventure-stone-ocean-part-2-1464": 2022,
+  "jojos-bizarre-adventure-stone-ocean-part-3-2834": 2022
+ }
+}

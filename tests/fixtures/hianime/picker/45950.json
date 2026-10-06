@@ -1,0 +1,56 @@
+{
+ "kitsu": {
+  "id": "45950",
+  "name": "Mushoku S2",
+  "canonical": "Mushoku Tensei: Isekai Ittara Honki Dasu Season 2",
+  "alt_titles": ["無職転生 ～異世界行ったら本気だす～ 第2期", "Mushoku Tensei: Jobless Reincarnation Season 2"],
+  "episode_count": 12,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Mushoku Tensei: Isekai Ittara Honki Dasu Season 2": [
+    ["mushoku-tensei-jobless-reincarnation-season-2-part-2-147", "Mushoku Tensei: Jobless Reincarnation Season 2 Part 2", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-season-2-449", "Mushoku Tensei: Jobless Reincarnation Season 2", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-season-2-episode-0-guardian-fitz-450", "Mushoku Tensei: Jobless Reincarnation Season 2 - Episode 0 \"Guardian Fitz\"", "TV"]
+  ]
+ },
+ "episodes": {
+  "mushoku-tensei-jobless-reincarnation-season-2-449": [
+    [8689, 1, null],
+    [8690, 2, null],
+    [8691, 3, null],
+    [8692, 4, null],
+    [8693, 5, null],
+    [8694, 6, null],
+    [8695, 7, null],
+    [8696, 8, null],
+    [8697, 9, null],
+    [8698, 10, null],
+    [8699, 11, null],
+    [8700, 12, null]
+  ],
+  "mushoku-tensei-jobless-reincarnation-season-2-episode-0-guardian-fitz-450": [
+    [8701, 1, null]
+  ],
+  "mushoku-tensei-jobless-reincarnation-season-2-part-2-147": [
+    [3377, 1, null],
+    [3378, 2, null],
+    [3379, 3, null],
+    [3380, 4, null],
+    [3381, 5, null],
+    [3382, 6, null],
+    [3383, 7, null],
+    [3384, 8, null],
+    [3385, 9, null],
+    [3386, 10, null],
+    [3387, 11, null],
+    [3388, 12, null]
+  ]
+ },
+ "years": {
+  "mushoku-tensei-jobless-reincarnation-season-2-449": 2023,
+  "mushoku-tensei-jobless-reincarnation-season-2-episode-0-guardian-fitz-450": 2023,
+  "mushoku-tensei-jobless-reincarnation-season-2-part-2-147": 2024
+ }
+}

@@ -12,6 +12,7 @@ git-LFS is not configured.
 | Path | Contents |
 |---|---|
 | `anidb/` | Synthesized anidb.app response shapes the native resolver scrapes: browse pages (results, empty, cloudflare interstitial), a detail page (MAL link + Seasons), episodes JSON, languages JSON, an embed page, and a master playlist. |
+| `hianime/picker/` | Real hianime pools, one file per Kitsu entry: the arguments the app sends for the entry (canonical title, fallbacks, episode count, year, subtype) and every search result, episode listing and entry-page year the pick walk read for it from the live site, reduced to what the client's parsers return. Captured by running the walk against hianime through the impersonating transport. |
 | `kitsu/` | JSON:API responses for `/anime?filter[text]=`, `/anime/:id` (with and without a cover image), and `/anime/:id/episodes`. |
 | `history/` | Watch-history samples for the GUI's reader: empty, single-entry, multi-entry. |
 | `hls/` | Synthesized MPEG-TS samples for the player's demuxer regression tests, as base64 text: a stream whose video starts under one second and whose audio starts after it. |

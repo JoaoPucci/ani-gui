@@ -1,0 +1,46 @@
+{
+ "kitsu": {
+  "id": "45857",
+  "name": "JJK S2",
+  "canonical": "Jujutsu Kaisen Season 2",
+  "alt_titles": ["呪術廻戦 第2期", "JJK2", "Jujutsu Kaisen 2nd Season", "Jujutsu Kaisen: Kaigyoku Gyokusetsu / Shibuya Jihen", "Jujutsu Kaisen: Hidden Inventory / Premature Death", "Jujutsu Kaisen: Shibuya Incident"],
+  "episode_count": 23,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Jujutsu Kaisen Season 2": [
+    ["jujutsu-kaisen-season-2-415", "Jujutsu Kaisen 2nd Season", "TV"]
+  ]
+ },
+ "episodes": {
+  "jujutsu-kaisen-season-2-415": [
+    [8296, 1, null],
+    [8297, 2, null],
+    [8298, 3, null],
+    [8299, 4, null],
+    [8300, 5, null],
+    [8301, 6, null],
+    [8302, 7, null],
+    [8303, 8, null],
+    [8304, 9, null],
+    [8305, 10, null],
+    [8306, 11, null],
+    [8307, 12, null],
+    [8308, 13, null],
+    [8309, 14, null],
+    [8310, 15, null],
+    [8311, 16, null],
+    [8312, 17, null],
+    [8313, 18, null],
+    [8314, 19, null],
+    [8315, 20, null],
+    [8316, 21, null],
+    [8317, 22, null],
+    [8318, 23, null]
+  ]
+ },
+ "years": {
+  "jujutsu-kaisen-season-2-415": 2023
+ }
+}

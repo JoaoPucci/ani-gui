@@ -1,0 +1,59 @@
+{
+ "kitsu": {
+  "id": "42323",
+  "name": "Mushoku",
+  "canonical": "Mushoku Tensei: Isekai Ittara Honki Dasu",
+  "alt_titles": ["無職転生 ～異世界行ったら本気だす～", "Mushoku Tensei: Jobless Reincarnation"],
+  "episode_count": 11,
+  "year": 2021,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Mushoku Tensei: Isekai Ittara Honki Dasu": [
+    ["mushoku-tensei-jobless-reincarnation-452", "Mushoku Tensei: Jobless Reincarnation", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-eris-the-goblin-slayer-1826", "Mushoku Tensei: Isekai Ittara Honki Dasu Special", "SPECIAL"],
+    ["mushoku-tensei-jobless-reincarnation-part-2-453", "Mushoku Tensei: Jobless Reincarnation Part 2", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-season-2-449", "Mushoku Tensei: Jobless Reincarnation Season 2", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-season-2-part-2-147", "Mushoku Tensei: Jobless Reincarnation Season 2 Part 2", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-season-3-6", "Mushoku Tensei: Jobless Reincarnation Season 3", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-season-2-episode-0-guardian-fitz-450", "Mushoku Tensei: Jobless Reincarnation Season 2 - Episode 0 \"Guardian Fitz\"", "TV"],
+    ["mushoku-tensei-jobless-reincarnation-specials-episode-0-9517", "Mushoku Tensei: Jobless Reincarnation Specials - Episode 0", "SPECIAL"]
+  ]
+ },
+ "episodes": {
+  "mushoku-tensei-jobless-reincarnation-452": [
+    [8702, 1, null],
+    [8703, 2, null],
+    [8704, 3, null],
+    [8705, 4, null],
+    [8706, 5, null],
+    [8707, 6, null],
+    [8708, 7, null],
+    [8709, 8, null],
+    [8710, 9, null],
+    [8711, 10, null],
+    [8712, 11, null]
+  ],
+  "mushoku-tensei-jobless-reincarnation-part-2-453": [
+    [8737, 1, null],
+    [8738, 2, null],
+    [8739, 3, null],
+    [8740, 4, null],
+    [8741, 5, null],
+    [8742, 6, null],
+    [8743, 7, null],
+    [8744, 8, null],
+    [8745, 9, null],
+    [8746, 10, null],
+    [8747, 11, null],
+    [8748, 12, null]
+  ]
+ },
+ "years": {
+  "mushoku-tensei-jobless-reincarnation-452": 2021,
+  "mushoku-tensei-jobless-reincarnation-part-2-453": 2021,
+  "mushoku-tensei-jobless-reincarnation-season-2-449": 2023,
+  "mushoku-tensei-jobless-reincarnation-season-2-part-2-147": 2024,
+  "mushoku-tensei-jobless-reincarnation-season-3-6": 2026
+ }
+}

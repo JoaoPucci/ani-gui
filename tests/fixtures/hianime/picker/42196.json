@@ -1,0 +1,52 @@
+{
+ "kitsu": {
+  "id": "42196",
+  "name": "Slime S2",
+  "canonical": "Tensei shitara Slime Datta Ken 2",
+  "alt_titles": ["転生したらスライムだった件2", "That Time I Got Reincarnated as a Slime 2", "TenSura 2", "Tensei Shitara Slime Datta Ken 2nd Season Part 1"],
+  "episode_count": 12,
+  "year": 2021,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Tensei shitara Slime Datta Ken 2": [
+    ["that-time-i-got-reincarnated-as-a-slime-the-movie-tears-of-the-azure-sea-2766", "That Time I Got Reincarnated as a Slime the Movie: Tears of the Azure Sea", "MOVIE"],
+    ["that-time-i-got-reincarnated-as-a-slime-season-2-part-2-492", "That Time I Got Reincarnated as a Slime 2nd Season Part 2", "TV"],
+    ["that-time-i-got-reincarnated-as-a-slime-season-2-487", "That Time I Got Reincarnated as a Slime Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "that-time-i-got-reincarnated-as-a-slime-season-2-487": [
+    [9353, 1, null],
+    [9354, 2, null],
+    [9355, 3, null],
+    [9356, 4, null],
+    [9357, 5, null],
+    [9358, 6, null],
+    [9359, 7, null],
+    [9360, 8, null],
+    [9361, 9, null],
+    [9362, 10, null],
+    [9363, 11, null],
+    [9364, 12, null]
+  ],
+  "that-time-i-got-reincarnated-as-a-slime-season-2-part-2-492": [
+    [9511, 1, null],
+    [9512, 2, null],
+    [9513, 3, null],
+    [9514, 4, null],
+    [9515, 5, null],
+    [9516, 6, null],
+    [9517, 7, null],
+    [9518, 8, null],
+    [9519, 9, null],
+    [9520, 10, null],
+    [9521, 11, null],
+    [9522, 12, null]
+  ]
+ },
+ "years": {
+  "that-time-i-got-reincarnated-as-a-slime-season-2-487": 2021,
+  "that-time-i-got-reincarnated-as-a-slime-season-2-part-2-492": 2021
+ }
+}

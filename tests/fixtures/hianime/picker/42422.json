@@ -1,0 +1,43 @@
+{
+ "kitsu": {
+  "id": "42422",
+  "name": "AoT FS",
+  "canonical": "Attack on Titan: The Final Season",
+  "alt_titles": ["Shingeki no Kyojin The Final Season", "進撃の巨人 The Final Season", "Shingeki no Kyojin Season 4", "Attack on Titan Season 4"],
+  "episode_count": 16,
+  "year": 2020,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Attack on Titan: The Final Season": [
+    ["attack-on-titan-final-season-the-final-chapters-867", "Attack on Titan: The Final Season Part 3", "TV"],
+    ["attack-on-titan-final-season-1372", "Attack on Titan: Final Season, Part 1", "TV"],
+    ["attack-on-titan-final-season-part-2-868", "Attack on Titan: Final Season, Part 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "attack-on-titan-final-season-1372": [
+    [23677, 1, null],
+    [23678, 2, null],
+    [23679, 3, null],
+    [23680, 4, null],
+    [23681, 5, null],
+    [23682, 6, null],
+    [23683, 7, null],
+    [23684, 8, null],
+    [23685, 9, null],
+    [23686, 10, null],
+    [23687, 11, null],
+    [23688, 12, null],
+    [23689, 13, null],
+    [23690, 14, null],
+    [23691, 15, null],
+    [23692, 16, null]
+  ]
+ },
+ "years": {
+  "attack-on-titan-final-season-1372": 2020,
+  "attack-on-titan-final-season-part-2-868": 2022,
+  "attack-on-titan-final-season-the-final-chapters-867": 2023
+ }
+}

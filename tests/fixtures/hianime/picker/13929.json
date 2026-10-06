@@ -1,0 +1,51 @@
+{
+ "kitsu": {
+  "id": "13929",
+  "name": "Tokyo Ghoul re",
+  "canonical": "Tokyo Ghoul:re",
+  "alt_titles": ["東京喰種トーキョーグール：re", "トーキョーグール：re", "Tokyo Kushu:re", "Toukyou Kuushu:re"],
+  "episode_count": 12,
+  "year": 2018,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Tokyo Ghoul:re": [
+    ["tokyo-ghoulre-892", "Tokyo Ghoul:re", "TV"],
+    ["tokyo-ghoulre-2nd-season-893", "Tokyo Ghoul:re 2nd Season", "TV"]
+  ]
+ },
+ "episodes": {
+  "tokyo-ghoulre-2nd-season-893": [
+    [14894, 1, null],
+    [14895, 2, null],
+    [14896, 3, null],
+    [14897, 4, null],
+    [14898, 5, null],
+    [14899, 6, null],
+    [14900, 7, null],
+    [14901, 8, null],
+    [14902, 9, null],
+    [14903, 10, null],
+    [14904, 11, null],
+    [14905, 12, null]
+  ],
+  "tokyo-ghoulre-892": [
+    [14882, 1, null],
+    [14883, 2, null],
+    [14884, 3, null],
+    [14885, 4, null],
+    [14886, 5, null],
+    [14887, 6, null],
+    [14888, 7, null],
+    [14889, 8, null],
+    [14890, 9, null],
+    [14891, 10, null],
+    [14892, 11, null],
+    [14893, 12, null]
+  ]
+ },
+ "years": {
+  "tokyo-ghoulre-2nd-season-893": 2018,
+  "tokyo-ghoulre-892": 2018
+ }
+}
