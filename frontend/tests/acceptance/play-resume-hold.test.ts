@@ -97,12 +97,17 @@ function kitsuEpisodes(count: number) {
 function useShowHandlers(
 	opts: {
 		autoSkipOp?: boolean;
+		nativeControls?: boolean;
 		skips?: { skip_type: string; start_time: number; end_time: number }[];
 	} = {}
 ) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () =>
-			HttpResponse.json({ ...appConfig(), auto_skip_op: opts.autoSkipOp === true })
+			HttpResponse.json({
+				...appConfig(),
+				auto_skip_op: opts.autoSkipOp === true,
+				use_custom_player_controls: opts.nativeControls !== true
+			})
 		),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
 			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
@@ -229,5 +234,38 @@ describe('play route — a resumed episode opens at its point', () => {
 		expect(play).toHaveBeenCalledTimes(1);
 		await until(() => !busy(), 'the frame to reveal');
 		await until(() => video.currentTime > 690, 'the opening to be skipped after the reveal');
+	});
+
+	it('a video that is itself fullscreen keeps its picture through the hold', async () => {
+		// Chromium's own controls fullscreen the <video>, not the frame,
+		// so nothing else the frame draws — the indicator included —
+		// reaches the screen. Hiding the picture there would leave the
+		// viewer a black screen with nothing to explain it; the hold
+		// keeps the picture instead, as before the hold existed.
+		savePosition(KITSU_ID, 1, 612.5, 1420);
+		useShowHandlers({ nativeControls: true });
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await until(() => busy(), 'the frame to hold');
+		expect(frame().classList.contains('player-resuming')).toBe(true);
+
+		const video = playerVideo();
+		Object.defineProperty(document, 'fullscreenElement', {
+			configurable: true,
+			get: () => video
+		});
+		try {
+			document.dispatchEvent(new Event('fullscreenchange'));
+			await new Promise((r) => setTimeout(r, 20));
+			expect(busy()).toBe(true);
+			expect(frame().classList.contains('player-resuming')).toBe(false);
+		} finally {
+			delete (document as unknown as { fullscreenElement?: unknown }).fullscreenElement;
+			document.dispatchEvent(new Event('fullscreenchange'));
+		}
+		await new Promise((r) => setTimeout(r, 20));
+		expect(frame().classList.contains('player-resuming')).toBe(true);
 	});
 });
