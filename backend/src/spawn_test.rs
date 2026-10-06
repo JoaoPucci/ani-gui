@@ -182,3 +182,40 @@ async fn a_windows_tool_that_exits_leaving_a_helper_has_the_helper_taken_down() 
     assert!(guard.take_down().await, "the helper is taken down");
     assert!(!guard.tree_running());
 }
+
+#[tokio::test]
+async fn a_tree_taken_down_once_is_not_looked_at_again() {
+    let (tree, state) = fake_tree(true, Some(0));
+    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree));
+    guard.child_mut().wait().await.expect("the child exits");
+    assert!(guard.take_down().await);
+    assert!(
+        guard.take_down().await,
+        "a second teardown has nothing to do"
+    );
+    assert_eq!(state.lock().expect("fake tree").kills, 1);
+}
+
+#[tokio::test]
+async fn a_dropped_guard_whose_tree_is_already_gone_sends_nothing() {
+    let (tree, state) = fake_tree(false, None);
+    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree));
+    guard.child_mut().wait().await.expect("the child exits");
+    drop(guard);
+    assert_eq!(state.lock().expect("fake tree").kills, 0);
+}
+
+#[tokio::test]
+async fn a_dropped_guard_whose_tree_never_empties_waits_the_ceiling_once() {
+    // The drop's own wait: nothing took the tree down before it, so it
+    // kills, waits the ceiling out and gives up rather than hang.
+    let (tree, state) = fake_tree(true, None);
+    let mut guard = TreeKillChild::with_tree(quick_child(), Box::new(tree));
+    guard.child_mut().wait().await.expect("the child exits");
+    let dropped = std::time::Instant::now();
+    drop(guard);
+    let took = dropped.elapsed();
+    assert!(took >= TREE_EXIT_CEILING, "it waited: {took:?}");
+    assert!(took < TREE_EXIT_CEILING * 2, "once: {took:?}");
+    assert_eq!(state.lock().expect("fake tree").kills, 1);
+}
