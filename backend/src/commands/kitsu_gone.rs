@@ -3,14 +3,15 @@
 //! it: the detail page's resume lookup matches a row's recorded id
 //! before anything else. The mark is written by any detail fetch a
 //! user action makes — never by a warm or background path — and only
-//! for a 404 or 410; every other failure says nothing about the id,
-//! and the mark takes the id's cached detail row with it. A later
+//! for a 404 or 410, and takes the id's cached detail row with it;
+//! every other failure says nothing about the id. A later
 //! fetch that succeeds clears it, as does a detail served from the
 //! cache, and neither verdict outlives a newer one: a failure of a read
 //! begun before Kitsu last served the id marks nothing, and a success
 //! is published — its row cached, the mark taken — in one step with
 //! its verdict, and not at all once a read begun after Kitsu served it
-//! has been answered gone. A mark that cannot be taken fails the read.
+//! has been answered gone: that read then reports the id gone too. A
+//! mark that cannot be taken fails the read.
 //! Removing history takes it ([`super::history_forget`]): a clear takes every mark, a delete the
 //! marks of the ids the show was known by that no remaining row claims.
 //! A read begun before such a removal writes no mark after it

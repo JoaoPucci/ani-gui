@@ -841,8 +841,9 @@ pub async fn resolve_allmanga_show_id(
             if let Ok(detail) = kitsu_anime_detail(state, &kid).await {
                 return Ok(Some(detail));
             }
-            // Stale id (Kitsu removed it, or the cached row is bad) —
-            // fall through and re-resolve.
+            // Stale id (Kitsu removed it, or the cached row is bad), or
+            // a gone mark the read could not take — fall through and
+            // re-resolve.
         }
     }
 
@@ -1032,7 +1033,8 @@ pub(crate) fn anime_detail_ttl(status: Option<&str>) -> u64 {
 /// Kitsu served the ref just now, so the id's gone mark goes with the
 /// write, in one step (`kitsu_gone`). Seeding is best-effort: when the
 /// mark cannot be taken it stays and nothing is cached, so the next
-/// detail read asks Kitsu and fails on the mark the same way.
+/// detail read asks Kitsu, and fails the same way while the mark
+/// still cannot be deleted.
 pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) {
     let body = detail
         .cover_image
