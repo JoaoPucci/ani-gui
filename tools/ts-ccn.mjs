@@ -30,18 +30,19 @@
 // script blocks are not script files, and the coverage run does not
 // instrument them either), declaration files (no bodies), and markup,
 // styles and data (.html without an inline <script>, .css, .json);
-// generated Paraglide output is skipped and counted. A file of any
-// other kind fails the run. Decisions outside every function
-// (module-scope code) are counted and reported as charged to no unit.
+// generated Paraglide output (`lib/paraglide` under a root) is skipped
+// and counted. A file of any other kind fails the run. Decisions
+// outside every function (module-scope code) are counted and reported
+// as charged to no unit.
 //
 // Usage: node tools/ts-ccn.mjs [--tsv] <path>...
 // Default output is lizard's XML shape, which tools/crap-score.mjs
 // reads; `--tsv` lists one unit per line. A file with syntax errors is
 // reported and the run exits non-zero — an unparsed file is a
 // measurement that did not happen, and the gate must not read it as
-// zero. So is a root that does not exist or holds no TypeScript.
-// Paths containing `paraglide` (compiled message bundles) are
-// skipped, as the gate always skipped them.
+// zero. So is a root that does not exist or holds no script file.
+// The generated Paraglide directory (`lib/paraglide` under a root) is
+// skipped and counted, as the gate always skipped it.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -151,16 +152,21 @@ const KINDS = [
 	['noScript', /\.(css|html|json)$/]
 ];
 
-function collect(p, out) {
+/** Where `pnpm i18n:compile` writes Paraglide's output, relative to a
+ *  root (frontend/package.json: `--outdir ./src/lib/paraglide`). */
+const PARAGLIDE_OUTDIR = path.join('lib', 'paraglide');
+
+function collect(p, out, root = p) {
 	// Paraglide's compiled message bundles: generated, one switch arm per
-	// message key, and never measured by the gate.
-	if (p.includes('paraglide')) {
-		out.paraglide += fs.statSync(p).isDirectory() ? countFiles(p) : 1;
+	// message key, and never measured by the gate. Only that directory —
+	// a hand-written file merely named like it is classified as any other.
+	if (path.resolve(p) === path.resolve(root, PARAGLIDE_OUTDIR)) {
+		out.paraglide += countFiles(p);
 		return;
 	}
 	const stat = fs.statSync(p);
 	if (stat.isDirectory()) {
-		for (const entry of fs.readdirSync(p).sort()) collect(path.join(p, entry), out);
+		for (const entry of fs.readdirSync(p).sort()) collect(path.join(p, entry), out, root);
 		return;
 	}
 	let kind = KINDS.find(([, re]) => re.test(p))?.[0] ?? 'unknown';

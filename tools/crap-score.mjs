@@ -127,7 +127,7 @@ function parseLcov(file, prefix = '') {
  *  complexity tools score them but lcov never covers them — they'd
  *  artifact-dominate the rankings. */
 function isProductionFile(file) {
-	if (/\.(test|spec)\.[jt]sx?$/.test(file)) return false;
+	if (/\.(test|spec)\.([mc]?[jt]s|[jt]sx)$/.test(file)) return false;
 	if (/(^|\/)tests?\//.test(file)) return false;
 	if (/_test\.rs$/.test(file)) return false;
 	return true;
