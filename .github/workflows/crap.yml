@@ -9,7 +9,9 @@ name: 'crap score'
 # The complexity used to come from lizard, whose regex tokenizers lost
 # their place on ordinary Rust and TypeScript and dropped functions from
 # the counts without saying so. Each tool here fails the run on a file it
-# cannot parse, and states on stderr what it does not measure.
+# cannot parse or a root with nothing to measure, and states on stderr
+# what it does not measure: functions inside item-position macros (as
+# blocks), decisions outside any function, .svelte components.
 #
 # Always fires; the `filter` job decides whether downstream steps run
 # the real pipeline or no-op. See rust.yml for the design rationale.
@@ -69,9 +71,7 @@ jobs:
       - if: needs.filter.outputs.relevant == 'true'
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            backend
-            tools/rust-ccn
+          workspaces: backend
           shared-key: llvm-cov
       - if: needs.filter.outputs.relevant == 'true'
         uses: taiki-e/install-action@v2
@@ -105,9 +105,12 @@ jobs:
         name: Test the complexity tools
         # The gate's instruments are checked before they measure. The
         # TypeScript tool's tests live outside tests/tools/ because they
-        # need the compiler from the frontend's dependencies, which only
-        # this job installs.
+        # need the compiler from the frontend's dependencies, and the
+        # job that runs tests/tools/ (arch.yml) installs none; this one
+        # does. The Rust tool gets the lints its tests do not cover.
         run: |
+          cargo fmt --check --manifest-path tools/rust-ccn/Cargo.toml
+          cargo clippy --locked --all-targets --manifest-path tools/rust-ccn/Cargo.toml -- -D warnings
           cargo test --locked --manifest-path tools/rust-ccn/Cargo.toml
           node --test tests/complexity/*.test.mjs
 
