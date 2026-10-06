@@ -260,3 +260,326 @@ async fn seed_airing_rows_batch_skips_shows_with_fresh_rows() {
         .expect("recorded")
         .is_empty());
 }
+
+#[tokio::test]
+async fn a_refresh_skips_the_cached_row_and_stores_what_it_fetched() {
+    // The click on an unaired tile: the cached row says one episode is
+    // out, the schedule now says two. The refresh must reach AniList
+    // past the row, and the next plain read must see what it stored.
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/50551"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_ONLY_MAPPING_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(ANILIST_RELEASING_BODY))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:50551",
+        r#"{"aired":1,"next_episode":null,"next_airing_at":null,"upcoming":[]}"#,
+        3600,
+    )
+    .expect("seed");
+    let fresh = airing_refresh_with_anilist_base(&state, "50551", Some(&anilist.uri()))
+        .await
+        .expect("ok");
+    assert_eq!(fresh.aired, Some(2));
+    let stored = airing_get_with_anilist_base(&state, "50551", Some("http://127.0.0.1:1"))
+        .await
+        .expect("served from the row the refresh wrote");
+    assert_eq!(stored.aired, Some(2));
+}
+
+// --- a schedule that arrives after the availability row ---------------
+// A current show's positive row written before any airing row keeps
+// the ongoing day; every path that writes the airing row must cut it.
+
+fn epoch_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn seed_positive_day(state: &AppState, kitsu_id: &str) {
+    let key = crate::commands::availability::cache_key(kitsu_id, "sub");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &key,
+        r#"{"available":true,"episode_count":7}"#,
+        24 * 60 * 60,
+    )
+    .expect("seed availability row");
+}
+
+fn row_ttl(state: &AppState, kitsu_id: &str) -> u64 {
+    let conn = state.cache_pool.get().expect("conn");
+    let ttl: i64 = conn
+        .query_row(
+            "SELECT ttl_seconds FROM meta_cache WHERE key = ?1",
+            [crate::commands::availability::cache_key(kitsu_id, "sub")],
+            |r| r.get(0),
+        )
+        .expect("row");
+    u64::try_from(ttl).expect("non-negative")
+}
+
+async fn mappings_and_anilist(body: String) -> (wiremock::MockServer, wiremock::MockServer) {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/50551"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_ANILIST_ONLY_MAPPING_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(body))
+        .mount(&anilist)
+        .await;
+    (kitsu, anilist)
+}
+
+fn releasing_in_two_hours() -> String {
+    let at = epoch_now() + 2 * 60 * 60;
+    format!(
+        r#"{{"data":{{"Media":{{"status":"RELEASING","episodes":12,
+        "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}}}}}"#
+    )
+}
+
+/// Two hours to the drop plus the provider's grace — not a day.
+fn assert_cut_at_the_drop(ttl: u64) {
+    assert!(ttl <= 3 * 60 * 60 + 5, "ttl {ttl}");
+    assert!(ttl > 2 * 60 * 60, "ttl {ttl}");
+}
+
+#[tokio::test]
+async fn a_detail_page_s_schedule_cuts_a_count_written_before_it() {
+    let (kitsu, anilist) = mappings_and_anilist(releasing_in_two_hours()).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "50551");
+    airing_get_with_anilist_base(&state, "50551", Some(&anilist.uri()))
+        .await
+        .expect("ok");
+    assert_cut_at_the_drop(row_ttl(&state, "50551"));
+}
+
+#[tokio::test]
+async fn a_recheck_s_schedule_cuts_a_count_written_before_it() {
+    let (kitsu, anilist) = mappings_and_anilist(releasing_in_two_hours()).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "50551");
+    airing_refresh_with_anilist_base(&state, "50551", Some(&anilist.uri()))
+        .await
+        .expect("ok");
+    assert_cut_at_the_drop(row_ttl(&state, "50551"));
+}
+
+#[tokio::test]
+async fn a_batch_seeded_schedule_cuts_a_count_written_before_it() {
+    let at = epoch_now() + 2 * 60 * 60;
+    let batch = format!(
+        r#"{{"data":{{"Page":{{"media":[
+        {{"id":207141,"status":"RELEASING","episodes":12,
+         "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}]}}}}}}"#
+    );
+    let (kitsu, anilist) = mappings_and_anilist(batch).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "50551");
+    seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
+    assert_cut_at_the_drop(row_ttl(&state, "50551"));
+}
+
+#[tokio::test]
+async fn a_batch_seeded_schedule_cuts_a_negative_written_before_it() {
+    let at = epoch_now() + 2 * 60 * 60;
+    let batch = format!(
+        r#"{{"data":{{"Page":{{"media":[
+        {{"id":207141,"status":"RELEASING","episodes":12,
+         "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}]}}}}}}"#
+    );
+    let (kitsu, anilist) = mappings_and_anilist(batch).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let key = crate::commands::availability::cache_key("50551", "sub");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &key,
+        r#"{"available":false}"#,
+        24 * 60 * 60,
+    )
+    .expect("seed negative row");
+    seed_airing_rows_batch(&state, &["50551".to_string()], Some(&anilist.uri())).await;
+    // Two hours to the drop plus the negative grace of three — not a day.
+    let ttl = row_ttl(&state, "50551");
+    assert!(ttl <= 5 * 60 * 60 + 5, "ttl {ttl}");
+    assert!(ttl > 4 * 60 * 60, "ttl {ttl}");
+}
+
+#[tokio::test]
+async fn a_detail_page_s_schedule_past_the_count_cuts_it_to_the_floor() {
+    // AniList already points at next week's episode 9; the provider's
+    // row says 7 (seed_positive_day).
+    let at = epoch_now() + 6 * 24 * 60 * 60;
+    let body = format!(
+        r#"{{"data":{{"Media":{{"status":"RELEASING","episodes":12,
+        "nextAiringEpisode":{{"episode":9,"airingAt":{at}}}}}}}}}"#
+    );
+    let (kitsu, anilist) = mappings_and_anilist(body).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "50551");
+    airing_get_with_anilist_base(&state, "50551", Some(&anilist.uri()))
+        .await
+        .expect("ok");
+    let ttl = row_ttl(&state, "50551");
+    assert!(ttl <= 60 * 60 + 5, "ttl {ttl}");
+}
+
+// --- a show Kitsu maps to MAL alone -------------------------------------
+// The warm's batch seed is the only schedule a current show's positive
+// probe gets before it writes, so a MAL-only mapping must be seeded by
+// the batch too — AniList answers `idMal_in` in the same page shape.
+
+fn kitsu_mapping(kitsu_id: &str, mappings: &[(&str, &str)]) -> String {
+    let included: Vec<serde_json::Value> = mappings
+        .iter()
+        .enumerate()
+        .map(|(i, (site, id))| {
+            serde_json::json!({
+                "id": i.to_string(),
+                "type": "mappings",
+                "attributes": { "externalSite": site, "externalId": id }
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "data": { "id": kitsu_id, "type": "anime", "attributes": { "canonicalTitle": "t" } },
+        "included": included,
+    })
+    .to_string()
+}
+
+async fn kitsu_with(shows: &[(&str, &[(&str, &str)])]) -> wiremock::MockServer {
+    use wiremock::matchers::{method, path};
+    let kitsu = wiremock::MockServer::start().await;
+    for (kitsu_id, mappings) in shows {
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/anime/{kitsu_id}")))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_string(kitsu_mapping(kitsu_id, mappings)),
+            )
+            .mount(&kitsu)
+            .await;
+    }
+    kitsu
+}
+
+fn cached_airing_row(state: &AppState, kitsu_id: &str) -> Option<AiringStatus> {
+    crate::cache::meta_cache_get(&state.cache_pool, &format!("airing:v2:{kitsu_id}"))
+        .expect("cache read")
+        .map(|body| serde_json::from_str(&body).expect("parses"))
+}
+
+#[tokio::test]
+async fn a_batch_seeded_schedule_cuts_a_mal_only_show_s_count_written_before_it() {
+    use wiremock::matchers::{body_string_contains, method};
+    let kitsu = kitsu_with(&[("60001", &[("myanimelist/anime", "63403")])]).await;
+    let at = epoch_now() + 2 * 60 * 60;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("idMal_in"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(format!(
+                r#"{{"data":{{"Page":{{"media":[
+            {{"idMal":63403,"status":"RELEASING","episodes":12,
+             "nextAiringEpisode":{{"episode":8,"airingAt":{at}}}}}]}}}}}}"#
+            )),
+        )
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    seed_positive_day(&state, "60001");
+    seed_airing_rows_batch(&state, &["60001".to_string()], Some(&anilist.uri())).await;
+    assert_eq!(
+        cached_airing_row(&state, "60001").and_then(|s| s.next_airing_at),
+        Some(at)
+    );
+    assert_cut_at_the_drop(row_ttl(&state, "60001"));
+}
+
+/// Every mapping shape at once: an AniList id, both ids, MAL alone, a
+/// MAL id AniList doesn't know, and no mapping. AniList ids go in the
+/// `id_in` request, MAL ids only for shows without an AniList id, and
+/// the whole rail still costs two requests, not one per show.
+#[tokio::test]
+async fn seed_airing_rows_batch_seeds_every_mapping_shape_in_two_requests() {
+    use wiremock::matchers::{body_string_contains, method};
+    let kitsu = kitsu_with(&[
+        ("1", &[("anilist/anime", "207141")]),
+        (
+            "2",
+            &[("anilist/anime", "185874"), ("myanimelist/anime", "59970")],
+        ),
+        ("3", &[("myanimelist/anime", "63403")]),
+        ("4", &[("myanimelist/anime", "11111")]),
+        ("5", &[]),
+    ])
+    .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("idMal_in"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
+            r#"{"data":{"Page":{"media":[
+            {"idMal":63403,"status":"NOT_YET_RELEASED","episodes":13,
+             "nextAiringEpisode":{"episode":1,"airingAt":1784988000}}]}}}"#,
+        ))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    wiremock::Mock::given(method("POST"))
+        .and(body_string_contains("id_in"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(ANILIST_BATCH_BODY))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let ids: Vec<String> = ["1", "2", "3", "4", "5"].map(String::from).to_vec();
+    seed_airing_rows_batch(&state, &ids, Some(&anilist.uri())).await;
+
+    let next = |id| cached_airing_row(&state, id).and_then(|s| s.next_airing_at);
+    assert_eq!(next("1"), Some(1_784_215_800));
+    assert_eq!(next("2"), Some(1_784_988_000));
+    assert_eq!(next("3"), Some(1_784_988_000));
+    assert!(cached_airing_row(&state, "4").is_none());
+    assert!(cached_airing_row(&state, "5").is_none());
+
+    let mut variables: Vec<serde_json::Value> = anilist
+        .received_requests()
+        .await
+        .expect("recorded")
+        .iter()
+        .map(|r| {
+            serde_json::from_slice::<serde_json::Value>(&r.body).expect("json")["variables"].clone()
+        })
+        .collect();
+    variables.sort_by_key(|v| v.to_string());
+    assert_eq!(
+        variables,
+        vec![
+            serde_json::json!({ "ids": [207141, 185874] }),
+            serde_json::json!({ "malIds": [63403, 11111] }),
+        ]
+    );
+}

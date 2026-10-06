@@ -311,6 +311,10 @@ async fn get_kitsu_top_rated(
 #[derive(Deserialize)]
 struct EpisodesQuery {
     page: Option<u32>,
+    /// Skip the cached page — sent only by a click on a tile the
+    /// schedule calls unaired.
+    #[serde(default)]
+    refresh: bool,
 }
 
 async fn get_kitsu_episodes(
@@ -320,7 +324,7 @@ async fn get_kitsu_episodes(
 ) -> Result<Json<Vec<KitsuEpisode>>, AniError> {
     let page = q.page.unwrap_or(1);
     Ok(Json(
-        kitsu_inner::kitsu_episodes(&state, &anime_id, page).await?,
+        kitsu_inner::kitsu_episodes_with(&state, &anime_id, page, q.refresh).await?,
     ))
 }
 
@@ -1711,7 +1715,7 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:44294", &body, 60 * 60)
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:44294", &body, 60 * 60)
             .expect("put");
 
         let pool = state.cache_pool.clone();
@@ -1804,7 +1808,7 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:99001", &body, 60 * 60)
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:99001", &body, 60 * 60)
             .expect("put");
 
         let pool = state.cache_pool.clone();
@@ -1888,7 +1892,7 @@ mod tests {
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
-        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v3:anime:99002", &body, 60 * 60)
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:v4:anime:99002", &body, 60 * 60)
             .expect("put");
 
         let pool = state.cache_pool.clone();

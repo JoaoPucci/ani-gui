@@ -108,6 +108,69 @@ pub fn meta_cache_put(pool: &SqlitePool, key: &str, body: &str, ttl_seconds: u64
     Ok(())
 }
 
+/// A meta_cache row as stored, expired or not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MetaCacheRow {
+    /// The cached body.
+    pub body: String,
+    /// When the row was written, in seconds since the epoch.
+    pub fetched_at: u64,
+    /// How long past `fetched_at` the row is served.
+    pub ttl_seconds: u64,
+}
+
+/// Read a meta_cache row with its timestamps, whether or not it has
+/// expired — for callers that rewrite a row's window in place.
+///
+/// # Errors
+/// [`AniError::Cache`] on connection or query failure.
+pub fn meta_cache_row(pool: &SqlitePool, key: &str) -> Result<Option<MetaCacheRow>> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    let row: Option<(String, i64, i64)> = conn
+        .query_row(
+            "SELECT body, fetched_at, ttl_seconds FROM meta_cache WHERE key = ?1",
+            params![key],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()
+        .map_err(|_| AniError::Cache)?;
+    Ok(row.map(|(body, fetched_at, ttl)| MetaCacheRow {
+        body,
+        fetched_at: u64::try_from(fetched_at).unwrap_or(0),
+        ttl_seconds: u64::try_from(ttl).unwrap_or(0),
+    }))
+}
+
+/// Lower `seen`'s TTL to `ttl_seconds`, body and `fetched_at` kept.
+/// Applies only while the stored row is still `seen` and only when it
+/// shortens, so a row rewritten since it was read keeps its window.
+///
+/// # Errors
+/// [`AniError::Cache`] on write failure.
+pub fn meta_cache_shorten(
+    pool: &SqlitePool,
+    key: &str,
+    seen: &MetaCacheRow,
+    ttl_seconds: u64,
+) -> Result<()> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    let as_i64 = |v: u64| i64::try_from(v).unwrap_or(i64::MAX);
+    conn.execute(
+        "UPDATE meta_cache SET ttl_seconds = ?1 \
+         WHERE key = ?2 AND body = ?3 AND fetched_at = ?4 AND ttl_seconds = ?5 \
+         AND ?1 < ttl_seconds",
+        params![
+            as_i64(ttl_seconds),
+            key,
+            seen.body,
+            as_i64(seen.fetched_at),
+            as_i64(seen.ttl_seconds)
+        ],
+    )
+    .map_err(|_| AniError::Cache)?;
+    Ok(())
+}
+
 /// Delete every meta_cache entry. Used by tests and a future "clear cache"
 /// menu item.
 ///

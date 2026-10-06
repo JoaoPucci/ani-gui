@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
 
@@ -19,13 +19,25 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/api/kitsu/airing/:kitsu_id", get(get_airing))
 }
 
+/// `?refresh=true` skips the cached row — sent only by a click on a
+/// tile the row calls unaired.
+#[derive(serde::Deserialize)]
+struct AiringQuery {
+    #[serde(default)]
+    refresh: bool,
+}
+
 async fn get_airing(
     State(state): State<Arc<AppState>>,
     Path(kitsu_id): Path<String>,
+    Query(q): Query<AiringQuery>,
 ) -> Result<Json<AiringStatus>, AniError> {
-    Ok(Json(
-        crate::commands::airing::airing_get(&state, &kitsu_id).await?,
-    ))
+    let status = if q.refresh {
+        crate::commands::airing::airing_refresh(&state, &kitsu_id).await?
+    } else {
+        crate::commands::airing::airing_get(&state, &kitsu_id).await?
+    };
+    Ok(Json(status))
 }
 
 #[cfg(test)]

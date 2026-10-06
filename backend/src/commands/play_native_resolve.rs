@@ -17,7 +17,7 @@ use crate::commands::progress::ProgressLine;
 use crate::error::AniError;
 use crate::scraper::provider::{Provider, ProviderId, ShowKey, SubtitleTrack};
 
-use super::play_native::pick_candidate;
+use super::play_native::pick_candidate_titled;
 pub use super::play_native_episode::resolve_episode;
 use super::play_native_episode::{classify_chain_failure, ChainOutcome};
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
@@ -179,6 +179,9 @@ where
     on_progress(ProgressLine::Searching {
         provider: client.label().into(),
     });
+    let entry_titles: Vec<&str> = std::iter::once(req.title)
+        .chain(req.alt_titles.iter().map(String::as_str))
+        .collect();
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
     // A non-blocking status an episode chain answered, kept for the
@@ -196,8 +199,16 @@ where
                 if hits.is_empty() {
                     continue;
                 }
-                match pick_candidate(client, &hits, req.expected_count, t, req.year, req.subtype)
-                    .await
+                match pick_candidate_titled(
+                    client,
+                    &hits,
+                    req.expected_count,
+                    t,
+                    &entry_titles,
+                    req.year,
+                    req.subtype,
+                )
+                .await
                 {
                     Ok(picked) => {
                         on_progress(ProgressLine::Matched {

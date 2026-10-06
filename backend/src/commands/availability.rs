@@ -544,6 +544,12 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v14: an entry the provider splits into several shows is probed
+    //      against all of them, its cap counted across the parts in
+    //      Kitsu's numbering. A v13 row for such a show carries one
+    //      part's count (Steel Ball Run: the 2nd Stage's 2 where the
+    //      entry has 3) and holds it for the row's lifetime; re-keying
+    //      re-probes on the next page open.
     // v13: a negative row names the provider whose clean miss it is
     //      and is served only while that provider is answering — a
     //      miss does not fail over, so the row is one provider's
@@ -619,7 +625,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v13:{kitsu_id}:{m}")
+    format!("availability:v14:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -1012,8 +1018,7 @@ fn positive_ttl_for(status: Option<&str>) -> u64 {
 ///   - not finished, no
 ///     schedule known    → 24h, same as the ongoing positive TTL.
 fn negative_ttl_for(status: Option<&str>, next_airing_at: Option<u64>, now_epoch_s: u64) -> u64 {
-    const GRACE_SECS: u64 = 3 * 60 * 60;
-    const FLOOR_SECS: u64 = 60 * 60;
+    use crate::commands::availability_ttl::{FLOOR_SECS, NEGATIVE_GRACE_SECS as GRACE_SECS};
     if status == Some("finished") {
         return AVAILABILITY_TTL_NEGATIVE_SECS;
     }
@@ -1071,11 +1076,17 @@ async fn seed_airing_for_negative_with_base(
 /// Deliberately cache-only — a missing row just means the
 /// status-based fallback in [`negative_ttl_for`] applies.
 fn cached_next_airing_at(state: &AppState, kitsu_id: &str) -> Option<u64> {
+    cached_airing(state, kitsu_id)?.next_airing_at
+}
+
+/// The show's cached airing row, read as [`cached_next_airing_at`] reads it.
+fn cached_airing(
+    state: &AppState,
+    kitsu_id: &str,
+) -> Option<crate::meta::anilist_airing::AiringStatus> {
     let key = format!("airing:v2:{kitsu_id}");
     let body = meta_cache_get(&state.cache_pool, &key).ok().flatten()?;
-    serde_json::from_str::<crate::meta::anilist_airing::AiringStatus>(&body)
-        .ok()?
-        .next_airing_at
+    serde_json::from_str(&body).ok()
 }
 
 /// Same as [`write_cache`] but lets the caller supply the episode
@@ -1092,24 +1103,89 @@ pub fn write_cache_full(
     if kitsu_id.is_empty() {
         return;
     }
-    let key = cache_key(kitsu_id, mode);
-    let ttl = if body.available {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ttl = availability_row_ttl(state, kitsu_id, status, body, now);
+    put_availability_row(state, kitsu_id, mode, status, body, ttl);
+}
+
+/// The window a row written now gets, from the show's status and the
+/// cached schedule.
+fn availability_row_ttl(
+    state: &AppState,
+    kitsu_id: &str,
+    status: Option<&str>,
+    body: &AvailabilityResponse,
+    now: u64,
+) -> u64 {
+    if body.available && status == Some("finished") {
         positive_ttl_for(status)
+    } else if body.available {
+        // Still airing: the count goes stale at the next drop — or
+        // already has, when the schedule's aired count is past it.
+        use crate::commands::availability_ttl::{bounded_by_next_airing, next_airing_for_count};
+        let airing = cached_airing(state, kitsu_id);
+        let next = airing.as_ref().and_then(|a| a.next_airing_at);
+        let aired = airing.as_ref().and_then(|a| a.aired);
+        bounded_by_next_airing(
+            positive_ttl_for(status),
+            next_airing_for_count(next, body.episode_count, aired, now),
+            now,
+        )
     } else {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
         negative_ttl_for(status, cached_next_airing_at(state, kitsu_id), now)
-    };
-    if let Ok(serialized) = serde_json::to_string(body) {
-        if meta_cache_put(&state.cache_pool, &key, &serialized, ttl).is_ok() && body.available {
-            // Counted so a negative out at this moment can tell, when
-            // it comes to write, that this proof landed meanwhile —
-            // even where it put the same bytes back.
-            state.availability_refreshes.note_positive(&key);
-        }
     }
+}
+
+/// Store a row under the window [`availability_row_ttl`] gave it.
+fn put_availability_row(
+    state: &AppState,
+    kitsu_id: &str,
+    mode: &str,
+    status: Option<&str>,
+    body: &AvailabilityResponse,
+    ttl: u64,
+) {
+    let key = cache_key(kitsu_id, mode);
+    let Ok(serialized) = serde_json::to_string(body) else {
+        return;
+    };
+    if meta_cache_put(&state.cache_pool, &key, &serialized, ttl).is_err() {
+        return;
+    }
+    if body.available {
+        // Counted so a negative out at this moment can tell, when
+        // it comes to write, that this proof landed meanwhile —
+        // even where it put the same bytes back.
+        state.availability_refreshes.note_positive(&key);
+    }
+    // A schedule put after this write read none has scanned for rows
+    // to cut before this one existed; re-read it and cut here, so
+    // whichever of the two writes lands second applies the cut. A
+    // finished show's window ignores the schedule by design.
+    if status != Some("finished") {
+        recut_after_put(state, kitsu_id, &key);
+    }
+}
+
+/// Apply the cached schedule to the row just put at `key`.
+fn recut_after_put(state: &AppState, kitsu_id: &str, key: &str) {
+    let Some(airing) = cached_airing(state, kitsu_id) else {
+        return;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    crate::commands::availability_reschedule::cut_row(
+        &state.cache_pool,
+        key,
+        airing.next_airing_at,
+        airing.aired,
+        now,
+    );
 }
 
 /// Cached-only batch lookup. Returns `cached[id] = available` for
@@ -1162,27 +1238,8 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
 /// unavailable cards.
 pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>) {
     use tokio::time::sleep;
-    // Batch-seed airing rows for the pre-premiere entries that will
-    // actually probe (no fresh availability row): one AniList request
-    // for the whole rail, so each probe's per-show seed below becomes
-    // a cache hit instead of its own AniList call.
-    let mut premiere_ids: Vec<String> = Vec::new();
-    for args in &items {
-        let mode = if args.mode == "dub" { "dub" } else { "sub" };
-        let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
-            continue;
-        };
-        if has_usable_row(&state, id, mode) {
-            continue;
-        }
-        if matches!(
-            args.status.as_deref(),
-            Some("unreleased" | "tba" | "upcoming")
-        ) {
-            premiere_ids.push(id.to_string());
-        }
-    }
-    crate::commands::airing::seed_airing_rows_batch(&state, &premiere_ids, None).await;
+    let seed_ids = schedule_seed_ids(&state, &items);
+    crate::commands::airing::seed_airing_rows_batch(&state, &seed_ids, None).await;
     for args in items {
         let mode = if args.mode == "dub" { "dub" } else { "sub" };
         let id = match args.kitsu_id.as_deref() {
@@ -1219,6 +1276,33 @@ pub async fn warm(state: std::sync::Arc<AppState>, items: Vec<AvailabilityArgs>)
 /// [`cache_hit_is_usable`]: a count-less or approximate positive
 /// re-probes, and so does a negative row whose provider no longer
 /// stands behind it.
+/// The warm entries whose airing row is batch-seeded before they
+/// probe: every entry still on air or to come that will actually
+/// probe (no fresh availability row). One AniList request per id
+/// space — AniList id, or MAL id for a show mapped to MAL alone —
+/// covers a rail of up to 50 shows. A pre-premiere probe's per-show seed becomes a cache
+/// hit, and a current show's positive row is bounded by its next
+/// airing when it is written rather than holding the ongoing day.
+fn schedule_seed_ids(state: &AppState, items: &[AvailabilityArgs]) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    for args in items {
+        let mode = if args.mode == "dub" { "dub" } else { "sub" };
+        let Some(id) = args.kitsu_id.as_deref().filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        if has_usable_row(state, id, mode) {
+            continue;
+        }
+        if matches!(
+            args.status.as_deref(),
+            Some("current" | "unreleased" | "tba" | "upcoming")
+        ) {
+            ids.push(id.to_string());
+        }
+    }
+    ids
+}
+
 fn has_usable_row(state: &AppState, kitsu_id: &str, mode: &str) -> bool {
     let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &cache_key(kitsu_id, mode)) else {
         return false;
@@ -1262,6 +1346,10 @@ mod backed_tests;
 #[cfg(test)]
 #[path = "availability_stamp_race_test.rs"]
 mod stamp_race_tests;
+
+#[cfg(test)]
+#[path = "availability_positive_ttl_test.rs"]
+mod positive_ttl_tests;
 
 #[cfg(test)]
 mod tests {
@@ -3596,8 +3684,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v13:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v13:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v14:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v14:kid-1:dub");
     }
 
     #[test]

@@ -17,6 +17,7 @@ use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
+use super::play_native_part_title::precedes_entry;
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -76,6 +77,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// - With `expected = None`: an exact title match wins, else the
 ///   first surviving hit — positional order is the provider's own
 ///   ranking.
+/// - A candidate the searched title names a later part of ("X" when
+///   asked for "X Season 2") is the season before, and never picked;
+///   [`pick_candidate_titled`] reads every title the entry goes by.
 /// - Probe errors skip the candidate rather than abort the pick; a
 ///   pick only fails when no probed candidate survives.
 ///
@@ -90,6 +94,34 @@ pub async fn pick_candidate<P: Provider + ?Sized>(
     year: Option<u32>,
     subtype: Option<&str>,
 ) -> Result<PickedShow> {
+    pick_candidate_titled(
+        client,
+        hits,
+        expected,
+        search_title,
+        &[search_title],
+        year,
+        subtype,
+    )
+    .await
+}
+
+/// [`pick_candidate`] told every title the requested entry goes by —
+/// the canonical title and its fallbacks, not only the one searched —
+/// which the split-entry detection reads to tell the entry from its
+/// parts.
+///
+/// # Errors
+/// As [`pick_candidate`].
+pub async fn pick_candidate_titled<P: Provider + ?Sized>(
+    client: &P,
+    hits: &[BrowseHit],
+    expected: Option<u32>,
+    search_title: &str,
+    entry_titles: &[&str],
+    year: Option<u32>,
+    subtype: Option<&str>,
+) -> Result<PickedShow> {
     if hits.is_empty() {
         // Nothing to probe: a clean absence of candidates, distinct
         // from probes that failed below.
@@ -99,7 +131,11 @@ pub async fn pick_candidate<P: Provider + ?Sized>(
     // Format disproof in both directions, over the RAW list — the
     // badge is free, so incompatible formats never crowd the bounded
     // probe head (see play_native_format).
-    let hits = format_survivors(hits, expected, subtype);
+    let mut hits = format_survivors(hits, expected, subtype);
+    // A part before the requested entry is not the entry, whichever way
+    // the pick would use it: alone, rescued as airing, or heading a
+    // stitched chain.
+    hits.retain(|h| !precedes_entry(&h.title, entry_titles));
     let (head, year_excluded_any) = year_filtered(client, &hits, year).await?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
@@ -174,6 +210,14 @@ pub async fn pick_candidate<P: Provider + ?Sized>(
             } else {
                 crate::error::AniError::Upstream { status: 404 }
             })?;
+    // One Kitsu entry the provider lists as several shows: every part
+    // was probed, so stitching them costs nothing. Only with every
+    // candidate heard — a dead probe may have been one of the parts.
+    if !any_transport_failure {
+        if let Some(picked) = super::play_native_split::stitched(&probed_ok, expected, best_dist) {
+            return Ok(picked);
+        }
+    }
     if best_dist > ep_count_threshold(expected) {
         // The airing-part rescue: a candidate whose own year matched
         // Kitsu's and whose list is short is what a currently-airing

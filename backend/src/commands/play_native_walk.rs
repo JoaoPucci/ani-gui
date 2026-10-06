@@ -5,7 +5,7 @@
 use crate::error::AniError;
 use crate::scraper::provider::Provider;
 
-use super::play_native::{pick_candidate, PickedShow};
+use super::play_native::{pick_candidate_titled, PickedShow};
 use super::play_native_resolve::NativeError;
 
 /// The walk's pick half, shared with the availability probes: search
@@ -26,6 +26,9 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
     year: Option<u32>,
     subtype: Option<&str>,
 ) -> std::result::Result<PickedShow, NativeError> {
+    let entry_titles: Vec<&str> = std::iter::once(title)
+        .chain(alt_titles.iter().map(String::as_str))
+        .collect();
     let mut any_search_succeeded = false;
     let mut any_search_errored = false;
     let mut any_answered_dead_end = false;
@@ -37,7 +40,17 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                 if hits.is_empty() {
                     continue;
                 }
-                match pick_candidate(client, &hits, expected_count, t, year, subtype).await {
+                match pick_candidate_titled(
+                    client,
+                    &hits,
+                    expected_count,
+                    t,
+                    &entry_titles,
+                    year,
+                    subtype,
+                )
+                .await
+                {
                     Ok(picked) => return Ok(picked),
                     // A rejected pool is a clean verdict about THIS
                     // pool; the next alias may carry the real show.

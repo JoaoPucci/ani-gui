@@ -999,16 +999,28 @@ export interface AiringStatus {
 /** Airing schedule for a show — how many episodes are actually out
  *  and when the next one lands. Detail page fetches it for airing
  *  shows to grey out unaired tiles. */
-export function airingGet(kitsuId: string): Promise<AiringStatus> {
-	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}`);
+export function airingGet(
+	kitsuId: string,
+	opts: { refresh?: boolean } = {}
+): Promise<AiringStatus> {
+	// `refresh` skips the cached row — only a click on an unaired tile
+	// sends it. `=true`, not `=1`: the backend parses a Rust bool.
+	const qs = opts.refresh ? '?refresh=true' : '';
+	return getJson<AiringStatus>(`/api/kitsu/airing/${encodeURIComponent(kitsuId)}${qs}`);
 }
 
 export function kitsuTopRated(): Promise<KitsuAnimeRef[]> {
 	return getJson<KitsuAnimeRef[]>('/api/kitsu/top-rated');
 }
 
-export function kitsuEpisodes(animeId: string, page: number = 1): Promise<KitsuEpisode[]> {
+export function kitsuEpisodes(
+	animeId: string,
+	page: number = 1,
+	opts: { refresh?: boolean } = {}
+): Promise<KitsuEpisode[]> {
 	const qs = new URLSearchParams({ page: String(page) });
+	// Same contract as `airingGet`'s refresh: past the cached page.
+	if (opts.refresh) qs.set('refresh', 'true');
 	return getJson<KitsuEpisode[]>(
 		`/api/kitsu/episodes/${encodeURIComponent(animeId)}?${qs.toString()}`
 	);

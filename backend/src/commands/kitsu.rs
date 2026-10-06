@@ -10,7 +10,8 @@
 //! - Search results: `DISCOVERY_TTL` (6h) — popular anime is stable, but
 //!   trending changes within a day; this is the right tradeoff between
 //!   responsiveness and Kitsu API volume.
-//! - Anime detail: `ANIME_DETAIL_TTL` (7d) — synopsis / titles / posters
+//! - Anime detail: `ANIME_DETAIL_TTL` (7d) for a finished show, a day
+//!   otherwise (`anime_detail_ttl`) — synopsis / titles / posters
 //!   change rarely.
 
 use crate::app::AppState;
@@ -288,9 +289,42 @@ pub async fn kitsu_episodes(
     anime_id: &str,
     page: u32,
 ) -> Result<Vec<KitsuEpisode>> {
+    kitsu_episodes_with(state, anime_id, page, false).await
+}
+
+/// [`kitsu_episodes`] past the cached page: a user asked whether an
+/// episode the page leaves undated has aired since. The fetched page
+/// replaces the cached one.
+///
+/// # Errors
+/// As [`kitsu_episodes`].
+pub async fn kitsu_episodes_refresh(
+    state: &AppState,
+    anime_id: &str,
+    page: u32,
+) -> Result<Vec<KitsuEpisode>> {
+    kitsu_episodes_with(state, anime_id, page, true).await
+}
+
+/// [`kitsu_episodes`] or [`kitsu_episodes_refresh`], as the route's
+/// flag says.
+///
+/// # Errors
+/// As [`kitsu_episodes`].
+pub async fn kitsu_episodes_with(
+    state: &AppState,
+    anime_id: &str,
+    page: u32,
+    refresh: bool,
+) -> Result<Vec<KitsuEpisode>> {
     let p = page.max(1);
     let key = format!("kitsu:episodes:{anime_id}:p{p}");
-    let eps = if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
+    let cached = if refresh {
+        None
+    } else {
+        meta_cache_get(&state.cache_pool, &key)?
+    };
+    let eps = if let Some(body) = cached {
         if let Ok(eps) = serde_json::from_str::<Vec<KitsuEpisode>>(&body) {
             warm_signed_image_urls(state, &body);
             eps
@@ -822,7 +856,22 @@ pub fn watched_at_all(state: &AppState) -> Result<std::collections::HashMap<Stri
 /// when Kitsu's is null. v2 rows have null covers for new ongoing
 /// shows; bumping the version forces a refresh.
 fn anime_detail_key(id: &str) -> String {
-    format!("kitsu:v3:anime:{id}")
+    // v4: the row's lifetime follows the show's status (see
+    // `anime_detail_ttl`). v3 rows were all written for a week, so an
+    // airing show's row would hold its old status and count for up to
+    // seven days after upgrade; re-keying refetches.
+    format!("kitsu:v4:anime:{id}")
+}
+
+/// How long a detail row is served. The row carries the show's status
+/// and announced episode count, which move while a show airs — it
+/// finishes, its count gets corrected — so only a finished show keeps
+/// the week; anything else, an unknown status included, a day.
+pub(crate) fn anime_detail_ttl(status: Option<&str>) -> u64 {
+    match status {
+        Some("finished") => ANIME_DETAIL_TTL.as_secs(),
+        _ => EPISODES_TTL.as_secs(),
+    }
 }
 
 /// Seed [`kitsu_anime_detail`]'s cache with a ref some other lookup
@@ -833,7 +882,7 @@ fn anime_detail_key(id: &str) -> String {
 /// Refs carrying no cover are deliberately NOT written. A cold
 /// `kitsu_anime_detail` backfills the banner from AniList before it
 /// caches, so seeding a null-cover row here would suppress that
-/// backfill for the whole seven days — trading one request for a week
+/// backfill for the row's whole lifetime — trading one request for days
 /// of blurred-poster fallback on exactly the newer ongoing shows the
 /// backfill exists for.
 pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) {
@@ -845,7 +894,7 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
             &state.cache_pool,
             &anime_detail_key(&detail.id),
             &body,
-            ANIME_DETAIL_TTL.as_secs(),
+            anime_detail_ttl(detail.status.as_deref()),
         );
         // Same pairing the other writer has, and for the same reason:
         // these URLs can be Backblaze presigned links whose signature
@@ -875,7 +924,7 @@ pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnime
     // user-uploaded reliably. Failures are silent — the detail
     // still loads with the null-cover fallback (blurred poster) on
     // the frontend. One extra round-trip on cold cache; the result
-    // is cached for 7 days.
+    // is cached for the detail row's lifetime.
     if detail.cover_image.is_none() {
         if let Ok(Some(mal_id)) = state.kitsu.mal_id_for_kitsu_id(id).await {
             if let Ok(Some(banner)) =
@@ -892,7 +941,8 @@ pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnime
     }
 
     if let Ok(body) = serde_json::to_string(&detail) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ANIME_DETAIL_TTL.as_secs());
+        let ttl = anime_detail_ttl(detail.status.as_deref());
+        let _ = meta_cache_put(&state.cache_pool, &key, &body, ttl);
         warm_signed_image_urls(state, &body);
     }
     Ok(detail)
@@ -907,6 +957,10 @@ fn normalize_query(s: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+#[cfg(test)]
+#[path = "kitsu_detail_ttl_test.rs"]
+mod detail_ttl_tests;
 
 #[cfg(test)]
 #[path = "kitsu_title_match_test.rs"]
@@ -932,7 +986,7 @@ mod tests {
     const DETAIL_FIXTURE: &[u8] =
         include_bytes!("../../../tests/fixtures/kitsu/anime_one_piece_detail.json");
 
-    fn state_with_kitsu_at(uri: &str) -> AppState {
+    pub(super) fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
             anidb_base: None,
             secret: AppSecret::random(),
@@ -1098,6 +1152,35 @@ mod tests {
         let second = kitsu_episodes(&state, "12", 1).await.expect("ok");
         assert_eq!(first.len(), 12);
         assert_eq!(first, second, "cache hit returns identical body");
+    }
+
+    #[tokio::test]
+    async fn a_refreshed_episode_page_skips_and_rewrites_the_cached_one() {
+        let mock = MockServer::start().await;
+        const EPISODES_FIXTURE: &[u8] =
+            include_bytes!("../../../tests/fixtures/kitsu/episodes_one_piece.json");
+        Mock::given(method("GET"))
+            .and(path("/anime/12/episodes"))
+            .and(query_param("page[offset]", "0"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(EPISODES_FIXTURE.to_vec()),
+            )
+            .expect(1)
+            .mount(&mock)
+            .await;
+        let state = state_with_kitsu_at(&mock.uri());
+        // The page as it was cached before the latest episode was dated.
+        crate::cache::meta_cache_put(&state.cache_pool, "kitsu:episodes:12:p1", "[]", 3600)
+            .expect("seed");
+        let fresh = kitsu_episodes_refresh(&state, "12", 1).await.expect("ok");
+        assert_eq!(fresh.len(), 12);
+        let stored = kitsu_episodes(&state, "12", 1).await.expect("ok");
+        assert_eq!(
+            stored, fresh,
+            "the plain read serves what the refresh stored"
+        );
     }
 
     #[tokio::test]

@@ -126,7 +126,14 @@ use crate::proxy::MediaKind;
 // stamp, reverse mapping and title match into anidb's namespace and
 // could alias a real anidb row. Bumping re-resolves, and the fresh
 // row stamps the qualified identity.
-const SCHEMA: &str = "v14";
+// v15: an entry the provider splits into several shows (Steel Ball
+// Run's premiere and its 2nd Stage) resolves against all of them,
+// stitched in Kitsu's numbering. A v14 row was resolved against one
+// part alone and can hold the stream of a different episode than its
+// key names — Kitsu's episode 1 cached as the 2nd Stage's first — and
+// nothing in a row says whether its pick was split; bumping
+// re-resolves.
+const SCHEMA: &str = "v15";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -444,7 +451,7 @@ mod tests {
         // shape so a typo in SCHEMA doesn't silently produce keys
         // that collide with the prior version.
         let k = cache_key("X", "sub", "best", "1", None, None, None);
-        assert!(k.starts_with("play:v14:"), "got {k}");
+        assert!(k.starts_with("play:v15:"), "got {k}");
     }
 
     #[test]
@@ -482,6 +489,30 @@ mod tests {
             get(&pool, &current).expect("ok").is_none(),
             "a row keyed under the previous schema must not answer the current key"
         );
+    }
+
+    #[test]
+    fn a_row_resolved_before_split_entries_were_stitched_is_not_served() {
+        // A show the provider splits in two (Steel Ball Run's premiere
+        // and its 2nd Stage) was resolved against one part alone, so
+        // its rows hold streams for the wrong episode — Kitsu's
+        // episode 1 cached as the 2nd Stage's first. Nothing in a row
+        // says which picks were split, so the whole schema retires.
+        let pool = pool();
+        let current = cache_key(
+            "Show",
+            "sub",
+            "best",
+            "1",
+            Some(2026),
+            Some(12),
+            Some("ONA"),
+        );
+        let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v14:", 1);
+        assert_ne!(previous, current, "the schema must have moved past v14");
+        let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+        meta_cache_put(&pool, &previous, &body, 60).unwrap();
+        assert!(get(&pool, &current).expect("ok").is_none());
     }
 
     #[test]

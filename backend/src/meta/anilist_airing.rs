@@ -91,6 +91,21 @@ const AIRING_BATCH_GQL: &str = "query AiringBatch($ids: [Int]) { \
         } \
     }";
 
+/// [`AIRING_BATCH_GQL`] addressed by MAL id, for shows Kitsu maps to
+/// MAL alone. A separate request rather than a second filter on the
+/// same `media` field: AniList ANDs `id_in` with `idMal_in`. Selects
+/// `idMal` so the response maps back.
+const AIRING_BATCH_BY_MAL_GQL: &str = "query AiringBatchByMal($malIds: [Int]) { \
+        Page(page: 1, perPage: 50) { \
+            media(idMal_in: $malIds, type: ANIME) { \
+                idMal status episodes nextAiringEpisode { episode airingAt } \
+                airingSchedule(notYetAired: true, perPage: 25) { \
+                    nodes { episode airingAt } \
+                } \
+            } \
+        } \
+    }";
+
 /// Fetch [`AiringStatus`] for many AniList ids in as few requests as
 /// possible (chunks of 50 — the `Page` cap). Ids AniList doesn't
 /// return are simply absent from the map. Empty input skips the
@@ -103,26 +118,60 @@ pub async fn airing_status_batch(
     anilist_ids: &[u32],
     base_override: Option<&str>,
 ) -> Result<std::collections::HashMap<u32, AiringStatus>> {
+    fetch_batch(client, BatchIds::AniList(anilist_ids), base_override).await
+}
+
+/// [`airing_status_batch`] keyed by MAL id: the map is keyed by the
+/// MAL ids AniList returned.
+///
+/// # Errors
+/// As [`airing_status_batch`].
+pub async fn airing_status_batch_by_mal(
+    client: &reqwest::Client,
+    mal_ids: &[u32],
+    base_override: Option<&str>,
+) -> Result<std::collections::HashMap<u32, AiringStatus>> {
+    fetch_batch(client, BatchIds::Mal(mal_ids), base_override).await
+}
+
+/// Which id space a batch request addresses.
+#[derive(Clone, Copy)]
+enum BatchIds<'a> {
+    AniList(&'a [u32]),
+    Mal(&'a [u32]),
+}
+
+async fn fetch_batch(
+    client: &reqwest::Client,
+    ids: BatchIds<'_>,
+    base_override: Option<&str>,
+) -> Result<std::collections::HashMap<u32, AiringStatus>> {
     let url = base_override.unwrap_or(ANILIST_API);
-    let mut out = std::collections::HashMap::with_capacity(anilist_ids.len());
-    for chunk in anilist_ids.chunks(50) {
+    let (all, query, var) = match ids {
+        BatchIds::AniList(ids) => (ids, AIRING_BATCH_GQL, "ids"),
+        BatchIds::Mal(ids) => (ids, AIRING_BATCH_BY_MAL_GQL, "malIds"),
+    };
+    let mut out = std::collections::HashMap::with_capacity(all.len());
+    for chunk in all.chunks(50) {
         let body = serde_json::json!({
-            "query": AIRING_BATCH_GQL,
-            "variables": { "ids": chunk },
+            "query": query,
+            "variables": { var: chunk },
         });
         let bytes = post_graphql_public(client, url, &body).await?;
-        out.extend(parse_airing_batch_response(&bytes)?);
+        out.extend(parse_batch(&bytes, matches!(ids, BatchIds::Mal(_)))?);
     }
     Ok(out)
 }
 
 /// Raw serde shape of one `Media` node, shared by the single and
-/// batch parsers. `id` is only present in the batch query's
-/// selection set, hence the default.
+/// batch parsers. `id` and `idMal` are only present in the batch
+/// queries' selection sets, hence the defaults.
 #[derive(Deserialize)]
 struct MediaShape {
     #[serde(default)]
     id: Option<u32>,
+    #[serde(rename = "idMal", default)]
+    id_mal: Option<u32>,
     status: Option<String>,
     episodes: Option<u32>,
     #[serde(rename = "nextAiringEpisode")]
@@ -219,6 +268,11 @@ pub fn parse_airing_response(body: &[u8]) -> Result<Option<AiringStatus>> {
 pub fn parse_airing_batch_response(
     body: &[u8],
 ) -> Result<std::collections::HashMap<u32, AiringStatus>> {
+    parse_batch(body, false)
+}
+
+/// Batch parser keyed by `idMal` (`by_mal`) or `id`.
+fn parse_batch(body: &[u8], by_mal: bool) -> Result<std::collections::HashMap<u32, AiringStatus>> {
     #[derive(Deserialize)]
     struct Wrap {
         data: Data,
@@ -241,7 +295,10 @@ pub fn parse_airing_batch_response(
         .page
         .media
         .into_iter()
-        .filter_map(|m| m.id.map(|id| (id, derive_status(m))))
+        .filter_map(|m| {
+            let key = if by_mal { m.id_mal } else { m.id };
+            key.map(|k| (k, derive_status(m)))
+        })
         .collect())
 }
 
