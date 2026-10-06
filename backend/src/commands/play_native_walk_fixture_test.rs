@@ -386,3 +386,20 @@ async fn of_two_same_length_cours_the_one_whose_part_agrees_is_picked() {
     )])
     .await;
 }
+
+/// hianime merges two Kitsu entries into one listing and also lists
+/// the second on its own; the first entry picked the second's listing
+/// on count. The merged listing serves the first entry, cut to its
+/// episodes, which it numbers from 1.
+#[tokio::test]
+async fn a_listing_spanning_two_entries_serves_the_first_its_own_episodes() {
+    assert_picks(&[
+        // "Attack on Titan Season 3" (22) beside "Season 3 Part 2" (10).
+        ("13569", Some(("attack-on-titan-season-3-866", 12))),
+        // "Silver Soul Arc" (26) beside "Second Half War" (14).
+        ("14095", Some(("gintama-silver-soul-arc-1155", 12))),
+        // "To the Top (Part 1+2)" (25) beside "2nd Season" (12).
+        ("42059", Some(("haikyu-to-the-top-933", 13))),
+    ])
+    .await;
+}
