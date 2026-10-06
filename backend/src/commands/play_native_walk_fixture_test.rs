@@ -614,3 +614,21 @@ async fn only_a_later_part_completes_a_spanning_listing() {
         );
     }
 }
+
+/// An exact-count hit that shares nothing with a spanning pair is no
+/// evidence the pair's entry has a listing of its own: the cut stands
+/// and wins, whatever order the provider lists them in.
+#[tokio::test]
+async fn an_unrelated_exact_count_hit_does_not_stop_a_spanning_cut() {
+    let rows = [
+        ("other-1", "Unrelated Thing", 12),
+        ("show-s3-2", "Show Season 3", 22),
+        ("show-s3p2-3", "Show Season 3 Part 2", 10),
+    ];
+    let site = pool_of(&["Show Season 3"], Some(12), 2020, "Show Season 3", &rows);
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!(
+        (picked.hit.slug.as_str(), picked.episodes.len()),
+        ("show-s3-2", 12)
+    );
+}
