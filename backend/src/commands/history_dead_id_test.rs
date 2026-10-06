@@ -14,7 +14,7 @@ use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use crate::scraper::provider::ShowKey;
 use std::path::PathBuf;
 use std::sync::Arc;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const DETAIL_FIXTURE: &[u8] =
@@ -406,6 +406,147 @@ async fn a_cached_detail_takes_a_stale_gone_mark() {
     assert!(!kitsu_anime_detail_fails(&state, "999").await);
 
     assert!(!marked(&state, "999"));
+}
+
+// A success is published — its detail row cached, the mark taken —
+// only as one step with the verdict it rests on. A read Kitsu served
+// and that is still finishing (the banner backfill, the cache write)
+// is older than a 404 to a read begun after Kitsu served it, so it
+// leaves that newer mark standing and caches nothing a later read
+// would take as Kitsu serving the id again.
+
+fn detail_row(state: &AppState, id: &str) -> Option<String> {
+    crate::cache::meta_cache_get(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key(id),
+    )
+    .expect("detail row read")
+}
+
+fn a_404_now(state: &AppState, id: &str) {
+    let begun = crate::history::guard::epoch(&state.history_path);
+    let gone = crate::error::AniError::Upstream { status: 404 };
+    crate::commands::kitsu_gone::note_failure(state, begun, id, &gone);
+}
+
+#[tokio::test]
+async fn a_success_still_finishing_leaves_a_newer_404_standing() {
+    let mock = MockServer::start().await;
+    // The banner backfill asks Kitsu's mappings first; a pause there
+    // holds the served read between Kitsu's answer and its cache write.
+    Mock::given(method("GET"))
+        .and(path("/anime/999"))
+        .and(query_param("include", "mappings"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({
+                    "data": { "id": "999", "type": "anime", "attributes": {} },
+                    "included": [],
+                }))
+                .set_delay(std::time::Duration::from_millis(400)),
+        )
+        .with_priority(1)
+        .mount(&mock)
+        .await;
+    let mut detail: serde_json::Value = serde_json::from_slice(DETAIL_FIXTURE).expect("fixture");
+    detail["data"]["attributes"]["coverImage"] = serde_json::Value::Null;
+    Mock::given(method("GET"))
+        .and(path("/anime/999"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_json(detail),
+        )
+        .mount(&mock)
+        .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_at(tmp.path().join("history"), &mock.uri());
+
+    let read = crate::commands::kitsu::kitsu_anime_detail(&state, "999");
+    let newer_404 = async {
+        while !mock
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .iter()
+            .any(|r| {
+                r.url
+                    .query()
+                    .is_some_and(|q| q.contains("include=mappings"))
+            })
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        a_404_now(&state, "999");
+    };
+    let (served, ()) = tokio::join!(read, newer_404);
+
+    assert!(served.is_ok(), "the read itself was served");
+    assert!(marked(&state, "999"), "the newer 404 stands");
+    assert_eq!(detail_row(&state, "999"), None, "nothing cached over it");
+}
+
+#[tokio::test]
+async fn a_404_takes_the_detail_row_beside_it() {
+    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    crate::commands::kitsu::warm_anime_detail_cache(&state, &served("999"));
+
+    a_404_now(&state, "999");
+
+    assert!(marked(&state, "999"));
+    assert_eq!(detail_row(&state, "999"), None);
+    assert!(
+        kitsu_anime_detail_fails(&state, "999").await,
+        "no cached row answers for the id"
+    );
+    assert!(marked(&state, "999"), "the mark outlives the next read");
+}
+
+// Kitsu serving an id takes its mark. When the mark cannot be taken
+// the read does not report the id served: the detail page would load
+// as live while its resume lookup still reads the id as gone.
+
+fn refuse_mark_deletes(state: &AppState) {
+    state
+        .cache_pool
+        .get()
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER refused BEFORE DELETE ON meta_cache \
+             WHEN old.key LIKE 'kitsu:dead:%' BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+        )
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_served_read_whose_mark_cannot_be_taken_fails() {
+    let (_tmp, mock, state) = row_recording("12", 200).await;
+    mock.reset().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(DETAIL_FIXTURE.to_vec()),
+        )
+        .mount(&mock)
+        .await;
+    crate::cache::meta_cache_put(&state.cache_pool, "kitsu:dead:12", "1", 3600).unwrap();
+    refuse_mark_deletes(&state);
+
+    assert!(kitsu_anime_detail_fails(&state, "12").await);
+    assert!(marked(&state, "12"));
+}
+
+#[tokio::test]
+async fn a_cached_read_whose_mark_cannot_be_taken_fails() {
+    let (_tmp, _mock, state) = two_rows_with_a_slow_404().await;
+    crate::commands::kitsu::warm_anime_detail_cache(&state, &served("999"));
+    crate::cache::meta_cache_put(&state.cache_pool, "kitsu:dead:999", "1", 3600).unwrap();
+    refuse_mark_deletes(&state);
+
+    assert!(kitsu_anime_detail_fails(&state, "999").await);
+    assert!(marked(&state, "999"));
 }
 
 fn served(id: &str) -> crate::meta::kitsu::KitsuAnimeRef {
