@@ -112,7 +112,7 @@ test('the report is lizard’s XML shape, and says what it did not measure', () 
 	assert.ok(run.stdout.includes(`<item name="one(...) at ${a}:1">\n\t\t\t<value>1</value>\n\t\t\t<value>1</value>\n\t\t\t<value>2</value>`), run.stdout);
 	assert.ok(!run.stdout.includes('skipped'));
 	assert.ok(!run.stdout.includes('ambient'));
-	assert.match(run.stderr, /1 TypeScript files, 1 functions measured/);
+	assert.match(run.stderr, /1 script files, 1 functions measured/);
 	assert.match(run.stderr, /not measured — 1 \.svelte components/);
 	assert.match(run.stderr, /Thing\.svelte/);
 });
@@ -138,7 +138,7 @@ test('a root that does not exist fails the run', () => {
 	assert.match(run.stderr, /ts-ccn: \/nonexistent\/ts-ccn-root: /);
 });
 
-test('a root with no TypeScript files fails the run', () => {
+test('a root with no script files fails the run', () => {
 	// A mistyped or emptied root would otherwise score as a language
 	// with nothing in it, and the gate would read green on half a
 	// repository.
@@ -146,7 +146,7 @@ test('a root with no TypeScript files fails the run', () => {
 	const run = spawnSync('node', [tool, dir], { encoding: 'utf-8' });
 	assert.notEqual(run.status, 0);
 	assert.equal(run.stdout, '');
-	assert.match(run.stderr, /no TypeScript files/);
+	assert.match(run.stderr, /no script files/);
 });
 
 test('decisions outside functions are declared in the summary', () => {
@@ -184,4 +184,69 @@ test('a method name of any text keeps its decisions in its own file', () => {
 		scored.top.map((r) => [r.file, r.ccn]),
 		[['k.ts', 5]]
 	);
+});
+
+// Every file under a root is one of three things: measured, declared
+// as not measured in the log, or a failure. A file of a kind nobody
+// decided on would otherwise pass through unmeasured and unreported.
+test('every script kind the compiler reads is measured', () => {
+	const fn = (name) => `export function ${name}(x: boolean) { if (x) { return 1; } return 0; }\n`;
+	const js = (name) => `export function ${name}(x) { if (x) { return 1; } return 0; }\n`;
+	const dir = scratch({
+		'a.ts': fn('a'),
+		'b.mts': fn('b'),
+		'c.cts': fn('c'),
+		'd.tsx': `export function d(x: boolean) { return x ? <i /> : null; }\n`,
+		'e.js': js('e'),
+		'f.mjs': js('f'),
+		'g.cjs': js('g'),
+		'h.jsx': `export function h(x) { return x ? <i /> : null; }\n`
+	});
+	const run = spawnSync('node', [tool, '--tsv', dir], { encoding: 'utf-8' });
+	assert.equal(run.status, 0, run.stderr);
+	const got = run.stdout
+		.trim()
+		.split('\n')
+		.map((l) => l.split('\t'))
+		.map(([file, , name, , , ccn]) => [path.basename(file), name, Number(ccn)]);
+	assert.deepEqual(got, [
+		['a.ts', 'a', 2],
+		['b.mts', 'b', 2],
+		['c.cts', 'c', 2],
+		['d.tsx', 'd', 2],
+		['e.js', 'e', 2],
+		['f.mjs', 'f', 2],
+		['g.cjs', 'g', 2],
+		['h.jsx', 'h', 2]
+	]);
+});
+
+test('files that hold no script are listed as not measured', () => {
+	const dir = scratch({ 'a.ts': 'export function a(): void {}\n', 'app.css': 'a {}\n', 'app.html': '<p></p>\n', 'x.json': '{}\n' });
+	const run = spawnSync('node', [tool, dir], { encoding: 'utf-8' });
+	assert.equal(run.status, 0, run.stderr);
+	for (const f of ['app.css', 'app.html', 'x.json']) assert.ok(run.stderr.includes(path.join(dir, f)), run.stderr);
+	assert.match(run.stderr, /not measured — 3 files that hold no script/);
+});
+
+test('generated Paraglide output is declared as skipped', () => {
+	const dir = scratch({ 'a.ts': 'export function a(): void {}\n', 'lib/paraglide/messages.js': 'export function m() {}\n' });
+	const run = spawnSync('node', [tool, dir], { encoding: 'utf-8' });
+	assert.equal(run.status, 0, run.stderr);
+	assert.match(run.stderr, /skipped — 1 files of generated Paraglide output/);
+});
+
+test('a file of a kind nobody decided on fails the run and names it', () => {
+	const dir = scratch({ 'a.ts': 'export function a(): void {}\n', 'b.coffee': 'f = -> 1\n' });
+	const run = spawnSync('node', [tool, dir], { encoding: 'utf-8' });
+	assert.notEqual(run.status, 0);
+	assert.equal(run.stdout, '');
+	assert.match(run.stderr, /b\.coffee: neither measured nor declared/);
+});
+
+test('markup carrying an inline script is not taken for markup without one', () => {
+	const dir = scratch({ 'a.ts': 'export function a(): void {}\n', 'app.html': '<body><script>if (x) {}</script></body>\n' });
+	const run = spawnSync('node', [tool, dir], { encoding: 'utf-8' });
+	assert.notEqual(run.status, 0);
+	assert.match(run.stderr, /app\.html: neither measured nor declared/);
 });

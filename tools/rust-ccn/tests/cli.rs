@@ -145,3 +145,34 @@ fn a_path_of_any_text_is_escaped_into_the_report() {
         "{xml}"
     );
 }
+
+#[test]
+fn files_that_hold_no_rust_are_listed_as_not_measured() {
+    let dir = scratch(
+        "data",
+        &[("a.rs", "fn a() {}\n"), ("schema.sql", "select 1;\n")],
+    );
+    let out = run(&dir);
+    assert!(out.status.success());
+    let stderr = String::from_utf8(out.stderr).expect("utf-8");
+    assert!(
+        stderr.contains("not measured — 1 files that hold no Rust"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("schema.sql"), "{stderr}");
+}
+
+#[test]
+fn a_file_of_a_kind_nobody_decided_on_fails_the_run_and_names_it() {
+    // A file that is neither measured nor declared would pass through
+    // unmeasured and unreported.
+    let dir = scratch("unknown", &[("a.rs", "fn a() {}\n"), ("gen.py", "x = 1\n")]);
+    let out = run(&dir);
+    assert!(!out.status.success());
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8(out.stderr).expect("utf-8");
+    assert!(
+        stderr.contains("gen.py: neither measured nor declared"),
+        "{stderr}"
+    );
+}
