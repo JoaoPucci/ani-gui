@@ -1179,3 +1179,25 @@ async fn a_numbered_spinoff_is_never_the_entry_s_own() {
         );
     }
 }
+
+/// Beside a broad listing the entry is not the head of, a listing
+/// that opens past its stem on a first division only is that broad
+/// listing's first part — "Show Part 1" beside "Show" — and never the
+/// entry's: for "Show 2" the pool holds no listing of it.
+#[tokio::test]
+async fn a_first_part_beside_a_broad_listing_the_entry_does_not_head_is_not_the_entry() {
+    let site = pool_of(
+        &["Show 2"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[
+            ("w", "Show", 24),
+            ("a", "Show Part 1", 12),
+            ("b", "Show 3rd Season", 12),
+        ],
+    );
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} for a later season", p.hit.slug);
+    }
+}
