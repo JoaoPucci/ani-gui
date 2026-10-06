@@ -564,6 +564,36 @@ fn delete_keeps_a_title_match_a_remaining_row_searches_less_its_episode_tail() {
     assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
 }
 
+#[test]
+fn delete_takes_its_own_title_match_beside_one_a_remaining_row_searches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            row("ReooPAxPMsHM4KPMY", "Naruto"),
+            row("naruto-20", "Naruto (220 episodes)"),
+        ],
+    )
+    .unwrap();
+    put(
+        &s,
+        "title-match:v3:anidb.app:naruto (220 episodes):c1",
+        "11",
+    );
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+
+    assert!(history_delete(&s, "naruto-20").unwrap());
+
+    assert_eq!(
+        cached(&s, "title-match:v3:anidb.app:naruto (220 episodes):c1"),
+        None,
+        "the key only the removed row searched"
+    );
+    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+}
+
 /// A cache that cannot forget a row's entries fails the delete before
 /// the row is removed, so the error the caller sees is true and a
 /// retry finds the row still there.
