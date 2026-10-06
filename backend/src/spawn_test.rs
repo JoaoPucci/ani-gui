@@ -212,3 +212,20 @@ async fn a_helper_the_tool_starts_first_is_in_its_tree() {
     );
     assert!(guard.take_down().await, "and is taken down with it");
 }
+
+/// What the Windows spawn rests on, which no case can time on its own:
+/// the job wrapper that creates the tool suspended and resumes it only
+/// after every wrapper's post-spawn hook — the outer job's among them —
+/// has run; and kill-on-drop, which makes the tool's own job end its
+/// members when its handle closes, so a helper the tool leaves is not
+/// outside every kill when the outer job could not be made.
+#[cfg(windows)]
+#[test]
+fn a_windows_guarded_command_is_suspended_until_its_jobs_and_ends_them_on_close() {
+    let mut cmd = tokio::process::Command::new("cmd");
+    cmd.raw_arg("/C exit 0");
+    let guarded = GuardedCommand::new(cmd);
+    assert!(guarded.wraps::<process_wrap::tokio::JobObject>());
+    assert!(guarded.wraps::<process_wrap::tokio::KillOnDrop>());
+    assert!(guarded.wraps_outer_job());
+}
