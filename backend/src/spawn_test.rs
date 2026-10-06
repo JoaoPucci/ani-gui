@@ -295,3 +295,40 @@ proptest::proptest! {
         proptest::prop_assert_eq!(tree::kills_root_tree(members.as_deref(), root), listed);
     }
 }
+
+/// A tool whose first act is to start a helper and exit. On Windows a
+/// process starts running as soon as it is created, so a tool put in
+/// its job only afterwards can start a helper first, and the helper is
+/// in no job: once the tool has exited nothing reaches it. A guarded
+/// spawn puts the tool in its tree before it runs — on Unix the group
+/// is set between fork and exec; on Windows the tool is created
+/// suspended and resumed once it is in its jobs.
+fn helper_then_exit() -> tokio::process::Command {
+    let mut cmd = if cfg!(windows) {
+        tokio::process::Command::new("cmd")
+    } else {
+        tokio::process::Command::new("sh")
+    };
+    #[cfg(windows)]
+    cmd.raw_arg("/C start /B ping -n 30 127.0.0.1 >NUL");
+    #[cfg(not(windows))]
+    cmd.args(["-c", "sleep 30 >/dev/null 2>&1 & exit 0"]);
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    cmd
+}
+
+#[tokio::test]
+async fn a_helper_the_tool_starts_first_is_in_its_tree() {
+    let mut guard = GuardedCommand::new(helper_then_exit())
+        .spawn()
+        .expect("spawn");
+    guard.wait().await.expect("the tool exits");
+    assert!(
+        guard.tree_running(),
+        "the helper it started before anything else is in the tree"
+    );
+    assert!(guard.take_down().await, "and is taken down with it");
+}
