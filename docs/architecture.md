@@ -86,7 +86,7 @@ The landing page shows four rows: **Trending Now**, **Popular This Season**, **T
 
 When a user clicks a discovery card, the backend resolves its title against the provider (searching every available alias from the metadata API: English, Romaji, Native, synonyms) and falls into the same playback flow. The cross-API bridge — including how Kitsu's episode count disambiguates colliding titles on the provider, and how the MAL id is fetched for the aniskip and trending lookups — is documented in [`title-resolution.md`](./title-resolution.md).
 
-When Kitsu's `coverImage` is null (common for shows currently airing — roughly half of the trending row in any given week), the detail-page resolver falls back to AniList: it bridges the Kitsu id through the mappings endpoint to the show's MAL id, then queries AniList for that MAL id's `bannerImage` — or, when Kitsu has no MAL mapping, queries AniList by the AniList id the same mappings carry. Without the fallback the detail page would render a flat colour where the hero banner belongs.
+When Kitsu's `coverImage` is null (common for shows currently airing — roughly half of the trending row in any given week), the detail-page resolver falls back to AniList: it bridges the Kitsu id through the mappings endpoint to the show's MAL id, then queries AniList for that MAL id's `bannerImage` — or queries AniList by the AniList id the same mappings carry, when Kitsu has no MAL mapping or AniList has no media for the MAL one. Without the fallback the detail page would render a flat colour where the hero banner belongs.
 
 ## Caching
 
