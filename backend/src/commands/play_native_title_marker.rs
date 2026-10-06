@@ -10,7 +10,9 @@
 use std::collections::BTreeSet;
 
 pub(crate) use super::play_native_title_grammar::stem;
-use super::play_native_title_grammar::{named_ordinals, part_ordinals, trailing_markers};
+use super::play_native_title_grammar::{
+    named_ordinals, part_ordinals, tail_after, trailing_markers,
+};
 #[cfg(test)]
 use super::play_native_title_grammar::{Kind, Marker};
 
@@ -89,6 +91,18 @@ impl EntryTitles<'_> {
         } else {
             !parts.is_disjoint(&entry_parts)
         }
+    }
+
+    /// Whether `sibling`, a title starting with `stem`, names a later
+    /// part than this entry's in what it adds to the stem — "Part 2",
+    /// "2nd Season", "Second Half War" after an entry that ends on no
+    /// part, or on part 1. What completes a listing spanning this entry
+    /// and the next has to be that next entry.
+    pub(crate) fn names_later_part(&self, sibling: &str, stem: &[String]) -> bool {
+        let own = self.all().flat_map(part_ordinals).max().unwrap_or(1);
+        named_ordinals(&tail_after(sibling, stem))
+            .iter()
+            .any(|n| *n > own)
     }
 }
 

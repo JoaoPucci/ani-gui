@@ -63,7 +63,7 @@ pub(super) fn fit_to_entry(
         .iter()
         .zip(&admitted)
         .any(|(row, ok)| !ok && row.2 <= tolerance);
-    let span = spanning(probed, expected, &admitted);
+    let span = spanning(probed, expected, &admitted, entry);
     for (row, ok) in probed.iter_mut().zip(&admitted) {
         if !ok {
             row.2 = UNFIT;
@@ -82,15 +82,22 @@ pub(super) fn fit_to_entry(
 /// The listing that spans this entry and the next, with the later
 /// parts that complete it. It must be admitted, carry the entry's own
 /// year, and list more than the entry has; a sibling completing it
-/// must have a stem that starts with its stem and list exactly the
-/// remainder. A listing that already
-/// fits exactly elsewhere in the pool is the entry's own, and nothing
-/// is cut.
+/// must have a stem that starts with its stem, name a later part than
+/// the entry's in what it adds to that stem
+/// ([`EntryTitles::names_later_part`]), and list exactly the
+/// remainder. An admitted listing that already fits exactly is the
+/// entry's own, checked before anything else, and nothing is cut.
 fn spanning(
     probed: &[Probed<'_>],
     expected: u32,
     admitted: &[bool],
+    entry: EntryTitles<'_>,
 ) -> Option<(usize, Vec<usize>)> {
+    // An admitted listing that already fits exactly is the entry's
+    // own, whatever else the pool holds: nothing is cut.
+    if (0..probed.len()).any(|k| admitted[k] && probed[k].2 == 0) {
+        return None;
+    }
     let counts: Vec<u32> = probed
         .iter()
         .map(|(_, eps, _, _)| regular_episode_count(eps))
@@ -106,13 +113,12 @@ fn spanning(
                 j != m
                     && counts[j] == counts[m] - expected
                     && extends(&stem(&probed[j].0.title), &own)
+                    && entry.names_later_part(&probed[j].0.title, &own)
             })
             .collect();
         (!own.is_empty() && !later.is_empty()).then_some((m, later))
     })?;
-    let dedicated = (0..probed.len())
-        .any(|k| k != wide && !later.contains(&k) && admitted[k] && probed[k].2 == 0);
-    (!dedicated).then_some((wide, later))
+    Some((wide, later))
 }
 
 /// Whether `longer` starts with every word of `stem`.
