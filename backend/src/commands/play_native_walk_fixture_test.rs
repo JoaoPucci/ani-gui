@@ -972,13 +972,13 @@ async fn the_entry_s_own_listing_is_what_its_titles_name_past_the_spanning_stem(
 /// one division the entry's own, read the way the spanning listing
 /// reads its own: "Show 2" owns the season of "Show 2nd Season Part 1"
 /// and not the part of "… Part 2" besides; it owns a "2nd Season"
-/// beside a "Show Part 2" whose 2 is a part; and "Show 2nd Season"
-/// reads as "Showtime 2" does, so beside a "Show" that entry does not
-/// head it is that entry's own.
+/// beside a "Show Part 2" whose 2 is a part. "Showtime 2" carries
+/// another name than "Show", so nothing beside "Show" is its own and
+/// nothing plays for it.
 #[tokio::test]
 async fn each_ordinal_past_the_spanning_stem_owns_one_division() {
     type Case<'a> = (&'a [&'a str], &'a [(&'a str, &'a str, u32)], &'a str, usize);
-    let cases: [Case<'_>; 5] = [
+    let cases: [Case<'_>; 4] = [
         (
             &["Show 2"],
             &[
@@ -1015,12 +1015,6 @@ async fn each_ordinal_past_the_spanning_stem_owns_one_division() {
             "own",
             12,
         ),
-        (
-            &["Showtime 2"],
-            &[("w", "Show", 24), ("l", "Show 2nd Season", 12)],
-            "l",
-            12,
-        ),
     ];
     for (titles, rows, want, len) in cases {
         let site = pool_of(titles, Some(12), 2020, titles[0], rows);
@@ -1030,6 +1024,16 @@ async fn each_ordinal_past_the_spanning_stem_owns_one_division() {
             (want, len),
             "{titles:?} {rows:?}"
         );
+    }
+    let site = pool_of(
+        &["Showtime 2"],
+        Some(12),
+        2020,
+        "Showtime 2",
+        &[("w", "Show", 24), ("l", "Show 2nd Season", 12)],
+    );
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} for Showtime 2", p.hit.slug);
     }
 }
 

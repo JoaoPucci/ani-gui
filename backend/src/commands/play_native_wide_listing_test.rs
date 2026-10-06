@@ -27,6 +27,14 @@ fn pool<'h>(rows: &[(&'h BrowseHit, u32, bool)], expected: u32) -> Vec<Probed<'h
         .collect()
 }
 
+/// Kitsu's titles for Gintama.: Shirogane no Tamashii-hen, as the
+/// walk hands them to the pick (recorded in fixture 14095).
+const GINTAMA_SS: [&str; 3] = [
+    "Gintama.: Shirogane no Tamashii-hen",
+    "銀魂. 銀ノ魂篇",
+    "Gintama.: Silver Soul Arc",
+];
+
 #[test]
 fn a_candidate_the_entry_does_not_admit_is_scored_out_but_kept() {
     let own = hit("oshi-675", "My Star");
@@ -75,7 +83,9 @@ fn the_later_part_may_name_its_part_in_any_words_after_the_stem() {
     fit_to_entry(
         &mut probed,
         12,
-        EntryTitles::bare("Gintama.: Shirogane no Tamashii-hen"),
+        // Kitsu's titles for the entry carry the provider's English
+        // name, which is how a listing is known to be this show.
+        EntryTitles::new(&GINTAMA_SS),
     );
     assert_eq!((probed[1].2, probed[1].1.len()), (0, 12));
     assert_eq!(probed[0].2, UNFIT);
@@ -126,7 +136,7 @@ fn a_dedicated_listing_that_fits_is_preferred_to_cutting() {
         "gintama-ss1-1156",
         "Gintama.: Silver Soul Arc - First Half War",
     );
-    let e = EntryTitles::bare("Gintama.: Shirogane no Tamashii-hen");
+    let e = EntryTitles::new(&GINTAMA_SS);
     let mut probed = pool(
         &[(&wide, 26, true), (&later, 14, true), (&own, 12, true)],
         12,
