@@ -477,6 +477,93 @@ fn delete_keeps_title_match_rows_of_a_title_that_extends_the_rows() {
     assert!(cached(&s, "title-match:v3:anidb.app:re:creators:c1").is_some());
 }
 
+// Title-match rows are keyed by what Continue Watching searched — the
+// provider and the title, less a legacy episode tail — not by the row,
+// and versions before the current one dropped the provider too. Two
+// rows can search the same key: a legacy opaque-id row beside a newer
+// slug of the same show, or the same title on two providers under an
+// older version's key. A delete leaves such a row to the row that
+// remains, which still searches it.
+
+#[test]
+fn delete_keeps_the_title_match_rows_a_remaining_row_searches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            row("ReooPAxPMsHM4KPMY", "Naruto"),
+            row("naruto-20", "Naruto"),
+        ],
+    )
+    .unwrap();
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v2:naruto:c1", "11");
+
+    assert!(history_delete(&s, "naruto-20").unwrap());
+
+    assert_eq!(
+        cached(&s, "title-match:v3:anidb.app:naruto:c1").as_deref(),
+        Some("11")
+    );
+    assert_eq!(
+        cached(&s, "title-match:v2:naruto:c1").as_deref(),
+        Some("11")
+    );
+}
+
+#[test]
+fn delete_keeps_an_older_title_match_another_provider_searches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            row("naruto-20", "Naruto"),
+            row("hianime:naruto-7", "Naruto"),
+        ],
+    )
+    .unwrap();
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:hianime:naruto:c1", "11");
+    put(&s, "title-match:v2:naruto:c1", "11");
+
+    assert!(history_delete(&s, "hianime:naruto-7").unwrap());
+
+    assert_eq!(
+        cached(&s, "title-match:v3:hianime:naruto:c1"),
+        None,
+        "its own"
+    );
+    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+    assert!(
+        cached(&s, "title-match:v2:naruto:c1").is_some(),
+        "the older key both providers' rows search"
+    );
+}
+
+#[test]
+fn delete_keeps_a_title_match_a_remaining_row_searches_less_its_episode_tail() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            row("ReooPAxPMsHM4KPMY", "Naruto (220 episodes)"),
+            row("naruto-20", "Naruto"),
+        ],
+    )
+    .unwrap();
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+
+    assert!(history_delete(&s, "naruto-20").unwrap());
+
+    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+}
+
 /// A cache that cannot forget a row's entries fails the delete before
 /// the row is removed, so the error the caller sees is true and a
 /// retry finds the row still there.
