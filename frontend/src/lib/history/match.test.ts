@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { resolveKitsuMatch, resolveKitsuMatchWithTrust } from './match';
 import { resolveHistoryEntry } from './resolve';
 import {
@@ -34,7 +34,10 @@ vi.mock('$lib/api', () => ({
 
 const mockedAllmangaDelete = vi.mocked(allmangaKitsuMapDelete);
 const mockedAllmangaMap = vi.mocked(allmangaKitsuMapGet);
-const mockedPlayed = vi.mocked(allmangaKitsuMapPlayed);
+// The played read answers the Kitsu id the play's mark names, or null.
+const mockedPlayed = vi.mocked(allmangaKitsuMapPlayed) as unknown as Mock<
+	(showId: string) => Promise<string | null>
+>;
 const mockedSlug = vi.mocked(kitsuAnimeBySlug);
 const mockedDetail = vi.mocked(kitsuAnimeDetail);
 const mockedResolveAllmanga = vi.mocked(kitsuResolveAllmangaShowId);
@@ -75,7 +78,7 @@ beforeEach(() => {
 	mockedAllmangaMap.mockReset();
 	mockedAllmangaMap.mockResolvedValue(null);
 	mockedPlayed.mockReset();
-	mockedPlayed.mockResolvedValue(false);
+	mockedPlayed.mockResolvedValue(null);
 	mockedSlug.mockReset();
 	mockedDetail.mockReset();
 	mockedResolveAllmanga.mockReset();
@@ -180,7 +183,7 @@ describe('resolveKitsuMatch', () => {
 	it('keeps a title-doubted mapping a play stored', async () => {
 		mockedAllmangaMap.mockResolvedValue('49877');
 		mockedDetail.mockResolvedValue(seitokai());
-		mockedPlayed.mockResolvedValue(true);
+		mockedPlayed.mockResolvedValue('49877');
 		mockedSearch.mockResolvedValue([greenwood()]);
 
 		const got = await resolveKitsuMatch(seitokaiRow());
@@ -210,7 +213,21 @@ describe('resolveKitsuMatch', () => {
 		// A guess an earlier resolve stored: Greenwood for the same row.
 		mockedAllmangaMap.mockResolvedValue('1623');
 		mockedDetail.mockResolvedValue(greenwood());
-		mockedPlayed.mockResolvedValue(false);
+		mockedPlayed.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([greenwood()]);
+
+		const got = await resolveKitsuMatch(seitokaiRow());
+
+		expect(got).toBeNull();
+	});
+
+	it('does not keep a title-doubted mapping a play replaced after it was read', async () => {
+		// The guess Greenwood was read and fetched; a play stored
+		// Seitokai before the played read ran. The mark vouches for
+		// Seitokai, not for the Greenwood this load holds.
+		mockedAllmangaMap.mockResolvedValue('1623');
+		mockedDetail.mockResolvedValue(greenwood());
+		mockedPlayed.mockResolvedValue('49877');
 		mockedSearch.mockResolvedValue([greenwood()]);
 
 		const got = await resolveKitsuMatch(seitokaiRow());
@@ -221,7 +238,7 @@ describe('resolveKitsuMatch', () => {
 	it('does not keep a played mapping its count doubts too', async () => {
 		mockedAllmangaMap.mockResolvedValue('1623');
 		mockedDetail.mockResolvedValue(greenwood());
-		mockedPlayed.mockResolvedValue(true);
+		mockedPlayed.mockResolvedValue('1623');
 		mockedSearch.mockResolvedValue([]);
 
 		const got = await resolveKitsuMatch(
@@ -879,7 +896,7 @@ describe('which Continue matches a play may record', () => {
 	it('records a mapping a play stored', async () => {
 		mockedAllmangaMap.mockResolvedValue('1');
 		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
-		mockedPlayed.mockResolvedValue(true);
+		mockedPlayed.mockResolvedValue('1');
 
 		const got = await resolveKitsuMatchWithTrust(legacyRow());
 
@@ -890,7 +907,32 @@ describe('which Continue matches a play may record', () => {
 	it('does not record a mapping no play stored', async () => {
 		mockedAllmangaMap.mockResolvedValue('1');
 		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
-		mockedPlayed.mockResolvedValue(false);
+		mockedPlayed.mockResolvedValue(null);
+
+		const got = await resolveKitsuMatchWithTrust(legacyRow());
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(false);
+	});
+
+	it('does not record a mapping a play replaced after it was read', async () => {
+		// Guess 1 was read and fetched; a play stored 2 before the
+		// played read ran. The mark vouches for 2, not for the 1 this
+		// load holds, which stays a guess.
+		mockedAllmangaMap.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		mockedPlayed.mockResolvedValue('2');
+
+		const got = await resolveKitsuMatchWithTrust(legacyRow());
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(false);
+	});
+
+	it('does not record a mapping whose played read fails', async () => {
+		mockedAllmangaMap.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
 
 		const got = await resolveKitsuMatchWithTrust(legacyRow());
 

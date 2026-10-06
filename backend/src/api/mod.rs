@@ -2457,15 +2457,46 @@ mod tests {
         .expect("ms")
     }
 
-    /// A mapping a play stored reads as played. Continue Watching keeps
-    /// such a mapping when only the provider's title doubts it.
+    /// A mapping a play stored reads as the Kitsu id the play stored.
+    /// Continue Watching keeps such a mapping when only the provider's
+    /// title doubts it, and only when the id is the one it read: the
+    /// mapping can change between its read and this one.
     #[tokio::test]
-    async fn a_mapping_a_play_stored_reads_as_played() {
+    async fn a_mapping_a_play_stored_reads_as_the_id_it_played() {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
         crate::commands::kitsu::allmanga_kitsu_put_played(&state, "hianime:x-1", "49877")
             .expect("put");
-        assert_eq!(played_body(state, "hianime:x-1").await, "true");
+        assert_eq!(played_body(state, "hianime:x-1").await, "\"49877\"");
+    }
+
+    /// The id names the mapping standing now. A later play's mapping
+    /// reads as that play's id; a guess written over a played mapping
+    /// takes the mark, and reads as no play.
+    #[tokio::test]
+    async fn the_played_id_is_the_mapping_standing_now() {
+        let td = TempDir::new().expect("tempdir");
+        let replayed = test_app_state(&td);
+        crate::commands::kitsu::allmanga_kitsu_put_played(&replayed, "hianime:x-1", "49877")
+            .expect("put");
+        crate::commands::kitsu::allmanga_kitsu_put_played(&replayed, "hianime:x-1", "1623")
+            .expect("put");
+        assert_eq!(
+            played_body(replayed, "hianime:x-1").await,
+            "\"1623\"",
+            "played again"
+        );
+
+        let td = TempDir::new().expect("tempdir");
+        let guessed = test_app_state(&td);
+        crate::commands::kitsu::allmanga_kitsu_put_played(&guessed, "hianime:x-1", "49877")
+            .expect("put");
+        crate::commands::kitsu::allmanga_kitsu_put(&guessed, "hianime:x-1", "1623").expect("put");
+        assert_eq!(
+            played_body(guessed, "hianime:x-1").await,
+            "null",
+            "guessed over"
+        );
     }
 
     /// A mapping no play stored is not played, however near the show's
@@ -2477,7 +2508,7 @@ mod tests {
         crate::commands::kitsu::allmanga_kitsu_put(&unstamped, "hianime:x-1", "1623").expect("put");
         assert_eq!(
             played_body(unstamped, "hianime:x-1").await,
-            "false",
+            "null",
             "no stamp"
         );
 
@@ -2488,7 +2519,7 @@ mod tests {
         crate::commands::kitsu::allmanga_kitsu_put(&apart, "hianime:x-1", "1623").expect("put");
         assert_eq!(
             played_body(apart, "hianime:x-1").await,
-            "false",
+            "null",
             "an hour apart"
         );
 
@@ -2502,7 +2533,7 @@ mod tests {
         crate::commands::kitsu::allmanga_kitsu_put(&later, "hianime:x-1", "1623").expect("put");
         assert_eq!(
             played_body(later, "hianime:x-1").await,
-            "false",
+            "null",
             "half a minute after"
         );
 
@@ -2514,7 +2545,7 @@ mod tests {
         crate::commands::kitsu::allmanga_kitsu_put(&beside, "hianime:x-1", "1623").expect("put");
         assert_eq!(
             played_body(beside, "hianime:x-1").await,
-            "false",
+            "null",
             "beside the stamp"
         );
 
@@ -2523,7 +2554,7 @@ mod tests {
         crate::commands::kitsu::watched_at_put(&unmapped, "hianime:x-1", now_ms()).expect("stamp");
         assert_eq!(
             played_body(unmapped, "hianime:x-1").await,
-            "false",
+            "null",
             "no mapping"
         );
     }

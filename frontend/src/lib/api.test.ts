@@ -1096,12 +1096,13 @@ describe('allmangaKitsuMapGet', () => {
 
 describe('allmangaKitsuMapPlayed', () => {
 	it('GETs /api/allmanga-kitsu-map/:show_id/played with the id URL-encoded', async () => {
-		const fetchMock = mockFetchOnce(true);
+		const fetchMock = mockFetchOnce('49877');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const got = await allmangaKitsuMapPlayed('hianime:seitokai/10497');
 		const { url } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/hianime%3Aseitokai%2F10497/played`);
-		expect(got).toBe(true);
+		// The id the play stored, which the caller compares to its own.
+		expect(got).toBe('49877');
 	});
 });
 
