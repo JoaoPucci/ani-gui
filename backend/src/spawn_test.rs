@@ -240,3 +240,32 @@ fn a_windows_root_without_a_job_gets_its_tree_kill() {
     // kill while the child is unreaped, and its pid is still its own.
     assert!(tree::kills_root_tree(None, 9));
 }
+
+#[test]
+fn a_windows_kill_closes_the_inner_job_while_it_is_open() {
+    // Closing the inner job has the kernel end every process in it at
+    // once — no pid is looked up, so none can have been reused. The
+    // outer job stays open to say when they are gone.
+    let plan = tree::kill_plan(Some(&[9, 7]), 9, true);
+    assert!(plan.close_inner);
+    assert!(plan.each_member.is_empty(), "no pid lookups: {plan:?}");
+    assert!(plan.tree_kill_root, "the root is still a member");
+}
+
+#[test]
+fn a_windows_kill_without_an_inner_job_falls_back_to_each_member() {
+    // Already closed — a second kill after the ceiling — or never
+    // made: what the outer job still lists is killed one by one.
+    let plan = tree::kill_plan(Some(&[7, 5]), 9, false);
+    assert!(!plan.close_inner);
+    assert_eq!(plan.each_member, vec![7, 5]);
+    assert!(!plan.tree_kill_root, "the root has left the job");
+}
+
+#[test]
+fn a_windows_kill_without_any_job_reaches_the_tree_through_the_root() {
+    let plan = tree::kill_plan(None, 9, false);
+    assert!(plan.tree_kill_root);
+    assert!(!plan.close_inner);
+    assert!(plan.each_member.is_empty());
+}
