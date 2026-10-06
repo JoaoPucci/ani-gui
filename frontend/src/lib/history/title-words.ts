@@ -58,7 +58,6 @@ const SEQUEL_MARKERS = new Set([
 	'ix'
 ]);
 const NUMBER_OR_ORDINAL = /^\d+(?:st|nd|rd|th)?$/;
-const MIN_SHARE = 0.34;
 const LEADING_WORD_MIN = 5;
 
 function isWord(w: string): boolean {
@@ -85,7 +84,8 @@ function hitTitles(hit: KitsuAnimeRef): string[] {
 function pairShares(row: Set<string>, hit: Set<string>, lead: string): boolean {
 	let shared = 0;
 	for (const w of row) if (hit.has(w)) shared++;
-	if (Math.min(shared / row.size, shared / hit.size) >= MIN_SHARE) return true;
+	// A third of both, in whole numbers: a share as a fraction rounds.
+	if (3 * shared >= row.size && 3 * shared >= hit.size) return true;
 	if (shared === row.size && row.size >= 2) return true;
 	if (shared === hit.size && hit.size >= 2) return true;
 	return hit.size === 1 && lead.length >= LEADING_WORD_MIN && hit.has(lead);

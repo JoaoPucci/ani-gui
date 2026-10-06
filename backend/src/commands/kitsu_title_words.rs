@@ -31,7 +31,6 @@ use std::collections::HashSet;
 
 use crate::meta::kitsu::KitsuAnimeRef;
 
-const MIN_SHARE: f64 = 0.34;
 const LEADING_WORD_MIN: usize = 5;
 const ARTICLES: [&str; 3] = ["the", "a", "an"];
 const SEQUEL_MARKERS: [&str; 23] = [
@@ -76,8 +75,8 @@ fn hit_titles(hit: &KitsuAnimeRef) -> Vec<String> {
 
 fn pair_shares(row: &HashSet<String>, hit: &HashSet<String>, lead: &str) -> bool {
     let shared = row.intersection(hit).count();
-    let share = (shared as f64 / row.len() as f64).min(shared as f64 / hit.len() as f64);
-    share >= MIN_SHARE
+    // A third of both, in whole numbers: a share as a fraction rounds.
+    (3 * shared >= row.len() && 3 * shared >= hit.len())
         || (shared == row.len() && row.len() >= 2)
         || (shared == hit.len() && hit.len() >= 2)
         || (hit.len() == 1 && lead.len() >= LEADING_WORD_MIN && hit.contains(lead))
