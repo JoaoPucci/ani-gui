@@ -26,6 +26,7 @@ fn cand(title: &str, count: u32, confirmed: bool) -> PartCandidate<'_> {
         confirmed,
         offset: 0,
         admitted: true,
+        agrees: true,
     }
 }
 
@@ -385,6 +386,7 @@ proptest::proptest! {
                 confirmed: *confirmed,
                 offset: *offset,
                 admitted: true,
+                agrees: true,
             })
             .collect();
         let best_single = cands
@@ -484,5 +486,6 @@ fn a_chain_is_never_led_by_a_candidate_the_entry_s_titles_refuse() {
         (&s2, listing(100, 12), UNFIT, true),
         (&s2p2, listing(200, 12), UNFIT, true),
     ];
-    assert!(stitched(&probed, 24, UNFIT).is_none());
+    let entry = crate::commands::play_native_title_marker::EntryTitles::bare("X");
+    assert!(stitched(&probed, 24, UNFIT, entry).is_none());
 }

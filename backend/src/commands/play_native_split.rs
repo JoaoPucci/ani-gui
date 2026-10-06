@@ -33,6 +33,12 @@ pub(crate) struct PartCandidate<'a> {
     /// a later part of a chain, never its lead — the lead is the show
     /// picked.
     pub admitted: bool,
+    /// The part the candidate's title ends on agrees with the entry's
+    /// ([`EntryTitles::part_agrees`]): of two chains that fit equally
+    /// well, the one so led is stitched.
+    ///
+    /// [`EntryTitles::part_agrees`]: super::play_native_title_marker::EntryTitles::part_agrees
+    pub agrees: bool,
 }
 
 /// The parts that follow candidate `lead`, in order, while each next
@@ -102,7 +108,9 @@ fn stands_over_single(
 /// tolerance, or falls short of it — an airing entry, which has not
 /// aired everything Kitsu counts.
 /// A lead must also be admitted by the entry's titles and pass
-/// [`lead_may_stitch`].
+/// [`lead_may_stitch`]. Of chains that fit equally well, one led by a
+/// candidate whose part agrees with the entry's wins, then the first
+/// lead in provider order.
 #[must_use]
 pub(crate) fn split_chain(
     cands: &[PartCandidate<'_>],
@@ -111,7 +119,7 @@ pub(crate) fn split_chain(
 ) -> Option<Vec<usize>> {
     let tolerance = super::play_native::ep_count_threshold(expected);
     let single_fits = best_single <= tolerance;
-    let mut best: Option<(u32, Vec<usize>)> = None;
+    let mut best: Option<((u32, bool), Vec<usize>)> = None;
     let leads = (0..cands.len()).filter(|&i| {
         let c = &cands[i];
         c.admitted
@@ -127,9 +135,9 @@ pub(crate) fn split_chain(
             let fits = dist <= tolerance || sum < expected;
             let stands =
                 stands_over_single(cands, &chain[1..len], expected, best_single, single_fits);
-            if fits && stands && dist < best_single && best.as_ref().is_none_or(|(d, _)| dist < *d)
-            {
-                best = Some((dist, chain[..len].to_vec()));
+            let key = (dist, !cands[lead].agrees);
+            if fits && stands && dist < best_single && best.as_ref().is_none_or(|(k, _)| key < *k) {
+                best = Some((key, chain[..len].to_vec()));
             }
         }
     }
@@ -148,6 +156,7 @@ pub(crate) fn stitched(
     )],
     expected: u32,
     best_single: u32,
+    entry: super::play_native_title_marker::EntryTitles<'_>,
 ) -> Option<super::play_native::PickedShow> {
     let cands: Vec<PartCandidate<'_>> = probed
         .iter()
@@ -157,6 +166,7 @@ pub(crate) fn stitched(
             confirmed: *confirmed,
             offset: super::play_native_numbering::numbering_offset(eps),
             admitted: *distance != super::play_native_wide_listing::UNFIT,
+            agrees: entry.part_agrees(&h.title),
         })
         .collect();
     let chain = split_chain(&cands, expected, best_single)?;
