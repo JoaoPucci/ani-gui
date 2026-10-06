@@ -860,7 +860,12 @@ pub(crate) fn anime_detail_key(id: &str) -> String {
     // `anime_detail_ttl`). v3 rows were all written for a week, so an
     // airing show's row would hold its old status and count for up to
     // seven days after upgrade; re-keying refetches.
-    format!("kitsu:v4:anime:{id}")
+    //
+    // v5: the banner backfill also reaches AniList by AniList id. v4
+    // rows hold null covers for shows only that path can fill — a
+    // finished show's for a week — so re-keying refetches them on the
+    // next open.
+    format!("kitsu:v5:anime:{id}")
 }
 
 /// How long a detail row is served. The row carries the show's status
