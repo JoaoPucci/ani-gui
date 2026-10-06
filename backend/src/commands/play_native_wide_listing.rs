@@ -16,10 +16,10 @@
 //!   hianime lists a 22-episode "Season 3" beside a 10-episode
 //!   "Season 3 Part 2". Scored on count the Part 2 listing wins the
 //!   first entry. The spanning listing is recognised by the sibling
-//!   that completes it — one whose stem starts with the spanning
-//!   listing's, whose count is exactly what that listing holds
-//!   beyond this entry — and is cut to this entry's episodes, under
-//!   the listing's own numbers.
+//!   that completes it — one that names a later part right after the
+//!   spanning listing's stem, and whose count is exactly what that
+//!   listing holds beyond this entry — and is cut to this entry's
+//!   episodes, under the listing's own numbers.
 
 use crate::scraper::provider::{BrowseHit, EpisodeRef};
 
@@ -73,10 +73,12 @@ pub(super) fn fit_to_entry(
         for j in later {
             probed[j].2 = UNFIT;
         }
-        // An exact-count hit that shares nothing with the spanning
-        // pair is no listing of this entry's own — that would share
-        // the stem, and would have stopped the cut. It stays a
-        // fallback just behind the cut, never ahead of it on order.
+        // Any other exact-count hit is no listing of this entry's
+        // own — that would have stopped the cut
+        // ([`EntryTitles::names_own_part`]) — be it unrelated or a
+        // spinoff sharing the franchise name ("Show Side Story"). It
+        // stays a fallback just behind the cut, never ahead of it on
+        // order.
         for (k, row) in probed.iter_mut().enumerate() {
             if k != wide && row.2 == 0 {
                 row.2 = 1;
@@ -91,13 +93,12 @@ pub(super) fn fit_to_entry(
 /// The listing that spans this entry and the next, with the later
 /// parts that complete it. It must be admitted, carry the entry's own
 /// year, and list more than the entry has; a sibling completing it
-/// must have a stem that starts with its stem, name a later part than
-/// the entry's in what it adds to that stem
-/// ([`EntryTitles::names_later_part`]), and list exactly the
-/// remainder. An admitted listing that already fits exactly and
-/// shares the spanning listing's stem is the entry's own, and nothing
-/// is cut; an exact fit that shares nothing with the pair is no such
-/// evidence.
+/// must name, right after the spanning listing's stem, a later part
+/// than the entry's ([`EntryTitles::names_later_part`]), and list
+/// exactly the remainder. An admitted listing that already fits
+/// exactly and is the entry's own beside the spanning listing
+/// ([`EntryTitles::names_own_part`]) stops the cut; any other exact
+/// fit is no such evidence.
 fn spanning(
     probed: &[Probed<'_>],
     expected: u32,

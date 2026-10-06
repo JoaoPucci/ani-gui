@@ -23,9 +23,12 @@ use super::play_native_title_verdict::{countless_miss, probe_head, rejection, re
 use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
-/// How many browse hits get an episodes probe. Beyond this the match
-/// was not a match; the request budget is better spent on the next
-/// alias.
+/// How many browse hits the entry's titles admit get an episodes
+/// probe. Beyond this the match was not a match; the request budget
+/// is better spent on the next alias. With a count, the refused hits
+/// among the first this many are probed besides, as evidence about
+/// the pool — at most twice this many probes per pool (see
+/// `play_native_title_verdict::probe_head`).
 pub const MAX_PROBED_CANDIDATES: usize = 5;
 
 /// A picked show: the hit plus the episode list the probe already
