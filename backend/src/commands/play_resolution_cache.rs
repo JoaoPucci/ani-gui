@@ -170,6 +170,10 @@ pub struct CachedResolution {
     /// offers the same tracks a fresh resolve did.
     #[serde(default)]
     pub subtitles: Vec<crate::scraper::provider::SubtitleTrack>,
+    /// The Kitsu id of the page the resolve was asked from, when the
+    /// request named one. Absent on rows written before the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kitsu_id: Option<String>,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the
@@ -232,6 +236,28 @@ pub fn put(pool: &SqlitePool, key: &str, value: &CachedResolution) {
         return;
     };
     let _ = meta_cache_put(pool, key, &body, PLAY_RESOLUTION_TTL.as_secs());
+}
+
+/// Persist the resolution the play `asked` for produced, with the page
+/// it was asked from — unless the show it names was removed from
+/// history since the play began: the removal took the show's
+/// resolution rows, and this one would outlive it
+/// ([`crate::history::guard`]). The page is what lets a later removal
+/// find the row when the resolve landed on another key than the show's
+/// history row has.
+pub(crate) fn store(
+    state: &crate::app::AppState,
+    asked: crate::history::guard::Asked<'_>,
+    key: &str,
+    value: &CachedResolution,
+) {
+    crate::history::guard::hold(&state.history_path, |held| {
+        if !held.removed_since(asked, &value.show_id) {
+            let mut value = value.clone();
+            value.kitsu_id = asked.page.map(str::to_owned);
+            put(&state.cache_pool, key, &value);
+        }
+    });
 }
 
 /// Drop a single cached resolution. Two callers feed this:
@@ -336,6 +362,7 @@ mod tests {
             show_title: "Naruto: Shippuuden (500 episodes)".into(),
             resolved_slot: None,
             subtitles: Vec::new(),
+            kitsu_id: None,
         }
     }
 

@@ -198,6 +198,45 @@ describe('makeStartResume — progress and best-effort fan-out', () => {
 		expect(h.deps.navigateToSession).toHaveBeenCalled();
 		expect(h.failures).toEqual([]);
 	});
+
+	it('opens a guessed match as a guess: no id recorded, no tracker write', async () => {
+		const h = makeHarness({ isGuess: (id) => id === 'h1' });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: true }),
+			expect.any(Function)
+		);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ guess: true }));
+		expect(h.deps.syncTrackers).not.toHaveBeenCalled();
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
+			'k1',
+			{ session_id: 's1' },
+			6,
+			true,
+			'h1'
+		);
+	});
+
+	it('opens a trusted match as the show itself', async () => {
+		const h = makeHarness({ isGuess: () => false });
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ guess: false }),
+			expect.any(Function)
+		);
+		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 6, 12, true);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
+			'k1',
+			{ session_id: 's1' },
+			6,
+			false,
+			'h1'
+		);
+	});
 });
 
 describe('makeStartResume — an episode left part-way', () => {
@@ -210,7 +249,13 @@ describe('makeStartResume — an episode left part-way', () => {
 			expect.objectContaining({ episode: 5 }),
 			expect.any(Function)
 		);
-		expect(h.deps.navigateToSession).toHaveBeenCalledWith('k1', { session_id: 's1' }, 5);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
+			'k1',
+			{ session_id: 's1' },
+			5,
+			false,
+			'h1'
+		);
 	});
 
 	it('goes on to the next episode when only an older one was left part-way', async () => {
@@ -249,5 +294,25 @@ describe('makeStartResume — the episode is marked started before its watch is 
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
 		expect(h.log).toEqual(['busy:k1', 'settings', 'started:k1:6', 'resolve-play', 'nav-session']);
+	});
+
+	it("marks it for the card's history row, which the session carries on", async () => {
+		// The positions the session writes are the row's: a removed card
+		// forgets them even after its guessed match is corrected.
+		const h = makeHarness({
+			getPlayableCount: () => 12,
+			isGuess: () => true,
+			markStarted: (k, ep, row) => h.log.push(`started:${k}:${ep}:${row}`)
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
+		expect(h.log).toContain('started:k1:6:h1');
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
+			'k1',
+			{ session_id: 's1' },
+			6,
+			true,
+			'h1'
+		);
 	});
 });

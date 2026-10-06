@@ -7,7 +7,11 @@
 //! slugs.
 
 use crate::error::Result;
-use crate::history::{read_all, remove_by_id, write_atomic, HistoryEntry};
+use crate::history::{read_all, HistoryEntry};
+
+// Removal lives beside the readers' module for the per-file
+// complexity bar; callers reach it here as before.
+pub use super::history_remove::{history_clear, history_delete};
 
 /// Translate a row's on-disk `ep_no` — the provider's numbering,
 /// which the history file keys on — back to the per-entry (Kitsu) numbering
@@ -37,25 +41,30 @@ pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
         .collect())
 }
 
-/// Find the history entry (if any) whose show id maps to the supplied
-/// `kitsu_id`. Walks the on-disk TSV, resolving each entry's `id` —
-/// a provider slug on rows written since the migration — through the
-/// `(show id → kitsu_id)` reverse cache a successful play stamps.
+/// Find the history entry (if any) for the supplied `kitsu_id`: a row
+/// that records it as the show played, matched with no mapping at
+/// all; a row whose recorded entry Kitsu answered gone (a 404 or 410,
+/// [`super::kitsu_gone`]), matched as one that records none or else by
+/// the title match the home page stored for it; or, for a row that
+/// records none, one whose show id maps to it
+/// — resolving that row's `id`, a provider slug on rows written since
+/// the migration, through the `(show id → kitsu_id)` reverse cache a
+/// successful play stamps.
 /// Of two rows that map to the entry, the one the user watched last
 /// is returned — the latest watched-at stamp, a stamped row over an
 /// unstamped one, then the further progress, then file order — the
 /// rule the Continue Watching strip applies to the same rows, so
 /// the two surfaces name one episode. Returns `None` when:
 ///   - The history file is missing or empty.
-///   - No entry's show id has a cached mapping.
-///   - None of the cached mappings equal `kitsu_id`.
+///   - No entry records `kitsu_id`, and no entry that records none has
+///     a cached mapping equal to it.
 ///
-/// The reverse cache is the same surface Continue Watching uses. A row
-/// can be in the file without being in it: a play that had no Kitsu id
-/// to record, a mapping the cross-cour guard refused, or a row older
-/// than the mapping itself. Those rows are skipped here and show no
-/// Resume affordance until a play stamps them — by design, since the
-/// alternative is a Kitsu search per row.
+/// A row that records no id can be in the file without being in the
+/// reverse cache: a play that had no Kitsu id to record, a pairing the
+/// cross-cour guard refused, or a row older than the mapping itself.
+/// Those rows are skipped here and show no Resume affordance until a
+/// play records them — by design, since the alternative is a Kitsu
+/// search per row.
 ///
 /// # Errors
 /// Returns [`crate::error::AniError::Io`] when the history file
@@ -89,10 +98,11 @@ pub fn history_by_kitsu(
     // leaves the row ranked as the watch it was.
     let mut best: Option<(HistoryEntry, Option<i64>)> = None;
     for entry in entries {
-        let Some(mapped) = crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)? else {
-            continue;
-        };
-        if mapped != kitsu_id {
+        // The id the row records is the show the user played; the
+        // reverse mapping stands in only for a row without one, or one
+        // whose recorded entry Kitsu has since deleted
+        // ([`super::history_claim::names`]).
+        if !super::history_claim::row_names(state, &entry, kitsu_id)? {
             continue;
         }
         let stamp = super::history_resume::latest_of(
@@ -136,35 +146,6 @@ pub fn watched_at_all(
     Ok(stamps)
 }
 
-/// Remove the history row matching `id`. Returns `true` when a row
-/// was removed, `false` for a no-op (id not in file, file missing,
-/// empty id). The rewrite is atomic (`.new` + rename) so a concurrent
-/// reader sees either the full pre-state or the full post-state,
-/// never a half-written file.
-///
-/// # Errors
-/// Returns [`crate::error::AniError::Io`] when the file exists and
-/// cannot be read or written.
-pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
-    if id.is_empty() {
-        return Ok(false);
-    }
-    let mut entries = read_all(&state.history_path)?;
-    if !remove_by_id(&mut entries, id) {
-        return Ok(false);
-    }
-    write_atomic(&state.history_path, &entries)?;
-    Ok(true)
-}
-
-/// Truncate the history file to zero length. Mirrors the script's `-D`.
-///
-/// # Errors
-/// Returns [`crate::error::AniError::Io`] if the file cannot be written.
-pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
-    write_atomic(&state.history_path, &[])
-}
-
 #[cfg(test)]
 #[path = "history_selection_test.rs"]
 mod selection_tests;
@@ -172,3 +153,7 @@ mod selection_tests;
 #[cfg(test)]
 #[path = "history_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "history_dead_id_test.rs"]
+mod dead_id_tests;

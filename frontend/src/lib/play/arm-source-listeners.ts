@@ -33,11 +33,14 @@ export function armSourceScopedListeners(input: {
 	/** Where positions are kept; the renderer's local storage when
 	 *  omitted. */
 	positions?: PositionStorage;
+	/** The history row whose Continue card opened the session. */
+	row?: string | null;
 	/** Told when the stream's picture is held back for its resume seek
 	 *  and when it is revealed (`$lib/play/resume-hold`). */
 	onResumeHold?: (holding: boolean) => void;
 }): void {
 	const { video, showId, episode, scope, positions, onResumeHold } = input;
+	const row = input.row ?? null;
 	// A recovery's point resumes the stream the viewer was watching a
 	// moment ago, wherever it falls. A kept point was saved on an
 	// earlier visit, perhaps before the stream's length was known, so
@@ -46,7 +49,7 @@ export function armSourceScopedListeners(input: {
 	const kept = recovered === null ? readPosition(showId, episode, positions) : null;
 	// The episode is started from here: a play that never gets past
 	// opening still leaves Continue on it.
-	markStarted(showId, episode, positions);
+	markStarted(showId, episode, positions, row);
 	// A point to seek to holds the picture back from the attach on, so
 	// the stream's first frame is never shown, nor played, before it.
 	// A started mark, at zero, has nowhere to seek.
@@ -75,7 +78,7 @@ export function armSourceScopedListeners(input: {
 	const save = () => {
 		if (!opened || ended) return;
 		savedAt = video.currentTime;
-		savePosition(showId, episode, video.currentTime, video.duration, positions);
+		savePosition(showId, episode, video.currentTime, video.duration, positions, row);
 	};
 	const onMetadata = () => {
 		if (recovered !== null) seekTo(recovered);

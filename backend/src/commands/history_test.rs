@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::app::AppState;
+use crate::history::write_atomic;
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -61,12 +62,14 @@ fn list_translates_provider_numbering_back_to_kitsu() {
                 id: "the-sequel-88".into(),
                 title: "The Sequel".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "5".into(),
                 id: "plain-1".into(),
                 title: "Plain Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -90,6 +93,7 @@ fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
             id: "the-sequel-88".into(),
             title: "The Sequel".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -114,12 +118,14 @@ fn by_kitsu_returns_the_matching_entry() {
                 id: "amA".into(),
                 title: "Show A (10 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "12".into(),
                 id: "amB".into(),
                 title: "Show B (24 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -148,6 +154,7 @@ fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
             id: "amA".into(),
             title: "Show A (10 episodes)".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -184,18 +191,21 @@ fn delete_removes_matching_row_and_preserves_others() {
                 id: "amA".into(),
                 title: "Show A".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "12".into(),
                 id: "amB".into(),
                 title: "Show B".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "3".into(),
                 id: "amC".into(),
                 title: "Show C".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -224,6 +234,7 @@ fn delete_unknown_id_is_idempotent_no_op() {
             id: "amA".into(),
             title: "Show A".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -258,6 +269,7 @@ fn delete_with_empty_id_returns_false() {
             id: "amA".into(),
             title: "Show A".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -280,6 +292,7 @@ fn list_then_clear_round_trip() {
             id: "abc".into(),
             title: "T (10 episodes)".into(),
             watched_at: None,
+            kitsu_id: None,
         }],
     )
     .unwrap();
@@ -291,4 +304,726 @@ fn list_then_clear_round_trip() {
     history_clear(&s).unwrap();
     let after = history_list(&s).unwrap();
     assert!(after.is_empty());
+}
+
+/// A row that records the Kitsu id played is found by it, whatever the
+/// reverse mapping says or whether there is one.
+#[test]
+fn by_kitsu_reads_the_kitsu_id_the_row_records() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            HistoryEntry {
+                ep_no: "3".into(),
+                id: "hianime:seitokai-10497".into(),
+                title: "There Is Also a Hole in the Student Organization!".into(),
+                watched_at: None,
+                kitsu_id: Some("49877".into()),
+            },
+            HistoryEntry {
+                ep_no: "5".into(),
+                id: "hianime:here-is-greenwood-3081".into(),
+                title: "Here is Greenwood".into(),
+                watched_at: None,
+                kitsu_id: Some("1623".into()),
+            },
+        ],
+    )
+    .unwrap();
+    // A wrong mapping a guess left behind does not outrank the row.
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:seitokai-10497", "1623").unwrap();
+
+    let hit = history_by_kitsu(&s, "49877")
+        .unwrap()
+        .expect("found by its own id");
+    assert_eq!(hit.id, "hianime:seitokai-10497");
+    let hit = history_by_kitsu(&s, "1623").unwrap().expect("greenwood");
+    assert_eq!(
+        hit.id, "hianime:here-is-greenwood-3081",
+        "the mapping does not pull the other row in"
+    );
+}
+
+// — what a row leaves in the cache ————————————————————————————————
+//
+// A row records the Kitsu id of the show played, and the cache holds
+// the same answer three more ways: the show's watch stamp, its
+// reverse mapping, and the title-match rows Continue Watching stored
+// for its title. Removing the row removes those with it; clearing the
+// history removes all of them, whichever version wrote them.
+
+fn row(id: &str, title: &str) -> HistoryEntry {
+    HistoryEntry {
+        ep_no: "1".into(),
+        id: id.into(),
+        title: title.into(),
+        watched_at: None,
+        kitsu_id: Some("49877".into()),
+    }
+}
+
+fn cached(s: &AppState, key: &str) -> Option<String> {
+    crate::cache::meta_cache_get(&s.cache_pool, key).unwrap()
+}
+
+fn put(s: &AppState, key: &str, body: &str) {
+    crate::cache::meta_cache_put(&s.cache_pool, key, body, 86_400).unwrap();
+}
+
+#[test]
+fn delete_removes_what_the_row_left_in_the_cache() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    let gone = "hianime:there-is-also-a-hole-10497";
+    let kept = "hianime:one-piece-100";
+    write_atomic(
+        &path,
+        &[
+            row(gone, "There Is Also a Hole (12 episodes)"),
+            row(kept, "One Piece"),
+        ],
+    )
+    .unwrap();
+    for id in [gone, kept] {
+        crate::commands::kitsu::watched_at_put(&s, id, 1_790_000_000_000).unwrap();
+        crate::commands::kitsu::allmanga_kitsu_put(&s, id, "49877").unwrap();
+    }
+    put(
+        &s,
+        "title-match:v3:hianime:there is also a hole:c1",
+        "49877",
+    );
+    put(
+        &s,
+        "title-match:v3:hianime:there is also a hole:c2",
+        "49878",
+    );
+    put(&s, "title-match:v3:hianime:one piece:c1", "12");
+
+    assert!(history_delete(&s, gone).unwrap());
+
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&s, gone).unwrap(),
+        None
+    );
+    assert_eq!(
+        crate::commands::kitsu::allmanga_kitsu_get(&s, gone).unwrap(),
+        None
+    );
+    assert_eq!(
+        cached(&s, "title-match:v3:hianime:there is also a hole:c1"),
+        None
+    );
+    assert_eq!(
+        cached(&s, "title-match:v3:hianime:there is also a hole:c2"),
+        None
+    );
+    assert!(crate::commands::kitsu::watched_at_get(&s, kept)
+        .unwrap()
+        .is_some());
+    assert!(crate::commands::kitsu::allmanga_kitsu_get(&s, kept)
+        .unwrap()
+        .is_some());
+    assert!(cached(&s, "title-match:v3:hianime:one piece:c1").is_some());
+}
+
+#[test]
+fn clear_removes_what_every_row_left_in_the_cache() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("abc", "T")]).unwrap();
+    let history_keys = [
+        "watched-at:v1:abc",
+        "allmanga2kitsu:v3:abc",
+        "allmanga2kitsu:v2:abc",
+        "title-match:v3:anidb:t:c1",
+        "title-match:v2:t:c1",
+    ];
+    for key in history_keys {
+        put(&s, key, "1");
+    }
+    put(&s, "kitsu:v5:anime:49877", "{}");
+
+    history_clear(&s).unwrap();
+
+    for key in history_keys {
+        assert_eq!(cached(&s, key), None, "{key} outlived the history");
+    }
+    assert!(
+        cached(&s, "kitsu:v5:anime:49877").is_some(),
+        "the catalogue cache is not history"
+    );
+}
+
+/// A title that starts another's keeps the other's title-match rows:
+/// "Re" is not "Re:Creators".
+#[test]
+fn delete_keeps_title_match_rows_of_a_title_that_extends_the_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("re-1", "Re")]).unwrap();
+    put(&s, "title-match:v3:anidb.app:re:c1", "1");
+    put(&s, "title-match:v3:anidb.app:re:creators:c1", "2");
+
+    assert!(history_delete(&s, "re-1").unwrap());
+
+    assert_eq!(cached(&s, "title-match:v3:anidb.app:re:c1"), None);
+    assert!(cached(&s, "title-match:v3:anidb.app:re:creators:c1").is_some());
+}
+
+// Title-match rows are keyed by what Continue Watching searched — the
+// provider and the title, less a legacy episode tail — not by the row,
+// and versions before the current one dropped the provider too. Two
+// rows can search the same key: a legacy opaque-id row beside a newer
+// slug of the same show, or the same title on two providers under an
+// older version's key. A delete leaves such a row to the row that
+// remains, which still searches it.
+
+#[test]
+fn delete_keeps_the_title_match_rows_a_remaining_row_searches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            row("ReooPAxPMsHM4KPMY", "Naruto"),
+            row("naruto-20", "Naruto"),
+        ],
+    )
+    .unwrap();
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v2:naruto:c1", "11");
+
+    assert!(history_delete(&s, "naruto-20").unwrap());
+
+    assert_eq!(
+        cached(&s, "title-match:v3:anidb.app:naruto:c1").as_deref(),
+        Some("11")
+    );
+    assert_eq!(
+        cached(&s, "title-match:v2:naruto:c1").as_deref(),
+        Some("11")
+    );
+}
+
+#[test]
+fn delete_keeps_an_older_title_match_another_provider_searches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            row("naruto-20", "Naruto"),
+            row("hianime:naruto-7", "Naruto"),
+        ],
+    )
+    .unwrap();
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:hianime:naruto:c1", "11");
+    put(&s, "title-match:v2:naruto:c1", "11");
+
+    assert!(history_delete(&s, "hianime:naruto-7").unwrap());
+
+    assert_eq!(
+        cached(&s, "title-match:v3:hianime:naruto:c1"),
+        None,
+        "its own"
+    );
+    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+    assert!(
+        cached(&s, "title-match:v2:naruto:c1").is_some(),
+        "the older key both providers' rows search"
+    );
+}
+
+#[test]
+fn delete_keeps_a_title_match_a_remaining_row_searches_less_its_episode_tail() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            row("ReooPAxPMsHM4KPMY", "Naruto (220 episodes)"),
+            row("naruto-20", "Naruto"),
+        ],
+    )
+    .unwrap();
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+
+    assert!(history_delete(&s, "naruto-20").unwrap());
+
+    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+}
+
+#[test]
+fn delete_takes_its_own_title_match_beside_one_a_remaining_row_searches() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[
+            row("ReooPAxPMsHM4KPMY", "Naruto"),
+            row("naruto-20", "Naruto (220 episodes)"),
+        ],
+    )
+    .unwrap();
+    put(
+        &s,
+        "title-match:v3:anidb.app:naruto (220 episodes):c1",
+        "11",
+    );
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+
+    assert!(history_delete(&s, "naruto-20").unwrap());
+
+    assert_eq!(
+        cached(&s, "title-match:v3:anidb.app:naruto (220 episodes):c1"),
+        None,
+        "the key only the removed row searched"
+    );
+    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+}
+
+/// A cache that cannot forget a row's entries fails the delete before
+/// the row is removed, so the error the caller sees is true and a
+/// retry finds the row still there.
+#[test]
+fn delete_that_cannot_forget_the_cache_leaves_the_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("abc", "T")]).unwrap();
+    s.cache_pool
+        .get()
+        .unwrap()
+        .execute("DROP TABLE meta_cache", [])
+        .unwrap();
+
+    assert!(history_delete(&s, "abc").is_err());
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
+    assert!(history_clear(&s).is_err());
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the history stays");
+}
+
+/// What older versions left for a row, its numbering offsets and the
+/// resolution rows that played it go with it too; another show's stay.
+#[test]
+fn delete_removes_every_per_show_store_of_every_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    let gone = "hianime:seitokai-10497";
+    let kept = "one-piece-69";
+    write_atomic(&path, &[row(gone, "Seitokai"), row(kept, "One Piece")]).unwrap();
+    for (key, body) in [
+        ("allmanga2kitsu:v2:hianime:seitokai-10497", "1"),
+        ("title-match:v2:seitokai:c1", "1"),
+        ("title-match:v1:seitokai:c1", "1"),
+        (
+            "play:v14:Seitokai:sub:best:1:::",
+            r#"{"show_id":"hianime:seitokai-10497"}"#,
+        ),
+        (
+            "play:v13:Seitokai:sub:best:2:::",
+            r#"{"show_id":"hianime:seitokai-10497"}"#,
+        ),
+        (
+            "play:v14:One Piece:sub:best:1:::",
+            r#"{"show_id":"one-piece-69"}"#,
+        ),
+        ("allmanga2kitsu:v2:one-piece-69", "12"),
+    ] {
+        put(&s, key, body);
+    }
+    crate::commands::anidb_offset::put(&s, gone, 3);
+    crate::commands::anidb_offset::put(&s, kept, 4);
+
+    assert!(history_delete(&s, gone).unwrap());
+
+    for key in [
+        "allmanga2kitsu:v2:hianime:seitokai-10497",
+        "title-match:v2:seitokai:c1",
+        "title-match:v1:seitokai:c1",
+        "play:v14:Seitokai:sub:best:1:::",
+        "play:v13:Seitokai:sub:best:2:::",
+    ] {
+        assert_eq!(cached(&s, key), None, "{key} outlived the row");
+    }
+    assert!(cached(&s, "play:v14:One Piece:sub:best:1:::").is_some());
+    assert!(cached(&s, "allmanga2kitsu:v2:one-piece-69").is_some());
+    let offsets = std::fs::read_to_string(tmp.path().join("ani-gui-offsets")).unwrap();
+    assert!(!offsets.contains(gone), "the row's offset outlived it");
+    assert_eq!(crate::commands::anidb_offset::get(&s, kept), 4);
+}
+
+/// Clearing the history removes every row's offsets and every
+/// resolution row along with the cache entries.
+#[test]
+fn clear_removes_the_offsets_and_the_resolution_rows() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    put(
+        &s,
+        "play:v14:One Piece:sub:best:1:::",
+        r#"{"show_id":"one-piece-69"}"#,
+    );
+    put(&s, "play:v12:Naruto:sub:best:1:::", "{}");
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+
+    history_clear(&s).unwrap();
+
+    assert_eq!(cached(&s, "play:v14:One Piece:sub:best:1:::"), None);
+    assert_eq!(cached(&s, "play:v12:Naruto:sub:best:1:::"), None);
+    assert_eq!(crate::commands::anidb_offset::get(&s, "one-piece-69"), 0);
+}
+
+// — what a failed removal leaves ——————————————————————————————————
+//
+// A row and its numbering offset are a pair: the offset makes the row
+// readable and has no use without it. A removal that fails part-way
+// must not leave a row without its offset; an offset left without its
+// row is swept by the next removal.
+
+/// Block the atomic write whose temp file is `name`, beside `dir`'s
+/// history, by putting a directory where the temp file would go.
+fn block_write(dir: &std::path::Path, name: &str) {
+    std::fs::create_dir(dir.join(name)).unwrap();
+}
+
+#[test]
+fn a_delete_whose_history_write_fails_keeps_the_row_and_its_offset() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    block_write(tmp.path(), "history.new");
+
+    assert!(history_delete(&s, "one-piece-69").is_err());
+
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
+    assert_eq!(
+        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        4,
+        "with its offset"
+    );
+}
+
+#[test]
+fn a_clear_whose_history_write_fails_keeps_the_rows_and_their_offsets() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    block_write(tmp.path(), "history.new");
+
+    assert!(history_clear(&s).is_err());
+
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
+    assert_eq!(
+        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        4,
+        "with its offset"
+    );
+}
+
+#[test]
+fn a_delete_whose_offsets_write_fails_still_removes_the_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    block_write(tmp.path(), "ani-gui-offsets.new");
+
+    // The row goes; the offset it leaves has no row to misread.
+    assert!(history_delete(&s, "one-piece-69").unwrap());
+    assert!(history_list(&s).unwrap().is_empty());
+}
+
+/// A page's pre-resolve stamps a show's offset before any row exists,
+/// and a cache-hit play later writes the row through it. Removal takes
+/// the removed rows' offsets and no others.
+#[test]
+fn removal_keeps_the_offsets_of_shows_without_a_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(
+        &path,
+        &[row("one-piece-69", "One Piece"), row("naruto-20", "Naruto")],
+    )
+    .unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    crate::commands::anidb_offset::put(&s, "naruto-20", 2);
+    crate::commands::anidb_offset::put(&s, "bleach-30", 1);
+
+    assert!(history_delete(&s, "one-piece-69").unwrap());
+    assert_eq!(crate::commands::anidb_offset::get(&s, "one-piece-69"), 0);
+    assert_eq!(crate::commands::anidb_offset::get(&s, "naruto-20"), 2);
+    assert_eq!(crate::commands::anidb_offset::get(&s, "bleach-30"), 1);
+
+    history_clear(&s).unwrap();
+    assert_eq!(crate::commands::anidb_offset::get(&s, "naruto-20"), 0);
+    assert_eq!(
+        crate::commands::anidb_offset::get(&s, "bleach-30"),
+        1,
+        "never a row"
+    );
+}
+
+/// Skip times are cached per episode played, under the Kitsu id the
+/// player asked with: the row's recorded id, or for an older row the
+/// id its mapping or title match named. Removing the row removes them;
+/// rows keyed the old way, by MAL id alone, are read by nothing and go
+/// with any removal.
+#[test]
+fn delete_removes_the_shows_skip_times() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    let older = HistoryEntry {
+        kitsu_id: None,
+        ..row("hianime:seitokai-10497", "Seitokai")
+    };
+    write_atomic(&path, &[row("one-piece-69", "One Piece"), older]).unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:seitokai-10497", "1555").unwrap();
+    put(&s, "title-match:v3:hianime:seitokai:c1", "1777");
+    for key in [
+        "aniskip:v2:49877:59970:1",
+        "aniskip:v2:1555:111:1",
+        "aniskip:v2:1777:222:2",
+        "aniskip:v2:4987:333:1",
+        "aniskip:v2:12:21:1",
+        "aniskip:v1:21:1",
+    ] {
+        put(&s, key, "[]");
+    }
+
+    assert!(history_delete(&s, "one-piece-69").unwrap());
+    assert_eq!(
+        cached(&s, "aniskip:v2:49877:59970:1"),
+        None,
+        "the recorded id's"
+    );
+    assert_eq!(cached(&s, "aniskip:v1:21:1"), None, "the old key's");
+    assert!(
+        cached(&s, "aniskip:v2:4987:333:1").is_some(),
+        "another id's"
+    );
+
+    assert!(history_delete(&s, "hianime:seitokai-10497").unwrap());
+    assert_eq!(cached(&s, "aniskip:v2:1555:111:1"), None, "the mapped id's");
+    assert_eq!(
+        cached(&s, "aniskip:v2:1777:222:2"),
+        None,
+        "the title match's"
+    );
+    assert!(
+        cached(&s, "aniskip:v2:12:21:1").is_some(),
+        "a show never in history"
+    );
+}
+
+#[test]
+fn clear_removes_every_skip_time() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    put(&s, "aniskip:v2:12:21:1", "[]");
+    put(&s, "aniskip:v1:21:1", "[]");
+
+    history_clear(&s).unwrap();
+
+    assert_eq!(cached(&s, "aniskip:v2:12:21:1"), None);
+    assert_eq!(cached(&s, "aniskip:v1:21:1"), None);
+}
+
+/// A Kitsu id another row still claims keeps its skip times: deleting
+/// one row never removes what a remaining row's show cached, whether
+/// that row records the id, maps to it, or matched it by title — as
+/// two providers' rows of one show do, or a row a wrong match bound to
+/// another show's id.
+#[test]
+fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    let unrecorded = |id: &str, title: &str| HistoryEntry {
+        kitsu_id: None,
+        ..row(id, title)
+    };
+    write_atomic(
+        &path,
+        &[
+            unrecorded("hianime:seitokai-10497", "Seitokai"),
+            HistoryEntry {
+                kitsu_id: Some("1623".into()),
+                ..row("hianime:here-is-greenwood-3081", "Here is Greenwood")
+            },
+            unrecorded("naruto-20", "Naruto"),
+            unrecorded("bleach-30", "Bleach"),
+        ],
+    )
+    .unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:seitokai-10497", "1623").unwrap();
+    put(&s, "title-match:v3:hianime:seitokai:c1", "11");
+    put(&s, "allmanga2kitsu:v2:hianime:seitokai-10497", "20");
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "naruto-20", "11").unwrap();
+    put(&s, "title-match:v3:anidb.app:bleach:c1", "20");
+    for key in [
+        "aniskip:v2:1623:1:1",
+        "aniskip:v2:11:2:1",
+        "aniskip:v2:20:3:1",
+    ] {
+        put(&s, key, "[]");
+    }
+
+    assert!(history_delete(&s, "hianime:seitokai-10497").unwrap());
+
+    assert!(
+        cached(&s, "aniskip:v2:1623:1:1").is_some(),
+        "a recorded id's"
+    );
+    assert!(cached(&s, "aniskip:v2:11:2:1").is_some(), "a mapped id's");
+    assert!(
+        cached(&s, "aniskip:v2:20:3:1").is_some(),
+        "a title-matched id's"
+    );
+}
+
+/// An empty Kitsu id names no show, so it finds no row — not even one
+/// recording an empty id would.
+#[test]
+fn by_kitsu_with_an_empty_id_finds_no_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    assert_eq!(history_by_kitsu(&s, "").unwrap(), None);
+}
+
+/// A history that exists but cannot be read cannot be cleared: the
+/// clear could not name the rows whose offsets go with them, so it
+/// fails with the file and the offsets as they were.
+#[cfg(unix)]
+#[test]
+fn a_clear_of_an_unreadable_history_fails_and_changes_nothing() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
+    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read(&path).is_ok() {
+        return; // permissions do not hold here (root)
+    }
+
+    assert!(history_clear(&s).is_err());
+
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
+    assert_eq!(
+        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        4,
+        "with its offset"
+    );
+}
+
+// — a delete that fails part-way, retried after a restart ——————————
+//
+// A row from before rows recorded the Kitsu id finds the show's id
+// only through its mapping and the title match under its current
+// title; a match stored under an earlier title is found by the id it
+// names. A retry in a later process has no pages noted in memory, so a
+// failure must leave it the finders it needs.
+
+const RENAMED_ID: &str = "hianime:the-show-100";
+const OLD_TITLE_MATCH: &str = "title-match:v3:hianime:the show:c1";
+
+fn renamed_legacy_row(s: &AppState) {
+    write_atomic(
+        &s.history_path,
+        &[HistoryEntry {
+            kitsu_id: None,
+            ..row(RENAMED_ID, "The Show: Renamed")
+        }],
+    )
+    .unwrap();
+    put(s, OLD_TITLE_MATCH, "77");
+}
+
+/// Make the cache refuse to delete the row under `key`.
+fn refuse_delete_of(s: &AppState, key: &str) {
+    s.cache_pool
+        .get()
+        .unwrap()
+        .execute_batch(&format!(
+            "CREATE TRIGGER refused BEFORE DELETE ON meta_cache \
+             WHEN old.key = '{key}' BEGIN SELECT RAISE(ABORT, 'refused'); END;"
+        ))
+        .unwrap();
+}
+
+/// The same history and cache in a process that has held neither.
+fn restarted(s: &AppState, dir: &std::path::Path) -> AppState {
+    let path = dir.join("history-after-restart");
+    std::fs::copy(&s.history_path, &path).unwrap();
+    AppState {
+        cache_pool: s.cache_pool.clone(),
+        ..make_state(path)
+    }
+}
+
+fn delete_fails_then_retries_after_a_restart(s: &AppState, dir: &std::path::Path) {
+    refuse_delete_of(s, OLD_TITLE_MATCH);
+    assert!(history_delete(s, RENAMED_ID).is_err());
+    s.cache_pool
+        .get()
+        .unwrap()
+        .execute_batch("DROP TRIGGER refused;")
+        .unwrap();
+
+    let after = restarted(s, dir);
+    assert!(history_delete(&after, RENAMED_ID).unwrap());
+    assert_eq!(
+        cached(&after, OLD_TITLE_MATCH),
+        None,
+        "the old title's match"
+    );
+}
+
+#[test]
+fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_mapping() {
+    let tmp = tempfile::tempdir().unwrap();
+    let s = make_state(tmp.path().join("history"));
+    renamed_legacy_row(&s);
+    crate::commands::kitsu::allmanga_kitsu_put(&s, RENAMED_ID, "77").unwrap();
+
+    delete_fails_then_retries_after_a_restart(&s, tmp.path());
+}
+
+#[test]
+fn a_retry_after_a_restart_still_finds_the_old_title_match_by_the_current_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let s = make_state(tmp.path().join("history"));
+    renamed_legacy_row(&s);
+    put(&s, "title-match:v3:hianime:the show: renamed:c1", "77");
+
+    delete_fails_then_retries_after_a_restart(&s, tmp.path());
 }

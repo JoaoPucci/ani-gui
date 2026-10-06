@@ -118,7 +118,12 @@ pub struct PlayArgs {
 /// (the page-mount loop fires concurrently and whichever finishes
 /// last would otherwise overwrite the user's real click) and on
 /// legacy rows missing show_id.
-fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &CachedResolution) {
+fn write_history_on_cache_hit(
+    state: &AppState,
+    args: &PlayArgs,
+    cached: &CachedResolution,
+    asked: crate::history::guard::Asked<'_>,
+) {
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
@@ -142,8 +147,19 @@ fn write_history_on_cache_hit(state: &AppState, args: &PlayArgs, cached: &Cached
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
         watched_at: None,
+        kitsu_id: None,
     };
-    if let Err(e) = crate::history::upsert_and_write(&state.history_path, entry) {
+    // A show removed from history while the cached stream was being
+    // checked, or watched since the play began, gets no row from it.
+    let wrote = crate::history::guard::hold(&state.history_path, |held| {
+        if held.overtaken_since(asked, &cached.show_id) {
+            return Ok(());
+        }
+        held.upsert(entry)?;
+        held.played_from(&cached.show_id, asked.page);
+        Ok::<_, AniError>(())
+    });
+    if let Err(e) = wrote {
         tracing::warn!(
             title = %args.title,
             episode = %args.episode,
@@ -224,6 +240,9 @@ pub async fn play_with_progress<F>(
 where
     F: FnMut(ProgressLine) + Send,
 {
+    // The play as it was asked for, for the writes it makes once the
+    // stream is resolved.
+    let asked = crate::history::guard::Asked::now(&state.history_path, args.kitsu_id.as_deref());
     let quality = args.quality.as_deref().unwrap_or("best");
 
     // Resolution caching is the user's call (Config::cache_resolutions,
@@ -265,7 +284,7 @@ where
                     upstream = cached.upstream_url.as_str(),
                     "play: cache hit (HEAD ok)",
                 );
-                write_history_on_cache_hit(state, args, &cached);
+                write_history_on_cache_hit(state, args, &cached, asked);
                 crate::commands::play_cache::stamp_availability_on_cache_hit(
                     state,
                     args,
@@ -364,10 +383,10 @@ where
         &native.extra_tags,
     )
     .await;
-    crate::commands::play_native_record::stamp_numbering(state, &native);
+    crate::commands::play_native_record::stamp_numbering(state, &native, asked);
     // Prefetches stay out of the user's history exactly as before.
     if !args.prefetch {
-        crate::commands::play_native_record::write_history(state, &native, &args.episode);
+        crate::commands::play_native_record::write_history(state, &native, &args.episode, asked);
     }
 
     let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {
@@ -398,12 +417,14 @@ where
     // resolve would: `play_native_record::write_history` has the slug
     // in hand from the walk, `write_history_on_cache_hit` reads it
     // back from here. Nothing outside this app writes that file.
-    // Written unconditionally: the row doubles as the watch metadata
-    // /api/play/mark-watched reads back (show identity, title, the
-    // numbering slot this resolve stamped) — only the REPLAY reads
-    // are the user's cache_resolutions call. Every fresh resolve
-    // overwriting the row also keeps that metadata current.
-    play_resolution_cache::put(&state.cache_pool, &cache_key, &cached_resolution);
+    // Written whatever cache_resolutions says: the row doubles as the
+    // watch metadata /api/play/mark-watched reads back (show identity,
+    // title, the numbering slot this resolve stamped) — only the
+    // REPLAY reads are the user's cache_resolutions call. Every fresh
+    // resolve overwriting the row also keeps that metadata current.
+    // From here on, the one thing that withholds it is the show's
+    // removal from history since this play began.
+    play_resolution_cache::store(state, asked, &cache_key, &cached_resolution);
 
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
@@ -428,6 +449,7 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
         subtitles: native.subtitles.clone(),
+        kitsu_id: None,
     }
 }
 
@@ -978,6 +1000,7 @@ pub(crate) mod tests {
             show_title: String::new(),
             resolved_slot: None,
             subtitles: Vec::new(),
+            kitsu_id: None,
         }
     }
 
@@ -1011,7 +1034,12 @@ pub(crate) mod tests {
             prefetch: false,
             kitsu_id: None,
         };
-        write_history_on_cache_hit(&state, &args, &cached);
+        write_history_on_cache_hit(
+            &state,
+            &args,
+            &cached,
+            crate::history::guard::Asked::now(&state.history_path, None),
+        );
         let rows = crate::history::read_all(&state.history_path).expect("rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].ep_no, "41", "provider numbering, not Kitsu's");
@@ -1291,6 +1319,7 @@ pub(crate) mod tests {
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: Some(1),
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
     }
@@ -1336,6 +1365,7 @@ pub(crate) mod tests {
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles,
+                kitsu_id: None,
             },
         );
     }
@@ -1398,7 +1428,12 @@ pub(crate) mod tests {
         cached.show_id = "recap-show-7".into();
         cached.show_title = "Recap Show".into();
         cached.resolved_slot = Some(4);
-        write_history_on_cache_hit(&state, &args, &cached);
+        write_history_on_cache_hit(
+            &state,
+            &args,
+            &cached,
+            crate::history::guard::Asked::now(&state.history_path, None),
+        );
         let body = std::fs::read_to_string(&state.history_path).unwrap_or_default();
         assert!(
             body.contains("\t4\t") || body.starts_with("4\t"),
@@ -1712,6 +1747,7 @@ pub(crate) mod tests {
                 show_title: "Fast4 (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let cfg = external_cfg();
@@ -2147,6 +2183,9 @@ pub(crate) mod tests {
 #[cfg(test)]
 #[path = "play_affinity_test.rs"]
 mod affinity_tests;
+#[cfg(test)]
+#[path = "play_after_removal_test.rs"]
+mod after_removal_tests;
 #[cfg(test)]
 #[path = "play_referer_prop_test.rs"]
 mod referer_prop_tests;

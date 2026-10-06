@@ -47,6 +47,7 @@
 		type AvailabilityPatch
 	} from '$lib/detail/availability-writeback';
 	import { startAvailabilityLookup } from '$lib/detail/availability-lookup';
+	import { lookupResume } from '$lib/detail/resume-lookup';
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
 	import { airedCap, beyondPlayable, displayCap, minCap } from '$lib/detail/episode-caps';
@@ -891,7 +892,8 @@
 		extraEpisodes = [];
 		resumeEntry = null;
 		resetEpisodePageCache(kitsuPageCache);
-		void historyByKitsu(currentId)
+		const detailServed = kitsuAnimeDetail(currentId);
+		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
 				if (id !== currentId) return;
 				resumeEntry = h;
@@ -899,7 +901,7 @@
 			.catch(() => {
 				// Resume is a hint, not load-bearing — drop silently.
 			});
-		void kitsuAnimeDetail(currentId)
+		void detailServed
 			.then((d) => {
 				if (id !== currentId) return; // navigation raced ahead
 				detail = d;

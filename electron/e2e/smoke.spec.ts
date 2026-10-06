@@ -20,7 +20,7 @@ import {
   test,
   type ElectronApplication,
 } from "@playwright/test";
-import { withColdLaunchRetry } from "../lib/cold-launch.cjs";
+import { killTree, withColdLaunchRetry } from "../lib/cold-launch.cjs";
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -139,7 +139,12 @@ async function launchAppWithStubs() {
       cleanup: async () => {
         const dead = pending;
         pending = null;
-        if (dead) await dead.close();
+        // A dead app's close() hangs while its backend lives; kill
+        // the whole tree first (lib/cold-launch.cjs).
+        if (dead) {
+          killTree(dead.process().pid);
+          await dead.close();
+        }
       },
     },
   );

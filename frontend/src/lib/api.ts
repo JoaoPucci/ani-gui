@@ -199,6 +199,9 @@ export interface HistoryEntry {
 	ep_no: string;
 	id: string;
 	title: string;
+	/** Kitsu id of the show the user played, recorded with the watch.
+	 *  Absent on rows written before history recorded it. */
+	kitsu_id?: string;
 }
 
 /** Input to `cmd_create_session`. */
@@ -1045,6 +1048,9 @@ export function kitsuTitleMatchGet(
 /**
  * Persist a `(title, cour) → kitsu_id` mapping resolved by the
  * frontend picker. Idempotent — re-puts overwrite any prior value.
+ * The backend stores it only while a history row carries the title on
+ * that provider: a row removed while its search was out leaves nothing
+ * to match, and the call still succeeds.
  */
 export function kitsuTitleMatchPut(
 	title: string,
@@ -1073,17 +1079,31 @@ export function allmangaKitsuMapGet(showId: string): Promise<string | null> {
 }
 
 /**
+ * The Kitsu id of the show's reverse mapping when a play stored it,
+ * rather than a resolve that guessed; null otherwise. Continue
+ * Watching keeps a played mapping when only the provider's title
+ * doubts it. The mapping can change after a caller read it, so the
+ * answer vouches only for the id it names.
+ */
+export function allmangaKitsuMapPlayed(showId: string): Promise<string | null> {
+	return getJson<string | null>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}/played`);
+}
+
+/**
  * Evict a single `provider show_id → kitsu_id` reverse-mapping row.
  *
- * Fired by `resolveKitsuMatch` step 0 when the cached kitsu detail's
- * slug disagrees with the history entry's cour suffix. The cached
- * mapping is wrong (cross-cour poison from an earlier mark-watched
- * with a sibling-cour show_id); dropping it lets subsequent lookups
- * fall through to the live slug-fetch and the next successful play
- * rewrite the mapping correctly.
+ * Fired by `resolveKitsuMatch` step 0 when the mapping is bound to a
+ * music entry, which no provider show is. Dropping it lets subsequent
+ * lookups re-resolve and the next successful play rewrite the mapping
+ * correctly. A binding step 0 merely doubts is passed over and kept.
+ *
+ * `kitsuId` names the id the caller judged: the row goes only while it
+ * is still that one, so a mapping a play stored after the caller read
+ * it stays. Without it, whatever mapping stands goes.
  */
-export function allmangaKitsuMapDelete(showId: string): Promise<void> {
-	return deleteJson<void>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}`);
+export function allmangaKitsuMapDelete(showId: string, kitsuId?: string): Promise<void> {
+	const query = kitsuId === undefined ? '' : `?${new URLSearchParams({ kitsu_id: kitsuId })}`;
+	return deleteJson<void>(`/api/allmanga-kitsu-map/${encodeURIComponent(showId)}${query}`);
 }
 
 /**
@@ -1099,7 +1119,9 @@ export function allmangaKitsuMapDelete(showId: string): Promise<void> {
  * fresh-from-cache-clear renders where the provider's stub `name`
  * (`"1P"` for One Piece, `"Nato: Shippuuden"` for Naruto Shippuuden)
  * has no Kitsu text-search hit. The backend persists the resolved
- * mapping into the reverse cache so subsequent calls short-circuit.
+ * mapping into the reverse cache so subsequent calls short-circuit —
+ * while a history row still carries the show id, and not over a
+ * mapping a play stored; the entry is returned either way.
  */
 export function kitsuResolveAllmangaShowId(
 	showId: string,

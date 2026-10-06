@@ -1,7 +1,7 @@
 //! aniskip command — bridges Kitsu id → MAL id → aniskip skip
-//! times. The intervals are cached by MAL id and episode, so a repeat
-//! visit skips the aniskip request; the Kitsu mappings lookup that
-//! finds the MAL id still runs every time.
+//! times. The intervals are cached by Kitsu id, MAL id and episode, so
+//! a repeat visit skips the aniskip request; the Kitsu mappings lookup
+//! that finds the MAL id still runs every time.
 //!
 //! The frontend player uses this on `loadedmetadata` to learn
 //! when to render the Skip OP / Skip Outro overlay buttons.
@@ -17,9 +17,10 @@ const ANISKIP_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// Fetch the aniskip skip-time list for a given Kitsu id +
 /// episode + episode length (seconds). Resolves the MAL id
-/// transparently via Kitsu's mappings; caches the result keyed
-/// by `(mal_id, episode)` so repeat visits to the same episode
-/// reuse the lookup.
+/// transparently via Kitsu's mappings; caches the result as
+/// `aniskip:v2:<kitsu_id>:<mal_id>:<episode>` so repeat visits to the
+/// same episode reuse the lookup, and removing the show from history
+/// finds the rows by its Kitsu id.
 ///
 /// Returns `Ok(empty Vec)` when:
 ///   - Kitsu has no MAL mapping for this anime, or
@@ -36,6 +37,13 @@ pub async fn aniskip_get(
     episode: &str,
     episode_length: f32,
 ) -> Result<Vec<SkipInterval>> {
+    // Skip times are cached under the Kitsu id they were asked for:
+    // something that is not one asks nothing and stores nothing.
+    let Some(kitsu_id) = crate::history::kitsu_id_in(kitsu_id) else {
+        return Ok(Vec::new());
+    };
+    // The moment this lookup began, for the row it caches at the end.
+    let begun = crate::history::guard::epoch(&state.history_path);
     // Bridge kitsu_id → mal_id. No mapping = aniskip can't index
     // it; return empty so the player skips rendering the button.
     let mal_id = match state.kitsu.mal_id_for_kitsu_id(kitsu_id).await {
@@ -44,7 +52,7 @@ pub async fn aniskip_get(
         Err(e) => return Err(e),
     };
 
-    let key = cache_key(mal_id, episode);
+    let key = cache_key(kitsu_id, mal_id, episode);
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(intervals) = serde_json::from_str::<Vec<SkipInterval>>(&body) {
             return Ok(intervals);
@@ -61,15 +69,38 @@ pub async fn aniskip_get(
     )
     .await?;
 
-    if let Ok(body) = serde_json::to_string(&intervals) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ANISKIP_TTL_SECS);
-    }
+    store_skip_times(state, begun, kitsu_id, &key, &intervals);
     Ok(intervals)
 }
 
-/// Cache key for `(mal_id, episode)` lookups. Schema v1.
-fn cache_key(mal_id: u32, episode: &str) -> String {
-    format!("aniskip:v1:{mal_id}:{episode}")
+/// Cache the skip times a lookup begun at `begun` fetched for
+/// `kitsu_id` — unless a show's removal from history took that id's
+/// skip times since, which these would bring back
+/// ([`crate::history::guard`]). A row that cannot be serialized or
+/// written is skipped: the next lookup fetches again.
+fn store_skip_times(
+    state: &AppState,
+    begun: crate::history::guard::Epoch,
+    kitsu_id: &str,
+    key: &str,
+    intervals: &[SkipInterval],
+) {
+    let Ok(body) = serde_json::to_string(intervals) else {
+        return;
+    };
+    crate::history::guard::hold(&state.history_path, |held| {
+        if !held.kitsu_removed_since(begun, kitsu_id) {
+            let _ = meta_cache_put(&state.cache_pool, key, &body, ANISKIP_TTL_SECS);
+        }
+    });
+}
+
+/// Cache key for `(mal_id, episode)` lookups, led by the Kitsu id the
+/// player asked with so removing a show from history can find its
+/// rows without asking Kitsu for the MAL id. Schema v2; v1 keys carried
+/// the MAL id alone and are no longer read.
+fn cache_key(kitsu_id: &str, mal_id: u32, episode: &str) -> String {
+    format!("aniskip:v2:{kitsu_id}:{mal_id}:{episode}")
 }
 
 #[cfg(test)]
@@ -167,7 +198,7 @@ mod tests {
             end_time: 90.0,
         }];
         let body = serde_json::to_string(&intervals).expect("serialize");
-        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v1:21:1", &body, 3600).unwrap();
+        crate::cache::meta_cache_put(&state.cache_pool, "aniskip:v2:12:21:1", &body, 3600).unwrap();
 
         let v = aniskip_get(&state, "12", "1", 1440.0).await.expect("ok");
         assert_eq!(v.len(), 1);
@@ -175,11 +206,81 @@ mod tests {
         assert_eq!(v[0].start_time, 5.0);
     }
 
+    /// A state whose history lives under `dir`, holding one row for
+    /// One Piece that records Kitsu id 12.
+    fn state_with_a_row_in(dir: &std::path::Path) -> AppState {
+        let state = AppState {
+            history_path: dir.join("history"),
+            ..state_with_kitsu_at("http://unused")
+        };
+        crate::history::upsert_and_write(
+            &state.history_path,
+            crate::history::HistoryEntry {
+                ep_no: "1".into(),
+                id: "one-piece-69".into(),
+                title: "One Piece".into(),
+                watched_at: None,
+                kitsu_id: Some("12".into()),
+            },
+        )
+        .expect("seed row");
+        state
+    }
+
+    fn stored(state: &AppState, key: &str) -> bool {
+        crate::cache::meta_cache_get(&state.cache_pool, key)
+            .expect("cache")
+            .is_some()
+    }
+
+    /// A lookup waits on Kitsu and on aniskip before it caches. Skip
+    /// times it fetched for a show removed from history meanwhile are
+    /// not cached: the removal took the show's skip times, and these
+    /// would bring them back. A lookup begun after the removal is the
+    /// player open on the show again, and caches as any does.
     #[test]
-    fn cache_key_includes_mal_and_episode() {
-        // Stable key shape — the lookup chain depends on it.
-        assert_eq!(cache_key(21, "1"), "aniskip:v1:21:1");
-        assert_eq!(cache_key(59970, "12"), "aniskip:v1:59970:12");
+    fn skip_times_fetched_for_a_show_removed_meanwhile_are_not_cached() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = state_with_a_row_in(tmp.path());
+        let begun = crate::history::guard::epoch(&state.history_path);
+        assert!(crate::commands::history::history_delete(&state, "one-piece-69").expect("delete"));
+
+        store_skip_times(&state, begun, "12", "aniskip:v2:12:21:1", &[]);
+        assert!(
+            !stored(&state, "aniskip:v2:12:21:1"),
+            "begun before the delete"
+        );
+
+        store_skip_times(&state, begun, "49877", "aniskip:v2:49877:5:1", &[]);
+        assert!(stored(&state, "aniskip:v2:49877:5:1"), "another show's");
+
+        let after = crate::history::guard::epoch(&state.history_path);
+        store_skip_times(&state, after, "12", "aniskip:v2:12:21:2", &[]);
+        assert!(
+            stored(&state, "aniskip:v2:12:21:2"),
+            "begun after the delete"
+        );
+    }
+
+    #[test]
+    fn skip_times_fetched_while_the_history_was_cleared_are_not_cached() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = state_with_a_row_in(tmp.path());
+        let begun = crate::history::guard::epoch(&state.history_path);
+        crate::commands::history::history_clear(&state).expect("clear");
+
+        store_skip_times(&state, begun, "49877", "aniskip:v2:49877:5:1", &[]);
+
+        assert!(!stored(&state, "aniskip:v2:49877:5:1"));
+    }
+
+    #[test]
+    fn cache_key_includes_kitsu_mal_and_episode() {
+        // Stable key shape — the lookup chain depends on it, and
+        // removing a show from history finds its rows by the Kitsu id
+        // that leads it.
+        assert_eq!(cache_key("12", 21, "1"), "aniskip:v2:12:21:1");
+        assert_eq!(cache_key("49877", 59970, "12"), "aniskip:v2:49877:59970:12");
     }
 
     /// Cache MISS path: walk the full chain end-to-end. Mocks both
@@ -219,7 +320,7 @@ mod tests {
         // cache row and let the fall-through path run.
         crate::cache::meta_cache_put(
             &state.cache_pool,
-            "aniskip:v1:21:1",
+            "aniskip:v2:12:21:1",
             "{not valid json",
             3600,
         )

@@ -1,6 +1,11 @@
 /**
  * History → Kitsu resolver.
  *
+ * A history row that records the Kitsu id of the show played needs
+ * none of this: `resolveKitsuMatch` reads that entry and matches
+ * nothing. What follows serves rows written before history recorded
+ * it.
+ *
  * The provider sometimes splits one Kitsu anime across several
  * shows (Stone Ocean Part 1 / Part 2 / Part 3 in the provider, where on
  * Kitsu the structure varies — sometimes one parent, sometimes three
@@ -21,10 +26,11 @@
  * When the history row's own title is too thin to search on, the
  * recovery path lives on the backend at `resolve_allmanga_show_id`,
  * reached from here through the `kitsuResolveAllmangaShowId` IPC as
- * the last step in `resolveKitsuMatch`. It tries three things in
+ * the last step in `resolveKitsuMatch`. It tries two things in
  * order: the stored reverse mapping, then — for rows keyed on a
  * provider slug — a Kitsu search built from the slug's own words,
- * since `one-piece-69` carries the title it needs. Anything else is a
+ * since `one-piece-69` carries the title it needs, taking no hit whose
+ * titles share too few of them (title-words.ts). Anything else is a
  * row from the retired provider, and those resolve only from a stored
  * mapping: their alias source went away with the provider, so an
  * unmapped one returns null and Continue Watching renders the bare
@@ -37,6 +43,7 @@
  */
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
+import { sharesWords } from './title-words';
 
 /** UI tile count per page in /anime/[id]'s episode grid. Must match
  *  the `UI_PAGE_SIZE` used in that route — the resolver computes
@@ -97,6 +104,12 @@ export interface ResumeTarget {
 	 *  `(show_id → kitsu_id)` reverse-mapping cache, which beats
 	 *  fuzzy-text-searching the (sometimes typo'd) provider title. */
 	allmangaShowId: string;
+
+	/** Kitsu id the history row recorded for the show the user played.
+	 *  When present it is the answer: Continue Watching reads that entry
+	 *  and matches nothing. Null for rows written before history
+	 *  recorded it, which keep the matching fallback. */
+	recordedKitsuId: string | null;
 }
 
 /** Matches a `Part N` / `Cour N` / `Season N` token at the *end* of
@@ -220,7 +233,8 @@ export function resolveHistoryEntry(
 		kitsuEpisode,
 		uiPage,
 		mappingNote,
-		allmangaShowId: entry.id
+		allmangaShowId: entry.id,
+		recordedKitsuId: entry.kitsu_id ?? null
 	};
 }
 
@@ -369,12 +383,11 @@ function titleIsInformative(tokens: Set<string>): boolean {
  * plausibly name the same show. Used only to reject a poisoned reverse-map /
  * title-match binding (e.g. the Love Live movie's provider id bound to the
  * YOASOBI "Idol" music video) and fall through to a fresh resolution — never to
- * choose the final match, so a false reject costs one extra resolution. A row
- * keyed on a slug recovers from the slug's own words; a row from the retired
- * provider has only its stored mapping, which is the thing just rejected, so
- * there a false reject costs the binding until a play re-stamps it. Stubs are
- * never judged at all — see the token rule below — which is what keeps that
- * case from arising in practice.
+ * choose the final match, so a false reject costs one extra resolution. A
+ * reverse-map binding a play stored survives a reject on its title alone
+ * (match-stored.ts): a provider title Kitsu does not use rejects the right
+ * binding, and nothing a re-resolution finds is better evidence than the play.
+ * Stubs are never judged at all — see the token rule below.
  *
  * Compares the provider title's tokens against every Kitsu title (canonical +
  * localized variants + de-slugged slug), scoring the best alias by the WEAKER
@@ -447,7 +460,10 @@ export function cachedBindingVerdict(
 	// count, cour slug) is a fuzzy guess: a wrong guess there must NOT delete a
 	// possibly-valid binding, so it falls through to 'reresolve' (re-search,
 	// keep the row) instead. A real poison is overwritten by the corrected
-	// mapping on the next resolve; a valid binding survives a transient miss
+	// mapping on the next resolve, unless a play stored it: the show-id
+	// resolve never stores a guess over a play's mapping, which then stands
+	// until the next play of the show or its 30 days run out, passed over on
+	// every read. A valid binding survives a transient miss
 	// (no more deleting "Burichi"→BLEACH and depending on the network alias
 	// walk). titlesPlausiblySameShow still gates TRUST so a poison that shares
 	// only generic tokens ("Movie 2") re-resolves rather than playing wrong.
@@ -460,6 +476,23 @@ export function cachedBindingVerdict(
 		return courSlugRegex(preliminary.cour).test(cached.slug) ? 'trust' : 'reresolve';
 	}
 	return 'trust';
+}
+
+/** Whether a binding's only doubt is its title: its count and its cour
+ *  pass, and the title test alone refutes it. A provider title Kitsu
+ *  does not use doubts the right binding this way. */
+export function onlyTitleInDoubt(
+	cached: KitsuAnimeRef,
+	preliminary: ResumeTarget,
+	trustOnAbsentSlug: boolean
+): boolean {
+	if (isMusicSubtype(cached.subtype)) return false;
+	if (titlesPlausiblySameShow(preliminary.searchTitle, cached)) return false;
+	// The verdict with the title taken out: an empty title is never
+	// judged, so what is left is the count and the cour.
+	return (
+		cachedBindingVerdict(cached, { ...preliminary, searchTitle: '' }, trustOnAbsentSlug) === 'trust'
+	);
 }
 
 /** Threshold above which courSize is treated as a "definitively
@@ -542,9 +575,11 @@ export function isEpisodeCountCompatible(
 /**
  * Whether a search hit may stand as a candidate for this history row.
  *
- * Two of the three tests here reject on evidence the hit itself
- * carries — a music video is never a provider show, and a count far
- * from the user's is a different show. The third exists because the
+ * Three of the four tests here reject on evidence the hit itself
+ * carries — a music video is never a provider show, a hit whose
+ * titles share too few words with the row's is a different show
+ * (title-words.ts holds the rule), and a count far from the user's is a different
+ * show. The fourth exists because the
  * countless-airing lane accepts on no count evidence at all: it only
  * says a broadcasting show legitimately has no announced total, which
  * says nothing about WHICH broadcasting show. Above the threshold,
@@ -559,6 +594,13 @@ export function isEpisodeCountCompatible(
  */
 export function isCandidateForRow(preliminary: ResumeTarget, hit: KitsuAnimeRef): boolean {
 	if (isMusicSubtype(hit.subtype)) return false;
+	// A hit whose titles share too few words with the row's — under a
+	// third of either side's, neither's all in the other — is not the
+	// row's show, whatever its count: a text search answers with its closest
+	// words, and a row without a count accepts every count, so the count
+	// alone once handed "There Is Also a Hole in the Student
+	// Organization!" to Here is Greenwood (title-words.ts).
+	if (!sharesWords([preliminary.searchTitle], hit)) return false;
 	if (!isEpisodeCountCompatible(preliminary.courSize, hit.episode_count, hit.status)) return false;
 	if (!acceptedOnAiringStatusAlone(preliminary, hit)) return true;
 	// 'proven', not merely not-refuted: this lane has no count
@@ -588,7 +630,10 @@ export function pickKitsuMatch(
 
 	// Drop hits that can't be the user's show:
 	//  - music videos (subtype `music`) never exist on the provider, so the
-	//    YOASOBI "Idol" MV must never win over a real entry; and
+	//    YOASOBI "Idol" MV must never win over a real entry;
+	//  - hits whose titles share too few words with the row's (Here is
+	//    Greenwood, sharing only "is" with "There Is Also a Hole in the
+	//    Student Organization!");
 	//  - hits whose episode_count is incompatible with the history record
 	//    (Burichi 366 → Doraemon Movie 14 (1 ep), fuzzy-matched on "Buriki").
 	// When nothing survives, surface null so resolveKitsuMatch falls through

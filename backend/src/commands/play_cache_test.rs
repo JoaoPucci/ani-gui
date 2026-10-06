@@ -29,6 +29,7 @@ fn cached_launch_args_lead_with_the_providers_default_track() {
         show_title: "Show".into(),
         resolved_slot: Some(1),
         subtitles: vec![track("ar", false), track("en", true), track("es", false)],
+        kitsu_id: None,
     };
     let args: crate::commands::play::PlayArgs = serde_json::from_value(
         serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub" }),
@@ -217,6 +218,7 @@ fn a_cached_watch_prefers_the_rows_own_slot() {
         show_title: "Show".into(),
         resolved_slot: slot,
         subtitles: Vec::new(),
+        kitsu_id: None,
     };
     let stamped = super::cached_watch(&state, &row(Some(5)), "4");
     assert_eq!(
@@ -268,6 +270,7 @@ async fn a_cached_handoff_refreshes_the_providers_positive_row() {
             show_title: "Show".into(),
             resolved_slot: Some(1),
             subtitles: Vec::new(),
+            kitsu_id: None,
         },
     );
     let cfg = crate::config::Config {
@@ -346,6 +349,7 @@ fn seed_cached_row(
             show_title: "Show".into(),
             resolved_slot: Some(1),
             subtitles: Vec::new(),
+            kitsu_id: None,
         },
     );
 }
@@ -473,6 +477,7 @@ mod row_provider_props {
             show_title: "Show".into(),
             resolved_slot: None,
             subtitles: Vec::new(),
+            kitsu_id: None,
         }
     }
 

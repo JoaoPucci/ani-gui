@@ -207,3 +207,95 @@ fn v002_user_list_cache_round_trip_insert_select() {
     assert_eq!(row.4, "planning");
     assert_eq!(row.5, 0);
 }
+
+/// Before plays marked the mappings they stored, a mapping written
+/// within seconds after the show's watch stamp was read as the play's.
+/// Opening a cache an earlier build left marks each mapping that rule
+/// read as played, once, so a play stored before the upgrade keeps its
+/// standing; a mapping the rule read as a guess gets no mark, and
+/// neither does one written after.
+///
+/// It applies no schema migration: refinery aborts on an applied
+/// migration it does not have, so one would stop an earlier build from
+/// opening the cache after a downgrade.
+#[test]
+fn opening_an_earlier_cache_marks_the_mappings_the_stamp_rule_read_as_played() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("metadata.db");
+    let now = now_secs();
+    let ttl = 30 * 24 * 3600;
+    let put = |conn: &rusqlite::Connection, key: &str, body: &str, at: i64| {
+        conn.execute(
+            "INSERT OR REPLACE INTO meta_cache(key, body, fetched_at, ttl_seconds) \
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![key, body, at, ttl],
+        )
+        .unwrap();
+    };
+    let history = |conn: &rusqlite::Connection| -> Vec<i64> {
+        conn.prepare("SELECT version FROM refinery_schema_history ORDER BY version")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap()
+    };
+    // The cache as an earlier build left it: its two migrations, and
+    // the rows its plays and guesses wrote.
+    let earlier = {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        crate::cache::schema::run_migrations_to(&mut conn, 2).unwrap();
+        // Stamped, then mapped two seconds later: a play's.
+        put(
+            &conn,
+            "watched-at:v1:played",
+            &((now - 60) * 1000).to_string(),
+            now - 60,
+        );
+        put(&conn, "allmanga2kitsu:v3:played", "21", now - 58);
+        // Mapped in the stamp's own second, the cache reading it first.
+        put(
+            &conn,
+            "watched-at:v1:same",
+            &((now - 60) * 1000 + 400).to_string(),
+            now - 60,
+        );
+        put(&conn, "allmanga2kitsu:v3:same", "22", now - 60);
+        // Mapped an hour after the stamp: a guess.
+        put(
+            &conn,
+            "watched-at:v1:guess",
+            &((now - 3_600) * 1000).to_string(),
+            now - 3_600,
+        );
+        put(&conn, "allmanga2kitsu:v3:guess", "12", now);
+        // Mapped with no stamp at all: a guess.
+        put(&conn, "allmanga2kitsu:v3:unstamped", "13", now);
+        history(&conn)
+    };
+
+    let mark = |pool: &SqlitePool, id: &str| {
+        meta_cache_get(pool, &format!("allmanga2kitsu:played:v1:{id}")).unwrap()
+    };
+    let pool = open_pool(&path).unwrap();
+    assert_eq!(mark(&pool, "played").as_deref(), Some("21"));
+    assert_eq!(mark(&pool, "same").as_deref(), Some("22"));
+    assert_eq!(mark(&pool, "guess"), None);
+    assert_eq!(mark(&pool, "unstamped"), None);
+    assert_eq!(
+        history(&pool.get().unwrap()),
+        earlier,
+        "no migration an earlier build lacks"
+    );
+
+    // Once: a mapping written beside a stamp after the upgrade is not
+    // marked by opening the cache again.
+    {
+        let conn = pool.get().unwrap();
+        put(&conn, "watched-at:v1:later", &(now * 1000).to_string(), now);
+        put(&conn, "allmanga2kitsu:v3:later", "14", now);
+    }
+    drop(pool);
+    let pool = open_pool(&path).unwrap();
+    assert_eq!(mark(&pool, "later"), None);
+}

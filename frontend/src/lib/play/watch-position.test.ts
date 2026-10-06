@@ -5,10 +5,12 @@ import {
 	RESUME_MIN_S,
 	clearAllPositions,
 	clearPosition,
+	clearRowPositions,
 	clearShowPositions,
 	markStarted,
 	readPosition,
 	savePosition,
+	snapshotPositions,
 	type PositionStorage
 } from './watch-position';
 import { recoveryResume } from './resume-after-recovery';
@@ -166,5 +168,185 @@ describe('watch position', () => {
 			expect(() => savePosition('42', 3, 612.4, 1420)).not.toThrow();
 			expect(readPosition('42', 3)).toBeNull();
 		});
+	});
+});
+
+// A session a Continue card opened writes its positions for the card's
+// history row, by the row's provider show id. The card's match can be a
+// guess the next load corrects, and the positions keyed by the guess
+// are then on no show the card names; removing the card still reaches
+// them through the row.
+describe('positions written for a Continue row', () => {
+	it("forgets the row's positions, and keeps a detail-page play's and another row's", () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		markStarted('A', 4, s, 'row-x');
+		savePosition('A', 5, 600, 1420, s);
+		savePosition('B', 1, 600, 1420, s, 'row-y');
+
+		clearRowPositions(['row-x'], s);
+
+		expect(readPosition('A', 3, s)).toBeNull();
+		expect(readPosition('A', 4, s)).toBeNull();
+		expect(readPosition('A', 5, s)).toBe(600);
+		expect(readPosition('B', 1, s)).toBe(600);
+	});
+
+	it("is the latest write's: a detail-page play of the episode is no longer the row's", () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		savePosition('A', 3, 700, 1420, s);
+		savePosition('A', 4, 600, 1420, s, 'row-x');
+		savePosition('A', 4, 700, 1420, s, 'row-y');
+
+		clearRowPositions(['row-x'], s);
+
+		expect(readPosition('A', 3, s)).toBe(700);
+		expect(readPosition('A', 4, s)).toBe(700);
+	});
+
+	it('keeps a position whose show a remaining card is', () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		savePosition('B', 3, 600, 1420, s, 'row-x');
+
+		clearRowPositions(['row-x'], s, new Set(['A']));
+
+		expect(readPosition('A', 3, s)).toBe(600);
+		expect(readPosition('B', 3, s)).toBeNull();
+	});
+
+	it('stays with the position as newer episodes push older ones out', () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		for (let ep = 1; ep < MAX_POSITIONS; ep++) savePosition('C', ep, 600, 1420, s);
+
+		clearRowPositions(['row-x'], s);
+
+		expect(readPosition('A', 3, s)).toBeNull();
+		expect(readPosition('C', 1, s)).toBe(600);
+	});
+
+	it('leaves positions kept before rows were recorded as they were', () => {
+		const s = memory();
+		s.setItem('ani-gui.watch-positions', JSON.stringify([['A:3', 600]]));
+
+		clearRowPositions(['row-x'], s);
+
+		expect(readPosition('A', 3, s)).toBe(600);
+	});
+
+	it("drops a pending recovery point for a forgotten position's show", () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		recoveryResume.capture('A', 3, 700);
+
+		clearRowPositions(['row-x'], s);
+
+		expect(recoveryResume.consume('A', 3)).toBeNull();
+	});
+});
+
+// A Continue delete's cleanup can wait on Kitsu, and the user can open
+// the removed show and play it meanwhile. The cleanup takes what was
+// kept when the rows were gone, never a point made since.
+describe("a removal's cleanup, as of when its rows were gone", () => {
+	it("forgets the show's points kept before, and keeps those written since", () => {
+		const s = memory();
+		s.setItem('ani-gui.watch-positions', JSON.stringify([['A:1', 300]]));
+		savePosition('A', 2, 600, 1420, s);
+		savePosition('A', 3, 600, 1420, s);
+		const since = snapshotPositions();
+		savePosition('A', 3, 700, 1420, s);
+		markStarted('A', 4, s);
+
+		clearShowPositions('A', s, since);
+
+		expect(readPosition('A', 1, s), 'kept by an earlier session').toBeNull();
+		expect(readPosition('A', 2, s)).toBeNull();
+		expect(readPosition('A', 3, s), 'rewritten since').toBe(700);
+		expect(readPosition('A', 4, s), 'started since').toBe(0);
+	});
+
+	it("forgets the rows' points kept before, and keeps those written since", () => {
+		const s = memory();
+		savePosition('A', 2, 600, 1420, s, 'row-x');
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		const since = snapshotPositions();
+		savePosition('A', 3, 700, 1420, s, 'row-x');
+		savePosition('A', 4, 700, 1420, s, 'row-x');
+
+		clearRowPositions(['row-x'], s, new Set(), since);
+
+		expect(readPosition('A', 2, s)).toBeNull();
+		expect(readPosition('A', 3, s)).toBe(700);
+		expect(readPosition('A', 4, s)).toBe(700);
+	});
+
+	it('keeps a recovery point captured since, and drops one captured before', () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s, 'row-x');
+		recoveryResume.capture('B', 1, 500);
+		const since = snapshotPositions();
+		recoveryResume.capture('A', 3, 700);
+
+		clearShowPositions('A', s, since);
+		clearRowPositions(['row-x'], s, new Set(), since);
+
+		expect(recoveryResume.consume('A', 3)).toBe(700);
+
+		savePosition('B', 1, 600, 1420, s, 'row-y');
+		recoveryResume.capture('B', 1, 500);
+		const later = snapshotPositions();
+		clearShowPositions('B', s, later);
+		expect(recoveryResume.consume('B', 1)).toBeNull();
+	});
+});
+
+describe("a removal's cleanup and a pick or write since", () => {
+	it('restarts a point kept before when its episode was picked again since', () => {
+		// The removal forgets what was kept then, the old point with it;
+		// the pick is new, so the episode stays started, at zero.
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s);
+		savePosition('A', 4, 600, 1420, s, 'row-x');
+		const since = snapshotPositions();
+		markStarted('A', 3, s);
+		markStarted('A', 4, s);
+
+		clearShowPositions('A', s, since);
+		clearRowPositions(['row-x'], s, new Set(), since);
+
+		expect(readPosition('A', 3, s)).toBe(0);
+		expect(readPosition('A', 4, s)).toBe(0);
+	});
+
+	it('leaves a picked point alone when no removal is under way', () => {
+		const s = memory();
+		savePosition('A', 3, 600, 1420, s);
+		markStarted('A', 3, s);
+
+		expect(readPosition('A', 3, s)).toBe(600);
+	});
+
+	it('forgets a point whose rewrite since the storage refused', () => {
+		const s = memory();
+		let refuse = false;
+		const flaky: PositionStorage = {
+			getItem: (k) => s.getItem(k),
+			setItem: (k, v) => {
+				if (refuse) throw new Error('quota');
+				s.setItem(k, v);
+			}
+		};
+		savePosition('A', 3, 600, 1420, flaky);
+		const since = snapshotPositions();
+		refuse = true;
+		savePosition('A', 3, 700, 1420, flaky);
+		refuse = false;
+
+		clearShowPositions('A', flaky, since);
+
+		expect(readPosition('A', 3, flaky)).toBeNull();
 	});
 });

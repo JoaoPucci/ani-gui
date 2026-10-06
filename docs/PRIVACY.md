@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 2026-09-26_
+_Last updated: 2026-10-05_
 
 This document explains how ani-gui handles your data. It applies to
 the open-source ani-gui desktop application maintained at
@@ -26,8 +26,79 @@ ani-gui keeps the following on your computer only:
   similar information fetched from public APIs. Stored in a local
   SQLite database under your OS's cache directory.
 - **Watch history** — a plain-text file in the app's own state
-  directory. Lists what you've watched, where you left off and
-  when.
+  directory. Lists what you've watched, where you left off and when,
+  and the Kitsu id of the show you played. More about each show you
+  watch is kept beside it: in the metadata cache, when you last
+  watched it, the Kitsu entry it maps to and whether a play stored
+  that link, the Kitsu entry its title matched (for a show watched
+  before the history recorded the Kitsu id), the stream addresses
+  resolved to play it, and the opening and
+  ending times fetched for the episodes you played; and, in a file
+  beside the history, how the show's episode numbering lines up with
+  Kitsu's. Deleting a show from your history deletes its row and all
+  of these for that show, including the copies earlier versions of the
+  app wrote, except a Kitsu entry matched by title that another row
+  still in your history also searches — the same title on the same
+  catalogue, or once a trailing episode count is dropped, or on either
+  catalogue under an older version's record — which stays with that
+  row. If the streaming catalogue renamed the show, the Kitsu
+  entry matched under its old title is found by the entry it names,
+  and stays only if the history never linked that entry to the show or
+  another show still in your history claims it. Opening and ending
+  times are found by the Kitsu ids the history knows for the show:
+  times under an id another show still in your history claims stay
+  with that show, and times fetched under an id the history never
+  linked to the show stay until you clear your history. Clearing your
+  history deletes every row, all of these for every show, every cached
+  stream address and every cached opening and ending time, including
+  ones a page resolved ahead for a show you never played. Clearing
+  removes the numbering of the shows in your history at the time,
+  under either streaming catalogue's listing the app linked to them;
+  the numbering of a show with no row then stays — one a page resolved
+  but you never played, or one removed from your history by a version
+  of the app from before removal took its numbering too. A removal
+  also stands against what the app had begun before it and not yet
+  finished writing — a play, or a page resolving a stream ahead, still
+  resolving; a watch still being recorded; the home page still
+  matching the row: none of it is written for the removed show
+  afterwards. Playing the show again after removing it records it
+  again. A removal that fails part-way leaves what it has not yet
+  removed findable, so trying again finishes it, except as below. Five
+  things are not covered. The app knows a removed show by
+  its row and by the Kitsu entry it linked the row to — the one the
+  row recorded, the ones it was matched to, the page it was played
+  from while the app was running: for a show the history never linked
+  to a Kitsu entry, opening and ending times fetched for it, and a
+  stream address and numbering a page resolved for it on the other
+  streaming catalogue — already stored, or still on their way when you
+  remove it — are not recognised as that show's. A stream address a
+  page resolved on the other streaming catalogue under a version of
+  the app from before stream addresses recorded the page they were
+  resolved for is missed for any show, with the numbering beside it.
+  The app finds the other catalogue's numbering through the stream
+  addresses resolved there, so numbering whose stream address is gone
+  is missed too: one a hand-off to an external player resolved, which
+  keeps no address, when the player never started; one whose address a
+  later resolve of the same episode replaced with an address on a
+  different listing; one whose address stopped working and was
+  dropped. A row of the same show under the other catalogue's listing,
+  written by a play that switched catalogues, is a row of its own: the
+  home page groups and removes it with the show once it has shown it,
+  and otherwise it stays in your history. And when the app cannot
+  write the file that holds the numbering, the numbering is missed:
+  the show's own stays, and so does the other catalogue's, whose
+  stream addresses are removed all the same, so trying again no longer
+  finds it. A stream address that is missed stays until you clear your
+  history; numbering that is missed stays as that of any show a page
+  resolved and you never played does. Catalogue data shared with
+  browsing — anime details, artwork, episode lists and which catalogue
+  carries a show — is not part of your history and stays in the cache,
+  as it does for shows you only browsed. When Kitsu answers that an
+  entry a show in your history names no longer exists, the app notes
+  that for up to a year, so the show can be found under its new entry;
+  deleting the show removes the note for the entries it was known by
+  that no other show in your history names, and clearing your history
+  removes every note.
 - **Episode positions** — how far into an episode you got, so
   reopening it resumes there: an episode is marked started when you
   choose it to play, a point in its first 15 seconds is kept as its
@@ -37,19 +108,36 @@ ani-gui keeps the following on your computer only:
   the app's local browser storage (under your OS user-data directory),
   keyed by the show's Kitsu id and the episode number. Clearing your
   watch history forgets them all. Removing a show from Continue
-  Watching forgets that show's positions — found by the card's
-  matched show, or, for a card whose match never loaded, by the show
-  id → Kitsu id mapping a play records. Where neither is available —
-  the mapping was refused or failed to save, expired thirty days after
-  the show's last play, was dropped as wrong, or cannot be read — that
-  show's positions stay until the history is cleared or they are
-  pushed out by newer ones. They also stay while another history row
-  for the same show remains — it is still a Continue card — or while
-  a remaining row's show cannot be told (its match has not resolved
-  and it has no readable show id → Kitsu id mapping). Forgetting a
-  show's positions, or all of them, also forgets where a stream that
-  was recovering from a dropped connection stood, which the app keeps
-  in memory until that episode is opened again.
+  Watching forgets that show's positions — found by the Kitsu id its
+  history row recorded, even one Kitsu has since deleted, and by the
+  card's matched show, or, for a card whose match never loaded, by the
+  show id → Kitsu id mapping a play records, read before the removal
+  deletes it. Where none is available — an older row that recorded no
+  id, whose mapping was refused or failed to save, expired thirty days
+  after the show's last play, was dropped as wrong, or cannot be read
+  — that show's positions stay until the history is cleared or they
+  are pushed out by newer ones. They also stay while another history
+  row for the same show remains — it is still a Continue card, its
+  show told by the Kitsu id it recorded unless Kitsu answers that
+  entry deleted, then by its match, then by its mapping — or while a
+  remaining row's show cannot be told (its match has not resolved, and
+  Kitsu cannot be asked about the id it recorded, or it has no live
+  recorded id and no readable mapping). Separately, a position
+  written while playing from a Continue card records that card's
+  history row, and removing the card forgets every position its plays
+  wrote last — whichever show it is under, including a show the card
+  was matched to by a guess that a later load corrected — except one
+  under a show another remaining row is still a card of, and none
+  while a remaining row's show cannot be told, as above. Playing the same episode again from the show's own
+  page takes the position over, and it then follows the rules above,
+  as positions kept before rows were recorded do. Forgetting a
+  show's positions, a card's, or all of them, also forgets where a
+  stream that was recovering from a dropped connection stood, which
+  the app keeps in memory until that episode is opened again. What
+  removing a card forgets is what was kept when it was removed:
+  playing the show again afterwards keeps its positions again, and
+  where its stream stood while recovering, the same way the history
+  records a show played again after removing it.
 - **OAuth tokens** — if you connect an account (see below).
   Encrypted via your operating system's keychain (libsecret on Linux,
   Keychain on macOS, DPAPI on Windows) through Electron's

@@ -24,3 +24,18 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         .map(|_| ())
         .map_err(|_| AniError::Cache)
 }
+
+/// Run the migrations up to and including `version`, as a cache an
+/// older build left on disk would have them. Tests stage such a cache
+/// to check what a later migration does to it.
+///
+/// # Errors
+/// As [`run_migrations`].
+#[cfg(test)]
+pub(crate) fn run_migrations_to(conn: &mut Connection, version: u32) -> Result<()> {
+    embedded::migrations::runner()
+        .set_target(refinery::Target::Version(version))
+        .run(conn)
+        .map(|_| ())
+        .map_err(|_| AniError::Cache)
+}

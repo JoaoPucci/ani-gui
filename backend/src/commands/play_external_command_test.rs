@@ -352,6 +352,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
+            kitsu_id: None,
         },
     );
     let before = std::time::SystemTime::now()
@@ -398,7 +399,7 @@ async fn an_external_play_persists_the_shows_kitsu_mapping() {
     )
     .expect("write config");
     let args = PlayArgs {
-        kitsu_id: Some("K42".into()),
+        kitsu_id: Some("42".into()),
         ..play_args()
     };
 
@@ -407,10 +408,10 @@ async fn an_external_play_persists_the_shows_kitsu_mapping() {
 
     assert_eq!(
         crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
-        Some("K42".into()),
+        Some("42".into()),
         "the spawn persists the show's reverse mapping"
     );
-    let resumed = crate::commands::history::history_by_kitsu(&state, "K42")
+    let resumed = crate::commands::history::history_by_kitsu(&state, "42")
         .expect("history read")
         .expect("the row is found by its Kitsu id");
     assert_eq!(resumed.id, "the-show-77");
@@ -436,7 +437,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
     )
     .expect("write config");
     let args = PlayArgs {
-        kitsu_id: Some("K42".into()),
+        kitsu_id: Some("42".into()),
         ..play_args()
     };
     let key = crate::commands::play_resolution_cache::cache_key(
@@ -459,6 +460,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
+            kitsu_id: None,
         },
     );
 
@@ -469,7 +471,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
 
     assert_eq!(
         crate::commands::kitsu::allmanga_kitsu_get(&state, "cached-show-9").expect("mapping read"),
-        Some("K42".into()),
+        Some("42".into()),
         "a cached handoff persists the mapping too"
     );
 }
@@ -490,7 +492,7 @@ async fn a_watch_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
         title: "The Show".into(),
         ep_no: "3".into(),
     };
-    crate::commands::play_native_record::record_watch(&state, &watch, Some("K42")).await;
+    crate::commands::play_native_record::record_watch(&state, &watch, Some("42")).await;
     assert_eq!(
         crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
         None,
@@ -514,7 +516,7 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
         title: "The Show".into(),
         ep_no: "3".into(),
     };
-    crate::commands::play_native_record::record_watch(&state, &watch, Some("K42")).await;
+    crate::commands::play_native_record::record_watch(&state, &watch, Some("42")).await;
     let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
     assert!(hsts.contains("the-show-77"), "{hsts}");
     assert!(
@@ -527,6 +529,152 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
         crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77")
             .expect("mapping read")
             .as_deref(),
-        Some("K42")
+        Some("42")
+    );
+}
+
+/// A handoff resolves its stream before its player starts, and the
+/// user can remove the show from history while it resolves. The player
+/// still opens — it was asked for — but the removal stands: the play
+/// records no row, no stamp and no numbering for the show.
+#[tokio::test]
+async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
+    let mock = MockServer::start().await;
+    // Hold the resolve on its first request, ahead of the plain stub.
+    Mock::given(method("GET"))
+        .and(path("/browse"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>")
+                .set_delay(std::time::Duration::from_millis(700)),
+        )
+        .with_priority(1)
+        .mount(&mock)
+        .await;
+    stub_provider(&mock, "the show").await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = std::sync::Arc::new(state_for(dir.path(), &mock.uri()));
+    std::fs::write(
+        &state.config_path,
+        format!("external_player = \"{}\"\n", player.display()),
+    )
+    .expect("write config");
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: "the-show-77".into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+        },
+    )
+    .expect("seed row");
+
+    let play = {
+        let state = std::sync::Arc::clone(&state);
+        tokio::spawn(async move { play_external(&state, &play_args()).await })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    play.await.expect("join").expect("plays");
+    wait_for(&argv_file).await;
+
+    assert!(
+        crate::history::read_all(&state.history_path)
+            .expect("rows")
+            .is_empty(),
+        "the removed show has no row"
+    );
+    assert_eq!(
+        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp"),
+        None
+    );
+    let offsets = std::fs::read_to_string(dir.path().join("ani-gui-offsets")).unwrap_or_default();
+    assert!(!offsets.contains("the-show-77"), "nor numbering: {offsets}");
+}
+
+/// The handoff tries a cached stream before it resolves afresh, and
+/// that check waits on the CDN. A show removed while it waits is
+/// removed since the handoff began: the fresh resolve that follows a
+/// dead cached stream stamps no numbering for it either.
+#[tokio::test]
+async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_no_numbering() {
+    let mock = MockServer::start().await;
+    // The cached stream is dead, and says so slowly.
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(404).set_delay(std::time::Duration::from_millis(700)))
+        .mount(&mock)
+        .await;
+    stub_provider(&mock, "the show").await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = std::sync::Arc::new(state_for(dir.path(), &mock.uri()));
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = \"{}\"\ncache_resolutions = true\n",
+            player.display()
+        ),
+    )
+    .expect("write config");
+    let args = play_args();
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: "the-show-77".into(),
+            show_title: "The Show".into(),
+            resolved_slot: Some(2),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+        },
+    );
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "1".into(),
+            id: "the-show-77".into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+        },
+    )
+    .expect("seed row");
+
+    let play = {
+        let state = std::sync::Arc::clone(&state);
+        tokio::spawn(async move { play_external(&state, &play_args()).await })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    play.await.expect("join").expect("plays");
+    let argv = wait_for(&argv_file).await;
+
+    assert!(
+        argv.contains("/x/master.m3u8"),
+        "the fresh stream reached the player: {argv}"
+    );
+    let offsets = std::fs::read_to_string(dir.path().join("ani-gui-offsets")).unwrap_or_default();
+    assert!(!offsets.contains("the-show-77"), "no numbering: {offsets}");
+    assert!(
+        crate::history::read_all(&state.history_path)
+            .expect("rows")
+            .is_empty(),
+        "and no row"
     );
 }

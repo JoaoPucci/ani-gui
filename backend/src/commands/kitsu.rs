@@ -437,16 +437,24 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 ///   providers naming different shows identically cannot read or
 ///   overwrite each other's mapping. v2 rows are orphaned rather
 ///   than left answering for another provider.
-const TITLE_MATCH_VERSION: u32 = 3;
+pub(crate) const TITLE_MATCH_VERSION: u32 = 3;
 
 fn title_match_key(
     provider: crate::scraper::provider::ProviderId,
     title: &str,
     cour: u32,
 ) -> String {
+    format!("{}{cour}", title_match_prefix(provider, title))
+}
+
+/// The key every cour of `title`'s title-match rows starts with.
+pub(crate) fn title_match_prefix(
+    provider: crate::scraper::provider::ProviderId,
+    title: &str,
+) -> String {
     let normalized = title.trim().to_lowercase();
     format!(
-        "title-match:v{TITLE_MATCH_VERSION}:{}:{normalized}:c{cour}",
+        "title-match:v{TITLE_MATCH_VERSION}:{}:{normalized}:c",
         provider.label()
     )
 }
@@ -510,10 +518,17 @@ pub fn title_match_put(
 ///   so one bad row keeps steering a show to the wrong page for its
 ///   whole TTL. Re-keying orphans them; the next successful resolve
 ///   stamps a fresh v3 row.
-const ALLMANGA_KITSU_VERSION: u32 = 3;
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 3;
 
-fn allmanga_kitsu_key(show_id: &str) -> String {
+pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
+}
+
+/// The mark a play leaves beside the mapping it stored, naming the
+/// Kitsu id it stored ([`crate::commands::kitsu_played`]). Under the
+/// mapping's prefix, so clearing the history takes it with them.
+pub(crate) fn allmanga_kitsu_played_key(show_id: &str) -> String {
+    format!("allmanga2kitsu:played:v1:{show_id}")
 }
 
 /// Read the cached `provider show_id → kitsu_id` mapping. Returns
@@ -525,7 +540,11 @@ pub fn allmanga_kitsu_get(state: &AppState, show_id: &str) -> Result<Option<Stri
 /// Persist an `provider show_id → kitsu_id` mapping. Same TTL as
 /// `title_match` (30d) — the mapping is as stable as Kitsu's id
 /// space, and re-puts on every successful play keep it fresh.
+///
+/// A write that is not a play's takes the play's mark first, so a
+/// mapping it replaces cannot lend the mark to it.
 pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
+    crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_played_key(show_id))?;
     meta_cache_put(
         &state.cache_pool,
         &allmanga_kitsu_key(show_id),
@@ -534,13 +553,54 @@ pub fn allmanga_kitsu_put(state: &AppState, show_id: &str, kitsu_id: &str) -> Re
     )
 }
 
+/// Persist the mapping a play stored: the show the user played, as
+/// against one a resolve guessed ([`crate::commands::kitsu_played`]).
+///
+/// # Errors
+/// SQLite write failures propagate.
+/// The mapping goes first and the mark after it: a mark that fails to
+/// save leaves the mapping read as a guess, never a guess read as
+/// played.
+pub fn allmanga_kitsu_put_played(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
+    allmanga_kitsu_put(state, show_id, kitsu_id)?;
+    meta_cache_put(
+        &state.cache_pool,
+        &allmanga_kitsu_played_key(show_id),
+        kitsu_id,
+        TITLE_MATCH_TTL.as_secs(),
+    )
+}
+
 /// Evict a single `provider show_id → kitsu_id` mapping. Used by the
-/// frontend's `resolveKitsuMatch` step 0 slug guard to drop a poisoned
-/// row when the cached kitsu detail's slug disagrees with the history
-/// entry's cour suffix. SQLite errors propagate; a missing row is not
-/// an error (DELETE on no rows is a no-op).
+/// frontend's `resolveKitsuMatch` step 0 to drop a binding to a music
+/// entry, the one binding provably wrong; a binding it merely doubts
+/// is passed over and kept. SQLite errors propagate; a missing row is
+/// not an error (DELETE on no rows is a no-op).
 pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
+    crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_played_key(show_id))?;
     crate::cache::meta_cache_delete(&state.cache_pool, &allmanga_kitsu_key(show_id))
+}
+
+/// Evict the show's mapping while it is still `kitsu_id`, the id the
+/// caller judged. The caller read the mapping and then waited on Kitsu,
+/// and a play can store another one meanwhile; that mapping, and the
+/// mark beside it, are not the one judged and stay. Held against the
+/// history, as a play's write is, so the check and the delete see the
+/// same mapping. SQLite errors propagate.
+pub fn allmanga_kitsu_delete_named(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<()> {
+    crate::history::guard::hold(&state.history_path, |_| {
+        delete_while_named(state, show_id, kitsu_id).map(drop)
+    })
+}
+
+/// Evict the show's mapping if it is still `kitsu_id`, returning
+/// whether it was. The caller holds the history, so the check and the
+/// delete see the same mapping.
+fn delete_while_named(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<bool> {
+    if allmanga_kitsu_get(state, show_id)?.as_deref() != Some(kitsu_id) {
+        return Ok(false);
+    }
+    allmanga_kitsu_delete(state, show_id).map(|()| true)
 }
 
 /// Persist the reverse mapping with a cross-cour integrity guard.
@@ -559,12 +619,23 @@ pub fn allmanga_kitsu_delete(state: &AppState, show_id: &str) -> Result<()> {
 /// detail page would resume the wrong episode. Dropping it costs one
 /// deterministic shortcut: the next reverse resolve re-derives the
 /// mapping from the slug.
+///
+/// Returns whether the guard accepted the pairing, so the caller can
+/// settle the history row's id on the same verdict rather than asking
+/// the guard again.
+///
+/// `begun` is the moment the caller's recording began. The guard waits
+/// on Kitsu, and the row can change meanwhile; a show removed since
+/// `begun` is not mapped again, the removal having taken the mapping
+/// with the row, and a row a later watch wrote since keeps the mapping
+/// that watch stores ([`crate::history::guard`]).
 pub async fn try_put_allmanga_kitsu_mapping(
     state: &AppState,
     show_id: &str,
     show_title: &str,
     kitsu_id: &str,
-) {
+    begun: crate::history::guard::Epoch,
+) -> bool {
     // Every provider's ids are guarded. The resolve carries no
     // identity the guard could defer to — no Kitsu or MyAnimeList
     // id, only the title, year and count the picker scored — so a
@@ -579,10 +650,16 @@ pub async fn try_put_allmanga_kitsu_mapping(
             show_title = %show_title,
             "play: provider→kitsu mapping rejected (cross-cour mismatch)",
         );
-        drop_mapping_the_title_disagrees_with(state, show_id, show_title).await;
-        return;
+        drop_mapping_the_title_disagrees_with(state, show_id, show_title, begun, |_| {}).await;
+        return false;
     }
-    if let Err(e) = allmanga_kitsu_put(state, show_id, kitsu_id) {
+    let stored = crate::history::guard::hold(&state.history_path, |held| {
+        if held.show_changed_since(begun, show_id) {
+            return Ok(());
+        }
+        allmanga_kitsu_put_played(state, show_id, kitsu_id)
+    });
+    if let Err(e) = stored {
         tracing::warn!(
             show_id = %show_id,
             kitsu_id = %kitsu_id,
@@ -590,6 +667,7 @@ pub async fn try_put_allmanga_kitsu_mapping(
             "play: provider→kitsu mapping write failed",
         );
     }
+    true
 }
 
 /// Drop the key's stored mapping when the title's cour disagrees
@@ -598,8 +676,21 @@ pub async fn try_put_allmanga_kitsu_mapping(
 /// before the guard existed can be the poison it was written
 /// against: the refused entry itself, or another sibling cour. A
 /// mapping the evidence does not condemn stays, and so does one
-/// whose entry cannot be fetched, since silence is not disagreement.
-async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, show_title: &str) {
+/// whose entry cannot be fetched, since silence is not disagreement,
+/// and so does one a row changed since `begun` is read through: a
+/// later watch stored it, past its own guard. Nor does a mapping
+/// stored while the judged one was being judged go: a resolve's guess
+/// moves no watch, so only comparing the mapping finds it.
+///
+/// `judged` runs once the stored mapping is condemned and before the
+/// drop — the point a test stores another mapping at.
+async fn drop_mapping_the_title_disagrees_with(
+    state: &AppState,
+    show_id: &str,
+    show_title: &str,
+    begun: crate::history::guard::Epoch,
+    judged: impl FnOnce(&AppState),
+) {
     let stored = match allmanga_kitsu_get(state, show_id) {
         Ok(Some(stored)) => stored,
         Ok(None) => return,
@@ -615,8 +706,16 @@ async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, 
     if !cour_pairing_disagrees(state, show_title, &stored).await {
         return;
     }
-    match allmanga_kitsu_delete(state, show_id) {
-        Ok(()) => tracing::warn!(
+    judged(state);
+    let dropped = crate::history::guard::hold(&state.history_path, |held| {
+        if held.show_changed_since(begun, show_id) {
+            return Ok(false);
+        }
+        delete_while_named(state, show_id, &stored)
+    });
+    match dropped {
+        Ok(false) => {}
+        Ok(true) => tracing::warn!(
             show_id = %show_id,
             kitsu_id = %stored,
             show_title = %show_title,
@@ -635,7 +734,7 @@ async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, 
 /// disagrees. Missing evidence (Kitsu fetch failure; a provider
 /// `show_title` without a Part/Cour/Season suffix; a Kitsu detail
 /// with `slug = None` entirely) returns false — step 0's frontend
-/// slug guard heals genuinely cross-cour rows on the next read,
+/// cour check passes over a genuinely cross-cour row on every read,
 /// and persisting is preferable to forfeiting the deterministic
 /// shortcut every sequel reload.
 ///
@@ -645,8 +744,12 @@ async fn drop_mapping_the_title_disagrees_with(state: &AppState, show_id: &str, 
 /// POSITIVE evidence (cour 1), not missing evidence — that's the
 /// signal that catches the original Stone Ocean Part 2 → Part 1
 /// poison. Only an absent `slug` field counts as no evidence.
-async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &str) -> bool {
-    use crate::commands::cour::{cour_from_slug, cour_from_title};
+pub(crate) async fn cour_pairing_disagrees(
+    state: &AppState,
+    show_title: &str,
+    kitsu_id: &str,
+) -> bool {
+    use crate::commands::cour::cour_from_title;
     // Without cour evidence on the provider's side there is nothing
     // to disagree with, so Kitsu is not asked at all.
     let Some(provider_cour) = cour_from_title(show_title) else {
@@ -655,15 +758,34 @@ async fn cour_pairing_disagrees(state: &AppState, show_title: &str, kitsu_id: &s
     let Ok(detail) = kitsu_anime_detail(state, kitsu_id).await else {
         return false;
     };
-    let provider_cour = Some(provider_cour);
-    let kitsu_cour = detail
+    slug_cour_disagrees(provider_cour, &detail)
+}
+
+/// [`cour_pairing_disagrees`] answered from the cache alone: `None`
+/// when the title carries cour evidence and the cache holds no detail
+/// for `kitsu_id`, so only a Kitsu read could judge the pairing.
+pub(crate) fn cached_cour_pairing_verdict(
+    state: &AppState,
+    show_title: &str,
+    kitsu_id: &str,
+) -> Option<bool> {
+    let Some(provider_cour) = crate::commands::cour::cour_from_title(show_title) else {
+        return Some(false);
+    };
+    let body = meta_cache_get(&state.cache_pool, &anime_detail_key(kitsu_id)).ok()??;
+    let detail: KitsuAnimeRef = serde_json::from_str(&body).ok()?;
+    Some(slug_cour_disagrees(provider_cour, &detail))
+}
+
+/// Whether the detail's slug names another cour than `provider_cour`.
+/// Kitsu's slug convention leaves cour 1 unmarked, so a slug without a
+/// suffix is cour 1; a detail without a slug is no evidence.
+fn slug_cour_disagrees(provider_cour: u32, detail: &KitsuAnimeRef) -> bool {
+    detail
         .slug
         .as_deref()
-        .map(|slug| cour_from_slug(slug).unwrap_or(1));
-    match (provider_cour, kitsu_cour) {
-        (Some(a), Some(k)) => a != k,
-        _ => false,
-    }
+        .map(|slug| crate::commands::cour::cour_from_slug(slug).unwrap_or(1))
+        .is_some_and(|kitsu_cour| kitsu_cour != provider_cour)
 }
 
 /// Whether a Kitsu `subtype` is a music video. A provider that indexes
@@ -680,7 +802,9 @@ fn is_music_subtype(subtype: Option<&str>) -> bool {
 /// Bridge a history-recorded show_id to its Kitsu entry. anidb slug
 /// rows resolve by searching Kitsu with the slug's own words; a match
 /// persists the `(show_id → kitsu_id)` reverse mapping so subsequent
-/// calls short-circuit through `allmanga_kitsu_get`. Legacy allanime
+/// calls short-circuit through `allmanga_kitsu_get`, unless a play
+/// stored the mapping there or no history row carries the show id any
+/// more ([`crate::commands::kitsu_played::store_guess`]). Legacy allanime
 /// rows resolve only through an already-stamped mapping — their alias
 /// source (allanime's `Show` endpoint) retired with the provider.
 ///
@@ -717,8 +841,9 @@ pub async fn resolve_allmanga_show_id(
             if let Ok(detail) = kitsu_anime_detail(state, &kid).await {
                 return Ok(Some(detail));
             }
-            // Stale id (Kitsu removed it, or the cached row is bad) —
-            // fall through and re-resolve.
+            // Stale id (Kitsu removed it, or the cached row is bad), or
+            // a gone mark the read could not take — fall through and
+            // re-resolve.
         }
     }
 
@@ -752,13 +877,21 @@ pub async fn resolve_allmanga_show_id(
 /// Walk `terms` through Kitsu text search and return the first
 /// non-music hit whose cour agrees with the term's, persisting the
 /// `(show_id → kitsu_id)` reverse mapping so subsequent calls
-/// short-circuit through the cache. Used by the slug-derived path.
+/// short-circuit through the cache — for a show a history row still
+/// carries, and not over a mapping a play stored
+/// ([`crate::commands::kitsu_played::store_guess`]). Used by the
+/// slug-derived path.
 ///
 /// A single term's search failure skips to the next term; a cache
 /// write failure is non-fatal — the resolution still succeeds for
 /// this request, the next call just searches again. Music-video hits
 /// are skipped so a "music" alias (the YOASOBI "Idol" MV) is never
-/// returned or persisted. So is a hit whose slug disagrees with
+/// returned or persisted. So is a hit whose titles share too few words
+/// with the term — under a third of either side's, with neither's all
+/// in the other ([`kitsu_title_words`](crate::commands::kitsu_title_words)):
+/// Kitsu answers words it does not carry with its closest entry, and
+/// "there is also a hole in the student organization" brings back Here
+/// is Greenwood. So is a hit whose slug disagrees with
 /// `source_cour`, the cour the source carries
 /// ([`cour::hit_cour_disagrees`]) — read off the stored slug by the
 /// caller, since a slug's cour forms include a bare number the
@@ -781,8 +914,13 @@ async fn first_kitsu_match(
         if let Some(first) = hits.into_iter().find(|h| {
             !is_music_subtype(h.subtype.as_deref())
                 && !crate::commands::cour::hit_cour_disagrees(source_cour, h.slug.as_deref())
+                && crate::commands::kitsu_title_words::shares_words(&[term.as_str()], h)
         }) {
-            if let Err(e) = allmanga_kitsu_put(state, show_id, &first.id) {
+            // The guess answers this request; whether it is stored as
+            // the show's mapping is the store's to say — not over a
+            // mapping a play stored, and not for a show no longer in
+            // history.
+            if let Err(e) = crate::commands::kitsu_played::store_guess(state, show_id, &first.id) {
                 tracing::warn!(
                     show_id = show_id,
                     kitsu_id = %first.id,
@@ -806,7 +944,7 @@ async fn first_kitsu_match(
 /// (still rendered, just demoted).
 const WATCHED_AT_PREFIX: &str = "watched-at:v1:";
 
-fn watched_at_key(show_id: &str) -> String {
+pub(crate) fn watched_at_key(show_id: &str) -> String {
     format!("{WATCHED_AT_PREFIX}{show_id}")
 }
 
@@ -891,22 +1029,35 @@ pub(crate) fn anime_detail_ttl(status: Option<&str>) -> u64 {
 /// backfill for the row's whole lifetime — trading one request for days
 /// of blurred-poster fallback on exactly the newer ongoing shows the
 /// backfill exists for.
+///
+/// Kitsu served the ref just now, so the id's gone mark goes with the
+/// write, in one step (`kitsu_gone`). Seeding is best-effort: when the
+/// mark cannot be taken it stays and nothing is cached, so the next
+/// detail read asks Kitsu, and fails the same way while the mark
+/// still cannot be deleted.
 pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) {
-    if detail.cover_image.is_none() {
-        return;
-    }
-    if let Ok(body) = serde_json::to_string(detail) {
-        let _ = meta_cache_put(
-            &state.cache_pool,
-            &anime_detail_key(&detail.id),
-            &body,
-            anime_detail_ttl(detail.status.as_deref()),
-        );
+    let body = detail
+        .cover_image
+        .is_some()
+        .then(|| serde_json::to_string(detail).ok())
+        .flatten();
+    let cache = || {
+        if let Some(body) = &body {
+            let _ = meta_cache_put(
+                &state.cache_pool,
+                &anime_detail_key(&detail.id),
+                body,
+                anime_detail_ttl(detail.status.as_deref()),
+            );
+        }
+    };
+    let _ = super::kitsu_gone::served_now_then(state, &detail.id, cache, |_| {});
+    if let Some(body) = &body {
         // Same pairing the other writer has, and for the same reason:
         // these URLs can be Backblaze presigned links whose signature
         // expires long before the row does. Fetching the bytes now is
         // what stops the card rendering broken artwork later.
-        warm_signed_image_urls(state, &body);
+        warm_signed_image_urls(state, body);
     }
 }
 
@@ -926,14 +1077,54 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
     id: &str,
     anilist_base: Option<&str>,
 ) -> Result<KitsuAnimeRef> {
+    anime_detail_read(state, id, anilist_base, |_| {}).await
+}
+
+/// [`kitsu_anime_detail`], running `past_cache` once the cache has
+/// missed and before Kitsu is asked — the point a test removes
+/// history at to find which moment the read is judged by.
+#[cfg(test)]
+pub(crate) async fn anime_detail_past_cache(
+    state: &AppState,
+    id: &str,
+    past_cache: impl FnOnce(&AppState),
+) -> Result<KitsuAnimeRef> {
+    anime_detail_read(state, id, None, past_cache).await
+}
+
+/// The detail read behind [`kitsu_anime_detail`] and its two test
+/// seams: the AniList endpoint, and work run between the cache miss
+/// and the Kitsu request.
+async fn anime_detail_read(
+    state: &AppState,
+    id: &str,
+    anilist_base: Option<&str>,
+    past_cache: impl FnOnce(&AppState),
+) -> Result<KitsuAnimeRef> {
+    // A 404 or 410 is Kitsu answering the entry is gone, which a
+    // history row that recorded the id needs to know (kitsu_gone.rs) —
+    // unless the history removed the id's show while the read was in
+    // flight, which it is from its first step: the cache read.
+    let begun = crate::history::guard::epoch(&state.history_path);
     let key = anime_detail_key(id);
-    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
-        if let Ok(detail) = serde_json::from_str::<KitsuAnimeRef>(&body) {
-            warm_signed_image_urls(state, &body);
-            return Ok(detail);
-        }
+    let cached = super::kitsu_gone::served_from_cache(state, id, &key, |body| {
+        serde_json::from_str::<KitsuAnimeRef>(body).ok()
+    })?;
+    if let Some((detail, body)) = cached {
+        warm_signed_image_urls(state, &body);
+        return Ok(detail);
     }
-    let mut detail = state.kitsu.anime_detail(id).await?;
+    past_cache(state);
+    let mut detail = state
+        .kitsu
+        .anime_detail(id)
+        .await
+        .inspect_err(|e| super::kitsu_gone::note_failure(state, begun, id, e))?;
+    // Served, but not published: the row is cached and the mark taken
+    // only once the backfill below is done, in one step with this
+    // verdict; if a newer read is answered gone first, neither happens
+    // and this read reports that answer instead.
+    let fetched = super::kitsu_gone::note_fetched(state, id);
 
     // Banner enrichment: Kitsu cataloguers upload coverImage lazily,
     // so newer ongoing shows often arrive with cover_image=null.
@@ -955,10 +1146,15 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
         }
     }
 
-    if let Ok(body) = serde_json::to_string(&detail) {
-        let ttl = anime_detail_ttl(detail.status.as_deref());
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, ttl);
-        warm_signed_image_urls(state, &body);
+    let body = serde_json::to_string(&detail).ok();
+    super::kitsu_gone::publish_served(state, id, fetched, || {
+        if let Some(body) = &body {
+            let ttl = anime_detail_ttl(detail.status.as_deref());
+            let _ = meta_cache_put(&state.cache_pool, &key, body, ttl);
+        }
+    })?;
+    if let Some(body) = &body {
+        warm_signed_image_urls(state, body);
     }
     Ok(detail)
 }
@@ -1621,7 +1817,12 @@ mod tests {
             )
             .mount(&mock)
             .await;
-        let state = state_with_kitsu_at(&mock.uri());
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = super::show_key_tests::listing(
+            state_with_kitsu_at(&mock.uri()),
+            td.path(),
+            "one-piece-69",
+        );
 
         let got = resolve_allmanga_show_id(&state, "one-piece-69", false)
             .await
@@ -1681,7 +1882,12 @@ mod tests {
             )
             .mount(&mock)
             .await;
-        let state = state_with_kitsu_at(&mock.uri());
+        let td = tempfile::tempdir().expect("tempdir");
+        let state = super::show_key_tests::listing(
+            state_with_kitsu_at(&mock.uri()),
+            td.path(),
+            "hianime:foo-2-season-123",
+        );
 
         let got = resolve_allmanga_show_id(&state, "hianime:foo-2-season-123", false)
             .await

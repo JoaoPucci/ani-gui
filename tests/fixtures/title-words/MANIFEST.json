@@ -1,0 +1,12 @@
+{
+  "$comment": "Shared vectors for the title-word rule both sides apply to a Continue row's Kitsu search hits: frontend/src/lib/history/title-words.ts and backend/src/commands/kitsu_title_words.rs each run every vector and must agree with `accept`. Not recordings, so `make fixtures-refresh` does not apply. A vector's `row` is one or more titles naming the row's show, and its `hit` is the Kitsu entry's canonical title, localized titles, abbreviations and slug, copied from Kitsu.",
+  "captured_at": "2026-10-04",
+  "fixtures": {
+    "vectors.json": {
+      "source": "Hand-assembled. 78 accepted pairs of a show's English title and romaji name with the Kitsu entry for the same show; 6 refused pairs of the provider's title for Seitokai ni mo Ana wa Aru!, alone and with the show's romaji name, with the three unrelated entries Kitsu's search returned for it, Here is Greenwood first; 15 written to pin the rule's edges: non-ASCII titles, a short leading word, sequel markers, and the one-third share at its exact boundary.",
+      "size": 47353,
+      "sha256": "d0890d506f959a0500efcb64dab3081b46fb37bb1bbf9a80b682cac04dcf4a63",
+      "notes": "Sequel markers (season, part, cour, ordinals, numbers, roman numerals) are not shared words, so two shows' second seasons are refused on the number alone and a sequel still matches its own show by the words around the marker."
+    }
+  }
+}

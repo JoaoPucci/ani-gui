@@ -93,3 +93,67 @@ test('a cleanup that itself fails does not mask the retry', async () => {
 	);
 	assert.equal(got, 'ok');
 });
+
+// CI run 37241086339: the dead app's close() never settled, so the
+// cleanup ate the whole test timeout and the relaunch never ran. A
+// cleanup gets a bound; past it the harness relaunches regardless.
+test('a cleanup that never settles is abandoned and the relaunch runs', { timeout: 2000 }, async () => {
+	let attempts = 0;
+	const got = await withColdLaunchRetry(
+		async () => {
+			attempts += 1;
+			if (attempts === 1) throw closedTarget();
+			return 'relaunched';
+		},
+		{
+			cleanupTimeoutMs: 50,
+			cleanup: () => new Promise(() => {}),
+		},
+	);
+	assert.equal(got, 'relaunched');
+	assert.equal(attempts, 2);
+});
+
+// The dead app's close() hangs because the backend outlives it: the
+// backend runs in its own session, out of reach of a group kill, and
+// holds descriptors it inherited from the app. Killing the app's
+// whole tree, its own-session descendants included, lets close settle.
+test('killTree takes a process and a descendant in its own session', { skip: process.platform !== 'linux' }, async () => {
+	const { spawn } = require('node:child_process');
+	const { killTree } = require('./cold-launch.cjs');
+	const parent = spawn('sh', ['-c', 'setsid sleep 300 & echo $!; wait'], {
+		stdio: ['ignore', 'pipe', 'ignore'],
+	});
+	const child = Number(
+		await new Promise((resolve) => parent.stdout.once('data', (d) => resolve(String(d).trim()))),
+	);
+	// A killed process whose parent is gone waits as a zombie until PID 1
+	// reaps it, and some container runtimes' PID 1 never does. A zombie
+	// runs nothing and holds no descriptors, so it counts as gone here.
+	const alive = (pid) => {
+		try {
+			process.kill(pid, 0);
+		} catch {
+			return false;
+		}
+		try {
+			const stat = require('node:fs').readFileSync(`/proc/${pid}/stat`, 'utf8');
+			return stat.slice(stat.lastIndexOf(')') + 2)[0] !== 'Z';
+		} catch {
+			return false;
+		}
+	};
+	try {
+		assert.equal(alive(child), true);
+		killTree(parent.pid);
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		assert.equal(alive(parent.pid) && parent.exitCode === null && parent.signalCode === null, false);
+		assert.equal(alive(child), false, 'the own-session descendant is gone');
+	} finally {
+		for (const pid of [child, parent.pid]) {
+			try {
+				process.kill(pid, 'SIGKILL');
+			} catch {}
+		}
+	}
+});

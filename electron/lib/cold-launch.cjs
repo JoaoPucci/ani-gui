@@ -23,10 +23,15 @@ function isClosedTargetError(err) {
 /**
  * Run `attempt`; when it dies with the closed-target signature, run
  * `cleanup` (best-effort — a close racing the dead process is
- * expected) and try again, up to `retries` extra times. The last
- * closed-target error surfaces once retries are exhausted.
+ * expected, and so is one that never settles, which is abandoned
+ * after `cleanupTimeoutMs`) and try again, up to `retries` extra
+ * times. The last closed-target error surfaces once retries are
+ * exhausted.
  */
-async function withColdLaunchRetry(attempt, { retries = 1, cleanup } = {}) {
+async function withColdLaunchRetry(
+	attempt,
+	{ retries = 1, cleanup, cleanupTimeoutMs = 5000 } = {},
+) {
 	let lastErr;
 	for (let i = 0; i <= retries; i += 1) {
 		try {
@@ -35,10 +40,18 @@ async function withColdLaunchRetry(attempt, { retries = 1, cleanup } = {}) {
 			if (!isClosedTargetError(err)) throw err;
 			lastErr = err;
 			if (cleanup) {
+				let timer;
 				try {
-					await cleanup(err);
+					await Promise.race([
+						cleanup(err),
+						new Promise((resolve) => {
+							timer = setTimeout(resolve, cleanupTimeoutMs);
+						}),
+					]);
 				} catch {
 					// The dead app may already be gone; the retry is the point.
+				} finally {
+					clearTimeout(timer);
 				}
 			}
 		}
@@ -46,4 +59,32 @@ async function withColdLaunchRetry(attempt, { retries = 1, cleanup } = {}) {
 	throw lastErr;
 }
 
-module.exports = { isClosedTargetError, withColdLaunchRetry };
+/**
+ * SIGKILL `pid` and every descendant, found by walking the parent
+ * links before anything is killed. A group kill is not enough: the
+ * backend runs in its own session, and while it lives it holds
+ * descriptors inherited from the app, so Playwright's close() of a
+ * dead app does not settle. Linux only (reads `ps`), as the e2e
+ * suites are.
+ */
+function killTree(pid) {
+	const { execFileSync } = require('node:child_process');
+	const children = new Map();
+	for (const line of execFileSync('ps', ['-eo', 'pid=,ppid='], { encoding: 'utf8' }).split('\n')) {
+		const [child, parent] = line.trim().split(/\s+/).map(Number);
+		if (!child) continue;
+		if (!children.has(parent)) children.set(parent, []);
+		children.get(parent).push(child);
+	}
+	const tree = [pid];
+	for (let i = 0; i < tree.length; i += 1) tree.push(...(children.get(tree[i]) || []));
+	for (const each of tree) {
+		try {
+			process.kill(each, 'SIGKILL');
+		} catch {
+			// Already gone.
+		}
+	}
+}
+
+module.exports = { isClosedTargetError, killTree, withColdLaunchRetry };

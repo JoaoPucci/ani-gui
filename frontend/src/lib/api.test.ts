@@ -4,6 +4,7 @@ import {
 	__resetApiBaseForTests,
 	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
+	allmangaKitsuMapPlayed,
 	altTitlesFromKitsu,
 	airingGet,
 	aniskipGet,
@@ -1093,6 +1094,18 @@ describe('allmangaKitsuMapGet', () => {
 	});
 });
 
+describe('allmangaKitsuMapPlayed', () => {
+	it('GETs /api/allmanga-kitsu-map/:show_id/played with the id URL-encoded', async () => {
+		const fetchMock = mockFetchOnce('49877');
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const got = await allmangaKitsuMapPlayed('hianime:seitokai/10497');
+		const { url } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/hianime%3Aseitokai%2F10497/played`);
+		// The id the play stored, which the caller compares to its own.
+		expect(got).toBe('49877');
+	});
+});
+
 describe('allmangaKitsuMapDelete', () => {
 	it('DELETEs /api/allmanga-kitsu-map/:show_id with the id URL-encoded', async () => {
 		const fetchMock = mockFetchOnce(null);
@@ -1100,6 +1113,15 @@ describe('allmangaKitsuMapDelete', () => {
 		await allmangaKitsuMapDelete('D5ksnsKtYAzzFXeSp');
 		const { url, init } = lastCall(fetchMock);
 		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/D5ksnsKtYAzzFXeSp`);
+		expect(init?.method).toBe('DELETE');
+	});
+
+	it('names the judged id as kitsu_id when one is given', async () => {
+		const fetchMock = mockFetchOnce(null);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await allmangaKitsuMapDelete('hianime:x-1', '47328');
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/hianime%3Ax-1?kitsu_id=47328`);
 		expect(init?.method).toBe('DELETE');
 	});
 });

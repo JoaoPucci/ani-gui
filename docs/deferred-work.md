@@ -191,6 +191,18 @@ starting it, and delete it when you find it done.
   expiry is worth having, but only alongside — a correctly-worded
   interruption is still an interruption.
 
+- **What a history removal does not reach.** Removing a show from the
+  history, or clearing it, misses five things, each described in
+  [`architecture.md`](./architecture.md#watch-history-and-removing-it):
+  a show the history never linked to a Kitsu id; a resolution row from before
+  rows recorded their page; numbering whose resolution row is already
+  gone (a hand-off that never started, a re-resolve that landed on
+  another key, an evicted row); a row of the same show under another
+  key; and a numbering file that cannot be written, whose failure is
+  logged while the removal succeeds. Each of the first four is a link
+  nothing stores, so closing one means storing it, and the change that
+  made removal thorough chose not to add new records.
+
 ## Interface
 
 - **Localised content fetch** — synopsis and episode titles.

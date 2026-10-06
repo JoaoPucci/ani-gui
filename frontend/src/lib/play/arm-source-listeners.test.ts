@@ -9,7 +9,12 @@ import { armSourceScopedListeners } from './arm-source-listeners';
 import { recoveryResume } from './resume-after-recovery';
 import { stallMachine } from './stall-machine';
 import { createSourceScope, type SourceScope } from './source-scope';
-import { readPosition, savePosition, type PositionStorage } from './watch-position';
+import {
+	clearRowPositions,
+	readPosition,
+	savePosition,
+	type PositionStorage
+} from './watch-position';
 
 const hostSlow = {
 	err: { source: 'hls', type: 'networkError', details: 'fragLoadTimeOut' } as const,
@@ -402,6 +407,35 @@ describe('armSourceScopedListeners', () => {
 		video.currentTime = 600;
 		video.dispatchEvent(new Event('pause'));
 		expect(readPosition('show-a', 6, positions)).toBe(600);
+	});
+});
+
+describe('armSourceScopedListeners — a session a Continue card opened', () => {
+	it("writes the started mark and the played position for the card's row", () => {
+		armSourceScopedListeners({
+			video,
+			showId: 'show-a',
+			episode: 6,
+			scope,
+			positions,
+			row: 'row-x'
+		});
+		video.dispatchEvent(new Event('loadedmetadata'));
+		playAt(300);
+		video.dispatchEvent(new Event('pause'));
+		armSourceScopedListeners({
+			video,
+			showId: 'show-a',
+			episode: 7,
+			scope,
+			positions,
+			row: 'row-x'
+		});
+
+		clearRowPositions(['row-x'], positions);
+
+		expect(readPosition('show-a', 6, positions)).toBeNull();
+		expect(readPosition('show-a', 7, positions)).toBeNull();
 	});
 });
 
