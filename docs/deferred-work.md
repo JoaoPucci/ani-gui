@@ -148,25 +148,18 @@ starting it, and delete it when you find it done.
   writes `COMMIT_EDITMSG` after pre-commit runs, even for `git commit
   -m` — verified with a probe hook. So a gate that skips the tests
   only for a `test(red):` subject has to live in `commit-msg`.
-- **Nothing stops a download tool on Windows under test.** When the
-  shell dies without quitting, the backend stops itself, and the
-  guards on its running downloads kill each tool's tree — on Windows
-  with `taskkill /T`, which finds the tree by parent pid. The test
-  that runs a real download and takes the parent away
+- **No download is stopped on Windows under test.** When the shell
+  dies without quitting, the backend stops itself, and the guards on
+  its running downloads kill each tool's tree — on Windows the members
+  of the job object each tool is put in as it starts. The test that
+  runs a real download and takes the parent away
   (`backend/tests/backend_stop.rs`) is Unix-only: its stand-ins for
   the provider's transport and for yt-dlp are shell scripts, and the
   backend looks both up as a bare name or an `.exe`, neither of which
-  a script can be on Windows. The Windows leg does run the parent
-  watch and the cases for a dead parent's pipes; what it never does
-  is stop a tool. Nor, so, does it wait for one to exit: a teardown
-  there waits on the processes `taskkill` reports taking down, looked
-  up with `tasklist`, and only the reading of those two answers is
-  under test. And a tool that exits by itself there is not checked
-  for helpers it left running, which on Linux are taken down before
-  the ffmpeg retry starts: `taskkill /T` finds a tree through its
-  running root, and the backend has no other handle on the tree.
-  A job object would be one, but its calls are unsafe, which the
-  crate forbids, so it needs a dependency that wraps them.
+  a script can be on Windows. The Windows leg runs the parent watch,
+  the cases for a dead parent's pipes, and the guard's own case of a
+  tool that exits leaving a helper in its job; what it never does is
+  stop a download.
 
   The same goes for what the shell shows on that platform: the
   failed-startup dialog and the quit prompt have been seen on Linux
