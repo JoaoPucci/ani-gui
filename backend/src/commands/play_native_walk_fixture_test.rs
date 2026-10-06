@@ -46,6 +46,15 @@ struct Recorded {
 }
 
 impl Recorded {
+    /// A recording written out in the test itself.
+    fn inline(id: &str, json: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            doc: serde_json::from_str(json).unwrap_or_else(|e| panic!("parse {id}: {e}")),
+            dead: Vec::new(),
+        }
+    }
+
     fn load(id: &str) -> Self {
         let path = fixture_dir().join(format!("{id}.json"));
         let body = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {id}: {e}"));
@@ -434,5 +443,37 @@ async fn a_dead_candidate_whose_part_agrees_blocks_the_one_whose_part_does_not()
             e.error
         ),
         Ok(p) => panic!("picked {} with the agreeing cour unheard", p.hit.slug),
+    }
+}
+
+/// Refusing a candidate by its title is an inference, and an inference
+/// can be wrong: an entry whose titles carry its season only in a form
+/// the rules do not read would have its own listing refused. A pool
+/// rejected because the titles refused a candidate the count accepted
+/// is therefore not the clean miss the availability cache persists.
+#[tokio::test]
+async fn a_pool_the_titles_refused_a_fitting_candidate_from_is_not_a_clean_miss() {
+    for (subtitle, count) in [("Arc", Some(12)), ("Arc", None)] {
+        let json = format!(
+            r#"{{
+ "kitsu": {{"canonical": "Show: {subtitle}", "alt_titles": [], "episode_count": {count},
+            "year": 2020, "subtype": "TV"}},
+ "searches": {{"Show: {subtitle}": [["show-season-2-1", "Show Season 2", "TV"]]}},
+ "episodes": {{"show-season-2-1": [{rows}]}},
+ "years": {{"show-season-2-1": 2020}}
+}}"#,
+            count = count.map_or("null".to_string(), |n: u32| n.to_string()),
+            rows = (1..=12)
+                .map(|n| format!("[{n}, {n}, null]"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        match walk_over(Recorded::inline("inline", &json)).await {
+            Err(e) => assert!(
+                !e.clean_miss,
+                "count {count:?}: a refusal by title persisted"
+            ),
+            Ok(p) => panic!("count {count:?}: picked {}", p.hit.slug),
+        }
     }
 }
