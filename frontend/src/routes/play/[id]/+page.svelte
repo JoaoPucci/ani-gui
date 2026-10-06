@@ -628,6 +628,13 @@
 	// idle timer to drive a class that overrides the hover rule.
 	// See $lib/play/fullscreen-idle for the keep-alive matrix.
 	let isFullscreen = $state(false);
+	// Whether the fullscreen element is the <video> itself rather than
+	// the frame: Chromium's own controls fullscreen the element, and
+	// so does the toggle with the custom controls off. Only the video
+	// reaches the top layer then, so the frame's indicator cannot be
+	// seen, and the resume hold keeps the picture rather than leave a
+	// black screen with nothing to explain it.
+	let videoFullscreen = $state(false);
 	let mouseIdle = $state(false);
 	// `isPaused` already declared above (driven by the video's
 	// play/pause events) — reuse it as a keep-alive input.
@@ -665,6 +672,7 @@
 		// the inline path goes straight back to the CSS-hover rule.
 		function onFullscreenChange() {
 			isFullscreen = !!document.fullscreenElement;
+			videoFullscreen = document.fullscreenElement === ownVideo;
 			if (isFullscreen) {
 				// Clear focus from inside .player-controls so the
 				// :focus-within keep-alive doesn't pin the chrome
@@ -2405,7 +2413,7 @@
 	<section
 		class="player-frame"
 		class:player-busy={switchBusy}
-		class:player-resuming={resumeHolding}
+		class:player-resuming={resumeHolding && !videoFullscreen}
 		aria-busy={switchBusy || (resumeHolding && !playerError)}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
