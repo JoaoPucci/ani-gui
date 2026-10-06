@@ -501,3 +501,82 @@ async fn a_refused_candidate_s_dead_probe_blocks_no_winner() {
     let picked = walk_over(site).await.expect("the admitted candidate wins");
     assert_eq!(picked.hit.slug, "show-tv-2");
 }
+
+/// A pool written out as `(slug, title, aired episodes)` rows, every
+/// listing from `year`, for an entry known by `titles`.
+fn pool_of(
+    titles: &[&str],
+    count: Option<u32>,
+    year: u32,
+    query: &str,
+    rows: &[(&str, &str, u32)],
+) -> Recorded {
+    let listing = |n: u32| {
+        (1..=n)
+            .map(|k| format!("[{k}, {k}, null]"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let json = serde_json::json!({
+        "kitsu": {
+            "canonical": titles[0],
+            "alt_titles": titles[1..],
+            "episode_count": count,
+            "year": year,
+            "subtype": "TV",
+        },
+        "searches": { query: rows.iter().map(|(s, t, _)| [*s, *t, "TV"]).collect::<Vec<_>>() },
+        "episodes": rows.iter().map(|(s, _, n)| ((*s).to_string(), serde_json::from_str::<serde_json::Value>(&format!("[{}]", listing(*n))).unwrap())).collect::<serde_json::Map<_, _>>(),
+        "years": rows.iter().map(|(s, _, _)| ((*s).to_string(), serde_json::json!(year))).collect::<serde_json::Map<_, _>>(),
+    });
+    Recorded::inline("inline", &json.to_string())
+}
+
+const SLIME_LIKE: [&str; 2] = ["Show 2", "Show 2nd Season Part 1"];
+
+const SAME_LENGTH_COURS: [(&str, &str, u32); 2] = [
+    ("show-s2p2-1", "Show 2nd Season Part 2", 5),
+    ("show-s2-2", "Show Season 2", 5),
+];
+
+/// Slime's second season as it would look while airing: "Season 2"
+/// and "2nd Season Part 2" at the same aired length and year, Part 2
+/// first, both short of Kitsu's count. The airing rescue must prefer
+/// the cour whose part agrees with the entry's, as winner selection
+/// does.
+#[tokio::test]
+async fn the_airing_rescue_prefers_the_cour_whose_part_agrees() {
+    let site = pool_of(&SLIME_LIKE, Some(24), 2021, "Show 2", &SAME_LENGTH_COURS);
+    let picked = walk_over(site).await.expect("a cour is rescued");
+    assert_eq!(picked.hit.slug, "show-s2-2");
+}
+
+/// The same pool without a count: the countless pick must prefer the
+/// agreeing cour too.
+#[tokio::test]
+async fn the_countless_pick_prefers_the_cour_whose_part_agrees() {
+    let site = pool_of(&SLIME_LIKE, None, 2021, "Show 2", &SAME_LENGTH_COURS);
+    let picked = walk_over(site).await.expect("a cour is picked");
+    assert_eq!(picked.hit.slug, "show-s2-2");
+}
+
+/// Two chains that stitch to the entry's count equally well, the one
+/// led by the cour whose part disagrees listed first: the stitched
+/// pick must be led by the agreeing cour.
+#[tokio::test]
+async fn a_stitched_chain_is_led_by_the_cour_whose_part_agrees() {
+    let parts = [
+        ("show-s2p2-1", "Show 2nd Season Part 2", 6),
+        ("show-s2p2s-2", "Show 2nd Season Part 2 2nd Stage", 6),
+        ("show-s2-3", "Show Season 2", 6),
+        ("show-s2s-4", "Show Season 2 2nd Stage", 6),
+    ];
+    let site = pool_of(&SLIME_LIKE, Some(12), 2021, "Show 2", &parts);
+    let picked = walk_over(site).await.expect("a chain is stitched");
+    assert_eq!(picked.hit.slug, "show-s2-3");
+    assert_eq!(
+        picked.episodes.len(),
+        12,
+        "both parts of the agreeing chain"
+    );
+}
