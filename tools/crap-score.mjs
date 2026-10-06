@@ -50,29 +50,42 @@ if (lcovPaths.length === 0) {
 function parseLizardXml(xml, ccnByFile) {
 	// Each function is <item name="fn(...) at file:line"><value>nr</value><value>NCSS</value><value>CCN</value></item>,
 	// the name attribute XML-escaped. Function names carry no whitespace
-	// (tools/rust-ccn and tools/ts-ccn.mjs reduce them to name
-	// characters), so the first ` at ` ends the name; the line number
-	// follows the last `:`, and the file is everything between, however
-	// many ` at `s or colons its path holds.
+	// (tools/rust-ccn and tools/ts-ccn.mjs reduce them to ASCII name
+	// characters), so the first ` at ` ends the name; the line number is
+	// the digits after the last `:`, and the file is everything between,
+	// however many ` at `s or colons its path holds.
+	//
+	// Every <item> is complexity. One the scorer cannot read whole — a
+	// different layout, a count that is not a number, a label with no
+	// file or line — fails the run rather than leaving the totals.
 	const re = /<item name="([^"]*)">\s*<value>\d+<\/value>\s*<value>\d+<\/value>\s*<value>(\d+)<\/value>/g;
+	const items = (xml.match(/<item\b/g) ?? []).length;
+	let read = 0;
 	let m;
 	while ((m = re.exec(xml)) !== null) {
+		read += 1;
 		const label = xmlUnescape(m[1]);
-		const at = label.indexOf(' at ');
-		const colon = label.lastIndexOf(':');
-		if (at < 0 || colon < at) {
-			// An item the scorer cannot place is complexity it would drop.
+		const placed = /^.*? at (.*):(\d+)$/s.exec(label);
+		if (!placed) {
 			console.error(`crap-score: complexity item without "<name> at <file>:<line>": ${label}`);
 			process.exit(2);
 		}
-		const file = path.normalize(label.slice(at + ' at '.length, colon));
+		const file = path.normalize(placed[1]);
 		const ccn = Number(m[2]);
 		ccnByFile.set(file, (ccnByFile.get(file) ?? 0) + ccn);
 	}
+	if (read !== items) {
+		console.error(`crap-score: ${items - read} of ${items} complexity items are not in the expected shape`);
+		process.exit(2);
+	}
 }
 
+/** XML's five named entities and numeric character references, in one pass. */
 function xmlUnescape(s) {
-	return s.replace(/&(lt|gt|quot|apos|amp);/g, (_, e) => ({ lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' })[e]);
+	const named = { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' };
+	return s.replace(/&(?:(lt|gt|quot|apos|amp)|#(\d+)|#x([0-9a-fA-F]+));/g, (_, name, dec, hex) =>
+		name ? named[name] : String.fromCodePoint(dec ? Number(dec) : parseInt(hex, 16))
+	);
 }
 
 /** Parse one lcov.info, return { file → { LF, LH } } keyed by repo-relative path. */

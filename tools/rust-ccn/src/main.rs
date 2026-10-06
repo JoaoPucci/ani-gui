@@ -136,9 +136,10 @@ fn render_tsv(measured: &[(PathBuf, Vec<Unit>)]) -> String {
     out
 }
 
-/// A unit's name as the report carries it: name characters only, so
-/// the scorer can find where the name ends. Rust names already are
-/// (`r#match`, `proptest!`); this keeps the contract explicit.
+/// A unit's name as the report carries it: ASCII name characters only,
+/// so the scorer can find where the name ends. ASCII identifiers pass
+/// through (`r#match`, `proptest!`); a non-ASCII one (`café`) has those
+/// characters replaced, which costs only the diagnostic name.
 fn report_name(name: &str) -> String {
     name.chars()
         .map(|c| {
