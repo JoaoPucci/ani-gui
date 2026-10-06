@@ -404,14 +404,13 @@ pub(super) fn reading(title: &str) -> Vec<u32> {
         .collect()
 }
 
-/// Whether `title` starts with `wide`'s stem — at a word's end, or
-/// with a number or 第 glued to it as Japanese writes them ("ショー２",
-/// "ショー第2期") — and names a division past it ([`divisions`], a
-/// first one included): "Show 2", "Show Part 1" and "Show: Final Arc
-/// Season 2" beside "Show" do; "Show Side Story" and "Showtime 2" do
-/// not.
+/// Whether `title` starts with `wide`'s stem ([`past_stem`]) and
+/// opens what follows it with a division ([`scan`], a first one
+/// included): "Show 2", "Show Part 1" and "Show 2nd Season Part 2"
+/// beside "Show" do; "Show Side Story 3" (a spinoff), "Show: Final Arc
+/// Season 2" and "Showtime 2" do not.
 pub(super) fn names_past_stem(title: &str, wide: &str) -> bool {
-    past_stem(title, wide).is_some_and(|rest| !divisions(&words(&rest)).is_empty())
+    past_stem(title, wide).is_some_and(|rest| !scan(&words(&rest), true).is_empty())
 }
 
 /// A title's words with the markers it ends on removed: the name the

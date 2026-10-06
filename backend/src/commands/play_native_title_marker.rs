@@ -9,6 +9,7 @@
 
 use std::collections::BTreeSet;
 
+use super::play_native_title_grammar::normalized;
 pub(crate) use super::play_native_title_grammar::stem;
 use super::play_native_title_grammar::{
     later_divisions, named_ordinals, names_past_stem, part_ordinals, reading, trailing_markers,
@@ -127,19 +128,21 @@ impl EntryTitles<'_> {
     }
 
     /// Whether `listing` is this entry's own beside the listing `wide`
-    /// that would span it: it reads as the entry
-    /// ([`Self::reads_as_entry`]) and carries `wide`'s stem alone or
-    /// names a division past it ([`names_past_stem`]). So "Show 2",
-    /// "Show 2nd Season" and "Show 2nd Season Part 1" are "Show 2"'s
-    /// own beside "Show" while "Show 2nd Season Part 2" is not; "Lucky
-    /// 2 2nd Season" is not "Lucky 2"'s; and "Show Side Story", which
-    /// names no division past the stem, is another show of the
-    /// franchise.
+    /// that would span it: it is one of the entry's titles, or it
+    /// reads as the entry ([`Self::reads_as_entry`]) and either carries
+    /// `wide`'s stem alone or opens what follows it with a division
+    /// ([`names_past_stem`]). So "Show 2", "Show 2nd Season" and "Show
+    /// 2nd Season Part 1" are "Show 2"'s own beside "Show" while "Show
+    /// 2nd Season Part 2" is not; "Lucky 2 2nd Season" is not "Lucky
+    /// 2"'s; and a spinoff — "Show Side Story", "Show Side Story 2" —
+    /// is another show of the franchise, numbered or not.
     ///
     /// [`names_past_stem`]: super::play_native_title_grammar::names_past_stem
     pub(crate) fn names_own_part(&self, listing: &str, wide: &str) -> bool {
-        self.reads_as_entry(listing)
-            && (stem(listing) == stem(wide) || names_past_stem(listing, wide))
+        let exact = normalized(listing);
+        self.all().any(|t| normalized(t) == exact)
+            || (self.reads_as_entry(listing)
+                && (stem(listing) == stem(wide) || names_past_stem(listing, wide)))
     }
 }
 
