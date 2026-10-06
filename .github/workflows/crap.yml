@@ -9,9 +9,10 @@ name: 'crap score'
 # The complexity used to come from lizard, whose regex tokenizers lost
 # their place on ordinary Rust and TypeScript and dropped functions from
 # the counts without saying so. Each tool here fails the run on a file it
-# cannot parse or a root with nothing to measure, and states on stderr
-# what it does not measure: functions inside item-position macros (as
-# blocks), decisions outside any function, .svelte components.
+# cannot parse, a root with nothing to measure, or a file of a kind it
+# neither measures nor declares, and states on stderr what it does not
+# measure: functions inside item-position macros (as blocks), decisions
+# outside any function, and the files it lists as not measured.
 #
 # Always fires; the `filter` job decides whether downstream steps run
 # the real pipeline or no-op. See rust.yml for the design rationale.
