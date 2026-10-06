@@ -161,8 +161,10 @@ pub fn kitsu_id_of(raw: &str) -> Option<String> {
 /// answers for that take a Kitsu id from the renderer — the row, the
 /// play's page, the mapping and its played mark, skip times, a title
 /// match, a gone mark — take it through this, so one rule decides
-/// what an id is there. A gone mark takes only an exact id: its read
-/// asked Kitsu for the value as given.
+/// what an id is there, and the routes' boundary ([`crate::kitsu_id`])
+/// applies the same function. A gone mark takes only an exact id: the
+/// detail read hands it the digits it asked Kitsu for, and any other
+/// value was not a read of them.
 #[must_use]
 pub fn kitsu_id_in(raw: &str) -> Option<&str> {
     let id = raw.trim();

@@ -203,10 +203,10 @@ fn a_404_for_an_id_that_is_not_digits_marks_nothing() {
     );
 }
 
-/// A detail read asks Kitsu for exactly the value it was given, so a
-/// 404 to a padded value says nothing about the digits inside it: the
-/// id a history row recorded is not marked gone, and its detail row
-/// stays.
+/// A 404 speaks only for the value Kitsu was asked for. The detail
+/// read trims before asking and passes the digits; a padded value
+/// reaching the mark was not a read of those digits, so the id a
+/// history row recorded is not marked gone, and its detail row stays.
 #[test]
 fn a_404_for_a_padded_id_marks_nothing_under_its_digits() {
     let td = tempfile::tempdir().expect("tempdir");
