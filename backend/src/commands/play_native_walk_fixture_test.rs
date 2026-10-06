@@ -704,3 +704,24 @@ async fn neither_a_numbered_spinoff_nor_a_recap_completes_a_spanning_listing() {
         }
     }
 }
+
+/// Without a count, the hits the entry's titles refuse are dropped
+/// before the year filter reads the head. When the year filter then
+/// empties it, the pool was rejected partly by the title inference —
+/// a refused hit from the entry's own year may have been its listing
+/// — so the walk moves on without persisting a clean miss.
+#[tokio::test]
+async fn a_countless_pool_the_titles_narrowed_before_the_year_filter_is_not_a_clean_miss() {
+    let json = r#"{
+ "kitsu": {"canonical": "Show", "alt_titles": [], "episode_count": null,
+            "year": 2020, "subtype": "TV"},
+ "searches": {"Show": [["show-season-2-1", "Show Season 2", "TV"],
+                       ["show-2", "Show", "TV"]]},
+ "episodes": {},
+ "years": {"show-season-2-1": 2020, "show-2": 2015}
+}"#;
+    match walk_over(Recorded::inline("inline", json)).await {
+        Err(e) => assert!(!e.clean_miss, "a refusal by title persisted: {e:?}"),
+        Ok(p) => panic!("picked {}", p.hit.slug),
+    }
+}
