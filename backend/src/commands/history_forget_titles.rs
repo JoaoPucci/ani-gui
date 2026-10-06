@@ -76,7 +76,8 @@ fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
 /// title, so rows stored under an earlier title are found by the entry
 /// they name, not by the title the row has now. The rows stored for
 /// the row `id` under each of `titles` stay, for [`forget_title_matches`]
-/// to take afterwards: a retry finds the show's ids by them.
+/// to take afterwards — but for those a remaining row searches too,
+/// which it leaves: a retry finds the show's ids by them.
 ///
 /// # Errors
 /// Cache failures propagate.

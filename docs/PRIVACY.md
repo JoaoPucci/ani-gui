@@ -38,8 +38,10 @@ ani-gui keeps the following on your computer only:
   Kitsu's. Deleting a show from your history deletes its row and all
   of these for that show, including the copies earlier versions of the
   app wrote, except a Kitsu entry matched by title that another row
-  still in your history searches under the same title, which stays
-  with that row. If the streaming catalogue renamed the show, the Kitsu
+  still in your history also searches — the same title on the same
+  catalogue, or once a trailing episode count is dropped, or on either
+  catalogue under an older version's record — which stays with that
+  row. If the streaming catalogue renamed the show, the Kitsu
   entry matched under its old title is found by the entry it names,
   and stays only if the history never linked that entry to the show or
   another show still in your history claims it. Opening and ending
