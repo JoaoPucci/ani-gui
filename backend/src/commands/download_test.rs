@@ -4358,13 +4358,15 @@ impl SlowTreeKill {
         .await
     }
 
-    /// The late kill for the tools staged in `bin` only; any other
-    /// tree is killed at once. For a delay past the teardown's
+    /// The late kill for the trees of the tools staged in `bin` only —
+    /// a group with a process whose command line names `bin`, the tool
+    /// itself or a helper that names it; any other tree is killed at
+    /// once. For a delay past the teardown's
     /// ceiling, which would fail any other test's teardown that the
     /// probe happened to serve.
     async fn register_for(delay: &str, bin: &std::path::Path) -> Self {
         Self::register_script(&format!(
-            "if ps -o args= -p \"$1\" | grep -q '{bin}'; then\n\
+            "if pgrep -g \"$1\" -f '{bin}' >/dev/null; then\n\
              ( sleep {delay}; kill -s KILL -- -\"$1\" ) >/dev/null 2>&1 &\n\
              else kill -s KILL -- -\"$1\"; fi\nexit 0",
             bin = bin.display()
@@ -5825,6 +5827,42 @@ async fn an_ffmpeg_that_rejects_the_extension_option_gets_the_command_without_it
         "the second run carries no option the build does not know: {}",
         runs[1]
     );
+}
+
+/// A build that rejects the option and leaves a helper behind that
+/// outlives the teardown gets no second run beside it: the second
+/// command writes the same scratch file and reads the same host, and
+/// an outlived tree ends the download as it does anywhere else.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_that_rejects_the_option_and_outlives_its_teardown_is_not_run_again() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let _slow = SlowTreeKill::register_for("3", bin.path()).await;
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2\nd=$(dirname \"$0\")\nsh -c \"sleep 30; : '$d'\" >/dev/null 2>&1 &\necho \"Unrecognized option 'extension_picky'.\" >&2\nexit 8",
+    );
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 3",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "the download ends: {got:?}");
+    let runs = lines.iter().filter(|l| l.starts_with("ffmpeg ")).count();
+    assert_eq!(runs, 1, "no second run beside the outlived tree: {lines:?}");
 }
 
 /// A build that takes the option runs once.
