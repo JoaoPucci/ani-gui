@@ -725,3 +725,58 @@ async fn a_countless_pool_the_titles_narrowed_before_the_year_filter_is_not_a_cl
         Ok(p) => panic!("picked {}", p.hit.slug),
     }
 }
+
+/// The listing that completes a span shares the spanning listing's
+/// stem — a stem drops every marker a title ends on — so stem
+/// identity alone would take it for the entry's own. When the entry's
+/// titles name its number it is admitted, and at the entry's length it
+/// would stop the cut and win: the second half played for the first.
+#[tokio::test]
+async fn the_listing_that_completes_a_span_is_never_the_entry_s_own() {
+    let rows = [
+        ("show-s2-1", "Show 2nd Season", 24),
+        ("show-s2p2-2", "Show 2nd Season Part 2", 12),
+    ];
+    let site = pool_of(
+        &["Show 2nd Season"],
+        Some(12),
+        2020,
+        "Show 2nd Season",
+        &rows,
+    );
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!(
+        (picked.hit.slug.as_str(), picked.episodes.len()),
+        ("show-s2-1", 12)
+    );
+}
+
+/// The division that completes a span is read in Japanese as in
+/// English: 第2期 after a bare title, and a part after a 第3期 the
+/// spanning listing itself ends on.
+#[tokio::test]
+async fn a_japanese_division_completes_a_spanning_listing() {
+    type Pool<'a> = [(&'a str, &'a str, u32); 2];
+    let cases: [(&str, Pool<'_>); 2] = [
+        (
+            "ショー",
+            [("show-1", "ショー", 24), ("show-2", "ショー 第2期", 12)],
+        ),
+        (
+            "進撃の巨人 第3期",
+            [
+                ("show-1", "進撃の巨人 第3期", 22),
+                ("show-2", "進撃の巨人 第3期 Part 2", 10),
+            ],
+        ),
+    ];
+    for (title, rows) in cases {
+        let site = pool_of(&[title], Some(12), 2020, title, &rows);
+        let picked = walk_over(site).await.expect("the cut listing");
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            ("show-1", 12),
+            "{title}"
+        );
+    }
+}
