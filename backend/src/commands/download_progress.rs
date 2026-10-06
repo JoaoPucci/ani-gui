@@ -54,30 +54,33 @@ pub(crate) fn ffmpeg_progress_bytes(line: &str) -> Option<u64> {
 }
 
 /// The speed of a transfer from the byte counts its tool reports: the
-/// bytes gained since the oldest count within [`RATE_WINDOW`], over the
-/// time since that count. A count lower than the last moves the older
-/// counts down by the step, so the speed carries on through it.
+/// bytes gained since the newest count before [`RATE_WINDOW`] — or the
+/// oldest within it, with nothing older — over the time since that
+/// count. What is kept is what the tool gained, every
+/// rise counted and a fall counted as nothing — a count lower than the
+/// last takes nothing back from the bytes that arrived before it, and
+/// the speed carries on from the bytes gained after it.
 #[derive(Debug, Default)]
 pub(crate) struct RateMeter {
+    /// When, and how much the tool had gained by then.
     samples: VecDeque<(Instant, u64)>,
+    /// The tool's last count, which the next is measured against.
+    last_count: Option<u64>,
+    /// Everything gained so far.
+    gained: u64,
 }
 
 impl RateMeter {
     /// Record that the tool had `bytes` at `at`.
     pub(crate) fn observe(&mut self, bytes: u64, at: Instant) {
         // A count that steps back — yt-dlp counting a retried
-        // fragment again — moves the older counts down by the step, so
-        // the speed carries on from the bytes gained since rather than
-        // reading zero until the window refills.
-        if let Some(&(_, last)) = self.samples.back() {
-            if bytes < last {
-                let step = last - bytes;
-                for sample in &mut self.samples {
-                    sample.1 = sample.1.saturating_sub(step);
-                }
-            }
+        // fragment again — gains nothing, and the next rise is gained
+        // from it.
+        if let Some(last) = self.last_count {
+            self.gained += bytes.saturating_sub(last);
         }
-        self.samples.push_back((at, bytes));
+        self.last_count = Some(bytes);
+        self.samples.push_back((at, self.gained));
         // Keep the window, and the newest count before it as the
         // baseline a stall is measured from.
         let cutoff = at.checked_sub(RATE_WINDOW).unwrap_or(at);
