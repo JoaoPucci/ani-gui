@@ -92,13 +92,14 @@ async fn fetch_anilist_eps_thumbs(
         )?;
     // Neither id: nothing to ask AniList. Err so the empty result
     // takes the short negative TTL, as a failed lookup does.
-    let media = MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(())?;
+    MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(())?;
     streaming_eps_map_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
         .await
         .map_err(|e| {
             tracing::warn!(
                 kitsu_id,
-                ?media,
+                mal_id = ?ids.mal,
+                anilist_id = ?ids.anilist,
                 error = ?e,
                 "anilist thumbs: streamingEpisodes fetch failed; negative-caching empty result",
             );
