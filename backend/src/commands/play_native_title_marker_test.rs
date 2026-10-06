@@ -250,3 +250,10 @@ fn only_the_first_part_is_admitted_unnamed_and_zero_is_an_ordinal_like_any_other
         }]
     );
 }
+
+#[test]
+fn the_stem_drops_a_japanese_division_too() {
+    let words = |t: &str| t.split(' ').map(str::to_string).collect::<Vec<_>>();
+    assert_eq!(stem("進撃の巨人 第3期"), words("進撃の巨人"));
+    assert_eq!(stem("Show Season 2 第2部"), words("show"));
+}
