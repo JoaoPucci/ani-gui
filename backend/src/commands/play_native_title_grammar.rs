@@ -271,6 +271,16 @@ pub(super) fn part_ordinals(title: &str) -> BTreeSet<u32> {
 /// A title's words with the markers it ends on removed: the name the
 /// show's seasons and parts share ("Attack on Titan" for "Attack on
 /// Titan Season 3 Part 2").
+/// The words of `title` after `stem`, joined — what a title adds to a
+/// stem it starts with. Empty when it does not start with it.
+pub(super) fn tail_after(title: &str, stem: &[String]) -> String {
+    let words = words(title);
+    if words.len() < stem.len() || words[..stem.len()] != *stem {
+        return String::new();
+    }
+    words[stem.len()..].join(" ")
+}
+
 pub(crate) fn stem(title: &str) -> Vec<String> {
     parse_tail(title).0
 }
