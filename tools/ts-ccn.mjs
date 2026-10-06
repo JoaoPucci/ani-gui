@@ -16,24 +16,27 @@
 // within a unit is lizard's documented decision set, kept so the
 // numbers stay continuous with the ceilings recorded against it: 1,
 // plus one for each `if`, `for`, `while`, `catch` and `case` keyword,
-// each conditional `? :`, and each `&&` and `||`. The tokens are the
+// each conditional `? :`, and each `&&` and `||` (and their `&&=` and
+// `||=` forms). The tokens are the
 // parser's, so a keyword inside a string or a template is text, a
 // promise's `.catch(` is a method name, and neither `?.`, `??` nor the
 // `?` of an optional parameter is a conditional — lizard's tokenizer
 // counted some of those. A function nested in another is its own unit,
 // and its tokens are not counted again in the enclosing one.
 //
-// What this does not measure it says so about: `.svelte` components
-// under the given roots are listed on stderr as unmeasured. Their
+// What this does not measure it says so about, on stderr: `.svelte`
+// components under the given roots are listed as unmeasured (their
 // script blocks are not TypeScript files, and the coverage run does
-// not instrument them either.
+// not instrument them either), and decisions outside every function
+// (module-scope code) are counted and reported as charged to no unit.
 //
 // Usage: node tools/ts-ccn.mjs [--tsv] <path>...
 // Default output is lizard's XML shape, which tools/crap-score.mjs
 // reads; `--tsv` lists one unit per line. A file with syntax errors is
 // reported and the run exits non-zero — an unparsed file is a
 // measurement that did not happen, and the gate must not read it as
-// zero. Paths containing `paraglide` (compiled message bundles) are
+// zero. So is a root that does not exist or holds no TypeScript.
+// Paths containing `paraglide` (compiled message bundles) are
 // skipped, as the gate always skipped them.
 
 import fs from 'node:fs';
@@ -62,7 +65,11 @@ const DECISION_KINDS = new Set([
 	ts.SyntaxKind.CatchKeyword,
 	ts.SyntaxKind.CaseKeyword,
 	ts.SyntaxKind.AmpersandAmpersandToken,
-	ts.SyntaxKind.BarBarToken
+	ts.SyntaxKind.BarBarToken,
+	// `&&=` and `||=` short-circuit as `&&` and `||` do; lizard's
+	// tokenizer counted them as those operators.
+	ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+	ts.SyntaxKind.BarBarEqualsToken
 ]);
 
 /** A leaf token that adds a path. A `?` does only as a conditional's:
@@ -74,7 +81,10 @@ function isDecision(token) {
 
 /**
  * Measure one source text.
- * @returns {{ units: { name: string, line: number, endLine: number, ccn: number }[], errors: string[] }}
+ * `outside` counts the decisions that sit in no function — a
+ * module-scope guard — which no unit is charged with, as lizard
+ * charged them to none, and which the report declares.
+ * @returns {{ units: { name: string, line: number, endLine: number, ccn: number }[], outside: number, errors: string[] }}
  */
 export function measure(fileName, source) {
 	const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -94,15 +104,18 @@ export function measure(fileName, source) {
 		for (const child of children) walk(child);
 	};
 	walk(sf);
+	let outside = 0;
 	for (const at of decisions) {
 		let innermost = null;
 		for (const u of units) {
 			if (u.start <= at && at < u.end && (innermost === null || u.start > innermost.start)) innermost = u;
 		}
 		if (innermost) innermost.own += 1;
+		else outside += 1;
 	}
 	return {
 		errors,
+		outside,
 		units: units
 			.map((u) => ({
 				name: u.name,
@@ -136,12 +149,29 @@ function main(argv) {
 		return 2;
 	}
 	const files = [];
-	for (const root of roots) collect(root, files);
+	for (const root of roots) {
+		// A root that does not exist, or holds no TypeScript, would score
+		// the language as empty; a mistyped path must not read as that.
+		const before = files.length;
+		try {
+			collect(root, files);
+		} catch (err) {
+			console.error(`ts-ccn: ${root}: ${err.message}`);
+			return 1;
+		}
+		if (!files.slice(before).some((f) => f.endsWith('.ts'))) {
+			console.error(`ts-ccn: ${root}: no TypeScript files to measure`);
+			return 1;
+		}
+	}
 	const svelte = files.filter((f) => f.endsWith('.svelte'));
 	const measured = [];
+	let outside = 0;
 	let failed = false;
 	for (const file of files.filter((f) => f.endsWith('.ts'))) {
-		const { units, errors } = measure(file, fs.readFileSync(file, 'utf-8'));
+		const result = measure(file, fs.readFileSync(file, 'utf-8'));
+		const { units, errors } = result;
+		outside += result.outside;
 		if (errors.length > 0) {
 			console.error(`ts-ccn: ${file}: does not parse: ${errors[0]}`);
 			failed = true;
@@ -166,8 +196,12 @@ function main(argv) {
 	process.stdout.write(out);
 	const fnCount = measured.reduce((n, [, units]) => n + units.length, 0);
 	console.error(`ts-ccn: ${measured.length} TypeScript files, ${fnCount} functions measured`);
+	if (outside > 0) {
+		console.error(`ts-ccn: ${outside} decisions outside any function not counted (module-scope code)`);
+	}
 	if (svelte.length > 0) {
-		console.error(`ts-ccn: not measured — ${svelte.length} .svelte components (script blocks are not TypeScript files, and coverage does not instrument them)`);
+		console.error(`ts-ccn: not measured — ${svelte.length} .svelte components (script blocks are not TypeScript files, and coverage does not instrument them):`);
+		for (const f of svelte) console.error(`  ${f}`);
 	}
 	return 0;
 }

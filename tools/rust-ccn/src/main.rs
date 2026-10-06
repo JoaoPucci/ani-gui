@@ -3,12 +3,14 @@
 //! scorer reads it exactly as it reads lizard's; `--tsv` lists one unit
 //! per line. A file that does not parse is reported and the run exits
 //! non-zero: an unparsed file is a measurement that did not happen, and
-//! the gate must not read it as zero.
+//! the gate must not read it as zero. So is a root that does not exist
+//! or holds no `.rs` file: a mistyped path would otherwise score the
+//! language as empty.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use rust_ccn::{measure, Unit, UnitKind};
+use rust_ccn::{measure_file, Unit, UnitKind};
 
 fn main() -> ExitCode {
     let mut tsv = false;
@@ -26,26 +28,35 @@ fn main() -> ExitCode {
     }
     let mut files = Vec::new();
     for root in &roots {
-        if let Err(err) = collect(root, &mut files) {
+        let before = files.len();
+        if let Err(err) = std::fs::metadata(root).and_then(|_| collect(root, &mut files)) {
             eprintln!("rust-ccn: {}: {err}", root.display());
+            return ExitCode::FAILURE;
+        }
+        if files.len() == before {
+            eprintln!("rust-ccn: {}: no .rs files to measure", root.display());
             return ExitCode::FAILURE;
         }
     }
     files.sort();
 
     let mut measured = Vec::new();
+    let mut outside = 0;
     let mut failed = false;
     for file in &files {
         let result = std::fs::read_to_string(file)
             .map_err(|e| e.to_string())
             .and_then(|src| {
-                measure(&src).map_err(|e| {
+                measure_file(&src).map_err(|e| {
                     let at = e.span().start();
                     format!("{}:{}: {e}", at.line, at.column + 1)
                 })
             });
         match result {
-            Ok(units) => measured.push((file.clone(), units)),
+            Ok(m) => {
+                outside += m.outside;
+                measured.push((file.clone(), m.units));
+            }
             Err(err) => {
                 eprintln!("rust-ccn: {}: does not parse: {err}", file.display());
                 failed = true;
@@ -61,14 +72,15 @@ fn main() -> ExitCode {
         render_xml(&measured)
     };
     print!("{out}");
-    eprintln!("{}", summary(&measured));
+    eprintln!("{}", summary(&measured, outside));
     ExitCode::SUCCESS
 }
 
-/// What was measured, and the one thing measured coarsely: functions
-/// written inside an item-position macro's input are counted as part of
-/// that macro's block, not one by one.
-fn summary(measured: &[(PathBuf, Vec<Unit>)]) -> String {
+/// What was measured, and what was not: functions written inside an
+/// item-position macro's input are counted as part of that macro's
+/// block, not one by one, and decisions outside every function are not
+/// counted at all.
+fn summary(measured: &[(PathBuf, Vec<Unit>)], outside: u32) -> String {
     let all = measured.iter().flat_map(|(_, units)| units);
     let functions = all.clone().filter(|u| u.kind == UnitKind::Function).count();
     let macros = all.filter(|u| u.kind == UnitKind::Macro).count();
@@ -76,6 +88,12 @@ fn summary(measured: &[(PathBuf, Vec<Unit>)]) -> String {
         "rust-ccn: {} files, {functions} functions measured",
         measured.len()
     );
+    if outside > 0 {
+        line.push_str(&format!(
+            "; {outside} decisions outside any function not counted \
+             (e.g. the `for` of `impl Trait for Type`)"
+        ));
+    }
     if macros > 0 {
         line.push_str(&format!(
             "; {macros} item-position macro invocations measured as whole blocks \

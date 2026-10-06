@@ -5,10 +5,12 @@
 //! That tokenizer misreads ordinary constructs and loses its place: a
 //! char literal of a word character (`'_'`, `'a'`, `b'x'`) is read as a
 //! lifetime plus a stray quote that opens a run to the next one; a raw
-//! string (`r#"..."#`) drops the function holding it; a bodiless trait
-//! or extern declaration is folded into the function after it. Each
-//! drops decisions or whole functions from the counts, and nothing
-//! reports the loss, so the gate under-measured while reading green.
+//! string (`r#"..."#`) can drop the function holding it, or the
+//! decisions on its line; a bodiless trait or extern declaration is
+//! read as a function running on into the next body, which loses that
+//! function's own entry. Each drops decisions or whole functions from
+//! the counts, and nothing reports the loss, so the gate under-measured
+//! while reading green.
 //!
 //! Here `syn` parses each file. A file it cannot parse is an error, not
 //! a smaller number. Function boundaries come from the syntax tree:
@@ -28,6 +30,10 @@
 //! unit of its own, named `name!` and counted like a function (1 plus
 //! the decision tokens it contains), and is listed as such: the
 //! complexity is measured, the function boundaries inside it are not.
+//! Decisions outside every unit — the `for` of `impl Trait for Type`, a
+//! constant's initializer — are charged to none, as lizard charged
+//! them to none; [`Measurement::outside`] counts them so the report can
+//! say so.
 
 use proc_macro2::{Spacing, TokenStream, TokenTree};
 use syn::visit::{self, Visit};
@@ -59,18 +65,16 @@ pub struct Measurement {
     pub outside: u32,
 }
 
-/// Measure one source file. (Not yet counting what lies outside units.)
-pub fn measure_file(source: &str) -> syn::Result<Measurement> {
-    Ok(Measurement {
-        units: measure(source)?,
-        outside: 0,
-    })
+/// Measure every unit in one source file, in source order.
+pub fn measure(source: &str) -> syn::Result<Vec<Unit>> {
+    Ok(measure_file(source)?.units)
 }
 
 /// A source position, as (line, column).
 type Pos = (usize, usize);
 
-/// Measure every unit in one source file, in source order.
+/// Measure one source file: its units in source order, and the
+/// decisions outside them.
 ///
 /// The syntax tree decides where units begin and end; the counting is
 /// over the file's own lexed tokens rather than over the tree printed
@@ -79,7 +83,7 @@ type Pos = (usize, usize);
 /// lizard read the source, not a reprint of it. Each decision token is
 /// charged to the innermost unit whose span holds it — spans nest, so
 /// that is the holder that starts last.
-pub fn measure(source: &str) -> syn::Result<Vec<Unit>> {
+pub fn measure_file(source: &str) -> syn::Result<Measurement> {
     let file = syn::parse_file(source)?;
     let mut census = Census::default();
     census.visit_file(&file);
@@ -90,6 +94,7 @@ pub fn measure(source: &str) -> syn::Result<Vec<Unit>> {
     decisions(tokens, &mut decision_positions);
 
     let mut own = vec![0u32; census.units.len()];
+    let mut outside = 0;
     for pos in decision_positions {
         let innermost = census
             .units
@@ -98,8 +103,9 @@ pub fn measure(source: &str) -> syn::Result<Vec<Unit>> {
             .filter(|(_, u)| u.start <= pos && pos <= u.end)
             .max_by_key(|(_, u)| u.start)
             .map(|(i, _)| i);
-        if let Some(i) = innermost {
-            own[i] += 1;
+        match innermost {
+            Some(i) => own[i] += 1,
+            None => outside += 1,
         }
     }
     let mut units: Vec<Unit> = census
@@ -115,7 +121,7 @@ pub fn measure(source: &str) -> syn::Result<Vec<Unit>> {
         })
         .collect();
     units.sort_by_key(|u| (u.line, u.end_line));
-    Ok(units)
+    Ok(Measurement { units, outside })
 }
 
 /// Collect the position of every decision token, recursing into groups.
