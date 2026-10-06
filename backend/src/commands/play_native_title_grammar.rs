@@ -267,12 +267,33 @@ pub(super) fn named_ordinals(title: &str) -> BTreeSet<u32> {
         .take_while(char::is_ascii_digit)
         .collect();
     out.extend(small_number(&tail.chars().rev().collect::<String>()));
+    out.extend(counted_numbers(&half));
     for (_, after) in half
         .match_indices('第')
         .map(|(i, m)| half.split_at(i + m.len()))
     {
         let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
         out.extend(number(&digits).or_else(|| after.chars().next().and_then(kanji_or_digit)));
+    }
+    out
+}
+
+/// Every number of one or two digits written straight before a
+/// Japanese counter — 号, 期 or 話 — in `half` (a title with its
+/// full-width digits already read as ASCII): the 8 of "怪獣8号".
+fn counted_numbers(half: &str) -> Vec<u32> {
+    const COUNTERS: &[char] = &['号', '期', '話'];
+    let mut out = Vec::new();
+    let mut run = String::new();
+    for c in half.chars() {
+        if c.is_ascii_digit() {
+            run.push(c);
+            continue;
+        }
+        if COUNTERS.contains(&c) {
+            out.extend(small_number(&run));
+        }
+        run.clear();
     }
     out
 }
