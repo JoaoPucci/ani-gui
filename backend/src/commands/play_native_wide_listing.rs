@@ -34,7 +34,7 @@ pub(super) const UNFIT: u32 = u32::MAX;
 /// A probed candidate as the pick scores it: the hit, its listing,
 /// its count distance from the entry, and whether its own year
 /// matched the entry's.
-type Probed<'h> = (&'h BrowseHit, Vec<EpisodeRef>, u32, bool);
+pub(super) type Probed<'h> = (&'h BrowseHit, Vec<EpisodeRef>, u32, bool);
 
 /// Fit the probed pool to the entry: a candidate the entry's titles
 /// do not admit is scored [`UNFIT`], and a listing that spans this
@@ -47,7 +47,8 @@ type Probed<'h> = (&'h BrowseHit, Vec<EpisodeRef>, u32, bool);
 ///
 /// Returns whether the titles refused a candidate the count alone
 /// would have accepted: a pool rejected after that is
-/// [`refused_by_title`], not a clean miss.
+/// [`super::play_native_title_verdict::refused_by_title`], not a clean
+/// miss.
 pub(super) fn fit_to_entry(
     probed: &mut [Probed<'_>],
     expected: u32,
@@ -76,25 +77,6 @@ pub(super) fn fit_to_entry(
         probed[wide].2 = 0;
     }
     refused_a_fit
-}
-
-/// The verdict on a pool rejected because the entry's titles refused
-/// a candidate the count accepted, or without a count refused every
-/// candidate. Refusing by title is an inference from how titles are
-/// written, and a wrong one must not be persisted as the show's
-/// absence: the verdict is the answered dead end the walk moves on
-/// from without a clean miss — never weather, which would open the
-/// breaker on a provider that answered.
-pub(super) fn refused_by_title() -> crate::error::AniError {
-    crate::error::AniError::Upstream { status: 404 }
-}
-
-/// Whether a probed candidate may be rescued as an airing part: its
-/// own year matched the entry's, its titles were admitted, and it
-/// lists fewer episodes than the entry will have.
-pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
-    let (_, eps, distance, confirmed) = row;
-    *confirmed && *distance != UNFIT && regular_episode_count(eps) < expected
 }
 
 /// The listing that spans this entry and the next, with the later

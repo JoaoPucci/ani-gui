@@ -37,6 +37,26 @@ pub(super) fn entry_rank(entry: EntryTitles<'_>, title: &str, needle: &str, conf
     }
 }
 
+/// The strongest transport-dead candidate so far, by [`entry_rank`]
+/// and then provider position, with the candidate that just died at
+/// `pos` weighed in. A candidate the entry's titles refuse could never
+/// have won, so its death blocks no winner; it still leaves the pool
+/// unheard, which the caller records apart.
+pub(super) fn strongest_dead(
+    best: Option<(u8, usize)>,
+    entry: EntryTitles<'_>,
+    title: &str,
+    needle: &str,
+    confirmed: bool,
+    pos: usize,
+) -> Option<(u8, usize)> {
+    if !entry.admits(title) {
+        return best;
+    }
+    let failed = (entry_rank(entry, title, needle, confirmed), pos);
+    Some(best.map_or(failed, |best| best.min(failed)))
+}
+
 /// The pick without a count signal: an exact title beats positional
 /// order, then a candidate whose own year matched Kitsu's beats the
 /// rest. When the year disproved part of the pool and no survivor

@@ -1,4 +1,5 @@
 use super::*;
+use crate::commands::play_native_title_verdict::rescuable;
 
 fn hit(slug: &str, title: &str) -> BrowseHit {
     BrowseHit {

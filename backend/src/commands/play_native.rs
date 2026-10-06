@@ -14,12 +14,13 @@
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
-use super::play_native_choice::{entry_rank, pick_without_count, select_winner};
+use super::play_native_choice::{entry_rank, pick_without_count, select_winner, strongest_dead};
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_wide_listing::{fit_to_entry, refused_by_title, rescuable};
+use super::play_native_title_verdict::{admitted_head, rejection, rescuable};
+use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
 /// How many browse hits get an episodes probe. Beyond this the match
@@ -154,14 +155,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     let Some(expected) = expected else {
         // Without a count, the titles are the only identity: a hit
         // named for another season or part is not this entry.
-        let admitted: Vec<_> = head
-            .iter()
-            .copied()
-            .filter(|(h, _)| entry.admits(&h.title))
-            .collect();
-        if admitted.is_empty() {
-            return Err(refused_by_title());
-        }
+        let admitted = admitted_head(&head, entry)?;
         return pick_without_count(client, &admitted, &needle, year_excluded_any).await;
     };
 
@@ -204,16 +198,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                 }
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
-                    // A candidate the entry's titles refuse could
-                    // never have won, so its death blocks no winner;
-                    // it still leaves the pool unheard.
-                    let failed = entry
-                        .admits(&h.title)
-                        .then(|| entry_rank(entry, &h.title, &needle, year_confirmed))
-                        .filter(|failed| best_failed.is_none_or(|best| (*failed, pos) < best));
-                    if let Some(failed) = failed {
-                        best_failed = Some((failed, pos));
-                    }
+                    best_failed =
+                        strongest_dead(best_failed, entry, &h.title, &needle, year_confirmed, pos);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
@@ -283,13 +269,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // got to answer: a transiently dead probe may have hidden
         // the right show, and NoResults rides the walk into a
         // persistable clean miss. Weather stays weather.
-        if any_transport_failure {
-            return Err(crate::error::AniError::Network);
-        }
-        if refused_a_fit {
-            return Err(refused_by_title());
-        }
-        return Err(crate::error::AniError::NoResults);
+        return Err(rejection(any_transport_failure, refused_a_fit));
     }
     let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
     if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {
