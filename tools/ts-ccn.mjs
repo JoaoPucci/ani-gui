@@ -24,10 +24,14 @@
 // counted some of those. A function nested in another is its own unit,
 // and its tokens are not counted again in the enclosing one.
 //
-// What this does not measure it says so about, on stderr: `.svelte`
-// components under the given roots are listed as unmeasured (their
-// script blocks are not TypeScript files, and the coverage run does
-// not instrument them either), and decisions outside every function
+// Every file under a root lands in one place. Script of any kind the
+// compiler reads (.ts .mts .cts .tsx .js .mjs .cjs .jsx) is measured.
+// What is not measured is listed on stderr: `.svelte` components (their
+// script blocks are not script files, and the coverage run does not
+// instrument them either), declaration files (no bodies), and markup,
+// styles and data (.html without an inline <script>, .css, .json);
+// generated Paraglide output is skipped and counted. A file of any
+// other kind fails the run. Decisions outside every function
 // (module-scope code) are counted and reported as charged to no unit.
 //
 // Usage: node tools/ts-ccn.mjs [--tsv] <path>...
@@ -87,7 +91,7 @@ function isDecision(token) {
  * @returns {{ units: { name: string, line: number, endLine: number, ccn: number }[], outside: number, errors: string[] }}
  */
 export function measure(fileName, source) {
-	const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, scriptKind(fileName));
 	const errors = sf.parseDiagnostics.map((d) => {
 		const at = sf.getLineAndCharacterOfPosition(d.start ?? 0);
 		return `${at.line + 1}:${at.character + 1}: ${ts.flattenDiagnosticMessageText(d.messageText, '\n')}`;
@@ -127,14 +131,46 @@ export function measure(fileName, source) {
 	};
 }
 
+/** The parse a file gets, by extension. JSX needs its own kinds. */
+function scriptKind(fileName) {
+	if (/\.tsx$/.test(fileName)) return ts.ScriptKind.TSX;
+	if (/\.jsx$/.test(fileName)) return ts.ScriptKind.JSX;
+	if (/\.[mc]?js$/.test(fileName)) return ts.ScriptKind.JS;
+	return ts.ScriptKind.TS;
+}
+
+// Every file under a root lands in exactly one place. A kind not
+// named here fails the run, so a new kind gets a decision rather than
+// passing through unmeasured and unreported.
+const KINDS = [
+	// Declarations carry no function bodies to measure.
+	['declaration', /\.d\.[mc]?ts$/],
+	['script', /\.([mc]?ts|tsx|[mc]?js|jsx)$/],
+	['svelte', /\.svelte$/],
+	// Markup, styles and data: no script of either language.
+	['noScript', /\.(css|html|json)$/]
+];
+
 function collect(p, out) {
-	if (p.includes('paraglide')) return;
+	// Paraglide's compiled message bundles: generated, one switch arm per
+	// message key, and never measured by the gate.
+	if (p.includes('paraglide')) {
+		out.paraglide += fs.statSync(p).isDirectory() ? countFiles(p) : 1;
+		return;
+	}
 	const stat = fs.statSync(p);
 	if (stat.isDirectory()) {
 		for (const entry of fs.readdirSync(p).sort()) collect(path.join(p, entry), out);
-	} else if (/\.(ts|svelte)$/.test(p) && !p.endsWith('.d.ts')) {
-		out.push(p);
+		return;
 	}
+	let kind = KINDS.find(([, re]) => re.test(p))?.[0] ?? 'unknown';
+	// Markup is only script-free when it carries no inline <script>.
+	if (kind === 'noScript' && p.endsWith('.html') && /<script\b/i.test(fs.readFileSync(p, 'utf-8'))) kind = 'unknown';
+	out[kind].push(p);
+}
+
+function countFiles(dir) {
+	return fs.readdirSync(dir, { withFileTypes: true }).reduce((n, e) => n + (e.isDirectory() ? countFiles(path.join(dir, e.name)) : 1), 0);
 }
 
 /** A function's name as the report carries it: name characters only.
@@ -156,27 +192,31 @@ function main(argv) {
 		console.error('usage: ts-ccn.mjs [--tsv] <path>...');
 		return 2;
 	}
-	const files = [];
+	const found = { script: [], declaration: [], svelte: [], noScript: [], unknown: [], paraglide: 0 };
 	for (const root of roots) {
-		// A root that does not exist, or holds no TypeScript, would score
-		// the language as empty; a mistyped path must not read as that.
-		const before = files.length;
+		// A root that does not exist, or holds no script, would score the
+		// language as empty; a mistyped path must not read as that.
+		const before = found.script.length;
 		try {
-			collect(root, files);
+			collect(root, found);
 		} catch (err) {
 			console.error(`ts-ccn: ${root}: ${err.message}`);
 			return 1;
 		}
-		if (!files.slice(before).some((f) => f.endsWith('.ts'))) {
-			console.error(`ts-ccn: ${root}: no TypeScript files to measure`);
+		if (found.script.length === before) {
+			console.error(`ts-ccn: ${root}: no script files to measure`);
 			return 1;
 		}
 	}
-	const svelte = files.filter((f) => f.endsWith('.svelte'));
+	if (found.unknown.length > 0) {
+		for (const f of found.unknown) console.error(`ts-ccn: ${f}: neither measured nor declared — measure its kind or declare it in tools/ts-ccn.mjs`);
+		return 1;
+	}
+	const svelte = found.svelte;
 	const measured = [];
 	let outside = 0;
 	let failed = false;
-	for (const file of files.filter((f) => f.endsWith('.ts'))) {
+	for (const file of found.script) {
 		const result = measure(file, fs.readFileSync(file, 'utf-8'));
 		const { units, errors } = result;
 		outside += result.outside;
@@ -203,13 +243,25 @@ function main(argv) {
 	}
 	process.stdout.write(out);
 	const fnCount = measured.reduce((n, [, units]) => n + units.length, 0);
-	console.error(`ts-ccn: ${measured.length} TypeScript files, ${fnCount} functions measured`);
+	console.error(`ts-ccn: ${measured.length} script files, ${fnCount} functions measured`);
 	if (outside > 0) {
 		console.error(`ts-ccn: ${outside} decisions outside any function not counted (module-scope code)`);
 	}
 	if (svelte.length > 0) {
 		console.error(`ts-ccn: not measured — ${svelte.length} .svelte components (script blocks are not TypeScript files, and coverage does not instrument them):`);
 		for (const f of svelte) console.error(`  ${f}`);
+	}
+	const listed = [
+		[found.declaration, 'declaration files (no function bodies)'],
+		[found.noScript, 'files that hold no script (markup, styles, data)']
+	];
+	for (const [list, what] of listed) {
+		if (list.length === 0) continue;
+		console.error(`ts-ccn: not measured — ${list.length} ${what}:`);
+		for (const f of list) console.error(`  ${f}`);
+	}
+	if (found.paraglide > 0) {
+		console.error(`ts-ccn: skipped — ${found.paraglide} files of generated Paraglide output`);
 	}
 	return 0;
 }

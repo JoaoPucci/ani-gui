@@ -5,7 +5,8 @@
 //! non-zero: an unparsed file is a measurement that did not happen, and
 //! the gate must not read it as zero. So is a root that does not exist
 //! or holds no `.rs` file: a mistyped path would otherwise score the
-//! language as empty.
+//! language as empty. Every other file is either a declared data kind,
+//! listed as not measured, or fails the run naming it.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -26,19 +27,31 @@ fn main() -> ExitCode {
         eprintln!("usage: rust-ccn [--tsv] <path>...");
         return ExitCode::from(2);
     }
-    let mut files = Vec::new();
+    let mut found = Found::default();
     for root in &roots {
-        let before = files.len();
-        if let Err(err) = std::fs::metadata(root).and_then(|_| collect(root, &mut files)) {
+        let before = found.rust.len();
+        if let Err(err) = std::fs::metadata(root).and_then(|_| collect(root, &mut found)) {
             eprintln!("rust-ccn: {}: {err}", root.display());
             return ExitCode::FAILURE;
         }
-        if files.len() == before {
+        if found.rust.len() == before {
             eprintln!("rust-ccn: {}: no .rs files to measure", root.display());
             return ExitCode::FAILURE;
         }
     }
+    if !found.unknown.is_empty() {
+        for f in &found.unknown {
+            eprintln!(
+                "rust-ccn: {}: neither measured nor declared — measure its kind or declare it in tools/rust-ccn",
+                f.display()
+            );
+        }
+        return ExitCode::FAILURE;
+    }
+    let mut files = found.rust;
     files.sort();
+    let mut no_rust = found.no_rust;
+    no_rust.sort();
 
     let mut measured = Vec::new();
     let mut outside = 0;
@@ -73,6 +86,16 @@ fn main() -> ExitCode {
     };
     print!("{out}");
     eprintln!("{}", summary(&measured, outside));
+    if !no_rust.is_empty() {
+        eprintln!(
+            "rust-ccn: not measured — {} files that hold no Rust (data: {}):",
+            no_rust.len(),
+            NO_RUST.join(", ")
+        );
+        for f in &no_rust {
+            eprintln!("  {}", f.display());
+        }
+    }
     ExitCode::SUCCESS
 }
 
@@ -103,14 +126,34 @@ fn summary(measured: &[(PathBuf, Vec<Unit>)], outside: u32) -> String {
     line
 }
 
-fn collect(path: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+/// Files that hold no Rust and are listed as not measured: data a crate
+/// embeds or ships beside its sources. Any other non-`.rs` kind fails
+/// the run, so a new kind gets a decision rather than a silent pass.
+const NO_RUST: &[&str] = &["sql", "json", "toml", "txt", "md"];
+
+#[derive(Default)]
+struct Found {
+    rust: Vec<PathBuf>,
+    no_rust: Vec<PathBuf>,
+    unknown: Vec<PathBuf>,
+}
+
+fn collect(path: &Path, out: &mut Found) -> std::io::Result<()> {
     if path.is_dir() {
         for entry in std::fs::read_dir(path)? {
             collect(&entry?.path(), out)?;
         }
-    } else if path.extension().is_some_and(|e| e == "rs") {
-        out.push(path.to_path_buf());
+        return Ok(());
     }
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let bucket = if ext == "rs" {
+        &mut out.rust
+    } else if NO_RUST.contains(&ext) {
+        &mut out.no_rust
+    } else {
+        &mut out.unknown
+    };
+    bucket.push(path.to_path_buf());
     Ok(())
 }
 
