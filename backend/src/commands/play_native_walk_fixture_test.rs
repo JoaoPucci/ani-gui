@@ -374,3 +374,15 @@ async fn a_sequel_named_for_another_season_is_never_picked_for_the_first() {
 async fn an_announced_part_is_refused_rather_than_resolved_to_the_series_before_it() {
     assert_picks(&[("47181", None)]).await;
 }
+
+/// Slime's second season: hianime lists "Season 2" and "2nd Season
+/// Part 2" at twelve episodes each, both from 2021, Part 2 first. The
+/// entry names no second part, so provider order must not decide.
+#[tokio::test]
+async fn of_two_same_length_cours_the_one_whose_part_agrees_is_picked() {
+    assert_picks(&[(
+        "42196",
+        Some(("that-time-i-got-reincarnated-as-a-slime-season-2-487", 12)),
+    )])
+    .await;
+}
