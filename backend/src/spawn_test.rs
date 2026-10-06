@@ -219,3 +219,24 @@ async fn a_dropped_guard_whose_tree_never_empties_waits_the_ceiling_once() {
     assert!(took < TREE_EXIT_CEILING * 2, "once: {took:?}");
     assert_eq!(state.lock().expect("fake tree").kills, 1);
 }
+
+#[test]
+fn a_windows_root_gets_its_tree_kill_only_while_it_is_in_its_job() {
+    // `taskkill /T` reaches what the root started before it joined its
+    // job, but only through a live root. A root that has exited is
+    // gone from the job's members, and its pid may already belong to
+    // another program, whose tree the kill would take down.
+    assert!(tree::kills_root_tree(Some(&[9, 7]), 9), "still running");
+    assert!(
+        !tree::kills_root_tree(Some(&[7]), 9),
+        "exited: only the members it left"
+    );
+    assert!(!tree::kills_root_tree(Some(&[]), 9));
+}
+
+#[test]
+fn a_windows_root_without_a_job_gets_its_tree_kill() {
+    // No job, so no members to go by: the guard only asks for the
+    // kill while the child is unreaped, and its pid is still its own.
+    assert!(tree::kills_root_tree(None, 9));
+}
