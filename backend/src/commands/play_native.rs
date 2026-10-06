@@ -19,7 +19,7 @@ use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_title_verdict::{probe_head, rejection, rescuable};
+use super::play_native_title_verdict::{countless_miss, probe_head, rejection, rescuable};
 use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
@@ -151,15 +151,21 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     hits.retain(|h| !precedes_entry(&h.title, entry_titles));
     // The bounded head, by the entry's titles (see
     // play_native_title_verdict::probe_head).
-    let hits = probe_head(hits, expected.is_some(), entry)?;
-    let (head, year_excluded_any) = year_filtered(client, &hits, year).await?;
+    let (hits, refused_dropped) = probe_head(hits, expected.is_some(), entry)?;
+    let filtered = year_filtered(client, &hits, year).await;
+    let Some(expected) = expected else {
+        let picked = match filtered {
+            Ok((head, year_excluded_any)) => {
+                pick_without_count(client, &head, &needle, year_excluded_any, entry).await
+            }
+            Err(e) => Err(e),
+        };
+        return countless_miss(picked, refused_dropped);
+    };
+    let (head, _) = filtered?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
-
-    let Some(expected) = expected else {
-        return pick_without_count(client, &head, &needle, year_excluded_any, entry).await;
-    };
 
     // Probe the surviving head; a failing probe removes the
     // candidate, never the pick. Each survivor keeps whether its

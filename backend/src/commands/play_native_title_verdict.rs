@@ -25,6 +25,9 @@ pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
 /// [`MAX_PROBED_CANDIDATES`] are kept too — they are probed as
 /// evidence (a span's later part, a split's parts) and never picked.
 /// Without one they are dropped: the titles are the only identity.
+/// Alongside the head, whether a hit was dropped that way — a
+/// countless pick that then finds nothing was narrowed by the title
+/// inference, and answers [`refused_by_title`] ([`countless_miss`]).
 ///
 /// # Errors
 /// [`refused_by_title`] when hits there were and the titles refused
@@ -33,9 +36,10 @@ pub(super) fn probe_head(
     hits: Vec<BrowseHit>,
     counted: bool,
     entry: EntryTitles<'_>,
-) -> crate::error::Result<Vec<BrowseHit>> {
+) -> crate::error::Result<(Vec<BrowseHit>, bool)> {
     let any = !hits.is_empty();
     let mut admitted = 0;
+    let mut refused_dropped = false;
     let head: Vec<BrowseHit> = hits
         .into_iter()
         .enumerate()
@@ -44,6 +48,7 @@ pub(super) fn probe_head(
                 admitted += 1;
                 admitted <= MAX_PROBED_CANDIDATES
             } else {
+                refused_dropped |= !counted;
                 counted && *pos < MAX_PROBED_CANDIDATES
             }
         })
@@ -52,7 +57,21 @@ pub(super) fn probe_head(
     if any && head.is_empty() && !counted {
         return Err(refused_by_title());
     }
-    Ok(head)
+    Ok((head, refused_dropped))
+}
+
+/// What a countless pick that found nothing answers: the plain miss,
+/// unless the titles narrowed its head ([`probe_head`]) — then a
+/// refused hit may have been the entry's listing, and the miss is the
+/// [`refused_by_title`] dead end the availability cache never stores.
+pub(super) fn countless_miss(
+    result: crate::error::Result<super::play_native::PickedShow>,
+    refused_dropped: bool,
+) -> crate::error::Result<super::play_native::PickedShow> {
+    match result {
+        Err(crate::error::AniError::NoResults) if refused_dropped => Err(refused_by_title()),
+        other => other,
+    }
 }
 
 /// The verdict on a pool no candidate fit: weather when a probe died
