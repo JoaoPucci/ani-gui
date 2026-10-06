@@ -3,7 +3,7 @@
 
 use super::Watch;
 use crate::app::AppState;
-use crate::history::guard::Epoch;
+use crate::history::guard::{Epoch, Held};
 
 /// The given id when the cache can already say the cour guard accepts
 /// pairing it with the watch, so it can go on with the row's own
@@ -37,14 +37,18 @@ pub(super) fn add_accepted_id(state: &AppState, watch: &Watch, accepted: &str, b
     }
 }
 
-/// The Kitsu id the show's row records now, if any. A history that
-/// cannot be read has none to keep.
-pub(super) fn recorded_id(state: &AppState, show_id: &str) -> Option<String> {
-    crate::history::read_all(&state.history_path)
-        .ok()?
+/// The Kitsu id the show's row records now, if any, read with the
+/// history held. A history that cannot be read fails the read rather
+/// than answering none: the refusal would clear the id on that answer.
+///
+/// # Errors
+/// The file exists but cannot be read.
+pub(super) fn recorded_id(held: &Held<'_>, show_id: &str) -> crate::error::Result<Option<String>> {
+    Ok(held
+        .rows()?
         .into_iter()
         .find(|e| e.id == show_id)
-        .and_then(|e| e.kitsu_id)
+        .and_then(|e| e.kitsu_id))
 }
 
 /// The row's id once the cour guard refused pairing the watch with

@@ -163,7 +163,6 @@ pub(crate) async fn record_watch_requested_at(
         return;
     }
     let given = kitsu_id.filter(|k| !k.is_empty());
-    let previous = recorded_id(state, &watch.show_id);
     let judged = judged_by_cache(state, watch, given);
     // The watch's moment travels with the row, in the same write, so
     // the recency the resume and the strip rank by is not left to a
@@ -190,15 +189,19 @@ pub(crate) async fn record_watch_requested_at(
         if held.overtaken_since(asked, &watch.show_id) {
             return Ok(None);
         }
+        // The id the row held is read in the same hold as the write:
+        // a read that fails fails the write, and is never taken for a
+        // row without one.
+        let previous = recorded_id(held, &watch.show_id)?;
         held.upsert(entry)?;
         // The row records the page only once the guard accepts it; a
         // removal before then still has to know it.
         held.played_from(&watch.show_id, given);
         stamp_watched_at(state, &watch.show_id, now);
-        Ok::<_, crate::error::AniError>(Some(held.epoch()))
+        Ok::<_, crate::error::AniError>(Some((held.epoch(), previous)))
     });
-    let begun = match recorded {
-        Ok(Some(begun)) => begun,
+    let (begun, previous) = match recorded {
+        Ok(Some(recorded)) => recorded,
         Ok(None) => return,
         Err(e) => {
             tracing::warn!(
