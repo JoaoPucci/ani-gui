@@ -1775,9 +1775,9 @@ where
         deadline
     };
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
-    match run_tool(cmd, run_deadline, on_line, &mut false).await {
-        Ok(()) => finish(&scratch, &target, on_line).await,
-        Err(e) => Err(e),
+    match run_tool(cmd, run_deadline, on_line, &mut false).await? {
+        ToolEnd::Exited => finish(&scratch, &target, on_line).await,
+        ToolEnd::Outlived => Err(AniError::Io),
     }
 }
 
@@ -1973,6 +1973,16 @@ enum ToolRun {
     Outlived,
 }
 
+/// How a run with nothing to stop it ended when it did not fail: the
+/// tool exited, or its tree was still running when the teardown's wait
+/// ran out — which the caller must not start anything beside, and so
+/// cannot be folded into an ordinary failure a caller may retry after.
+#[derive(Debug, PartialEq, Eq)]
+enum ToolEnd {
+    Exited,
+    Outlived,
+}
+
 /// Run one download tool to completion, streaming stderr lines.
 ///
 /// # Errors
@@ -1983,21 +1993,22 @@ async fn run_tool<F>(
     deadline: tokio::time::Instant,
     on_line: &mut F,
     repackage_failed: &mut bool,
-) -> Result<()>
+) -> Result<ToolEnd>
 where
     F: FnMut(&str) + Send,
 {
-    run_tool_until(
+    let run = run_tool_until(
         cmd,
         deadline,
         on_line,
         repackage_failed,
         std::future::pending(),
     )
-    .await
-    .and_then(|run| match run {
-        ToolRun::Outlived => Err(AniError::Io),
-        ToolRun::Exited | ToolRun::Interrupted => Ok(()),
+    .await?;
+    Ok(match run {
+        ToolRun::Exited => ToolEnd::Exited,
+        ToolRun::Outlived => ToolEnd::Outlived,
+        ToolRun::Interrupted => unreachable!("nothing stops a run_tool run"),
     })
 }
 
