@@ -62,7 +62,8 @@ impl EntryTitles<'_> {
     ///   kind names it does not matter: the catalogues disagree on
     ///   it, and "86 Part 2" is listed as "Eighty Six: 2nd Season".
     ///   An ordinal of 1 never disqualifies ("Final Season, Part 1"),
-    ///   nor does a span that includes 1 ("(Part 1+2)"). Zero is an
+    ///   nor does a span that includes 1 ("(Part 1+2)"); any other span
+    ///   must have every ordinal named ("Part 2+3"). Zero is an
     ///   ordinal like any other: "Season 0" is admitted only where the
     ///   entry names 0 ("Jujutsu Kaisen 0").
     ///
@@ -73,7 +74,7 @@ impl EntryTitles<'_> {
         let named: BTreeSet<u32> = self.all().flat_map(named_ordinals).collect();
         trailing_markers(candidate)
             .iter()
-            .all(|m| m.ordinals.iter().any(|n| *n == 1 || named.contains(n)))
+            .all(|m| m.named_by(&named))
     }
 
     /// Whether the part a candidate's title ends on agrees with the
@@ -88,6 +89,10 @@ impl EntryTitles<'_> {
         let parts = part_ordinals(candidate);
         if parts.is_empty() {
             entry_parts.contains(&1)
+        } else if !parts.contains(&1) {
+            // A span without the first part agrees only where the
+            // entry ends on every part in it.
+            parts.is_subset(&entry_parts)
         } else {
             !parts.is_disjoint(&entry_parts)
         }
