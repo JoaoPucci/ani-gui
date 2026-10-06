@@ -195,6 +195,11 @@
 	let detailError = $state<string | null>(null);
 	let playerError = $state<string | null>(null);
 	let switchBusy = $state(false);
+	// The stream's picture is held back while its resume seek is on
+	// its way ($lib/play/resume-hold): the frame keeps its loading
+	// treatment, the picture is hidden and the controls are inert, so
+	// neither the first frame nor a play from it comes before the point.
+	let resumeHolding = $state(false);
 	let switchProgress = $state<string | null>(null);
 
 	// The page's own video element: made with the page, put in the
@@ -413,7 +418,8 @@
 	});
 
 	function togglePlay() {
-		if (!videoEl) return;
+		// The resume starts playback itself once its seek lands.
+		if (!videoEl || resumeHolding) return;
 		if (videoEl.paused) {
 			// `play()` returns a promise that can reject with AbortError
 			// when a pause() lands on top of an in-flight play() — the
@@ -1394,7 +1400,7 @@
 	$effect(() => {
 		if (!frameTargetEl) return;
 		const v = placePlayerVideo(ownVideo, frameTargetEl);
-		v.controls = !USE_CUSTOM_PLAYER_CONTROLS;
+		v.controls = !USE_CUSTOM_PLAYER_CONTROLS && !untrack(() => resumeHolding);
 		videoEl = v;
 
 		// Sync initial state from the element: the slot can come back
@@ -1500,7 +1506,9 @@
 	// Reactively swap the controls type when the user flips the
 	// settings toggle; the listeners above don't re-run for that.
 	$effect(() => {
-		ownVideo.controls = !USE_CUSTOM_PLAYER_CONTROLS;
+		// Chromium's own bar stays off while the resume holds, as the
+		// custom controls go inert.
+		ownVideo.controls = !USE_CUSTOM_PLAYER_CONTROLS && !resumeHolding;
 	});
 
 	$effect(() => {
@@ -1529,7 +1537,10 @@
 			video: videoEl,
 			showId: id,
 			episode: episodeNum,
-			scope: sourceScope
+			scope: sourceScope,
+			onResumeHold: (holding) => {
+				resumeHolding = holding;
+			}
 		});
 		playerError = null;
 
@@ -2321,7 +2332,7 @@
 					togglePlay();
 					break;
 				case 'seek':
-					if (videoEl && duration > 0) {
+					if (videoEl && duration > 0 && !resumeHolding) {
 						seekToFraction((videoEl.currentTime + action.deltaSeconds) / duration);
 					}
 					break;
@@ -2383,6 +2394,8 @@
 	<section
 		class="player-frame"
 		class:player-busy={switchBusy}
+		class:player-resuming={resumeHolding}
+		aria-busy={switchBusy || resumeHolding}
 		class:fs-controls-hidden={fullscreenControlsHidden}
 		style:--player-letterbox-x="{letterboxX}px"
 		style:--player-letterbox-y="{letterboxY}px"
@@ -2427,7 +2440,7 @@
 			     seeks just past `end_time`. Positioned bottom-right
 			     above native + custom controls so it never overlaps
 			     the timeline. -->
-			{#if activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
+			{#if !resumeHolding && activeSkip && shouldShowSkipButton(activeSkip, currentTime)}
 				<button
 					type="button"
 					class="player-skip-btn"
@@ -2447,6 +2460,7 @@
 			{#if USE_CUSTOM_PLAYER_CONTROLS}
 				<div
 					class="player-controls"
+					inert={resumeHolding}
 					class:scrubber-hover={scrubberHover}
 					class:volume-revealed={volumeRevealed}
 					onfocusin={() => (controlsFocusWithin = true)}
@@ -2881,7 +2895,7 @@
 				</div>
 			{/if}
 		{/if}
-		{#if switchBusy}
+		{#if switchBusy || resumeHolding}
 			<span class="player-spinner" aria-hidden="true">…</span>
 		{/if}
 	</section>
@@ -3975,6 +3989,13 @@
 	.player-frame.fs-controls-hidden:hover .player-controls {
 		opacity: 0;
 	}
+	/* While the resume seek is on its way the controls stay out of
+	   sight as well as inert: a scrubber shown at zero would jump to
+	   the point when it lands. */
+	.player-frame.player-resuming .player-controls,
+	.player-frame.player-resuming:hover .player-controls {
+		opacity: 0;
+	}
 	.player-frame.fs-controls-hidden,
 	.player-frame.fs-controls-hidden :global(*) {
 		cursor: none;
@@ -4402,6 +4423,16 @@
 	:global(.player-busy video) {
 		opacity: 0.5;
 		transition: opacity var(--dur-med) var(--ease-out-soft);
+	}
+	/* The picture is hidden at once while the resume holds, and fades
+	   in at the point when it reveals: the reveal takes the transition
+	   from the slot's rule, the hide from none. */
+	:global(.player-video-slot video) {
+		transition: opacity var(--dur-med) var(--ease-out-soft);
+	}
+	:global(.player-frame.player-resuming video) {
+		opacity: 0;
+		transition: none;
 	}
 	.player-spinner {
 		position: absolute;

@@ -10,6 +10,7 @@
  */
 
 import { recoveryResume } from '$lib/play/resume-after-recovery';
+import { holdForResume, type ResumeHold } from '$lib/play/resume-hold';
 import { stallMachine } from '$lib/play/stall-machine';
 import type { SourceScope } from '$lib/play/source-scope';
 import {
@@ -32,8 +33,11 @@ export function armSourceScopedListeners(input: {
 	/** Where positions are kept; the renderer's local storage when
 	 *  omitted. */
 	positions?: PositionStorage;
+	/** Told when the stream's picture is held back for its resume seek
+	 *  and when it is revealed (`$lib/play/resume-hold`). */
+	onResumeHold?: (holding: boolean) => void;
 }): void {
-	const { video, showId, episode, scope, positions } = input;
+	const { video, showId, episode, scope, positions, onResumeHold } = input;
 	// A recovery's point resumes the stream the viewer was watching a
 	// moment ago, wherever it falls. A kept point was saved on an
 	// earlier visit, perhaps before the stream's length was known, so
@@ -43,6 +47,23 @@ export function armSourceScopedListeners(input: {
 	// The episode is started from here: a play that never gets past
 	// opening still leaves Continue on it.
 	markStarted(showId, episode, positions);
+	// A point to seek to holds the picture back from the attach on, so
+	// the stream's first frame is never shown, nor played, before it.
+	// A started mark, at zero, has nowhere to seek.
+	const point = recovered ?? kept;
+	const hold: ResumeHold | null =
+		point !== null && point > 0
+			? holdForResume({
+					video,
+					onHold: (holding) => onResumeHold?.(holding),
+					// The bound gave the resume up: the stream plays from
+					// where it is, and its position is the viewer's from here.
+					onGiveUp: () => {
+						stopWaiting();
+						opened = true;
+					}
+				})
+			: null;
 	// Progress means frames actually rendered — the `playing` event —
 	// never a bare timeupdate: the resume seek below emits one at the
 	// old timestamp before the fresh source has delivered anything.
@@ -66,7 +87,7 @@ export function armSourceScopedListeners(input: {
 		savePosition(showId, episode, video.currentTime, video.duration, positions);
 	};
 	const onMetadata = () => {
-		if (recovered !== null) video.currentTime = recovered;
+		if (recovered !== null) seekTo(recovered);
 		// A started mark, at zero, has nothing to judge, so only a point
 		// past it waits for the length.
 		if (recovered !== null || !kept || Number.isFinite(video.duration)) {
@@ -85,6 +106,10 @@ export function armSourceScopedListeners(input: {
 	const stopWaiting = () => {
 		video.removeEventListener('durationchange', onDuration);
 	};
+	const seekTo = (seconds: number) => {
+		if (hold) hold.seekTo(seconds);
+		else video.currentTime = seconds;
+	};
 	const onDuration = () => {
 		if (Number.isFinite(video.duration)) resumeKept();
 	};
@@ -95,8 +120,10 @@ export function armSourceScopedListeners(input: {
 		// A started mark, at zero, opens from the start and is never
 		// judged finished: the episode was barely begun.
 		if (recovered === null && kept !== null && kept > 0) {
-			if (isFinishedAt(kept, video.duration)) clearPosition(showId, episode, positions);
-			else video.currentTime = kept;
+			if (isFinishedAt(kept, video.duration)) {
+				clearPosition(showId, episode, positions);
+				hold?.release();
+			} else seekTo(kept);
 		}
 		opened = true;
 	};
@@ -110,6 +137,7 @@ export function armSourceScopedListeners(input: {
 	scope.add(() => {
 		save();
 		stopWaiting();
+		hold?.end();
 		opened = false;
 		video.removeEventListener('playing', markProgress);
 		video.removeEventListener('loadedmetadata', onMetadata);
