@@ -348,3 +348,21 @@ async fn a_played_mapping_that_is_not_an_id_reads_as_none() {
     let (status, text) = send(s, "GET", "/api/allmanga-kitsu-map/show-a/played", "").await;
     assert_eq!((status, text.as_str()), (StatusCode::OK, "null"));
 }
+
+/// The mapping read hands the renderer a stored padded id as its
+/// digits, and the renderer names those digits when it evicts; the
+/// eviction compares the stored value the same way, so the round trip
+/// removes what the read showed.
+#[tokio::test]
+async fn a_named_eviction_matches_a_stored_mapping_by_its_digits() {
+    use crate::commands::kitsu as k;
+    let td = TempDir::new().expect("tempdir");
+    let s = state(&td, "http://127.0.0.1:1");
+    k::allmanga_kitsu_put(&s, "show-a", " 49877 ").expect("seed");
+    let (_, read) = send(s.clone(), "GET", "/api/allmanga-kitsu-map/show-a", "").await;
+    assert_eq!(read, "\"49877\"");
+    let uri = "/api/allmanga-kitsu-map/show-a?kitsu_id=49877";
+    let (status, _) = send(s.clone(), "DELETE", uri, "").await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(k::allmanga_kitsu_get(&s, "show-a").expect("read"), None);
+}
