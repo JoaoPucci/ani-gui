@@ -256,6 +256,21 @@ fn part_ordinals(title: &str) -> BTreeSet<u32> {
         .collect()
 }
 
+/// A title's words with the markers it ends on removed: the name the
+/// show's seasons and parts share ("Attack on Titan" for "Attack on
+/// Titan Season 3 Part 2").
+pub(crate) fn stem(title: &str) -> Vec<String> {
+    let mut words = words(title);
+    while words.len() >= 2 {
+        let n = words.len();
+        if marker_of(&words[n - 2], &words[n - 1]).is_none() {
+            break;
+        }
+        words.truncate(n - 2);
+    }
+    words
+}
+
 #[cfg(test)]
 #[path = "play_native_title_marker_test.rs"]
 mod tests;
