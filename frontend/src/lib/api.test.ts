@@ -1115,6 +1115,15 @@ describe('allmangaKitsuMapDelete', () => {
 		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/D5ksnsKtYAzzFXeSp`);
 		expect(init?.method).toBe('DELETE');
 	});
+
+	it('names the judged id as kitsu_id when one is given', async () => {
+		const fetchMock = mockFetchOnce(null);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await allmangaKitsuMapDelete('hianime:x-1', '47328');
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/allmanga-kitsu-map/hianime%3Ax-1?kitsu_id=47328`);
+		expect(init?.method).toBe('DELETE');
+	});
 });
 
 describe('kitsuEpisodes', () => {
