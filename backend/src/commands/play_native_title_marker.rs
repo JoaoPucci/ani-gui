@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 
 pub(crate) use super::play_native_title_grammar::stem;
 use super::play_native_title_grammar::{
-    later_divisions, named_ordinals, part_ordinals, reading_alone, reading_past, trailing_markers,
+    later_divisions, named_ordinals, names_past_stem, part_ordinals, reading, trailing_markers,
 };
 #[cfg(test)]
 use super::play_native_title_grammar::{Kind, Marker};
@@ -115,30 +115,31 @@ impl EntryTitles<'_> {
         self.all().flat_map(part_ordinals).max().unwrap_or(1)
     }
 
-    /// Whether `listing` is this entry's own beside the listing `wide`
-    /// that would span it: past `wide`'s stem it names some division,
-    /// or carries that stem alone, and it reads there as one of the
-    /// entry's titles does ([`reading_past`]; a title that does not
-    /// start with the stem reads as its trailing markers,
-    /// [`reading_alone`]). The kind of each division is not compared,
-    /// since the catalogues disagree on it. So "Show 2" and "Show 2nd
-    /// Season" are "Show 2"'s own beside "Show", "Show Part 1" is not,
-    /// and "Show 2nd Season Part 2" is not "Show 2nd Season"'s; "Lucky
-    /// 2 2nd Season" is not "Lucky 2"'s, whose 2 is inside the stem;
-    /// and a title that names no division past the stem ("Show Side
-    /// Story") is another show of the franchise. What follows the
-    /// divisions is not read ("… - First Half War").
+    /// Whether `title` reads as one of the entry's titles does
+    /// ([`reading`]) — the one reader the spanning cut compares titles
+    /// with. A spanning listing that reads as the entry has the entry
+    /// for its head.
     ///
-    /// [`reading_past`]: super::play_native_title_grammar::reading_past
-    /// [`reading_alone`]: super::play_native_title_grammar::reading_alone
+    /// [`reading`]: super::play_native_title_grammar::reading
+    pub(crate) fn reads_as_entry(&self, title: &str) -> bool {
+        let theirs = reading(title);
+        self.all().any(|t| reading(t) == theirs)
+    }
+
+    /// Whether `listing` is this entry's own beside the listing `wide`
+    /// that would span it: it reads as the entry
+    /// ([`Self::reads_as_entry`]) and carries `wide`'s stem alone or
+    /// names a division past it ([`names_past_stem`]). So "Show 2",
+    /// "Show 2nd Season" and "Show 2nd Season Part 1" are "Show 2"'s
+    /// own beside "Show" while "Show 2nd Season Part 2" is not; "Lucky
+    /// 2 2nd Season" is not "Lucky 2"'s; and "Show Side Story", which
+    /// names no division past the stem, is another show of the
+    /// franchise.
+    ///
+    /// [`names_past_stem`]: super::play_native_title_grammar::names_past_stem
     pub(crate) fn names_own_part(&self, listing: &str, wide: &str) -> bool {
-        let Some((named_any, theirs)) = reading_past(listing, wide) else {
-            return false;
-        };
-        (named_any || stem(listing) == stem(wide))
-            && self.all().any(|t| {
-                reading_past(t, wide).map_or_else(|| reading_alone(t), |(_, r)| r) == theirs
-            })
+        self.reads_as_entry(listing)
+            && (stem(listing) == stem(wide) || names_past_stem(listing, wide))
     }
 }
 
