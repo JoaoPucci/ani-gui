@@ -1808,7 +1808,9 @@ where
         run_tool(command(true), run_deadline, &mut watch, &mut false).await
     };
     let run = match run {
-        Err(_) | Ok(ToolEnd::Outlived) if rejected_the_option => {
+        // An outlived tree is not a failure to retry after: nothing
+        // starts beside it.
+        Err(_) if rejected_the_option => {
             tracing::info!("download: ffmpeg does not know -extension_picky, running without it");
             run_tool(command(false), run_deadline, on_line, &mut false).await
         }
