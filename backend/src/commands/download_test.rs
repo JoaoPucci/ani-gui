@@ -6743,7 +6743,61 @@ mod download_rate {
         );
     }
 
+    #[test]
+    fn the_bytes_before_a_count_falls_stay_in_the_speed() {
+        // A count that falls to zero after ten mebibytes — a retried
+        // fragment counted from its start — takes nothing back from
+        // what was transferred before it: those bytes arrived.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(10 * 1024 * 1024, start + Duration::from_secs(1));
+        meter.observe(0, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        let expected = 10.0 * 1024.0 * 1024.0 / 2.0;
+        assert!((rate - expected).abs() < 1.0, "{rate} vs {expected}");
+    }
+
     proptest! {
+        /// Whatever the tool's count does, the speed is what it gained
+        /// — every rise counted, every fall counted as nothing — since
+        /// the newest count before the window, or the oldest within it,
+        /// over the time since, never below a second.
+        #[test]
+        fn any_count_reads_as_its_gains_over_the_window(
+            steps in proptest::collection::vec((0u64..5_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut gained = 0u64;
+            let mut last: Option<u64> = None;
+            let mut seen = Vec::new();
+            for (count, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                if let Some(prev) = last {
+                    gained += count.saturating_sub(prev);
+                }
+                last = Some(*count);
+                meter.observe(*count, at);
+                seen.push((at, gained));
+            }
+            let now = at + Duration::from_millis(asked_after_ms);
+            let cutoff = now.checked_sub(RATE_WINDOW).unwrap_or(now);
+            let (since, from) = seen
+                .iter()
+                .rev()
+                .find(|(t, _)| *t < cutoff)
+                .or_else(|| seen.first())
+                .copied()
+                .expect("a count");
+            let elapsed = now.saturating_duration_since(since).max(Duration::from_secs(1));
+            #[allow(clippy::cast_precision_loss)]
+            let expected = (gained - from) as f64 / elapsed.as_secs_f64();
+            prop_assert!((meter.rate_at(now) - expected).abs() < 1e-6);
+        }
+
         /// For a count that only grows, the speed is the bytes gained
         /// since the newest count before the window, or the oldest
         /// within it, over the time since — never below a second.
@@ -6796,24 +6850,30 @@ mod download_rate {
         }
 
         /// Whatever the tool reports, the speed is never negative and
-        /// never more than the largest step it saw over a second.
+        /// never more than everything it gained, over a second.
         #[test]
-        fn the_rate_is_never_negative_nor_more_than_a_second_of_the_largest_count(
+        fn the_rate_is_never_negative_nor_more_than_a_second_of_all_it_gained(
             steps in proptest::collection::vec((0u64..50_000_000, 1u64..3_000), 1..30),
             asked_after_ms in 0u64..20_000,
         ) {
             let start = Instant::now();
             let mut meter = RateMeter::default();
             let mut at = start;
-            let mut most = 0u64;
+            let mut gained = 0u64;
+            let mut last: Option<u64> = None;
             for (bytes, gap_ms) in &steps {
                 at += Duration::from_millis(*gap_ms);
                 meter.observe(*bytes, at);
-                most = most.max(*bytes);
+                if let Some(prev) = last {
+                    gained += bytes.saturating_sub(prev);
+                }
+                last = Some(*bytes);
             }
             let rate = meter.rate_at(at + Duration::from_millis(asked_after_ms));
             prop_assert!(rate >= 0.0 && rate.is_finite());
-            prop_assert!(rate <= most as f64);
+            #[allow(clippy::cast_precision_loss)]
+            let most = gained as f64;
+            prop_assert!(rate <= most + 1e-6);
         }
     }
 }
