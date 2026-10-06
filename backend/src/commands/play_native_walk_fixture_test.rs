@@ -954,3 +954,56 @@ async fn each_ordinal_past_the_spanning_stem_owns_one_division() {
         );
     }
 }
+
+/// A listing is the entry's own beside a spanning one when it reads,
+/// past the spanning listing's stem, as one of the entry's titles
+/// reads there — the same reader on both sides, a bare number a
+/// season on both, a first division the whole. An exact title is
+/// its own; a first part is not the own listing of a later season;
+/// and a title naming one ordinal twice owns the listing naming it
+/// twice.
+#[tokio::test]
+async fn a_listing_is_the_entry_s_own_when_it_reads_past_the_stem_as_the_entry_does() {
+    type Case<'a> = (&'a [&'a str], &'a [(&'a str, &'a str, u32)], &'a str, usize);
+    let cases: [Case<'_>; 3] = [
+        (
+            &["Show 2"],
+            &[
+                ("w", "Show", 24),
+                ("a", "Show 2", 12),
+                ("b", "Show 2nd Season Part 2", 12),
+            ],
+            "a",
+            12,
+        ),
+        (
+            &["Show 2"],
+            &[
+                ("w", "Show", 24),
+                ("a", "Show Part 1", 12),
+                ("b", "Show 3rd Season", 12),
+            ],
+            "w",
+            12,
+        ),
+        (
+            &["Show II Part 2: Arc"],
+            &[
+                ("w", "Show", 24),
+                ("a", "Show 2nd Season Part 1", 12),
+                ("b", "Show 2nd Season Part 2", 12),
+            ],
+            "b",
+            12,
+        ),
+    ];
+    for (titles, rows, want, len) in cases {
+        let site = pool_of(titles, Some(12), 2020, titles[0], rows);
+        let picked = walk_over(site).await.expect("picked");
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            (want, len),
+            "{titles:?} {rows:?}"
+        );
+    }
+}
