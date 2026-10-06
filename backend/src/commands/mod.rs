@@ -56,6 +56,7 @@ pub mod play_native_outcome;
 mod play_native_part_title;
 pub(crate) mod play_native_record;
 pub mod play_native_resolve;
+mod play_native_span;
 mod play_native_split;
 #[cfg(test)]
 pub(crate) mod play_native_test_provider;
