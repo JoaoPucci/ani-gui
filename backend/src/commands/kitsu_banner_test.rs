@@ -242,3 +242,37 @@ async fn both_ids_unknown_to_anilist_cache_the_null_cover_after_two_requests() {
     assert!(first.cover_image.is_none());
     assert_eq!(first, second);
 }
+
+#[tokio::test]
+async fn a_null_cover_row_from_before_the_fallback_is_not_served() {
+    // Installs that ran the MAL-only backfill cached AniList-only shows
+    // with a null cover under the v4 key — for a week when the show is
+    // finished. That row must not be served: the next open refetches
+    // and the AniList-id fallback fills the banner.
+    let kitsu = kitsu_null_cover_show(&[("anilist/anime", 207_141)]).await;
+    let anilist = MockServer::start().await;
+    mount_banner(
+        &anilist,
+        serde_json::json!({ "id": 207_141 }),
+        "https://al/b.jpg",
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let mut stale: serde_json::Value = serde_json::from_slice(DETAIL_FIXTURE).expect("fixture");
+    stale["data"]["attributes"]["coverImage"] = serde_json::Value::Null;
+    let stale_ref = crate::meta::kitsu::parse_anime_response(&serde_json::to_vec(&stale).unwrap())
+        .expect("parse");
+    assert!(stale_ref.cover_image.is_none());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:v4:anime:12",
+        &serde_json::to_string(&stale_ref).unwrap(),
+        7 * 24 * 60 * 60,
+    )
+    .expect("seed v4 row");
+    let got = kitsu_anime_detail_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+    assert_eq!(banner_of(&got), Some("https://al/b.jpg"));
+}
