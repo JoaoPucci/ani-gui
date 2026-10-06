@@ -1,4 +1,9 @@
 /**
+ * A row that recorded the Kitsu id of the show played resolves to that
+ * entry and nothing else, unless Kitsu answers that the entry is gone
+ * (a 404 or 410). That row, and rows written before history recorded
+ * the id, fall back to matching:
+ *
  * Resolves a `ResumeTarget`'s kitsu match against the title-match
  * cache before falling back to a live `kitsuSearch` + `pickKitsuMatch`
  * round-trip. Cache hit → one IPC call (`kitsuAnimeDetail`, also
@@ -11,8 +16,6 @@
  */
 
 import {
-	allmangaKitsuMapDelete,
-	allmangaKitsuMapGet,
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuResolveAllmangaShowId,
@@ -23,49 +26,54 @@ import {
 } from '$lib/api';
 import { providerOfShowId } from './show-key';
 import { cachedBindingVerdict, deriveSlug, pickKitsuMatch, type ResumeTarget } from './resolve';
+import { storedBinding } from './match-stored';
 
+/** Whether a failed Kitsu read is Kitsu answering that the entry is
+ *  gone — a 404 or 410, which the backend passes on as an upstream
+ *  error carrying the status — rather than a failure that says nothing
+ *  about the id (the network, a 5xx, a rate limit, a timeout). */
+export function kitsuEntryGone(e: unknown): boolean {
+	const err = e as { kind?: unknown; status?: unknown } | null;
+	return err?.kind === 'upstream' && (err.status === 404 || err.status === 410);
+}
+
+/** Resolve a Continue row to its Kitsu entry. */
 export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
-	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id. Recorded
-	//    by the backend on every successful play, so once the user
-	//    has played a show through the GUI the home-page strip can
-	//    skip every other path. Wins over title-match because the
-	//    show_id is deterministic — the title is sometimes a typo
-	//    (the provider's "Nato: Shippuuden" for Naruto Shippuuden).
-	//
-	//    Validate the cached detail's episode_count against the
-	//    user's history courSize before accepting — older sessions
-	//    may have persisted a wrong mapping (e.g. Burichi/Buriki
-	//    fuzzy-matched to Doraemon Movie 14). When the count is
-	//    incompatible, fall through to a fresh resolution path.
-	if (preliminary.allmangaShowId) {
+	return (await resolveKitsuMatchWithTrust(preliminary)).match;
+}
+
+/** Resolve a Continue row to its Kitsu entry, with whether the match
+ *  is one a play may record: the row's recorded id, or a mapping a
+ *  real play stored. Everything else is a guess. */
+export async function resolveKitsuMatchWithTrust(
+	preliminary: ResumeTarget
+): Promise<{ match: KitsuAnimeRef | null; trusted: boolean }> {
+	// The row recorded the show the user played: read that entry and
+	// match nothing. A failed read answers no show rather than a guess
+	// that could land on another one — unless Kitsu answers that the
+	// entry is gone, when the row is matched as one with no id is.
+	if (preliminary.recordedKitsuId) {
 		try {
-			const kitsuId = await allmangaKitsuMapGet(preliminary.allmangaShowId);
-			if (kitsuId) {
-				try {
-					const cached = await kitsuAnimeDetail(kitsuId);
-					const verdict = cachedBindingVerdict(cached, preliminary, true);
-					if (verdict === 'trust') return cached;
-					if (verdict === 'evict') {
-						// Provably wrong reverse-map row — a music entry, a gross title
-						// mismatch (the Love Live movie's show_id poisoned to the YOASOBI
-						// "Idol" MV), or a cross-cour slug mismatch. Self-heal: drop it so
-						// it re-resolves on every install without a manual cache wipe.
-						// Awaited (not fire-and-forget): the step-4 enrichment endpoint
-						// reads this same reverse cache first, so the DELETE must commit
-						// before we fall through or a typo title whose search misses gets
-						// the just-rejected id straight back. Tolerate a failing delete.
-						await allmangaKitsuMapDelete(preliminary.allmangaShowId).catch(() => {});
-					}
-					// 'evict' / 'reresolve' both fall through to the title-search path.
-				} catch {
-					// Stale id — fall through to the title-search path.
-				}
-			}
-		} catch {
-			// Endpoint unavailable — fall through.
+			return { match: await kitsuAnimeDetail(preliminary.recordedKitsuId), trusted: true };
+		} catch (e) {
+			if (!kitsuEntryGone(e)) return { match: null, trusted: false };
 		}
 	}
+	// 0) Reverse-mapping lookup: The provider show_id → kitsu_id,
+	//    stored by a play, or by the enrichment step below. Wins over
+	//    title-match because the show_id is deterministic — the title is
+	//    sometimes a typo (the provider's "Nato: Shippuuden" for Naruto
+	//    Shippuuden). The binding is validated before it is accepted
+	//    (match-stored.ts): older sessions may have persisted a wrong
+	//    mapping (Burichi/Buriki fuzzy-matched to Doraemon Movie 14).
+	//    Only a mapping a play stored may be recorded on the row.
+	const stored = await storedBinding(preliminary);
+	if (stored) return { match: stored.ref, trusted: stored.played };
+	return { match: await guessKitsuMatch(preliminary), trusted: false };
+}
 
+/** Steps 1-5: everything below the stored mapping is a guess. */
+async function guessKitsuMatch(preliminary: ResumeTarget): Promise<KitsuAnimeRef | null> {
 	// 1) Cache lookup. If we've resolved this title→id before, fetch
 	//    the (cached, 7d-TTL) detail and short-circuit.
 	//
@@ -144,10 +152,13 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    "Nato: Shippuuden" for Naruto Shippuuden). The backend tries
 	//    the show id rather than the name: a provider slug carries its
 	//    title in its own words, so `one-piece-69` searches Kitsu for
-	//    "one piece" and persists the resolved kitsu_id into the
-	//    reverse cache, and subsequent calls short-circuit through
-	//    step 0. A row from the retired provider has no such words and
-	//    no alias source left, so a stub name there is not recoverable
+	//    "one piece", takes no hit whose titles share too few of those
+	//    words (title-words.ts), and persists the resolved kitsu_id into
+	//    the reverse cache — unless a play's mapping stands there, and
+	//    only while this row is still in history — so subsequent calls
+	//    short-circuit through step 0. A row from the retired provider
+	//    has no such words and no alias source left, so a stub name
+	//    there is not recoverable
 	//    by this step — those rows depend on having been mapped.
 	//
 	//    Only fires when there's a provider show_id to enrich AND
@@ -155,7 +166,7 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	//    branch entirely (verified by the "skips enrichment" test).
 	if (!match && preliminary.allmangaShowId) {
 		try {
-			// bypassCache: step 0 already read + rejected this show's reverse-cache
+			// bypassCache: step 0 already read + passed over this show's reverse-cache
 			// row (count/music/title guard), so the backend must NOT short-circuit
 			// on it again — re-resolve from the show id instead.
 			match = await kitsuResolveAllmangaShowId(preliminary.allmangaShowId, true);
@@ -166,6 +177,9 @@ export async function resolveKitsuMatch(preliminary: ResumeTarget): Promise<Kits
 	}
 
 	// 5) Persist on success so the next session bypasses the lookup.
+	//    The backend stores it only while a history row still carries
+	//    this title: a row removed while this resolution was out
+	//    leaves nothing to match.
 	if (match) {
 		try {
 			await kitsuTitleMatchPut(

@@ -21,6 +21,9 @@ import { resolveResumeEpisode } from './resume-episode';
 import { resumeOr } from '$lib/play/next-episode';
 
 export interface ResumePlayArgs {
+	/** Whether the card's match is only a guess (row-trust.ts): its id
+	 *  is then not recorded, and the session is opened as a guess. */
+	guess?: boolean;
 	match: KitsuAnimeRef;
 	title: string;
 	episode: number;
@@ -30,6 +33,8 @@ export interface ResumePlayArgs {
 
 export interface StartResumeDeps {
 	isBusy: () => boolean;
+	/** Whether the clicked row's match is only a guess (row-trust.ts). */
+	isGuess?: (entryId: string) => boolean;
 	onBusy: (kitsuId: string | null) => void;
 	onProgress: (label: string | null) => void;
 	onFailure: (title: string, error: unknown) => void;
@@ -66,13 +71,23 @@ export interface StartResumeDeps {
 		seriesTotal: number | null,
 		seriesFinished: boolean
 	) => Promise<void>;
-	navigateToSession: (kitsuId: string, session: { session_id: string }, episode: number) => void;
+	navigateToSession: (
+		kitsuId: string,
+		session: { session_id: string },
+		episode: number,
+		guess?: boolean,
+		row?: string
+	) => void;
 	/** Whether `episode` of `kitsuId` was left part-way, its position
 	 *  kept. Omitted, nothing was. */
 	leftPartWay?: (kitsuId: string, episode: number) => boolean;
 	/** Marks `episode` of `kitsuId` started — before the resolve, which
-	 *  records the watch. Omitted, nothing is marked. */
-	markStarted?: (kitsuId: string, episode: number) => void;
+	 *  records the watch. Omitted, nothing is marked. A local position
+	 *  keyed by the card's show, written for a guessed match too: it is
+	 *  neither the history row nor a tracker, and removing the card
+	 *  forgets it (delete-controller.ts), by `row`, the clicked history
+	 *  row's id, whatever show the card names by then. */
+	markStarted?: (kitsuId: string, episode: number, row?: string) => void;
 }
 
 export function makeStartResume(
@@ -120,13 +135,17 @@ export function makeStartResume(
 			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
-		const args: ResumePlayArgs = { match, title, episode, mode, quality };
-		deps.markStarted?.(match.id, episode);
+		const guess = deps.isGuess?.(entry.id) ?? false;
+		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
+		deps.markStarted?.(match.id, episode, entry.id);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
 			void deps.markWatched(args).catch(() => {});
-			void deps.syncTrackers(match.id, episode, seriesTotal, seriesFinished).catch(() => {});
-			deps.navigateToSession(match.id, session, episode);
+			// A guessed match writes nothing to the user's tracker accounts.
+			if (!guess) {
+				void deps.syncTrackers(match.id, episode, seriesTotal, seriesFinished).catch(() => {});
+			}
+			deps.navigateToSession(match.id, session, episode, guess, entry.id);
 		} catch (e) {
 			deps.onBusy(null);
 			deps.onProgress(null);

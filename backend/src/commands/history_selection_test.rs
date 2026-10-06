@@ -53,12 +53,14 @@ fn two_rows_for_one_show(s: &AppState, path: &std::path::Path) {
                 id: "the-show-77".into(),
                 title: "The Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "7".into(),
                 id: "hianime:the-show-9".into(),
                 title: "The Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -132,12 +134,14 @@ fn two_rows_on_different_numberings(s: &AppState, path: &std::path::Path) {
                 id: "the-show-77".into(),
                 title: "The Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "2".into(),
                 id: "hianime:the-show-9".into(),
                 title: "The Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -191,12 +195,14 @@ fn a_row_without_an_offset_compares_by_its_own_number() {
                 id: "the-show-77".into(),
                 title: "The Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "3".into(),
                 id: "hianime:the-show-9".into(),
                 title: "The Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -228,12 +234,14 @@ fn equal_on_every_count_file_order_stands() {
                 id: "the-show-77".into(),
                 title: "The Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "5".into(),
                 id: "hianime:the-show-9".into(),
                 title: "The Show".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -279,12 +287,14 @@ async fn a_stale_mapping_the_guard_refuses_does_not_outrank_a_correct_row() {
                 id: "hianime:one-piece-100".into(),
                 title: "One Piece".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "3".into(),
                 id: "one-piece-69".into(),
                 title: "One Piece Part 2".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ],
     )
@@ -420,12 +430,14 @@ fn the_later_of_the_files_stamp_and_the_caches_is_the_rows_moment() {
                 id: "the-show-77".into(),
                 title: "The Show".into(),
                 watched_at: Some(1_700_000_005_000),
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "7".into(),
                 id: "hianime:the-show-9".into(),
                 title: "The Show".into(),
                 watched_at: Some(1_700_000_002_000),
+                kitsu_id: None,
             },
         ],
     )

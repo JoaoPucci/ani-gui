@@ -31,7 +31,8 @@ use crate::error::{AniError, Result};
 pub type SqlitePool = Pool<SqliteConnectionManager>;
 
 /// Open a pool against an on-disk SQLite database, creating the file if
-/// it doesn't exist. Runs all pending migrations.
+/// it doesn't exist. Runs all pending migrations, and marks the
+/// mappings earlier builds' plays stored (`played_marks`).
 ///
 /// # Errors
 /// - [`AniError::Cache`] when the pool can't be built or migrations fail.
@@ -43,6 +44,7 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
         .map_err(|_| AniError::Cache)?;
     let mut conn = pool.get().map_err(|_| AniError::Cache)?;
     run_migrations(&mut conn)?;
+    crate::cache::played_marks::mark_earlier_plays(&mut conn)?;
     Ok(pool)
 }
 
@@ -88,6 +90,26 @@ pub fn meta_cache_get(pool: &SqlitePool, key: &str) -> Result<Option<String>> {
         } else {
             Some(body)
         }
+    }))
+}
+
+/// When an unexpired meta_cache entry was written, in seconds since the
+/// epoch.
+///
+/// # Errors
+/// [`AniError::Cache`] on connection or query failure.
+pub fn meta_cache_fetched_at(pool: &SqlitePool, key: &str) -> Result<Option<i64>> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    let row: Option<(i64, i64)> = conn
+        .query_row(
+            "SELECT fetched_at, ttl_seconds FROM meta_cache WHERE key = ?1",
+            params![key],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|_| AniError::Cache)?;
+    Ok(row.and_then(|(fetched_at, ttl)| {
+        (now_secs().saturating_sub(fetched_at) < ttl).then_some(fetched_at)
     }))
 }
 
@@ -196,6 +218,49 @@ pub fn meta_cache_delete(pool: &SqlitePool, key: &str) -> Result<()> {
     Ok(())
 }
 
+/// A SQL LIKE pattern matching every key under `prefix`. The literal
+/// `%` and `_` chars in the prefix are escaped so a key prefix like
+/// `play:v2:` doesn't accidentally match other underscore patterns;
+/// queries pass `ESCAPE '\\'` to mark them.
+fn like_prefix(prefix: &str) -> String {
+    let escaped = prefix
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
+    format!("{escaped}%")
+}
+
+/// Every (key, body) pair under `prefix`, expired or not.
+///
+/// # Errors
+/// [`AniError::Cache`] on connection or query failure.
+pub fn meta_cache_entries_prefix(pool: &SqlitePool, prefix: &str) -> Result<Vec<(String, String)>> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    let mut stmt = conn
+        .prepare("SELECT key, body FROM meta_cache WHERE key LIKE ?1 ESCAPE '\\'")
+        .map_err(|_| AniError::Cache)?;
+    let entries = stmt
+        .query_map(params![like_prefix(prefix)], |r| Ok((r.get(0)?, r.get(1)?)))
+        .map_err(|_| AniError::Cache)?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|_| AniError::Cache)?;
+    Ok(entries)
+}
+
+/// Delete every meta_cache entry under `prefix`, expired or not.
+///
+/// # Errors
+/// [`AniError::Cache`] on write failure.
+pub fn meta_cache_delete_prefix(pool: &SqlitePool, prefix: &str) -> Result<()> {
+    let conn = pool.get().map_err(|_| AniError::Cache)?;
+    conn.execute(
+        "DELETE FROM meta_cache WHERE key LIKE ?1 ESCAPE '\\'",
+        params![like_prefix(prefix)],
+    )
+    .map_err(|_| AniError::Cache)?;
+    Ok(())
+}
+
 /// List every (key, body) pair under `prefix`, dropping expired rows.
 /// Used by the watched-at endpoint to return the full per-show stamp
 /// map in one query rather than N round-trips.
@@ -204,14 +269,7 @@ pub fn meta_cache_delete(pool: &SqlitePool, key: &str) -> Result<()> {
 /// [`AniError::Cache`] on connection or query failure.
 pub fn meta_cache_list_prefix(pool: &SqlitePool, prefix: &str) -> Result<Vec<(String, String)>> {
     let conn = pool.get().map_err(|_| AniError::Cache)?;
-    // SQL LIKE: escape the literal `%` and `_` chars in the caller's
-    // prefix so a key prefix like `play:v2:` doesn't accidentally
-    // match other underscore patterns. ESCAPE '\\' lets us mark them.
-    let escaped = prefix
-        .replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_");
-    let pattern = format!("{escaped}%");
+    let pattern = like_prefix(prefix);
     let mut stmt = conn
         .prepare(
             "SELECT key, body, fetched_at, ttl_seconds FROM meta_cache \

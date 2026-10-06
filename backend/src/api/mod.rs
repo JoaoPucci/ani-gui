@@ -131,6 +131,10 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
             get(get_allmanga_kitsu_map).delete(delete_allmanga_kitsu_map),
         )
         .route(
+            "/api/allmanga-kitsu-map/:show_id/played",
+            get(get_allmanga_kitsu_map_played),
+        )
+        .route(
             "/api/kitsu/resolve-allmanga/:show_id",
             get(get_kitsu_resolve_allmanga),
         )
@@ -373,7 +377,13 @@ async fn put_title_match(
 ) -> Result<StatusCode, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
-    kitsu_inner::title_match_put(&state, provider, &body.title, body.cour, &body.kitsu_id)?;
+    crate::commands::title_match_store::store_title_match(
+        &state,
+        provider,
+        &body.title,
+        body.cour,
+        &body.kitsu_id,
+    )?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -623,6 +633,10 @@ async fn post_play_mark_watched(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> StatusCode {
+    // The moment this watch is asked to be recorded, taken before the
+    // resolution row is read: a removal of the show in between took
+    // that row, and the watch read from it is not recorded after it.
+    let begun = crate::history::guard::epoch(&state.history_path);
     let quality = args.quality.as_deref().unwrap_or("best");
     let key = crate::commands::play_resolution_cache::cache_key(
         &args.title,
@@ -644,24 +658,27 @@ async fn post_play_mark_watched(
             // watch that never reached the file would make this
             // provider's stale row the show's latest.
             //
-            // The mapping carries the cross-cour integrity guard: the
-            // play picker can land on a sibling cour's provider
-            // show_id when episode count and year tie, while the
-            // frontend supplies the Kitsu id from the URL it came from;
-            // the guard compares the cour suffixes and skips the write
-            // when they disagree. It reads Kitsu detail through its
-            // cache and runs after the stamp, so a slow Kitsu never
-            // delays home ordering.
+            // The mapping and the row's Kitsu id carry the cross-cour
+            // integrity guard: the play picker can land on a sibling
+            // cour's provider show_id when episode count and year tie,
+            // while the frontend supplies the Kitsu id from the URL it
+            // came from; the guard compares the cour suffixes and, when
+            // they disagree, skips the mapping write; the row carries
+            // the id only once the guard accepts it. It reads Kitsu
+            // detail through its cache, once, after the row and the
+            // stamp are written, so a slow Kitsu never delays the watch
+            // or home ordering.
             //
             // The watch is the cached row's, built the way the handoffs
             // build theirs: the row's own slot when it carries one, the
             // display number translated through the stamp only for a
             // row from before the slot was cached.
             let watch = crate::commands::play_cache::cached_watch(&state, &cached, &args.episode);
-            crate::commands::play_native_record::record_watch(
+            crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,
                 args.kitsu_id.as_deref(),
+                begun,
             )
             .await;
         }
@@ -676,16 +693,42 @@ async fn get_allmanga_kitsu_map(
     Ok(Json(kitsu_inner::allmanga_kitsu_get(&state, &show_id)?))
 }
 
+/// The Kitsu id of the show's reverse mapping when a play stored it,
+/// else `null` ([`crate::commands::kitsu_played::played_mapping`]).
+/// Continue Watching keeps such a mapping when only the provider's
+/// title doubts it, and trusts it only when the id is the one it read.
+async fn get_allmanga_kitsu_map_played(
+    State(state): State<Arc<AppState>>,
+    Path(show_id): Path<String>,
+) -> Result<Json<Option<String>>, AniError> {
+    Ok(Json(crate::commands::kitsu_played::played_mapping(
+        &state, &show_id,
+    )?))
+}
+
 /// Evict a single reverse-mapping row. Fired by the frontend when
-/// step 0's slug guard catches a cross-cour mapping; the next
+/// step 0 finds the mapping bound to a music entry; the next
 /// successful play rewrites the row through the (guarded) mark-watched
-/// path. 204 on success.
+/// path. With `?kitsu_id=`, the row goes only while it is still that
+/// id ([`kitsu_inner::allmanga_kitsu_delete_named`]). 204 on success.
 async fn delete_allmanga_kitsu_map(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
+    Query(q): Query<DeleteAllmangaKitsuMapQuery>,
 ) -> Result<StatusCode, AniError> {
-    kitsu_inner::allmanga_kitsu_delete(&state, &show_id)?;
+    match q.kitsu_id {
+        Some(kitsu_id) => kitsu_inner::allmanga_kitsu_delete_named(&state, &show_id, &kitsu_id)?,
+        None => kitsu_inner::allmanga_kitsu_delete(&state, &show_id)?,
+    }
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct DeleteAllmangaKitsuMapQuery {
+    /// The id the caller judged; the mapping is removed only while it
+    /// is still this one. Absent, whatever mapping stands is removed.
+    #[serde(default)]
+    kitsu_id: Option<String>,
 }
 
 /// Resolve a history-recorded show id to its full [`KitsuAnimeRef`]:
@@ -737,6 +780,10 @@ async fn post_play_cache_evict(
 }
 
 #[cfg(test)]
+#[path = "kitsu_map_test.rs"]
+mod kitsu_map_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;
@@ -779,7 +826,7 @@ mod tests {
     /// pool, a tempdir for image cache + config, and a Kitsu client
     /// pointing at an unused base URL (tests that don't need Kitsu
     /// won't touch the network).
-    fn test_app_state(td: &TempDir) -> AppState {
+    pub(super) fn test_app_state(td: &TempDir) -> AppState {
         let kitsu_base = "http://127.0.0.1:1"; // never reached by these tests
         AppState {
             anidb_base: None,
@@ -808,7 +855,7 @@ mod tests {
         }
     }
 
-    async fn body_string(resp: Response) -> String {
+    pub(super) async fn body_string(resp: Response) -> String {
         let bytes = resp
             .into_body()
             .collect()
@@ -1032,10 +1079,111 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
     }
 
+    /// A history row for `title` under the show id `id`.
+    fn list_row(state: &AppState, id: &str, title: &str) {
+        crate::history::upsert_and_write(
+            &state.history_path,
+            crate::history::HistoryEntry {
+                ep_no: "1".into(),
+                id: id.into(),
+                title: title.into(),
+                watched_at: None,
+                kitsu_id: None,
+            },
+        )
+        .expect("seed row");
+    }
+
+    async fn put_title_match(router: &Router, body: &'static str) -> StatusCode {
+        router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/api/title-match")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot")
+            .status()
+    }
+
+    async fn get_title_match(router: &Router, query: &str) -> String {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/title-match?{query}"))
+                    .body(Body::empty())
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(response.status(), StatusCode::OK);
+        body_string(response).await.trim().to_owned()
+    }
+
+    /// A title match is stored for a title a history row carries.
+    /// Continue Watching stores one when a row's search settles, and
+    /// the user can remove the row before it does: with no row
+    /// searching that title, the request is answered and nothing is
+    /// stored — a row stored then would bring back what the removal
+    /// took. The row's provider is part of what it searches.
+    #[tokio::test]
+    async fn a_title_match_for_a_title_no_history_row_carries_is_not_stored() {
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        list_row(&state, "hianime:naruto-20", "Naruto");
+        let router = build_api_router(Arc::new(state));
+
+        let unlisted = r#"{"title":"Stone Ocean Part 2","cour":2,"kitsu_id":"46010"}"#;
+        assert_eq!(
+            put_title_match(&router, unlisted).await,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            get_title_match(&router, "title=Stone+Ocean+Part+2&cour=2").await,
+            "null"
+        );
+
+        // The row is hianime's; a request without a provider is anidb's.
+        let other_provider = r#"{"title":"Naruto","cour":1,"kitsu_id":"11"}"#;
+        assert_eq!(
+            put_title_match(&router, other_provider).await,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            get_title_match(&router, "title=Naruto&cour=1").await,
+            "null"
+        );
+
+        let listed = r#"{"title":"Naruto","cour":1,"kitsu_id":"11","provider":"hianime"}"#;
+        assert_eq!(
+            put_title_match(&router, listed).await,
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            get_title_match(&router, "title=Naruto&cour=1&provider=hianime").await,
+            "\"11\""
+        );
+    }
+
     #[tokio::test]
     async fn put_then_get_title_match_round_trips() {
         let td = TempDir::new().expect("tempdir");
-        let router = build_api_router(Arc::new(test_app_state(&td)));
+        let state = test_app_state(&td);
+        // The row whose search this match settles; a row from before
+        // the provider migration carries an episode tail the search
+        // leaves out.
+        list_row(
+            &state,
+            "stone-ocean-part-2-77",
+            "Stone Ocean Part 2 (12 episodes)",
+        );
+        let router = build_api_router(Arc::new(state));
         let put = router
             .clone()
             .oneshot(
@@ -1401,6 +1549,7 @@ mod tests {
                 show_title: String::new(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1446,6 +1595,7 @@ mod tests {
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1510,6 +1660,7 @@ mod tests {
                 show_title: "The Show".into(),
                 resolved_slot: Some(5),
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // A later resolve moved the display stamp to its own row.
@@ -1562,6 +1713,7 @@ mod tests {
                 show_title: "The Show".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // The stamp names display 4 as slot 5.
@@ -1618,6 +1770,7 @@ mod tests {
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1644,6 +1797,70 @@ mod tests {
         let key = "allmanga2kitsu:v3:vDTSJHSpYnrkZnAvG";
         let body = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(body, Some("11061".to_string()));
+    }
+
+    /// Marking a play watched records the Kitsu id of the page it was
+    /// started from on the history row: Continue Watching reads the
+    /// show from it, and nothing has to match the provider's title
+    /// back to Kitsu. Only digits are an id.
+    #[tokio::test]
+    async fn mark_watched_records_the_kitsu_id_on_the_history_row() {
+        use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
+        use crate::proxy::MediaKind;
+
+        let td = TempDir::new().expect("tempdir");
+        let state = test_app_state(&td);
+        for (title, show) in [
+            ("Seitokai ni mo Ana wa Aru!", "hianime:seitokai-10497"),
+            ("Bad Id", "hianime:bad-1"),
+        ] {
+            put(
+                &state.cache_pool,
+                &cache_key(title, "sub", "best", "1", None, None, None),
+                &CachedResolution {
+                    upstream_url: "https://video.example/master.m3u8".into(),
+                    referer: String::new(),
+                    media_kind: MediaKind::Hls,
+                    show_id: show.into(),
+                    show_title: title.into(),
+                    resolved_slot: Some(1),
+                    subtitles: Vec::new(),
+                    kitsu_id: None,
+                },
+            );
+        }
+        let history = state.history_path.clone();
+        let router = build_api_router(Arc::new(state));
+        for body in [
+            r#"{"title":"Seitokai ni mo Ana wa Aru!","episode":"1","mode":"sub","kitsu_id":"49877"}"#,
+            r#"{"title":"Bad Id","episode":"1","mode":"sub","kitsu_id":"../49877"}"#,
+        ] {
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/play/mark-watched")
+                        .header("content-type", "application/json")
+                        .body(Body::from(body))
+                        .expect("req"),
+                )
+                .await
+                .expect("oneshot");
+            assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        }
+        let rows = crate::history::read_all(&history).expect("rows");
+        let id_of = |show: &str| {
+            rows.iter()
+                .find(|r| r.id == show)
+                .and_then(|r| r.kitsu_id.clone())
+        };
+        assert_eq!(id_of("hianime:seitokai-10497").as_deref(), Some("49877"));
+        assert_eq!(
+            id_of("hianime:bad-1"),
+            None,
+            "an id that is not digits is not recorded"
+        );
     }
 
     /// The reverse-mapping write must REJECT cross-cour pairings.
@@ -1691,6 +1908,7 @@ mod tests {
                     .into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -1759,7 +1977,7 @@ mod tests {
     /// carry one, we have no proof the pairing is wrong — only one
     /// side speaks. Persisting the row still wins over re-resolving
     /// every Continue Watching load; if the pairing later turns out
-    /// to be cross-cour, step 0's frontend slug guard catches it.
+    /// to be cross-cour, step 0's frontend cour check passes over it.
     #[tokio::test]
     async fn mark_watched_writes_reverse_mapping_when_only_kitsu_slug_carries_cour() {
         use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
@@ -1791,6 +2009,7 @@ mod tests {
                 show_title: "Some Sequel (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -1880,6 +2099,7 @@ mod tests {
                 show_title: "Some Sequel Part 2 (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -1980,6 +2200,7 @@ mod tests {
                     .into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
 
@@ -2087,6 +2308,7 @@ mod tests {
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2139,6 +2361,7 @@ mod tests {
                 show_title: "Nato: Shippuuden (500 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2267,6 +2490,7 @@ mod tests {
                 show_title: "Some Show (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
+                kitsu_id: None,
             },
         );
         let pool = state.cache_pool.clone();

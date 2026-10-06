@@ -47,6 +47,7 @@
 		historyDelete,
 		historyList,
 		imageProxyUrl,
+		kitsuAnimeDetail,
 		kitsuByMalIds,
 		kitsuEpisodes,
 		kitsuTopRated,
@@ -83,7 +84,9 @@
 	import { loadContinueWatchingState } from '$lib/history/continue-watching-loader';
 	import { retryApproximateCaps, rowWorthRetrying } from '$lib/history/approximate-retry';
 	import { makeContinueRowReadyHandler } from '$lib/history/row-ready';
-	import { resolveKitsuMatch } from '$lib/history/match';
+	import { kitsuEntryGone, resolveKitsuMatchWithTrust } from '$lib/history/match';
+	import { createRowTrust } from '$lib/history/row-trust';
+	import { recordableId, withGuess, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
@@ -99,7 +102,13 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
-	import { clearShowPositions, markStarted, readPosition } from '$lib/play/watch-position';
+	import {
+		clearRowPositions,
+		clearShowPositions,
+		snapshotPositions,
+		markStarted,
+		readPosition
+	} from '$lib/play/watch-position';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -264,8 +273,16 @@
 				history: history ?? [],
 				matches: historyMatches,
 				historyDelete,
-				forgetPositions: clearShowPositions,
-				kitsuIdOf: allmangaKitsuMapGet
+				snapshotPositions,
+				forgetPositions: (kitsuId, since) => clearShowPositions(kitsuId, undefined, since),
+				forgetRowPositions: (rows, keep, since) => clearRowPositions(rows, undefined, keep, since),
+				kitsuIdOf: allmangaKitsuMapGet,
+				// Read the way the Continue resolver reads a recorded id.
+				recordedGone: (id) =>
+					kitsuAnimeDetail(id).then(
+						() => false,
+						(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
+					)
 			});
 			// Open the gate IMMEDIATELY before the optimistic mutation
 			// so the 350ms auto-close window starts when Svelte's
@@ -381,7 +398,7 @@
 				historyById.clear();
 				for (const h of history) historyById.set(h.id, h);
 				void loadContinueWatchingState(history, {
-					resolveMatch: (entry) => resolveKitsuMatch(resolveHistoryEntry(entry, null)),
+					resolveMatch: rowTrust.resolveMatch,
 					// makeFetchAvailability keeps the args-mapping closure
 					// in a testable lib so no untestable closure lives on
 					// this page. checkAvailability is already cache-first
@@ -636,6 +653,12 @@
 	// refinement routes through rowReady so a click-time tightened
 	// cap also refreshes the badge's episode metadata (latest-wins
 	// token in row-ready.ts drops the stale fetch).
+	// Per row, whether its Continue match is only a guess: the card
+	// then opens its play as one, which records the guess nowhere
+	// ($lib/play/play-origin.ts).
+	const rowTrust = createRowTrust((entry) =>
+		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
+	);
 	const playArgsFor = (a: ResumePlayArgs) => ({
 		title: a.title,
 		episode: String(a.episode),
@@ -645,12 +668,13 @@
 		year: yearFromKitsuRef(a.match),
 		subtype: a.match.subtype ?? null,
 		alt_titles: altTitlesFromKitsu(a.match),
-		kitsu_id: a.match.id
+		kitsu_id: recordableId(a.match.id, a.guess === true)
 	});
 	const startResume = makeStartResume({
 		leftPartWay,
-		markStarted,
+		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
 		isBusy: () => !!resumeBusy,
+		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {
 			resumeBusy = id;
 		},
@@ -694,10 +718,14 @@
 		// (mode-independent), NOT the dub/sub playable cap, and only
 		// for a finished series — see /play/[id] for the rationale.
 		syncTrackers: (id, ep, total, finished) => syncWatchedToTrackers(id, ep, total, finished),
-		navigateToSession: (id, session, ep) => {
+		navigateToSession: (id, session, ep, guess, row) => {
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(
-				resolve('/play/[id]', { id }) + buildPlayQuery(session as CreateSessionResponse, ep)
+				resolve('/play/[id]', { id }) +
+					withRow(
+						withGuess(buildPlayQuery(session as CreateSessionResponse, ep), guess === true),
+						row ?? null
+					)
 			);
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		}
@@ -948,7 +976,7 @@
 			       mis-route the user to /search (Codex P2
 			       #3348970892).
 			     - match === null : resolution definitively failed;
-			       the row falls through to /search as a fallback. -->
+			       the row falls through to a search for its title. -->
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				{#if resumable && match}
 					<button
@@ -1026,7 +1054,11 @@
 						</span>
 					</div>
 				{:else}
-					<a class="resume-card" style="--accent: {accent};" href={resolve('/search')}>
+					<a
+						class="resume-card"
+						style="--accent: {accent};"
+						href={`${resolve('/search')}?q=${encodeURIComponent(target.displayTitle)}`}
+					>
 						<span class="resume-poster">
 							{#if image}
 								<img src={image} alt="" loading="lazy" decoding="async" />

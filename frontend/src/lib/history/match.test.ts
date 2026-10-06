@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolveKitsuMatch } from './match';
+import { resolveKitsuMatch, resolveKitsuMatchWithTrust } from './match';
 import { resolveHistoryEntry } from './resolve';
 import {
 	allmangaKitsuMapDelete,
 	allmangaKitsuMapGet,
+	allmangaKitsuMapPlayed,
 	kitsuAnimeBySlug,
 	kitsuAnimeDetail,
 	kitsuResolveAllmangaShowId,
@@ -22,6 +23,7 @@ import {
 vi.mock('$lib/api', () => ({
 	allmangaKitsuMapDelete: vi.fn(),
 	allmangaKitsuMapGet: vi.fn(),
+	allmangaKitsuMapPlayed: vi.fn(),
 	kitsuAnimeBySlug: vi.fn(),
 	kitsuAnimeDetail: vi.fn(),
 	kitsuResolveAllmangaShowId: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock('$lib/api', () => ({
 
 const mockedAllmangaDelete = vi.mocked(allmangaKitsuMapDelete);
 const mockedAllmangaMap = vi.mocked(allmangaKitsuMapGet);
+const mockedPlayed = vi.mocked(allmangaKitsuMapPlayed);
 const mockedSlug = vi.mocked(kitsuAnimeBySlug);
 const mockedDetail = vi.mocked(kitsuAnimeDetail);
 const mockedResolveAllmanga = vi.mocked(kitsuResolveAllmangaShowId);
@@ -71,6 +74,8 @@ beforeEach(() => {
 	mockedAllmangaDelete.mockResolvedValue(undefined);
 	mockedAllmangaMap.mockReset();
 	mockedAllmangaMap.mockResolvedValue(null);
+	mockedPlayed.mockReset();
+	mockedPlayed.mockResolvedValue(null);
 	mockedSlug.mockReset();
 	mockedDetail.mockReset();
 	mockedResolveAllmanga.mockReset();
@@ -82,6 +87,179 @@ beforeEach(() => {
 });
 
 describe('resolveKitsuMatch', () => {
+	it('reads the show the row records, with no matching', async () => {
+		// The row records the Kitsu id of the page the user played from.
+		// Continue Watching takes it as given: no stored mapping, title
+		// match, search or enrichment is asked, so nothing can land on
+		// another show (the provider's "There Is Also a Hole in the
+		// Student Organization!" once matched Here is Greenwood).
+		const preliminary = resolveHistoryEntry(
+			{
+				id: 'hianime:there-is-also-a-hole-in-the-student-organization-10497',
+				ep_no: '1',
+				title: 'There Is Also a Hole in the Student Organization!',
+				kitsu_id: '49877'
+			},
+			null
+		);
+		mockedDetail.mockResolvedValue(stubKitsu('49877', 'Seitokai ni mo Ana wa Aru!', 12));
+		mockedAllmangaMap.mockResolvedValue('1623');
+		mockedSearch.mockResolvedValue([stubKitsu('1623', 'Here is Greenwood', 6)]);
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got?.id).toBe('49877');
+		expect(mockedDetail).toHaveBeenCalledWith('49877');
+		expect(mockedAllmangaMap).not.toHaveBeenCalled();
+		expect(mockedGetMatch).not.toHaveBeenCalled();
+		expect(mockedSearch).not.toHaveBeenCalled();
+		expect(mockedResolveAllmanga).not.toHaveBeenCalled();
+	});
+
+	it('answers no match for a row without a recorded show rather than a hit its title refutes', async () => {
+		// The provider calls Seitokai ni mo Ana wa Aru! "There Is Also a
+		// Hole in the Student Organization!", and a Kitsu search for those
+		// words does not return the show: its first hit is Here is
+		// Greenwood, which a row without a count once took on the count
+		// alone.
+		const row = resolveHistoryEntry(
+			{
+				id: 'hianime:there-is-also-a-hole-in-the-student-organization-10497',
+				ep_no: '1',
+				title: 'There Is Also a Hole in the Student Organization!'
+			},
+			null
+		);
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([
+			{ ...stubKitsu('1623', 'Here is Greenwood', 6), slug: 'here-is-greenwood', subtype: 'OVA' },
+			{
+				...stubKitsu('1677', 'Tokyo Majin Gakuen Kenpucho: Tou', 14),
+				slug: 'tokyo-majin-gakuen-kenpucho-tou',
+				subtype: 'TV'
+			}
+		]);
+
+		const got = await resolveKitsuMatch(row);
+
+		expect(got).toBeNull();
+		expect(mockedPutMatch).not.toHaveBeenCalled();
+	});
+
+	// A row from before history recorded the show keeps the mapping a
+	// play stored when only the provider's title doubts it: the provider
+	// calls Seitokai ni mo Ana wa Aru! "There Is Also a Hole in the
+	// Student Organization!", which shares only "student" with Kitsu's
+	// English title for it, and a search for those words never returns
+	// it.
+	const seitokai = (): KitsuAnimeRef => ({
+		...stubKitsu('49877', 'Seitokai ni mo Ana wa Aru!', 12),
+		slug: 'seitokai-ni-mo-ana-wa-aru',
+		status: 'current',
+		subtype: 'TV',
+		titles: {
+			en_jp: 'Seitokai ni mo Ana wa Aru!',
+			en: 'Even the Student Council Has Its Holes!'
+		}
+	});
+	const greenwood = (): KitsuAnimeRef => ({
+		...stubKitsu('1623', 'Here is Greenwood', 6),
+		slug: 'here-is-greenwood',
+		subtype: 'OVA'
+	});
+	const seitokaiRow = (title = 'There Is Also a Hole in the Student Organization!') =>
+		resolveHistoryEntry(
+			{
+				id: 'hianime:there-is-also-a-hole-in-the-student-organization-10497',
+				ep_no: '1',
+				title
+			},
+			null
+		);
+
+	it('keeps a title-doubted mapping a play stored', async () => {
+		mockedAllmangaMap.mockResolvedValue('49877');
+		mockedDetail.mockResolvedValue(seitokai());
+		mockedPlayed.mockResolvedValue('49877');
+		mockedSearch.mockResolvedValue([greenwood()]);
+
+		const got = await resolveKitsuMatch(seitokaiRow());
+
+		expect(got?.id).toBe('49877');
+		expect(mockedPlayed).toHaveBeenCalledWith(
+			'hianime:there-is-also-a-hole-in-the-student-organization-10497'
+		);
+		expect(mockedSearch).not.toHaveBeenCalled();
+		expect(mockedResolveAllmanga).not.toHaveBeenCalled();
+		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
+	});
+
+	it('does not keep a title-doubted mapping when the played read fails', async () => {
+		mockedAllmangaMap.mockResolvedValue('49877');
+		mockedDetail.mockResolvedValue(seitokai());
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
+		mockedSearch.mockResolvedValue([greenwood()]);
+
+		const got = await resolveKitsuMatch(seitokaiRow());
+
+		expect(got).toBeNull();
+		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
+	});
+
+	it('does not keep a title-doubted mapping no play stored', async () => {
+		// A guess an earlier resolve stored: Greenwood for the same row.
+		mockedAllmangaMap.mockResolvedValue('1623');
+		mockedDetail.mockResolvedValue(greenwood());
+		mockedPlayed.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([greenwood()]);
+
+		const got = await resolveKitsuMatch(seitokaiRow());
+
+		expect(got).toBeNull();
+	});
+
+	it('does not keep a title-doubted mapping a play replaced after it was read', async () => {
+		// The guess Greenwood was read and fetched; a play stored
+		// Seitokai before the played read ran. The mark vouches for
+		// Seitokai, not for the Greenwood this load holds.
+		mockedAllmangaMap.mockResolvedValue('1623');
+		mockedDetail.mockResolvedValue(greenwood());
+		mockedPlayed.mockResolvedValue('49877');
+		mockedSearch.mockResolvedValue([greenwood()]);
+
+		const got = await resolveKitsuMatch(seitokaiRow());
+
+		expect(got).toBeNull();
+	});
+
+	it('does not keep a played mapping its count doubts too', async () => {
+		mockedAllmangaMap.mockResolvedValue('1623');
+		mockedDetail.mockResolvedValue(greenwood());
+		mockedPlayed.mockResolvedValue('1623');
+		mockedSearch.mockResolvedValue([]);
+
+		const got = await resolveKitsuMatch(
+			seitokaiRow('There Is Also a Hole in the Student Organization! (24 episodes)')
+		);
+
+		expect(got?.id).not.toBe('1623');
+		expect(mockedAllmangaDelete).not.toHaveBeenCalled();
+	});
+
+	it('answers no show, not a guess, when the recorded show cannot be read', async () => {
+		const preliminary = resolveHistoryEntry(
+			{ id: 'hianime:x-1', ep_no: '1', title: 'X', kitsu_id: '49877' },
+			null
+		);
+		mockedDetail.mockRejectedValue(new Error('offline'));
+		mockedSearch.mockResolvedValue([stubKitsu('1623', 'X', 6)]);
+
+		const got = await resolveKitsuMatch(preliminary);
+
+		expect(got).toBeNull();
+		expect(mockedSearch).not.toHaveBeenCalled();
+	});
+
 	it('returns the cached anime detail when the title-match cache hits', async () => {
 		const preliminary = resolveHistoryEntry(entry('Demon Slayer (26 episodes)', '5'), null);
 		mockedGetMatch.mockResolvedValue('cached-id');
@@ -412,7 +590,7 @@ describe('resolveKitsuMatch', () => {
 		const got = await resolveKitsuMatch(preliminary);
 
 		expect(got?.id).toBe('real');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('allmanga-id');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('allmanga-id', 'music-id');
 	});
 
 	it('cour > 1 reverse-map hit with matching slug keeps the cache + skips re-resolve', async () => {
@@ -545,7 +723,9 @@ describe('resolveKitsuMatch', () => {
 		const got = await resolveKitsuMatch(preliminary);
 
 		expect(got?.id).toBe('love-live');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('9mJyPki2Hm4NmSrhG');
+		// The eviction names the id it judged: a mapping a play stored
+		// while the detail was in flight is not the one judged.
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('9mJyPki2Hm4NmSrhG', '47328');
 		expect(mockedSearch).toHaveBeenCalled();
 	});
 
@@ -643,8 +823,158 @@ describe('resolveKitsuMatch', () => {
 		const got = await p;
 
 		expect(got?.id).toBe('11061');
-		expect(mockedAllmangaDelete).toHaveBeenCalledWith('vDTSJHSpYnrkZnAvG');
+		expect(mockedAllmangaDelete).toHaveBeenCalledWith('vDTSJHSpYnrkZnAvG', 'wrong-kitsu');
 		// Enrichment must have observed the eviction as already committed.
 		expect(enrichmentSawDeleteDone).toBe(true);
+	});
+});
+
+// A row records the Kitsu id of the show played, and Kitsu can delete
+// that entry. Its absence is an answer about the id — a 404 or 410,
+// which the backend passes on as an upstream error carrying the status
+// — and the row is then matched the way a row with no recorded id is.
+// Any other failure says nothing about the id, and the row answers no
+// show for this load rather than a guess.
+describe('a recorded id Kitsu cannot read', () => {
+	const recordedRow = () =>
+		resolveHistoryEntry(
+			{ id: 'hianime:cowboy-bebop-1', ep_no: '3', title: 'Cowboy Bebop', kitsu_id: '999' },
+			null
+		);
+
+	it.each([404, 410])('matches the row anew when Kitsu answers %i for it', async (status) => {
+		mockedDetail.mockImplementation(async (id) => {
+			if (id === '999') throw { kind: 'upstream', status, key: 'error.network.upstream' };
+			return stubKitsu(id, 'Cowboy Bebop', 26);
+		});
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+
+		const got = await resolveKitsuMatch(recordedRow());
+
+		expect(got?.id).toBe('1');
+		expect(mockedSearch).toHaveBeenCalled();
+	});
+
+	it.each([
+		['a provider 503', { kind: 'upstream', status: 503, key: 'error.network.upstream' }],
+		['a rate limit', { kind: 'upstream', status: 429, key: 'error.network.upstream' }],
+		['an unreachable network', { kind: 'network', key: 'error.network.unreachable' }],
+		['a timeout', { kind: 'timeout', key: 'error.scraper.timeout' }],
+		['a bodiless gateway error', { kind: 'http', status: 502 }]
+	])('answers no show on %s, and matches nothing', async (_label, failure) => {
+		mockedDetail.mockRejectedValue(failure);
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+
+		const got = await resolveKitsuMatch(recordedRow());
+
+		expect(got).toBeNull();
+		expect(mockedSearch).not.toHaveBeenCalled();
+		expect(mockedAllmangaMap).not.toHaveBeenCalled();
+	});
+});
+
+// A play started from a Continue card records the card's Kitsu id on
+// the row, and the row is matched by that id from then on. Only a match
+// the user stands behind may be recorded: the id the row recorded, or a
+// mapping a real play stored. A guess — a remembered title match, a
+// search pick, an unplayed mapping — stays off the row, so the row can
+// still be matched again.
+describe('which Continue matches a play may record', () => {
+	const legacyRow = () =>
+		resolveHistoryEntry({ id: 'hianime:cowboy-bebop-1', ep_no: '3', title: 'Cowboy Bebop' }, null);
+
+	it('records the id the row recorded', async () => {
+		mockedDetail.mockResolvedValue(stubKitsu('49877', 'Seitokai ni mo Ana wa Aru!', 12));
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry({ id: 'hianime:x-1', ep_no: '1', title: 'X', kitsu_id: '49877' }, null)
+		);
+		expect(got.match?.id).toBe('49877');
+		expect(got.trusted).toBe(true);
+	});
+
+	it('records a mapping a play stored', async () => {
+		mockedAllmangaMap.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		mockedPlayed.mockResolvedValue('1');
+
+		const got = await resolveKitsuMatchWithTrust(legacyRow());
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(true);
+	});
+
+	it('does not record a mapping no play stored', async () => {
+		mockedAllmangaMap.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		mockedPlayed.mockResolvedValue(null);
+
+		const got = await resolveKitsuMatchWithTrust(legacyRow());
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(false);
+	});
+
+	it('does not record a mapping a play replaced after it was read', async () => {
+		// Guess 1 was read and fetched; a play stored 2 before the
+		// played read ran. The mark vouches for 2, not for the 1 this
+		// load holds, which stays a guess.
+		mockedAllmangaMap.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		mockedPlayed.mockResolvedValue('2');
+
+		const got = await resolveKitsuMatchWithTrust(legacyRow());
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(false);
+	});
+
+	it('does not record a mapping whose played read fails', async () => {
+		mockedAllmangaMap.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+		mockedPlayed.mockRejectedValue(new Error('backend down'));
+
+		const got = await resolveKitsuMatchWithTrust(legacyRow());
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(false);
+	});
+
+	it('does not record a remembered title match', async () => {
+		mockedGetMatch.mockResolvedValue('1');
+		mockedDetail.mockResolvedValue(stubKitsu('1', 'Cowboy Bebop', 26));
+
+		const got = await resolveKitsuMatchWithTrust(legacyRow());
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(false);
+	});
+
+	it('does not record a search pick', async () => {
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+
+		const got = await resolveKitsuMatchWithTrust(legacyRow());
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(false);
+	});
+
+	it('does not record the match a row whose recorded id is gone falls back to', async () => {
+		mockedDetail.mockImplementation(async (id) => {
+			if (id === '999') throw { kind: 'upstream', status: 404, key: 'error.network.upstream' };
+			return stubKitsu(id, 'Cowboy Bebop', 26);
+		});
+		mockedGetMatch.mockResolvedValue(null);
+		mockedSearch.mockResolvedValue([stubKitsu('1', 'Cowboy Bebop', 26)]);
+
+		const got = await resolveKitsuMatchWithTrust(
+			resolveHistoryEntry(
+				{ id: 'hianime:cowboy-bebop-1', ep_no: '3', title: 'Cowboy Bebop', kitsu_id: '999' },
+				null
+			)
+		);
+
+		expect(got.match?.id).toBe('1');
+		expect(got.trusted).toBe(false);
 	});
 });

@@ -15,6 +15,7 @@ git-LFS is not configured.
 | `kitsu/` | JSON:API responses for `/anime?filter[text]=`, `/anime/:id` (with and without a cover image), and `/anime/:id/episodes`. |
 | `history/` | Watch-history samples for the GUI's reader: empty, single-entry, multi-entry. |
 | `hls/` | Synthesized MPEG-TS samples for the player's demuxer regression tests, as base64 text: a stream whose video starts under one second and whose audio starts after it. |
+| `title-words/` | Shared vectors for the title-word rule the frontend's Continue resolution and the backend's show-id resolve both apply to a Kitsu search hit: pairs of a show's titles with its Kitsu entry, the unrelated hits Kitsu returned for the provider's Seitokai ni mo Ana wa Aru! title, and the rule's edges, sequel markers among them. |
 | `arch/` | Stand-in checks the bats harness under `tests/bash/arch/` drives: a check a stray environment can redirect. |
 
 ## Keeping manifests true

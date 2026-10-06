@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	cachedBindingVerdict,
+	isCandidateForRow,
 	isMusicSubtype,
 	pickKitsuMatch,
 	resolveHistoryEntry,
@@ -879,5 +880,75 @@ describe('long-runners Kitsu has no episode total for', () => {
 		const r = resolveHistoryEntry(entry('Some Seasonal Show (12 episodes)', '5'), null);
 		const ongoing = hit({ canonical_title: 'Some Seasonal Show', episode_count: null });
 		expect(pickKitsuMatch([ongoing], r)?.id).toBe('x');
+	});
+});
+
+describe('a search hit by the words its titles share with the row', () => {
+	const magical = {
+		id: '47985',
+		canonical_title:
+			'Magical★Explorer: Eroge no Yuujin Chara ni Tensei Shitakedo, Game Chishiki Tsukatte Jiyuu ni Ikiru',
+		titles: {
+			en_jp:
+				'Magical★Explorer: Eroge no Yuujin Chara ni Tensei Shitakedo, Game Chishiki Tsukatte Jiyuu ni Ikiru'
+		},
+		slug: 'magical-explorer-eroge-no-yuujin-chara-ni-tensei-shitakedo-game-chishiki-tsukatte-jiyuu-ni-ikiru',
+		synopsis: null,
+		start_date: null,
+		end_date: null,
+		episode_count: 12,
+		average_rating: null,
+		subtype: 'TV',
+		status: 'finished',
+		age_rating: null,
+		popularity_rank: null,
+		poster_image: null,
+		cover_image: null
+	};
+
+	it("takes a hit whose long title contains the whole of the row's", () => {
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:magicalexplorer-10494', ep_no: '3', title: 'Magical★Explorer' },
+			null
+		);
+		expect(isCandidateForRow(row, magical)).toBe(true);
+	});
+
+	it("refuses a hit whose titles share too few words with the row's", () => {
+		// A row without a count accepts every count, so the count alone
+		// once handed the provider's "There Is Also a Hole in the Student
+		// Organization!" to Kitsu's first hit for those words.
+		const row = resolveHistoryEntry(
+			{
+				id: 'hianime:there-is-also-a-hole-in-the-student-organization-10497',
+				ep_no: '1',
+				title: 'There Is Also a Hole in the Student Organization!'
+			},
+			null
+		);
+		const greenwood = {
+			...magical,
+			id: '1623',
+			canonical_title: 'Here is Greenwood',
+			titles: { en_jp: 'Koko wa Green Wood' },
+			slug: 'here-is-greenwood',
+			episode_count: 6
+		};
+		expect(isCandidateForRow(row, greenwood)).toBe(false);
+	});
+
+	it('does not count a season marker as a shared word', () => {
+		const row = resolveHistoryEntry(
+			{ id: 'hianime:blue-lock-season-2-19318', ep_no: '1', title: 'BLUE LOCK Season 2' },
+			null
+		);
+		const other = {
+			...magical,
+			id: '47199',
+			canonical_title: 'Seirei Gensouki 2',
+			titles: { en: 'Spirit Chronicles Season 2' },
+			slug: 'seirei-gensouki-2'
+		};
+		expect(isCandidateForRow(row, other)).toBe(false);
 	});
 });

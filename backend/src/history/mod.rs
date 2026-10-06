@@ -1,7 +1,7 @@
 //! Reader and writer for the app's watch-history file.
 //!
 //! Format (TSV, one record per line):
-//!     <ep_no>\t<id>\t<title>[\t<watched_at_ms>]
+//!     <ep_no>\t<id>\t<title>[\t<watched_at_ms>][\tkitsu:<kitsu_id>]
 //!
 //! The first three columns are the ones the CLI's `update_history`
 //! used, and so are the atomic semantics: write to `path.new`, then
@@ -24,11 +24,32 @@
 //! one title; `\t1700000000000` is a moment. The limit of that is
 //! written out at [`split_moment`], which holds the rule.
 //!
+//! The fifth column is the app's too: the Kitsu id of the show the
+//! user played, the page the play was started from, so the rows'
+//! surfaces read the show from it instead of matching the provider's
+//! title back to Kitsu. Unlike the moment it is marked, `kitsu:`
+//! followed by digits and nothing else, so a title reads as one only
+//! when its last tab-separated part is exactly that, which no provider
+//! title has been seen to be; a row without it — one from before the
+//! column, or a play no page stood behind — reads and writes as
+//! before.
+//!
+//! A build from before the column reads a row that carries it as a
+//! three-column row: its moment split finds `kitsu:<id>` where it
+//! looks for the moment, so the title runs on to the end of the line,
+//! `<title>\t<moment>\tkitsu:<id>`. That build shows the moment and the
+//! mark as part of the title and ranks the row without its moment. It
+//! writes a line it did not touch back as it read it, which a build
+//! with the column reads back into its title, moment and id; a play it
+//! records rewrites the line in its own format, without the mark.
+//!
 //! The two never shared a file after the 5.0 CLI re-keyed its history
 //! onto provider slugs; the app keeps its own under its state dir.
 //! The format is inherited, not shared.
 //!
 //! Path resolution lives in [`crate::config::paths::gui_history`].
+
+pub mod guard;
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -66,6 +87,11 @@ pub struct HistoryEntry {
     /// wrote, or one from before the column existed, carries none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub watched_at: Option<i64>,
+    /// The Kitsu id of the show the user played: the page the play was
+    /// started from. A write without one keeps the row's; a row from
+    /// before the column, or a play no page stood behind, has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kitsu_id: Option<String>,
 }
 
 /// Parse the entire history file into a `Vec<HistoryEntry>`.
@@ -96,12 +122,14 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
             if ep_no.is_empty() || id.is_empty() {
                 return None;
             }
+            let (rest, kitsu_id) = split_kitsu_id(rest);
             let (title, watched_at) = split_moment(rest);
             Some(HistoryEntry {
                 ep_no,
                 id,
                 title: title.to_string(),
                 watched_at,
+                kitsu_id,
             })
         })
         .collect()
@@ -117,6 +145,43 @@ const WATCHED_AT_FLOOR_MS: i64 = 1_577_836_800_000;
 /// The far end of the same window: 2100-01-01T00:00:00Z in
 /// milliseconds. Nothing this app writes reaches it either.
 const WATCHED_AT_CEILING_MS: i64 = 4_102_444_800_000;
+
+/// The marker the fifth column starts with.
+const KITSU_MARK: &str = "kitsu:";
+
+/// A Kitsu id as the row may record it: digits and nothing else, once
+/// surrounding whitespace is trimmed. Anything else is not one.
+#[must_use]
+pub fn kitsu_id_of(raw: &str) -> Option<String> {
+    kitsu_id_in(raw).map(ToOwned::to_owned)
+}
+
+/// [`kitsu_id_of`] without the copy: the digits `raw` carries, or
+/// `None` when it is not a Kitsu id. The writes a removal of history
+/// answers for that take a Kitsu id from the renderer — the row, the
+/// play's page, the mapping and its played mark, skip times, a title
+/// match, a gone mark — take it through this, so one rule decides
+/// what an id is there. A gone mark takes only an exact id: its read
+/// asked Kitsu for the value as given.
+#[must_use]
+pub fn kitsu_id_in(raw: &str) -> Option<&str> {
+    let id = raw.trim();
+    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then_some(id)
+}
+
+/// Split the row's Kitsu id off what follows the id column, when the
+/// last tab-separated value is `kitsu:` and digits.
+fn split_kitsu_id(rest: &str) -> (&str, Option<String>) {
+    let Some((before, tail)) = rest.rsplit_once('\t') else {
+        return (rest, None);
+    };
+    match tail.strip_prefix(KITSU_MARK) {
+        Some(digits) if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) => {
+            (before, Some(digits.to_owned()))
+        }
+        _ => (rest, None),
+    }
+}
 
 /// Split what follows the id into the title and, when the row
 /// carries one, the watch's moment.
@@ -168,6 +233,11 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
             out.push('\t');
             out.push_str(&at.to_string());
         }
+        if let Some(id) = &e.kitsu_id {
+            out.push('\t');
+            out.push_str(KITSU_MARK);
+            out.push_str(id);
+        }
         out.push('\n');
     }
     out
@@ -175,7 +245,7 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
 
 /// Insert or update an entry, matching by `id`. If `id` is already in the
 /// vector, that entry's `ep_no` and `title` are replaced, and its
-/// watched-at moment when the new entry carries one — a plain
+/// watched-at moment and Kitsu id when the new entry carries them — a plain
 /// resolve rewrites a row without unwriting the watch before it;
 /// otherwise the new entry is appended. The vector is mutated in
 /// place. Mirrors `update_history`'s semantics from the script.
@@ -185,6 +255,9 @@ pub fn upsert(entries: &mut Vec<HistoryEntry>, new: HistoryEntry) {
         existing.title = new.title;
         if new.watched_at.is_some() {
             existing.watched_at = new.watched_at;
+        }
+        if new.kitsu_id.is_some() {
+            existing.kitsu_id = new.kitsu_id;
         }
     } else {
         entries.push(new);
@@ -231,15 +304,14 @@ pub fn write_atomic(path: &Path, entries: &[HistoryEntry]) -> Result<()> {
     Ok(())
 }
 
-/// Convenience: read + upsert + write_atomic in one call. Pure error
+/// Convenience: read + upsert + write_atomic in one call, with the
+/// file held so that two writers take turns ([`guard`]). Pure error
 /// propagation; the on-disk file is mutated in-place.
 ///
 /// # Errors
 /// Returns [`AniError::Io`] on read or write failure.
 pub fn upsert_and_write(path: &Path, new: HistoryEntry) -> Result<()> {
-    let mut entries = read_all(path)?;
-    upsert(&mut entries, new);
-    write_atomic(path, &entries)
+    guard::hold(path, |held| held.upsert(new))
 }
 
 #[cfg(test)]
@@ -262,6 +334,7 @@ mod tests {
             id: id.into(),
             title: format!("Test ({id})"),
             watched_at: None,
+            kitsu_id: None,
         }
     }
 
@@ -364,6 +437,7 @@ mod tests {
     fn upsert_keeps_a_rows_stamp_unless_the_new_entry_carries_one() {
         let mut entries = vec![HistoryEntry {
             watched_at: Some(1_000),
+            kitsu_id: None,
             ..sample_entry("abc", "3")
         }];
         upsert(&mut entries, sample_entry("abc", "4"));
@@ -377,6 +451,7 @@ mod tests {
             &mut entries,
             HistoryEntry {
                 watched_at: Some(2_000),
+                kitsu_id: None,
                 ..sample_entry("abc", "5")
             },
         );
@@ -463,6 +538,7 @@ mod tests {
             id: "b".into(),
             title: "New Title".into(),
             watched_at: None,
+            kitsu_id: None,
         };
         upsert(&mut v, updated);
         assert_eq!(v.len(), 3);
@@ -518,18 +594,21 @@ mod tests {
                 id: "abc123".into(),
                 title: "Attack on Titan (25 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "3".into(),
                 id: "def456".into(),
                 title: "Demon Slayer (26 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
             HistoryEntry {
                 ep_no: "1".into(),
                 id: "ghi789".into(),
                 title: "Spy x Family (12 episodes)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         ];
         let our_bytes = serialize(&entries);
@@ -576,6 +655,7 @@ mod tests {
                 id: "a".into(),
                 title: "Test (a)".into(),
                 watched_at: None,
+                kitsu_id: None,
             },
         )
         .unwrap();
@@ -632,6 +712,7 @@ mod tests {
                 id,
                 title,
                 watched_at,
+                kitsu_id: None,
             })
     }
 
@@ -668,7 +749,7 @@ mod tests {
             // window narrows but cannot close; it is not a claim
             // this property makes.
             prop_assume!(watched_at.is_some() || !tail_reads_as_a_watch(&title));
-            let entry = HistoryEntry { ep_no, id, title, watched_at };
+            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None };
             let parsed = parse(&serialize(std::slice::from_ref(&entry)));
             prop_assert_eq!(parsed, vec![entry]);
         }
@@ -721,3 +802,11 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "kitsu_column_test.rs"]
+mod kitsu_column_tests;
+
+#[cfg(test)]
+#[path = "guard_test.rs"]
+mod guard_tests;

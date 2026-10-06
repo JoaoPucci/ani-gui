@@ -33,6 +33,12 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+vi.mock('$lib/account/push-watched', () => ({
+	syncWatchedToTrackers: vi.fn(async () => {})
+}));
+
+import { goto } from '$app/navigation';
+import { syncWatchedToTrackers } from '$lib/account/push-watched';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 
@@ -210,5 +216,111 @@ describe('play route — the handoffs send the Kitsu id', () => {
 		await until(() => posted.syncplay.length === 1, 'the Syncplay request');
 		expectHandoffBody(posted.syncplay[0]);
 		expect(posted.external).toHaveLength(0);
+	});
+});
+
+// A session opened from a Continue card whose match was only a guess
+// carries the flag in its URL, and records the guess nowhere: the next
+// request would otherwise pin it on the history row, as the card's
+// click would have. The verdict lives with the session, so it holds
+// whatever the home page does meanwhile, and a session without the
+// flag — one opened from the detail page — records its id as before.
+describe('play route — a session opened from a guess records no Kitsu id', () => {
+	it('the stream and the external-player handoff carry no Kitsu id', async () => {
+		setUrl(`/play/${KITSU_ID}`, { episode: '3', guess: '1' });
+		const posted = { external: [] as Posted[], syncplay: [] as Posted[] };
+		useHandlers(posted);
+		app = mount(PlayPage, { target });
+		await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
+		FakeEventSource.instances[0].dispatch(
+			'done',
+			JSON.stringify({
+				id: 'session-1',
+				kind: 'mp4',
+				has_subtitles: false,
+				quality: '1080',
+				mode: 'sub'
+			})
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '3', kind: 'mp4', guess: '1' });
+		await until(() => moreButton() !== null, 'the More actions button under the player');
+
+		expect(new URL(FakeEventSource.instances[0].url).searchParams.get('kitsu_id')).toBeNull();
+		await clickMenuItem(m.play_external_label());
+		await until(() => posted.external.length === 1, 'the external-player request');
+		expect(posted.external[0].kitsu_id).toBeUndefined();
+		expect(posted.external[0].title).toBe(TITLE);
+	});
+
+	/** Mount a session for episode 3, `guess` or not, click Next and
+	 *  settle the switch; returns its stream URL, the URL it landed on
+	 *  and the watch it posted. */
+	async function switchToNext(guess: boolean, extra: Record<string, string> = {}) {
+		const flag: Record<string, string> = { ...(guess ? { guess: '1' } : {}), ...extra };
+		setUrl(`/play/${KITSU_ID}`, { episode: '3', ...flag });
+		const posted = { external: [] as Posted[], syncplay: [] as Posted[] };
+		useHandlers(posted);
+		const watched: Posted[] = [];
+		server.use(
+			http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
+				watched.push((await request.json()) as Posted);
+				return new HttpResponse(null, { status: 204 });
+			})
+		);
+		app = mount(PlayPage, { target });
+		await until(() => FakeEventSource.instances.length > 0, 'the initial play stream');
+		FakeEventSource.instances[0].dispatch(
+			'done',
+			JSON.stringify({ id: 'session-1', kind: 'mp4', has_subtitles: false })
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '3', kind: 'mp4', ...flag });
+		const next = () =>
+			target.querySelector(
+				`button[aria-label="${m.play_episode_nav_next_aria_label()}"]`
+			) as HTMLButtonElement | null;
+		await until(() => next() !== null && !next()!.disabled, 'the next-episode button');
+		vi.mocked(goto).mockClear();
+		vi.mocked(syncWatchedToTrackers).mockClear();
+
+		next()!.click();
+		await until(() => FakeEventSource.instances.length > 1, 'the switch stream');
+		const stream = new URL(FakeEventSource.instances[1].url);
+		FakeEventSource.instances[1].dispatch(
+			'done',
+			JSON.stringify({ id: 'session-2', kind: 'mp4', has_subtitles: false })
+		);
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch navigation');
+		await until(() => watched.some((w) => w.episode === '4'), 'the switch watch');
+		return {
+			stream,
+			landed: new URL(String(vi.mocked(goto).mock.calls[0][0]), 'http://x'),
+			watch: watched.find((w) => w.episode === '4')!
+		};
+	}
+
+	it('an episode switch keeps the guess: its stream, watch and URL carry no Kitsu id', async () => {
+		const { stream, landed, watch } = await switchToNext(true);
+		expect(stream.searchParams.get('episode')).toBe('4');
+		expect(stream.searchParams.get('kitsu_id')).toBeNull();
+		expect(landed.searchParams.get('episode')).toBe('4');
+		expect(landed.searchParams.get('guess')).toBe('1');
+		expect(watch.kitsu_id).toBeUndefined();
+		expect(syncWatchedToTrackers).not.toHaveBeenCalled();
+	});
+
+	it("an episode switch of a Continue card's session writes for the card's row and carries it on", async () => {
+		window.localStorage.clear();
+		const { landed } = await switchToNext(true, { row: 'hianime:show-1' });
+		expect(landed.searchParams.get('row')).toBe('hianime:show-1');
+		const kept = JSON.parse(window.localStorage.getItem('ani-gui.watch-positions') ?? '[]');
+		expect(kept).toContainEqual([`${KITSU_ID}:4`, 0, 'hianime:show-1']);
+	});
+
+	it('an episode switch of a session the user chose records its id and syncs the trackers', async () => {
+		const { stream, landed, watch } = await switchToNext(false);
+		expect(stream.searchParams.get('kitsu_id')).toBe(KITSU_ID);
+		expect(landed.searchParams.get('guess')).toBeNull();
+		expect(watch.kitsu_id).toBe(KITSU_ID);
+		expect(syncWatchedToTrackers).toHaveBeenCalledWith(KITSU_ID, 4, 12, true);
 	});
 });

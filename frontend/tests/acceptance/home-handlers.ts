@@ -68,7 +68,7 @@ export function appConfig(mode: 'sub' | 'dub' = 'sub') {
 
 export interface HomeHandlerOptions {
 	/** History rows the route loads on mount. Defaults to none. */
-	history?: { ep_no: string; id: string; title: string }[];
+	history?: { ep_no: string; id: string; title: string; kitsu_id?: string }[];
 	mode?: 'sub' | 'dub';
 }
 
