@@ -9,9 +9,11 @@
 //! `49877/x`, `12:21` — would name a different row or a different
 //! upstream resource than the one it claims to.
 //!
-//! So the routes decide at the boundary, once, with one rule: the
-//! value trimmed of surrounding whitespace, when it is non-empty and
-//! all ASCII digits, is the id; anything else is not one. A route
+//! So the routes decide at the boundary, once, with the rule
+//! [`crate::history::kitsu_id_in`] states and the history writes
+//! already hold: the value trimmed of surrounding whitespace, when it
+//! is non-empty and all ASCII digits, is the id; anything else is not
+//! one. This module only adapts that rule to the boundary. A route
 //! whose id is required answers [`AniError::InvalidKitsuId`]; a field
 //! where the id is optional reads a non-id as no id at all, which is
 //! what each of those paths already does when the renderer sends none.
@@ -19,13 +21,9 @@
 use serde::{Deserialize, Deserializer};
 
 use crate::error::AniError;
-
-/// The digits `raw` carries, or `None` when it is not a Kitsu id.
-#[must_use]
-pub fn kitsu_id_in(raw: &str) -> Option<&str> {
-    let id = raw.trim();
-    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then_some(id)
-}
+// The rule itself lives with the history, whose writes hold the same
+// line: one function decides what an id is everywhere.
+use crate::history::kitsu_id_in;
 
 /// The id a route requires, or the error the route answers with.
 ///

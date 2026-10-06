@@ -1,5 +1,8 @@
 use super::*;
 
+// The rule is `crate::history::kitsu_id_in`'s; these pin it as the
+// boundary relies on it, alongside the adapters built on it.
+
 proptest::proptest! {
     /// The id is exactly the trimmed value when that is non-empty
     /// digits, and nothing otherwise.

@@ -370,7 +370,7 @@ async fn get_title_match(
 fn stored_kitsu_id(stored: Option<String>) -> Option<String> {
     stored
         .as_deref()
-        .and_then(crate::kitsu_id::kitsu_id_in)
+        .and_then(crate::history::kitsu_id_in)
         .map(ToOwned::to_owned)
 }
 
