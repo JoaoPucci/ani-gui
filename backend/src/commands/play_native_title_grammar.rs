@@ -19,6 +19,15 @@ pub(super) struct Marker {
     pub(super) ordinals: Vec<u32>,
 }
 
+impl Marker {
+    /// Whether `named` ordinals cover the marker: a first part, or a
+    /// span through it, always; anything else only when every ordinal
+    /// it names is among them — "Part 0+2" is not covered by 2 alone.
+    pub(super) fn named_by(&self, named: &BTreeSet<u32>) -> bool {
+        self.ordinals.contains(&1) || self.ordinals.iter().all(|n| named.contains(n))
+    }
+}
+
 /// A title's words, lowercased, split at anything that is neither a
 /// letter, a digit, nor the `+` a span is written with. Full-width
 /// digits read as their ASCII forms.
