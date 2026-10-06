@@ -13,7 +13,8 @@ use crate::scraper::provider::{ProviderId, ShowKey};
 /// history row carries. Continue Watching stores one when a row's
 /// search settles, and the user can remove the row before it does;
 /// with no row searching that title there is nothing to match, and
-/// storing it would bring back what the removal took.
+/// storing it would bring back what the removal took. Nor is one
+/// stored for something that is not a Kitsu id.
 ///
 /// # Errors
 /// History read and cache write failures propagate.
@@ -24,6 +25,9 @@ pub(crate) fn store_title_match(
     cour: u32,
     kitsu_id: &str,
 ) -> Result<()> {
+    let Some(kitsu_id) = crate::history::kitsu_id_in(kitsu_id) else {
+        return Ok(());
+    };
     crate::history::guard::hold(&state.history_path, |held| {
         if !held.rows()?.iter().any(|e| searches(e, provider, title)) {
             return Ok(());

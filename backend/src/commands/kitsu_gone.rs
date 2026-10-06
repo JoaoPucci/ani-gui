@@ -47,6 +47,11 @@ pub(crate) fn note_failure(state: &AppState, begun: Epoch, id: &str, err: &AniEr
     if !err.is_not_found_shaped() {
         return;
     }
+    // A mark is kept under the Kitsu id a history row could record;
+    // a read of anything else marks nothing.
+    let Some(id) = crate::history::kitsu_id_in(id) else {
+        return;
+    };
     crate::history::guard::hold(&state.history_path, |held| {
         if held.kitsu_removed_since(begun, id) || held.kitsu_served_since(begun, id) {
             return;

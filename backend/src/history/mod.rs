@@ -153,8 +153,18 @@ const KITSU_MARK: &str = "kitsu:";
 /// surrounding whitespace is trimmed. Anything else is not one.
 #[must_use]
 pub fn kitsu_id_of(raw: &str) -> Option<String> {
+    kitsu_id_in(raw).map(ToOwned::to_owned)
+}
+
+/// [`kitsu_id_of`] without the copy: the digits `raw` carries, or
+/// `None` when it is not a Kitsu id. Every write keyed by a Kitsu id
+/// the renderer supplied — the row, the play's page, the mapping and
+/// its played mark, skip times, a title match, a gone mark — takes
+/// the id through this, so one rule decides what an id is.
+#[must_use]
+pub fn kitsu_id_in(raw: &str) -> Option<&str> {
     let id = raw.trim();
-    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then(|| id.to_owned())
+    (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then_some(id)
 }
 
 /// Split the row's Kitsu id off what follows the id column, when the

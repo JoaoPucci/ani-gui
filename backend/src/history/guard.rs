@@ -74,12 +74,14 @@ pub struct Asked<'a> {
 
 impl<'a> Asked<'a> {
     /// A request on the history at `path` that begins now, made from
-    /// the Kitsu page `page`. An empty id is no page.
+    /// the Kitsu page `page`. Only a Kitsu id is a page
+    /// ([`super::kitsu_id_in`]); anything else, the empty id included,
+    /// is no page.
     #[must_use]
     pub fn now(path: &Path, page: Option<&'a str>) -> Self {
         Self {
             begun: epoch(path),
-            page: page.filter(|p| !p.is_empty()),
+            page: page.and_then(super::kitsu_id_in),
         }
     }
 }

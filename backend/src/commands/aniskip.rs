@@ -37,6 +37,11 @@ pub async fn aniskip_get(
     episode: &str,
     episode_length: f32,
 ) -> Result<Vec<SkipInterval>> {
+    // Skip times are cached under the Kitsu id they were asked for:
+    // something that is not one asks nothing and stores nothing.
+    let Some(kitsu_id) = crate::history::kitsu_id_in(kitsu_id) else {
+        return Ok(Vec::new());
+    };
     // The moment this lookup began, for the row it caches at the end.
     let begun = crate::history::guard::epoch(&state.history_path);
     // Bridge kitsu_id → mal_id. No mapping = aniskip can't index

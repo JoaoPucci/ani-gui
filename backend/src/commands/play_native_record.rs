@@ -162,7 +162,9 @@ pub(crate) async fn record_watch_requested_at(
     if watch.show_id.is_empty() {
         return;
     }
-    let given = kitsu_id.filter(|k| !k.is_empty());
+    // Only a Kitsu id is one: anything else the page sent is no id, and
+    // reaches neither the row nor the mapping and its played mark.
+    let given = kitsu_id.and_then(crate::history::kitsu_id_in);
     let judged = judged_by_cache(state, watch, given);
     // The watch's moment travels with the row, in the same write, so
     // the recency the resume and the strip rank by is not left to a
