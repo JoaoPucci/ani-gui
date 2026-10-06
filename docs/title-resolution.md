@@ -74,6 +74,49 @@ The entry's titles rule which candidates can be picked, on either provider. Both
 
 The inverse of a split is one provider listing spanning two Kitsu entries: hianime lists a 22-episode "Attack on Titan Season 3" holding Kitsu's Season 3 (12) and Season 3 Part 2 (10), beside a 10-episode "Season 3 Part 2" of its own. A probed candidate is read as spanning this entry and the next when it carries the entry's own year, its title is admitted, it lists more than the entry has, and another candidate whose stem starts with its stem (a stem being the title with the markers it ends on removed) and whose title names a later part than the entry's in what it adds to that stem — "Part 2" in "Season 3 Part 2", "2nd Season", or the "Second" of Gintama's "Silver Soul Arc - Second Half War" beside "Silver Soul Arc" — lists exactly the remainder. The spanning listing is then cut to its rows up to the next entry's first episode — the entry's own episodes and any recap tagged among or right after them — and scored as the exact fit it is; the candidate that completes it is the next entry and is never picked for this one. The cut keeps the spanning listing's own numbers, which on hianime number the entry from 1, so it plays under that listing's key at offset 0. The later entry keeps its own listing; a spanning listing is never cut for it at an offset, since its key would then carry two numberings — offset 0 when played as the first entry and the first entry's count when played as the second — and the offset store holds one per key. An admitted listing that already fits exactly and shares the spanning listing's stem is the entry's own: beside it nothing is cut, even when the broad listing is exactly twice the entry's length. An exact-count hit that shares nothing with the pair is no such evidence — admission says nothing about which show a title names — so the cut stands and wins, the unrelated hit kept just behind it.
 
+### Decision tables
+
+What each rule reads of a candidate, and what it decides. "Admitted" is the title rule above; "stem" is a title with the markers it ends on removed; W is a candidate listing more episodes than the entry has; E is Kitsu's count.
+
+**The probe head** — which hits are probed at all (at most five admitted ones):
+
+| Count known | Admitted | Raw position | Probed |
+|---|---|---|---|
+| yes | yes | any | yes, until five admitted are taken |
+| yes | no | among the first five | yes, as evidence only — never picked, rescued or a chain's lead |
+| yes | no | after the first five | no |
+| no | yes | any | yes, until five are taken |
+| no | no | any | no; a pool whose every hit is refused answers as not a clean miss |
+
+**The spanning cut** — W is cut to the entry's episodes only when every row holds:
+
+| Input | Required of W | Required of the completing sibling L |
+|---|---|---|
+| Titles | admitted | right after W's stem, L's title names a division of its own (a marker pair or a spelled ordinal — "Part 2", "2nd Season", "Second Half War") that W's title does not end on, with an ordinal above the entry's part |
+| Count | more than E | exactly W's count minus E |
+| Year | equal to Kitsu's | — |
+
+and no candidate stops it:
+
+| Candidate | Stops the cut | Afterwards |
+|---|---|---|
+| admitted, exactly E, with W's own stem ("Show Part 1" beside "Show") | yes — it is the entry's own listing | it wins as itself |
+| admitted, exactly E, naming only the entry's own part right after W's stem ("… - First Half War") | yes | it wins as itself |
+| admitted, exactly E, anything else (a spinoff "Show Side Story", an unrelated title) | no | scored one behind the cut: a fallback, never ahead of it |
+| any count, refused by the titles | no | never picked |
+
+So a numbered spinoff ("Show Side Story 2") or a recap of W's own season ("Show Season 3 Recap") never completes a span, and an exact listing twice-over ("Show" 24 beside "Show Part 1" 12, E = 12) keeps its own listing.
+
+**Choosing among candidates** — part agreement sits in every selector's order, below an exact title where the selector reads one, and the provider's order breaks only a full tie:
+
+| Selector | Order |
+|---|---|
+| Winner (candidates at the best distance) | exact title, part agreement, matched year |
+| A dead candidate's rank | the same |
+| Airing rescue (confirmed, short of E) | distance, exact title, part agreement |
+| Countless pick | exact title, then part agreement, then matched year |
+| Stitched chain | fit to E, then a lead whose part agrees |
+
 When Kitsu's episode count is unknown (rare, but happens for upcoming shows), an exact title match wins, else the provider's own first hit stands. The frontend treats this as a soft signal and still renders the card; the lazy click path will surface a real error if the bridge picked wrong.
 
 Two verdicts of absence are the ones the availability cache may persist as a negative row: a walk in which every search completed and nothing matched, and the probe's answer that a show it found is listed without the requested mode — a listing with no rows, or a sampled row that lacks the mode. Transport failures, upstream refusals, failed probes, and a mode nobody answered for — every sampled row saying nothing either way — are transient and write nothing, so a real show can't hide behind the negative TTL.
