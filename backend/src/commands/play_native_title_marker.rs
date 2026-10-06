@@ -13,7 +13,7 @@ use super::play_native_title_grammar::normalized;
 pub(crate) use super::play_native_title_grammar::stem;
 use super::play_native_title_grammar::{
     later_divisions, named_ordinals, names_past_stem, opens_on_a_first_division, part_ordinals,
-    reading, trailing_markers,
+    reading, stem_number, trailing_markers,
 };
 #[cfg(test)]
 use super::play_native_title_grammar::{Kind, Marker};
@@ -69,6 +69,13 @@ impl EntryTitles<'_> {
     ///   ordinal like any other: "Season 0" is admitted only where the
     ///   entry names 0 ("Jujutsu Kaisen 0").
     ///
+    /// - A bare number of one or two digits the candidate's title ends
+    ///   on, before any markers, is held to the same rule: "Overlord:
+    ///   Ple Ple Pleiades 2" is not Overlord, "Show 2 Part 1" is not
+    ///   "Show", while "Kaiju No. 8" is admitted for an entry naming 8.
+    ///   A 1 never disqualifies, and three digits ("Mob Psycho 100")
+    ///   number no sequel.
+    ///
     /// Only markers that end a title are read as the title's own, so
     /// "JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable" names
     /// a story part, not a cour.
@@ -77,6 +84,7 @@ impl EntryTitles<'_> {
         trailing_markers(candidate)
             .iter()
             .all(|m| m.named_by(&named))
+            && stem_number(candidate).is_none_or(|n| n == 1 || named.contains(&n))
     }
 
     /// Whether the part a candidate's title ends on agrees with the

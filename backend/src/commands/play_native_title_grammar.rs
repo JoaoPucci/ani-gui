@@ -305,10 +305,9 @@ pub(super) fn later_divisions(sibling: &str, wide: &str) -> Vec<u32> {
 /// ([`past_stem`]), up to the first word that names none, leaving out
 /// any `wide` itself ends on. The one reader every title goes through.
 pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
-    let Some(rest) = past_stem(sibling, wide) else {
+    let Some((rest, wide_markers)) = past_stem(sibling, wide) else {
         return Vec::new();
     };
-    let wide_markers = trailing_markers(wide);
     scan(&words(&rest), true)
         .into_iter()
         .filter(|m| !wide_markers.contains(m))
@@ -318,15 +317,62 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
 /// What follows `wide`'s stem in `title`, when `title` starts with it
 /// at a word's end or with a digit or 第 glued to it — as Japanese
 /// writes them ("ショー２", "ショー第2期"), though any glued digit
-/// counts ("Show2"). "Showtime 2" does not start with "Show".
-fn past_stem(title: &str, wide: &str) -> Option<String> {
-    let own = stem(wide).join(" ");
+/// counts ("Show2"). "Showtime 2" does not start with "Show". With it,
+/// the divisions `wide` ends on, which are `wide`'s own.
+///
+/// A bare number `wide`'s stem ends on stays in the stem, so "Lucky 2
+/// 2nd Season" is read past "Lucky 2". A title that does not carry the
+/// number is read past the stem without it, the number then one of
+/// `wide`'s own divisions: "Show Season 3" beside "Show 2" names a
+/// season 3, as it does beside "Show 2nd Season".
+fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
+    let own = stem(wide);
     let text = words(title).join(" ");
-    let rest = text.strip_prefix(&own)?;
+    let mut wide_markers = trailing_markers(wide);
+    if let Some(rest) = rest_after(&text, &own.join(" ")) {
+        return Some((rest, wide_markers));
+    }
+    let (shorter, n) = without_stem_number(&own)?;
+    let rest = rest_after(&text, &shorter)?;
+    wide_markers.push(Marker {
+        kind: Kind::Season,
+        ordinals: vec![n],
+    });
+    Some((rest, wide_markers))
+}
+
+/// What follows `own` at the start of `text`, when `own` ends there
+/// at a word's end or with a digit or 第 glued to it.
+fn rest_after(text: &str, own: &str) -> Option<String> {
+    let rest = text.strip_prefix(own)?;
     rest.chars()
         .next()
         .is_none_or(|c| c == ' ' || c.is_ascii_digit() || c == '第')
         .then(|| rest.to_string())
+}
+
+/// A stem with the bare number it ends on taken off — a word of its
+/// own ("Show 2") or glued to a Japanese word ("ショー２") — and that
+/// number, when something of the stem is left.
+fn without_stem_number(stem: &[String]) -> Option<(String, u32)> {
+    let (last, before) = stem.split_last()?;
+    if let Some(n) = small_number(last) {
+        return (!before.is_empty()).then(|| (before.join(" "), n));
+    }
+    let n = glued_number(last)?;
+    let head = last.trim_end_matches(|c: char| c.is_ascii_digit());
+    let mut words = before.to_vec();
+    words.push(head.to_string());
+    Some((words.join(" "), n))
+}
+
+/// The bare number a title's stem ends on, one or two digits: "Show
+/// 2", "Show 2 Part 2", the ２ glued to "ショー２". A sequel's number,
+/// as a spelled ordinal standing alone is.
+pub(super) fn stem_number(title: &str) -> Option<u32> {
+    let own = stem(title);
+    let last = own.last()?;
+    small_number(last).or_else(|| glued_number(last))
 }
 
 /// Every division `words` name, first word to last: a marker pair, a
@@ -419,7 +465,7 @@ pub(super) fn opens_on_a_first_division(title: &str, wide: &str) -> bool {
 /// beside "Show" do; "Show Side Story 3" (a spinoff), "Show: Final Arc
 /// Season 2" and "Showtime 2" do not.
 pub(super) fn names_past_stem(title: &str, wide: &str) -> bool {
-    past_stem(title, wide).is_some_and(|rest| !scan(&words(&rest), true).is_empty())
+    past_stem(title, wide).is_some_and(|(rest, _)| !scan(&words(&rest), true).is_empty())
 }
 
 /// A title's words with the markers it ends on removed: the name the
