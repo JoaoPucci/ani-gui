@@ -61,6 +61,7 @@ mod play_native_split;
 pub(crate) mod play_native_test_provider;
 pub(crate) mod play_native_title_marker;
 pub mod play_native_walk;
+mod play_native_wide_listing;
 pub mod play_native_year;
 pub mod play_resolution_cache;
 pub mod play_syncplay;
