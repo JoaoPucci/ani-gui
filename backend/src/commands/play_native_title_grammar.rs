@@ -277,33 +277,6 @@ pub(super) fn part_ordinals(title: &str) -> BTreeSet<u32> {
         .collect()
 }
 
-/// The markers `words` open with, in order: marker pairs ("season 3
-/// part 2", "2nd season"), ordinals standing alone ("second half war"
-/// opens with its second) and Japanese divisions written as one word
-/// ("第2期"), up to the first word that is none of them.
-fn leading_markers(words: &[String]) -> Vec<Marker> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < words.len() {
-        if let Some(m) = words.get(i + 1).and_then(|next| marker_of(&words[i], next)) {
-            out.push(m);
-            i += 2;
-        } else if let Some((m, "")) = japanese_trailing(&words[i]) {
-            out.push(m);
-            i += 1;
-        } else if let Some(n) = spelled_ordinal(&words[i]) {
-            out.push(Marker {
-                kind: Kind::Season,
-                ordinals: vec![n],
-            });
-            i += 1;
-        } else {
-            break;
-        }
-    }
-    out
-}
-
 /// The ordinals `sibling` names as divisions of its own right after
 /// `wide`'s stem, leaving out any division `wide` itself ends on:
 /// "Attack on Titan Season 3 Part 2" beside "Attack on Titan Season
@@ -318,24 +291,33 @@ pub(super) fn later_divisions(sibling: &str, wide: &str) -> Vec<u32> {
         .collect()
 }
 
-/// The divisions behind [`later_divisions`], with their kinds. A
-/// single Japanese division glued to the stem and ending the title
-/// ("ショー第2期" beside "ショー") is read as one written after a
-/// space; one followed by more text, or by a second division, is not.
+/// The divisions behind [`later_divisions`], with their kinds: those
+/// [`divisions`] reads at the start of what follows `wide`'s stem
+/// ([`past_stem`]), up to the first word that names none, leaving out
+/// any `wide` itself ends on. The one reader every title goes through.
 pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
-    let own = stem(wide);
+    let Some(rest) = past_stem(sibling, wide) else {
+        return Vec::new();
+    };
     let wide_markers = trailing_markers(wide);
-    let sibling_words = words(sibling);
-    if sibling_words.len() < own.len() || sibling_words[..own.len()] != *own {
-        return match japanese_trailing(sibling) {
-            Some((m, before)) if words(before) == own && !wide_markers.contains(&m) => vec![m],
-            _ => Vec::new(),
-        };
-    }
-    leading_markers(&sibling_words[own.len()..])
+    scan(&words(&rest), true)
         .into_iter()
         .filter(|m| !wide_markers.contains(m))
         .collect()
+}
+
+/// What follows `wide`'s stem in `title`, when `title` starts with it
+/// at a word's end or with a number or 第 glued to it as Japanese
+/// writes them ("ショー２", "ショー第2期"). "Showtime 2" does not start
+/// with "Show".
+fn past_stem(title: &str, wide: &str) -> Option<String> {
+    let own = stem(wide).join(" ");
+    let text = words(title).join(" ");
+    let rest = text.strip_prefix(&own)?;
+    rest.chars()
+        .next()
+        .is_none_or(|c| c == ' ' || c.is_ascii_digit() || c == '第')
+        .then(|| rest.to_string())
 }
 
 /// Every division `words` name, first word to last: a marker pair, a
@@ -346,6 +328,12 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
 /// own: "II Part 2" is a season 2 and a part 2, not a part 2 and a
 /// stray 2.
 fn divisions(words: &[String]) -> Vec<Marker> {
+    scan(words, false)
+}
+
+/// [`divisions`], stopping at the first word that names none when
+/// `leading` holds: the divisions a title opens with.
+fn scan(words: &[String], leading: bool) -> Vec<Marker> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < words.len() {
@@ -371,6 +359,8 @@ fn divisions(words: &[String]) -> Vec<Marker> {
                 kind: Kind::Season,
                 ordinals: vec![n],
             });
+        } else if leading {
+            break;
         }
         i += 1;
     }
@@ -412,15 +402,7 @@ pub(super) fn reading(title: &str) -> Vec<u32> {
 /// Season 2" beside "Show" do; "Show Side Story" and "Showtime 2" do
 /// not.
 pub(super) fn names_past_stem(title: &str, wide: &str) -> bool {
-    let own = stem(wide).join(" ");
-    let text = words(title).join(" ");
-    let Some(rest) = text.strip_prefix(&own) else {
-        return false;
-    };
-    rest.chars()
-        .next()
-        .is_none_or(|c| c == ' ' || c.is_ascii_digit() || c == '第')
-        && !divisions(&words(rest)).is_empty()
+    past_stem(title, wide).is_some_and(|rest| !divisions(&words(&rest)).is_empty())
 }
 
 /// A title's words with the markers it ends on removed: the name the
