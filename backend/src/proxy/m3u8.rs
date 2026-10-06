@@ -13,17 +13,27 @@
 //! ## Functions
 //!
 //! - [`rewrite_master`] — parse a master playlist, rewrite each
-//!   `EXT-X-STREAM-INF` and `EXT-X-MEDIA` URI, return the new manifest.
+//!   `EXT-X-STREAM-INF`, `EXT-X-I-FRAME-STREAM-INF`, `EXT-X-MEDIA`,
+//!   `EXT-X-SESSION-KEY` and `EXT-X-SESSION-DATA` URI, return the new
+//!   manifest.
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
 //! - `build_proxy_uri` (private) — resolve a relative URI against a base,
 //!   then build a proxy URL with HMAC token, marked `k=pl` when a master
-//!   names it as a playlist and `k=md` when a media playlist names it.
+//!   names it as a playlist and `k=md` when it names media — a master's
+//!   session key or session data, anything a media playlist names.
 //! - [`names_a_playlist`] — whether the segment route is fetching a
 //!   playlist: by that mark, or for an unmarked URL by a lowercase
 //!   `.m3u8` path.
 //!
-//! All functions are pure (no I/O). Property tests target idempotency.
+//! A tag the parser does not know that carries a `URI=` attribute,
+//! and a date range whose client attributes name an asset (`…URI`,
+//! `…-LIST`), are dropped rather than left pointing upstream. What the
+//! rewrite does not see — a URI built from `EXT-X-DEFINE` variables —
+//! passes through as written.
+//!
+//! All functions are pure (no I/O). Property tests target idempotency
+//! and that every URI the parsed tags carry comes back on the proxy.
 
 use base64::Engine;
 use url::Url;
@@ -35,7 +45,8 @@ use crate::proxy::token::{sign_segment, AppSecret, SessionId};
 /// How the proxy should render rewritten URIs back into the manifest.
 /// Path style: `/s/<session>/seg?u=<base64-url-encoded-original>&t=<hmac>`,
 /// with `&k=pl` on a URI a master names as a playlist and `&k=md` on
-/// one a media playlist names.
+/// one that names media — a master's session key or session data,
+/// anything a media playlist names.
 #[derive(Debug, Clone)]
 pub struct ProxyOrigin {
     /// e.g. `http://127.0.0.1:42337` — no trailing slash.
@@ -92,10 +103,11 @@ const MEDIA_KIND: &str = "k=md";
 
 /// Whether the segment route is fetching a playlist. HLS names a
 /// playlist by where it appears, not by its URL, so the rewrite marks
-/// each URI it writes: what a master names is a playlist, whatever its
-/// URL looks like — a rendition may sit at `INDEX.M3U8` or
-/// `playlist?id=720` — and what a media playlist names is media, even
-/// at a path ending in `.M3U8`. Only a URL without either mark goes by
+/// each URI it writes: a playlist a master names is a playlist,
+/// whatever its URL looks like — a rendition may sit at `INDEX.M3U8`
+/// or `playlist?id=720` — and what a media playlist names, and a
+/// master's session key or session data, is media, even at a path
+/// ending in `.M3U8`. Only a URL without either mark goes by
 /// its path, and then by the lowercase `.m3u8` it always matched.
 #[must_use]
 pub fn names_a_playlist(kind: Option<&str>, upstream: &Url) -> bool {
