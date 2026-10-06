@@ -13,6 +13,10 @@ use crate::error::Result;
 use crate::history::guard::hold;
 use crate::history::remove_by_id;
 
+#[path = "history_remove_all.rs"]
+mod all;
+pub use all::history_clear;
+
 /// Remove the history row matching `id`. Returns `true` when a row
 /// was removed, `false` for a no-op (id not in file, file missing,
 /// empty id). The rewrite is atomic (`.new` + rename) so a concurrent
@@ -91,39 +95,5 @@ pub fn history_delete(state: &crate::app::AppState, id: &str) -> Result<bool> {
         super::history_forget::sweep_offsets(state, &[id]);
         held.removed_show(id, &known_by);
         Ok(true)
-    })
-}
-
-/// Truncate the history file to zero length. Mirrors the script's `-D`.
-/// What the rows left in the cache goes with them
-/// ([`super::history_forget::forget_all`]).
-///
-/// # Errors
-/// Returns [`crate::error::AniError::Io`] if the file exists but cannot
-/// be read, or cannot be written, and [`crate::error::AniError::Cache`]
-/// if the cache cannot be.
-pub fn history_clear(state: &crate::app::AppState) -> Result<()> {
-    hold(&state.history_path, |held| {
-        // In history_delete's order, for its reasons.
-        // A history that exists but cannot be read fails the clear: the
-        // rows it holds name the offsets that go with them.
-        let cleared = held.rows()?;
-        let ids: Vec<&str> = cleared.iter().map(|e| e.id.as_str()).collect();
-        // What a delete of each show would take under another key: the
-        // numbering of the keys its pages resolved under, whatever else
-        // names them, since every resolution row goes below.
-        let mut known_by = super::history_forget_skips::claimed_ids(state, &cleared)?;
-        for entry in &cleared {
-            known_by.extend(held.pages_of(&entry.id));
-        }
-        let known_by: Vec<String> = known_by.into_iter().filter(|k| !k.is_empty()).collect();
-        let found = super::history_forget_resolutions::find_resolutions(state, &ids, &known_by)?;
-        let rowless: Vec<&str> = found.named.iter().map(String::as_str).collect();
-        super::history_forget::sweep_offsets(state, &rowless);
-        super::history_forget::forget_all(state)?;
-        held.write(&[])?;
-        super::history_forget::sweep_offsets(state, &ids);
-        held.removed_all();
-        Ok(())
     })
 }
