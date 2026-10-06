@@ -250,3 +250,17 @@ test('markup carrying an inline script is not taken for markup without one', () 
 	assert.notEqual(run.status, 0);
 	assert.match(run.stderr, /app\.html: neither measured nor declared/);
 });
+
+test('only the generated Paraglide directory is skipped, not anything named like it', () => {
+	const dir = scratch({
+		'a.ts': 'export function a(): void {}\n',
+		'myparaglide.ts': 'export function b(x: boolean) { return x ? 1 : 0; }\n',
+		'paraglide-utils/c.ts': 'export function c(): void {}\n',
+		'lib/paraglide/messages.js': 'export function m() {}\n'
+	});
+	const run = spawnSync('node', [tool, '--tsv', dir], { encoding: 'utf-8' });
+	assert.equal(run.status, 0, run.stderr);
+	const names = run.stdout.trim().split('\n').map((l) => l.split('\t')[2]);
+	assert.deepEqual(names.sort(), ['a', 'b', 'c']);
+	assert.match(run.stderr, /skipped — 1 files of generated Paraglide output/);
+});

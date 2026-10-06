@@ -295,3 +295,15 @@ test('numeric character references in a path are decoded like named ones', () =>
 	);
 	assert.deepEqual(out.top.map((r) => [r.file, r.ccn, r.cov]), [["a'b&c.ts", 3, 100]]);
 });
+
+test('test files of every measured script kind are left out of the ranking', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-tests-'));
+	const files = ['src/a.test.mjs', 'src/b.spec.cjs', 'src/c.test.mts', 'src/d.test.cts', 'src/e.test.tsx', 'src/keep.mjs'];
+	const xml = ['<cppncss><measure type="Function">', ...files.map((f) => lizardItem(f, 5)), '</measure></cppncss>'].join('\n');
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('src/keep.mjs', 10, 10));
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], { cwd: tmpDir, encoding: 'utf-8' })
+	);
+	assert.deepEqual(out.top.map((r) => r.file), ['src/keep.mjs']);
+});
