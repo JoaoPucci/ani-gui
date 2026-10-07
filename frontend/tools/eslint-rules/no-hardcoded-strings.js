@@ -36,7 +36,8 @@ const USER_FACING_ATTRS = new Set([
 	'label'
 ]);
 
-/** Cheap heuristic for "looks like English text we'd want translated". */
+/** Cheap heuristic for "looks like English text we'd want translated".
+ *  @param {unknown} raw */
 function isTranslatable(raw) {
 	if (typeof raw !== 'string') return false;
 	const value = raw.trim();
@@ -73,7 +74,9 @@ function isTranslatable(raw) {
 	return true;
 }
 
-/** Walk up the AST to find a parent of `type`. */
+/** Walk up the AST to find a parent of `type`.
+ *  @param {any} node
+ *  @param {string} type */
 function findParent(node, type) {
 	let cur = node.parent;
 	while (cur) {
@@ -84,7 +87,9 @@ function findParent(node, type) {
 }
 
 /** Is the node inside a Svelte comment-marked block? Walks back a few
- *  tokens looking for `i18n-ignore` in the previous comment. */
+ *  tokens looking for `i18n-ignore` in the previous comment.
+ *  @param {any} node
+ *  @param {any} sourceCode */
 function hasIgnoreMarker(node, sourceCode) {
 	const before = sourceCode.getTokensBefore(node, { count: 8, includeComments: true });
 	for (const t of before) {
@@ -95,6 +100,7 @@ function hasIgnoreMarker(node, sourceCode) {
 	return false;
 }
 
+/** @type {import('eslint').Rule.RuleModule} */
 export default {
 	meta: {
 		type: 'problem',
@@ -109,9 +115,10 @@ export default {
 		}
 	},
 	create(context) {
-		const sourceCode = context.sourceCode ?? context.getSourceCode();
+		const sourceCode = context.sourceCode;
 
 		return {
+			/** @param {any} node */
 			SvelteText(node) {
 				if (!isTranslatable(node.value)) return;
 				if (hasIgnoreMarker(node, sourceCode)) return;
@@ -124,6 +131,7 @@ export default {
 					data: { value: node.value.trim().slice(0, 50) }
 				});
 			},
+			/** @param {any} node */
 			SvelteAttribute(node) {
 				const attrName = typeof node.key?.name === 'string' ? node.key.name : null;
 				if (!attrName || !USER_FACING_ATTRS.has(attrName)) return;
