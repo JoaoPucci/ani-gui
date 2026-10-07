@@ -11,9 +11,11 @@ use thiserror::Error;
 /// Result alias for backend operations.
 pub type Result<T, E = AniError> = std::result::Result<T, E>;
 
-/// Any failure that may occur in the backend. Variants serialize to the
-/// frontend with a `kind` discriminator and an i18n `key` so the UI can
-/// localize without parsing the message.
+/// Any failure that may occur in the backend. A variant serializes with
+/// a `kind` discriminator and its fields; the error envelope every HTTP
+/// error and SSE error event carries (`api::ani_error_payload`) adds
+/// its stable i18n `key` ([`AniError::key`]), so the UI can localize
+/// without parsing the message.
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AniError {

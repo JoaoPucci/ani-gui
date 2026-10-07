@@ -48,7 +48,8 @@ use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
 /// The body is the envelope [`ani_error_payload`] builds — the
 /// `kind` discriminator, the variant's fields, and its stable `key` —
 /// so an HTTP error and an SSE error event carry the same shape, and
-/// the key the frontend resolves (AGENTS.md §4) reaches it either way.
+/// the stable key AGENTS.md §4 promises the frontend reaches it either
+/// way. The frontend's error surfaces dispatch on `kind` today.
 impl IntoResponse for AniError {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.http_status_code())
@@ -61,8 +62,9 @@ impl IntoResponse for AniError {
 /// carries: the HTTP error bodies and the play- and download-stream
 /// SSE error events alike
 /// (`{"kind": "<snake>", "key": "error.<scope>.<name>", ...}`)
-/// — the frontend matches on `kind` to render error-specific UI
-/// (today: the ffmpeg-missing modal at the layout level).
+/// — the frontend matches on `kind` to render error-specific UI (the
+/// ffmpeg-missing modal, the rate-limit and upstream copy, the
+/// syncplay and episode-unavailable branches among them).
 ///
 /// Falls back to `{"kind":"io"}` if the typed error somehow fails
 /// to serialize, which keeps the frontend's discriminator handler
