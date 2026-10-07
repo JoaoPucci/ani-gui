@@ -122,38 +122,56 @@ pub(crate) fn hold_to(bucket: &mut Bucket, now: Instant, burst: u32, refill: Dur
 pub struct HostBudget {
     buckets: Mutex<HashMap<String, Bucket>>,
     lines: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
-    /// Requests the unpaced downloads running against each host may
-    /// have in flight.
-    unpaced: Mutex<HashMap<String, u32>>,
+    /// The unpaced downloads running, and when the last one ended.
+    unpaced: Mutex<Unpaced>,
     burst: u32,
     refill: Duration,
 }
 
-/// An unpaced download running against a host: while it runs, the
-/// host's tokens are held to what its requests in flight leave of the
-/// burst; when it ends, those requests are spent.
+/// The unpaced downloads running — the requests they may have in
+/// flight between them — and, once one has ended, where that left a
+/// host the player has not fetched from yet: a bucket held as every
+/// host's was, refilling as theirs do.
+#[derive(Debug, Default)]
+struct Unpaced {
+    in_flight: u32,
+    untouched: Option<Bucket>,
+}
+
+/// An unpaced download running: while it runs, every host's tokens are
+/// held to what its requests in flight leave of the burst — its
+/// fragments go wherever its playlists send them, which the app does
+/// not see — and when it ends every host is left where the hold left
+/// it, a host not yet fetched from starting there too.
 pub(crate) struct UnpacedRun<'a> {
     budget: &'a HostBudget,
-    host: String,
     in_flight: u32,
 }
 
 impl Drop for UnpacedRun<'_> {
     fn drop(&mut self) {
+        let now = Instant::now();
+        let most = self.budget.held_to(self.in_flight);
         {
             let mut unpaced = self
                 .budget
                 .unpaced
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            if let Some(n) = unpaced.get_mut(&self.host) {
-                *n = n.saturating_sub(self.in_flight);
-                if *n == 0 {
-                    unpaced.remove(&self.host);
-                }
-            }
+            unpaced.in_flight = unpaced.in_flight.saturating_sub(self.in_flight);
+            let untouched = unpaced
+                .untouched
+                .get_or_insert_with(|| Bucket::full(self.budget.burst, now));
+            hold_to(untouched, now, self.budget.burst, self.budget.refill, most);
         }
-        self.budget.spend(&self.host, self.in_flight);
+        let mut buckets = self
+            .budget
+            .buckets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        for bucket in buckets.values_mut() {
+            hold_to(bucket, now, self.budget.burst, self.budget.refill, most);
+        }
     }
 }
 
@@ -163,7 +181,7 @@ impl HostBudget {
         Self {
             buckets: Mutex::new(HashMap::new()),
             lines: Mutex::new(HashMap::new()),
-            unpaced: Mutex::new(HashMap::new()),
+            unpaced: Mutex::new(Unpaced::default()),
             burst,
             refill,
         }
@@ -236,22 +254,36 @@ impl HostBudget {
         }
     }
 
-    /// An unpaced download starts against `host`, with up to
-    /// `in_flight` requests at a time that pass the budget: the host's
-    /// tokens are held to what they leave of the burst until it ends,
-    /// and spent by them when it does ([`UnpacedRun`]).
-    pub(crate) fn unpaced_run(&self, host: &str, in_flight: u32) -> UnpacedRun<'_> {
-        *self
-            .unpaced
+    /// An unpaced download starts, with up to `in_flight` requests at a
+    /// time that pass the budget: every host's tokens are held to what
+    /// they leave of the burst until it ends ([`UnpacedRun`]).
+    pub(crate) fn unpaced_run(&self, in_flight: u32) -> UnpacedRun<'_> {
+        self.unpaced
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .entry(host.to_owned())
-            .or_default() += in_flight;
+            .in_flight += in_flight;
         UnpacedRun {
             budget: self,
-            host: host.to_owned(),
             in_flight,
         }
+    }
+
+    /// The tokens a host is held to beside `in_flight` requests that
+    /// pass the budget: what they leave of the burst, never below one,
+    /// so the hold alone never empties a bucket.
+    fn held_to(&self, in_flight: u32) -> u32 {
+        self.burst.saturating_sub(in_flight).max(1)
+    }
+
+    /// A bucket for a host first fetched from at `now`: full, or, once
+    /// an unpaced download has ended, where the holds left every host,
+    /// refilling from then.
+    fn new_bucket(&self, now: Instant) -> Bucket {
+        self.unpaced
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .untouched
+            .unwrap_or_else(|| Bucket::full(self.burst, now))
     }
 
     /// Spends `n` tokens of `host`'s budget without waiting for them:
@@ -261,7 +293,7 @@ impl HostBudget {
         let now = Instant::now();
         let bucket = buckets
             .entry(host.to_owned())
-            .or_insert_with(|| Bucket::full(self.burst, now));
+            .or_insert_with(|| self.new_bucket(now));
         spend_from(bucket, now, self.burst, self.refill, n);
     }
 
@@ -277,26 +309,27 @@ impl HostBudget {
         let now = Instant::now();
         let bucket = buckets
             .entry(host.to_owned())
-            .or_insert_with(|| Bucket::full(self.burst, now));
-        self.hold_to_unpaced(host, bucket, now);
+            .or_insert_with(|| self.new_bucket(now));
+        self.hold_to_unpaced(bucket, now);
         take(bucket, now, self.burst, self.refill)
     }
 
-    /// While unpaced downloads run against `host`, holds its tokens to
-    /// what their requests in flight leave of the burst — never below
-    /// one, since the player's first request is what tells them that
-    /// playback started.
-    fn hold_to_unpaced(&self, host: &str, bucket: &mut Bucket, now: Instant) {
+    /// While unpaced downloads run, holds a host's tokens to what their
+    /// requests in flight leave of the burst ([`Self::held_to`]).
+    fn hold_to_unpaced(&self, bucket: &mut Bucket, now: Instant) {
         let in_flight = self
             .unpaced
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .get(host)
-            .copied()
-            .unwrap_or(0);
+            .in_flight;
         if in_flight > 0 {
-            let most = self.burst.saturating_sub(in_flight).max(1);
-            hold_to(bucket, now, self.burst, self.refill, most);
+            hold_to(
+                bucket,
+                now,
+                self.burst,
+                self.refill,
+                self.held_to(in_flight),
+            );
         }
     }
 }
