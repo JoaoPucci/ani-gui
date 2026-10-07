@@ -27,8 +27,8 @@ pub fn defined(body: &str, url: &Url, imported: &Variables) -> Variables {
 }
 
 /// The variable one `EXT-X-DEFINE` attribute list defines, if its value
-/// is there to take. A query parameter's value is taken as the URL
-/// carries it, encoded: decoded, it could split the query it lands in.
+/// is there to take. A query parameter's value is percent-decoded, as
+/// the spec has it, and not form-decoded: a `+` stays a `+`.
 fn definition(list: &str, url: &Url, imported: &Variables) -> Option<(String, String)> {
     let attrs = attributes(list);
     if let (Some(name), Some(value)) = (attrs.get("NAME"), attrs.get("VALUE")) {
@@ -40,39 +40,65 @@ fn definition(list: &str, url: &Url, imported: &Variables) -> Option<(String, St
             .split('&')
             .filter_map(|pair| pair.split_once('=').or(Some((pair, ""))))
             .find(|(k, _)| k == param)
-            .map(|(_, v)| (param.clone(), v.to_string()));
+            .map(|(_, v)| (param.clone(), percent_decode(v)));
     }
     let name = attrs.get("IMPORT")?;
     imported.get(name).map(|v| (name.clone(), v.clone()))
 }
 
 /// The playlist with every `{$name}` it defines spelled out — in URI
-/// lines and in quoted attribute values, where the spec allows
-/// references, each spelled once and its value never read again — and
-/// the `EXT-X-DEFINE` lines that defined something gone: what they
-/// defined is in every line that used it, so nothing downstream needs
-/// them. A definition that defined nothing stays, as does a reference
-/// to nothing defined.
+/// lines and in tags' attribute values, where the spec allows
+/// references, each spelled once and its value never read again, and
+/// only after the definition it names — and the `EXT-X-DEFINE` lines
+/// that defined something gone: what they defined is in every line
+/// that used it, so nothing downstream needs them. A definition that
+/// defined nothing stays, as does a reference to nothing defined, and
+/// a segment's title is text, not a reference.
 #[must_use]
 pub fn substitute(body: &[u8], url: &Url, imported: &Variables) -> Vec<u8> {
     let text = String::from_utf8_lossy(body);
     if !text.contains(DEFINE) {
         return body.to_vec();
     }
-    let vars = defined(&text, url, imported);
+    let mut vars = Variables::new();
     let mut out = String::with_capacity(text.len());
     for line in text.split_inclusive('\n') {
         if let Some(list) = line.strip_prefix(DEFINE) {
-            if definition(list.trim_end(), url, imported).is_none() {
-                out.push_str(line);
+            match definition(list.trim_end(), url, imported) {
+                Some((name, value)) => {
+                    vars.insert(name, value);
+                }
+                None => out.push_str(line),
             }
-        } else if line.starts_with('#') {
-            out.push_str(&spell_quoted(line, &vars));
+        } else if line.starts_with("#EXTINF:") {
+            out.push_str(line);
         } else {
             out.push_str(&spell(line, &vars));
         }
     }
     out.into_bytes()
+}
+
+/// `text` with every `%XX` escape decoded; an escape that is not one
+/// is left as written.
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |b: u8| (b as char).to_digit(16);
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                #[allow(clippy::cast_possible_truncation)]
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// `text` with each `{$name}` reference to a variable in `vars`
@@ -96,23 +122,6 @@ fn spell(text: &str, vars: &Variables) -> String {
         }
     }
     out.push_str(rest);
-    out
-}
-
-/// A tag line with references spelled out inside its quoted values
-/// only.
-fn spell_quoted(line: &str, vars: &Variables) -> String {
-    let mut out = String::with_capacity(line.len());
-    for (i, part) in line.split('"').enumerate() {
-        if i > 0 {
-            out.push('"');
-        }
-        if i % 2 == 1 {
-            out.push_str(&spell(part, vars));
-        } else {
-            out.push_str(part);
-        }
-    }
     out
 }
 
