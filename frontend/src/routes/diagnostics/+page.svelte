@@ -16,6 +16,7 @@
 	} from '$lib/api';
 	import { legacySweepView } from '$lib/diagnostics/legacy-sweep';
 	import { m } from '$lib/paraglide/messages';
+	import { describeError } from '$lib/play/error-copy';
 
 	let info = $state<AppInfo | null>(null);
 	let history = $state<HistoryEntry[] | null>(null);
@@ -69,14 +70,6 @@
 		} finally {
 			busy = false;
 		}
-	}
-
-	function describeError(e: unknown): string {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			if (typeof obj.kind === 'string') return obj.kind;
-		}
-		return String(e);
 	}
 
 	onMount(refresh);

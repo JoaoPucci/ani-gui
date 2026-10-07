@@ -76,7 +76,7 @@
 	"episode_card_num": "EP {episode}",
 	"episode_card_title_fallback": "Episode {num}",
 	"episode_card_length_minutes": "{minutes}m",
-	"episodes_error_message": "Couldn't load episodes ({detail}).",
+	"episodes_error_message": "Couldn't load episodes. {reason}",
 	"episodes_loading_message": "Loading episodes…",
 	"similar_strip_eyebrow": "More like this",
 	"error_play_headline": "Couldn't play episode {episode}",

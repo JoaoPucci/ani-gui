@@ -18,6 +18,7 @@
 		type ExternalPlayerKind
 	} from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
+	import { describeError } from '$lib/play/error-copy';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
 
@@ -56,15 +57,6 @@
 				/* about section gracefully degrades if app info fails */
 			});
 	});
-
-	function describeError(e: unknown): string {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			if (typeof obj.detail === 'string') return obj.detail;
-			if (typeof obj.kind === 'string') return obj.kind;
-		}
-		return String(e);
-	}
 
 	let debounceHandle: ReturnType<typeof setTimeout> | null = null;
 	async function persist(next: Config) {

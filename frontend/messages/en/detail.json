@@ -85,7 +85,7 @@
 	"play_button_continue": "Continue",
 	"quality_group_aria_label": "Quality",
 	"quality_group_label": "Quality",
-	"settings_error_prefix": "Settings: {detail}",
+	"settings_error_prefix": "Settings: {reason}",
 	"similar_strip_caption": "via Kitsu search",
 	"similar_strip_eyebrow": "Similar titles",
 	"status_current": "Currently airing",

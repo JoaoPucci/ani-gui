@@ -76,7 +76,7 @@
 	"episode_card_num": "EP {episode}",
 	"episode_card_title_fallback": "Episodio {num}",
 	"episode_card_length_minutes": "{minutes} min",
-	"episodes_error_message": "No se pudieron cargar los episodios ({detail}).",
+	"episodes_error_message": "No se pudieron cargar los episodios. {reason}",
 	"episodes_loading_message": "Cargando episodios…",
 	"similar_strip_eyebrow": "Más como esto",
 	"error_play_headline": "No se pudo reproducir el episodio {episode}",

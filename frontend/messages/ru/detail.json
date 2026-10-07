@@ -85,7 +85,7 @@
 	"play_button_continue": "Продолжить",
 	"quality_group_aria_label": "Качество",
 	"quality_group_label": "Качество",
-	"settings_error_prefix": "Настройки: {detail}",
+	"settings_error_prefix": "Настройки: {reason}",
 	"similar_strip_caption": "по поиску Kitsu",
 	"similar_strip_eyebrow": "Похожие тайтлы",
 	"status_current": "Сейчас выходит",

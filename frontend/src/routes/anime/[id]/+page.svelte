@@ -37,7 +37,10 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
-	import { describePlayFailure as sharedDescribePlayFailure } from '$lib/play/error-copy';
+	import {
+		describeError,
+		describePlayFailure as sharedDescribePlayFailure
+	} from '$lib/play/error-copy';
 	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
@@ -539,7 +542,7 @@
 			void prefetchAdjacent(wantPage);
 		} catch (e) {
 			if (opts.initial) rawWindowed = [];
-			episodesError = describeErrorString(e);
+			episodesError = describeError(e);
 		} finally {
 			episodesLoading = false;
 		}
@@ -949,14 +952,14 @@
 			})
 			.catch((e) => {
 				if (id !== currentId) return;
-				error = describeError(e);
+				error = { headline: m.detail_error_load_headline(), detail: describeError(e) };
 			});
 	});
 
 	onMount(() => {
 		void settingsGet()
 			.then((c) => (config = c))
-			.catch((e) => (configError = describeErrorString(e)));
+			.catch((e) => (configError = describeError(e)));
 	});
 
 	// Background prefetch: as soon as we have the show title + the
@@ -1076,28 +1079,6 @@
 		return () => window.removeEventListener('scroll', onScroll);
 	});
 
-	function describeError(e: unknown): { headline: string; detail: string | null } {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			const detail =
-				typeof obj.detail === 'string'
-					? obj.detail
-					: typeof obj.kind === 'string'
-						? obj.kind
-						: null;
-			return { headline: m.detail_error_load_headline(), detail };
-		}
-		return { headline: m.detail_error_load_headline(), detail: String(e) };
-	}
-	function describeErrorString(e: unknown): string {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			if (typeof obj.detail === 'string') return obj.detail;
-			if (typeof obj.kind === 'string') return obj.kind;
-		}
-		return String(e);
-	}
-
 	/** Play-call failure copy: the shared mapper with this surface's
 	 *  one deliberate difference — the definitive catalogue-miss
 	 *  phrasing (this page also gates the Play CTA proactively). */
@@ -1159,7 +1140,7 @@
 		try {
 			await settingsPut(next);
 		} catch (e) {
-			configError = describeErrorString(e);
+			configError = describeError(e);
 		}
 	}
 	async function setQuality(q: string) {
@@ -1169,7 +1150,7 @@
 		try {
 			await settingsPut(next);
 		} catch (e) {
-			configError = describeErrorString(e);
+			configError = describeError(e);
 		}
 	}
 
@@ -1581,7 +1562,7 @@
 
 						{#if configError}
 							<span class="seg-error" role="alert"
-								>{m.detail_settings_error_prefix({ detail: configError })}</span
+								>{m.detail_settings_error_prefix({ reason: configError })}</span
 							>
 						{/if}
 					</div>

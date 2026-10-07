@@ -14,7 +14,10 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
-	import { describePlayFailure as sharedDescribePlayFailure } from '$lib/play/error-copy';
+	import {
+		describeError,
+		describePlayFailure as sharedDescribePlayFailure
+	} from '$lib/play/error-copy';
 	import { progressLabel } from '$lib/play/format';
 
 	// Per-id, split-per-transition gate for the Continue Watching
@@ -625,15 +628,6 @@
 		if (stale) void refreshWatchLater();
 	}
 
-	function describeError(e: unknown): string {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			if (typeof obj.detail === 'string') return obj.detail;
-			if (typeof obj.kind === 'string') return obj.kind;
-		}
-		return String(e);
-	}
-
 	/** Play-call failure copy: the shared mapper, default phrasing.
 	 *  (The strings this replaces were hardcoded English.) */
 	function describePlayFailure(e: unknown): string {
@@ -843,7 +837,7 @@
 			<p class="eyebrow">
 				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
 				<span class="eyebrow-rule" aria-hidden="true"></span>
-				<span class="eyebrow-value">{trendingError}</span>
+				<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
 			</p>
 			<h1 class="hero-title">{m.home_hero_error_title()}</h1>
 			<p class="hero-snippet">{m.home_hero_error_body()}</p>

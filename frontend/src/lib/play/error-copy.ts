@@ -1,33 +1,72 @@
 /**
- * Maps backend errors to user-facing copy on the play page. Two
- * helpers, in order of specificity:
+ * Maps backend errors to user-facing copy. Three helpers, in order of
+ * specificity:
  *
- *   • `describeError` flattens the AniError envelope to a debug
- *     string (`"<kind>: <detail>"`); used for log lines and as the
- *     input to `describePlayFailure`'s pattern match.
+ *   • `describeError` is the general one: a short localized sentence
+ *     naming the cause by the error's `kind`. Every surface that shows
+ *     a failure without a copy of its own uses it.
  *   • `describePlayFailure` picks the right user-facing message for
  *     a play-call failure — "no episode," "scraper unhappy,"
  *     "network trouble," etc.
+ *   • `describeExternalLaunchFailure` covers "Open in external player".
  *
- * Extracted from the play page so the four message branches can be
+ * None of them prints the payload's `detail`. The backend documents it
+ * as free text for logs (ParseFailed carries serde's message, a URL that
+ * failed validation, …), and a raw `kind` token or a thrown Error's
+ * message is no better on screen.
+ *
+ * Extracted from the play page so the message branches can be
  * unit-tested instead of being threaded through Svelte effect
  * runtime.
  */
 
 import { m } from '$lib/paraglide/messages';
 
-/** Flatten an arbitrary thrown value into a stable debug string.
- *  Recognises the AniError envelope shape (`{ kind, detail }`) and
- *  falls back to `String(e)` for anything else. */
-export function describeError(e: unknown): string {
+/** The `kind` of an AniError envelope, or null for anything else. */
+function kindOf(e: unknown): string | null {
+	if (typeof e !== 'object' || e === null) return null;
+	const kind = (e as Record<string, unknown>).kind;
+	return typeof kind === 'string' ? kind : null;
+}
+
+/** Flatten a thrown value into the lowercase text `describePlayFailure`
+ *  matches its branches against. Internal: it can carry the payload's
+ *  detail, so it is for classification only and never shown. */
+function classifierText(e: unknown): string {
 	if (typeof e === 'object' && e !== null) {
 		const obj = e as Record<string, unknown>;
 		const kind = typeof obj.kind === 'string' ? obj.kind : null;
 		const detail = typeof obj.detail === 'string' ? obj.detail : null;
-		if (kind && detail) return `${kind}: ${detail}`;
-		if (kind) return kind;
+		if (kind && detail) return `${kind}: ${detail}`.toLowerCase();
+		if (kind) return kind.toLowerCase();
 	}
-	return String(e);
+	return String(e).toLowerCase();
+}
+
+/** User-facing copy for any failure: a localized sentence chosen by
+ *  the error's kind, never its detail. Unrecognised kinds and values
+ *  that are not an AniError envelope get the generic sentence. */
+export function describeError(e: unknown): string {
+	switch (kindOf(e)) {
+		case 'network':
+		case 'gate_refused':
+		case 'upstream':
+		case 'http':
+			return m.errors_reason_network();
+		case 'timeout':
+			return m.errors_reason_timeout();
+		case 'rate_limited':
+			return m.errors_reason_busy();
+		case 'parse_failed':
+		case 'metadata':
+			return m.errors_reason_bad_response();
+		case 'cache':
+		case 'io':
+		case 'config':
+			return m.errors_reason_local();
+		default:
+			return m.errors_reason_generic();
+	}
 }
 
 /** First-chance mapper for the backend's typed rate limit. Returns
@@ -72,7 +111,7 @@ export function describePlayFailure(e: unknown, opts?: { noResults?: () => strin
 	if (rateLimited !== null) return rateLimited;
 	const sourceDown = describeSourceDown(e);
 	if (sourceDown !== null) return sourceDown;
-	const raw = describeError(e).toLowerCase();
+	const raw = classifierText(e);
 	if (raw.includes('episode_unavailable')) {
 		// The show is in the catalogue; this episode has no stream in
 		// the requested audio. The same copy on every surface — the

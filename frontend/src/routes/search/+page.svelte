@@ -26,6 +26,7 @@
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { createSearchRunner } from '$lib/search/run-search';
 	import { m } from '$lib/paraglide/messages';
+	import { describeError } from '$lib/play/error-copy';
 
 	let submitted = $state(''); // the query whose results are on screen.
 	let results = $state<KitsuAnimeRef[] | null>(null);
@@ -149,7 +150,7 @@
 			results = visible;
 		},
 		onError: (e) => {
-			error = describeError(e);
+			error = { headline: m.search_error_headline(), detail: describeError(e) };
 			results = null;
 		},
 		onBusy: (b) => {
@@ -161,20 +162,6 @@
 		error = null;
 		submitted = q;
 		await searchRunner.run(q);
-	}
-
-	function describeError(e: unknown): { headline: string; detail: string | null } {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			const detail =
-				typeof obj.detail === 'string'
-					? obj.detail
-					: typeof obj.kind === 'string'
-						? obj.kind
-						: null;
-			return { headline: "Couldn't reach Kitsu.", detail };
-		}
-		return { headline: "Couldn't reach Kitsu.", detail: String(e) };
 	}
 
 	function posterFor(hit: KitsuAnimeRef): string | null {

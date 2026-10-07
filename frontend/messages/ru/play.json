@@ -76,7 +76,7 @@
 	"episode_card_num": "ЭП {episode}",
 	"episode_card_title_fallback": "Эпизод {num}",
 	"episode_card_length_minutes": "{minutes} мин",
-	"episodes_error_message": "Не удалось загрузить эпизоды ({detail}).",
+	"episodes_error_message": "Не удалось загрузить эпизоды. {reason}",
 	"episodes_loading_message": "Загрузка эпизодов…",
 	"similar_strip_eyebrow": "Похожее",
 	"error_play_headline": "Не удалось включить эпизод {episode}",

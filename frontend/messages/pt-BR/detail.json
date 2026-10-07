@@ -85,7 +85,7 @@
 	"play_button_continue": "Continuar",
 	"quality_group_aria_label": "Qualidade",
 	"quality_group_label": "Qualidade",
-	"settings_error_prefix": "Ajustes: {detail}",
+	"settings_error_prefix": "Ajustes: {reason}",
 	"similar_strip_caption": "via busca no Kitsu",
 	"similar_strip_eyebrow": "Títulos parecidos",
 	"status_current": "Em exibição",

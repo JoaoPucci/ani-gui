@@ -24,5 +24,6 @@
 	"discovery_top_rated_caption": "all-time · via Kitsu",
 	"filtered_empty_headline": "No matches in the current filter.",
 	"filtered_empty_detail": "Clear or change the type filter above to see more results.",
-	"card_eps_suffix": "eps"
+	"card_eps_suffix": "eps",
+	"error_headline": "Couldn't search Kitsu."
 }

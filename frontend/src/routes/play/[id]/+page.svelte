@@ -1759,7 +1759,7 @@
 	});
 
 	// describeError / describePlayFailure live in $lib/play/error-copy
-	// so the four message branches can be unit-tested directly.
+	// so the message branches can be unit-tested directly.
 
 	/** Hard-failure overlay state — distinct from `playerError` (which
 	 *  shows in the player area when the video element / hls.js errors
@@ -1804,7 +1804,7 @@
 				}
 			})
 			.catch((e) => {
-				detailError = describeError(e);
+				detailError = `${m.detail_error_load_headline()} ${describeError(e)}`;
 			});
 
 		// Open the ep grid at the page containing the current episode
@@ -3489,7 +3489,7 @@
 						{/each}
 					</ol>
 				{:else if episodesError}
-					<p class="ep-list-empty">{m.play_episodes_error_message({ detail: episodesError })}</p>
+					<p class="ep-list-empty">{m.play_episodes_error_message({ reason: episodesError })}</p>
 				{:else}
 					<p class="ep-list-empty">{m.play_episodes_loading_message()}</p>
 				{/if}
