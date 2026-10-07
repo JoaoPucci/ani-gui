@@ -68,7 +68,7 @@ pub(super) async fn settle_refused_id(
 ) {
     let keep = match previous {
         Some(p)
-            if p != refused
+            if !crate::history::same_kitsu_id(&p, refused)
                 && !crate::commands::kitsu::cour_pairing_disagrees(state, &watch.title, &p)
                     .await =>
         {
