@@ -21,14 +21,18 @@
 //! since the host counts them all against the one address — as
 //! background traffic, one request at a time, which while no one waits
 //! takes a token only above the last [`BACKGROUND_RESERVE`] of the
-//! bucket, so the player's next requests find them there, and while the
+//! bucket, so the player's next requests find them there — while a
+//! download tool runs free, only above one less than the hold below
+//! leaves, three beside sixteen fragments in flight and none beside
+//! more, so the reserve shrinks with what the hold leaves — and while the
 //! player waits takes a turn only once the player has taken what it
 //! needs with room to spare ([`player_turns`]) — none while
 //! that need with its room is the whole refill or more, when it waits
 //! for the player to stop asking — so the player keeps pace and the
 //! download takes the rest. The bucket is per host: a download from a
 //! different host than the player's has a bucket of its own, and the
-//! two meet only if the host counts them together. What reaches the
+//! two meet only if the host counts them together — or while a
+//! download tool runs free, whose hold is on every host. What reaches the
 //! host past the budget is charged to it too: a cached resolution's
 //! liveness check spends a token per request without waiting — it runs
 //! before the player starts, under a deadline of seconds — and while a
@@ -70,6 +74,9 @@ pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 /// Tokens background traffic leaves in the bucket: the player's next
 /// request and a seek's few are served from them at once, however much
 /// background traffic has been taking what the player was not using.
+/// While a download tool runs free the reserve is at most one less than
+/// what its hold leaves ([`HostBudget::reserve_under_hold`]), so beside
+/// such a download fewer are kept, or none.
 pub(crate) const BACKGROUND_RESERVE: u32 = 5;
 
 /// One host's budget: the tokens on hand and when they were last
@@ -393,7 +400,9 @@ impl HostBudget {
     /// one in the host's line, the one whose turn it is takes a token
     /// only while more than the budget's reserve
     /// ([`BACKGROUND_RESERVE`] in the app's budget) is on hand, so the
-    /// player's next requests find the reserve there. With the player
+    /// player's next requests find the reserve there; while a download
+    /// tool runs free, at most one less than what its hold leaves is
+    /// kept ([`Self::reserve_under_hold`]). With the player
     /// waiting in the line it yields until the player has taken its
     /// turns ([`player_turns`]) and then takes the next: while both
     /// wait, the player gets what it needs with room and the
