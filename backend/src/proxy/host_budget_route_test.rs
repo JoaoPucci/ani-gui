@@ -781,3 +781,74 @@ async fn a_redirected_key_notes_the_players_need_at_the_host_it_lands_on() {
     let edge_host = host_budget::host_key(&url::Url::parse(&edge.uri()).expect("edge url"));
     assert!(budget.player_demand(&edge_host) > 0.0, "the edge knows");
 }
+
+/// A master's variables reach the media playlists that import them:
+/// through the proxy's routes, a variant and its segments built from
+/// a variable the master defines come back as the URIs it spells.
+#[tokio::test]
+async fn a_media_playlist_imports_its_masters_variables_through_the_proxy() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/a/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+            "#EXTM3U\n#EXT-X-VERSION:11\n#EXT-X-DEFINE:NAME=\"edge\",VALUE=\"{}/e\"\n\
+             #EXT-X-STREAM-INF:BANDWIDTH=1\n{{$edge}}/v.m3u8\n",
+            server.uri()
+        )))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wm_path("/e/v.m3u8"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "#EXTM3U\n#EXT-X-VERSION:11\n#EXT-X-DEFINE:IMPORT=\"edge\"\n\
+             #EXT-X-TARGETDURATION:5\n#EXTINF:5.0,\n{$edge}/s0.ts\n#EXT-X-ENDLIST\n",
+        ))
+        .mount(&server)
+        .await;
+    let (router, id, _secret) = proxy_on(&format!("{}/a/master.m3u8", server.uri()));
+    let read = |router: Router, uri: String| async move {
+        let resp = router
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(uri)
+                    .body(axum::body::Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("router responds");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        String::from_utf8(bytes.to_vec()).expect("utf8")
+    };
+    let upstream_of = |line: &str| {
+        let u = line
+            .split("u=")
+            .nth(1)
+            .expect("proxied")
+            .split('&')
+            .next()
+            .expect("u");
+        String::from_utf8(
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(u)
+                .expect("base64"),
+        )
+        .expect("utf8")
+    };
+    let master = read(router.clone(), format!("/s/{}/master.m3u8", id.as_string())).await;
+    let variant = master
+        .lines()
+        .find(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .expect("a variant");
+    assert_eq!(upstream_of(variant), format!("{}/e/v.m3u8", server.uri()));
+    let path = &variant[variant.find("/s/").expect("proxy path")..];
+    let media = read(router, path.to_string()).await;
+    assert!(!media.contains("{$"), "{media}");
+    let segment = media
+        .lines()
+        .find(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .expect("a segment");
+    assert_eq!(upstream_of(segment), format!("{}/e/s0.ts", server.uri()));
+}

@@ -323,6 +323,9 @@ fn build_proxy_uri(
 }
 
 #[cfg(test)]
+#[path = "m3u8_define_test.rs"]
+mod define_tests;
+#[cfg(test)]
 #[path = "m3u8_uri_test.rs"]
 mod uri_tests;
 
