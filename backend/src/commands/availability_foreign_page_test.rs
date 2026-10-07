@@ -181,3 +181,45 @@ async fn the_fallbacks_negative_from_before_the_guard_is_untouched() {
     close_breaker(&state.hianime_gate);
     assert_eq!(listed(&state, "593"), Some(false));
 }
+
+/// An unattributed negative from before the guard, as the build that
+/// put anidb first stored it.
+const PRE_GUARD_UNATTRIBUTED_NEGATIVE: &str = r#"{"available":false,"episode_count":null,"extra_episodes":[],"episode_count_approximate":false,"provider":null}"#;
+
+#[tokio::test]
+async fn with_hianime_first_an_unattributed_pre_guard_negative_is_still_not_served() {
+    // The read rule attributes a row naming nobody to the first
+    // provider. Every such row was written while anidb.app was first,
+    // so with hianime first it would be read as hianime's verdict —
+    // a miss hianime never gave, possibly the redirect's.
+    let td = tempfile::tempdir().expect("td");
+    let mut state = cache_only_state(&td);
+    state.provider_order = vec![ProviderId::Hianime, ProviderId::Anidb];
+    meta_cache_put(
+        &state.cache_pool,
+        &cache_key("594", "sub"),
+        PRE_GUARD_UNATTRIBUTED_NEGATIVE,
+        NEGATIVE_TTL,
+    )
+    .expect("seed the row");
+    close_breaker(&state.hianime_gate);
+    assert_eq!(listed(&state, "594"), None);
+}
+
+#[tokio::test]
+async fn with_hianime_first_its_pre_guard_negative_stands_as_the_primarys() {
+    // hianime's own misses were never read off another site's page:
+    // with hianime first they stand while hianime answers.
+    let td = tempfile::tempdir().expect("td");
+    let mut state = cache_only_state(&td);
+    state.provider_order = vec![ProviderId::Hianime, ProviderId::Anidb];
+    meta_cache_put(
+        &state.cache_pool,
+        &cache_key("595", "sub"),
+        PRE_GUARD_HIANIME_NEGATIVE,
+        NEGATIVE_TTL,
+    )
+    .expect("seed the row");
+    close_breaker(&state.hianime_gate);
+    assert_eq!(listed(&state, "595"), Some(false));
+}

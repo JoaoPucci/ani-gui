@@ -283,6 +283,17 @@ mod tests {
         assert!(state.state_dir.starts_with(&root));
         assert!(state.image_cache_dir.is_dir(), "image cache dir created");
         assert!(state.bundled_bin.is_some(), "resource bin dir picked up");
+        // hianime is asked first: anidb.app redirects its search to an
+        // unrelated site, so with it first every walk spends a request
+        // and a failure on it before reaching the provider that answers.
+        assert_eq!(
+            state.provider_order,
+            vec![
+                crate::scraper::provider::ProviderId::Hianime,
+                crate::scraper::provider::ProviderId::Anidb,
+            ],
+            "hianime first, anidb.app as the fallback"
+        );
 
         // Boot sweeps the script copy an earlier version would have
         // left in the cache root. This staged env never had one, so
