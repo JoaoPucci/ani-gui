@@ -21,10 +21,11 @@
 //! since the host counts them all against the one address — as
 //! background traffic, one request at a time, which while no one waits
 //! takes a token only above the last [`BACKGROUND_RESERVE`] of the
-//! bucket, so the player's next requests find them there — while a
-//! download tool runs free, only above one less than the hold below
-//! leaves, three beside sixteen fragments in flight and none beside
-//! more, so the reserve shrinks with what the hold leaves — and while the
+//! bucket, so the player's next requests find them there — while
+//! download tools run free, at most one less than the hold below
+//! leaves: three beside sixteen fragments in flight, fewer beside
+//! more, none from nineteen, so the reserve shrinks with what the hold
+//! leaves — and while the
 //! player waits takes a turn only once the player has taken what it
 //! needs with room to spare ([`player_turns`]) — none while
 //! that need with its room is the whole refill or more, when it waits
