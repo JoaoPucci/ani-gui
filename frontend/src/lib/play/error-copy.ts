@@ -2,9 +2,10 @@
  * Maps backend errors to user-facing copy. Three helpers, in order of
  * specificity:
  *
- *   • `describeError` is the general one: a short localized sentence
- *     naming the cause by the error's `kind`. Every surface that shows
- *     a failure without a copy of its own uses it.
+ *   • `describeError` (in ./describe-error, re-exported here) is the
+ *     general one: a short localized sentence naming the cause by the
+ *     error's `kind`. Every surface that shows a failure without a copy
+ *     of its own uses it.
  *   • `describePlayFailure` picks the right user-facing message for
  *     a play-call failure — "no episode," "scraper unhappy,"
  *     "network trouble," etc.
@@ -22,13 +23,6 @@
 
 import { m } from '$lib/paraglide/messages';
 
-/** The `kind` of an AniError envelope, or null for anything else. */
-function kindOf(e: unknown): string | null {
-	if (typeof e !== 'object' || e === null) return null;
-	const kind = (e as Record<string, unknown>).kind;
-	return typeof kind === 'string' ? kind : null;
-}
-
 /** Flatten a thrown value into the lowercase text `describePlayFailure`
  *  matches its branches against. Internal: it can carry the payload's
  *  detail, so it is for classification only and never shown. */
@@ -43,31 +37,7 @@ function classifierText(e: unknown): string {
 	return String(e).toLowerCase();
 }
 
-/** User-facing copy for any failure: a localized sentence chosen by
- *  the error's kind, never its detail. Unrecognised kinds and values
- *  that are not an AniError envelope get the generic sentence. */
-export function describeError(e: unknown): string {
-	switch (kindOf(e)) {
-		case 'network':
-		case 'gate_refused':
-		case 'upstream':
-		case 'http':
-			return m.errors_reason_network();
-		case 'timeout':
-			return m.errors_reason_timeout();
-		case 'rate_limited':
-			return m.errors_reason_busy();
-		case 'parse_failed':
-		case 'metadata':
-			return m.errors_reason_bad_response();
-		case 'cache':
-		case 'io':
-		case 'config':
-			return m.errors_reason_local();
-		default:
-			return m.errors_reason_generic();
-	}
-}
+export { describeError } from './describe-error';
 
 /** First-chance mapper for the backend's typed rate limit. Returns
  *  the busy-source copy — with the upstream's advertised wait when
