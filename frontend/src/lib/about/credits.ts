@@ -117,6 +117,11 @@ export const ASSETS: AssetCredit[] = [
 	}
 ];
 
+/** The label the About page shows for an asset. */
+export function assetName(id: AssetNoteId): string {
+	return ASSETS.find((a) => a.noteId === id)?.name ?? id;
+}
+
 /** Donation address — single source of truth for the donate block
  *  and the eth.test fixture. EIP-55 mixed-case for display. */
 export const DONATION_ETH_ADDRESS = '0x097cD53Dc5Dda28c4f6A4431EA014916891beC02';
