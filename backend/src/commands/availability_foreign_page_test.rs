@@ -56,7 +56,8 @@ fn fallback_show(kitsu_id: &str) -> AvailabilityArgs {
 }
 
 /// An anidb whose search answers with a 302 to another origin, which
-/// serves the recorded page the live redirect landed on.
+/// serves the recorded page the live redirect landed on — to a
+/// transport that follows it.
 async fn redirecting_anidb() -> (wiremock::MockServer, wiremock::MockServer) {
     use wiremock::matchers::{method, path};
     let elsewhere = wiremock::MockServer::start().await;
@@ -94,12 +95,12 @@ async fn a_search_redirected_off_anidb_moves_the_walk_to_the_fallback() {
         .expect("the fallback answered");
 
     assert!(
-        !elsewhere
+        elsewhere
             .received_requests()
             .await
             .expect("recorded")
             .is_empty(),
-        "the transport followed anidb's redirect"
+        "a redirect off anidb's origin is not followed: the other site never hears the request"
     );
     assert!(
         got.available,
