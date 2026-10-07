@@ -65,7 +65,7 @@
 	"status_repackage_retry": "O yt-dlp não conseguiu reempacotar o stream; tentando novamente com o ffmpeg.",
 	"status_retry_ffmpeg": "O yt-dlp falhou; tentando novamente com o ffmpeg.",
 	"range_error_not_a_number": "Informe os dois números de episódio.",
-	"range_error_below_one": "Os episódios começam no 1.",
+	"range_error_below_one": "A numeração dos episódios começa em 1.",
 	"range_error_start_over_max": "O primeiro episódio não pode passar de {max}, o último disponível.",
 	"range_error_end_over_max": "O último episódio não pode passar de {max}, o último disponível.",
 	"range_error_over_cap": "Não é possível baixar mais de {max} episódios deste título.",

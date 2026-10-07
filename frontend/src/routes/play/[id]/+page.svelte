@@ -1804,7 +1804,7 @@
 				}
 			})
 			.catch((e) => {
-				detailError = `${m.detail_error_load_headline()} ${describeError(e)}`;
+				detailError = m.play_error_load_failed({ reason: describeError(e) });
 			});
 
 		// Open the ep grid at the page containing the current episode

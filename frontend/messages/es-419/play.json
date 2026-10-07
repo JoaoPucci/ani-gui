@@ -115,5 +115,6 @@
 	"error_no_show_id": "A la dirección le falta el id del título.",
 	"test_error_hls_fatal": "Error fatal de HLS: {detail}",
 	"test_error_play_failed": "Falló la reproducción: {detail}",
-	"test_error_setup_failed": "Falló la configuración: {detail}"
+	"test_error_setup_failed": "Falló la configuración: {detail}",
+	"error_load_failed": "No se pudo cargar este título. {reason}"
 }
