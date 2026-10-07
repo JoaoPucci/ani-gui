@@ -70,5 +70,9 @@
 	"range_error_end_over_max": "El último episodio no puede pasar de {max}, el último disponible.",
 	"range_error_over_cap": "No puedes descargar más de {max} episodios de este título.",
 	"range_error_end_before_start": "El último episodio no puede ir antes del primero.",
-	"browse_dialog_title": "Elige la carpeta de descargas"
+	"browse_dialog_title": "Elige la carpeta de descargas",
+	"failure_timeout": "La descarga tardó demasiado y se detuvo. Inténtalo más tarde.",
+	"failure_write": "No se pudo guardar el archivo en la carpeta de descargas. Revisa que la carpeta exista, permita escritura y tenga espacio libre.",
+	"failure_no_folder": "No hay ninguna carpeta de descargas definida. Elige una e inténtalo de nuevo.",
+	"failure_tool": "El programa de descarga se detuvo con un error. Inténtalo más tarde."
 }

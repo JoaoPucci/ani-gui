@@ -7,12 +7,8 @@
  */
 
 import { downloadStream, type DownloadArgs } from '$lib/api';
-import {
-	describeError,
-	describePlayFailure,
-	describeRateLimit,
-	describeSourceDown
-} from '$lib/play/error-copy';
+import { describeDownloadFailure } from './failure-copy';
+import { describePlayFailure, describeRateLimit, describeSourceDown } from '$lib/play/error-copy';
 import { downloadStore } from './store.svelte';
 import { downloadFailureStore } from './failure-store.svelte';
 
@@ -79,10 +75,11 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 				downloadStore.markError(id, describePlayFailure(e));
 				return;
 			}
-			// Everything else: the sentence for its kind. A thrown
-			// Error's message and a payload's detail are internal text,
-			// not dock copy.
-			downloadStore.markError(id, describeError(e));
+			// Everything else: the sentence for its kind, worded for a
+			// download where the kind means something download-specific.
+			// A thrown Error's message and a payload's detail are internal
+			// text, not dock copy.
+			downloadStore.markError(id, describeDownloadFailure(e));
 		});
 
 	return id;

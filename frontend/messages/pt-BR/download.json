@@ -70,5 +70,9 @@
 	"range_error_end_over_max": "O último episódio não pode passar de {max}, o último disponível.",
 	"range_error_over_cap": "Não é possível baixar mais de {max} episódios deste título.",
 	"range_error_end_before_start": "O último episódio não pode vir antes do primeiro.",
-	"browse_dialog_title": "Escolha a pasta de download"
+	"browse_dialog_title": "Escolha a pasta de download",
+	"failure_timeout": "O download demorou demais e foi interrompido. Tente novamente mais tarde.",
+	"failure_write": "Não foi possível salvar o arquivo na pasta de download. Verifique se a pasta existe, permite gravação e tem espaço livre.",
+	"failure_no_folder": "Nenhuma pasta de download definida. Escolha uma e tente novamente.",
+	"failure_tool": "O programa de download parou com um erro. Tente novamente mais tarde."
 }
