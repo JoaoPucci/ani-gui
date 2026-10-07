@@ -127,9 +127,9 @@ async fn a_redirect_within_the_origin_is_still_the_origin_answering() {
 }
 
 #[tokio::test]
-async fn the_embed_page_is_not_held_to_the_origin() {
-    // The embed lives on its own host by design; only requests built
-    // from the provider's origin are held to it.
+async fn the_embed_page_is_held_to_its_own_origin_not_anidbs() {
+    // The embed lives on its own host by design: it is held to that
+    // host's origin, not to anidb's, and answers from there.
     struct Split;
     #[async_trait::async_trait]
     impl Fetch for Split {
