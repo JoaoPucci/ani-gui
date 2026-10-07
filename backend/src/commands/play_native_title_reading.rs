@@ -47,7 +47,8 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
 /// 2nd Season" is read past "Lucky 2". A title that does not start
 /// with the whole stem is read past it without the number, then one of
 /// `wide`'s own divisions: "Show Season 3" beside "Show 2" names a
-/// season 3, as it does beside "Show 2nd Season".
+/// season 3, as it does beside "Show 2nd Season". A title carrying
+/// another number in its place ("Show 20 Part 2") is not read past it.
 fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
     let own = stem(wide);
     let text = words(title).join(" ");
@@ -57,6 +58,15 @@ fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
     }
     let (shorter, n) = without_stem_number(&own)?;
     let rest = rest_after(&text, &shorter)?;
+    // A title carrying another number where W's stands ("Show 20 Part
+    // 2" beside "Show 2") is another number, not W's stem without one.
+    if rest
+        .split_whitespace()
+        .next()
+        .is_some_and(|w| w.chars().all(|c| c.is_ascii_digit()))
+    {
+        return None;
+    }
     wide_markers.push(Marker {
         kind: Kind::Season,
         ordinals: vec![n],
@@ -65,12 +75,15 @@ fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
 }
 
 /// What follows `own` at the start of `text`, when `own` ends there
-/// at a word's end or with a digit or 第 glued to it.
+/// at a word's end or with a digit or 第 glued to it. A digit glued to
+/// an `own` that itself ends in one continues that number rather than
+/// following it: "Show 20" does not start with "Show 2".
 fn rest_after(text: &str, own: &str) -> Option<String> {
     let rest = text.strip_prefix(own)?;
+    let numbered = own.chars().last().is_some_and(|c| c.is_ascii_digit());
     rest.chars()
         .next()
-        .is_none_or(|c| c == ' ' || c.is_ascii_digit() || c == '第')
+        .is_none_or(|c| c == ' ' || c == '第' || (c.is_ascii_digit() && !numbered))
         .then(|| rest.to_string())
 }
 
