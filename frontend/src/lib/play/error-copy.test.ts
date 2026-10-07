@@ -1,3 +1,4 @@
+import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { m } from '$lib/paraglide/messages';
 import {
@@ -28,31 +29,74 @@ describe('describeRateLimit', () => {
 });
 
 describe('describeError', () => {
-	it('formats AniError envelopes as "<kind>: <detail>"', () => {
-		expect(describeError({ kind: 'scraper', detail: 'no_results' })).toBe('scraper: no_results');
+	// User-facing copy: a localized sentence chosen by the error's kind.
+	// `detail` is the backend's free text for logs (ParseFailed carries
+	// serde's message, a URL that failed validation, …) and must never
+	// reach the screen, nor may a raw `kind` token or a thrown Error's
+	// message.
+	const KINDS = [
+		'parse_failed',
+		'metadata',
+		'network',
+		'gate_refused',
+		'upstream',
+		'http',
+		'timeout',
+		'rate_limited',
+		'cache',
+		'io',
+		'config',
+		'no_results',
+		'scraper',
+		'invalid_token',
+		'something_new'
+	];
+
+	it('never prints a ParseFailed detail', () => {
+		const detail = 'expected value at line 1 column 1';
+		const msg = describeError({ kind: 'parse_failed', detail });
+		expect(msg).not.toContain(detail);
+		expect(msg).not.toContain('parse_failed');
+		expect(msg).toMatch(/couldn't read/i);
 	});
 
-	it('falls back to just the kind when detail is missing', () => {
-		// The Rust backend's serializer omits `detail` for variants
-		// that don't carry one (Timeout, Network, etc.). Make sure
-		// those still render usefully.
-		expect(describeError({ kind: 'timeout' })).toBe('timeout');
+	it('the detail never changes the copy, whatever the kind', () => {
+		fc.assert(
+			fc.property(fc.constantFrom(...KINDS), fc.string(), (kind, detail) => {
+				expect(describeError({ kind, detail })).toBe(describeError({ kind }));
+			})
+		);
 	});
 
-	it('passes through other thrown values via String()', () => {
-		expect(describeError(new Error('boom'))).toBe('Error: boom');
-		expect(describeError('plain string')).toBe('plain string');
-		expect(describeError(42)).toBe('42');
-		expect(describeError(null)).toBe('null');
-		expect(describeError(undefined)).toBe('undefined');
+	it('never shows the raw kind token', () => {
+		for (const kind of KINDS) {
+			expect(describeError({ kind }), kind).not.toContain(kind);
+		}
 	});
 
-	it('ignores non-string kind / detail fields (defensive — backends sometimes drift)', () => {
-		// Numeric kind: not the AniError shape; fall through to
-		// String(e) which gives `[object Object]`. The user never
-		// sees this raw — describePlayFailure pattern-matches on
-		// the lowercase output and lands on the generic message.
-		expect(describeError({ kind: 1, detail: 'x' })).toBe('[object Object]');
+	it('names the cause by kind', () => {
+		expect(describeError({ kind: 'network' })).toMatch(/check your connection/i);
+		expect(describeError({ kind: 'gate_refused' })).toBe(describeError({ kind: 'network' }));
+		expect(describeError({ kind: 'upstream', status: 503 })).toBe(
+			describeError({ kind: 'network' })
+		);
+		expect(describeError({ kind: 'timeout' })).toMatch(/took too long/i);
+		expect(describeError({ kind: 'rate_limited' })).toMatch(/busy/i);
+		expect(describeError({ kind: 'metadata' })).toBe(describeError({ kind: 'parse_failed' }));
+		expect(describeError({ kind: 'cache' })).toMatch(/this computer/i);
+		expect(describeError({ kind: 'io' })).toBe(describeError({ kind: 'cache' }));
+		expect(describeError({ kind: 'config' })).toBe(describeError({ kind: 'cache' }));
+	});
+
+	it('falls back to generic copy for anything else, without echoing it', () => {
+		const generic = describeError({ kind: 'something_new' });
+		expect(generic).toMatch(/something went wrong/i);
+		expect(describeError(new Error('boom'))).toBe(generic);
+		expect(describeError('plain string')).toBe(generic);
+		expect(describeError(42)).toBe(generic);
+		expect(describeError(null)).toBe(generic);
+		expect(describeError(undefined)).toBe(generic);
+		expect(describeError({ kind: 1, detail: 'x' })).toBe(generic);
 	});
 });
 
@@ -121,7 +165,7 @@ describe('describePlayFailure', () => {
 	});
 
 	it('treats no_results case-insensitively (backend may shift casing)', () => {
-		// describeError lowercases before matching, so an upstream
+		// The classifier lowercases before matching, so an upstream
 		// that emits "NO_RESULTS" still hits the catalogue-miss
 		// branch.
 		expect(describePlayFailure({ kind: 'NO_RESULTS' })).toMatch(/Couldn't find this title/);
