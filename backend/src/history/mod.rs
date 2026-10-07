@@ -171,6 +171,17 @@ pub fn kitsu_id_in(raw: &str) -> Option<&str> {
     (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then_some(id)
 }
 
+/// Whether `a` and `b` name the same Kitsu id: both are ids by
+/// [`kitsu_id_in`] and their digits agree. Every comparison between a
+/// stored id and a requested one goes through this, since a row
+/// written before the routes refused non-ids can hold a padded id
+/// while the routes hand the renderer, and take back, its digits. A
+/// value that is not an id names nothing, not even an equal one.
+#[must_use]
+pub fn same_kitsu_id(a: &str, b: &str) -> bool {
+    kitsu_id_in(a).is_some_and(|id| kitsu_id_in(b) == Some(id))
+}
+
 /// Split the row's Kitsu id off what follows the id column, when the
 /// last tab-separated value is `kitsu:` and digits.
 fn split_kitsu_id(rest: &str) -> (&str, Option<String>) {

@@ -96,7 +96,10 @@ pub(crate) fn forget_title_matches_naming(
         );
     }
     for (key, body) in meta_cache_entries_prefix(&state.cache_pool, "title-match:")? {
-        if kitsu_ids.contains(&body) && !own.contains(&key) {
+        let named = kitsu_ids
+            .iter()
+            .any(|k| crate::history::same_kitsu_id(k, &body));
+        if named && !own.contains(&key) {
             meta_cache_delete(&state.cache_pool, &key)?;
         }
     }

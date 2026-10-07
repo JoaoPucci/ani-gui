@@ -3,7 +3,7 @@
 
 use crate::app::AppState;
 use crate::error::Result;
-use crate::history::HistoryEntry;
+use crate::history::{kitsu_id_in, same_kitsu_id, HistoryEntry};
 
 /// What is known of a row's Kitsu identity.
 pub(crate) struct RowIds<'a> {
@@ -29,12 +29,12 @@ pub(crate) fn names(kitsu_id: &str, kitsu_gone: bool, row: &RowIds<'_>) -> bool 
         return false;
     }
     if let Some((recorded, false)) = row.recorded {
-        return recorded == kitsu_id;
+        return same_kitsu_id(recorded, kitsu_id);
     }
     if let Some((mapped, false)) = row.mapped {
-        return mapped == kitsu_id;
+        return same_kitsu_id(mapped, kitsu_id);
     }
-    row.recorded.is_some() && row.title_matched.iter().any(|t| t == kitsu_id)
+    row.recorded.is_some() && row.title_matched.iter().any(|t| same_kitsu_id(t, kitsu_id))
 }
 
 /// [`names`], over what the cache knows of `entry`.
@@ -42,13 +42,16 @@ pub(crate) fn names(kitsu_id: &str, kitsu_gone: bool, row: &RowIds<'_>) -> bool 
 /// # Errors
 /// SQLite read failures propagate.
 pub(crate) fn row_names(state: &AppState, entry: &HistoryEntry, kitsu_id: &str) -> Result<bool> {
-    let gone = |id: &str| super::kitsu_gone::is_gone(state, id);
+    // A gone mark is kept under digits; a value that is not an id has
+    // none.
+    let gone =
+        |id: &str| kitsu_id_in(id).map_or(Ok(false), |id| super::kitsu_gone::is_gone(state, id));
     let recorded = match entry.kitsu_id.as_deref() {
         Some(id) => Some((id, gone(id)?)),
         None => None,
     };
     if let Some((id, false)) = recorded {
-        return Ok(id == kitsu_id);
+        return Ok(same_kitsu_id(id, kitsu_id));
     }
     let mapped_id = super::kitsu::allmanga_kitsu_get(state, &entry.id)?;
     let mapped = match mapped_id.as_deref() {
