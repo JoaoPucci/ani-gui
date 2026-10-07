@@ -158,10 +158,112 @@ proptest::proptest! {
         let mut expected = String::from("#EXTM3U\n#EXT-X-TARGETDURATION:5\n");
         for (i, (name, value)) in vars.iter().enumerate() {
             body.push_str(&format!("#EXTINF:5.0,\ns{i}/{{${name}}}.ts\n"));
-            expected.push_str(&format!("#EXTINF:5.0,\ns{i}/{value}.ts\n"));
+            // A query parameter goes in as the URL carries it, encoded.
+            let spelled: String = if by_query {
+                url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+            } else {
+                value.clone()
+            };
+            expected.push_str(&format!("#EXTINF:5.0,\ns{i}/{spelled}.ts\n"));
         }
         let out = super::super::m3u8_define::substitute(body.as_bytes(), &url, &HashMap::new());
         let out = String::from_utf8(out).expect("utf8");
         proptest::prop_assert_eq!(out, expected);
     }
+}
+
+/// A variable's value is inserted as it is, never read again for
+/// references: `{$b}` inside `a`'s value stays as written, whatever
+/// order the variables are held in.
+#[test]
+fn a_value_is_not_substituted_again() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:NAME=\"a\",VALUE=\"x{$b}\"\n\
+        #EXT-X-DEFINE:NAME=\"b\",VALUE=\"Y\"\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXTINF:5.0,\n\
+        {$a}.ts\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+    for _ in 0..64 {
+        let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+        let out = String::from_utf8(out).expect("utf8");
+        assert!(out.contains("\nx{$b}.ts\n"), "{out}");
+    }
+}
+
+/// References are spelled out where a playlist may carry them — URI
+/// lines and quoted attribute values — and nowhere else: a segment's
+/// title is text, not a reference.
+#[test]
+fn only_uri_lines_and_quoted_values_are_substituted() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:NAME=\"a\",VALUE=\"A\"\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXT-X-KEY:METHOD=AES-128,URI=\"k/{$a}.key\"\n\
+        #EXTINF:5.0,{$a}\n\
+        s/{$a}.ts\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+    let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+    let out = String::from_utf8(out).expect("utf8");
+    assert!(out.contains("URI=\"k/A.key\""), "{out}");
+    assert!(out.contains("#EXTINF:5.0,{$a}\n"), "{out}");
+    assert!(out.contains("\ns/A.ts\n"), "{out}");
+}
+
+/// A query parameter's value goes in as the URL carries it, encoded:
+/// decoded, a `%26` would split the query it lands in and a `+` would
+/// turn into a space.
+#[test]
+fn a_query_parameter_goes_in_as_the_url_carries_it() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:QUERYPARAM=\"t\"\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXTINF:5.0,\n\
+        s.ts?t={$t}\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8?t=a%2Bb+c%26d").expect("url");
+    let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+    let out = String::from_utf8(out).expect("utf8");
+    assert!(out.contains("\ns.ts?t=a%2Bb+c%26d\n"), "{out}");
+}
+
+/// A definition that defined nothing — an import the master does not
+/// carry, a query parameter the URL lacks — stays in the playlist, so
+/// the player sees the playlist as the host wrote it rather than one
+/// that hides the reference it cannot fill.
+#[test]
+fn a_definition_that_defined_nothing_stays() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:IMPORT=\"edge\"\n\
+        #EXT-X-DEFINE:NAME=\"a\",VALUE=\"A\"\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXTINF:5.0,\n\
+        {$edge}/{$a}.ts\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+    let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+    let out = String::from_utf8(out).expect("utf8");
+    assert!(out.contains("#EXT-X-DEFINE:IMPORT=\"edge\"\n"), "{out}");
+    assert!(!out.contains("NAME=\"a\""), "{out}");
+    assert!(out.contains("\n{$edge}/A.ts\n"), "{out}");
+}
+
+/// A session's master variables leave with the session, and none are
+/// kept for a session that is not there.
+#[test]
+fn a_sessions_master_variables_leave_with_it() {
+    let table = crate::proxy::SessionTable::new();
+    let session = crate::proxy::StreamSession::new(
+        Url::parse("https://cdn.example/a/master.m3u8").expect("url"),
+        String::new(),
+    );
+    let id = table.insert(session);
+    let vars = HashMap::from([("a".to_string(), "A".to_string())]);
+    table.set_master_variables(id, vars.clone());
+    assert_eq!(table.master_variables(&id), vars);
+    table.remove(&id);
+    assert!(table.master_variables(&id).is_empty());
+    table.set_master_variables(id, vars);
+    assert!(
+        table.master_variables(&id).is_empty(),
+        "nothing kept for a session that is gone"
+    );
 }
