@@ -1,4 +1,5 @@
-import { Linter } from 'eslint';
+import { fileURLToPath } from 'node:url';
+import { ESLint, Linter } from 'eslint';
 import svelte from 'eslint-plugin-svelte';
 import ts from 'typescript-eslint';
 import { describe, expect, it } from 'vitest';
@@ -91,5 +92,37 @@ describe('no-hardcoded-strings: literals that reach the template through script'
 	it('honours an i18n-ignore comment on the preceding line', () => {
 		const src = component("// i18n-ignore: proper noun\nconst provider = 'AniList';");
 		expect(flagged(src)).toEqual([]);
+	});
+});
+
+describe('no-hardcoded-strings: where the project applies it', () => {
+	// Copy also lives in plain TypeScript modules — a label table, a
+	// credits list, a message picked by a helper — that a component only
+	// renders. These run the project's own eslint.config.js, so they pin
+	// which files the rule reaches, not just what it reports.
+	const frontendDir = fileURLToPath(new URL('../..', import.meta.url));
+	const eslint = new ESLint({ cwd: frontendDir });
+
+	async function ruleHits(relPath: string, code: string): Promise<string[]> {
+		const [result] = await eslint.lintText(code, { filePath: `${frontendDir}${relPath}` });
+		return result.messages
+			.filter((msg) => msg.ruleId === 'local/no-hardcoded-strings')
+			.map((msg) => msg.message);
+	}
+
+	const COPY = "export const label = 'Loading animation (LottieFiles)';\n";
+
+	it('reaches plain .ts modules under src/', async () => {
+		expect(await ruleHits('src/lib/fixture/copy.ts', COPY)).toHaveLength(1);
+		expect(await ruleHits('src/routes/fixture/+page.ts', COPY)).toHaveLength(1);
+	});
+
+	it('leaves test files alone', async () => {
+		expect(await ruleHits('src/lib/fixture/copy.test.ts', COPY)).toEqual([]);
+	});
+
+	it('honours i18n-ignore in a .ts module', async () => {
+		const ignored = "// i18n-ignore: proper noun\nexport const provider = 'AniList';\n";
+		expect(await ruleHits('src/lib/fixture/copy.ts', ignored)).toEqual([]);
 	});
 });
