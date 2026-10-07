@@ -1341,3 +1341,25 @@ async fn another_show_reading_alike_is_not_the_entry() {
         }
     }
 }
+
+/// When several broad listings qualify, the one the entry heads is
+/// read, wherever it sits in the provider's order: an earlier broad
+/// listing of another show beside its own first half does not stop the
+/// search.
+#[tokio::test]
+async fn the_broad_listing_the_entry_heads_is_read_after_another_show_s() {
+    let site = pool_of(
+        &["Show"],
+        Some(12),
+        2020,
+        "Show",
+        &[
+            ("o", "Other", 24),
+            ("o1", "Other Part 1", 12),
+            ("w", "Show", 22),
+            ("l", "Show Part 2", 10),
+        ],
+    );
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!((picked.hit.slug.as_str(), picked.episodes.len()), ("w", 12));
+}
