@@ -38,6 +38,7 @@
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
 	import { subtypeLabel } from '$lib/search/subtype-label';
+	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import {
 		describeError,
 		describePlayFailure as sharedDescribePlayFailure
@@ -962,7 +963,7 @@
 	onMount(() => {
 		void settingsGet()
 			.then((c) => (config = c))
-			.catch((e) => (configError = describeError(e)));
+			.catch((e) => (configError = describeSettingsFailure(e)));
 	});
 
 	// Background prefetch: as soon as we have the show title + the
@@ -1140,7 +1141,7 @@
 		try {
 			await settingsPut(next);
 		} catch (e) {
-			configError = describeError(e);
+			configError = describeSettingsFailure(e);
 		}
 	}
 	async function setQuality(q: string) {
@@ -1150,7 +1151,7 @@
 		try {
 			await settingsPut(next);
 		} catch (e) {
-			configError = describeError(e);
+			configError = describeSettingsFailure(e);
 		}
 	}
 

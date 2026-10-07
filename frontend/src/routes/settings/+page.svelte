@@ -19,6 +19,7 @@
 	} from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
+	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
 
@@ -57,7 +58,7 @@
 	onMount(() => {
 		void settingsGet()
 			.then((c) => (cfg = c))
-			.catch((e) => (loadError = describeError(e)));
+			.catch((e) => (loadError = describeSettingsFailure(e)));
 		void appInfo()
 			.then((i) => (info = i))
 			.catch(() => {
@@ -83,7 +84,7 @@
 			savedAt = Date.now();
 			saveError = null;
 		} catch (e) {
-			saveError = describeError(e);
+			saveError = describeSettingsFailure(e);
 		}
 	}
 	function persistDebounced(next: Config) {
