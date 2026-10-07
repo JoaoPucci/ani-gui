@@ -1420,3 +1420,28 @@ async fn the_number_where_w_s_stands_decides_how_a_sibling_reads() {
         panic!("picked {} ({})", p.hit.slug, p.episodes.len());
     }
 }
+
+/// A title whose words before its number match one of the entry's
+/// titles but whose number only continues the entry's is another show:
+/// refused, so with no broad listing to cut, nothing plays.
+#[tokio::test]
+async fn a_title_continuing_the_entry_s_number_is_another_show() {
+    type Case<'a> = (&'a str, [(&'a str, &'a str, u32); 2]);
+    let cases: [Case<'_>; 3] = [
+        ("Show 2", [("w", "Show 2", 24), ("x", "Show20", 12)]),
+        (
+            "Mob Psycho 100 II",
+            [
+                ("w", "Mob Psycho 100 II", 22),
+                ("x", "Mob Psycho 1000 Part 2", 10),
+            ],
+        ),
+        ("86 Part 2", [("w", "86 Part 1", 24), ("x", "861", 12)]),
+    ];
+    for (title, rows) in cases {
+        let site = pool_of(&[title], Some(12), 2020, title, &rows);
+        if let Ok(p) = walk_over(site).await {
+            panic!("{title}: picked {} ({})", p.hit.slug, p.episodes.len());
+        }
+    }
+}
