@@ -97,10 +97,10 @@ fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
         }],
     )
     .unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-sequel-88", "K9").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-sequel-88", "9009").unwrap();
     crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
 
-    let hit = history_by_kitsu(&s, "K9").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "9009").unwrap().expect("match");
     assert_eq!(hit.ep_no, "2");
 }
 
@@ -133,10 +133,10 @@ fn by_kitsu_returns_the_matching_entry() {
 
     // Prime the (provider show_id → kitsu_id) reverse mapping
     // the play path stamps after a successful play.
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "amA", "K1").unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "amB", "K2").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "amA", "1001").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "amB", "1002").unwrap();
 
-    let hit = history_by_kitsu(&s, "K2").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1002").unwrap().expect("match");
     assert_eq!(hit.id, "amB");
     assert_eq!(hit.ep_no, "12");
 }
@@ -158,7 +158,7 @@ fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
         }],
     )
     .unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "amA", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "amA", "1001").unwrap();
 
     // No history entry maps to K-other.
     assert!(history_by_kitsu(&s, "K-other").unwrap().is_none());
@@ -168,7 +168,7 @@ fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
 fn by_kitsu_returns_none_when_history_is_empty() {
     let tmp = tempfile::tempdir().unwrap();
     let s = make_state(tmp.path().join("nope"));
-    assert!(history_by_kitsu(&s, "K1").unwrap().is_none());
+    assert!(history_by_kitsu(&s, "1001").unwrap().is_none());
 }
 
 // — history_delete ————————————————————————————————————————————
