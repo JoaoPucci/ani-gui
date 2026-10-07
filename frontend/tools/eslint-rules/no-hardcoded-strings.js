@@ -31,16 +31,26 @@
  * templates, and expressions on template attributes that are not
  * user-facing (`class`, `href`, directives).
  *
- * What 3 deliberately misses — say so rather than imply coverage: a
- * literal that starts lowercase or with an all-caps word and has no
- * closing punctuation ("HLS fatal: …", "EP 3"), copy built by joining
- * non-copy fragments, and every `.ts` module (the rule runs on
- * `.svelte` files only). Copy in those places is caught by review, not
- * by this rule.
+ * What 3 deliberately misses — say so rather than imply coverage:
+ *   - a literal that starts lowercase or with an all-caps word and has
+ *     no closing punctuation ("HLS fatal: …", "EP 3", "movie")
+ *   - copy built by joining non-copy fragments (`${a} ${b}`)
+ *   - any literal inside a template attribute's expression when the
+ *     attribute is not one of USER_FACING_ATTRS — which includes event
+ *     handlers (`onclick={() => confirm('…')}`) and component props
+ *     (`<ErrorOverlay body={'…'} />`)
+ *   - every plain `.ts` / `.js` module; eslint.config.js applies the
+ *     rule to `.svelte`, `.svelte.ts` and `.svelte.js` files only
+ * Copy in those places is caught by review, not by this rule. It also
+ * over-reports in two known spots, both cheap to silence: a `style:`
+ * directive's value, and an Error message built without `new`.
  *
  * Escape hatch: a comment containing `i18n-ignore` silences the rule
  * for a node. In a template, a Svelte comment just before the node; in
- * JavaScript, a comment on the line before the literal or on its line.
+ * JavaScript, a comment on the line before the literal or on its line,
+ * or within the eight tokens before it. The marker covers every
+ * literal on the line it applies to, so keep one literal per marked
+ * line.
  *
  * The rule is intentionally noisy on suspicion: false positives are
  * cheap (one-line ignore comment) but a missed translation slips
