@@ -23,6 +23,7 @@
 pub mod host_budget;
 pub mod host_budget_demand;
 pub mod m3u8;
+pub mod m3u8_define;
 pub mod token;
 pub mod upstream;
 
@@ -43,7 +44,10 @@ use url::Url;
 use crate::error::AniError;
 
 use host_budget_demand::Stream;
-pub use m3u8::{rewrite_master, rewrite_media, rewrite_media_as, ProxyOrigin};
+pub use m3u8::{
+    master_variables, rewrite_master, rewrite_media, rewrite_media_as, rewrite_media_importing,
+    ProxyOrigin,
+};
 pub use token::{
     sign_segment, verify_segment, AppSecret, MediaKind, SessionId, SessionSubtitle, SessionTable,
     StreamSession,
@@ -158,6 +162,10 @@ async fn handle_master(
         Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
     };
 
+    // What the master defines, for the media playlists that import it.
+    state
+        .sessions
+        .set_master_variables(session, master_variables(&body, &served_from));
     let rewritten = match rewrite_master(&body, &served_from, &state.origin, session, &state.secret)
     {
         Ok(s) => s,
@@ -474,13 +482,15 @@ async fn handle_seg(
             }
             Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
         };
-        let rewritten = match rewrite_media_as(
+        let imported = state.sessions.master_variables(&session);
+        let rewritten = match rewrite_media_importing(
             &body,
             &served_from,
             &state.origin,
             session,
             &state.secret,
             stream,
+            &imported,
         ) {
             Ok(s) => s,
             Err(_) => {

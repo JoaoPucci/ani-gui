@@ -143,6 +143,8 @@ pub fn rewrite_master(
     session: SessionId,
     secret: &AppSecret,
 ) -> Result<String> {
+    let body =
+        &super::m3u8_define::substitute(body, master_url, &super::m3u8_define::Variables::new());
     let parsed = m3u8_rs::parse_master_playlist_res(body).map_err(|e| AniError::ParseFailed {
         detail: format!("master parse: {e}"),
     })?;
@@ -227,6 +229,43 @@ pub fn rewrite_media_as(
     secret: &AppSecret,
     stream: Stream,
 ) -> Result<String> {
+    rewrite_media_importing(
+        body,
+        media_url,
+        origin,
+        session,
+        secret,
+        stream,
+        &super::m3u8_define::Variables::new(),
+    )
+}
+
+/// The variables a master defines, for the media playlists it names
+/// to import.
+#[must_use]
+pub fn master_variables(body: &[u8], master_url: &Url) -> super::m3u8_define::Variables {
+    super::m3u8_define::defined(
+        &String::from_utf8_lossy(body),
+        master_url,
+        &super::m3u8_define::Variables::new(),
+    )
+}
+
+/// [`rewrite_media_as`] for a playlist that may import its master's
+/// variables, `imported`.
+///
+/// # Errors
+/// As [`rewrite_media`].
+pub fn rewrite_media_importing(
+    body: &[u8],
+    media_url: &Url,
+    origin: &ProxyOrigin,
+    session: SessionId,
+    secret: &AppSecret,
+    stream: Stream,
+    imported: &super::m3u8_define::Variables,
+) -> Result<String> {
+    let body = &super::m3u8_define::substitute(body, media_url, imported);
     let parsed = m3u8_rs::parse_media_playlist_res(body).map_err(|e| AniError::ParseFailed {
         detail: format!("media parse: {e}"),
     })?;
