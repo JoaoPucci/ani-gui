@@ -75,7 +75,7 @@ pub struct AppState {
     /// all; a test lists the ones it stubs, so a stubbed outage
     /// cannot fall through to a real site.
     pub provider_order: Vec<crate::scraper::provider::ProviderId>,
-    /// On-disk image-cache directory served by the `image://` protocol.
+    /// On-disk image-cache directory served by the `/api/image` route.
     pub image_cache_dir: PathBuf,
     /// Connection pool for the SQLite metadata cache.
     pub cache_pool: SqlitePool,

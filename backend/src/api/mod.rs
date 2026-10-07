@@ -427,8 +427,8 @@ struct ImageQuery {
 
 /// Serve a cached/freshly-fetched image. The Tauri build used a custom
 /// `image://` URI scheme; under Electron the renderer can't reach
-/// that, so it asks for the bytes over plain HTTP. Same on-disk cache
-/// (`meta::images`) backs both transports.
+/// that, so it asks for the bytes over plain HTTP. The on-disk cache
+/// (`meta::images`) is the one the Tauri scheme used.
 ///
 /// Only `https://` upstreams are accepted — refusing other schemes
 /// avoids letting a malicious renderer turn the loopback server into
