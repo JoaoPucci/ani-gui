@@ -83,9 +83,12 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   survivor whose own year positively matched and whose episode
 ///   list is shorter than expected still wins — an airing part has
 ///   aired fewer episodes than the total Kitsu knows is coming.
-/// - With `expected = None`: an exact title match wins, else the
-///   first surviving hit — positional order is the provider's own
-///   ranking.
+/// - With `expected = None`: an exact title match wins; else a
+///   candidate whose part agrees with the entry's comes before one
+///   naming another part, and within each a matched year before the
+///   rest, the provider's order breaking ties — only a year-matched
+///   candidate when the year disproved part of the pool (see
+///   `pick_without_count`).
 /// - A candidate the searched title names a later part of ("X" when
 ///   asked for "X Season 2") is the season before, and never picked;
 ///   [`pick_candidate_titled`] reads every title the entry goes by.
