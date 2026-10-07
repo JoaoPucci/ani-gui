@@ -158,12 +158,8 @@ proptest::proptest! {
         let mut expected = String::from("#EXTM3U\n#EXT-X-TARGETDURATION:5\n");
         for (i, (name, value)) in vars.iter().enumerate() {
             body.push_str(&format!("#EXTINF:5.0,\ns{i}/{{${name}}}.ts\n"));
-            // A query parameter goes in as the URL carries it, encoded.
-            let spelled: String = if by_query {
-                url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
-            } else {
-                value.clone()
-            };
+            // A query parameter is percent-decoded back to its value.
+            let spelled = value.clone();
             expected.push_str(&format!("#EXTINF:5.0,\ns{i}/{spelled}.ts\n"));
         }
         let out = super::super::m3u8_define::substitute(body.as_bytes(), &url, &HashMap::new());
@@ -210,11 +206,11 @@ fn only_uri_lines_and_quoted_values_are_substituted() {
     assert!(out.contains("\ns/A.ts\n"), "{out}");
 }
 
-/// A query parameter's value goes in as the URL carries it, encoded:
-/// decoded, a `%26` would split the query it lands in and a `+` would
-/// turn into a space.
+/// A query parameter's value is percent-decoded before it goes in, as
+/// the spec has it — `%2B` is a `+` and `%26` an `&` — but not
+/// form-decoded: a `+` stays a `+`, not a space.
 #[test]
-fn a_query_parameter_goes_in_as_the_url_carries_it() {
+fn a_query_parameter_is_percent_decoded_not_form_decoded() {
     let body = b"#EXTM3U\n\
         #EXT-X-DEFINE:QUERYPARAM=\"t\"\n\
         #EXT-X-TARGETDURATION:5\n\
@@ -223,7 +219,42 @@ fn a_query_parameter_goes_in_as_the_url_carries_it() {
     let url = Url::parse("https://cdn.example/a/index.m3u8?t=a%2Bb+c%26d").expect("url");
     let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
     let out = String::from_utf8(out).expect("utf8");
-    assert!(out.contains("\ns.ts?t=a%2Bb+c%26d\n"), "{out}");
+    assert!(out.contains("\ns.ts?t=a+b+c&d\n"), "{out}");
+}
+
+/// Hexadecimal-sequence and enumerated values carry references too, as
+/// a quoted value does; a segment's title still does not.
+#[test]
+fn unquoted_attribute_values_are_substituted() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:NAME=\"iv\",VALUE=\"00ff\"\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXT-X-KEY:METHOD=AES-128,URI=\"k.key\",IV=0x{$iv}\n\
+        #EXTINF:5.0,{$iv}\n\
+        s.ts\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+    let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+    let out = String::from_utf8(out).expect("utf8");
+    assert!(out.contains("IV=0x00ff\n"), "{out}");
+    assert!(out.contains("#EXTINF:5.0,{$iv}\n"), "{out}");
+}
+
+/// A reference ahead of the definition it names is not spelled: the
+/// spec has the definition come first.
+#[test]
+fn a_reference_before_its_definition_is_left_as_written() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXTINF:5.0,\n\
+        {$a}/s0.ts\n\
+        #EXT-X-DEFINE:NAME=\"a\",VALUE=\"A\"\n\
+        #EXTINF:5.0,\n\
+        {$a}/s1.ts\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+    let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+    let out = String::from_utf8(out).expect("utf8");
+    assert!(out.contains("\n{$a}/s0.ts\n"), "{out}");
+    assert!(out.contains("\nA/s1.ts\n"), "{out}");
 }
 
 /// A definition that defined nothing — an import the master does not
