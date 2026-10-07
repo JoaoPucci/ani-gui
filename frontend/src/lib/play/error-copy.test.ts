@@ -144,6 +144,23 @@ describe('describeError', () => {
 	});
 });
 
+describe('describeRateLimit — an upstream 429 is a rate limit too', () => {
+	it('gives the busy-source copy for { kind: upstream, status: 429 }', () => {
+		// The backend keeps an upstream that throttles with HTTP 429 as
+		// `upstream` + status, distinct from the in-band `rate_limited`.
+		// On the play surfaces it fell through to "Network trouble …
+		// check your connection", which sends the user after a problem
+		// they do not have.
+		expect(describeRateLimit({ kind: 'upstream', status: 429 })).toBe(
+			m.play_play_failure_rate_limited()
+		);
+		expect(describePlayFailure({ kind: 'upstream', status: 429 })).toBe(
+			m.play_play_failure_rate_limited()
+		);
+		expect(describeRateLimit({ kind: 'upstream', status: 403 })).toBeNull();
+	});
+});
+
 describe('describePlayFailure', () => {
 	it('matches the no_results branch', () => {
 		expect(describePlayFailure({ kind: 'scraper', detail: 'no_results' })).toMatch(
