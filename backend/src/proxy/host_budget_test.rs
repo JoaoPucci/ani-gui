@@ -211,3 +211,60 @@ async fn a_background_fetch_alone_is_admitted_at_the_next_token() {
         "{waited:?}"
     );
 }
+
+/// A download running unpaced against a host — yt-dlp's sixteen
+/// fragments at a time with nothing playing — sends its requests past
+/// the budget, but the host counts them all the same. A player that
+/// starts beside it gets what those requests leave of the burst, not a
+/// full one: twenty more on top of sixteen is the refusal the budget
+/// exists to prevent.
+#[tokio::test(start_paused = true)]
+async fn a_player_starting_beside_an_unpaced_download_gets_only_what_it_leaves() {
+    let budget = HostBudget::fresh();
+    let _run = budget.unpaced_run("cdn.example:443", 16);
+    for i in 0..4 {
+        tokio::time::timeout(Duration::from_millis(1), budget.admit("cdn.example:443"))
+            .await
+            .unwrap_or_else(|_| panic!("request {i} is within what the download left"));
+    }
+    assert!(
+        tokio::time::timeout(SEGMENT_REFILL / 2, budget.admit("cdn.example:443"))
+            .await
+            .is_err(),
+        "the fifth waits for the refill"
+    );
+}
+
+/// However many unpaced downloads run against a host, the player's
+/// first request is admitted: it is what tells the downloads that
+/// playback started, so they yield.
+#[tokio::test(start_paused = true)]
+async fn the_players_first_request_is_admitted_beside_any_number_of_unpaced_downloads() {
+    let budget = HostBudget::fresh();
+    let _a = budget.unpaced_run("cdn.example:443", 16);
+    let _b = budget.unpaced_run("cdn.example:443", 16);
+    tokio::time::timeout(Duration::from_millis(1), budget.admit("cdn.example:443"))
+        .await
+        .expect("the first request is admitted");
+}
+
+/// The requests an unpaced download had in flight when it ended reached
+/// the host: they are spent from the budget then, so a player starting
+/// just after finds them gone.
+#[test]
+fn an_unpaced_downloads_requests_in_flight_are_spent_when_it_ends() {
+    let budget = HostBudget::fresh();
+    drop(budget.unpaced_run("cdn.example:443", 16));
+    assert_eq!(budget.on_hand("cdn.example:443"), Some(4.0));
+}
+
+/// A request the app makes without waiting for a token — a cached
+/// row's liveness check — is spent from the host's budget all the same.
+#[test]
+fn a_request_the_budget_does_not_pace_is_spent_from_it() {
+    let budget = HostBudget::fresh();
+    budget.spend("cdn.example:443", 3);
+    assert_eq!(budget.on_hand("cdn.example:443"), Some(17.0));
+    budget.spend("cdn.example:443", 40);
+    assert_eq!(budget.on_hand("cdn.example:443"), Some(0.0));
+}

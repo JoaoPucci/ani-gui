@@ -4207,6 +4207,66 @@ fn concurrency_of(line: &str) -> Option<&str> {
     None
 }
 
+/// A download running unpaced sends its fragments past the host's
+/// budget; while it runs, and once it ends, the budget at the stream's
+/// host accounts for the requests it may have in flight — sixteen for
+/// yt-dlp, one for an ffmpeg fallback — so a player starting beside it
+/// or just after does not add a full burst on top.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_unpaced_download_is_charged_to_the_hosts_budget() {
+    // The fallback's case counts the failed yt-dlp run before it too.
+    for (ytdlp, in_flight) in [(true, 16.0), (false, 17.0)] {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        if ytdlp {
+            stage_tool(
+                bin.path(),
+                "yt-dlp",
+                &format!("{}\nexit 0", writes_its_output("video")),
+            );
+        } else {
+            stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+            stage_tool(
+                bin.path(),
+                "ffmpeg",
+                "last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            );
+        }
+        let budget = crate::proxy::host_budget::HostBudget::fresh();
+        let is_live = || false;
+        let lane = tokio::sync::Semaphore::new(1);
+        let pacing = crate::commands::download_pacing::Pacing::new(
+            &is_live,
+            std::time::Duration::from_millis(50),
+            &lane,
+        )
+        .charged_to(&budget);
+        spawn_download_tool_paced(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_secs(10),
+            &mut |_l: &str| {},
+            &pacing,
+        )
+        .await
+        .expect("the transfer completes");
+        let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
+        let left = budget.on_hand("cdn.example:443").expect("charged");
+        assert!(
+            (left - (burst - in_flight)).abs() < 0.5,
+            "ytdlp={ytdlp}: {left} left of {burst}"
+        );
+    }
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_download_started_while_playback_is_live_runs_paced() {
