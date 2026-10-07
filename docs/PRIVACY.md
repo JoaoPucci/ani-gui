@@ -165,25 +165,25 @@ requires it; the exception is the update check that runs on launch
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
   only if connected), and the streaming catalogues playback resolves
-  against: anidb.app first, and hianime (reached at hianime.at) when the
-  walk moves on from anidb.app — because it was unreachable, refused or
-  rate-limited the request, answered a page the app cannot read — an
-  answer from another site included: requests to anidb.app follow its
-  redirects, so when it redirects one elsewhere (at the time of writing
-  its search redirects to anilab.so) that site receives the request too,
-  and the app sets its answer aside — or its
+  against: hianime (reached at hianime.at) first, and anidb.app when the
+  walk moves on from hianime — because it was unreachable, refused or
+  rate-limited the request, answered a page the app cannot read, or its
   own gate turned a background request away, or because it answered
   without settling the question: it found the show but said nothing about
   the audio asked for, or it denied a show a live record remembers it
   carrying, which the record outranks until the rest of the order has been
-  asked — and hianime first, for a while, for a show it was found on while
-  the walk had moved on — a positive availability record: written by a
+  asked — and anidb.app first, for a while, for a show it was found on
+  while the walk had moved on — a positive availability record: written by a
   probe or a fresh resolve, it says the show and the audio are listed
   there, not that a stream was played; written again by a play, hand-off
   or page warm served from the app's own resolution cache after the record
   had lapsed, it says only that a stream resolved there once validated
   again at its CDN — the record is written before anything plays, and a
-  page warm plays nothing — and is where the next walk starts. The app
+  page warm plays nothing — and is where the next walk starts. Requests
+  to anidb.app follow its redirects, so when it redirects one elsewhere
+  (at the time of writing its search redirects to anilab.so) that site
+  receives the request too; the app sets the answer aside as a page it
+  cannot read, and the walk moves on. The app
   remembers which catalogue carried a show for as long as its availability
   record lasts — a day from the last resolve that found the show there: a
   play, a download, a hand-off — a play, hand-off or page warm served from
@@ -205,8 +205,8 @@ requires it; the exception is the update check that runs on launch
   list's, with nothing resolved after it — leaves an ongoing show's record
   for a day and a finished show's for thirty — and asks that one first for
   later plays, downloads and hand-offs of it, so those requests reach
-  hianime after anidb.app recovers; once the record expires the next
-  resolve starts from anidb.app again — unless a play, hand-off or page
+  anidb.app after hianime recovers; once the record expires the next
+  resolve starts from hianime again — unless a play, hand-off or page
   warm served from the app's own resolution cache has written a day's
   record first, as described above, in which case it starts from the
   provider that record names. These requests carry the search terms you
