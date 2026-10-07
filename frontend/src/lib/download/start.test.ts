@@ -30,7 +30,7 @@ const failureStoreMock = vi.hoisted(() => ({
 vi.mock('./failure-store.svelte', () => failureStoreMock);
 
 import { startDownload } from './start';
-import { describeError } from '$lib/play/error-copy';
+import { describeError, describePlayFailure } from '$lib/play/error-copy';
 
 const baseArgs = {
 	title: 'Demon Slayer',
@@ -214,6 +214,22 @@ describe('startDownload', () => {
 		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', describeError(failure));
 		const shown = storeMock.downloadStore.markError.mock.calls[0][1] as string;
 		expect(shown).not.toContain('dest_dir');
+	});
+
+	it('words a catalogue miss and a source outage the way the play page does', async () => {
+		// A download resolves through the same provider as play, so these
+		// two verdicts read the same on both surfaces.
+		for (const failure of [{ kind: 'no_results' }, { kind: 'upstream', status: 503 }]) {
+			storeMock.downloadStore.markError.mockReset();
+			apiMock.downloadStream.mockRejectedValueOnce(failure);
+			startDownload(baseArgs);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+				'dl-1',
+				describePlayFailure(failure)
+			);
+		}
 	});
 
 	it('falls back to localized generic copy for an unrecognised rejection', async () => {
