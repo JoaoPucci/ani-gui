@@ -1127,3 +1127,28 @@ fn the_other_requests_rate_reads_the_pace_early_and_overstates_a_start() {
         "and over the forty since: {later}"
     );
 }
+
+/// Background traffic beside an unpaced download still gets a token:
+/// the hold leaves fewer tokens than the reserve background traffic
+/// keeps for the player, and a download's own subtitle tracks, staged
+/// beside its transfer with nothing playing, waited out their deadline
+/// and the download finished without them. Under the hold the reserve
+/// is what the hold leaves, less the token being taken.
+#[tokio::test(start_paused = true)]
+async fn background_traffic_beside_an_unpaced_download_still_gets_a_token() {
+    let budget = HostBudget::fresh();
+    let _run = budget.unpaced_run(16);
+    tokio::time::timeout(
+        SEGMENT_REFILL * 2,
+        budget.admit_background("cdn.example:443"),
+    )
+    .await
+    .expect("a background request is admitted beside the download");
+    let _second = budget.unpaced_run(16);
+    tokio::time::timeout(
+        SEGMENT_REFILL * 2,
+        budget.admit_background("cdn.example:443"),
+    )
+    .await
+    .expect("and beside two, with the hold at one");
+}
