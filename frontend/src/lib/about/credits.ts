@@ -15,13 +15,16 @@
  * needs something it never invokes, which is how fzf and aria2c
  * outlived the script that used them.
  *
- * Display-only data (name / version / license / url) is hard-coded.
+ * Display-only data that is a proper name (tool name / version /
+ * license / url) is hard-coded.
  * Visitor-facing description strings live in the i18n message
  * bundle and are looked up by the page via the `noteId`
  * discriminant. The data module never carries user-visible English
  * copy directly — that would defeat localization for the same
  * reason Paraglide exists.
  */
+
+import { m } from '$lib/paraglide/messages';
 
 export type BundledToolNoteId = 'curl_impersonate' | 'yt_dlp' | 'ffmpeg';
 
@@ -84,7 +87,8 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 export type AssetNoteId = 'lottie_loading';
 
 export interface AssetCredit {
-	/** Display label — what the asset is, not where it lives. */
+	/** Stable identifier for the entry. Not shown: the page's label
+	 *  comes from `assetName(noteId)`, in the reader's locale. */
 	name: string;
 	/** Author or studio name. */
 	author: string;
@@ -105,21 +109,27 @@ export interface AssetCredit {
 export const ASSETS: AssetCredit[] = [
 	{
 		// LottieFiles' canonical title for this animation isn't exposed
-		// outside their UI (the URL slug is just "loading"). Using a
-		// descriptive label here rather than inventing a name; the URL
-		// is the link of record.
-		name: 'Loading animation (LottieFiles)',
+		// outside their UI (the URL slug is just "loading"), so the page
+		// shows a descriptive label from the catalogue (`assetName`);
+		// this `name` is only the entry's identifier. The URL is the
+		// link of record.
+		name: 'lottie-loading',
 		author: 'Pickyourtrail',
 		authorUrl: 'https://lottiefiles.com/pickyourtrail',
+		// i18n-ignore: a license's own name, like an SPDX id
 		license: 'Lottie Simple License',
 		url: 'https://lottiefiles.com/free-animation/loading-OkRMnK50fl',
 		noteId: 'lottie_loading'
 	}
 ];
 
-/** The label the About page shows for an asset. */
+/** The label the About page shows for an asset, from the message
+ *  catalogue. */
 export function assetName(id: AssetNoteId): string {
-	return ASSETS.find((a) => a.noteId === id)?.name ?? id;
+	switch (id) {
+		case 'lottie_loading':
+			return m.about_asset_name_lottie_loading();
+	}
 }
 
 /** Donation address — single source of truth for the donate block
