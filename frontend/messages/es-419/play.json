@@ -108,5 +108,12 @@
 	"error_host_slow": "El servidor de video está respondiendo lento en este momento. Suele ser un problema del proveedor — reintentar más tarde normalmente lo soluciona.",
 	"error_fragment_loop": "El servidor de video envió un stream que el reproductor no puede almacenar — las partes llegan pero nunca se reproducen. La reproducción se detuvo en lugar de seguir pidiéndole la misma parte al servidor.",
 	"stall_toast_nudge": "La transmisión se detuvo — el servidor de video está lento. Reintentando…",
-	"play_failure_source_down": "La fuente de streaming está caída o en mantenimiento en este momento. No hay ningún problema de tu lado — inténtalo más tarde."
+	"play_failure_source_down": "La fuente de streaming está caída o en mantenimiento en este momento. No hay ningún problema de tu lado — inténtalo más tarde.",
+	"track_fallback_label": "Pista {number}",
+	"error_playback_technical": "Error de reproducción: {detail}",
+	"error_hls_unsupported": "Este webview no reproduce HLS.",
+	"error_no_show_id": "A la dirección le falta el id del título.",
+	"test_error_hls_fatal": "Error fatal de HLS: {detail}",
+	"test_error_play_failed": "Falló la reproducción: {detail}",
+	"test_error_setup_failed": "Falló la configuración: {detail}"
 }

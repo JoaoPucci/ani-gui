@@ -49,11 +49,12 @@
 	// to ~20 hits per query; sorting/filtering is cheap to do here
 	// rather than re-querying.
 	type SortKey = 'relevance' | 'title' | 'year' | 'rating';
-	const SORT_LABELS: Record<SortKey, string> = {
-		relevance: 'Relevance',
-		title: 'Title',
-		year: 'Year',
-		rating: 'Rating'
+	// Message functions, called at render so a locale switch relabels.
+	const SORT_LABELS: Record<SortKey, () => string> = {
+		relevance: m.search_sort_relevance,
+		title: m.search_sort_title,
+		year: m.search_sort_year,
+		rating: m.search_sort_rating
 	};
 	const SUBTYPES = ['TV', 'movie', 'special', 'OVA', 'ONA', 'music'];
 	let sortKey = $state<SortKey>('relevance');
@@ -248,7 +249,7 @@
 							aria-checked={sortKey === key}
 							onclick={() => (sortKey = key as SortKey)}
 						>
-							{label}
+							{label()}
 						</button>
 					{/each}
 				</div>

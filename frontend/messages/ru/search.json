@@ -25,5 +25,9 @@
 	"filtered_empty_headline": "В текущем фильтре совпадений нет.",
 	"filtered_empty_detail": "Сбросьте или измените фильтр по типу, чтобы увидеть больше результатов.",
 	"card_eps_suffix": "эп.",
-	"error_headline": "Не удалось выполнить поиск в Kitsu."
+	"error_headline": "Не удалось выполнить поиск в Kitsu.",
+	"sort_relevance": "Релевантность",
+	"sort_title": "Название",
+	"sort_year": "Год",
+	"sort_rating": "Рейтинг"
 }

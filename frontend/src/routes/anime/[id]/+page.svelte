@@ -855,12 +855,14 @@
 			: m.detail_ep_unaired();
 	}
 
-	const QUALITIES: Array<{ key: string; label: string }> = [
-		{ key: 'best', label: 'Best' },
-		{ key: '1080', label: '1080' },
-		{ key: '720', label: '720' },
-		{ key: '480', label: '480' },
-		{ key: 'worst', label: 'Worst' }
+	// Labels are message functions, called at render, so a locale
+	// switch relabels the buttons without rebuilding the table.
+	const QUALITIES: Array<{ key: string; label: () => string }> = [
+		{ key: 'best', label: m.app_quality_best },
+		{ key: '1080', label: () => '1080' },
+		{ key: '720', label: () => '720' },
+		{ key: '480', label: () => '480' },
+		{ key: 'worst', label: m.app_quality_worst }
 	];
 
 	// Cancel in-flight prefetches for this show on unmount. Prevents
@@ -880,7 +882,7 @@
 	$effect(() => {
 		const currentId = id;
 		if (!currentId) {
-			error = { headline: 'No anime selected.', detail: 'URL is missing the id segment.' };
+			error = { headline: m.detail_error_no_id_headline(), detail: m.detail_error_no_id_detail() };
 			return;
 		}
 		detail = null;
@@ -1554,7 +1556,7 @@
 										disabled={!config}
 										onclick={() => setQuality(q.key)}
 									>
-										{q.label}
+										{q.label()}
 									</button>
 								{/each}
 							</div>

@@ -105,6 +105,7 @@ class AccountStore {
 			next[p] = {
 				kind: 'error',
 				account: null,
+				// i18n-ignore: diagnostic text; no surface renders an error state's message
 				message: `Keychain read failed: ${r.detail}`
 			};
 		}

@@ -96,5 +96,7 @@
 	"synopsis_heading": "Описание",
 	"synopsis_toggle_less": "Свернуть",
 	"synopsis_toggle_more": "Читать дальше",
-	"unavailable_message": "Тайтла нет в стриминговом каталоге — воспроизведение и загрузка недоступны."
+	"unavailable_message": "Тайтла нет в стриминговом каталоге — воспроизведение и загрузка недоступны.",
+	"error_no_id_headline": "Аниме не выбрано.",
+	"error_no_id_detail": "В адресе нет id тайтла."
 }

@@ -133,6 +133,7 @@
 	$effect(() => {
 		expiryToastTracker.sync(accountStore.byProvider, {
 			push: (e) => {
+				// i18n-ignore: provider names are proper nouns
 				const providerLabel = e.provider === 'anilist' ? 'AniList' : e.provider.toUpperCase();
 				return toastStore.push({
 					kind: 'warning',

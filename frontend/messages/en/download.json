@@ -69,5 +69,6 @@
 	"range_error_start_over_max": "The first episode can't be past {max}, the last one available.",
 	"range_error_end_over_max": "The last episode can't be past {max}, the last one available.",
 	"range_error_over_cap": "You can't download more than {max} episodes for this show.",
-	"range_error_end_before_start": "The last episode can't come before the first."
+	"range_error_end_before_start": "The last episode can't come before the first.",
+	"browse_dialog_title": "Choose download folder"
 }

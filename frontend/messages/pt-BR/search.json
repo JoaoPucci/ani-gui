@@ -25,5 +25,9 @@
 	"filtered_empty_headline": "Nenhum resultado no filtro atual.",
 	"filtered_empty_detail": "Limpe ou altere o filtro de tipo acima para ver mais resultados.",
 	"card_eps_suffix": "eps",
-	"error_headline": "Não foi possível buscar no Kitsu."
+	"error_headline": "Não foi possível buscar no Kitsu.",
+	"sort_relevance": "Relevância",
+	"sort_title": "Título",
+	"sort_year": "Ano",
+	"sort_rating": "Nota"
 }

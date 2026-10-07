@@ -92,5 +92,7 @@
 	"about_license_text": "GPL-3.0.",
 	"about_diagnostics_link": "Diagnostics",
 	"about_disclaimer_label": "Disclaimer",
-	"about_disclaimer_text": "ani-gui scrapes public sources. Use only where local laws permit. The maintainers don't operate, host, or guarantee any of the upstream content."
+	"about_disclaimer_text": "ani-gui scrapes public sources. Use only where local laws permit. The maintainers don't operate, host, or guarantee any of the upstream content.",
+	"file_filter_executables": "Executables",
+	"file_filter_all_files": "All files"
 }

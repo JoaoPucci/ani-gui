@@ -92,5 +92,7 @@
 	"about_license_text": "GPL-3.0.",
 	"about_diagnostics_link": "Diagnóstico",
 	"about_disclaimer_label": "Aviso",
-	"about_disclaimer_text": "O ani-gui faz scraping de fontes públicas. Use apenas onde as leis locais permitirem. Os mantenedores não operam, hospedam nem garantem qualquer conteúdo upstream."
+	"about_disclaimer_text": "O ani-gui faz scraping de fontes públicas. Use apenas onde as leis locais permitirem. Os mantenedores não operam, hospedam nem garantem qualquer conteúdo upstream.",
+	"file_filter_executables": "Executáveis",
+	"file_filter_all_files": "Todos os arquivos"
 }

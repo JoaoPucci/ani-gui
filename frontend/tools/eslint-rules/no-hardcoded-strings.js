@@ -1,7 +1,7 @@
 /**
- * Custom ESLint rule: every visitor-facing string in a Svelte template
+ * Custom ESLint rule: every visitor-facing string in a Svelte component
  * must be routed through Paraglide (`m.foo()`), not embedded as a
- * literal. Catches the two main slip surfaces:
+ * literal. Catches three slip surfaces:
  *
  *   1. Raw text in a template — `<button>Save</button>`. Flagged via
  *      the `SvelteText` AST node.
@@ -9,15 +9,38 @@
  *      `aria-label="Close"`, `placeholder="Search"`, `title="…"`,
  *      `alt="…"`. Flagged via `SvelteAttribute` whose first child is
  *      a `SvelteLiteral`.
+ *   3. String and template literals in JavaScript — in `<script>` and
+ *      in template expressions — that read as copy. A literal in
+ *      script reaches the screen through a variable (`{error.headline}`,
+ *      a `{#each}` over a label table, `window.confirm(…)`), which the
+ *      first two never see.
  *
- * Heuristic: a value is "translatable" when it has ≥2 ASCII letters
- * and either contains a space or ends with sentence punctuation.
- * Pure numbers, single tokens, IDs, hex colours, URL fragments,
- * mono-character glyphs (✓, ▾, ▸…) are skipped.
+ * Heuristic for 1 and 2: a value is "translatable" when it has ≥2
+ * ASCII letters and either contains a space, ends with sentence
+ * punctuation or starts with a capital. Pure numbers, lowercase single
+ * tokens, IDs, hex colours, URL fragments, mono-character glyphs
+ * (✓, ▾, ▸…) are skipped.
  *
- * Escape hatch: a Svelte comment containing `i18n-ignore` on the
- * preceding line silences the rule for that node — preserves the
- * arch sniffer's escape hatch convention.
+ * Heuristic for 3, stricter because script is full of strings that are
+ * not copy: the literal starts with a capitalised word ("Best", "All
+ * files", "Couldn't reach Kitsu.") or contains a space and ends with
+ * sentence punctuation ("HLS playback is not supported."). Literals in
+ * positions that are never copy are skipped: import sources, object
+ * keys and member names, comparison operands, `case` labels, type
+ * positions, `console.*` arguments, `new …Error(…)` messages, tagged
+ * templates, and expressions on template attributes that are not
+ * user-facing (`class`, `href`, directives).
+ *
+ * What 3 deliberately misses — say so rather than imply coverage: a
+ * literal that starts lowercase or with an all-caps word and has no
+ * closing punctuation ("HLS fatal: …", "EP 3"), copy built by joining
+ * non-copy fragments, and every `.ts` module (the rule runs on
+ * `.svelte` files only). Copy in those places is caught by review, not
+ * by this rule.
+ *
+ * Escape hatch: a comment containing `i18n-ignore` silences the rule
+ * for a node. In a template, a Svelte comment just before the node; in
+ * JavaScript, a comment on the line before the literal or on its line.
  *
  * The rule is intentionally noisy on suspicion: false positives are
  * cheap (one-line ignore comment) but a missed translation slips
@@ -34,6 +57,24 @@ const USER_FACING_ATTRS = new Set([
 	'placeholder',
 	'alt',
 	'label'
+]);
+
+/** Common safe singletons that look capital but are tokens. */
+const TOKEN_ALLOWLIST = new Set([
+	'EN',
+	'JP',
+	'OK',
+	'CC',
+	'UTC',
+	'AM',
+	'PM',
+	'TV',
+	'MP4',
+	'HLS',
+	'PiP',
+	'OP',
+	'ED',
+	'ETH'
 ]);
 
 /** Cheap heuristic for "looks like English text we'd want translated".
@@ -53,25 +94,81 @@ function isTranslatable(raw) {
 	const endsSentence = /[.!?…]$/.test(value);
 	const startsCapital = /^[A-Z]/.test(value);
 	if (!hasSpace && !endsSentence && !startsCapital) return false;
-	// Common safe singletons that look capital but are tokens.
-	const tokenAllowlist = new Set([
-		'EN',
-		'JP',
-		'OK',
-		'CC',
-		'UTC',
-		'AM',
-		'PM',
-		'TV',
-		'MP4',
-		'HLS',
-		'PiP',
-		'OP',
-		'ED',
-		'ETH'
-	]);
-	if (tokenAllowlist.has(value)) return false;
+	if (TOKEN_ALLOWLIST.has(value)) return false;
 	return true;
+}
+
+/** The stricter check for a JavaScript literal (surface 3 above).
+ *  @param {string} raw */
+function isScriptCopy(raw) {
+	const value = raw.trim();
+	if ((value.match(/[A-Za-z]/g) ?? []).length < 2) return false;
+	if (TOKEN_ALLOWLIST.has(value)) return false;
+	if (/^[A-Z][a-z]/.test(value)) return true;
+	return /\s/.test(value) && /[.!?…]$/.test(value);
+}
+
+/** Error constructors whose message argument is never copy. */
+const ERROR_CALLEE = /(^|\.)([A-Z][A-Za-z]*)?Error$/;
+
+/** Is this JavaScript literal in a position that is never copy?
+ *  @param {any} node
+ *  @param {any} sourceCode */
+function isNonCopyPosition(node, sourceCode) {
+	const parent = node.parent;
+	if (!parent) return true;
+	switch (parent.type) {
+		case 'ImportDeclaration':
+		case 'ImportExpression':
+		case 'ExportNamedDeclaration':
+		case 'ExportAllDeclaration':
+		case 'TSLiteralType':
+		case 'TaggedTemplateExpression':
+		case 'SwitchCase':
+			return true;
+		case 'Property':
+			if (parent.key === node) return true;
+			break;
+		case 'MemberExpression':
+			if (parent.property === node) return true;
+			break;
+		case 'BinaryExpression':
+			if (['===', '!==', '==', '!='].includes(parent.operator)) return true;
+			break;
+		case 'CallExpression':
+			if (/^console\./.test(sourceCode.getText(parent.callee))) return true;
+			break;
+		case 'NewExpression':
+			if (ERROR_CALLEE.test(sourceCode.getText(parent.callee))) return true;
+			break;
+	}
+	// Inside a template attribute's expression: only user-facing
+	// attributes carry copy; `class={…}`, `href={…}` and directives
+	// (`on:`, `bind:`, `class:` …) do not.
+	for (let cur = parent; cur; cur = cur.parent) {
+		if (cur.type === 'SvelteDirective' || cur.type === 'SvelteSpecialDirective') return true;
+		if (cur.type === 'SvelteAttribute') {
+			const name = typeof cur.key?.name === 'string' ? cur.key.name : '';
+			return !USER_FACING_ATTRS.has(name);
+		}
+		if (cur.type === 'SvelteScriptElement' || cur.type === 'Program') break;
+	}
+	return false;
+}
+
+/** Does an `i18n-ignore` comment sit on the line before `node` or on
+ *  its own line?
+ *  @param {any} node
+ *  @param {any} sourceCode */
+function hasLineIgnoreMarker(node, sourceCode) {
+	const line = node.loc.start.line;
+	return sourceCode
+		.getAllComments()
+		.some(
+			(/** @type {any} */ c) =>
+				c.value.includes('i18n-ignore') &&
+				(c.loc.end.line === line - 1 || c.loc.start.line === line)
+		);
 }
 
 /** Walk up the AST to find a parent of `type`.
@@ -106,18 +203,42 @@ export default {
 		type: 'problem',
 		docs: {
 			description:
-				'disallow hardcoded English text in Svelte templates — route every visitor-facing string through Paraglide (m.foo())'
+				'disallow hardcoded English text in Svelte components — route every visitor-facing string through Paraglide (m.foo())'
 		},
 		schema: [],
 		messages: {
 			text: 'Hardcoded text "{{ value }}" — wrap in Paraglide (m.foo()) or annotate with <!-- i18n-ignore -->.',
-			attr: 'Hardcoded text in `{{ attr }}` ("{{ value }}") — wrap in Paraglide (m.foo()) or annotate with <!-- i18n-ignore -->.'
+			attr: 'Hardcoded text in `{{ attr }}` ("{{ value }}") — wrap in Paraglide (m.foo()) or annotate with <!-- i18n-ignore -->.',
+			script:
+				'Hardcoded text "{{ value }}" in script — wrap in Paraglide (m.foo()) or annotate with // i18n-ignore.'
 		}
 	},
 	create(context) {
 		const sourceCode = context.sourceCode;
 
+		/** @param {any} node
+		 *  @param {string} value */
+		function checkScriptLiteral(node, value) {
+			if (!isScriptCopy(value)) return;
+			if (isNonCopyPosition(node, sourceCode)) return;
+			if (hasLineIgnoreMarker(node, sourceCode) || hasIgnoreMarker(node, sourceCode)) return;
+			context.report({
+				node,
+				messageId: 'script',
+				data: { value: value.trim().slice(0, 50) }
+			});
+		}
+
 		return {
+			/** @param {any} node */
+			Literal(node) {
+				if (typeof node.value === 'string') checkScriptLiteral(node, node.value);
+			},
+			/** @param {any} node */
+			TemplateLiteral(node) {
+				const text = node.quasis.map((/** @type {any} */ q) => q.value.cooked ?? '').join('{}');
+				checkScriptLiteral(node, text);
+			},
 			/** @param {any} node */
 			SvelteText(node) {
 				if (!isTranslatable(node.value)) return;

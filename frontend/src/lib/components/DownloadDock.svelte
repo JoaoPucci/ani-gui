@@ -68,7 +68,9 @@
 		// "Confirm? [yes][no]" later if multiple destructive
 		// affordances accumulate.
 		const ok =
-			typeof window !== 'undefined' ? window.confirm(`Cancel download of "${item.title}"?`) : true;
+			typeof window !== 'undefined'
+				? window.confirm(m.download_bar_cancel_confirm_single({ title: item.title }))
+				: true;
 		if (ok) downloadStore.cancel(item.id);
 	}
 </script>

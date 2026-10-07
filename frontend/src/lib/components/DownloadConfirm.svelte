@@ -139,7 +139,7 @@
 		const picker = typeof window !== 'undefined' ? window.aniGui?.pickDirectory : null;
 		if (!picker) return; // dev-mode browser without preload — leave dir as-is
 		const picked = await picker({
-			title: 'Choose download folder',
+			title: m.download_browse_dialog_title(),
 			defaultPath: dir
 		});
 		if (picked) dir = picked;

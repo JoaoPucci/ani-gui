@@ -96,5 +96,7 @@
 	"synopsis_heading": "Sinopsis",
 	"synopsis_toggle_less": "Leer menos",
 	"synopsis_toggle_more": "Leer más",
-	"unavailable_message": "Fuera del catálogo de streaming — reproducción y descarga no disponibles para este título."
+	"unavailable_message": "Fuera del catálogo de streaming — reproducción y descarga no disponibles para este título.",
+	"error_no_id_headline": "No hay ningún anime seleccionado.",
+	"error_no_id_detail": "A la dirección le falta el id del título."
 }
