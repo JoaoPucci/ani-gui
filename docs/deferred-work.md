@@ -426,8 +426,7 @@ starting it, and delete it when you find it done.
   anidb.app down, hianime carried every request without visible
   pushback, and a breaker learns after the block, not before. With
   hianime first, the union's extra walk per hianime miss goes to
-  anidb.app, and while anidb.app redirects its search, to the site
-  it redirects to as well.
+  anidb.app.
 
   Two things a grep will not surface: only the zokoanime embed pages
   carry the MyAnimeList id in their path, so a cross-check against

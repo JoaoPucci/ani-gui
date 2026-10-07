@@ -81,10 +81,9 @@ pub struct FetchResponse {
     /// redirects (`-L`) unless the request is held to its origin
     /// ([`FetchRequest::held_to_origin`]), so a page can arrive from a
     /// host other than the one asked for, and anything a caller keys
-    /// on the serving
-    /// host — the origin a CDN checks as `Referer`, a rule about
-    /// which hosts it can read — belongs on this rather than on the
-    /// request.
+    /// on the serving host — the origin a CDN checks as `Referer`, a
+    /// rule about which hosts it can read — belongs on this rather
+    /// than on the request.
     pub url: String,
 }
 
@@ -342,14 +341,16 @@ pub(crate) fn scrub_stderr(stderr: &str, url: &str) -> String {
 }
 
 /// The `-w` trailer split back off the child's stdout: the body, the
-/// status field and the effective-URL field, in that order.
+/// status field and the URL field, in that order. The URL field is
+/// the effective URL, or for a request held to its origin the
+/// redirect's target (empty when there is none).
 ///
 /// The trailer is the last line and only the last line: `-w` opens it
 /// with a newline, so whatever the body ended with — a newline of its
 /// own, none at all, a line that itself looks like a trailer — the
 /// text after the final newline is the trailer. Within it the status
 /// comes first and one space separates the two fields, which is
-/// unambiguous because an effective URL never carries a space.
+/// unambiguous because neither URL ever carries a space.
 ///
 /// Total by construction: stdout without a newline is read as a
 /// trailer and an empty body, exactly as the status-only trailer was
@@ -364,7 +365,8 @@ pub(crate) fn split_trailer(text: &str) -> (&str, &str, &str) {
 /// The child's argv, without the executable. Pure so the flag set is
 /// assertable without spawning anything.
 ///
-/// `-w` appends the status and the effective URL after the body; the
+/// `-w` appends the status and the effective URL after the body — for
+/// a request held to its origin, the redirect's target instead; the
 /// last line is split back off ([`split_trailer`]). Mirrors the
 /// script's anidb_curl flags, plus the impersonation target when the
 /// resolved binary needs one.
@@ -435,6 +437,9 @@ pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<S
 
 /// How many same-origin redirects a held request follows before the
 /// transport gives up on it, as curl's own `-L` would at its limit.
+/// Each hop is its own transfer under its own deadline, so a held
+/// chain can take longer than one `-L` transfer would; the walk's
+/// per-attempt budget bounds it.
 const MAX_SAME_ORIGIN_HOPS: usize = 10;
 
 #[async_trait::async_trait]
