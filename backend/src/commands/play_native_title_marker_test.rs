@@ -353,3 +353,15 @@ fn a_span_without_the_first_part_needs_every_ordinal_named() {
     assert!(!e.part_agrees("Show Part 2+3"));
     assert!(entry(&["Show Part 2", "Show Part 3"]).part_agrees("Show Part 2+3"));
 }
+
+#[test]
+fn japanese_divisions_glued_one_after_another_are_each_read() {
+    // "ショー第2期第2部" is the second season's second part, glued in
+    // one word: it reads [2, 2] and is named "ショー", so it is no
+    // listing of the second season as a whole.
+    assert_eq!(reading("ショー第2期第2部"), vec![2, 2]);
+    assert_eq!(name("ショー第2期第2部"), vec!["ショー".to_string()]);
+    let e = entry(&["ショー 第2期"]);
+    assert!(!e.reads_as_entry("ショー第2期第2部"));
+    assert!(e.reads_as_entry("ショー第2期"));
+}
