@@ -1344,8 +1344,8 @@ mod tests {
     }
 
     /// Images reach the renderer over plain HTTP (there is no
-    /// `image://` custom protocol under Electron). The route must serve cached bytes with the right
-    /// Content-Type, and refuse non-https upstreams (defense in depth
+    /// `image://` custom protocol under Electron). The route must serve
+    /// cached bytes with the right Content-Type, and refuse non-https upstreams (defense in depth
     /// against an XSS asking the loopback server to fetch arbitrary
     /// schemes).
     #[tokio::test]

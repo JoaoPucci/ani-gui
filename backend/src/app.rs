@@ -1,4 +1,4 @@
-//! `AppState` — the single state value every HTTP handler receives.
+//! `AppState` — the single state value every API handler receives.
 //!
 //! Wires together everything the frontend can reach:
 //!
@@ -10,7 +10,8 @@
 //!   never hammer the upstream
 //!
 //! Built once by the backend binary at startup (`AppState::build`) and
-//! shared with the axum routers.
+//! handed to the API router; the streaming-proxy router gets its
+//! `ProxyState` projection.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,7 +25,7 @@ use crate::meta::kitsu::KitsuClient;
 use crate::meta::mal_user::MalRefreshState;
 use crate::proxy::{AppSecret, ProxyOrigin, ProxyState, SessionTable};
 
-/// Single state container every HTTP handler receives.
+/// Single state container every API handler receives.
 #[derive(Clone)]
 pub struct AppState {
     /// HMAC secret for stream tokens.
@@ -76,7 +77,7 @@ pub struct AppState {
     /// all; a test lists the ones it stubs, so a stubbed outage
     /// cannot fall through to a real site.
     pub provider_order: Vec<crate::scraper::provider::ProviderId>,
-    /// On-disk image-cache directory served by the `image://` protocol.
+    /// On-disk image-cache directory served by the `/api/image` route.
     pub image_cache_dir: PathBuf,
     /// Connection pool for the SQLite metadata cache.
     pub cache_pool: SqlitePool,

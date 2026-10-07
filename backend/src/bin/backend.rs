@@ -1,7 +1,6 @@
 //! The backend binary — the app's Rust logic as a standalone process.
-//! Used by Electron's main process, which
-//! spawns this as a sidecar and reads its stdout to learn the bound
-//! port.
+//! Used by Electron's main process, which spawns this as a sidecar and
+//! reads its stdout to learn the bound port.
 //!
 //! Stdout protocol: two lines,
 //!     ANI_GUI_LISTENING http://127.0.0.1:<port>

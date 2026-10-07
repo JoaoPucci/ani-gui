@@ -16,7 +16,7 @@
  * outlived the script that used them.
  *
  * Display-only data that is a proper name (tool name / version /
- * license / url) is hard-coded.
+ * license / author / url) is hard-coded.
  * Visitor-facing description strings live in the i18n message
  * bundle and are looked up by the page via the `noteId`
  * discriminant. The data module never carries user-visible English

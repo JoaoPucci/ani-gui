@@ -266,7 +266,8 @@ pub fn clear_all(cache_dir: &Path) -> Result<()> {
 
 /// Resolve an `image://` request to bytes + mime, going through the cache
 /// layer. Written for the Tauri custom-protocol handler, which went away
-/// with Tauri; nothing outside this module's tests calls it now.
+/// with Tauri; nothing calls it now (only `upstream_from_protocol_uri`
+/// below is exercised, by this module's tests).
 ///
 /// `request_uri` is the URL the webview asked for, in `image://host/path`
 /// shape.
