@@ -18,15 +18,17 @@
 //! player's behalf, hop by hop where a redirect sends it on, and a
 //! download charges the subtitle tracks it stages beside its transfer,
 //! since the host counts both against the one address — as background
-//! traffic, which takes a token only while no one waits for one. Of the app's
-//! own fetches, not charged: a cached resolution's liveness check — a
-//! ping and a read of each track, at most a track cap's worth at once,
-//! before the player starts, under a deadline of seconds that waiting
-//! for tokens would spend — and what runs outside the app's client,
-//! the resolver's fetch of a playlist through the impersonating
-//! transport and the download tools, which the lane paces instead. An
-//! external player the app hands a stream to fetches from the host on
-//! its own, outside the app entirely.
+//! traffic, which takes a token only while no one waits for one. What
+//! reaches the host past the budget is charged to it too: a cached
+//! resolution's liveness check spends a token per request without
+//! waiting — it runs before the player starts, under a deadline of
+//! seconds — and a download tool running against the host holds its
+//! tokens to what the tool's requests in flight leave of the burst,
+//! spending them when it ends ([`UnpacedRun`]). Not charged: the
+//! resolver's fetch of a playlist through the impersonating transport,
+//! one request ahead of the player's own, and an external player the
+//! app hands a stream to, which fetches from the host on its own,
+//! outside the app entirely.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

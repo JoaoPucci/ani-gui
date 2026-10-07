@@ -205,6 +205,16 @@ starting it, and delete it when you find it done.
   seen to refetch or error out beside a download, as the embedded one
   did — and the routing changes how a working handoff behaves.
 
+- **The resolver's requests to a CDN pass the host's budget.** A
+  fresh resolve fetches the master playlist — and the variant, for a
+  quality other than best — through the impersonating transport, ahead
+  of the player's own fetches of the same host, and the budget does not
+  count them. Downloads running past the budget and a cached row's
+  liveness check are charged; the resolver is not, because it runs in
+  the providers, which hold no budget, and its other requests go to the
+  provider's site rather than the CDN. It is one or two requests
+  against a burst of twenty.
+
 - **What a history removal does not reach.** Removing a show from the
   history, or clearing it, misses five things, each described in
   [`architecture.md`](./architecture.md#watch-history-and-removing-it):
