@@ -83,8 +83,10 @@ impl<F: Fetch> AnidbClient<F> {
     /// request on the provider's origin that another origin served
     /// ([`origin::get_from_origin`]), and challenge pages and
     /// non-success statuses as typed upstream errors.
-    async fn content(&self, url: &str) -> Result<String> {
-        let resp = origin::get_from_origin(&self.fetch, &self.base, url).await?;
+    /// `home` is the origin the request is held to: the provider's
+    /// own for its pages, the embed's for the embed page.
+    async fn content(&self, home: &str, url: &str) -> Result<String> {
+        let resp = origin::get_from_origin(&self.fetch, home, url).await?;
         if is_cloudflare_interstitial(&resp.body) {
             let status = if resp.status >= 400 { resp.status } else { 403 };
             return Err(AniError::Upstream { status });
@@ -115,7 +117,7 @@ impl<F: Fetch> Provider for AnidbClient<F> {
     /// plus the transport errors of [`crate::scraper::fetch::Fetch::get`].
     async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
         let url = format!("{}/browse?q={}", self.base, encode_query(query));
-        let body = self.content(&url).await?;
+        let body = self.content(&self.base, &url).await?;
         parse_browse(&body)
     }
 
@@ -131,7 +133,7 @@ impl<F: Fetch> Provider for AnidbClient<F> {
             }
         })?;
         let url = format!("{}/api/frontend/anime/{id}/episodes", self.base);
-        let body = self.content(&url).await?;
+        let body = self.content(&self.base, &url).await?;
         parse_episodes(&body)
     }
 
@@ -144,7 +146,7 @@ impl<F: Fetch> Provider for AnidbClient<F> {
     /// [`AniError::ParseFailed`] on an unrecognized body.
     async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool> {
         let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
-        let body = self.content(&url).await?;
+        let body = self.content(&self.base, &url).await?;
         let embeds = parse_languages(&body)?;
         Ok(preferred_embed(&embeds, mode).is_some())
     }
@@ -153,15 +155,24 @@ impl<F: Fetch> Provider for AnidbClient<F> {
     /// languages → preferred embed → embed page → jwplayer `file:`.
     ///
     /// # Errors
-    /// [`AniError::NoResults`] when no embed matches the mode or the
-    /// embed page carries no playlist, plus upstream/transport errors.
+    /// [`AniError::NoResults`] when no embed matches the mode;
+    /// [`AniError::ParseFailed`] when the embed page carries no
+    /// playlist, was redirected off the embed's origin, or came from
+    /// another; plus upstream/transport errors.
     async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
         let url = format!("{}/api/frontend/episode/{episode_id}/languages", self.base);
-        let body = self.content(&url).await?;
+        let body = self.content(&self.base, &url).await?;
         let embeds = parse_languages(&body)?;
         let embed = preferred_embed(&embeds, mode).ok_or(AniError::NoResults)?;
-        let embed_body = self.content(&embed.embed_url).await?;
-        let master_url = extract_master_url(&embed_body).ok_or(AniError::NoResults)?;
+        let embed_body = self.content(&embed.embed_url, &embed.embed_url).await?;
+        // The languages listing named this embed, so a page without
+        // the player's playlist is not the embed — a parked domain, a
+        // reshaped player — and fails over like any page the parser
+        // does not recognise, rather than reading as the episode
+        // having no stream.
+        let master_url = extract_master_url(&embed_body).ok_or_else(|| AniError::ParseFailed {
+            detail: "anidb embed page without the player's playlist".into(),
+        })?;
         // anidb's CDN checks no referer; the proxy sends none.
         Ok(StreamSource {
             master_url,
@@ -184,7 +195,7 @@ impl<F: Fetch> Provider for AnidbClient<F> {
     /// statuses, and transport errors, verbatim from the fetch.
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
         let url = format!("{}/anime/{slug}", self.base);
-        match self.content(&url).await {
+        match self.content(&self.base, &url).await {
             Ok(body) => Ok(parse_detail_year(&body)),
             Err(AniError::Upstream { status })
                 if !AniError::Upstream { status }.is_provider_block() =>
@@ -196,7 +207,7 @@ impl<F: Fetch> Provider for AnidbClient<F> {
     }
 
     async fn playlist(&self, url: &str, _referer: Option<&str>) -> Result<String> {
-        self.content(url).await
+        self.content(&self.base, url).await
     }
 
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {

@@ -3,28 +3,43 @@
 //! per-file bar.
 
 use crate::error::{AniError, Result};
-use crate::scraper::fetch::{Fetch, FetchResponse};
+use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
 
-/// GET `url`, refusing an answer to a request on the provider's
-/// origin (`base`) that another origin served, as a parse failure:
+/// GET `url`, holding a request on `home`'s origin to that origin.
+/// Such a request follows only the redirects that stay on it
+/// ([`FetchRequest::held_to_origin`]), so a site anidb redirects to
+/// never receives it; the redirect that was not followed, or an
+/// answer another origin served all the same, is a parse failure:
 /// the walk fails over past it and the gate hears distress, rather
-/// than a parser reading another site's page as anidb's answer.
+/// than a parser reading another site's page as anidb's answer. A
+/// request off `home`'s origin — the CDN's playlist — follows its
+/// redirects wherever they go.
 ///
 /// # Errors
-/// [`AniError::ParseFailed`] when [`answered_elsewhere`], plus the
-/// transport errors of [`Fetch::get`].
+/// [`AniError::ParseFailed`] for a held request redirected off its
+/// origin or [`answered_elsewhere`], plus the transport errors of
+/// [`Fetch::fetch`].
 pub(super) async fn get_from_origin<F: Fetch>(
     fetch: &F,
-    base: &str,
+    home: &str,
     url: &str,
 ) -> Result<FetchResponse> {
-    let resp = fetch.get(url).await?;
-    if answered_elsewhere(base, url, &resp.url) {
+    let held = on_origin(home, url);
+    let req = FetchRequest::get(url);
+    let req = if held { req.held_to_origin() } else { req };
+    let resp = fetch.fetch(&req).await?;
+    if held && ((300..400).contains(&resp.status) || answered_elsewhere(home, url, &resp.url)) {
         return Err(AniError::ParseFailed {
-            detail: "anidb: a request to its origin was answered from another origin".into(),
+            detail: "anidb: a request to its origin was redirected off it or answered from another origin".into(),
         });
     }
     Ok(resp)
+}
+
+/// Whether `url` is on `home`'s origin.
+fn on_origin(home: &str, url: &str) -> bool {
+    let origin = |u: &str| url::Url::parse(u).ok().map(|u| u.origin());
+    origin(home).is_some_and(|home| origin(url) == Some(home))
 }
 
 /// Whether a request to the provider's origin was answered from
