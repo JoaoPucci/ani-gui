@@ -94,5 +94,7 @@
 	"about_disclaimer_label": "Disclaimer",
 	"about_disclaimer_text": "ani-gui scrapes public sources. Use only where local laws permit. The maintainers don't operate, host, or guarantee any of the upstream content.",
 	"file_filter_executables": "Executables",
-	"file_filter_all_files": "All files"
+	"file_filter_all_files": "All files",
+	"error_file_invalid": "The settings file (config.toml) isn't valid. If you edited it by hand, check it for mistakes.",
+	"error_file_unreadable": "The settings file couldn't be read or saved. Check that ani-gui's config folder is writable."
 }
