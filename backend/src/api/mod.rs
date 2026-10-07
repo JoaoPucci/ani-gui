@@ -45,21 +45,21 @@ use crate::history::HistoryEntry;
 use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
 
 /// Map every `AniError` variant to the closest matching HTTP status.
-/// The body is the same JSON shape Tauri used to surface (a `kind`
-/// discriminator + optional `key` / `detail`), so the frontend
-/// error-handling code keeps the same structure as it switches from
-/// `invoke()` rejection payloads to `fetch()` 4xx/5xx bodies.
+/// The body is the envelope [`ani_error_to_sse_payload`] builds — the
+/// `kind` discriminator, the variant's fields, and its stable `key` —
+/// so an HTTP error and an SSE error event carry the same shape, and
+/// the key the frontend resolves (AGENTS.md §4) reaches it either way.
 impl IntoResponse for AniError {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.http_status_code())
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        (status, Json(self)).into_response()
+        (status, Json(ani_error_to_sse_payload(&self))).into_response()
     }
 }
 
-/// Convert an [`AniError`] into the JSON shape sent on SSE error
-/// events. Centralises the play- and download-stream handlers'
-/// identical reshape logic so both streams emit the same envelope
+/// Convert an [`AniError`] into the JSON envelope every error answer
+/// carries: the HTTP error bodies and the play- and download-stream
+/// SSE error events alike
 /// (`{"kind": "<snake>", "key": "error.<scope>.<name>", ...}`)
 /// — the frontend matches on `kind` to render error-specific UI
 /// (today: the ffmpeg-missing modal at the layout level).
