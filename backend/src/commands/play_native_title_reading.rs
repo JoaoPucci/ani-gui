@@ -106,6 +106,11 @@ fn scan(words: &[String], leading: bool) -> Vec<Marker> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < words.len() {
+        if let Some((glued, _)) = glued_divisions(&words[i]) {
+            out.extend(glued);
+            i += 1;
+            continue;
+        }
         match division_at(words, i) {
             Some((m, taken)) => {
                 out.push(m);
@@ -151,6 +156,20 @@ fn division_at(words: &[String], i: usize) -> Option<(Marker, usize)> {
     ))
 }
 
+/// The Japanese divisions a word ends on, in order — every one of
+/// several glued one after another ("ショー第2期第2部" → season 2, part
+/// 2) — and what the word holds before the first ("ショー").
+fn glued_divisions(word: &str) -> Option<(Vec<Marker>, &str)> {
+    let (first, mut head) = japanese_trailing(word)?;
+    let mut out = vec![first];
+    while let Some((m, before)) = japanese_trailing(head) {
+        out.push(m);
+        head = before;
+    }
+    out.reverse();
+    Some((out, head))
+}
+
 /// A title's name: its words up to the first division it names
 /// ([`division_at`]), with what a Japanese word holds before a
 /// division glued to it — the words a show's seasons and parts share
@@ -167,7 +186,7 @@ pub(super) fn name(title: &str) -> Vec<String> {
             out.push(w.clone());
             continue;
         }
-        let head = japanese_trailing(w).map_or_else(
+        let head = glued_divisions(w).map_or_else(
             || w.trim_end_matches(|c: char| c.is_ascii_digit()),
             |(_, before)| before,
         );
