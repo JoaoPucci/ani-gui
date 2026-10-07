@@ -82,13 +82,48 @@ describe('describeError', () => {
 	it('does not tell the user to check their connection when the service did answer', () => {
 		// `upstream` is a non-success status from a service that was
 		// reached, and `http` a non-JSON error body from the local
-		// backend; neither is a connection problem, and for a 5xx the
-		// play copy already says nothing is wrong on the user's end.
-		const answered = describeError({ kind: 'upstream', status: 503 });
+		// backend; neither is a connection problem.
+		const answered = describeError({ kind: 'upstream', status: 403 });
 		expect(answered).toMatch(/answered with an error/i);
 		expect(answered).not.toBe(describeError({ kind: 'network' }));
-		expect(describeError({ kind: 'upstream', status: 404 })).toBe(answered);
 		expect(describeError({ kind: 'http', status: 500 })).toBe(answered);
+	});
+
+	it('tells apart the upstream statuses the user would act on differently', () => {
+		// The status is a variant field the copy can read: a missing
+		// resource is not worth retrying, a 5xx is the service's own
+		// outage, and a 429 is a busy service — three different next
+		// steps that one "answered with an error" sentence hid.
+		const answered = describeError({ kind: 'upstream', status: 403 });
+		const missing = describeError({ kind: 'upstream', status: 404 });
+		const down = describeError({ kind: 'upstream', status: 503 });
+		expect(missing).toMatch(/couldn't find/i);
+		expect(describeError({ kind: 'upstream', status: 410 })).toBe(missing);
+		expect(down).toMatch(/down/i);
+		expect(describeError({ kind: 'upstream', status: 502 })).toBe(down);
+		expect(describeError({ kind: 'upstream', status: 429 })).toBe(
+			describeError({ kind: 'rate_limited' })
+		);
+		expect(new Set([answered, missing, down]).size).toBe(3);
+		expect(describeError({ kind: 'upstream' })).toBe(answered);
+	});
+
+	it('names a catalogue miss as not found, not as a generic failure', () => {
+		expect(describeError({ kind: 'no_results' })).toBe(
+			describeError({ kind: 'upstream', status: 404 })
+		);
+	});
+
+	it("passes on the service's own wait when a rate limit carries one", () => {
+		const msg = describeError({ kind: 'rate_limited', retry_after_secs: 9 });
+		expect(msg).toMatch(/busy/i);
+		expect(msg).toMatch(/9/);
+		expect(describeError({ kind: 'rate_limited', retry_after_secs: null })).toBe(
+			describeError({ kind: 'rate_limited' })
+		);
+	});
+
+	it('names the cause by kind (continued)', () => {
 		expect(describeError({ kind: 'timeout' })).toMatch(/took too long/i);
 		expect(describeError({ kind: 'rate_limited' })).toMatch(/busy/i);
 		expect(describeError({ kind: 'metadata' })).toBe(describeError({ kind: 'parse_failed' }));
