@@ -16,14 +16,23 @@ use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
 /// redirects wherever they go.
 ///
 /// # Errors
-/// [`AniError::ParseFailed`] for a held request redirected off its
-/// origin or [`answered_elsewhere`], plus the transport errors of
+/// [`AniError::ParseFailed`] for a `home` that names no origin, and
+/// for a held request redirected off its origin or
+/// [`answered_elsewhere`], plus the transport errors of
 /// [`Fetch::fetch`].
 pub(super) async fn get_from_origin<F: Fetch>(
     fetch: &F,
     home: &str,
     url: &str,
 ) -> Result<FetchResponse> {
+    // A home that names no origin — an embed URL that is not
+    // absolute — has nothing to hold the request to, and an unheld
+    // request would follow its redirects anywhere: it is not sent.
+    if url::Url::parse(home).is_err() {
+        return Err(AniError::ParseFailed {
+            detail: "anidb: a URL that names no origin to hold the request to".into(),
+        });
+    }
     let held = on_origin(home, url);
     let req = FetchRequest::get(url);
     let req = if held { req.held_to_origin() } else { req };
