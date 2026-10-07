@@ -1380,3 +1380,43 @@ async fn a_numbered_stem_takes_no_further_digit() {
         panic!("picked {} ({})", p.hit.slug, p.episodes.len());
     }
 }
+
+/// Where W's stem ends on a bare number, the number a sibling carries
+/// in its place decides: a higher one is the next season, the same one
+/// written apart is W's own, and one that only continues W's digits is
+/// another number, glued Japanese included.
+#[tokio::test]
+async fn the_number_where_w_s_stands_decides_how_a_sibling_reads() {
+    let site = pool_of(
+        &["Lucky 2"],
+        Some(12),
+        2020,
+        "Lucky 2",
+        &[("w", "Lucky 2", 24), ("l", "Lucky 3", 12)],
+    );
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!((picked.hit.slug.as_str(), picked.episodes.len()), ("w", 12));
+    let site = pool_of(
+        &["ショー２"],
+        Some(12),
+        2020,
+        "ショー２",
+        &[
+            ("w", "ショー２", 24),
+            ("s1", "ショー", 12),
+            ("own", "ショー ２", 12),
+        ],
+    );
+    let picked = walk_over(site).await.expect("the entry's own listing");
+    assert_eq!(picked.hit.slug, "own");
+    let site = pool_of(
+        &["ショー２"],
+        Some(12),
+        2020,
+        "ショー２",
+        &[("w", "ショー２", 24), ("x", "ショー２０第2部", 12)],
+    );
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} ({})", p.hit.slug, p.episodes.len());
+    }
+}
