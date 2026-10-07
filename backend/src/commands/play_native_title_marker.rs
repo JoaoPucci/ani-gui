@@ -17,7 +17,8 @@ use super::play_native_title_grammar::{
 #[cfg(test)]
 use super::play_native_title_grammar::{Kind, Marker};
 use super::play_native_title_reading::{
-    later_divisions, name, names_past_stem, opens_on_a_first_division, reading, starts_with_name_of,
+    carries_number_of, continues_number_of, later_divisions, name, names_past_stem,
+    opens_on_a_first_division, reading, starts_with_name_of,
 };
 
 /// Every title the entry goes by: its canonical title, then the
@@ -79,6 +80,12 @@ impl EntryTitles<'_> {
     ///   number no sequel. An entry names a number written before a
     ///   Japanese counter too: "怪獣８号" admits "Kaiju No. 8".
     ///
+    /// - A title matching one of the entry's up to its first number and
+    ///   only continuing that number is another show
+    ///   ([`Self::continues_a_number`]): "Show20" for "Show 2", "Mob
+    ///   Psycho 1000 Part 2" for "Mob Psycho 100 II", "861" for "86 Part
+    ///   2".
+    ///
     /// Only markers that end a title are read as the title's own, so
     /// "JoJo's Bizarre Adventure Part 4: Diamond is Unbreakable" names
     /// a story part, not a cour.
@@ -88,6 +95,18 @@ impl EntryTitles<'_> {
             .iter()
             .all(|m| m.named_by(&named))
             && stem_number(candidate).is_none_or(|n| n == 1 || named.contains(&n))
+            && !self.continues_a_number(candidate)
+    }
+
+    /// Whether `candidate` matches one of the entry's titles only by
+    /// continuing its first number ([`continues_number_of`]) — "Show20"
+    /// for "Show 2", "861" for "86 Part 2" — and no title of the entry
+    /// carries the number it does: another show.
+    ///
+    /// [`continues_number_of`]: super::play_native_title_reading::continues_number_of
+    fn continues_a_number(&self, candidate: &str) -> bool {
+        self.all().any(|t| continues_number_of(candidate, t))
+            && !self.all().any(|t| carries_number_of(candidate, t))
     }
 
     /// Whether the part a candidate's title ends on agrees with the
