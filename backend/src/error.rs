@@ -1,5 +1,5 @@
-//! `AniError` — the single error type that crosses every Tauri command
-//! boundary.
+//! `AniError` — the single error type that crosses every command and
+//! HTTP API boundary.
 //!
 //! Every variant maps to a stable i18n key returned to the frontend.
 //! Localized strings are resolved by the frontend (Paraglide), never by the
