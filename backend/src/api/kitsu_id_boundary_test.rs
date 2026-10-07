@@ -116,6 +116,10 @@ async fn assert_refused(kitsu: &str, method: &str, uri: &str, body: &str) {
         v["kind"], "invalid_kitsu_id",
         "{method} {uri} {body}: {text}"
     );
+    assert_eq!(
+        v["key"], "error.request.invalid_kitsu_id",
+        "{method} {uri} {body}: {text}"
+    );
 }
 
 #[tokio::test]

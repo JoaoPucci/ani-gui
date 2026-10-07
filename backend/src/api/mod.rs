@@ -809,6 +809,10 @@ mod kitsu_map_tests;
 mod kitsu_id_boundary_test;
 
 #[cfg(test)]
+#[path = "error_envelope_test.rs"]
+mod error_envelope_test;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;
