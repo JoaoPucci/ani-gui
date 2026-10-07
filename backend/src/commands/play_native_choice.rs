@@ -66,8 +66,9 @@ pub(super) fn strongest_dead(
 /// garbage — reject it so the next alias gets its chance (the live
 /// Tai-Ari mispick: three decades-off hits excluded, an unknown-year
 /// movie left standing). A pool the year disproved nothing about
-/// keeps the provider's own ranking, so pages without season links
-/// stay resolvable. The single probe still runs so the caller gets
+/// keeps the positional fallback — candidates without a matched year,
+/// in the provider's order within each tier — so pages without season
+/// links stay resolvable. The single probe still runs so the caller gets
 /// the episode list it needs.
 pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     client: &P,
