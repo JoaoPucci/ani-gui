@@ -45,7 +45,7 @@ use crate::history::HistoryEntry;
 use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
 
 /// Map every `AniError` variant to the closest matching HTTP status.
-/// The body is the envelope [`ani_error_to_sse_payload`] builds — the
+/// The body is the envelope [`ani_error_payload`] builds — the
 /// `kind` discriminator, the variant's fields, and its stable `key` —
 /// so an HTTP error and an SSE error event carry the same shape, and
 /// the key the frontend resolves (AGENTS.md §4) reaches it either way.
@@ -53,7 +53,7 @@ impl IntoResponse for AniError {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.http_status_code())
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        (status, Json(ani_error_to_sse_payload(&self))).into_response()
+        (status, Json(ani_error_payload(&self))).into_response()
     }
 }
 
@@ -67,7 +67,7 @@ impl IntoResponse for AniError {
 /// Falls back to `{"kind":"io"}` if the typed error somehow fails
 /// to serialize, which keeps the frontend's discriminator handler
 /// from breaking on a missing `kind` field.
-fn ani_error_to_sse_payload(e: &AniError) -> serde_json::Value {
+fn ani_error_payload(e: &AniError) -> serde_json::Value {
     let key = e.key();
     let mut payload = serde_json::to_value(e).unwrap_or_else(|_| serde_json::json!({"kind": "io"}));
     if let Some(obj) = payload.as_object_mut() {
@@ -512,7 +512,7 @@ async fn get_play_stream(
             Ok(resp) => Event::default().event("done").json_data(&resp).ok(),
             Err(e) => Event::default()
                 .event("error")
-                .json_data(ani_error_to_sse_payload(&e))
+                .json_data(ani_error_payload(&e))
                 .ok(),
         };
         if let Some(ev) = final_event {
@@ -563,7 +563,7 @@ async fn get_download_stream(
             Ok(resp) => Event::default().event("done").json_data(&resp).ok(),
             Err(e) => Event::default()
                 .event("error")
-                .json_data(ani_error_to_sse_payload(&e))
+                .json_data(ani_error_payload(&e))
                 .ok(),
         };
         if let Some(ev) = final_event {
@@ -832,8 +832,8 @@ mod tests {
     /// representative variant — drift here would silently break the
     /// download dock or play overlay's error rendering.
     #[test]
-    fn ani_error_to_sse_payload_carries_kind_and_key_for_ffmpeg_missing() {
-        let v = ani_error_to_sse_payload(&AniError::FfmpegMissing);
+    fn ani_error_payload_carries_kind_and_key_for_ffmpeg_missing() {
+        let v = ani_error_payload(&AniError::FfmpegMissing);
         assert_eq!(v["kind"], "ffmpeg_missing", "got: {v}");
         assert_eq!(v["key"], "error.download.ffmpeg_missing", "got: {v}");
     }
@@ -842,8 +842,8 @@ mod tests {
     /// `key` — the frontend can interpolate `binary` into the toast for
     /// the "couldn't launch <vlc>" path without losing the i18n key.
     #[test]
-    fn ani_error_to_sse_payload_preserves_variant_data_fields() {
-        let v = ani_error_to_sse_payload(&AniError::PlayerSpawnFailed {
+    fn ani_error_payload_preserves_variant_data_fields() {
+        let v = ani_error_payload(&AniError::PlayerSpawnFailed {
             binary: "vlc".into(),
         });
         assert_eq!(v["kind"], "player_spawn_failed", "got: {v}");
