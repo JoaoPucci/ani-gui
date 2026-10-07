@@ -78,8 +78,10 @@ pub struct FetchResponse {
     /// The URL the response came from: the last one fetched after
     /// every redirect the transport followed, and the request's own
     /// when nothing redirected. The production transport follows
-    /// redirects (`-L`), so a page can arrive from a host other than
-    /// the one asked for, and anything a caller keys on the serving
+    /// redirects (`-L`) unless the request is held to its origin
+    /// ([`FetchRequest::held_to_origin`]), so a page can arrive from a
+    /// host other than the one asked for, and anything a caller keys
+    /// on the serving
     /// host — the origin a CDN checks as `Referer`, a rule about
     /// which hosts it can read — belongs on this rather than on the
     /// request.

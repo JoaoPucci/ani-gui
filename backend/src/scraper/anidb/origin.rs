@@ -43,14 +43,16 @@ fn on_origin(home: &str, url: &str) -> bool {
 }
 
 /// Whether a request to the provider's origin was answered from
-/// another one. The transport follows redirects and reports the URL
-/// the transfer ended on; when anidb.app began redirecting its search
-/// to an unrelated site, that site's home page was parsed as an empty
-/// search and the walk persisted it as anidb's clean miss. A page
+/// another one. A held request follows no redirect off its origin,
+/// so the URL the transfer ended on is normally the origin's; this is
+/// the check that holds for any transport. When anidb.app began
+/// redirecting its search to an unrelated site, the transport
+/// followed it, and that site's home page was parsed as an empty
+/// search and persisted as anidb's clean miss. A page
 /// another origin served says nothing about anidb's catalogue,
 /// whatever it contains, so every parser is spared from having to
-/// tell. Requests the provider sends off its origin by design — the
-/// embed page, the playlist — are not held to it. A landing URL that
+/// tell. The embed page is held to its own origin the same way; the
+/// CDN's playlist is not held at all. A landing URL that
 /// does not parse cannot be shown to be the origin, and counts as
 /// elsewhere.
 pub(super) fn answered_elsewhere(base: &str, requested: &str, landed: &str) -> bool {

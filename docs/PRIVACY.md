@@ -180,10 +180,12 @@ requires it; the exception is the update check that runs on launch
   had lapsed, it says only that a stream resolved there once validated
   again at its CDN — the record is written before anything plays, and a
   page warm plays nothing — and is where the next walk starts. Requests
-  to anidb.app follow its redirects, so when it redirects one elsewhere
-  (at the time of writing its search redirects to anilab.so) that site
-  receives the request too; the app sets the answer aside as a page it
-  cannot read, and the walk moves on when a provider remains. The app
+  to anidb.app, and to the embed page its listing names, follow a
+  redirect only while it stays on the same site: a redirect anywhere
+  else is not followed, so the site it points to receives nothing
+  (at the time of writing anidb.app's search redirects to anilab.so,
+  which the app never contacts), and the app treats it as a page it
+  cannot read, moving on when a provider remains. The app
   remembers which catalogue carried a show for as long as its availability
   record lasts — a day from the last resolve that found the show there: a
   play, a download, a hand-off — a play, hand-off or page warm served from

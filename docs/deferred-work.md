@@ -529,26 +529,6 @@ starting it, and delete it when you find it done.
   planned: affinity already remembers where each show and its
   audio were listed, and starts there.
 
-## Not following anidb.app's redirects off its origin
-
-- **Stop anidb.app requests at an off-origin redirect instead of
-  following it.** The transport follows every redirect (`curl -L`),
-  so when anidb.app redirects a request to another site, that site
-  receives the request (the user's address and the impersonated
-  fingerprint) before the client refuses the answer for coming from
-  another origin. anidb.app's search redirects to anilab.so at the
-  time of writing, so every walk that reaches anidb.app reaches it
-  too — anidb.app is the fallback now, asked when hianime fails over
-  or first for a show a live record places there — until anidb.app's
-  breaker opens, and again at each half-open trial. `docs/PRIVACY.md`
-  discloses it.
-
-  Why it waited: it changes how the transport is driven for one
-  provider (no automatic redirects, the client following a
-  same-origin `Location` itself), and with anidb.app moved behind
-  hianime the requests that still reach the redirect are the
-  fallback's, a much smaller share than when every walk began there.
-
 ## Retiring the legacy-script sweep — the v1.0 marker
 
 - **Remove the boot sweep that cleans the retired script from old
