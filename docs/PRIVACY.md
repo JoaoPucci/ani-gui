@@ -172,8 +172,8 @@ requires it; the exception is the update check that runs on launch
   without settling the question: it found the show but said nothing about
   the audio asked for, or it denied a show a live record remembers it
   carrying, which the record outranks until the rest of the order has been
-  asked — and anidb.app first, for a while, for a show it was found on
-  while the walk had moved on — a positive availability record: written by a
+  asked — and anidb.app first, for a while, for a show a live record
+  places there — a positive availability record: written by a
   probe or a fresh resolve, it says the show and the audio are listed
   there, not that a stream was played; written again by a play, hand-off
   or page warm served from the app's own resolution cache after the record
@@ -183,7 +183,7 @@ requires it; the exception is the update check that runs on launch
   to anidb.app follow its redirects, so when it redirects one elsewhere
   (at the time of writing its search redirects to anilab.so) that site
   receives the request too; the app sets the answer aside as a page it
-  cannot read, and the walk moves on. The app
+  cannot read, and the walk moves on when a provider remains. The app
   remembers which catalogue carried a show for as long as its availability
   record lasts — a day from the last resolve that found the show there: a
   play, a download, a hand-off — a play, hand-off or page warm served from

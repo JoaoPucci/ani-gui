@@ -421,16 +421,19 @@ starting it, and delete it when you find it done.
   searched, up to five candidates probed per alias — and the union
   makes every genuinely absent show cost one such walk per provider
   on the page's probe; the background warm holds back for a show the
-  probe found absent, so it adds none. What hianime tolerates at
-  that rate is unmeasured: in September 2026, with
-  anidb.app down, it carried every request without visible pushback,
-  and a breaker learns after the block, not before.
+  probe found absent, so it adds none. What either provider
+  tolerates at that rate is unmeasured: in September 2026, with
+  anidb.app down, hianime carried every request without visible
+  pushback, and a breaker learns after the block, not before. With
+  hianime first, the union's extra walk per hianime miss goes to
+  anidb.app, and while anidb.app redirects its search, to the site
+  it redirects to as well.
 
   Two things a grep will not surface: only the zokoanime embed pages
   carry the MyAnimeList id in their path, so a cross-check against
-  Kitsu's mapping is per host, not a signal every pick gets; and if
-  the second provider becomes load-bearing rather than a fallback,
-  its domain churn arrives sooner — the canonical domain is filtered
+  Kitsu's mapping is per host, not a signal every pick gets; and
+  hianime, first in the order now, is load-bearing, so its domain
+  churn reaches the primary path — the canonical domain is filtered
   per ISP, and the origin is a constant with a test override only.
 
 ## Decoding hianime's other embed hosts

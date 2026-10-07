@@ -176,8 +176,9 @@ impl AppState {
             hianime_base: None,
             hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             // hianime first: anidb.app redirects its search to an
-            // unrelated site, which every walk would otherwise spend a
-            // request and a gate failure on before reaching hianime.
+            // unrelated site, which walks would otherwise spend a
+            // request and a gate failure on before reaching hianime,
+            // until its breaker opened and again at each trial.
             provider_order: vec![
                 crate::scraper::provider::ProviderId::Hianime,
                 crate::scraper::provider::ProviderId::Anidb,
@@ -287,8 +288,8 @@ mod tests {
         assert!(state.image_cache_dir.is_dir(), "image cache dir created");
         assert!(state.bundled_bin.is_some(), "resource bin dir picked up");
         // hianime is asked first: anidb.app redirects its search to an
-        // unrelated site, so with it first every walk spends a request
-        // and a failure on it before reaching the provider that answers.
+        // unrelated site, so with it first walks spend a request and a
+        // failure on it before reaching the provider that answers.
         assert_eq!(
             state.provider_order,
             vec![

@@ -18,7 +18,7 @@ use crate::scraper::provider::ProviderId;
 /// it.
 const PRE_GUARD_ANIDB_NEGATIVE: &str = r#"{"available":false,"episode_count":null,"extra_episodes":[],"episode_count_approximate":false,"provider":"anidb"}"#;
 
-/// The same, as the fallback's verdict.
+/// The same, as hianime's verdict.
 const PRE_GUARD_HIANIME_NEGATIVE: &str = r#"{"available":false,"episode_count":null,"extra_episodes":[],"episode_count_approximate":false,"provider":"hianime"}"#;
 
 const NEGATIVE_TTL: u64 = 7 * 24 * 60 * 60;
