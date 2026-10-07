@@ -232,6 +232,30 @@ describe('startDownload', () => {
 		}
 	});
 
+	it('words the failures a download has of its own for the download, not a service', async () => {
+		// In a download these kinds mean something the general sentence
+		// gets wrong: `timeout` includes the transfer's own one-hour
+		// deadline, which is not a service being slow; `io` is the
+		// destination folder refusing the file; `config` is no folder
+		// being set; `scraper` is the download tool exiting non-zero.
+		const cases: Array<[object, RegExp]> = [
+			[{ kind: 'timeout', key: 'error.scraper.timeout' }, /download took too long/i],
+			[{ kind: 'io', key: 'error.io.generic' }, /download folder/i],
+			[{ kind: 'config', key: 'error.config.parse' }, /no download folder/i],
+			[{ kind: 'scraper', key: 'error.scraper.parse_failed' }, /downloader/i]
+		];
+		for (const [failure, copy] of cases) {
+			storeMock.downloadStore.markError.mockReset();
+			apiMock.downloadStream.mockRejectedValueOnce(failure);
+			startDownload(baseArgs);
+			await Promise.resolve();
+			await Promise.resolve();
+			const shown = storeMock.downloadStore.markError.mock.calls[0]?.[1] as string;
+			expect(shown, JSON.stringify(failure)).toMatch(copy);
+			expect(shown, JSON.stringify(failure)).not.toBe(describeError(failure));
+		}
+	});
+
 	it('falls back to localized generic copy for an unrecognised rejection', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce({ unexpected: true });
 		startDownload(baseArgs);
