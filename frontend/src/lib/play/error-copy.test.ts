@@ -77,9 +77,18 @@ describe('describeError', () => {
 	it('names the cause by kind', () => {
 		expect(describeError({ kind: 'network' })).toMatch(/check your connection/i);
 		expect(describeError({ kind: 'gate_refused' })).toBe(describeError({ kind: 'network' }));
-		expect(describeError({ kind: 'upstream', status: 503 })).toBe(
-			describeError({ kind: 'network' })
-		);
+	});
+
+	it('does not tell the user to check their connection when the service did answer', () => {
+		// `upstream` is a non-success status from a service that was
+		// reached, and `http` a non-JSON error body from the local
+		// backend; neither is a connection problem, and for a 5xx the
+		// play copy already says nothing is wrong on the user's end.
+		const answered = describeError({ kind: 'upstream', status: 503 });
+		expect(answered).toMatch(/answered with an error/i);
+		expect(answered).not.toBe(describeError({ kind: 'network' }));
+		expect(describeError({ kind: 'upstream', status: 404 })).toBe(answered);
+		expect(describeError({ kind: 'http', status: 500 })).toBe(answered);
 		expect(describeError({ kind: 'timeout' })).toMatch(/took too long/i);
 		expect(describeError({ kind: 'rate_limited' })).toMatch(/busy/i);
 		expect(describeError({ kind: 'metadata' })).toBe(describeError({ kind: 'parse_failed' }));
