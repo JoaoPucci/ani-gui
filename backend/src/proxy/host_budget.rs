@@ -355,6 +355,7 @@ impl HostBudget {
                     (false, false) => self.reserve,
                     (true, false) => return Some(self.refill),
                 };
+                let reserve = self.reserve_under_hold(reserve);
                 take_leaving(
                     &mut state.bucket,
                     Instant::now(),

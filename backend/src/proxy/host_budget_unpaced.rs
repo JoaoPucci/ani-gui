@@ -76,6 +76,22 @@ impl Drop for UnpacedRun<'_> {
 }
 
 impl HostBudget {
+    /// The reserve background traffic leaves while unpaced downloads
+    /// run: no more than what the hold leaves, less the token being
+    /// taken, so background traffic is not shut out for as long as a
+    /// download runs free.
+    pub(super) fn reserve_under_hold(&self, reserve: u32) -> u32 {
+        let in_flight = self
+            .unpaced
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .in_flight;
+        if in_flight == 0 {
+            return reserve;
+        }
+        reserve.min(self.held_to(in_flight) - 1)
+    }
+
     /// An unpaced download starts, with up to `in_flight` requests at a
     /// time that pass the budget: every host's tokens are held to what
     /// they leave of the burst until it ends ([`UnpacedRun`]).
