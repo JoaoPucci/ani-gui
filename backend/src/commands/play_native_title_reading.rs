@@ -40,15 +40,17 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
 /// What follows `wide`'s stem in `title`, when `title` starts with it
 /// at a word's end or with a digit or 第 glued to it — as Japanese
 /// writes them ("ショー２", "ショー第2期"), though any glued digit
-/// counts ("Show2"). "Showtime 2" does not start with "Show". With it,
+/// counts ("Show2") — except after a stem that itself ends in a digit
+/// ([`rest_after`]). "Showtime 2" does not start with "Show". With it,
 /// the divisions `wide` ends on, which are `wide`'s own.
 ///
 /// A bare number `wide`'s stem ends on stays in the stem, so "Lucky 2
 /// 2nd Season" is read past "Lucky 2". A title that does not start
 /// with the whole stem is read past it without the number, then one of
 /// `wide`'s own divisions: "Show Season 3" beside "Show 2" names a
-/// season 3, as it does beside "Show 2nd Season". A title carrying
-/// another number in its place ("Show 20 Part 2") is not read past it.
+/// season 3, as it does beside "Show 2nd Season". A title whose number
+/// in its place only continues it or is lower ("Show 20 Part 2") is not
+/// read past it ([`leading_number`]); the same or a higher one is.
 fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
     let own = stem(wide);
     let text = words(title).join(" ");
@@ -58,13 +60,13 @@ fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
     }
     let (shorter, n) = without_stem_number(&own)?;
     let rest = rest_after(&text, &shorter)?;
-    // A title carrying another number where W's stands ("Show 20 Part
-    // 2" beside "Show 2") is another number, not W's stem without one.
-    if rest
-        .split_whitespace()
-        .next()
-        .is_some_and(|w| w.chars().all(|c| c.is_ascii_digit()))
-    {
+    // The number a title carries where W's stands: one that only
+    // continues W's digits ("Show 20 Part 2", "ショー２０第2部" beside
+    // "Show 2", "ショー２") or is lower is another number, not W's stem
+    // without one; the same number or a higher one is read on.
+    let other =
+        |(m, digits): (u32, String)| m < n || (m != n && digits.starts_with(&n.to_string()));
+    if leading_number(&rest).is_some_and(other) {
         return None;
     }
     wide_markers.push(Marker {
@@ -72,6 +74,19 @@ fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
         ordinals: vec![n],
     });
     Some((rest, wide_markers))
+}
+
+/// The number `rest` opens on, and its digits: a run of digits
+/// standing as a number — ending the text, before a space, or before a
+/// Japanese character glued to it ("20第2部") — not an ordinal's
+/// ("2nd").
+fn leading_number(rest: &str) -> Option<(u32, String)> {
+    let rest = rest.trim_start();
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    let after = rest[digits.len()..].chars().next();
+    (!digits.is_empty() && after.is_none_or(|c| c == ' ' || !c.is_ascii()))
+        .then(|| digits.parse().ok().map(|m| (m, digits)))
+        .flatten()
 }
 
 /// What follows `own` at the start of `text`, when `own` ends there
