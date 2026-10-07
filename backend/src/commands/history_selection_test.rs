@@ -65,8 +65,8 @@ fn two_rows_for_one_show(s: &AppState, path: &std::path::Path) {
         ],
     )
     .unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(s, "the-show-77", "K1").unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(s, "hianime:the-show-9", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(s, "the-show-77", "1001").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(s, "hianime:the-show-9", "1001").unwrap();
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn the_row_watched_last_wins() {
     two_rows_for_one_show(&s, &path);
     crate::commands::kitsu::watched_at_put(&s, "the-show-77", 1_000).unwrap();
     crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "hianime:the-show-9");
     assert_eq!(hit.ep_no, "7");
 }
@@ -89,7 +89,7 @@ fn a_stamped_row_beats_an_unstamped_one() {
     let s = make_state(path.clone());
     two_rows_for_one_show(&s, &path);
     crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "hianime:the-show-9");
 }
 
@@ -103,7 +103,7 @@ fn with_no_stamps_the_further_progress_wins() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     two_rows_for_one_show(&s, &path);
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "hianime:the-show-9");
     assert_eq!(hit.ep_no, "7");
 }
@@ -116,7 +116,7 @@ fn with_equal_stamps_the_further_progress_wins() {
     two_rows_for_one_show(&s, &path);
     crate::commands::kitsu::watched_at_put(&s, "the-show-77", 2_000).unwrap();
     crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "hianime:the-show-9");
     assert_eq!(hit.ep_no, "7");
 }
@@ -146,8 +146,8 @@ fn two_rows_on_different_numberings(s: &AppState, path: &std::path::Path) {
         ],
     )
     .unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(s, "the-show-77", "K1").unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(s, "hianime:the-show-9", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(s, "the-show-77", "1001").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(s, "hianime:the-show-9", "1001").unwrap();
     crate::commands::anidb_offset::put(s, "the-show-77", 40);
 }
 
@@ -161,7 +161,7 @@ fn with_no_stamps_progress_is_compared_in_the_entrys_numbering() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     two_rows_on_different_numberings(&s, &path);
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "hianime:the-show-9");
     assert_eq!(hit.ep_no, "2");
 }
@@ -174,7 +174,7 @@ fn with_equal_stamps_progress_is_compared_in_the_entrys_numbering() {
     two_rows_on_different_numberings(&s, &path);
     crate::commands::kitsu::watched_at_put(&s, "the-show-77", 2_000).unwrap();
     crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "hianime:the-show-9");
     assert_eq!(hit.ep_no, "2");
 }
@@ -207,10 +207,10 @@ fn a_row_without_an_offset_compares_by_its_own_number() {
         ],
     )
     .unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "K1").unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "1001").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "1001").unwrap();
     crate::commands::anidb_offset::put(&s, "the-show-77", 40);
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "the-show-77", "episode 5 is further than episode 3");
     assert_eq!(
         hit.ep_no, "5",
@@ -246,9 +246,9 @@ fn equal_on_every_count_file_order_stands() {
         ],
     )
     .unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "K1").unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "K1").unwrap();
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "1001").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "1001").unwrap();
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "the-show-77");
 }
 
@@ -343,7 +343,7 @@ fn a_failed_stamp_read_is_the_callers_error_not_an_unstamped_row() {
     crate::commands::kitsu::watched_at_put(&s, "the-show-77", 1_000).unwrap();
     crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
     break_cache_row(&s, "watched-at:v1:hianime:the-show-9");
-    let got = history_by_kitsu(&s, "K1");
+    let got = history_by_kitsu(&s, "1001");
     assert!(
         got.is_err(),
         "a stamp the cache cannot read surfaces as the error it is: {got:?}"
@@ -403,7 +403,7 @@ async fn a_watch_the_cache_could_not_stamp_still_resumes_over_an_older_stamped_s
         "the row carries the watch's moment: {:?}",
         row.watched_at
     );
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "hianime:the-show-9", "the row watched last resumes");
     assert_eq!(hit.ep_no, "2");
     let stamps = watched_at_all(&s).unwrap();
@@ -442,10 +442,10 @@ fn the_later_of_the_files_stamp_and_the_caches_is_the_rows_moment() {
         ],
     )
     .unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "K1").unwrap();
-    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "K1").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "1001").unwrap();
+    crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "1001").unwrap();
     crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 1_700_000_009_000).unwrap();
-    let hit = history_by_kitsu(&s, "K1").unwrap().expect("match");
+    let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(
         hit.id, "hianime:the-show-9",
         "the cache's later mark-watched wins"
@@ -474,7 +474,7 @@ fn a_failed_mapping_read_is_the_callers_error_not_a_skipped_row() {
     two_rows_for_one_show(&s, &path);
     crate::commands::kitsu::watched_at_put(&s, "hianime:the-show-9", 2_000).unwrap();
     break_cache_row(&s, "allmanga2kitsu:v3:hianime:the-show-9");
-    let got = history_by_kitsu(&s, "K1");
+    let got = history_by_kitsu(&s, "1001");
     assert!(
         got.is_err(),
         "a mapping the cache cannot read surfaces as the error it is: {got:?}"

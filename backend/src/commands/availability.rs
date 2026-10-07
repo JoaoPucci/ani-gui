@@ -66,9 +66,10 @@ pub struct AvailabilityArgs {
     /// different candidate than they would select.
     #[serde(default)]
     pub subtype: Option<String>,
-    /// Kitsu id — cache key. When omitted (legacy callers), the
-    /// check still runs but its result isn't persisted.
-    #[serde(default)]
+    /// Kitsu id — cache key. When omitted (legacy callers), or when
+    /// the value is not an id ([`crate::kitsu_id`]) and so reads as
+    /// omitted, the check still runs but its result isn't persisted.
+    #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub kitsu_id: Option<String>,
     /// Kitsu's airing status (`"current"`, `"finished"`,
     /// `"upcoming"`, `"tba"`, `"unreleased"`). When known, it
@@ -511,8 +512,11 @@ fn positive_row_stands(state: &AppState, row: &str) -> bool {
 /// in `meta_cache`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct AvailabilityBatchArgs {
-    /// Kitsu ids to look up. Mode disambiguates sub/dub since a
-    /// title may exist in one and not the other.
+    /// Kitsu ids to look up, each trimmed; a value that is not an id
+    /// ([`crate::kitsu_id`]) is dropped and so reads no row. Mode
+    /// disambiguates sub/dub since a title may exist in one and not
+    /// the other.
+    #[serde(deserialize_with = "crate::kitsu_id::deserialize_list")]
     pub kitsu_ids: Vec<String>,
     /// `"sub"` or `"dub"` — selects which cached probe to read.
     pub mode: String,

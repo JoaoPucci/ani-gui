@@ -45,7 +45,11 @@ pub(crate) fn find_resolutions(
         let field = |name: &str| row.get(name).and_then(|v| v.as_str()).unwrap_or_default();
         let (show, page) = (field("show_id"), field("kitsu_id"));
         let of_a_show = ids.contains(&show);
-        if !of_a_show && !known_by.iter().any(|k| k == page) {
+        if !of_a_show
+            && !known_by
+                .iter()
+                .any(|k| crate::history::same_kitsu_id(k, page))
+        {
             found.still_named.insert(show.to_owned());
             continue;
         }

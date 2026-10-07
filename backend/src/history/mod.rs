@@ -161,12 +161,25 @@ pub fn kitsu_id_of(raw: &str) -> Option<String> {
 /// answers for that take a Kitsu id from the renderer — the row, the
 /// play's page, the mapping and its played mark, skip times, a title
 /// match, a gone mark — take it through this, so one rule decides
-/// what an id is there. A gone mark takes only an exact id: its read
-/// asked Kitsu for the value as given.
+/// what an id is there, and the routes' boundary ([`crate::kitsu_id`])
+/// applies the same function. A gone mark takes only an exact id: the
+/// detail read hands it the digits it asked Kitsu for, and any other
+/// value was not a read of them.
 #[must_use]
 pub fn kitsu_id_in(raw: &str) -> Option<&str> {
     let id = raw.trim();
     (!id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())).then_some(id)
+}
+
+/// Whether `a` and `b` name the same Kitsu id: both are ids by
+/// [`kitsu_id_in`] and their digits agree. Every comparison between a
+/// stored id and a requested one goes through this, since a row
+/// written before the routes refused non-ids can hold a padded id
+/// while the routes hand the renderer, and take back, its digits. A
+/// value that is not an id names nothing, not even an equal one.
+#[must_use]
+pub fn same_kitsu_id(a: &str, b: &str) -> bool {
+    kitsu_id_in(a).is_some_and(|id| kitsu_id_in(b) == Some(id))
 }
 
 /// Split the row's Kitsu id off what follows the id column, when the

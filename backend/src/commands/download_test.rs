@@ -3844,13 +3844,13 @@ async fn a_download_remembers_the_provider_that_served_it() {
         "title": "Range Show",
         "episode": "1",
         "mode": "sub",
-        "kitsu_id": "rs-21",
+        "kitsu_id": "3821",
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
     let path_env = bin.path().display().to_string();
     assert_eq!(
-        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        crate::commands::availability::cached_provider(&state, "3821", "sub"),
         None,
         "nothing is remembered before the resolve"
     );
@@ -3858,7 +3858,7 @@ async fn a_download_remembers_the_provider_that_served_it() {
         .await
         .expect("the download completes");
     assert_eq!(
-        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        crate::commands::availability::cached_provider(&state, "3821", "sub"),
         Some(crate::scraper::provider::ProviderId::Anidb),
         "the provider that served the stream is remembered"
     );
@@ -3887,7 +3887,7 @@ async fn a_range_download_through_the_fallback_remembers_the_fallback() {
         "title": "Range Show",
         "episode": "1-2",
         "mode": "sub",
-        "kitsu_id": "rs-21",
+        "kitsu_id": "3821",
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
@@ -3896,7 +3896,7 @@ async fn a_range_download_through_the_fallback_remembers_the_fallback() {
         .await
         .expect("the range completes through the fallback");
     assert_eq!(
-        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        crate::commands::availability::cached_provider(&state, "3821", "sub"),
         Some(crate::scraper::provider::ProviderId::Hianime),
         "the fallback that served the range is remembered"
     );
@@ -3926,7 +3926,7 @@ async fn a_download_stamps_the_walks_clean_miss_as_the_providers_negative_row() 
         "title": "Ghost Show",
         "episode": "1",
         "mode": "sub",
-        "kitsu_id": "ghost-7",
+        "kitsu_id": "3807",
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
@@ -3938,12 +3938,12 @@ async fn a_download_stamps_the_walks_clean_miss_as_the_providers_negative_row() 
     let cached = crate::commands::availability::batch_cached(
         &state,
         &crate::commands::availability::AvailabilityBatchArgs {
-            kitsu_ids: vec!["ghost-7".into()],
+            kitsu_ids: vec!["3807".into()],
             mode: "sub".into(),
         },
     );
     assert_eq!(
-        cached.cached.get("ghost-7"),
+        cached.cached.get("3807"),
         Some(&false),
         "the clean miss is the provider's negative row"
     );
@@ -4109,7 +4109,7 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
     state.hianime_base = Some(hianime.uri());
     crate::commands::availability::write_cache(
         &state,
-        "rs-21",
+        "3821",
         "sub",
         true,
         Some(crate::scraper::provider::ProviderId::Hianime),
@@ -4119,7 +4119,7 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
         "title": "Range Show",
         "episode": "3-4",
         "mode": "sub",
-        "kitsu_id": "rs-21",
+        "kitsu_id": "3821",
         "download_dir": dest.path().to_string_lossy(),
     }))
     .expect("args");
@@ -4129,7 +4129,7 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
         .expect_err("the remembered provider lists two episodes, not a third");
     assert!(matches!(err, AniError::EpisodeUnavailable), "{err:?}");
     assert_eq!(
-        crate::commands::availability::cached_provider(&state, "rs-21", "sub"),
+        crate::commands::availability::cached_provider(&state, "3821", "sub"),
         Some(crate::scraper::provider::ProviderId::Hianime),
         "the row that remembered the provider stands; an episode verdict writes no absence"
     );

@@ -54,9 +54,11 @@ pub(crate) fn note_failure(state: &AppState, begun: Epoch, id: &str, err: &AniEr
         return;
     }
     // A mark is kept under the Kitsu id a history row could record,
-    // and only for a read of exactly that id: Kitsu was asked for the
-    // value as given, so a 404 to a padded one says nothing about the
-    // digits inside it, and a read of anything else marks nothing.
+    // and only for a read of exactly that id. The detail read trims
+    // what it is given before asking Kitsu (`crate::kitsu_id::require`)
+    // and passes the digits it asked for; a caller passing anything
+    // else, a padded value included, did not ask Kitsu for those
+    // digits, so its 404 says nothing about them and marks nothing.
     if crate::history::kitsu_id_in(id) != Some(id) {
         return;
     }

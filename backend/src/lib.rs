@@ -28,6 +28,7 @@ pub mod config;
 pub mod error;
 pub mod history;
 pub mod i18n;
+pub mod kitsu_id;
 pub mod legacy_script;
 pub mod meta;
 pub mod parent_watch;

@@ -205,7 +205,7 @@ async function launchAppWithContinueStubsOnce(
 			opts.onPlay?.(body);
 			if (opts.onPlayStream?.(u) === 'hang') return;
 			if (opts.playRateLimited) {
-				// Same envelope ani_error_to_sse_payload serializes for
+				// Same envelope ani_error_payload serializes for
 				// AniError::RateLimited — the renderer's SSE error
 				// listener rejects with this parsed object.
 				return r.fulfill({
