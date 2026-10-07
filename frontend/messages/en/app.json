@@ -26,5 +26,11 @@
 	"about_link_aria": "About ani-gui",
 	"about_link_title": "About ani-gui — version, licences, dependencies",
 	"quality_best": "Best",
-	"quality_worst": "Worst"
+	"quality_worst": "Worst",
+	"subtype_tv": "TV",
+	"subtype_movie": "Movie",
+	"subtype_special": "Special",
+	"subtype_ova": "OVA",
+	"subtype_ona": "ONA",
+	"subtype_music": "Music"
 }

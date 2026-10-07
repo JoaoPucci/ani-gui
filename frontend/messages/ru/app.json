@@ -26,5 +26,11 @@
 	"about_link_aria": "О ani-gui",
 	"about_link_title": "О ani-gui — версия, лицензии, зависимости",
 	"quality_best": "Лучшее",
-	"quality_worst": "Худшее"
+	"quality_worst": "Худшее",
+	"subtype_tv": "ТВ",
+	"subtype_movie": "Фильм",
+	"subtype_special": "Спешл",
+	"subtype_ova": "OVA",
+	"subtype_ona": "ONA",
+	"subtype_music": "Музыка"
 }
