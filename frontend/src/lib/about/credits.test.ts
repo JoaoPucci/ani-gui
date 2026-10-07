@@ -14,9 +14,12 @@
  * keeps the frontend lines/statements ratchet honest when a data
  * file grows.
  */
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
+import { m } from '$lib/paraglide/messages';
+import { getLocale, overwriteGetLocale } from '$lib/paraglide/runtime';
 import {
 	ASSETS,
+	assetName,
 	BUNDLED_TOOLS,
 	DONATION_ETH_ADDRESS,
 	type AssetCredit,
@@ -157,5 +160,27 @@ describe('credits — assets', () => {
 describe('credits — donation address', () => {
 	it('matches the EIP-55 address shape', () => {
 		expect(isValidEthAddress(DONATION_ETH_ADDRESS)).toBe(true);
+	});
+});
+
+describe('assetName', () => {
+	// The About page shows this label to the reader, so it comes from
+	// the message catalogue in their locale, like the asset's note.
+	const originalGetLocale = getLocale;
+	afterEach(() => {
+		overwriteGetLocale(originalGetLocale);
+	});
+
+	it('labels every credited asset from the message catalogue', () => {
+		for (const asset of ASSETS) {
+			overwriteGetLocale(() => 'pt-BR');
+			const portuguese = assetName(asset.noteId);
+			overwriteGetLocale(() => 'en');
+			expect(portuguese, asset.noteId).not.toBe(assetName(asset.noteId));
+		}
+		overwriteGetLocale(() => 'pt-BR');
+		expect(assetName('lottie_loading')).toBe(
+			m.about_asset_name_lottie_loading({}, { locale: 'pt-BR' })
+		);
 	});
 });
