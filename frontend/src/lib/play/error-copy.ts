@@ -48,6 +48,9 @@ export { describeError } from './describe-error';
  *  branch instead of each growing a divergent copy. */
 export function describeRateLimit(e: unknown): string | null {
 	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
+	// An upstream that throttles with HTTP 429 is a rate limit too; the
+	// backend keeps it as `upstream` + status rather than `rate_limited`.
+	if (obj?.kind === 'upstream' && obj.status === 429) return m.play_play_failure_rate_limited();
 	if (obj?.kind !== 'rate_limited') return null;
 	const secs = obj.retry_after_secs;
 	return typeof secs === 'number'
