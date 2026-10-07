@@ -25,6 +25,7 @@
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { createSearchRunner } from '$lib/search/run-search';
+	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -187,9 +188,6 @@
 		if (hit.average_rating === null) return null;
 		return (hit.average_rating / 10).toFixed(1);
 	}
-	function subtypeOf(hit: KitsuAnimeRef): string {
-		return (hit.subtype ?? 'TV').toUpperCase();
-	}
 </script>
 
 <svelte:head>
@@ -265,7 +263,7 @@
 							aria-pressed={activeSubtypes.has(s)}
 							onclick={() => toggleSubtype(s)}
 						>
-							{s.toUpperCase()}
+							{subtypeLabel(s)}
 						</button>
 					{/each}
 					{#if activeSubtypes.size > 0}
@@ -366,7 +364,7 @@
 						<span class="card-body">
 							<span class="card-title">{hit.canonical_title}</span>
 							<span class="card-meta">
-								<span>{subtypeOf(hit)}</span>
+								<span>{subtypeLabel(hit.subtype)}</span>
 								{#if year}
 									<span class="card-meta-sep" aria-hidden="true">·</span>
 									<span>{year}</span>

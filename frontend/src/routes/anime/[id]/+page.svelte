@@ -37,6 +37,7 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
+	import { subtypeLabel } from '$lib/search/subtype-label';
 	import {
 		describeError,
 		describePlayFailure as sharedDescribePlayFailure
@@ -1117,9 +1118,6 @@
 		if (s === 'finished') return m.detail_status_finished();
 		if (s === 'upcoming') return m.detail_status_upcoming();
 		return s;
-	}
-	function subtypeLabel(s: string | null): string {
-		return (s ?? 'TV').toUpperCase();
 	}
 	function heroTransform(y: number, isCover: boolean): string {
 		// Honor prefers-reduced-motion: when set, the hero doesn't translate
