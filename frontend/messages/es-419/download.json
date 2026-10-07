@@ -63,5 +63,11 @@
 	"status_abandoned_claim": "Una descarga interrumpida dejó un archivo vacío en {path}; elimínalo e inténtalo de nuevo.",
 	"status_claim_pending": "Otra descarga está publicando {path} y aún no termina; inténtalo de nuevo en un momento.",
 	"status_repackage_retry": "yt-dlp no pudo reempaquetar la transmisión; reintentando con ffmpeg.",
-	"status_retry_ffmpeg": "yt-dlp falló; reintentando con ffmpeg."
+	"status_retry_ffmpeg": "yt-dlp falló; reintentando con ffmpeg.",
+	"range_error_not_a_number": "Ingresa los dos números de episodio.",
+	"range_error_below_one": "Los episodios empiezan en 1.",
+	"range_error_start_over_max": "El primer episodio no puede pasar de {max}, el último disponible.",
+	"range_error_end_over_max": "El último episodio no puede pasar de {max}, el último disponible.",
+	"range_error_over_cap": "No puedes descargar más de {max} episodios de este título.",
+	"range_error_end_before_start": "El último episodio no puede ir antes del primero."
 }
