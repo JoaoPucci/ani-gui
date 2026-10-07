@@ -7,5 +7,8 @@
 	"reason_bad_response": "The service sent an answer the app couldn't read. Try again later.",
 	"reason_local": "Something went wrong on this computer. Restart the app and try again.",
 	"reason_generic": "Something went wrong. Try again.",
-	"reason_answered_error": "The service answered with an error. Try again later."
+	"reason_answered_error": "The service answered with an error. Try again later.",
+	"reason_not_found": "The service couldn't find it. It may have been removed.",
+	"reason_service_down": "The service is down or having trouble right now. Nothing is wrong on your end — try again later.",
+	"reason_busy_wait": "The service is busy right now. Try again in about {seconds} seconds."
 }

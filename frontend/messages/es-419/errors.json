@@ -7,5 +7,8 @@
 	"reason_bad_response": "El servicio envió una respuesta que la app no pudo leer. Inténtalo más tarde.",
 	"reason_local": "Algo salió mal en esta computadora. Reinicia la app e inténtalo de nuevo.",
 	"reason_generic": "Algo salió mal. Inténtalo de nuevo.",
-	"reason_answered_error": "El servicio respondió con un error. Inténtalo más tarde."
+	"reason_answered_error": "El servicio respondió con un error. Inténtalo más tarde.",
+	"reason_not_found": "El servicio no encontró lo que se pidió. Puede que se haya eliminado.",
+	"reason_service_down": "El servicio está caído o con problemas ahora. No es nada de tu lado — inténtalo más tarde.",
+	"reason_busy_wait": "El servicio está ocupado ahora. Inténtalo de nuevo en unos {seconds} segundos."
 }
