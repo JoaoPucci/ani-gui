@@ -4242,6 +4242,7 @@ async fn an_unpaced_download_is_charged_to_the_hosts_budget() {
             &lane,
         )
         .charged_to(&budget);
+        let started = std::time::Instant::now();
         spawn_download_tool_paced(
             &StreamSource {
                 master_url: "https://cdn.example/x/master.m3u8".into(),
@@ -4269,7 +4270,17 @@ async fn an_unpaced_download_is_charged_to_the_hosts_budget() {
             admitted += 1;
             assert!(admitted <= 20, "ytdlp={ytdlp}: nothing held");
         }
-        assert_eq!(admitted, 4, "ytdlp={ytdlp}");
+        // Four, and one more for every refill that matured since the
+        // hold first applied, which was after `started`: the clock is
+        // real, so a slow runner sees more.
+        let refills = started.elapsed().as_secs_f64()
+            / crate::proxy::host_budget::SEGMENT_REFILL.as_secs_f64();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let most = 4 + refills.ceil() as usize;
+        assert!(
+            (4..=most.min(19)).contains(&admitted),
+            "ytdlp={ytdlp}: {admitted}, at most {most}"
+        );
     }
 }
 

@@ -235,9 +235,8 @@ async fn a_player_starting_beside_an_unpaced_download_gets_only_what_it_leaves()
     );
 }
 
-/// However many unpaced downloads run against a host, the player's
-/// first request is admitted: it is what tells the downloads that
-/// playback started, so they yield.
+/// However many unpaced downloads run, the hold never takes a host's
+/// last token: a fresh host still admits the player's first request.
 #[tokio::test(start_paused = true)]
 async fn the_players_first_request_is_admitted_beside_any_number_of_unpaced_downloads() {
     let budget = HostBudget::fresh();
@@ -313,4 +312,28 @@ async fn a_host_first_fetched_from_after_an_unpaced_download_starts_where_it_lef
             .is_err(),
         "the fifth waits"
     );
+}
+
+/// A host fetched from before an unpaced download ran, and not since,
+/// is held when the download ends like any other: it does not keep the
+/// full burst the download's requests have spent.
+#[tokio::test(start_paused = true)]
+async fn a_host_fetched_from_before_an_unpaced_download_is_held_when_it_ends() {
+    let budget = HostBudget::fresh();
+    budget.admit("cdn.example:443").await;
+    drop(budget.unpaced_run(16));
+    let left = budget.on_hand("cdn.example:443").expect("fetched from");
+    assert!((left - 4.0).abs() < 1e-6, "{left}");
+}
+
+/// A request spent without waiting while an unpaced download runs
+/// stays spent: the hold applies first, and the spend comes off what
+/// it leaves.
+#[test]
+fn a_spend_beside_an_unpaced_download_comes_off_what_the_hold_leaves() {
+    let budget = HostBudget::fresh();
+    let _run = budget.unpaced_run(16);
+    budget.spend("cdn.example:443", 2);
+    let left = budget.on_hand("cdn.example:443").expect("spent");
+    assert!((left - 2.0).abs() < 1e-3, "{left}");
 }
