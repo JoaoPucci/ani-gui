@@ -88,3 +88,7 @@ pub use proxy_url::proxy_base_url;
 pub use session::{
     create_session, create_session_with_kind, CreateSessionArgs, CreateSessionResponse,
 };
+
+#[cfg(test)]
+#[path = "kitsu_id_compare_test.rs"]
+mod kitsu_id_compare_test;

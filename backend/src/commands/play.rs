@@ -101,10 +101,11 @@ pub struct PlayArgs {
     /// (provider show_id → kitsu_id) pair on every successful play
     /// turns the home-page Continue Watching lookup from "fuzzy
     /// kitsuSearch on a possibly-typo'd provider title" into a
-    /// deterministic id-keyed lookup. Empty string when the caller
-    /// has no kitsu_id available (e.g. the SSE fallback path or a
-    /// direct API user).
-    #[serde(default)]
+    /// deterministic id-keyed lookup. `None` when the caller has no
+    /// kitsu_id available (a direct API user, or a caller with no Kitsu
+    /// page behind it); an empty value, or one that is not an id
+    /// ([`crate::kitsu_id`]), reads the same way.
+    #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub kitsu_id: Option<String>,
 }
 

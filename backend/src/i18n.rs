@@ -15,6 +15,8 @@
 //! - `error.config.*` — config file (TOML)
 //! - `error.metadata.*` — Kitsu / AniList responses
 //! - `error.io.*` — generic filesystem
+//! - `error.request.*` — a value the renderer sent that is not one the
+//!   route takes
 //! - `error.stream.*` — stream proxy + tokens
 
 /// Key constants. Keep alphabetized within each block.
@@ -54,6 +56,11 @@ pub mod keys {
     pub const NETWORK_UNREACHABLE: &str = "error.network.unreachable";
     /// Upstream returned a non-success HTTP status.
     pub const NETWORK_UPSTREAM: &str = "error.network.upstream";
+
+    // --- error.request.* ---
+    /// The renderer named a Kitsu id that is not one — not digits once
+    /// trimmed. `AniError::InvalidKitsuId` maps here.
+    pub const REQUEST_INVALID_KITSU_ID: &str = "error.request.invalid_kitsu_id";
 
     // --- error.scraper.* ---
     /// Something the app read did not have the shape it expected.
@@ -100,6 +107,7 @@ mod tests {
             NETWORK_UNREACHABLE,
             NETWORK_UPSTREAM,
             PLAY_EPISODE_UNAVAILABLE,
+            REQUEST_INVALID_KITSU_ID,
             SCRAPER_PARSE_FAILED,
             SCRAPER_TIMEOUT,
             SEARCH_NO_RESULTS,

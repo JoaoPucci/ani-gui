@@ -91,8 +91,15 @@ pub(crate) fn forget_show(
     kitsu_ids.extend(super::history_forget_titles::title_match_ids(
         state, id, title,
     )?);
-    // An empty id — a title match stored without one — names no page.
-    kitsu_ids.retain(|k| !k.is_empty() && !claimed.contains(k));
+    // Each as its digits, the form the keys forgotten under it carry;
+    // a value that is not an id — an empty title match among them —
+    // names no page.
+    let mut kitsu_ids: Vec<String> = kitsu_ids
+        .iter()
+        .filter_map(|k| crate::history::kitsu_id_in(k))
+        .map(ToOwned::to_owned)
+        .collect();
+    kitsu_ids.retain(|k| !claimed.iter().any(|c| crate::history::same_kitsu_id(c, k)));
     super::history_forget_skips::forget_skip_times(state, &kitsu_ids)?;
     super::kitsu_gone::forget(state, &kitsu_ids)?;
     Ok(kitsu_ids)

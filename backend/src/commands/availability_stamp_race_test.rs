@@ -20,7 +20,7 @@ use crate::scraper::provider::ProviderId;
 
 /// The show both writers stamp, in the mode a resolve's cap is exact
 /// for.
-const ID: &str = "K9";
+const ID: &str = "9";
 const MODE: &str = "sub";
 
 fn positive_row(provider: ProviderId, cap: Option<u32>) -> AvailabilityResponse {

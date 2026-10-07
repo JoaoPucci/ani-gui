@@ -38,7 +38,8 @@ pub(crate) fn played_mapping(state: &AppState, show_id: &str) -> Result<Option<S
     else {
         return Ok(None);
     };
-    Ok(allmanga_kitsu_get(state, show_id)?.filter(|mapped| *mapped == played))
+    Ok(allmanga_kitsu_get(state, show_id)?
+        .filter(|mapped| crate::history::same_kitsu_id(mapped, &played)))
 }
 
 /// Whether the show's stored mapping was written by a play.

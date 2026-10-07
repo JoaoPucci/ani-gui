@@ -45,29 +45,31 @@ use crate::history::HistoryEntry;
 use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
 
 /// Map every `AniError` variant to the closest matching HTTP status.
-/// The body is the same JSON shape Tauri used to surface (a `kind`
-/// discriminator + optional `key` / `detail`), so the frontend
-/// error-handling code keeps the same structure as it switches from
-/// `invoke()` rejection payloads to `fetch()` 4xx/5xx bodies.
+/// The body is the envelope [`ani_error_payload`] builds — the
+/// `kind` discriminator, the variant's fields, and its stable `key` —
+/// so an HTTP error and an SSE error event carry the same shape, and
+/// the stable key AGENTS.md §4 promises the frontend reaches it either
+/// way. The frontend's error surfaces dispatch on `kind` today.
 impl IntoResponse for AniError {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.http_status_code())
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        (status, Json(self)).into_response()
+        (status, Json(ani_error_payload(&self))).into_response()
     }
 }
 
-/// Convert an [`AniError`] into the JSON shape sent on SSE error
-/// events. Centralises the play- and download-stream handlers'
-/// identical reshape logic so both streams emit the same envelope
+/// Convert an [`AniError`] into the JSON envelope every error answer
+/// carries: the HTTP error bodies and the play- and download-stream
+/// SSE error events alike
 /// (`{"kind": "<snake>", "key": "error.<scope>.<name>", ...}`)
-/// — the frontend matches on `kind` to render error-specific UI
-/// (today: the ffmpeg-missing modal at the layout level).
+/// — the frontend matches on `kind` to render error-specific UI (the
+/// ffmpeg-missing modal, the rate-limit and upstream copy, the
+/// syncplay and episode-unavailable branches among them).
 ///
 /// Falls back to `{"kind":"io"}` if the typed error somehow fails
 /// to serialize, which keeps the frontend's discriminator handler
 /// from breaking on a missing `kind` field.
-fn ani_error_to_sse_payload(e: &AniError) -> serde_json::Value {
+fn ani_error_payload(e: &AniError) -> serde_json::Value {
     let key = e.key();
     let mut payload = serde_json::to_value(e).unwrap_or_else(|_| serde_json::json!({"kind": "io"}));
     if let Some(obj) = payload.as_object_mut() {
@@ -189,7 +191,8 @@ async fn get_history_by_kitsu(
     State(state): State<Arc<AppState>>,
     Path(kitsu_id): Path<String>,
 ) -> Result<Json<Option<HistoryEntry>>, AniError> {
-    Ok(Json(h_inner::history_by_kitsu(&state, &kitsu_id)?))
+    let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
+    Ok(Json(h_inner::history_by_kitsu(&state, kitsu_id)?))
 }
 
 async fn post_external_player(
@@ -231,7 +234,8 @@ async fn get_kitsu_anime_detail(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<KitsuAnimeRef>, AniError> {
-    Ok(Json(kitsu_inner::kitsu_anime_detail(&state, &id).await?))
+    let id = crate::kitsu_id::require(&id)?;
+    Ok(Json(kitsu_inner::kitsu_anime_detail(&state, id).await?))
 }
 
 async fn get_kitsu_anime_by_slug(
@@ -301,8 +305,9 @@ async fn get_aniskip(
     Path((kitsu_id, episode)): Path<(String, String)>,
     Query(q): Query<AniskipQuery>,
 ) -> Result<Json<Vec<crate::meta::aniskip::SkipInterval>>, AniError> {
+    let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
     Ok(Json(
-        aniskip_inner::aniskip_get(&state, &kitsu_id, &episode, q.episode_length).await?,
+        aniskip_inner::aniskip_get(&state, kitsu_id, &episode, q.episode_length).await?,
     ))
 }
 
@@ -326,9 +331,10 @@ async fn get_kitsu_episodes(
     Path(anime_id): Path<String>,
     Query(q): Query<EpisodesQuery>,
 ) -> Result<Json<Vec<KitsuEpisode>>, AniError> {
+    let anime_id = crate::kitsu_id::require(&anime_id)?;
     let page = q.page.unwrap_or(1);
     Ok(Json(
-        kitsu_inner::kitsu_episodes_with(&state, &anime_id, page, q.refresh).await?,
+        kitsu_inner::kitsu_episodes_with(&state, anime_id, page, q.refresh).await?,
     ))
 }
 
@@ -356,9 +362,18 @@ async fn get_title_match(
 ) -> Result<Json<Option<String>>, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(q.provider.as_deref().unwrap_or(""));
-    Ok(Json(kitsu_inner::title_match_get(
-        &state, provider, &q.title, q.cour,
-    )?))
+    let stored = kitsu_inner::title_match_get(&state, provider, &q.title, q.cour)?;
+    Ok(Json(stored_kitsu_id(stored)))
+}
+
+/// A stored mapping's value as the renderer receives it: the Kitsu id
+/// it carries, or no mapping. A row written before the routes refused
+/// non-ids ([`crate::kitsu_id`]) can hold a value that is not one.
+fn stored_kitsu_id(stored: Option<String>) -> Option<String> {
+    stored
+        .as_deref()
+        .and_then(crate::history::kitsu_id_in)
+        .map(ToOwned::to_owned)
 }
 
 #[derive(Deserialize)]
@@ -377,12 +392,13 @@ async fn put_title_match(
 ) -> Result<StatusCode, AniError> {
     let provider =
         crate::scraper::provider::ProviderId::from_label(body.provider.as_deref().unwrap_or(""));
+    let kitsu_id = crate::kitsu_id::require(&body.kitsu_id)?;
     crate::commands::title_match_store::store_title_match(
         &state,
         provider,
         &body.title,
         body.cour,
-        &body.kitsu_id,
+        kitsu_id,
     )?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -498,7 +514,7 @@ async fn get_play_stream(
             Ok(resp) => Event::default().event("done").json_data(&resp).ok(),
             Err(e) => Event::default()
                 .event("error")
-                .json_data(ani_error_to_sse_payload(&e))
+                .json_data(ani_error_payload(&e))
                 .ok(),
         };
         if let Some(ev) = final_event {
@@ -549,7 +565,7 @@ async fn get_download_stream(
             Ok(resp) => Event::default().event("done").json_data(&resp).ok(),
             Err(e) => Event::default()
                 .event("error")
-                .json_data(ani_error_to_sse_payload(&e))
+                .json_data(ani_error_payload(&e))
                 .ok(),
         };
         if let Some(ev) = final_event {
@@ -690,7 +706,8 @@ async fn get_allmanga_kitsu_map(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
 ) -> Result<Json<Option<String>>, AniError> {
-    Ok(Json(kitsu_inner::allmanga_kitsu_get(&state, &show_id)?))
+    let stored = kitsu_inner::allmanga_kitsu_get(&state, &show_id)?;
+    Ok(Json(stored_kitsu_id(stored)))
 }
 
 /// The Kitsu id of the show's reverse mapping when a play stored it,
@@ -701,9 +718,8 @@ async fn get_allmanga_kitsu_map_played(
     State(state): State<Arc<AppState>>,
     Path(show_id): Path<String>,
 ) -> Result<Json<Option<String>>, AniError> {
-    Ok(Json(crate::commands::kitsu_played::played_mapping(
-        &state, &show_id,
-    )?))
+    let stored = crate::commands::kitsu_played::played_mapping(&state, &show_id)?;
+    Ok(Json(stored_kitsu_id(stored)))
 }
 
 /// Evict a single reverse-mapping row. Fired by the frontend when
@@ -716,8 +732,13 @@ async fn delete_allmanga_kitsu_map(
     Path(show_id): Path<String>,
     Query(q): Query<DeleteAllmangaKitsuMapQuery>,
 ) -> Result<StatusCode, AniError> {
-    match q.kitsu_id {
-        Some(kitsu_id) => kitsu_inner::allmanga_kitsu_delete_named(&state, &show_id, &kitsu_id)?,
+    match q
+        .kitsu_id
+        .as_deref()
+        .map(crate::kitsu_id::require)
+        .transpose()?
+    {
+        Some(kitsu_id) => kitsu_inner::allmanga_kitsu_delete_named(&state, &show_id, kitsu_id)?,
         None => kitsu_inner::allmanga_kitsu_delete(&state, &show_id)?,
     }
     Ok(StatusCode::NO_CONTENT)
@@ -727,6 +748,8 @@ async fn delete_allmanga_kitsu_map(
 struct DeleteAllmangaKitsuMapQuery {
     /// The id the caller judged; the mapping is removed only while it
     /// is still this one. Absent, whatever mapping stands is removed.
+    /// Present, it must be a Kitsu id ([`crate::kitsu_id::require`]):
+    /// a value that is not one is refused, never read as absent.
     #[serde(default)]
     kitsu_id: Option<String>,
 }
@@ -784,6 +807,14 @@ async fn post_play_cache_evict(
 mod kitsu_map_tests;
 
 #[cfg(test)]
+#[path = "kitsu_id_boundary_test.rs"]
+mod kitsu_id_boundary_test;
+
+#[cfg(test)]
+#[path = "error_envelope_test.rs"]
+mod error_envelope_test;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::meta::kitsu::KitsuClient;
@@ -803,8 +834,8 @@ mod tests {
     /// representative variant — drift here would silently break the
     /// download dock or play overlay's error rendering.
     #[test]
-    fn ani_error_to_sse_payload_carries_kind_and_key_for_ffmpeg_missing() {
-        let v = ani_error_to_sse_payload(&AniError::FfmpegMissing);
+    fn ani_error_payload_carries_kind_and_key_for_ffmpeg_missing() {
+        let v = ani_error_payload(&AniError::FfmpegMissing);
         assert_eq!(v["kind"], "ffmpeg_missing", "got: {v}");
         assert_eq!(v["key"], "error.download.ffmpeg_missing", "got: {v}");
     }
@@ -813,8 +844,8 @@ mod tests {
     /// `key` — the frontend can interpolate `binary` into the toast for
     /// the "couldn't launch <vlc>" path without losing the i18n key.
     #[test]
-    fn ani_error_to_sse_payload_preserves_variant_data_fields() {
-        let v = ani_error_to_sse_payload(&AniError::PlayerSpawnFailed {
+    fn ani_error_payload_preserves_variant_data_fields() {
+        let v = ani_error_payload(&AniError::PlayerSpawnFailed {
             binary: "vlc".into(),
         });
         assert_eq!(v["kind"], "player_spawn_failed", "got: {v}");
@@ -2584,7 +2615,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/history/by-kitsu/kid-unknown")
+                    .uri("/api/history/by-kitsu/99999999")
                     .body(Body::empty())
                     .expect("req"),
             )
@@ -2697,7 +2728,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/kitsu/anime/kid-1")
+                    .uri("/api/kitsu/anime/49877")
                     .body(Body::empty())
                     .expect("req"),
             )
@@ -2919,8 +2950,8 @@ mod tests {
         let router = build_api_router(Arc::new(test_app_state(&td)));
         let routes = [
             ("GET", "/api/kitsu/top-rated", ""),
-            ("GET", "/api/kitsu/episodes/kid-1?page=1", ""),
-            ("GET", "/api/aniskip/kid-1/1?episode_length=1440", ""),
+            ("GET", "/api/kitsu/episodes/49877?page=1", ""),
+            ("GET", "/api/aniskip/49877/1?episode_length=1440", ""),
             ("GET", "/api/title-match?title=Naruto&cour=1", ""),
             ("DELETE", "/api/cache", ""),
             ("DELETE", "/api/cache/images", ""),
@@ -2953,9 +2984,7 @@ mod tests {
                     .method("PUT")
                     .uri("/api/title-match")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"title":"Naruto","cour":1,"kitsu_id":"kid-1"}"#,
-                    ))
+                    .body(Body::from(r#"{"title":"Naruto","cour":1,"kitsu_id":"11"}"#))
                     .expect("req"),
             )
             .await

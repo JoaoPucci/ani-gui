@@ -146,16 +146,17 @@ fn the_warm_seeds_schedules_for_shows_on_air_as_well_as_to_come() {
     // if the schedule is cached before the warm's probe writes it.
     let td = tempfile::tempdir().expect("tempdir");
     let state = cache_only_state(&td);
-    write_cache_full(&state, "fresh", "sub", Some("current"), &positive(3));
+    // Ids: 201 airing, 202 premiere, 203 done, 204 fresh.
+    write_cache_full(&state, "204", "sub", Some("current"), &positive(3));
     let items = [
-        warm_args("airing", "current"),
-        warm_args("premiere", "upcoming"),
-        warm_args("done", "finished"),
-        warm_args("fresh", "current"),
+        warm_args("201", "current"),
+        warm_args("202", "upcoming"),
+        warm_args("203", "finished"),
+        warm_args("204", "current"),
     ];
     assert_eq!(
         schedule_seed_ids(&state, &items),
-        vec!["airing".to_string(), "premiere".to_string()]
+        vec!["201".to_string(), "202".to_string()]
     );
 }
 

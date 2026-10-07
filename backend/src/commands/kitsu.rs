@@ -597,7 +597,13 @@ pub fn allmanga_kitsu_delete_named(state: &AppState, show_id: &str, kitsu_id: &s
 /// whether it was. The caller holds the history, so the check and the
 /// delete see the same mapping.
 fn delete_while_named(state: &AppState, show_id: &str, kitsu_id: &str) -> Result<bool> {
-    if allmanga_kitsu_get(state, show_id)?.as_deref() != Some(kitsu_id) {
+    // Both sides as their digits: the renderer names what the mapping
+    // read handed it, and the cour guard names the value as stored.
+    let stored = allmanga_kitsu_get(state, show_id)?;
+    if !stored
+        .as_deref()
+        .is_some_and(|stored| crate::history::same_kitsu_id(stored, kitsu_id))
+    {
         return Ok(false);
     }
     allmanga_kitsu_delete(state, show_id).map(|()| true)
@@ -1064,7 +1070,9 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
 /// Fetch a single anime by Kitsu id, cached under [`anime_detail_key`].
 ///
 /// # Errors
-/// Inherits from [`crate::meta::kitsu::KitsuClient::anime_detail`] on miss.
+/// [`crate::error::AniError::InvalidKitsuId`] when `id` is not a Kitsu
+/// id; otherwise inherits from
+/// [`crate::meta::kitsu::KitsuClient::anime_detail`] on miss.
 pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnimeRef> {
     kitsu_anime_detail_with_anilist_base(state, id, None).await
 }
@@ -1101,6 +1109,11 @@ async fn anime_detail_read(
     anilist_base: Option<&str>,
     past_cache: impl FnOnce(&AppState),
 ) -> Result<KitsuAnimeRef> {
+    // The routes refuse a non-id before it gets here; the stored
+    // mappings the reverse resolver and the cour guard read can
+    // predate that rule, and this is where an id becomes a key and a
+    // request path.
+    let id = crate::kitsu_id::require(id)?;
     // A 404 or 410 is Kitsu answering the entry is gone, which a
     // history row that recorded the id needs to know (kitsu_gone.rs) —
     // unless the history removed the id's show while the read was in
