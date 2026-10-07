@@ -136,6 +136,14 @@ pub(crate) async fn cached_row_is_live_within(
         };
         track_urls.push(url);
     }
+    // The check waits for no token — it runs before the player starts,
+    // under a deadline of seconds — but the host counts its requests,
+    // so they are spent from its budget.
+    let host_of = crate::proxy::host_budget::host_key;
+    state.host_budget.spend(&host_of(&stream_url), 1);
+    for url in &track_urls {
+        state.host_budget.spend(&host_of(url), 1);
+    }
     let stream = async {
         upstream_head_ok(&state.meta_http, &stream_url, &cached.referer)
             .await

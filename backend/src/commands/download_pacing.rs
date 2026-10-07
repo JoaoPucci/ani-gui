@@ -180,6 +180,7 @@ pub(crate) struct Pacing<'a> {
     poll: Duration,
     lane: &'a Semaphore,
     noted: Option<&'a tokio::sync::Notify>,
+    budget: Option<&'a crate::proxy::host_budget::HostBudget>,
 }
 
 impl<'a> Pacing<'a> {
@@ -193,7 +194,31 @@ impl<'a> Pacing<'a> {
             poll,
             lane,
             noted: None,
+            budget: None,
         }
+    }
+
+    /// The same pacing, charging the requests a run sends past the
+    /// host's budget to `budget` ([`Self::unpaced_run`]).
+    #[must_use]
+    pub(crate) fn charged_to(self, budget: &'a crate::proxy::host_budget::HostBudget) -> Self {
+        Self {
+            budget: Some(budget),
+            ..self
+        }
+    }
+
+    /// A run of a tool that fetches from the stream at `master_url`
+    /// with up to `in_flight` requests at a time, none of them through
+    /// the host's budget: registered there for as long as it is held.
+    pub(crate) fn unpaced_run(
+        &self,
+        master_url: &str,
+        in_flight: u32,
+    ) -> Option<crate::proxy::host_budget::UnpacedRun<'a>> {
+        let budget = self.budget?;
+        let url = url::Url::parse(master_url).ok()?;
+        Some(budget.unpaced_run(&crate::proxy::host_budget::host_key(&url), in_flight))
     }
 
     /// The same pacing, woken by `noted` — the proxy's note of a media
@@ -227,6 +252,7 @@ impl<'a> Pacing<'a> {
             poll: Duration::from_secs(3600),
             lane: &NEVER_LANE,
             noted: None,
+            budget: None,
         }
     }
 
