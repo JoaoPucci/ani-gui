@@ -30,6 +30,7 @@ const failureStoreMock = vi.hoisted(() => ({
 vi.mock('./failure-store.svelte', () => failureStoreMock);
 
 import { startDownload } from './start';
+import { describeError } from '$lib/play/error-copy';
 
 const baseArgs = {
 	title: 'Demon Slayer',
@@ -175,32 +176,56 @@ describe('startDownload', () => {
 		expect(failureStoreMock.downloadFailureStore.show).not.toHaveBeenCalled();
 	});
 
-	it('translates a thrown Error into markError with its message', async () => {
+	// The dock row's tooltip is user copy. A thrown Error's message
+	// ("Download stream closed before completion.", a JSON parse
+	// error), a bare string and a payload's `detail` are all internal
+	// text, so every other failure gets describeError's sentence for
+	// its kind instead.
+	it('shows describeError copy for a thrown Error, never its message', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce(new Error('upstream 500'));
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', 'upstream 500');
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			describeError(new Error('upstream 500'))
+		);
+		expect(storeMock.downloadStore.markError).not.toHaveBeenCalledWith('dl-1', 'upstream 500');
 		expect(storeMock.downloadStore.markDone).not.toHaveBeenCalled();
 	});
 
-	it('translates a thrown string into markError using the string itself', async () => {
-		// Some legacy promise paths reject with bare strings. The
-		// branch in start.ts catches that and forwards it as the
-		// message; a regression here would render `[object Object]`.
+	it('shows describeError copy for a thrown string, never the string', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce('aborted by user');
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', 'aborted by user');
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			describeError('aborted by user')
+		);
 	});
 
-	it("falls back to a generic message when the rejection isn't an Error or string", async () => {
+	it('names a typed failure by its kind and leaves its detail out', async () => {
+		const failure = { kind: 'parse_failed', detail: 'missing field `dest_dir`' };
+		apiMock.downloadStream.mockRejectedValueOnce(failure);
+		startDownload(baseArgs);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', describeError(failure));
+		const shown = storeMock.downloadStore.markError.mock.calls[0][1] as string;
+		expect(shown).not.toContain('dest_dir');
+	});
+
+	it('falls back to localized generic copy for an unrecognised rejection', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce({ unexpected: true });
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', 'Download failed');
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			describeError({ unexpected: true })
+		);
+		expect(storeMock.downloadStore.markError).not.toHaveBeenCalledWith('dl-1', 'Download failed');
 	});
 
 	it('routes a typed ffmpeg_missing payload to the failure store and dismisses the dock row', async () => {
