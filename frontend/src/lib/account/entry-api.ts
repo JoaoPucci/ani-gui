@@ -11,7 +11,7 @@ import type { EntryView, ListEntry, Provider } from './types';
 async function getJson<T>(path: string, bearer: string): Promise<T> {
 	const base = await apiBase();
 	const res = await fetch(base.replace(/\/+$/, '') + path, {
-		headers: { authorization: `Bearer ${bearer}` }
+		headers: { authorization: `Bearer ${bearer}` } // i18n-ignore: HTTP auth scheme
 	});
 	if (!res.ok) {
 		throw new AccountApiError(res.status, await readErrorBody(res));

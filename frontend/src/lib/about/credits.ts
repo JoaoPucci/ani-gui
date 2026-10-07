@@ -68,6 +68,7 @@ export const BUNDLED_TOOLS: BundledTool[] = [
 		// where ffmpeg does one stream copy with no retries.
 		name: 'yt-dlp',
 		version: '2025.09.26',
+		// i18n-ignore: a license's own name
 		license: 'Unlicense',
 		url: 'https://github.com/yt-dlp/yt-dlp',
 		noteId: 'yt_dlp'
@@ -114,6 +115,7 @@ export const ASSETS: AssetCredit[] = [
 		// this `name` is only the entry's identifier. The URL is the
 		// link of record.
 		name: 'lottie-loading',
+		// i18n-ignore: the author's name
 		author: 'Pickyourtrail',
 		authorUrl: 'https://lottiefiles.com/pickyourtrail',
 		// i18n-ignore: a license's own name, like an SPDX id

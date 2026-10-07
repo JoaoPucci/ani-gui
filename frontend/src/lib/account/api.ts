@@ -47,7 +47,7 @@ export async function readErrorBody(res: Response): Promise<string> {
 export async function postJson<T>(path: string, body: unknown, bearer?: string): Promise<T> {
 	const base = await apiBase();
 	const headers: Record<string, string> = { 'content-type': 'application/json' };
-	if (bearer) headers.authorization = `Bearer ${bearer}`;
+	if (bearer) headers.authorization = `Bearer ${bearer}`; // i18n-ignore: HTTP auth scheme
 	const res = await fetch(base.replace(/\/+$/, '') + path, {
 		method: 'POST',
 		headers,
@@ -66,7 +66,7 @@ export async function deleteEndpoint(
 ): Promise<void> {
 	const base = await apiBase();
 	const headers: Record<string, string> = { ...(extraHeaders ?? {}) };
-	if (bearer) headers.authorization = `Bearer ${bearer}`;
+	if (bearer) headers.authorization = `Bearer ${bearer}`; // i18n-ignore: HTTP auth scheme
 	const res = await fetch(base.replace(/\/+$/, '') + path, { method: 'DELETE', headers });
 	if (!res.ok) {
 		throw new AccountApiError(res.status, await readErrorBody(res));
@@ -161,7 +161,7 @@ export async function fetchCachedList(
 		? `/api/account/list/${provider}/cached?fallback_user_id=${encodeURIComponent(fallbackUserId)}`
 		: `/api/account/list/${provider}/cached`;
 	const headers: Record<string, string> = {
-		authorization: `Bearer ${bearer}`,
+		authorization: `Bearer ${bearer}`, // i18n-ignore: HTTP auth scheme
 		...internalSecretHeader()
 	};
 	const res = await fetch(base.replace(/\/+$/, '') + path, { headers });

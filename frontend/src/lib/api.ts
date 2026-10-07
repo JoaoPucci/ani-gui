@@ -107,6 +107,7 @@ async function apiBase(): Promise<string> {
 	}
 	throw new Error(
 		'ani-gui apiBase is not configured — Electron preload should set window.aniGui.apiBase, ' +
+			// i18n-ignore: developer-facing error, part of the message above
 			'or set VITE_ANI_GUI_API_BASE for browser-only dev.'
 	);
 }

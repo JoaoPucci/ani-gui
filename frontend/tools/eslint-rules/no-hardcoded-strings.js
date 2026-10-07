@@ -1,7 +1,8 @@
 /**
- * Custom ESLint rule: every visitor-facing string in a Svelte component
- * must be routed through Paraglide (`m.foo()`), not embedded as a
- * literal. Catches three slip surfaces:
+ * Custom ESLint rule: every visitor-facing string in a Svelte component,
+ * or in a TypeScript module that feeds one, must be routed through
+ * Paraglide (`m.foo()`), not embedded as a literal. Catches three slip
+ * surfaces:
  *
  *   1. Raw text in a template — `<button>Save</button>`. Flagged via
  *      the `SvelteText` AST node.
@@ -9,8 +10,8 @@
  *      `aria-label="Close"`, `placeholder="Search"`, `title="…"`,
  *      `alt="…"`. Flagged via `SvelteAttribute` whose first child is
  *      a `SvelteLiteral`.
- *   3. String and template literals in JavaScript — in `<script>` and
- *      in template expressions — that read as copy. A literal in
+ *   3. String and template literals in JavaScript — in `<script>`, in
+ *      template expressions and in `.ts` modules — that read as copy. A literal in
  *      script reaches the screen through a variable (`{error.headline}`,
  *      a `{#each}` over a label table, `window.confirm(…)`), which the
  *      first two never see.
@@ -39,8 +40,10 @@
  *     attribute is not one of USER_FACING_ATTRS — which includes event
  *     handlers (`onclick={() => confirm('…')}`) and component props
  *     (`<ErrorOverlay body={'…'} />`)
- *   - every plain `.ts` / `.js` module; eslint.config.js applies the
- *     rule to `.svelte`, `.svelte.ts` and `.svelte.js` files only
+ *   - files eslint.config.js does not hand it: it runs on `.svelte`,
+ *     `.svelte.ts` and `.svelte.js` files and on every `.ts` module
+ *     under src/ except tests, so plain `.js` modules and anything
+ *     outside src/ go unchecked
  * Copy in those places is caught by review, not by this rule. It also
  * over-reports in two known spots, both cheap to silence: a `style:`
  * directive's value, and an Error message built without `new`.
