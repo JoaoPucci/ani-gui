@@ -221,7 +221,7 @@ async fn a_background_fetch_alone_is_admitted_at_the_next_token() {
 #[tokio::test(start_paused = true)]
 async fn a_player_starting_beside_an_unpaced_download_gets_only_what_it_leaves() {
     let budget = HostBudget::fresh();
-    let _run = budget.unpaced_run("cdn.example:443", 16);
+    let _run = budget.unpaced_run(16);
     for i in 0..4 {
         tokio::time::timeout(Duration::from_millis(1), budget.admit("cdn.example:443"))
             .await
@@ -241,21 +241,11 @@ async fn a_player_starting_beside_an_unpaced_download_gets_only_what_it_leaves()
 #[tokio::test(start_paused = true)]
 async fn the_players_first_request_is_admitted_beside_any_number_of_unpaced_downloads() {
     let budget = HostBudget::fresh();
-    let _a = budget.unpaced_run("cdn.example:443", 16);
-    let _b = budget.unpaced_run("cdn.example:443", 16);
+    let _a = budget.unpaced_run(16);
+    let _b = budget.unpaced_run(16);
     tokio::time::timeout(Duration::from_millis(1), budget.admit("cdn.example:443"))
         .await
         .expect("the first request is admitted");
-}
-
-/// The requests an unpaced download had in flight when it ended reached
-/// the host: they are spent from the budget then, so a player starting
-/// just after finds them gone.
-#[test]
-fn an_unpaced_downloads_requests_in_flight_are_spent_when_it_ends() {
-    let budget = HostBudget::fresh();
-    drop(budget.unpaced_run("cdn.example:443", 16));
-    assert_eq!(budget.on_hand("cdn.example:443"), Some(4.0));
 }
 
 /// A request the app makes without waiting for a token — a cached
@@ -267,4 +257,60 @@ fn a_request_the_budget_does_not_pace_is_spent_from_it() {
     assert_eq!(budget.on_hand("cdn.example:443"), Some(17.0));
     budget.spend("cdn.example:443", 40);
     assert_eq!(budget.on_hand("cdn.example:443"), Some(0.0));
+}
+
+/// An unpaced download's fragments go wherever its playlists send
+/// them — a segment host, an edge a redirect lands on — which the app
+/// does not see. So the hold covers every host the player fetches
+/// from while the download runs, not only the stream's own.
+#[tokio::test(start_paused = true)]
+async fn the_hold_covers_every_host_while_an_unpaced_download_runs() {
+    let budget = HostBudget::fresh();
+    let _run = budget.unpaced_run(16);
+    for host in ["cdn.example:443", "edge.example:443"] {
+        for _ in 0..4 {
+            tokio::time::timeout(Duration::from_millis(1), budget.admit(host))
+                .await
+                .expect("within what the download left");
+        }
+        assert!(
+            tokio::time::timeout(SEGMENT_REFILL / 2, budget.admit(host))
+                .await
+                .is_err(),
+            "{host}: the fifth waits"
+        );
+    }
+}
+
+/// When the download ends, what its requests in flight left is where
+/// a host's tokens stand — not that, less them again: a player that
+/// already took what the hold left keeps the rest.
+#[tokio::test(start_paused = true)]
+async fn an_unpaced_download_ending_does_not_charge_its_requests_twice() {
+    let budget = HostBudget::fresh();
+    let run = budget.unpaced_run(16);
+    budget.admit("cdn.example:443").await;
+    drop(run);
+    let left = budget.on_hand("cdn.example:443").expect("taken");
+    assert!((left - 3.0).abs() < 1e-6, "{left}");
+}
+
+/// A host the player first fetches from just after an unpaced download
+/// ended starts where the download left every host, and refills from
+/// the moment it ended.
+#[tokio::test(start_paused = true)]
+async fn a_host_first_fetched_from_after_an_unpaced_download_starts_where_it_left_off() {
+    let budget = HostBudget::fresh();
+    drop(budget.unpaced_run(16));
+    for _ in 0..4 {
+        tokio::time::timeout(Duration::from_millis(1), budget.admit("seg.example:443"))
+            .await
+            .expect("within what the download left");
+    }
+    assert!(
+        tokio::time::timeout(SEGMENT_REFILL / 2, budget.admit("seg.example:443"))
+            .await
+            .is_err(),
+        "the fifth waits"
+    );
 }

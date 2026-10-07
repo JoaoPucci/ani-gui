@@ -4208,15 +4208,15 @@ fn concurrency_of(line: &str) -> Option<&str> {
 }
 
 /// A download running unpaced sends its fragments past the host's
-/// budget; while it runs, and once it ends, the budget at the stream's
-/// host accounts for the requests it may have in flight — sixteen for
-/// yt-dlp, one for an ffmpeg fallback — so a player starting beside it
-/// or just after does not add a full burst on top.
+/// budget; once it ends, a host the player then fetches from starts
+/// where the download's requests in flight left it — for yt-dlp's
+/// sixteen, four of the burst — not full.
 #[cfg(unix)]
 #[tokio::test]
 async fn an_unpaced_download_is_charged_to_the_hosts_budget() {
-    // The fallback's case counts the failed yt-dlp run before it too.
-    for (ytdlp, in_flight) in [(true, 16.0), (false, 17.0)] {
+    // The fallback's case runs the failed yt-dlp first; the hold that
+    // matters is its sixteen.
+    for ytdlp in [true, false] {
         let bin = tempfile::tempdir().expect("bin");
         let dest = tempfile::tempdir().expect("dest");
         if ytdlp {
@@ -4258,12 +4258,83 @@ async fn an_unpaced_download_is_charged_to_the_hosts_budget() {
         )
         .await
         .expect("the transfer completes");
-        let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
-        let left = budget.on_hand("cdn.example:443").expect("charged");
-        assert!(
-            (left - (burst - in_flight)).abs() < 0.5,
-            "ytdlp={ytdlp}: {left} left of {burst}"
+        let mut admitted = 0;
+        while tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            budget.admit("seg.example:443"),
+        )
+        .await
+        .is_ok()
+        {
+            admitted += 1;
+            assert!(admitted <= 20, "ytdlp={ytdlp}: nothing held");
+        }
+        assert_eq!(admitted, 4, "ytdlp={ytdlp}");
+    }
+}
+
+/// While a download's tool runs, every host's tokens are held to what
+/// its requests in flight leave: sixteen for a free run, one for a run
+/// paced while playback is live.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_running_download_holds_the_budget_to_what_its_tool_leaves() {
+    for (playing, left) in [(false, 4usize), (true, 19usize)] {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        let log = dest.path().join("calls.log");
+        let go = dest.path().join("go");
+        stage_waiting_ytdlp(bin.path(), &log, &go);
+        let budget = crate::proxy::host_budget::HostBudget::fresh();
+        let live = std::sync::atomic::AtomicBool::new(playing);
+        let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+        let lane = tokio::sync::Semaphore::new(1);
+        let pacing = crate::commands::download_pacing::Pacing::new(
+            &is_live,
+            std::time::Duration::from_millis(50),
+            &lane,
+        )
+        .charged_to(&budget);
+        let path_env = bin.path().display().to_string();
+        let mut on_line = |_l: &str| {};
+        let source = StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        };
+        let transfer = spawn_download_tool_paced(
+            &source,
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(10),
+            &mut on_line,
+            &pacing,
         );
+        let drive = async {
+            until_log(&log, "the run", |l| !l.is_empty()).await;
+            for i in 0..left {
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(200),
+                    budget.admit("seg.example:443"),
+                )
+                .await
+                .unwrap_or_else(|_| panic!("playing={playing}: request {i} within what is left"));
+            }
+            assert!(
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(300),
+                    budget.admit("seg.example:443"),
+                )
+                .await
+                .is_err(),
+                "playing={playing}: the next waits"
+            );
+            std::fs::write(&go, b"").expect("go");
+        };
+        let (got, ()) = tokio::join!(transfer, drive);
+        got.expect("the transfer completes");
     }
 }
 
