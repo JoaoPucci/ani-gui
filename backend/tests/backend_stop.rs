@@ -31,12 +31,16 @@ use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-/// The provider's transport: answers every step of the resolve walk
-/// from the script, in the `<body>\n<status> <url>` shape the real
-/// one prints. The URL is curl's operand, the last argument.
+/// The providers' transport: answers every step of anidb.app's
+/// resolve walk from the script, in the `<body>\n<status> <url>`
+/// shape the real one prints, and fails every hianime request the way
+/// curl fails a host it cannot reach, so the walk fails over to
+/// anidb.app whichever of the two the order puts first. The URL is
+/// curl's operand, the last argument.
 const TRANSPORT: &str = r##"#!/bin/sh
 for url in "$@"; do :; done
 case "$url" in
+  https://hianime.at/*) exit 7 ;;
   */browse*) body='<a href="/anime/test-show-1"><img alt="test"/></a>' ;;
   */anime/1/episodes) body='{"episodes":[{"id":1001,"number":1},{"id":1002,"number":2}]}' ;;
   */episode/*/languages) body='{"languages":[{"code":"jpn","embed_url":"https://stand-in.invalid/embed/x"}]}' ;;
