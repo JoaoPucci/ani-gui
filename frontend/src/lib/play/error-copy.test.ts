@@ -193,9 +193,31 @@ describe('describePlayFailure', () => {
 		expect(describePlayFailure({ kind: 'timeout' })).toMatch(/took too long to respond/);
 	});
 
-	it('matches the network branch on either kind', () => {
+	it('matches the network branch for a failure to connect', () => {
 		expect(describePlayFailure({ kind: 'network' })).toMatch(/Network trouble/);
-		expect(describePlayFailure({ kind: 'upstream', detail: '503' })).toMatch(/Network trouble/);
+		expect(describePlayFailure({ kind: 'gate_refused' })).toMatch(/Network trouble/);
+	});
+
+	it('reads an upstream status instead of blaming the connection', () => {
+		// `upstream` is the source answering with a non-success status,
+		// so the connection is fine. 404/410 is the source not having
+		// the thing, which is the catalogue-miss copy; any other status
+		// outside the busy (429) and down (5xx) shapes, and an upstream
+		// with no status at all, says the source answered with an error.
+		const miss = describePlayFailure({ kind: 'upstream', status: 404 });
+		expect(miss).toBe(m.play_play_failure_no_results());
+		expect(describePlayFailure({ kind: 'upstream', status: 410 })).toBe(miss);
+		// The detail page's definitive catalogue-miss override is for a
+		// title the catalogue lacks, which a 404 does not prove.
+		expect(describePlayFailure({ kind: 'upstream', status: 404 }, { noResults: () => 'X' })).toBe(
+			miss
+		);
+		const answered = describePlayFailure({ kind: 'upstream', status: 403 });
+		expect(answered).toBe(m.play_play_failure_source_error());
+		expect(answered).not.toBe(m.play_play_failure_network());
+		expect(describePlayFailure({ kind: 'upstream', status: 400 })).toBe(answered);
+		expect(describePlayFailure({ kind: 'upstream', detail: '503' })).toBe(answered);
+		expect(describeExternalLaunchFailure({ kind: 'upstream', status: 403 })).toBe(answered);
 	});
 
 	it('surfaces the rate-limit wait when the backend carries one', () => {
@@ -299,8 +321,12 @@ describe('describePlayFailure — the provider being down names itself', () => {
 
 	it('genuine connection failures keep the check-your-connection copy', () => {
 		expect(describePlayFailure({ kind: 'network' })).toBe(m.play_play_failure_network());
-		// A 4xx upstream is not the down-for-maintenance shape.
-		expect(describePlayFailure({ kind: 'upstream', status: 403 })).toBe(
+		// A 4xx upstream is not the down-for-maintenance shape, and not
+		// a connection failure either.
+		expect(describePlayFailure({ kind: 'upstream', status: 403 })).not.toBe(
+			m.play_play_failure_source_down()
+		);
+		expect(describePlayFailure({ kind: 'upstream', status: 403 })).not.toBe(
 			m.play_play_failure_network()
 		);
 	});

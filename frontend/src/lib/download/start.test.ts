@@ -216,10 +216,16 @@ describe('startDownload', () => {
 		expect(shown).not.toContain('dest_dir');
 	});
 
-	it('words a catalogue miss and a source outage the way the play page does', async () => {
-		// A download resolves through the same provider as play, so these
-		// two verdicts read the same on both surfaces.
-		for (const failure of [{ kind: 'no_results' }, { kind: 'upstream', status: 503 }]) {
+	it('words every provider answer the way the play page does', async () => {
+		// A download resolves through the same provider as play, so a
+		// catalogue miss, a source outage and any other upstream status
+		// read the same on both surfaces.
+		for (const failure of [
+			{ kind: 'no_results' },
+			{ kind: 'upstream', status: 503 },
+			{ kind: 'upstream', status: 404 },
+			{ kind: 'upstream', status: 403 }
+		]) {
 			storeMock.downloadStore.markError.mockReset();
 			apiMock.downloadStream.mockRejectedValueOnce(failure);
 			startDownload(baseArgs);

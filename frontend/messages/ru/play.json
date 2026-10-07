@@ -116,5 +116,6 @@
 	"test_error_hls_fatal": "Критическая ошибка HLS: {detail}",
 	"test_error_play_failed": "Не удалось воспроизвести: {detail}",
 	"test_error_setup_failed": "Ошибка настройки: {detail}",
-	"error_load_failed": "Не удалось загрузить тайтл. {reason}"
+	"error_load_failed": "Не удалось загрузить тайтл. {reason}",
+	"play_failure_source_error": "Источник видео ответил ошибкой. Попробуйте позже."
 }

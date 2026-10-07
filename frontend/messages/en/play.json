@@ -116,5 +116,6 @@
 	"test_error_hls_fatal": "HLS fatal: {detail}",
 	"test_error_play_failed": "Play failed: {detail}",
 	"test_error_setup_failed": "Setup failed: {detail}",
-	"error_load_failed": "Couldn't load this title. {reason}"
+	"error_load_failed": "Couldn't load this title. {reason}",
+	"play_failure_source_error": "The streaming source answered with an error. Try again later."
 }
