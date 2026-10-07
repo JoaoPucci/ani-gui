@@ -222,10 +222,10 @@ fn a_query_parameter_is_percent_decoded_not_form_decoded() {
     assert!(out.contains("\ns.ts?t=a+b+c&d\n"), "{out}");
 }
 
-/// Hexadecimal-sequence and enumerated values carry references too, as
-/// a quoted value does; a segment's title still does not.
+/// A hexadecimal-sequence value carries references too, as a quoted
+/// value does; a segment's title still does not.
 #[test]
-fn unquoted_attribute_values_are_substituted() {
+fn hexadecimal_values_are_substituted() {
     let body = b"#EXTM3U\n\
         #EXT-X-DEFINE:NAME=\"iv\",VALUE=\"00ff\"\n\
         #EXT-X-TARGETDURATION:5\n\
@@ -303,9 +303,11 @@ proptest::proptest! {
     /// Whatever a query parameter's value, percent-encoded into the
     /// playlist's URL and read back as a variable, it comes back as it
     /// was: `+` included, which form-decoding would have turned into a
-    /// space.
+    /// space. A `"` is not a value a quoted string can carry, so it
+    /// defines nothing (see
+    /// `a_query_parameter_a_quoted_string_cannot_carry_defines_nothing`).
     #[test]
-    fn a_query_parameters_value_comes_back_as_it_was(value in "[ -~]{0,16}") {
+    fn a_query_parameters_value_comes_back_as_it_was(value in "[ !#-~]{0,16}") {
         let encoded: String = value
             .bytes()
             .map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else { format!("%{b:02X}") })
@@ -317,5 +319,52 @@ proptest::proptest! {
             &HashMap::new(),
         );
         proptest::prop_assert_eq!(vars.get("v").map(String::as_str), Some(value.as_str()));
+    }
+}
+
+/// The spec subjects three things to substitution — URI lines, quoted
+/// strings and hexadecimal sequences — and nothing else: a reference in
+/// an enumerated value, a decimal, or a comment stays as written.
+#[test]
+fn references_elsewhere_are_left_as_written() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:NAME=\"a\",VALUE=\"A\"\n\
+        #EXT-X-TARGETDURATION:{$a}\n\
+        # a comment names {$a}\n\
+        #EXT-X-KEY:METHOD={$a},URI=\"k/{$a}.key\",IV=0x{$a}\n\
+        #EXTINF:5.0,\n\
+        s/{$a}.ts\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+    let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+    let out = String::from_utf8(out).expect("utf8");
+    assert!(out.contains("#EXT-X-TARGETDURATION:{$a}\n"), "{out}");
+    assert!(out.contains("# a comment names {$a}\n"), "{out}");
+    assert!(
+        out.contains("#EXT-X-KEY:METHOD={$a},URI=\"k/A.key\",IV=0xA\n"),
+        "{out}"
+    );
+    assert!(out.contains("\ns/A.ts\n"), "{out}");
+}
+
+/// A query parameter whose decoded value a quoted string cannot carry —
+/// a `"`, a line break, bytes that are not UTF-8 — or that has no value
+/// at all defines nothing, as the spec has the parse fail: the
+/// definition stays and the reference is left as written.
+#[test]
+fn a_query_parameter_a_quoted_string_cannot_carry_defines_nothing() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:QUERYPARAM=\"t\"\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXTINF:5.0,\n\
+        s.ts?t={$t}\n";
+    for query in ["t=a%22b", "t=a%0Ab", "t=a%0Db", "t=a%FFb", "t"] {
+        let url = Url::parse(&format!("https://cdn.example/a/index.m3u8?{query}")).expect("url");
+        let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+        let out = String::from_utf8(out).expect("utf8");
+        assert!(
+            out.contains("#EXT-X-DEFINE:QUERYPARAM=\"t\"\n"),
+            "{query}: {out}"
+        );
+        assert!(out.contains("\ns.ts?t={$t}\n"), "{query}: {out}");
     }
 }
