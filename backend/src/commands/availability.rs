@@ -166,10 +166,12 @@ pub struct AvailabilityResponse {
 /// unrelated site, the transport followed, and that site's home page
 /// was read as an empty search: a clean miss, persisted as anidb's
 /// negative. Such a row is byte-for-byte a genuine miss, so no anidb
-/// negative written before the guard is served; the next look probes
-/// again and writes a row this reading stands behind. A key bump would
-/// have done the same by re-probing every row, positives and the
-/// fallback's negatives included, none of which that reading wrote.
+/// negative written before the guard is served — nor an unattributed
+/// one, which was written while anidb.app was first and so is anidb's
+/// even now that hianime is; the next look probes again and writes a
+/// row this reading stands behind. A key bump would have done the
+/// same by re-probing every row, positives and hianime's negatives
+/// included, none of which that reading wrote.
 pub(crate) const ANIDB_ORIGIN_GUARD_READING: u32 = 1;
 
 /// The reading rows are written under now. 1: anidb's client refuses
@@ -222,8 +224,15 @@ fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool 
 /// has nobody to stand behind it. And an anidb negative written
 /// before [`ANIDB_ORIGIN_GUARD_READING`] has nothing to stand behind:
 /// the reading that wrote it took another site's page for anidb's
-/// answer.
+/// answer. Neither does an unattributed one from then: it was written
+/// while anidb.app was first, so it is anidb's verdict whatever the
+/// order now puts first.
 fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bool {
+    if parsed.reading < ANIDB_ORIGIN_GUARD_READING
+        && parsed.provider != Some(crate::scraper::provider::ProviderId::Hianime)
+    {
+        return false;
+    }
     let order = &state.provider_order;
     let Some(provider) = parsed.provider.or_else(|| order.first().copied()) else {
         return true;
@@ -231,11 +240,6 @@ fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bo
     let Some(position) = order.iter().position(|p| *p == provider) else {
         return false;
     };
-    if provider == crate::scraper::provider::ProviderId::Anidb
-        && parsed.reading < ANIDB_ORIGIN_GUARD_READING
-    {
-        return false;
-    }
     let gate =
         |p: &crate::scraper::provider::ProviderId| crate::commands::providers::gate_of(state, *p);
     gate(&provider).is_recovered() && order[..position].iter().all(|p| gate(p).is_refusing())

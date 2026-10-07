@@ -175,9 +175,12 @@ impl AppState {
             anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
             hianime_base: None,
             hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
+            // hianime first: anidb.app redirects its search to an
+            // unrelated site, which every walk would otherwise spend a
+            // request and a gate failure on before reaching hianime.
             provider_order: vec![
-                crate::scraper::provider::ProviderId::Anidb,
                 crate::scraper::provider::ProviderId::Hianime,
+                crate::scraper::provider::ProviderId::Anidb,
             ],
             image_cache_dir,
             cache_pool,
