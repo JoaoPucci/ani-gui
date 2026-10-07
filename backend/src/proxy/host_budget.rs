@@ -414,6 +414,7 @@ impl HostBudget {
                     (false, false) => self.reserve,
                     (true, false) => return Some(self.refill),
                 };
+                let reserve = self.reserve_under_hold(reserve);
                 take_leaving(
                     &mut state.bucket,
                     Instant::now(),
@@ -497,6 +498,22 @@ impl HostBudget {
         });
         self.hold_to_unpaced(&mut state.bucket, Instant::now());
         f(state)
+    }
+
+    /// The reserve background traffic leaves while unpaced downloads
+    /// run: no more than what the hold leaves, less the token being
+    /// taken, so background traffic is not shut out for as long as a
+    /// download runs free.
+    fn reserve_under_hold(&self, reserve: u32) -> u32 {
+        let in_flight = self
+            .unpaced
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .in_flight;
+        if in_flight == 0 {
+            return reserve;
+        }
+        reserve.min(self.held_to(in_flight) - 1)
     }
 
     /// While unpaced downloads run, holds a host's tokens to what their
