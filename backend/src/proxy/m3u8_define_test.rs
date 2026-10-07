@@ -134,3 +134,34 @@ fn a_reference_to_nothing_defined_is_left_as_written() {
         ["https://cdn.example/a/s%7B$missing%7D.ts"]
     );
 }
+
+proptest::proptest! {
+    /// Whatever variables a playlist defines, by name and value or by
+    /// a query parameter of its URL, every reference to them is
+    /// spelled out and no definition is left; the playlist's other
+    /// lines are as they were.
+    #[test]
+    fn every_defined_reference_is_spelled_out(
+        vars in proptest::collection::hash_map("[a-z][a-z0-9_]{0,6}", "[A-Za-z0-9./:_-]{0,12}", 0..5),
+        by_query in proptest::bool::ANY,
+    ) {
+        let mut url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+        let mut body = String::from("#EXTM3U\n#EXT-X-TARGETDURATION:5\n");
+        for (name, value) in &vars {
+            if by_query {
+                url.query_pairs_mut().append_pair(name, value);
+                body.push_str(&format!("#EXT-X-DEFINE:QUERYPARAM=\"{name}\"\n"));
+            } else {
+                body.push_str(&format!("#EXT-X-DEFINE:NAME=\"{name}\",VALUE=\"{value}\"\n"));
+            }
+        }
+        let mut expected = String::from("#EXTM3U\n#EXT-X-TARGETDURATION:5\n");
+        for (i, (name, value)) in vars.iter().enumerate() {
+            body.push_str(&format!("#EXTINF:5.0,\ns{i}/{{${name}}}.ts\n"));
+            expected.push_str(&format!("#EXTINF:5.0,\ns{i}/{value}.ts\n"));
+        }
+        let out = super::super::m3u8_define::substitute(body.as_bytes(), &url, &HashMap::new());
+        let out = String::from_utf8(out).expect("utf8");
+        proptest::prop_assert_eq!(out, expected);
+    }
+}
