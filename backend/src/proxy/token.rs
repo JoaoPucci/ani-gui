@@ -272,6 +272,9 @@ impl StreamSession {
 #[derive(Clone, Default)]
 pub struct SessionTable {
     inner: Arc<DashMap<SessionId, Arc<StreamSession>>>,
+    /// The variables each session's master defines, for its media
+    /// playlists to import.
+    variables: Arc<DashMap<SessionId, crate::proxy::m3u8_define::Variables>>,
     media_activity: Arc<std::sync::Mutex<Option<Instant>>>,
     /// Woken each time a media fetch is noted, so a download waiting
     /// on the record learns of playback at once rather than at its
@@ -315,7 +318,7 @@ impl SessionTable {
     pub fn get(&self, id: &SessionId) -> Option<Arc<StreamSession>> {
         let arc = self.inner.get(id)?.clone();
         if arc.is_expired() {
-            self.inner.remove(id);
+            self.remove(id);
             return None;
         }
         Some(arc)
@@ -324,6 +327,22 @@ impl SessionTable {
     /// Remove a session unconditionally.
     pub fn remove(&self, id: &SessionId) {
         self.inner.remove(id);
+        self.variables.remove(id);
+    }
+
+    /// Record what a session's master defines.
+    pub fn set_master_variables(&self, id: SessionId, vars: crate::proxy::m3u8_define::Variables) {
+        self.variables.insert(id, vars);
+    }
+
+    /// What a session's master defines; nothing for a session whose
+    /// master has not been served.
+    #[must_use]
+    pub fn master_variables(&self, id: &SessionId) -> crate::proxy::m3u8_define::Variables {
+        self.variables
+            .get(id)
+            .map(|v| v.value().clone())
+            .unwrap_or_default()
     }
 
     /// Sweep all expired sessions. Intended for periodic background calls.
@@ -337,7 +356,7 @@ impl SessionTable {
         }
         let n = to_remove.len();
         for id in to_remove {
-            self.inner.remove(&id);
+            self.remove(&id);
         }
         n
     }
