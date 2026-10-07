@@ -28,9 +28,10 @@
 //!
 //! A tag the parser does not know that carries a `URI=` attribute,
 //! and a date range whose client attributes name an asset (`…URI`,
-//! `…-LIST`), are dropped rather than left pointing upstream. What the
-//! rewrite does not see — a URI built from `EXT-X-DEFINE` variables —
-//! passes through as written.
+//! `…-LIST`), are dropped rather than left pointing upstream. A URI
+//! built from `EXT-X-DEFINE` variables is read as the URI they spell:
+//! the variables are substituted before the parse
+//! ([`super::m3u8_define`]), a media playlist importing its master's.
 //!
 //! All functions are pure (no I/O). Property tests target idempotency
 //! and that every URI the parsed tags carry comes back on the proxy.
