@@ -686,3 +686,45 @@ async fn get_is_a_headerless_fetch() {
     assert_eq!(seen, vec![FetchRequest::get("https://provider.example/y")]);
     assert!(seen[0].headers.is_empty());
 }
+
+#[test]
+fn a_held_request_does_not_let_curl_follow_redirects() {
+    // The argv is the same on every platform (only the CA and cipher
+    // flags differ), so this holds for the Windows build as well.
+    for target in [None, Some("chrome136")] {
+        let held = fetch_args(
+            &FetchRequest::get("https://anidb.app/browse?q=x").held_to_origin(),
+            target,
+        );
+        assert!(held.iter().any(|a| a == "-sS"));
+        assert!(!held.iter().any(|a| a == "-sSL"), "no -L: {held:?}");
+        assert!(held.iter().any(|a| a == "\n%{http_code} %{redirect_url}"));
+        let free = fetch_args(&FetchRequest::get("https://anidb.app/browse?q=x"), target);
+        assert!(free.iter().any(|a| a == "-sSL"));
+        assert!(free.iter().any(|a| a == "\n%{http_code} %{url_effective}"));
+    }
+}
+
+#[tokio::test]
+async fn a_held_request_gives_up_on_a_same_origin_redirect_loop() {
+    use wiremock::matchers::method;
+    let Some(curl) =
+        CurlImpersonateFetch::resolve(None, &std::env::var("PATH").unwrap_or_default())
+    else {
+        eprintln!("no curl on PATH; skipping");
+        return;
+    };
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .respond_with(wiremock::ResponseTemplate::new(302).insert_header("location", "/again"))
+        .mount(&server)
+        .await;
+    let req = FetchRequest::get(format!("{}/start", server.uri())).held_to_origin();
+    assert!(matches!(curl.fetch(&req).await, Err(AniError::Network)));
+    let asked = server.received_requests().await.expect("recorded").len();
+    assert_eq!(
+        asked,
+        MAX_SAME_ORIGIN_HOPS + 1,
+        "bounded, one transfer per hop"
+    );
+}
