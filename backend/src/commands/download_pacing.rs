@@ -208,17 +208,14 @@ impl<'a> Pacing<'a> {
         }
     }
 
-    /// A run of a tool that fetches from the stream at `master_url`
-    /// with up to `in_flight` requests at a time, none of them through
-    /// the host's budget: registered there for as long as it is held.
+    /// A run of a tool that fetches from the stream with up to
+    /// `in_flight` requests at a time, none of them through the host's
+    /// budget: registered there for as long as it is held.
     pub(crate) fn unpaced_run(
         &self,
-        master_url: &str,
         in_flight: u32,
     ) -> Option<crate::proxy::host_budget::UnpacedRun<'a>> {
-        let budget = self.budget?;
-        let url = url::Url::parse(master_url).ok()?;
-        Some(budget.unpaced_run(&crate::proxy::host_budget::host_key(&url), in_flight))
+        Some(self.budget?.unpaced_run(in_flight))
     }
 
     /// The same pacing, woken by `noted` — the proxy's note of a media
