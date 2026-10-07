@@ -330,9 +330,12 @@ impl SessionTable {
         self.variables.remove(id);
     }
 
-    /// Record what a session's master defines.
+    /// Record what a session's master defines, while the session is
+    /// there to hold it.
     pub fn set_master_variables(&self, id: SessionId, vars: crate::proxy::m3u8_define::Variables) {
-        self.variables.insert(id, vars);
+        if self.inner.contains_key(&id) {
+            self.variables.insert(id, vars);
+        }
     }
 
     /// What a session's master defines; nothing for a session whose
@@ -358,6 +361,9 @@ impl SessionTable {
         for id in to_remove {
             self.remove(&id);
         }
+        // Whatever a removal raced past: no variables outlive their
+        // session.
+        self.variables.retain(|id, _| self.inner.contains_key(id));
         n
     }
 
