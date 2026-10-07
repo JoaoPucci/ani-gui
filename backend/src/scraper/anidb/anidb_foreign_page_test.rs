@@ -334,3 +334,30 @@ async fn the_transport_follows_a_redirect_within_the_origin_and_no_other() {
         "the other origin never hears the request"
     );
 }
+
+#[tokio::test]
+async fn an_embed_url_that_names_no_origin_is_never_requested() {
+    // A languages listing whose embed is not an absolute URL (a
+    // protocol-relative `//host/…`, say) names no origin to hold the
+    // request to, so it is not sent unheld: it is no answer.
+    struct Listing(std::sync::Mutex<Vec<String>>);
+    #[async_trait::async_trait]
+    impl Fetch for Listing {
+        async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+            self.0.lock().expect("log").push(req.url.clone());
+            Ok(FetchResponse {
+                status: 200,
+                body: r#"{"languages":[{"code":"jpn","name":"Japanese","embed_url":"\/\/embed.example\/e\/op-jpn"}]}"#.into(),
+                url: req.url.clone(),
+            })
+        }
+    }
+    let client = AnidbClient::new(Listing(std::sync::Mutex::new(Vec::new())));
+    let err = client
+        .master_playlist_url(9001, "sub")
+        .await
+        .expect_err("no origin to hold");
+    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    let asked = client.transport().0.lock().expect("log").clone();
+    assert_eq!(asked.len(), 1, "only the listing was requested: {asked:?}");
+}
