@@ -16,9 +16,9 @@ use super::play_native_title_grammar::{
 };
 #[cfg(test)]
 use super::play_native_title_grammar::{Kind, Marker};
+use super::play_native_title_number::{carries_number_of, continues_number_of};
 use super::play_native_title_reading::{
-    carries_number_of, continues_number_of, later_divisions, name, names_past_stem,
-    opens_on_a_first_division, reading, starts_with_name_of,
+    later_divisions, name, names_past_stem, opens_on_a_first_division, reading, starts_with_name_of,
 };
 
 /// Every title the entry goes by: its canonical title, then the
@@ -103,7 +103,7 @@ impl EntryTitles<'_> {
     /// for "Show 2", "861" for "86 Part 2" — and no title of the entry
     /// carries the number it does: another show.
     ///
-    /// [`continues_number_of`]: super::play_native_title_reading::continues_number_of
+    /// [`continues_number_of`]: super::play_native_title_number::continues_number_of
     fn continues_a_number(&self, candidate: &str) -> bool {
         self.all().any(|t| continues_number_of(candidate, t))
             && !self.all().any(|t| carries_number_of(candidate, t))
