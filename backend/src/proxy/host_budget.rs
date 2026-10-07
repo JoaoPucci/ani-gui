@@ -9,24 +9,26 @@
 //! host on the player's behalf — playlists, segments, mp4 ranges, and
 //! the subtitle tracks the player loads, which wait behind the media —
 //! is charged to it. hls.js loads one segment at a time and the player
-//! allows it ten seconds for a first byte, so a
-//! wait here of a second or so is absorbed, and the player still
-//! buffers as far ahead as it likes — over minutes rather than
-//! seconds; while it is still filling that buffer, a seek past it may
-//! take a few seconds longer than it otherwise would. The budget is
-//! per host and per app: the proxy charges every fetch it makes on the
-//! player's behalf, hop by hop where a redirect sends it on, and a
-//! download charges the subtitle tracks it stages beside its transfer,
-//! since the host counts both against the one address — as background
-//! traffic, which takes a token only while no one waits for one. What
-//! reaches the host past the budget is charged to it too: a cached
-//! resolution's liveness check spends a token per request without
-//! waiting — it runs before the player starts, under a deadline of
-//! seconds — and a download tool running against the host holds its
-//! tokens to what the tool's requests in flight leave of the burst,
-//! spending them when it ends ([`UnpacedRun`]). Not charged: the
-//! resolver's fetch of a playlist through the impersonating transport,
-//! one request ahead of the player's own, and an external player the
+//! allows it ten seconds for a first byte, so a wait here of a second
+//! or so is absorbed, and the player still buffers as far ahead as it
+//! likes — over minutes rather than seconds; while it is still filling
+//! that buffer, a seek past it may take a few seconds longer than it
+//! otherwise would. The budget is per host and per app: the proxy
+//! charges every fetch it makes on the player's behalf, hop by hop
+//! where a redirect sends it on, and a download charges the subtitle
+//! tracks it stages beside its transfer, since the host counts both
+//! against the one address — as background traffic, which takes a token
+//! only while no one waits for one. What reaches the host past the
+//! budget is charged to it too: a cached resolution's liveness check
+//! spends a token per request without waiting — it runs before the
+//! player starts, under a deadline of seconds — and while a download
+//! tool runs, every host's tokens are held to what the tool's requests
+//! in flight leave of the burst, never below one: its fragments go
+//! wherever its playlists send them, which the app does not see. When
+//! it ends, every host is left where the hold left it, one not yet
+//! fetched from included ([`UnpacedRun`]). Not charged: the resolver's
+//! fetches of a playlist through the impersonating transport, one or
+//! two requests ahead of the player's own, and an external player the
 //! app hands a stream to, which fetches from the host on its own,
 //! outside the app entirely.
 
