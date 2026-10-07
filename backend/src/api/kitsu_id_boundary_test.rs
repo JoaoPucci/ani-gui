@@ -320,6 +320,7 @@ async fn a_named_eviction_refuses_a_value_that_is_not_an_id() {
         assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}: {text}");
         let v: serde_json::Value = serde_json::from_str(&text).expect("json error body");
         assert_eq!(v["kind"], "invalid_kitsu_id", "{uri}: {text}");
+        assert_eq!(v["key"], "error.request.invalid_kitsu_id", "{uri}: {text}");
         assert_eq!(
             k::allmanga_kitsu_get(&s, "show-a")
                 .expect("read")

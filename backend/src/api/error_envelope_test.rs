@@ -9,7 +9,8 @@ use http_body_util::BodyExt;
 use crate::error::AniError;
 
 /// One of each variant. The match below has no wildcard, so a new
-/// variant fails to compile here until it is listed.
+/// variant fails to compile here until it is named in the match; the
+/// list above it sits beside the match so the two are kept together.
 fn every_variant() -> Vec<AniError> {
     let all = vec![
         AniError::Scraper {
