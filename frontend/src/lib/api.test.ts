@@ -1242,8 +1242,8 @@ describe('imageProxyUrl', () => {
 
 	it('returns null when apiBase is unavailable', () => {
 		// No `window` stub → `typeof window === 'undefined'` → null. The
-		// legacy `image://` Tauri-protocol fallback was removed in M-E5;
-		// callers render the placeholder instead.
+		// legacy `image://` protocol fallback was removed; callers render
+		// the placeholder instead.
 		expect(imageProxyUrl('https://media.kitsu.app/anime/12/poster.jpg')).toBeNull();
 	});
 

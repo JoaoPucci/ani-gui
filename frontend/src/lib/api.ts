@@ -130,9 +130,9 @@ async function url(path: string): Promise<string> {
 
 /**
  * Read the JSON body or throw the parsed error payload. The backend
- * serializes `AniError` as `{ kind, key?, detail?, status? }`; tests
- * downstream of api.ts inspect the same shape that Tauri's reject
- * payloads carried, so call-site error parsing is unchanged.
+ * serializes `AniError` into the error response's body as
+ * `{ kind, key?, detail?, status? }`, and that object is what callers
+ * catch; a body that is not JSON becomes `{ kind: 'http', status }`.
  */
 async function expect2xx<T>(resp: Response): Promise<T> {
 	if (!resp.ok) {
@@ -260,8 +260,10 @@ export interface LaunchExternalPlayerArgs {
 }
 
 /**
- * Shape of `AniError` once Tauri serializes it as the rejection value.
- * Frontend localizers look up `key` (when present) in the i18n catalog.
+ * Shape of `AniError` as the backend serializes it into an error
+ * response's body, and so of what api.ts calls reject with. `detail` is
+ * free text for logs; user-facing copy comes from `kind` (see
+ * `describeError` in $lib/play/error-copy).
  */
 export interface AniErrorPayload {
 	kind: string;
