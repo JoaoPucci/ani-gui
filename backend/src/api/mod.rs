@@ -1,10 +1,12 @@
 //! HTTP API exposed by the localhost server.
 //!
-//! Wraps the same `commands::*` functions Tauri's `#[tauri::command]`
-//! handlers used to call. The migration from Tauri (webkit2gtk) to
-//! Electron (Chromium) means the frontend talks to this router via
-//! `fetch` instead of `invoke`. Routes mirror the IPC surface 1:1 in
-//! shape; only the wire protocol changes.
+//! The module began as a port of the Tauri IPC surface: each route
+//! stood in for a `#[tauri::command]` handler and called the same
+//! `commands::*` function, and the frontend switched from `invoke` to
+//! `fetch`. Most routes keep that shape, a thin handler over one
+//! `commands::*` function. A few reach the module they serve directly
+//! (`meta::images`, `cache`, `meta::github`, `config::paths`), and the
+//! SSE routes wrap their command in streaming plumbing.
 //!
 //! Mounted alongside the streaming-proxy router (`crate::proxy`) on
 //! the same kernel-assigned loopback port. Both routers share the
@@ -425,10 +427,10 @@ struct ImageQuery {
     url: String,
 }
 
-/// Serve a cached/freshly-fetched image. The Tauri build used a custom
-/// `image://` URI scheme; under Electron the renderer can't reach
-/// that, so it asks for the bytes over plain HTTP. The on-disk cache
-/// (`meta::images`) is the one the Tauri scheme used.
+/// Serve a cached/freshly-fetched image. The Tauri build served images
+/// over a custom `image://` scheme; the Electron renderer has no such
+/// scheme and asks for the bytes over plain HTTP. The on-disk cache
+/// (`meta::images`) is the one that scheme used.
 ///
 /// Only `https://` upstreams are accepted — refusing other schemes
 /// avoids letting a malicious renderer turn the loopback server into
@@ -1346,7 +1348,7 @@ mod tests {
         );
     }
 
-    /// Cross-origin `<img src=>` loads can't ride Tauri's `image://`
+    /// Cross-origin `<img src=>` loads could not ride Tauri's `image://`
     /// custom protocol from Electron — the renderer fetches via plain
     /// HTTP. The route must serve cached bytes with the right
     /// Content-Type, and refuse non-https upstreams (defense in depth

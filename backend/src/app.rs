@@ -1,4 +1,4 @@
-//! `AppState` — the single state value every HTTP API handler receives.
+//! `AppState` — the one state value the HTTP API handlers share.
 //!
 //! Wires together everything the frontend can reach:
 //!
@@ -10,7 +10,8 @@
 //!   never hammer the upstream
 //!
 //! Built once by [`AppState::build`] at backend startup and shared with
-//! the axum router as `Arc<AppState>`.
+//! the API router as `Arc<AppState>`; the proxy router gets the derived
+//! [`ProxyState`] instead.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,7 +25,7 @@ use crate::meta::kitsu::KitsuClient;
 use crate::meta::mal_user::MalRefreshState;
 use crate::proxy::{AppSecret, ProxyOrigin, ProxyState, SessionTable};
 
-/// Single state container every HTTP API handler receives.
+/// The one state container the HTTP API handlers share.
 #[derive(Clone)]
 pub struct AppState {
     /// HMAC secret for stream tokens.
@@ -204,7 +205,7 @@ impl AppState {
         cfg.image_cache_cap_mb.saturating_mul(1024 * 1024)
     }
 
-    /// Convert into a [`ProxyState`] suitable for the axum router.
+    /// Convert into the [`ProxyState`] the proxy router is built with.
     #[must_use]
     pub fn proxy_state(&self) -> ProxyState {
         ProxyState {
