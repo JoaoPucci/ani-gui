@@ -298,3 +298,24 @@ fn a_sessions_master_variables_leave_with_it() {
         "nothing kept for a session that is gone"
     );
 }
+
+proptest::proptest! {
+    /// Whatever a query parameter's value, percent-encoded into the
+    /// playlist's URL and read back as a variable, it comes back as it
+    /// was: `+` included, which form-decoding would have turned into a
+    /// space.
+    #[test]
+    fn a_query_parameters_value_comes_back_as_it_was(value in "[ -~]{0,16}") {
+        let encoded: String = value
+            .bytes()
+            .map(|b| if b.is_ascii_alphanumeric() { (b as char).to_string() } else { format!("%{b:02X}") })
+            .collect();
+        let url = Url::parse(&format!("https://cdn.example/a/index.m3u8?v={encoded}")).expect("url");
+        let vars = super::super::m3u8_define::defined(
+            "#EXT-X-DEFINE:QUERYPARAM=\"v\"\n",
+            &url,
+            &HashMap::new(),
+        );
+        proptest::prop_assert_eq!(vars.get("v").map(String::as_str), Some(value.as_str()));
+    }
+}
