@@ -28,7 +28,9 @@ pub fn defined(body: &str, url: &Url, imported: &Variables) -> Variables {
 
 /// The variable one `EXT-X-DEFINE` attribute list defines, if its value
 /// is there to take. A query parameter's value is percent-decoded, as
-/// the spec has it, and not form-decoded: a `+` stays a `+`.
+/// the spec has it, and not form-decoded: a `+` stays a `+`. One with
+/// no value, or whose decoded value a quoted string cannot carry,
+/// defines nothing.
 fn definition(list: &str, url: &Url, imported: &Variables) -> Option<(String, String)> {
     let attrs = attributes(list);
     if let (Some(name), Some(value)) = (attrs.get("NAME"), attrs.get("VALUE")) {
@@ -38,22 +40,24 @@ fn definition(list: &str, url: &Url, imported: &Variables) -> Option<(String, St
         return url
             .query()?
             .split('&')
-            .filter_map(|pair| pair.split_once('=').or(Some((pair, ""))))
+            .filter_map(|pair| pair.split_once('='))
             .find(|(k, _)| k == param)
-            .map(|(_, v)| (param.clone(), percent_decode(v)));
+            .and_then(|(_, v)| percent_decode(v))
+            .map(|v| (param.clone(), v));
     }
     let name = attrs.get("IMPORT")?;
     imported.get(name).map(|v| (name.clone(), v.clone()))
 }
 
 /// The playlist with every `{$name}` it defines spelled out — in URI
-/// lines and in tags' attribute values, where the spec allows
-/// references, each spelled once and its value never read again, and
-/// only after the definition it names — and the `EXT-X-DEFINE` lines
-/// that defined something gone: what they defined is in every line
-/// that used it, so nothing downstream needs them. A definition that
-/// defined nothing stays, as does a reference to nothing defined, and
-/// a segment's title is text, not a reference.
+/// lines, quoted-string values and hexadecimal-sequence values, the
+/// three places the spec allows references, each spelled once and its
+/// value never read again, and only after the definition it names —
+/// and the `EXT-X-DEFINE` lines that defined something gone: what they
+/// defined is in every line that used it, so nothing downstream needs
+/// them. A definition that defined nothing stays, as does a reference
+/// to nothing defined or anywhere else: a segment's title, a comment,
+/// an enumerated or decimal value.
 #[must_use]
 pub fn substitute(body: &[u8], url: &Url, imported: &Variables) -> Vec<u8> {
     let text = String::from_utf8_lossy(body);
@@ -70,18 +74,23 @@ pub fn substitute(body: &[u8], url: &Url, imported: &Variables) -> Vec<u8> {
                 }
                 None => out.push_str(line),
             }
-        } else if line.starts_with("#EXTINF:") {
-            out.push_str(line);
+        } else if line.starts_with("#EXTINF:") || !line.starts_with("#EXT") {
+            out.push_str(&if line.starts_with('#') {
+                line.to_owned()
+            } else {
+                spell(line, &vars)
+            });
         } else {
-            out.push_str(&spell(line, &vars));
+            out.push_str(&spell_attributes(line, &vars));
         }
     }
     out.into_bytes()
 }
 
-/// `text` with every `%XX` escape decoded; an escape that is not one
-/// is left as written.
-fn percent_decode(text: &str) -> String {
+/// `text` with every `%XX` escape decoded, an escape that is not one
+/// left as written; nothing if the result is not UTF-8 or holds what
+/// a quoted string cannot carry — a `"`, a CR or an LF.
+fn percent_decode(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -98,7 +107,39 @@ fn percent_decode(text: &str) -> String {
         out.push(bytes[i]);
         i += 1;
     }
-    String::from_utf8_lossy(&out).into_owned()
+    String::from_utf8(out)
+        .ok()
+        .filter(|v| !v.contains(['"', '\r', '\n']))
+}
+
+/// A tag's line with references spelled in its quoted-string values and
+/// its hexadecimal-sequence (`0x`) values, and nowhere else.
+fn spell_attributes(line: &str, vars: &Variables) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while !rest.is_empty() {
+        if let Some(quoted) = rest.strip_prefix('"') {
+            let end = quoted.find('"').map_or(quoted.len(), |end| end + 1);
+            out.push('"');
+            out.push_str(&spell(&quoted[..end], vars));
+            rest = &quoted[end..];
+        } else if let Some(value) = rest.strip_prefix('=') {
+            let end = value.find([',', '"', '\r', '\n']).unwrap_or(value.len());
+            let hex = value.starts_with("0x") || value.starts_with("0X");
+            out.push('=');
+            out.push_str(&if hex {
+                spell(&value[..end], vars)
+            } else {
+                value[..end].to_owned()
+            });
+            rest = &value[end..];
+        } else {
+            let end = rest.find(['"', '=']).unwrap_or(rest.len());
+            out.push_str(&rest[..end]);
+            rest = &rest[end..];
+        }
+    }
+    out
 }
 
 /// `text` with each `{$name}` reference to a variable in `vars`
