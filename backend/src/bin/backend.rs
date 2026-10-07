@@ -1,5 +1,5 @@
-//! Standalone backend binary — same Rust logic as the Tauri-bundled
-//! app, minus Tauri itself. Used by Electron's main process, which
+//! The backend binary — the app's Rust logic as a standalone process.
+//! Used by Electron's main process, which
 //! spawns this as a sidecar and reads its stdout to learn the bound
 //! port.
 //!

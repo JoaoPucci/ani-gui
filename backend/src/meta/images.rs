@@ -265,7 +265,8 @@ pub fn clear_all(cache_dir: &Path) -> Result<()> {
 }
 
 /// Resolve an `image://` request to bytes + mime, going through the cache
-/// layer. Used by the Tauri custom-protocol handler in `lib::run`.
+/// layer. Written for the Tauri custom-protocol handler, which went away
+/// with Tauri; nothing outside this module's tests calls it now.
 ///
 /// `request_uri` is the URL the webview asked for, in `image://host/path`
 /// shape.
@@ -288,9 +289,9 @@ pub async fn handle_protocol_request(
 /// `image://media.kitsu.app/anime/12/poster.jpg` becomes
 /// `https://media.kitsu.app/anime/12/poster.jpg`.
 ///
-/// Tauri requires the protocol scheme to use a host segment, and webkit2gtk
-/// normalizes the URL into `image://<host>/<path>` form. Reconstruction is
-/// therefore a literal scheme swap.
+/// Tauri required the protocol scheme to use a host segment, and webkit2gtk
+/// normalized the URL into `image://<host>/<path>` form, so reconstruction
+/// is a literal scheme swap.
 ///
 /// # Errors
 /// [`AniError::ParseFailed`] when the input doesn't have an `image://`

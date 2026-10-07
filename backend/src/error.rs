@@ -1,4 +1,4 @@
-//! `AniError` — the single error type that crosses every Tauri command
+//! `AniError` — the single error type that crosses the backend's HTTP
 //! boundary.
 //!
 //! Every variant maps to a stable i18n key returned to the frontend.

@@ -1,4 +1,4 @@
-//! `AppState` — the single state value Tauri hands to every command.
+//! `AppState` — the single state value every HTTP handler receives.
 //!
 //! Wires together everything the frontend can reach:
 //!
@@ -9,7 +9,8 @@
 //! - an admission gate for provider traffic so background probes
 //!   never hammer the upstream
 //!
-//! Built once during `tauri::Builder::setup` and stored as managed state.
+//! Built once by the backend binary at startup (`AppState::build`) and
+//! shared with the axum routers.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,7 +24,7 @@ use crate::meta::kitsu::KitsuClient;
 use crate::meta::mal_user::MalRefreshState;
 use crate::proxy::{AppSecret, ProxyOrigin, ProxyState, SessionTable};
 
-/// Single state container Tauri hands to every command.
+/// Single state container every HTTP handler receives.
 #[derive(Clone)]
 pub struct AppState {
     /// HMAC secret for stream tokens.
