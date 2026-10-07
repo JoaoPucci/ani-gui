@@ -6,5 +6,6 @@
 	"reason_busy": "The service is busy right now. Wait a few seconds and try again.",
 	"reason_bad_response": "The service sent an answer the app couldn't read. Try again later.",
 	"reason_local": "Something went wrong on this computer. Restart the app and try again.",
-	"reason_generic": "Something went wrong. Try again."
+	"reason_generic": "Something went wrong. Try again.",
+	"reason_answered_error": "The service answered with an error. Try again later."
 }

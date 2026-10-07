@@ -6,5 +6,6 @@
 	"reason_busy": "El servicio está ocupado ahora. Espera unos segundos e inténtalo de nuevo.",
 	"reason_bad_response": "El servicio envió una respuesta que la app no pudo leer. Inténtalo más tarde.",
 	"reason_local": "Algo salió mal en esta computadora. Reinicia la app e inténtalo de nuevo.",
-	"reason_generic": "Algo salió mal. Inténtalo de nuevo."
+	"reason_generic": "Algo salió mal. Inténtalo de nuevo.",
+	"reason_answered_error": "El servicio respondió con un error. Inténtalo más tarde."
 }

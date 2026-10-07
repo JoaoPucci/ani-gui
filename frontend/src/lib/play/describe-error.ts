@@ -11,8 +11,8 @@ import { m } from '$lib/paraglide/messages';
 const REASON_BY_KIND: Readonly<Record<string, () => string>> = {
 	network: m.errors_reason_network,
 	gate_refused: m.errors_reason_network,
-	upstream: m.errors_reason_network,
-	http: m.errors_reason_network,
+	upstream: m.errors_reason_answered_error,
+	http: m.errors_reason_answered_error,
 	timeout: m.errors_reason_timeout,
 	rate_limited: m.errors_reason_busy,
 	parse_failed: m.errors_reason_bad_response,
