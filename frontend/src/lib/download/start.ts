@@ -7,7 +7,7 @@
  */
 
 import { downloadStream, type DownloadArgs } from '$lib/api';
-import { describePlayFailure, describeRateLimit } from '$lib/play/error-copy';
+import { describeError, describePlayFailure, describeRateLimit } from '$lib/play/error-copy';
 import { downloadStore } from './store.svelte';
 import { downloadFailureStore } from './failure-store.svelte';
 
@@ -54,7 +54,7 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 			}
 			// A throttled resolve carries the upstream's own wait —
 			// show the shared busy-source copy in the dock row instead
-			// of discarding retry_after_secs into "Download failed".
+			// of discarding retry_after_secs into the generic copy.
 			const rateLimited = describeRateLimit(e);
 			if (rateLimited !== null) {
 				downloadStore.markError(id, rateLimited);
@@ -67,13 +67,10 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 				downloadStore.markError(id, describePlayFailure(e));
 				return;
 			}
-			const msg =
-				typeof e === 'object' && e !== null && 'message' in e
-					? String((e as { message: unknown }).message)
-					: typeof e === 'string'
-						? e
-						: 'Download failed';
-			downloadStore.markError(id, msg);
+			// Everything else: the sentence for its kind. A thrown
+			// Error's message and a payload's detail are internal text,
+			// not dock copy.
+			downloadStore.markError(id, describeError(e));
 		});
 
 	return id;
