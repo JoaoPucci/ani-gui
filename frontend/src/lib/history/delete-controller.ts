@@ -14,7 +14,7 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	history: HistoryEntry[];
 	matches: Record<string, KitsuAnimeRef | null | undefined>;
 	historyDelete: (id: string) => Promise<void>;
-	/** The moment the removed rows are gone (watch-position.ts): the
+	/** The moment the removed rows are gone (watch-position-clear.ts): the
 	 *  forgetting below, which can wait on Kitsu, takes only what was
 	 *  written before it. */
 	snapshotPositions?: () => number;
@@ -22,7 +22,7 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	 *  rows are gone, as of `since`. */
 	forgetPositions?: (kitsuId: string, since?: number) => void;
 	/** Forgets the positions written by sessions the removed rows'
-	 *  Continue cards opened (watch-position.ts) — under a guessed
+	 *  Continue cards opened (watch-position-clear.ts) — under a guessed
 	 *  match too, which a later load may have corrected — except those
 	 *  under `keepShows`, the shows remaining rows are cards of — as of
 	 *  `since`. */
