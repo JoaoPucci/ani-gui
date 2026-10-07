@@ -1363,3 +1363,20 @@ async fn the_broad_listing_the_entry_heads_is_read_after_another_show_s() {
     let picked = walk_over(site).await.expect("the cut listing");
     assert_eq!((picked.hit.slug.as_str(), picked.episodes.len()), ("w", 12));
 }
+
+/// A stem that ends in a digit takes no further digit glued to it:
+/// "Show 20 Part 2" is another number, not "Show 2" with more after it,
+/// so it completes no "Show 2" and nothing is cut for "Show 2".
+#[tokio::test]
+async fn a_numbered_stem_takes_no_further_digit() {
+    let site = pool_of(
+        &["Show 2"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[("w", "Show 2", 24), ("x", "Show 20 Part 2", 12)],
+    );
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} ({})", p.hit.slug, p.episodes.len());
+    }
+}
