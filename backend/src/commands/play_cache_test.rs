@@ -125,6 +125,30 @@ async fn a_cached_track_whose_get_is_a_track_keeps_the_row_live() {
     );
 }
 
+/// A cached row's liveness check pings the stream and reads each
+/// track without waiting for the host's budget — it runs before the
+/// player starts, under a deadline of seconds — but the host counts
+/// those requests, so they are spent from its budget.
+#[tokio::test]
+async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
+    let server = MockServer::start().await;
+    let cached = row_with_track(
+        &server,
+        ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()),
+    )
+    .await;
+    let state = state_with_proxy_origin();
+    assert!(try_serve_cached(&state, &cached).await.is_some());
+    let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
+    // Two spends a moment apart: the second tops up by the moment.
+    let left = state.host_budget.on_hand(&host).expect("spent");
+    assert!(
+        (left - (burst - 2.0)).abs() < 0.01,
+        "the stream's ping and the track's read: {left}"
+    );
+}
+
 mod webvtt_prefix_props {
     use crate::commands::play_cache_tracks::webvtt_prefix;
     use crate::proxy::is_webvtt;
