@@ -9,6 +9,9 @@
  * known episode count, or the modal's fallback cap when the count is
  * unknown (`maxEpisode` null).
  */
+
+import { m } from '$lib/paraglide/messages';
+
 export function rangeError(input: {
 	mode: 'this' | 'all' | 'range';
 	startEp: number;
@@ -21,19 +24,19 @@ export function rangeError(input: {
 	const s = Math.floor(startEp);
 	const e = Math.floor(endEp);
 	if (!Number.isFinite(startEp) || !Number.isFinite(endEp)) {
-		return 'Enter a number for both From and To.';
+		return m.download_range_error_not_a_number();
 	}
-	if (s < 1 || e < 1) return 'Episode numbers must be at least 1.';
+	if (s < 1 || e < 1) return m.download_range_error_below_one();
 	if (s > rangeMax) {
 		return maxEpisode
-			? `Only ${maxEpisode} episode${maxEpisode === 1 ? '' : 's'} available — From can't exceed ${maxEpisode}.`
-			: `You can't download more than ${rangeMax} episodes for this show.`;
+			? m.download_range_error_start_over_max({ max: String(maxEpisode) })
+			: m.download_range_error_over_cap({ max: String(rangeMax) });
 	}
 	if (e > rangeMax) {
 		return maxEpisode
-			? `Only ${maxEpisode} episode${maxEpisode === 1 ? '' : 's'} available — To can't exceed ${maxEpisode}.`
-			: `You can't download more than ${rangeMax} episodes for this show.`;
+			? m.download_range_error_end_over_max({ max: String(maxEpisode) })
+			: m.download_range_error_over_cap({ max: String(rangeMax) });
 	}
-	if (e < s) return 'To must be greater than or equal to From.';
+	if (e < s) return m.download_range_error_end_before_start();
 	return null;
 }
