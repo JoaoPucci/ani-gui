@@ -93,13 +93,66 @@ pub(crate) fn take(
     }
 }
 
-/// The budgets of every host fetched from, and the line of requests
-/// waiting at each.
+/// Spends `n` tokens from the bucket at `now` without waiting for
+/// them: what reached the host past the budget. Topped up first, as a
+/// take is; never below empty.
+pub(crate) fn spend_from(bucket: &mut Bucket, now: Instant, burst: u32, refill: Duration, n: u32) {
+    let elapsed = now.saturating_duration_since(bucket.refilled_at);
+    let refilled = elapsed.as_secs_f64() / refill.as_secs_f64();
+    bucket.tokens = (bucket.tokens + refilled).min(f64::from(burst));
+    bucket.refilled_at = now;
+    bucket.tokens = (bucket.tokens - f64::from(n)).max(0.0);
+}
+
+/// Tops the bucket up at `now`, as a take does, and holds it to `most`
+/// tokens.
+pub(crate) fn hold_to(bucket: &mut Bucket, now: Instant, burst: u32, refill: Duration, most: u32) {
+    let elapsed = now.saturating_duration_since(bucket.refilled_at);
+    let refilled = elapsed.as_secs_f64() / refill.as_secs_f64();
+    bucket.tokens = (bucket.tokens + refilled)
+        .min(f64::from(burst))
+        .min(f64::from(most));
+    bucket.refilled_at = now;
+}
+
+/// The budgets of every host fetched from, the line of requests
+/// waiting at each, and the unpaced downloads running against each.
 pub struct HostBudget {
     buckets: Mutex<HashMap<String, Bucket>>,
     lines: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// Requests the unpaced downloads running against each host may
+    /// have in flight.
+    unpaced: Mutex<HashMap<String, u32>>,
     burst: u32,
     refill: Duration,
+}
+
+/// An unpaced download running against a host: while it runs, the
+/// host's tokens are held to what its requests in flight leave of the
+/// burst; when it ends, those requests are spent.
+pub(crate) struct UnpacedRun<'a> {
+    budget: &'a HostBudget,
+    host: String,
+    in_flight: u32,
+}
+
+impl Drop for UnpacedRun<'_> {
+    fn drop(&mut self) {
+        {
+            let mut unpaced = self
+                .budget
+                .unpaced
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(n) = unpaced.get_mut(&self.host) {
+                *n = n.saturating_sub(self.in_flight);
+                if *n == 0 {
+                    unpaced.remove(&self.host);
+                }
+            }
+        }
+        self.budget.spend(&self.host, self.in_flight);
+    }
 }
 
 impl HostBudget {
@@ -108,6 +161,7 @@ impl HostBudget {
         Self {
             buckets: Mutex::new(HashMap::new()),
             lines: Mutex::new(HashMap::new()),
+            unpaced: Mutex::new(HashMap::new()),
             burst,
             refill,
         }
@@ -180,6 +234,35 @@ impl HostBudget {
         }
     }
 
+    /// An unpaced download starts against `host`, with up to
+    /// `in_flight` requests at a time that pass the budget: the host's
+    /// tokens are held to what they leave of the burst until it ends,
+    /// and spent by them when it does ([`UnpacedRun`]).
+    pub(crate) fn unpaced_run(&self, host: &str, in_flight: u32) -> UnpacedRun<'_> {
+        *self
+            .unpaced
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(host.to_owned())
+            .or_default() += in_flight;
+        UnpacedRun {
+            budget: self,
+            host: host.to_owned(),
+            in_flight,
+        }
+    }
+
+    /// Spends `n` tokens of `host`'s budget without waiting for them:
+    /// requests the app sent past the budget, which the host counts.
+    pub(crate) fn spend(&self, host: &str, n: u32) {
+        let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        let bucket = buckets
+            .entry(host.to_owned())
+            .or_insert_with(|| Bucket::full(self.burst, now));
+        spend_from(bucket, now, self.burst, self.refill, n);
+    }
+
     /// The line of requests waiting at `host`.
     fn line(&self, host: &str) -> Arc<tokio::sync::Mutex<()>> {
         let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
@@ -193,7 +276,26 @@ impl HostBudget {
         let bucket = buckets
             .entry(host.to_owned())
             .or_insert_with(|| Bucket::full(self.burst, now));
+        self.hold_to_unpaced(host, bucket, now);
         take(bucket, now, self.burst, self.refill)
+    }
+
+    /// While unpaced downloads run against `host`, holds its tokens to
+    /// what their requests in flight leave of the burst — never below
+    /// one, since the player's first request is what tells them that
+    /// playback started.
+    fn hold_to_unpaced(&self, host: &str, bucket: &mut Bucket, now: Instant) {
+        let in_flight = self
+            .unpaced
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(host)
+            .copied()
+            .unwrap_or(0);
+        if in_flight > 0 {
+            let most = self.burst.saturating_sub(in_flight).max(1);
+            hold_to(bucket, now, self.burst, self.refill, most);
+        }
     }
 }
 

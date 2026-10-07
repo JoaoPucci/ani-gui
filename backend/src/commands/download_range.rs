@@ -214,7 +214,8 @@ where
             super::download_pacing::PACING_POLL,
             &super::download_pacing::PACED_LANE,
         )
-        .woken_by(state.sessions.media_noted());
+        .woken_by(state.sessions.media_noted())
+        .charged_to(&state.host_budget);
         super::download_transfer::transfer_with_sidecars(
             &state.proxy_http,
             &state.host_budget,

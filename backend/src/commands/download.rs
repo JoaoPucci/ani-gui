@@ -300,7 +300,8 @@ where
         super::download_pacing::PACING_POLL,
         &super::download_pacing::PACED_LANE,
     )
-    .woken_by(state.sessions.media_noted());
+    .woken_by(state.sessions.media_noted())
+    .charged_to(&state.host_budget);
     super::download_transfer::transfer_with_sidecars(
         &state.proxy_http,
         &state.host_budget,
@@ -1674,6 +1675,12 @@ where
             } else {
                 deadline
             };
+            // The run's fetches pass the host's budget, which counts the
+            // requests it may have in flight against the player's.
+            let unpaced = pacing.unpaced_run(
+                master_url,
+                super::download_pacing::fragment_concurrency(live),
+            );
             let run = run_tool_until(
                 cmd,
                 run_deadline,
@@ -1682,6 +1689,7 @@ where
                 pacing.until_live_changes(live),
             )
             .await;
+            drop(unpaced);
             drop(turn);
             if live {
                 deadline += started.elapsed();
@@ -1778,6 +1786,8 @@ where
     } else {
         deadline
     };
+    // Its one connection passes the host's budget, which counts it.
+    let _unpaced = pacing.unpaced_run(master_url, 1);
     // The warning is yt-dlp's; ffmpeg cannot set the flag.
     match run_tool(cmd, run_deadline, on_line, &mut false).await? {
         ToolEnd::Exited => finish(&scratch, &target, on_line).await,
