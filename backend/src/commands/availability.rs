@@ -2799,14 +2799,17 @@ mod tests {
     fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_refuse() {
         use crate::scraper::provider::ProviderId;
         let td = tempfile::tempdir().expect("td");
-        let mut state = cache_only_state(&td);
-        state.provider_order = vec![ProviderId::Anidb, ProviderId::Hianime];
+        let mut anidb_first = cache_only_state(&td);
+        anidb_first.provider_order = vec![ProviderId::Anidb, ProviderId::Hianime];
+        let mut hianime_first_state = cache_only_state(&td);
+        hianime_first_state.provider_order = vec![ProviderId::Hianime, ProviderId::Anidb];
         let cases = (
             proptest::bool::ANY,
             proptest::bool::ANY,
             proptest::bool::ANY,
             proptest::bool::ANY,
             0u8..3,
+            proptest::bool::ANY,
             proptest::bool::ANY,
         );
         proptest::test_runner::TestRunner::default()
@@ -2819,7 +2822,13 @@ mod tests {
                     hianime_paused,
                     row_provider,
                     pre_guard,
+                    hianime_first,
                 )| {
+                    let state = if hianime_first {
+                        &hianime_first_state
+                    } else {
+                        &anidb_first
+                    };
                     close_breaker(&state.anidb_gate);
                     close_breaker(&state.hianime_gate);
                     if anidb_broken {
@@ -2851,13 +2860,20 @@ mod tests {
                     };
                     let anidb_refusing = anidb_broken || anidb_paused;
                     let hianime_refusing = hianime_broken || hianime_paused;
-                    let expected = match provider {
-                        // An anidb negative from before the guard, or an
-                        // unattributed one with anidb first, is never backed.
-                        None | Some(ProviderId::Anidb) => !anidb_refusing && !pre_guard,
-                        Some(ProviderId::Hianime) => !hianime_refusing && anidb_refusing,
+                    // A negative from before the guard is backed only when it
+                    // names hianime; an unattributed row counts as the first
+                    // provider's; a row stands while its own provider answers
+                    // and the one ahead of it, if any, refuses.
+                    let refusing = |p: ProviderId| match p {
+                        ProviderId::Anidb => anidb_refusing,
+                        ProviderId::Hianime => hianime_refusing,
                     };
-                    proptest::prop_assert_eq!(negative_row_is_backed(&state, &row), expected);
+                    let order = state.provider_order.clone();
+                    let author = provider.unwrap_or(order[0]);
+                    let expected = (!pre_guard || provider == Some(ProviderId::Hianime))
+                        && !refusing(author)
+                        && (author == order[0] || refusing(order[0]));
+                    proptest::prop_assert_eq!(negative_row_is_backed(state, &row), expected);
                     Ok(())
                 },
             )
