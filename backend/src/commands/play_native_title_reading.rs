@@ -78,8 +78,9 @@ fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
 
 /// The number `rest` opens on, and its digits: a run of digits
 /// standing as a number — ending the text, before a space, or before a
-/// Japanese character glued to it ("20第2部") — not an ordinal's
-/// ("2nd").
+/// non-ASCII character glued to it, as a Japanese one is ("20第2部") —
+/// not an ordinal's ("2nd"). Compared as a number against W's, so a
+/// zero-padded "02" is the number 2.
 fn leading_number(rest: &str) -> Option<(u32, String)> {
     let rest = rest.trim_start();
     let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
