@@ -246,9 +246,7 @@ async fn tool_spawn_with_no_tools_is_a_config_error() {
 fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     crate::app::AppState {
-        anidb_base: Some(anidb_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -257,10 +255,10 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests().with_origin(
+            crate::scraper::provider::ProviderId::Anidb,
+            anidb_base.to_string(),
+        ),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -3782,11 +3780,13 @@ async fn a_range_download_fails_over_when_the_primarys_stream_chain_is_broken() 
     let hianime = stub_hianime_range_show().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = native_test_state(&td, &anidb.uri());
-    state.provider_order = vec![
+    state.providers.set_order(vec![
         crate::scraper::provider::ProviderId::Anidb,
         crate::scraper::provider::ProviderId::Hianime,
-    ];
-    state.hianime_base = Some(hianime.uri());
+    ]);
+    state
+        .providers
+        .set_origin(crate::scraper::provider::ProviderId::Hianime, hianime.uri());
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let log = dest.path().join("calls.log");
@@ -3871,11 +3871,13 @@ async fn a_range_download_through_the_fallback_remembers_the_fallback() {
     let hianime = stub_hianime_range_show().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = native_test_state(&td, &anidb.uri());
-    state.provider_order = vec![
+    state.providers.set_order(vec![
         crate::scraper::provider::ProviderId::Anidb,
         crate::scraper::provider::ProviderId::Hianime,
-    ];
-    state.hianime_base = Some(hianime.uri());
+    ]);
+    state
+        .providers
+        .set_origin(crate::scraper::provider::ProviderId::Hianime, hianime.uri());
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(
@@ -4102,11 +4104,13 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
     let hianime = stub_hianime_range_show().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = native_test_state(&td, &anidb.uri());
-    state.provider_order = vec![
+    state.providers.set_order(vec![
         crate::scraper::provider::ProviderId::Anidb,
         crate::scraper::provider::ProviderId::Hianime,
-    ];
-    state.hianime_base = Some(hianime.uri());
+    ]);
+    state
+        .providers
+        .set_origin(crate::scraper::provider::ProviderId::Hianime, hianime.uri());
     crate::commands::availability::write_cache(
         &state,
         "3821",

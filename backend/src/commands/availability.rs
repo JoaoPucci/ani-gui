@@ -199,15 +199,14 @@ fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool 
 /// as the primary's; one naming a provider the state no longer lists
 /// has nobody to stand behind it.
 fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bool {
-    let order = &state.provider_order;
+    let order = state.providers.order();
     let Some(provider) = parsed.provider.or_else(|| order.first().copied()) else {
         return true;
     };
     let Some(position) = order.iter().position(|p| *p == provider) else {
         return false;
     };
-    let gate =
-        |p: &crate::scraper::provider::ProviderId| crate::commands::providers::gate_of(state, *p);
+    let gate = |p: &crate::scraper::provider::ProviderId| state.providers.gate(*p);
     gate(&provider).is_recovered() && order[..position].iter().all(|p| gate(p).is_refusing())
 }
 
@@ -647,12 +646,12 @@ pub async fn check_availability(
     state: &AppState,
     args: &AvailabilityArgs,
 ) -> Result<AvailabilityResponse> {
-    check_availability_with_base(state, args, state.anidb_base.as_deref()).await
+    check_availability_with_base(state, args, None).await
 }
 
-/// [`check_availability`] with the anidb origin override exposed for
+/// [`check_availability`] with an anidb origin override exposed for
 /// tests. Production passes `None` via the public wrapper, which
-/// falls back to `state.anidb_base` and then the real site.
+/// walks the state's own provider set.
 pub(crate) async fn check_availability_with_base(
     state: &AppState,
     args: &AvailabilityArgs,
@@ -711,24 +710,24 @@ pub(crate) async fn check_availability_with_base(
     // records it under the play path's mapping: answered verdicts
     // (the clean miss included) are health, weather is distress, a
     // gate refusal records nothing.
-    let origins = crate::commands::providers::Origins {
-        anidb: anidb_base,
-        ..crate::commands::providers::Origins::of(state)
+    let overridden;
+    let providers = match anidb_base {
+        Some(base) => {
+            overridden = state
+                .providers
+                .clone()
+                .with_origin(crate::scraper::provider::ProviderId::Anidb, base);
+            &overridden
+        }
+        None => &state.providers,
     };
     let mut attempt = ProbeAttempt {
         args,
         mode,
         answered_by: None,
     };
-    let probed = crate::commands::providers::run_at(
-        state,
-        origins,
-        &state.provider_order,
-        remembered,
-        prio,
-        &mut attempt,
-    )
-    .await;
+    let probed =
+        crate::commands::providers::run_at(state, providers, remembered, prio, &mut attempt).await;
     let (available, episode_count, extra_episodes, provider) = match probed {
         Ok(attempted) => {
             let (p, present) = attempted.value;
@@ -1358,6 +1357,7 @@ mod positive_ttl_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scraper::provider::ProviderId;
 
     #[test]
     fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
@@ -1562,7 +1562,7 @@ mod tests {
             .await;
         let td = tempfile::tempdir().expect("tempdir");
         let mut state = cache_only_state(&td);
-        state.anidb_base = Some(server.uri());
+        state.providers.set_origin(ProviderId::Anidb, server.uri());
 
         let args = AvailabilityArgs {
             title: "Anything".into(),
@@ -1644,10 +1644,7 @@ mod tests {
         let got = check_availability_with_base(&state, &args, Some(&server.uri()))
             .await
             .expect("probe succeeds");
-        assert_eq!(
-            got.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb)
-        );
+        assert_eq!(got.provider, Some(ProviderId::Anidb));
         let body = serde_json::to_value(&got).expect("json");
         assert_eq!(body["provider"], "anidb");
         let legacy: AvailabilityResponse =
@@ -1681,7 +1678,7 @@ mod tests {
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
         assert_eq!(
             row.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(ProviderId::Anidb),
             "the row names the provider whose catalogue answered"
         );
     }
@@ -1779,11 +1776,12 @@ mod tests {
         let hianime = stub_hianime_sub_only().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "dub",
@@ -1801,12 +1799,12 @@ mod tests {
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
         assert_eq!(
             row.provider,
-            Some(crate::scraper::provider::ProviderId::Hianime),
+            Some(ProviderId::Hianime),
             "and named as the fallback's"
         );
 
         // The outage is on: the row is served, the lists hide.
-        open_breaker(&state.anidb_gate);
+        open_breaker(state.providers.gate(ProviderId::Anidb));
         let listed = batch_cached(
             &state,
             &AvailabilityBatchArgs {
@@ -1827,7 +1825,7 @@ mod tests {
 
         // The primary is back: the fallback's row no longer stands
         // for it.
-        close_breaker(&state.anidb_gate);
+        close_breaker(state.providers.gate(ProviderId::Anidb));
         let listed = batch_cached(
             &state,
             &AvailabilityBatchArgs {
@@ -1846,11 +1844,12 @@ mod tests {
         let hianime = stub_hianime_no_results().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Nowhere Show",
             "mode": "sub",
@@ -1865,10 +1864,7 @@ mod tests {
             .expect("cache read")
             .expect("persisted");
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
-        assert_eq!(
-            row.provider,
-            Some(crate::scraper::provider::ProviderId::Hianime)
-        );
+        assert_eq!(row.provider, Some(ProviderId::Hianime));
     }
 
     #[tokio::test]
@@ -1884,12 +1880,13 @@ mod tests {
         let hianime = stub_hianime_no_results().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
-        open_breaker(&state.anidb_gate);
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
+        open_breaker(state.providers.gate(ProviderId::Anidb));
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Nowhere Show",
             "mode": "sub",
@@ -1906,7 +1903,7 @@ mod tests {
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
         assert_eq!(
             row.provider,
-            Some(crate::scraper::provider::ProviderId::Hianime),
+            Some(ProviderId::Hianime),
             "the miss is the fallback's, not the retried primary's"
         );
     }
@@ -1921,27 +1918,14 @@ mod tests {
         // written during an outage, stands through it.
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
         // Both seen answering, so either can stand behind a row.
-        close_breaker(&state.anidb_gate);
-        close_breaker(&state.hianime_gate);
-        write_cache(
-            &state,
-            "570",
-            "sub",
-            false,
-            Some(crate::scraper::provider::ProviderId::Anidb),
-        );
-        write_cache(
-            &state,
-            "571",
-            "sub",
-            false,
-            Some(crate::scraper::provider::ProviderId::Hianime),
-        );
+        close_breaker(state.providers.gate(ProviderId::Anidb));
+        close_breaker(state.providers.gate(ProviderId::Hianime));
+        write_cache(&state, "570", "sub", false, Some(ProviderId::Anidb));
+        write_cache(&state, "571", "sub", false, Some(ProviderId::Hianime));
         let served = |state: &AppState| {
             let listed = batch_cached(
                 state,
@@ -1961,9 +1945,9 @@ mod tests {
             "both providers reachable: the primary's negative stands, the fallback's does not"
         );
 
-        pause_provider(&state.anidb_gate);
+        pause_provider(state.providers.gate(ProviderId::Anidb));
         assert!(
-            !state.anidb_gate.is_open(),
+            !state.providers.gate(ProviderId::Anidb).is_open(),
             "a pause is not the breaker opening"
         );
         assert_eq!(
@@ -1972,15 +1956,15 @@ mod tests {
             "the primary pausing: its negative yields, the fallback's stands"
         );
 
-        pause_provider(&state.hianime_gate);
+        pause_provider(state.providers.gate(ProviderId::Hianime));
         assert_eq!(
             served(&state),
             (false, false),
             "both pausing: nobody stands behind either row"
         );
 
-        close_breaker(&state.anidb_gate);
-        close_breaker(&state.hianime_gate);
+        close_breaker(state.providers.gate(ProviderId::Anidb));
+        close_breaker(state.providers.gate(ProviderId::Hianime));
         assert_eq!(
             served(&state),
             (true, false),
@@ -2016,18 +2000,13 @@ mod tests {
         let hianime = stub_hianime_sub_only().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
-        write_cache(
-            &state,
-            "580",
-            "sub",
-            true,
-            Some(crate::scraper::provider::ProviderId::Hianime),
-        );
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
+        write_cache(&state, "580", "sub", true, Some(ProviderId::Hianime));
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "sub",
@@ -2041,10 +2020,7 @@ mod tests {
             got.available,
             "the provider the row remembers still carries the show"
         );
-        assert_eq!(
-            got.provider,
-            Some(crate::scraper::provider::ProviderId::Hianime)
-        );
+        assert_eq!(got.provider, Some(ProviderId::Hianime));
         assert!(
             anidb
                 .received_requests()
@@ -2055,7 +2031,7 @@ mod tests {
         );
         assert_eq!(
             cached_provider(&state, "580", "sub"),
-            Some(crate::scraper::provider::ProviderId::Hianime),
+            Some(ProviderId::Hianime),
             "the row keeps its provider"
         );
     }
@@ -2087,18 +2063,13 @@ mod tests {
             .await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
-        write_cache(
-            &state,
-            "580",
-            "sub",
-            true,
-            Some(crate::scraper::provider::ProviderId::Hianime),
-        );
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
+        write_cache(&state, "580", "sub", true, Some(ProviderId::Hianime));
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "sub",
@@ -2120,7 +2091,7 @@ mod tests {
         );
         assert_eq!(
             cached_provider(&state, "580", "sub"),
-            Some(crate::scraper::provider::ProviderId::Hianime),
+            Some(ProviderId::Hianime),
             "the positive row stands until its provider is reachable again"
         );
     }
@@ -2166,12 +2137,13 @@ mod tests {
         let hianime = stub_hianime_sub_only().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
-        open_breaker(&state.anidb_gate);
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
+        open_breaker(state.providers.gate(ProviderId::Anidb));
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "dub",
@@ -2185,7 +2157,7 @@ mod tests {
         assert!(got.available, "the primary carries the dub: {got:?}");
         assert_eq!(
             got.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(ProviderId::Anidb),
             "the answer is the retried primary's"
         );
         assert!(
@@ -2211,10 +2183,7 @@ mod tests {
             .expect("persisted");
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
         assert!(row.available, "the row is the primary's positive");
-        assert_eq!(
-            row.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb)
-        );
+        assert_eq!(row.provider, Some(ProviderId::Anidb));
     }
 
     #[tokio::test]
@@ -2258,18 +2227,13 @@ mod tests {
         let hianime = stub_hianime_sub_only().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
-        write_cache(
-            &state,
-            "582",
-            "dub",
-            true,
-            Some(crate::scraper::provider::ProviderId::Hianime),
-        );
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
+        write_cache(&state, "582", "dub", true, Some(ProviderId::Hianime));
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "dub",
@@ -2283,7 +2247,7 @@ mod tests {
         assert!(got.available, "the primary carries the dub: {got:?}");
         assert_eq!(
             got.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(ProviderId::Anidb),
             "the answer is the primary's"
         );
         assert!(
@@ -2309,10 +2273,7 @@ mod tests {
             .expect("persisted");
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
         assert!(row.available, "the row is the primary's positive");
-        assert_eq!(
-            row.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb)
-        );
+        assert_eq!(row.provider, Some(ProviderId::Anidb));
     }
 
     #[tokio::test]
@@ -2360,18 +2321,13 @@ mod tests {
             .await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
-        write_cache(
-            &state,
-            "580",
-            "dub",
-            true,
-            Some(crate::scraper::provider::ProviderId::Hianime),
-        );
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
+        write_cache(&state, "580", "dub", true, Some(ProviderId::Hianime));
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "dub",
@@ -2394,7 +2350,7 @@ mod tests {
         );
         assert_eq!(
             cached_provider(&state, "580", "dub"),
-            Some(crate::scraper::provider::ProviderId::Hianime),
+            Some(ProviderId::Hianime),
             "the positive row stands until its provider is reachable again"
         );
     }
@@ -2440,19 +2396,14 @@ mod tests {
         let hianime = stub_hianime_no_results().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
-        write_cache(
-            &state,
-            "584",
-            "dub",
-            true,
-            Some(crate::scraper::provider::ProviderId::Hianime),
-        );
-        open_breaker(&state.hianime_gate);
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
+        write_cache(&state, "584", "dub", true, Some(ProviderId::Hianime));
+        open_breaker(state.providers.gate(ProviderId::Hianime));
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "dub",
@@ -2466,7 +2417,7 @@ mod tests {
         assert!(!got.available, "nobody carries the dub: {got:?}");
         assert_eq!(
             got.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(ProviderId::Anidb),
             "the absence is the primary's own"
         );
         assert!(
@@ -2486,10 +2437,7 @@ mod tests {
             !row.available,
             "the positive row gave way to the primary's negative: {row:?}"
         );
-        assert_eq!(
-            row.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb)
-        );
+        assert_eq!(row.provider, Some(ProviderId::Anidb));
     }
 
     /// An anidb.app that finds the show and lists two episodes whose
@@ -2536,11 +2484,12 @@ mod tests {
         let hianime = stub_hianime_sub_only().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "sub",
@@ -2554,7 +2503,7 @@ mod tests {
         assert!(got.available, "the fallback carries the show: {got:?}");
         assert_eq!(
             got.provider,
-            Some(crate::scraper::provider::ProviderId::Hianime),
+            Some(ProviderId::Hianime),
             "the answer is the fallback's"
         );
         assert!(
@@ -2571,10 +2520,7 @@ mod tests {
             .expect("persisted");
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
         assert!(row.available);
-        assert_eq!(
-            row.provider,
-            Some(crate::scraper::provider::ProviderId::Hianime)
-        );
+        assert_eq!(row.provider, Some(ProviderId::Hianime));
     }
 
     #[tokio::test]
@@ -2611,11 +2557,12 @@ mod tests {
             .await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "sub",
@@ -2659,11 +2606,12 @@ mod tests {
         let hianime = stub_hianime_no_results().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Fallback Show",
             "mode": "sub",
@@ -2712,18 +2660,11 @@ mod tests {
             .await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.anidb_base = Some(anidb.uri());
-        write_cache(
-            &state,
-            "590",
-            "sub",
-            false,
-            Some(crate::scraper::provider::ProviderId::Hianime),
-        );
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state.providers.set_origin(ProviderId::Anidb, anidb.uri());
+        write_cache(&state, "590", "sub", false, Some(ProviderId::Hianime));
         let state = std::sync::Arc::new(state);
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
             "title": "Nowhere Show",
@@ -2747,7 +2688,7 @@ mod tests {
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
         assert_eq!(
             row.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(ProviderId::Anidb),
             "the row is the primary's own verdict now"
         );
     }
@@ -2757,7 +2698,9 @@ mod tests {
         use crate::scraper::provider::ProviderId;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![ProviderId::Anidb, ProviderId::Hianime];
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
         let cases = (
             proptest::bool::ANY,
             proptest::bool::ANY,
@@ -2769,19 +2712,19 @@ mod tests {
             .run(
                 &cases,
                 |(anidb_broken, anidb_paused, hianime_broken, hianime_paused, row_provider)| {
-                    close_breaker(&state.anidb_gate);
-                    close_breaker(&state.hianime_gate);
+                    close_breaker(state.providers.gate(ProviderId::Anidb));
+                    close_breaker(state.providers.gate(ProviderId::Hianime));
                     if anidb_broken {
-                        open_breaker(&state.anidb_gate);
+                        open_breaker(state.providers.gate(ProviderId::Anidb));
                     }
                     if anidb_paused {
-                        pause_provider(&state.anidb_gate);
+                        pause_provider(state.providers.gate(ProviderId::Anidb));
                     }
                     if hianime_broken {
-                        open_breaker(&state.hianime_gate);
+                        open_breaker(state.providers.gate(ProviderId::Hianime));
                     }
                     if hianime_paused {
-                        pause_provider(&state.hianime_gate);
+                        pause_provider(state.providers.gate(ProviderId::Hianime));
                     }
                     let provider = match row_provider {
                         0 => None,
@@ -2829,13 +2772,13 @@ mod tests {
             "kid-9",
             "sub",
             None,
-            &row(true, Some(crate::scraper::provider::ProviderId::Hianime)),
+            &row(true, Some(ProviderId::Hianime)),
         );
         write_cache_full(&state, "kid-10", "sub", None, &row(false, None));
         write_cache_full(&state, "kid-11", "sub", None, &row(true, None));
         assert_eq!(
             cached_provider(&state, "kid-9", "sub"),
-            Some(crate::scraper::provider::ProviderId::Hianime)
+            Some(ProviderId::Hianime)
         );
         assert_eq!(cached_provider(&state, "kid-9", "dub"), None, "per mode");
         assert_eq!(
@@ -2895,7 +2838,7 @@ mod tests {
         let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
         assert_eq!(
             row.provider,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(ProviderId::Anidb),
             "the negative row names the provider whose miss it is"
         );
     }
@@ -2912,21 +2855,16 @@ mod tests {
         let hianime = stub_hianime_sub_only().await;
         let td = tempfile::tempdir().expect("td");
         let mut state = cache_only_state(&td);
-        state.provider_order = vec![
-            crate::scraper::provider::ProviderId::Anidb,
-            crate::scraper::provider::ProviderId::Hianime,
-        ];
-        state.hianime_base = Some(hianime.uri());
-        write_cache(
-            &state,
-            "560",
-            "sub",
-            false,
-            Some(crate::scraper::provider::ProviderId::Anidb),
-        );
+        state
+            .providers
+            .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        state
+            .providers
+            .set_origin(ProviderId::Hianime, hianime.uri());
+        write_cache(&state, "560", "sub", false, Some(ProviderId::Anidb));
         write_cache(&state, "561", "sub", false, None);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-            state.anidb_gate.record(
+            state.providers.gate(ProviderId::Anidb).record(
                 crate::scraper::gate::ScrapeOutcome::Failure,
                 tokio::time::Instant::now(),
             );
@@ -2954,10 +2892,7 @@ mod tests {
             .await
             .expect("the probe re-runs and the fallback answers");
         assert!(got.available, "the fallback carries the show");
-        assert_eq!(
-            got.provider,
-            Some(crate::scraper::provider::ProviderId::Hianime)
-        );
+        assert_eq!(got.provider, Some(ProviderId::Hianime));
     }
 
     #[test]
@@ -2967,14 +2902,8 @@ mod tests {
         // Reachable means seen answering: a fresh gate has answered
         // nothing, and a row served on it would stand on a provider
         // that may be down since before the process started.
-        close_breaker(&state.anidb_gate);
-        write_cache(
-            &state,
-            "562",
-            "sub",
-            false,
-            Some(crate::scraper::provider::ProviderId::Anidb),
-        );
+        close_breaker(state.providers.gate(ProviderId::Anidb));
+        write_cache(&state, "562", "sub", false, Some(ProviderId::Anidb));
         let listed = batch_cached(
             &state,
             &AvailabilityBatchArgs {
@@ -3119,7 +3048,8 @@ mod tests {
         // and a success-then-failure pair does not.
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD - 1 {
             state
-                .anidb_gate
+                .providers
+                .gate(ProviderId::Anidb)
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -3131,7 +3061,8 @@ mod tests {
         assert!(got.is_err(), "the mode probe's failure surfaces");
         assert!(
             state
-                .anidb_gate
+                .providers
+                .gate(ProviderId::Anidb)
                 .admit(crate::scraper::gate::ScrapePriority::Background)
                 .await
                 .is_err(),
@@ -3406,9 +3337,7 @@ mod tests {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         use std::path::PathBuf;
-        use std::sync::Arc;
         AppState {
-            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -3417,10 +3346,7 @@ mod tests {
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: td.path().join("history"),
-            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            hianime_base: None,
-            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+            providers: crate::provider_set::ProviderSet::for_tests(),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -3624,7 +3550,7 @@ mod tests {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
         // A negative row is usable only on a provider seen answering.
-        close_breaker(&state.anidb_gate);
+        close_breaker(state.providers.gate(ProviderId::Anidb));
         write_cache(&state, "kid-2", "dub", false, None);
         let resp = batch_cached(
             &state,
@@ -3726,7 +3652,7 @@ mod tests {
         let td = tempfile::tempdir().expect("tempdir");
         let state = cache_only_state(&td);
         // The negative row below stands on a provider seen answering.
-        close_breaker(&state.anidb_gate);
+        close_breaker(state.providers.gate(ProviderId::Anidb));
         write_cache_full(
             &state,
             "ongoing-show",
@@ -4026,7 +3952,8 @@ mod tests {
         let state = cache_only_state(&td);
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
-                .anidb_gate
+                .providers
+                .gate(ProviderId::Anidb)
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -4098,7 +4025,7 @@ mod tests {
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
         // A negative row is usable only on a provider seen answering.
-        close_breaker(&state.anidb_gate);
+        close_breaker(state.providers.gate(ProviderId::Anidb));
         let legacy = AvailabilityResponse {
             available: true,
             episode_count: None,
@@ -4143,7 +4070,7 @@ mod tests {
         let td = tempfile::tempdir().expect("td");
         let state = cache_only_state(&td);
         // A negative row is usable only on a provider seen answering.
-        close_breaker(&state.anidb_gate);
+        close_breaker(state.providers.gate(ProviderId::Anidb));
         let cases = (
             proptest::bool::ANY,
             proptest::option::of(0u32..2000),

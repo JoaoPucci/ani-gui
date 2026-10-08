@@ -69,9 +69,7 @@ fn stage_recorder(dir: &std::path::Path) -> (std::path::PathBuf, std::path::Path
 fn state_for(dir: &std::path::Path, provider_base: &str) -> crate::app::AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     crate::app::AppState {
-        anidb_base: Some(provider_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -80,10 +78,10 @@ fn state_for(dir: &std::path::Path, provider_base: &str) -> crate::app::AppState
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: dir.join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests().with_origin(
+            crate::scraper::provider::ProviderId::Anidb,
+            provider_base.to_string(),
+        ),
         image_cache_dir: dir.join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),

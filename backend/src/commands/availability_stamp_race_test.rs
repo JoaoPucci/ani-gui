@@ -251,7 +251,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
         .await;
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
-    state.provider_order = vec![ProviderId::Anidb];
+    state.providers.set_order(vec![ProviderId::Anidb]);
     let state = std::sync::Arc::new(state);
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -524,7 +524,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
         .await;
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
-    state.provider_order = vec![ProviderId::Anidb];
+    state.providers.set_order(vec![ProviderId::Anidb]);
     let state = std::sync::Arc::new(state);
     seed_standing_row(&state, ProviderId::Anidb, 12);
 
@@ -749,7 +749,7 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
     let anidb = stub_one_show_slowly(7).await;
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
-    state.provider_order = vec![ProviderId::Anidb];
+    state.providers.set_order(vec![ProviderId::Anidb]);
     let state = std::sync::Arc::new(state);
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({

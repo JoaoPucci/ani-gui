@@ -11,9 +11,7 @@ use crate::scraper::provider::ProviderId;
 fn state_over(anidb: &wiremock::MockServer, hianime: &wiremock::MockServer) -> AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     AppState {
-        anidb_base: Some(anidb.uri()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -22,10 +20,12 @@ fn state_over(anidb: &wiremock::MockServer, hianime: &wiremock::MockServer) -> A
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: Some(hianime.uri()),
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![ProviderId::Anidb, ProviderId::Hianime],
+        providers: crate::provider_set::ProviderSet::listing(vec![
+            ProviderId::Anidb,
+            ProviderId::Hianime,
+        ])
+        .with_origin(ProviderId::Anidb, anidb.uri())
+        .with_origin(ProviderId::Hianime, hianime.uri()),
         image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),

@@ -512,14 +512,12 @@ pub(crate) mod tests {
     pub(crate) fn state_with_proxy_origin() -> AppState {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-        use std::sync::Arc;
         AppState {
             // Unroutable: the fresh-resolve fallback must fail fast in
             // tests instead of walking the live provider. Windows
             // runners ship a system curl.exe, so a None base turns
             // "the fallback errors" into a real network resolve that
             // can succeed.
-            anidb_base: Some("http://127.0.0.1:1".into()),
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -528,10 +526,10 @@ pub(crate) mod tests {
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
-            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            hianime_base: None,
-            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+            providers: crate::provider_set::ProviderSet::for_tests().with_origin(
+                crate::scraper::provider::ProviderId::Anidb,
+                "http://127.0.0.1:1",
+            ),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -677,7 +675,9 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let mut state = state_with_proxy_origin();
-        state.anidb_base = Some(server.uri());
+        state
+            .providers
+            .set_origin(crate::scraper::provider::ProviderId::Anidb, server.uri());
         let mk = |title: &str| PlayArgs {
             title: title.into(),
             episode: "1".into(),
@@ -696,7 +696,8 @@ pub(crate) mod tests {
         }
         assert!(
             state
-                .anidb_gate
+                .providers
+                .gate(crate::scraper::provider::ProviderId::Anidb)
                 .admit(crate::scraper::gate::ScrapePriority::Background)
                 .await
                 .is_ok(),
@@ -874,7 +875,9 @@ pub(crate) mod tests {
         stub_provider_one_episode(&mock, "the show").await;
         let td = tempfile::tempdir().unwrap();
         let mut state = state_with_proxy_origin();
-        state.anidb_base = Some(mock.uri());
+        state
+            .providers
+            .set_origin(crate::scraper::provider::ProviderId::Anidb, mock.uri());
         state.config_path = td.path().join("config.toml");
         state.history_path = td.path().join("history");
         let args = uncached_args("the show");
@@ -972,7 +975,9 @@ pub(crate) mod tests {
         )
         .unwrap();
         let mut state = state_with_proxy_origin();
-        state.anidb_base = Some(mock.uri());
+        state
+            .providers
+            .set_origin(crate::scraper::provider::ProviderId::Anidb, mock.uri());
         state.config_path = cfg;
         state.history_path = td.path().join("history");
         let args = uncached_args("the show");

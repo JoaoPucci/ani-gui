@@ -45,6 +45,11 @@ pub enum ProviderId {
 }
 
 impl ProviderId {
+    /// Every provider the app knows, whether or not a state orders
+    /// it: the set a gate exists for, and the set a stored label can
+    /// name.
+    pub const ALL: &'static [ProviderId] = &[Self::Anidb, Self::Hianime];
+
     /// The provider a label names. Anything that is not a known
     /// label — an absent one included — is anidb, the default every
     /// caller from before there were two providers means.

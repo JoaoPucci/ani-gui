@@ -477,7 +477,6 @@ use crate::commands::play_native_resolve::NativeResolveRequest;
 fn unroutable_state(td: &tempfile::TempDir, order: &[ProviderId]) -> AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
@@ -487,11 +486,9 @@ fn unroutable_state(td: &tempfile::TempDir, order: &[ProviderId]) -> AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_base: Some("http://127.0.0.1:1".into()),
-        anidb_gate: Arc::new(ScraperGate::new()),
-        hianime_base: Some("http://127.0.0.1:1".into()),
-        hianime_gate: Arc::new(ScraperGate::new()),
-        provider_order: order.to_vec(),
+        providers: crate::provider_set::ProviderSet::listing(order.to_vec())
+            .with_origin(ProviderId::Anidb, "http://127.0.0.1:1")
+            .with_origin(ProviderId::Hianime, "http://127.0.0.1:1"),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -540,17 +537,17 @@ fn each_provider_gets_a_client_of_its_own_on_its_own_gate() {
     let td = tempfile::tempdir().expect("td");
     let state = unroutable_state(&td, &ORDER);
     for p in ORDER {
-        let client = client_for(&state, Origins::of(&state), p, ScrapePriority::Interactive)
+        let client = client_for(&state, &state.providers, p, ScrapePriority::Interactive)
             .expect("a curl on PATH");
         assert_eq!(client.id(), p);
     }
     assert!(std::ptr::eq(
         gate_of(&state, ProviderId::Anidb),
-        &*state.anidb_gate
+        state.providers.gate(ProviderId::Anidb)
     ));
     assert!(std::ptr::eq(
         gate_of(&state, ProviderId::Hianime),
-        &*state.hianime_gate
+        state.providers.gate(ProviderId::Hianime)
     ));
 }
 
@@ -558,16 +555,16 @@ fn each_provider_gets_a_client_of_its_own_on_its_own_gate() {
 async fn a_walk_runs_against_the_states_providers_and_each_hears_its_own_outcome() {
     let td = tempfile::tempdir().expect("td");
     let state = unroutable_state(&td, &ORDER);
-    one_short_of_open(&state.anidb_gate);
-    one_short_of_open(&state.hianime_gate);
+    one_short_of_open(state.providers.gate(ProviderId::Anidb));
+    one_short_of_open(state.providers.gate(ProviderId::Hianime));
     let err = resolve_unreachable(&state).await;
     assert!(fails_over(&err.error), "{:?}", err.error);
     assert!(
-        state.anidb_gate.is_open(),
+        state.providers.gate(ProviderId::Anidb).is_open(),
         "the primary's failure landed on its own breaker"
     );
     assert!(
-        state.hianime_gate.is_open(),
+        state.providers.gate(ProviderId::Hianime).is_open(),
         "the fallback's failure landed on its own breaker"
     );
 }
@@ -576,13 +573,13 @@ async fn a_walk_runs_against_the_states_providers_and_each_hears_its_own_outcome
 async fn only_the_providers_the_state_orders_are_asked() {
     let td = tempfile::tempdir().expect("td");
     let state = unroutable_state(&td, &[ProviderId::Anidb]);
-    one_short_of_open(&state.anidb_gate);
-    one_short_of_open(&state.hianime_gate);
+    one_short_of_open(state.providers.gate(ProviderId::Anidb));
+    one_short_of_open(state.providers.gate(ProviderId::Hianime));
     let err = resolve_unreachable(&state).await;
     assert!(fails_over(&err.error), "{:?}", err.error);
-    assert!(state.anidb_gate.is_open());
+    assert!(state.providers.gate(ProviderId::Anidb).is_open());
     assert!(
-        !state.hianime_gate.is_open(),
+        !state.providers.gate(ProviderId::Hianime).is_open(),
         "a provider outside the order is never asked"
     );
 }

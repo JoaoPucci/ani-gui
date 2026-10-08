@@ -862,7 +862,6 @@ mod tests {
     pub(super) fn test_app_state(td: &TempDir) -> AppState {
         let kitsu_base = "http://127.0.0.1:1"; // never reached by these tests
         AppState {
-            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -871,10 +870,7 @@ mod tests {
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: td.path().join("history"),
-            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            hianime_base: None,
-            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+            providers: crate::provider_set::ProviderSet::for_tests(),
             image_cache_dir: td.path().join("images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_base),
@@ -914,7 +910,8 @@ mod tests {
         // refuses anything on this path.
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
-                .anidb_gate
+                .providers
+                .gate(crate::scraper::provider::ProviderId::Anidb)
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let router = build_api_router(Arc::new(state));
@@ -1445,7 +1442,7 @@ mod tests {
     /// the renderer uses to navigate to `/play?session=<id>`. This
     /// test pins only the route's existence + body validation contract.
     /// The resolution behaviour behind it is exercised by
-    /// `tests/api_play.rs`, which points `AppState::anidb_base` at a
+    /// `tests/api_play.rs`, which points `AppState::providers` at a
     /// local wiremock server and drives the real provider walk against
     /// stubbed responses.
     #[tokio::test]
