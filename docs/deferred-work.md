@@ -137,10 +137,13 @@ starting it, and delete it when you find it done.
   attribution differs between the runner's toolchain and local ones,
   and once put the high-risk count at 26 in one and 25 in the other.
   It matters because the count sits at its ceiling of 25 with files on
-  the boundary: `frontend/src/lib/play/play-cache.ts` and
-  `backend/src/scraper/gate.rs` at exactly 30.0 (a complexity of 30 at
-  full coverage), `backend/src/commands/play_native.rs` at 29.05. A
-  sliver of coverage moved either way decides whether the gate passes.
+  the boundary — at or within a point of a CRAP of 30 — where a sliver
+  of coverage moved either way decides whether the gate passes. Which
+  files those are changes with every merge, so they are not named
+  here: the scorer's table (`tools/crap-score.mjs` without `--json`,
+  as the "Compute CRAP" step of `.github/workflows/crap.yml` runs it)
+  lists every file over the bar and every one within five of it, in
+  the build log and in a local run.
 - **The pre-commit hook and strict TDD are in tension — for frontend
   commits.** `frontend-test` is the only hook command that runs tests,
   so a frontend `test(red):` commit fails by construction and is

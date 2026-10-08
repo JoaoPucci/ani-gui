@@ -135,8 +135,9 @@ jobs:
           mkdir -p coverage
           # Measure once per language, fan out to two crap-score
           # invocations: the JSON one feeds the ratchet check; the table
-          # goes to the build log so failures surface the top-N
-          # offenders without needing a second push. ts-ccn skips
+          # goes to the build log so a failure surfaces the offenders —
+          # and the files sitting just under the high-risk bar — without
+          # needing a second push. ts-ccn skips
           # Paraglide's compiled output — a generated artifact (one
           # switch arm per message key, regenerated at i18n:compile
           # time) that would inflate max/p95 without representing
