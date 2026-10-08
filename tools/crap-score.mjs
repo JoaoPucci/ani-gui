@@ -57,8 +57,12 @@ function parseLizardXml(xml, ccnByFile) {
 	//
 	// Every <item> is complexity. One the scorer cannot read whole — a
 	// different layout, a count that is not a number, a label with no
-	// file or line — fails the run rather than leaving the totals.
-	const re = /<item name="([^"]*)">\s*<value>\d+<\/value>\s*<value>\d+<\/value>\s*<value>(\d+)<\/value>/g;
+	// file or line, no `</item>` — fails the run rather than leaving the
+	// totals. So does a document that does not close after its last
+	// item: a counter that exits 0 after writing a truncated report
+	// would otherwise have the functions it wrote scored and the rest
+	// silently absent.
+	const re = /<item name="([^"]*)">\s*<value>\d+<\/value>\s*<value>\d+<\/value>\s*<value>(\d+)<\/value>\s*<\/item>/g;
 	const items = (xml.match(/<item\b/g) ?? []).length;
 	let read = 0;
 	let m;
@@ -66,18 +70,21 @@ function parseLizardXml(xml, ccnByFile) {
 		read += 1;
 		const label = xmlUnescape(m[1]);
 		const placed = /^.*? at (.*):(\d+)$/s.exec(label);
-		if (!placed) {
-			console.error(`crap-score: complexity item without "<name> at <file>:<line>": ${label}`);
-			process.exit(2);
-		}
+		if (!placed) refuse(`complexity item without "<name> at <file>:<line>": ${label}`);
 		const file = path.normalize(placed[1]);
 		const ccn = Number(m[2]);
 		ccnByFile.set(file, (ccnByFile.get(file) ?? 0) + ccn);
 	}
-	if (read !== items) {
-		console.error(`crap-score: ${items - read} of ${items} complexity items are not in the expected shape`);
-		process.exit(2);
-	}
+	if (read !== items) refuse(`${items - read} of ${items} complexity items are not in the expected shape`);
+	const closed = xml.lastIndexOf('</cppncss>');
+	if (closed < 0 || closed < xml.lastIndexOf('</item>')) refuse('complexity report does not close after its last item (truncated?)');
+}
+
+/** Stop on input the scorer cannot read whole: scoring what was read would
+ *  leave the rest silently absent from the totals. */
+function refuse(why) {
+	console.error(`crap-score: ${why}`);
+	process.exit(2);
 }
 
 /** XML's five named entities and numeric character references, in one pass. */
@@ -97,6 +104,10 @@ function parseLcov(file, prefix = '') {
 	for (const raw of text.split('\n')) {
 		const line = raw.trim();
 		if (line.startsWith('SF:')) {
+			// A record is read whole or not at all: one the next record
+			// opens over, or the file ends inside, would otherwise drop out
+			// without a word and its file score at no coverage.
+			if (cur) refuse(`${file}: the record for ${cur.file} has no end_of_record before the next SF:`);
 			let p = line.slice(3);
 			if (path.isAbsolute(p)) {
 				p = path.relative(root, p);
@@ -120,6 +131,7 @@ function parseLcov(file, prefix = '') {
 			cur = null;
 		}
 	}
+	if (cur) refuse(`${file}: ends inside the record for ${cur.file}, before its end_of_record (truncated?)`);
 	return byFile;
 }
 
