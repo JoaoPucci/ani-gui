@@ -8,7 +8,7 @@
 
 import { downloadStream, type DownloadArgs } from '$lib/api';
 import { describeDownloadFailure } from './failure-copy';
-import { describePlayFailure, describeRateLimit, describeSourceDown } from '$lib/play/error-copy';
+import { describePlayFailure, describeRateLimit } from '$lib/play/error-copy';
 import { downloadStore } from './store.svelte';
 import { downloadFailureStore } from './failure-store.svelte';
 
@@ -63,15 +63,12 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 			}
 			// The episode verdict — the show is there, this episode is
 			// not — is a unit variant with no message; the dock row
-			// carries the same copy the play page shows for it.
-			// A catalogue miss and a source outage likewise read as they do
-			// on the play page. (`scraper` does not: in a download it is
-			// the download tool failing, not the provider.)
-			if (
-				payloadKind(e) === 'episode_unavailable' ||
-				payloadKind(e) === 'no_results' ||
-				describeSourceDown(e) !== null
-			) {
+			// carries the same copy the play page shows for it. A
+			// catalogue miss and every upstream status likewise read as
+			// they do on the play page. (`scraper` does not: in a download
+			// it is the download tool failing, not the provider.)
+			const kind = payloadKind(e);
+			if (kind === 'episode_unavailable' || kind === 'no_results' || kind === 'upstream') {
 				downloadStore.markError(id, describePlayFailure(e));
 				return;
 			}

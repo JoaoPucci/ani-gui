@@ -73,17 +73,37 @@ export function describeSourceDown(e: unknown): string | null {
 	return null;
 }
 
+/** Shared first-chance mapper for every other answer from the source:
+ *  an `upstream` whose status is neither the busy nor the down shape.
+ *  The source answered, so the connection is fine — 404/410 is the
+ *  source not having the thing (the catalogue-miss copy, never the
+ *  detail page's definitive override, since a 404 does not prove a
+ *  title absent from the catalogue), and any other status, or an
+ *  upstream with no status, is the source answering with an error.
+ *  Null for every other kind. Called after describeRateLimit and
+ *  describeSourceDown, which take the 429 and 5xx shapes first. */
+export function describeSourceAnswer(e: unknown): string | null {
+	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
+	if (obj?.kind !== 'upstream') return null;
+	if (obj.status === 404 || obj.status === 410) return m.play_play_failure_no_results();
+	return m.play_play_failure_source_error();
+}
+
 /** User-facing copy for a play-call failure. The message branches
- *  match (in order): rate_limited → busy source (with the upstream's
- *  own retry hint when it sent one); episode_unavailable → the show
+ *  match (in order): rate_limited / upstream 429 → busy source (with
+ *  the upstream's own retry hint when it sent one); upstream 5xx →
+ *  source down; upstream 404/410 → catalogue miss; other upstream →
+ *  the source answered with an error; episode_unavailable → the show
  *  is there and this episode is not; no_results → catalogue miss;
  *  scraper → upstream unhappy; timeout → slow upstream; network /
- *  upstream → connection trouble; default → generic retry. */
+ *  gate_refused → connection trouble; default → generic retry. */
 export function describePlayFailure(e: unknown, opts?: { noResults?: () => string }): string {
 	const rateLimited = describeRateLimit(e);
 	if (rateLimited !== null) return rateLimited;
 	const sourceDown = describeSourceDown(e);
 	if (sourceDown !== null) return sourceDown;
+	const answered = describeSourceAnswer(e);
+	if (answered !== null) return answered;
 	const raw = classifierText(e);
 	if (raw.includes('episode_unavailable')) {
 		// The show is in the catalogue; this episode has no stream in
@@ -104,7 +124,7 @@ export function describePlayFailure(e: unknown, opts?: { noResults?: () => strin
 	if (raw.includes('timeout')) {
 		return m.play_play_failure_timeout();
 	}
-	if (raw.includes('network') || raw.includes('upstream')) {
+	if (raw.includes('network') || raw.includes('gate_refused')) {
 		return m.play_play_failure_network();
 	}
 	return m.play_play_failure_generic();
