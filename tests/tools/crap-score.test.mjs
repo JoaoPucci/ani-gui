@@ -358,3 +358,31 @@ for (const [why, lcov] of [
 		assert.match(run.stderr, /end_of_record/);
 	});
 }
+
+// The high-risk count sits at its ceiling, so the files just under
+// the bar decide the gate on a sliver of coverage. The table is where
+// they are read from — in the build log and locally — so it has to
+// reach them, however many files sit above the bar.
+test('the table reaches every file within five of the high-risk bar', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-table-'));
+	const items = [];
+	const records = [];
+	// Twenty-four files over the bar fill the old twenty-row table on
+	// their own; the one just under the bar comes after all of them.
+	for (let i = 0; i < 24; i++) {
+		const file = `src/over${String(i).padStart(2, '0')}.rs`;
+		items.push(lizardItem(file, 40));
+		records.push(lcovRecord(file, 10, 10));
+	}
+	items.push(lizardItem('src/near.rs', 29), lizardItem('src/far.rs', 20));
+	records.push(lcovRecord('src/near.rs', 10, 10), lcovRecord('src/far.rs', 10, 10));
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${items.join('')}</measure></cppncss>`);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), records.join('\n'));
+	const table = execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.'], {
+		cwd: tmpDir,
+		encoding: 'utf-8',
+		stdio: ['ignore', 'pipe', 'ignore']
+	});
+	assert.match(table, /src\/near\.rs/, 'a file within five of the bar must be in the table');
+	assert.doesNotMatch(table, /src\/far\.rs/, 'a file well under the bar is not');
+});
