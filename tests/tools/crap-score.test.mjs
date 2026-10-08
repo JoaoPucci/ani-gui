@@ -307,3 +307,54 @@ test('test files of every measured script kind are left out of the ranking', () 
 	);
 	assert.deepEqual(out.top.map((r) => r.file), ['src/keep.mjs']);
 });
+
+// A report is read whole or not at all. A counter that exits 0 after
+// writing a truncated report would otherwise have the functions it
+// managed to write scored and the rest silently absent, and the firm
+// ceiling could pass on a file that was never measured.
+for (const [why, xml] of [
+	[
+		'an item that never closes',
+		'<cppncss><measure type="Function"><item name="f(...) at e.ts:1"><value>1</value><value>1</value><value>4</value><item name="g(...) at e.ts:9"><value>2</value><value>1</value><value>4</value></item></measure></cppncss>'
+	],
+	[
+		'a report cut off after a count',
+		'<?xml version="1.0" ?>\n<cppncss>\n\t<measure type="Function">\n\t\t<item name="f(...) at e.ts:1">\n\t\t\t<value>1</value>\n\t\t\t<value>1</value>\n\t\t\t<value>4</value>'
+	],
+	[
+		'a report cut off after its last item',
+		'<cppncss><measure type="Function"><item name="f(...) at e.ts:1"><value>1</value><value>1</value><value>4</value></item>'
+	]
+]) {
+	test(`${why} fails the run instead of scoring what was read`, () => {
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-whole-'));
+		fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+		fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('e.ts', 10, 10));
+		const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8'
+		});
+		assert.notEqual(run.status, 0, run.stdout);
+	});
+}
+
+// The same for coverage: a record that never reaches its
+// `end_of_record` — the file cut off, or the next record opening over
+// it — would otherwise be dropped without a word, and its file scored
+// at no coverage or under the wrong one.
+for (const [why, lcov] of [
+	['a coverage file cut off inside a record', ['TN:', 'SF:e.ts', 'DA:1,1', 'LF:1', 'LH:1'].join('\n')],
+	['a coverage record opening before the previous one closed', ['TN:', 'SF:a.ts', 'DA:1,1', 'SF:e.ts', 'DA:1,1', 'end_of_record'].join('\n')]
+]) {
+	test(`${why} fails the run instead of scoring without it`, () => {
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-lcov-whole-'));
+		fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${lizardItem('e.ts', 4)}</measure></cppncss>`);
+		fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcov);
+		const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8'
+		});
+		assert.notEqual(run.status, 0, run.stdout);
+		assert.match(run.stderr, /end_of_record/);
+	});
+}
