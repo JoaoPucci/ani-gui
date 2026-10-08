@@ -1,11 +1,16 @@
 /**
- * Maps backend errors to user-facing copy. Three helpers, in order of
+ * Maps backend errors to user-facing copy. The helpers, in order of
  * specificity:
  *
  *   • `describeError` (in ./describe-error, re-exported here) is the
  *     general one: a short localized sentence naming the cause by the
  *     error's `kind`. Every surface that shows a failure without a copy
  *     of its own uses it.
+ *   • `describeRateLimit`, `describeSourceDown` and
+ *     `describeSourceAnswer` are first-chance mappers for the typed
+ *     provider answers (busy, down, any other status); every play
+ *     surface and the download dock call them before their own
+ *     branches, so one answer reads the same everywhere.
  *   • `describePlayFailure` picks the right user-facing message for
  *     a play-call failure — "no episode," "scraper unhappy,"
  *     "network trouble," etc.
