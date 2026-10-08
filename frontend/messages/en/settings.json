@@ -96,5 +96,5 @@
 	"file_filter_executables": "Executables",
 	"file_filter_all_files": "All files",
 	"error_file_invalid": "The settings file (config.toml) isn't valid. If you edited it by hand, check it for mistakes.",
-	"error_file_unreadable": "The settings file couldn't be read or saved. Check that ani-gui's config folder is writable."
+	"error_file_unreadable": "The settings file couldn't be read or saved. Check that the file and ani-gui's config folder are readable and writable."
 }

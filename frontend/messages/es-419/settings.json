@@ -96,5 +96,5 @@
 	"file_filter_executables": "Ejecutables",
 	"file_filter_all_files": "Todos los archivos",
 	"error_file_invalid": "El archivo de ajustes (config.toml) no es válido. Si lo editaste a mano, revisa que no tenga errores.",
-	"error_file_unreadable": "No se pudo leer ni guardar el archivo de ajustes. Revisa que la carpeta de configuración de ani-gui permita escritura."
+	"error_file_unreadable": "No se pudo leer ni guardar el archivo de ajustes. Revisa que el archivo y la carpeta de configuración de ani-gui permitan lectura y escritura."
 }
