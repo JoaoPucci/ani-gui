@@ -12,8 +12,13 @@ describe('describeSettingsFailure', () => {
 	});
 
 	it('names the settings file when it cannot be read or written', () => {
+		// The same `io` arrives when config.toml exists but cannot be
+		// read (permissions, a directory at its path, invalid UTF-8),
+		// so the remedy has to cover reading the file, not only
+		// writing its folder.
 		const msg = describeSettingsFailure({ kind: 'io', key: 'error.io.generic' });
 		expect(msg).toMatch(/settings file/i);
+		expect(msg).toMatch(/readable/i);
 		expect(msg).not.toBe(describeError({ kind: 'io' }));
 	});
 
