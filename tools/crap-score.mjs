@@ -194,7 +194,13 @@ const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))] ?? 0;
 // 181 files it is already below a ten-row report — so the report has
 // to be sized to reach it rather than to a fixed length.
 const p95Index = rows.length ? rows.length - 1 - Math.floor(0.95 * (rows.length - 1)) : 0;
-const high_risk = rows.filter((r) => r.crap > 30).length;
+/** The high-risk bar: a file scoring above it counts against `high_risk_le`. */
+const HIGH_RISK_BAR = 30;
+/** How far under the bar the table still reaches. The count sits at its
+ *  ceiling, so the files just under the bar decide the gate on a sliver
+ *  of coverage; the table is where they are read from. */
+const BOUNDARY_MARGIN = 5;
+const high_risk = rows.filter((r) => r.crap > HIGH_RISK_BAR).length;
 
 if (jsonFlag) {
 	// `high_risk_files` names what the count is counting. Without it a
@@ -222,7 +228,7 @@ if (jsonFlag) {
 			p95: r2(p95),
 			high_risk,
 			count: rows.length,
-			high_risk_files: rows.filter((r) => r.crap > 30).map(report),
+			high_risk_files: rows.filter((r) => r.crap > HIGH_RISK_BAR).map(report),
 			top: rows.slice(0, Math.max(TOP_N, p95Index + 1)).map(report),
 			p95_file: rows[p95Index]?.file ?? null
 		}) + '\n'
@@ -231,7 +237,9 @@ if (jsonFlag) {
 	const widths = { file: 50, ccn: 6, cov: 8, crap: 8 };
 	console.log(`${pad('file', widths.file)}${pad('ccn', widths.ccn)}${pad('cov', widths.cov)}${pad('crap', widths.crap)}`);
 	console.log('-'.repeat(72));
-	for (const r of rows.slice(0, 20)) {
+	// The worst twenty, and past them every file down to five under the
+	// bar, so the boundary is in the log however many files sit above it.
+	for (const r of rows.filter((row, i) => i < 20 || row.crap > HIGH_RISK_BAR - BOUNDARY_MARGIN)) {
 		console.log(
 			pad(r.file, widths.file) +
 				pad(String(r.ccn), widths.ccn) +
@@ -239,7 +247,7 @@ if (jsonFlag) {
 				pad(r.crap.toFixed(1), widths.crap)
 		);
 	}
-	console.error(`\nmax=${r2(max)}  p95=${r2(p95)}  high_risk(>30)=${high_risk}  files=${rows.length}`);
+	console.error(`\nmax=${r2(max)}  p95=${r2(p95)}  high_risk(>${HIGH_RISK_BAR})=${high_risk}  files=${rows.length}`);
 }
 
 function r2(x) {
