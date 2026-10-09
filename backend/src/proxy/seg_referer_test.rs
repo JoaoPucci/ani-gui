@@ -39,6 +39,7 @@ async fn proxy_for(referer: &str, segment_url: &str) -> (Router, String) {
         secret,
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     };
     (build_router(state), uri)
 }

@@ -12,10 +12,12 @@
 use std::time::Duration;
 
 use bytes::Bytes;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, RANGE, REFERER, USER_AGENT};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, LOCATION, RANGE, REFERER, USER_AGENT};
+use reqwest::{Method, StatusCode};
 use url::Url;
 
 use crate::error::{AniError, Result};
+use crate::proxy::host_budget::{host_key, HostBudget};
 
 /// User-Agent used by every upstream fetch. Matches what `ani-cli`
 /// presents so the stream CDNs see consistent traffic for one user.
@@ -23,6 +25,8 @@ pub const UA: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0";
 
 /// Build the proxy's outbound HTTP client with the right defaults.
+/// It follows no redirect on its own: [`send_paced`] follows them hop
+/// by hop, charging each to the host that answers it.
 ///
 /// # Errors
 /// Returns [`AniError::Network`] if the underlying TLS stack cannot be
@@ -30,6 +34,7 @@ pub const UA: &str =
 pub fn build_client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
         .user_agent(UA)
+        .redirect(reqwest::redirect::Policy::none())
         .pool_idle_timeout(Duration::from_secs(30))
         .tcp_keepalive(Duration::from_secs(60))
         .timeout(Duration::from_secs(120))
@@ -53,6 +58,108 @@ pub fn build_meta_client() -> reqwest::Client {
         .gzip(true)
         .build()
         .unwrap_or_default()
+}
+
+/// Redirect hops a fetch follows before it is given up: the
+/// transport's own default.
+pub(crate) const REDIRECT_HOP_CAP: usize = 10;
+
+/// Where a redirect sends the request next: the `Location` of a 301,
+/// 302, 303, 307 or 308, resolved against the URL that answered.
+/// `None` for any other response, and for a redirect whose location
+/// is missing or cannot be resolved — such a response is returned as
+/// it is, and its status read like any other that is not a success.
+#[must_use]
+pub(crate) fn redirect_target(
+    status: StatusCode,
+    location: Option<&str>,
+    from: &Url,
+) -> Option<Url> {
+    if !matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308) {
+        return None;
+    }
+    from.join(location?).ok()
+}
+
+/// Send `method` to `url` with `headers`, hop by hop: the URL asked
+/// for and each redirect it names is admitted against its host's
+/// budget before it is sent, so a redirect is charged to the host
+/// that answers it — the same host again, or another one. The
+/// headers go with every hop as given, the session's referer among
+/// them, where a transport following the redirect itself would
+/// replace the referer with the URL that redirected. Returns the
+/// first response that is not a redirect. Every hop is admitted as
+/// the player's traffic, in the host's line; [`send_paced_as`] sends
+/// background traffic.
+///
+/// # Errors
+/// [`AniError::Network`] for a connection or DNS failure on any hop,
+/// and once [`REDIRECT_HOP_CAP`] hops have all redirected.
+pub(crate) async fn send_paced(
+    client: &reqwest::Client,
+    budget: &HostBudget,
+    method: Method,
+    url: &Url,
+    headers: HeaderMap,
+) -> Result<reqwest::Response> {
+    send_paced_as(client, budget, Admission::Player, method, url, headers).await
+}
+
+/// Whose traffic a paced fetch is: the player's, which waits its
+/// turn in the host's line, or background traffic, which never takes
+/// a place in it ([`HostBudget::admit_background`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Admission {
+    Player,
+    Background,
+}
+
+/// [`send_paced`], each hop admitted as `admission` says.
+///
+/// # Errors
+/// As [`send_paced`].
+pub(crate) async fn send_paced_as(
+    client: &reqwest::Client,
+    budget: &HostBudget,
+    admission: Admission,
+    method: Method,
+    url: &Url,
+    headers: HeaderMap,
+) -> Result<reqwest::Response> {
+    let mut url = url.clone();
+    for _ in 0..=REDIRECT_HOP_CAP {
+        let host = host_key(&url);
+        match admission {
+            Admission::Player => budget.admit(&host).await,
+            Admission::Background => budget.admit_background(&host).await,
+        }
+        let resp = client
+            .request(method.clone(), url.as_str())
+            .headers(headers.clone())
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::warn!(upstream = url.as_str(), error = %e, "upstream: transport failure");
+                AniError::Network
+            })?;
+        let location = resp.headers().get(LOCATION).and_then(|v| v.to_str().ok());
+        match redirect_target(resp.status(), location, &url) {
+            Some(next) => {
+                tracing::debug!(
+                    from = url.as_str(),
+                    to = next.as_str(),
+                    "upstream: following a redirect"
+                );
+                url = next;
+            }
+            None => return Ok(resp),
+        }
+    }
+    tracing::warn!(
+        upstream = url.as_str(),
+        "upstream: too many redirects, gave up"
+    );
+    Err(AniError::Network)
 }
 
 /// The `Referer:` header value a session's stored referer becomes, or
@@ -152,6 +259,7 @@ pub async fn read_body_capped(
 /// - [`AniError::Upstream`] when the response status is not 2xx
 pub async fn fetch_subtitle(
     client: &reqwest::Client,
+    budget: &HostBudget,
     url: &Url,
     referer: &str,
 ) -> Result<CappedBody> {
@@ -160,12 +268,17 @@ pub async fn fetch_subtitle(
         headers.insert(REFERER, v);
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
-    let resp = client
-        .get(url.as_str())
-        .headers(headers)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
+    // A track is not what keeps playback going: it is background
+    // traffic, served after any media request waiting for a token.
+    let resp = send_paced_as(
+        client,
+        budget,
+        Admission::Background,
+        Method::GET,
+        url,
+        headers,
+    )
+    .await?;
     let status = resp.status();
     if !status.is_success() {
         return Err(AniError::Upstream {
@@ -179,7 +292,7 @@ pub async fn fetch_subtitle(
 
 /// Returns the raw bytes, the response's `Content-Type` so the proxy
 /// can echo it back to the player, and the URL the body was served
-/// from: the client follows redirects, and a manifest's relative URIs
+/// from: the fetch follows redirects, and a manifest's relative URIs
 /// are relative to where it landed, not to the URL asked for.
 ///
 /// # Errors
@@ -187,6 +300,7 @@ pub async fn fetch_subtitle(
 /// - [`AniError::Upstream`] when the response status is not 2xx
 pub async fn fetch_text(
     client: &reqwest::Client,
+    budget: &HostBudget,
     url: &Url,
     referer: &str,
 ) -> Result<(Bytes, Option<String>, Url)> {
@@ -196,12 +310,7 @@ pub async fn fetch_text(
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
 
-    let resp = client
-        .get(url.as_str())
-        .headers(headers)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
+    let resp = send_paced(client, budget, Method::GET, url, headers).await?;
     let status = resp.status();
     if !status.is_success() {
         return Err(AniError::Upstream {
@@ -213,7 +322,7 @@ pub async fn fetch_text(
         .get(HeaderName::from_static("content-type"))
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    // Where the body came from: the client follows redirects, and a
+    // Where the body came from: the fetch follows redirects, and a
     // manifest's relative URIs are relative to the URL that served
     // it, not the one asked for.
     let served_from = resp.url().clone();
@@ -237,6 +346,7 @@ pub async fn fetch_text(
 /// - [`AniError::Upstream`] when the HEAD response is non-2xx
 pub async fn classify_via_head(
     client: &reqwest::Client,
+    budget: &HostBudget,
     url: &Url,
     referer: &str,
 ) -> Result<crate::proxy::token::MediaKind> {
@@ -248,12 +358,7 @@ pub async fn classify_via_head(
     }
     headers.insert(USER_AGENT, HeaderValue::from_static(UA));
 
-    let resp = client
-        .head(url.as_str())
-        .headers(headers)
-        .send()
-        .await
-        .map_err(|_| AniError::Network)?;
+    let resp = send_paced(client, budget, Method::HEAD, url, headers).await?;
     let status = resp.status();
     if !status.is_success() {
         return Err(AniError::Upstream {
@@ -290,14 +395,15 @@ pub async fn classify_via_head(
 /// uses that to seek without downloading the whole file.
 ///
 /// 2xx **and** 206 are returned to the caller; only non-success
-/// responses outside of those ranges are treated as errors. (3xx
-/// redirects are followed transparently by `reqwest`.)
+/// responses outside of those ranges are treated as errors. Redirects
+/// are followed hop by hop, each charged to the host it lands on.
 ///
 /// # Errors
 /// - [`AniError::Network`] for connection or DNS failures
 /// - [`AniError::Upstream`] when the response status is not 2xx
 pub async fn fetch_streaming(
     client: &reqwest::Client,
+    budget: &HostBudget,
     url: &Url,
     referer: &str,
     range: Option<&str>,
@@ -313,21 +419,7 @@ pub async fn fetch_streaming(
         }
     }
 
-    let resp = client
-        .get(url.as_str())
-        .headers(headers)
-        .send()
-        .await
-        .map_err(|e| {
-            tracing::warn!(
-                upstream = url.as_str(),
-                referer = referer,
-                range = range.unwrap_or(""),
-                error = %e,
-                "fetch_streaming: network failure",
-            );
-            AniError::Network
-        })?;
+    let resp = send_paced(client, budget, Method::GET, url, headers).await?;
     let status = resp.status();
     if !status.is_success() {
         let server = resp
@@ -365,6 +457,10 @@ pub async fn fetch_streaming(
 #[cfg(test)]
 #[path = "upstream_referer_prop_test.rs"]
 mod prop_tests;
+
+#[cfg(test)]
+#[path = "upstream_redirect_prop_test.rs"]
+mod redirect_prop_tests;
 
 #[cfg(test)]
 mod track_cap_props {
@@ -498,7 +594,7 @@ mod tests {
             .await;
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/abc/sub/1", server.uri())).unwrap();
-        let kind = classify_via_head(&client, &url, "https://allmanga.to")
+        let kind = classify_via_head(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
             .await
             .unwrap();
         assert_eq!(kind, MediaKind::Hls);
@@ -515,7 +611,7 @@ mod tests {
             .await;
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/x", server.uri())).unwrap();
-        let kind = classify_via_head(&client, &url, "https://allmanga.to")
+        let kind = classify_via_head(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
             .await
             .unwrap();
         assert_eq!(kind, MediaKind::Mp4);
@@ -540,7 +636,7 @@ mod tests {
             .await;
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/videos/x/sub/1", server.uri())).unwrap();
-        let kind = classify_via_head(&client, &url, "https://allmanga.to")
+        let kind = classify_via_head(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
             .await
             .unwrap();
         assert_eq!(kind, MediaKind::Mp4);
@@ -560,7 +656,7 @@ mod tests {
             .await;
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/playlist", server.uri())).unwrap();
-        let kind = classify_via_head(&client, &url, "https://allmanga.to")
+        let kind = classify_via_head(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
             .await
             .unwrap();
         assert_eq!(kind, MediaKind::Hls);
@@ -582,9 +678,10 @@ mod tests {
 
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/master.m3u8", server.uri())).unwrap();
-        let (body, _ct, _from) = fetch_text(&client, &url, "https://allmanga.to")
-            .await
-            .unwrap();
+        let (body, _ct, _from) =
+            fetch_text(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
+                .await
+                .unwrap();
         assert_eq!(&body[..], b"#EXTM3U\n");
     }
 
@@ -602,7 +699,7 @@ mod tests {
 
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/anything", server.uri())).unwrap();
-        let err = fetch_text(&client, &url, "https://wrong.example")
+        let err = fetch_text(&client, &HostBudget::fresh(), &url, "https://wrong.example")
             .await
             .unwrap_err();
         assert!(matches!(err, AniError::Upstream { status: 404 }));
@@ -618,7 +715,7 @@ mod tests {
 
         let client = build_client().unwrap();
         let url = Url::parse(&format!("{}/x", server.uri())).unwrap();
-        let err = fetch_text(&client, &url, "https://allmanga.to")
+        let err = fetch_text(&client, &HostBudget::fresh(), &url, "https://allmanga.to")
             .await
             .unwrap_err();
         match err {

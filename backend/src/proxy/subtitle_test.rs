@@ -21,6 +21,7 @@ async fn proxy_with_tracks(referer: &str, tracks: Vec<SubtitleTrack>) -> (Router
         secret: AppSecret::from_bytes([7u8; 32]),
         client: reqwest::Client::new(),
         origin: ProxyOrigin::new("127.0.0.1", 1),
+        host_budget: host_budget::HostBudget::fresh(),
     };
     (build_router(state), id.as_string())
 }
