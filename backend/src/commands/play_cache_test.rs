@@ -188,6 +188,61 @@ async fn a_cached_rows_check_is_spent_at_every_host_a_redirect_reaches() {
     }
 }
 
+/// The check follows a redirect itself, on the app's client for stream
+/// traffic, carrying the row's referer to every hop — an edge that
+/// wants it answers only with it — and gives up on a chain that never
+/// lands, past the transport's hop cap, as a dead row.
+#[tokio::test]
+async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_loop() {
+    let origin = MockServer::start().await;
+    let edge = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/video.mp4", edge.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .and(wiremock::matchers::header(
+            "referer",
+            "https://site.example/",
+        ))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&edge)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path("/loop.mp4"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/loop.mp4", origin.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    let mut state = state_with_proxy_origin();
+    state.proxy_http = crate::proxy::upstream::build_client().expect("client");
+    let landed = cached_blank(
+        format!("{}/video.mp4", origin.uri()),
+        "https://site.example/".into(),
+        MediaKind::Mp4,
+    );
+    assert!(
+        try_serve_cached(&state, &landed).await.is_some(),
+        "the referer reached the edge"
+    );
+    let looping = cached_blank(
+        format!("{}/loop.mp4", origin.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    assert!(
+        try_serve_cached(&state, &looping).await.is_none(),
+        "a loop is a dead row"
+    );
+}
+
 mod webvtt_prefix_props {
     use crate::commands::play_cache_tracks::webvtt_prefix;
     use crate::proxy::is_webvtt;
