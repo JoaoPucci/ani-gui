@@ -99,8 +99,8 @@ pub(crate) async fn row_before_check(
 /// How long a cached row may take to prove itself live. The row is
 /// a shortcut past a fresh resolve, whose first request answers in
 /// a few seconds; a shortcut that takes longer than that is no
-/// shortcut, and the metadata client would otherwise let each URL
-/// stall for its own thirty seconds. The URLs are asked together,
+/// shortcut, and the proxy's client would otherwise let each URL
+/// stall for its own two minutes. The URLs are asked together,
 /// so this bounds the whole check, however many tracks the row
 /// lists.
 pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
@@ -138,20 +138,18 @@ pub(crate) async fn cached_row_is_live_within(
     }
     // The check waits for no token — it runs before the player starts,
     // under a deadline of seconds — but the host counts its requests,
-    // so they are spent from its budget.
-    let host_of = crate::proxy::host_budget::host_key;
-    state.host_budget.spend(&host_of(&stream_url), 1);
-    for url in &track_urls {
-        state.host_budget.spend(&host_of(url), 1);
-    }
+    // so each hop is spent from the budget of the host it reaches. The
+    // proxy's client follows no redirect on its own, so every hop is
+    // seen.
+    let budget = &state.host_budget;
     let stream = async {
-        upstream_head_ok(&state.meta_http, &stream_url, &cached.referer)
+        upstream_head_ok(&state.proxy_http, budget, &stream_url, &cached.referer)
             .await
             .then_some(())
             .ok_or(())
     };
     let tracks = track_urls.iter().map(|url| async move {
-        cached_track_ok(&state.meta_http, url, &cached.referer)
+        cached_track_ok(&state.proxy_http, budget, url, &cached.referer)
             .await
             .then_some(())
             .ok_or(())
