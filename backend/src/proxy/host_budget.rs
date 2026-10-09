@@ -19,14 +19,16 @@
 //! tracks it stages beside its transfer, since the host counts both
 //! against the one address — as background traffic, which takes a token
 //! only while no one waits for one. What reaches the host past the
-//! budget is charged to it too: a cached resolution's liveness check
-//! spends a token per request without waiting — it runs before the
-//! player starts, under a deadline of seconds — and while a download
-//! tool runs, every host's tokens are held to what the tool's requests
-//! in flight leave of the burst, never below one: its fragments go
-//! wherever its playlists send them, which the app does not see. When
-//! it ends, every host is left where the hold left it, one not yet
-//! fetched from included ([`UnpacedRun`]). Not charged: the resolver's
+//! budget counts against it too: a cached resolution's liveness check
+//! spends a token per request without waiting, at each host a redirect
+//! reaches — it runs before the player starts, under a deadline of
+//! seconds — and while download tools run, every host's tokens are held
+//! to what their requests in flight leave of the burst, never below
+//! one: their fragments go wherever their playlists send them, which
+//! the app does not see. That is a hold, not a count: what a tool sent
+//! before is not charged, only kept from adding a full burst on top.
+//! When one ends, every host is left where the hold left it, one not
+//! yet fetched from included ([`UnpacedRun`]). Not charged: the resolver's
 //! fetches of a playlist through the impersonating transport, one or
 //! two requests ahead of the player's own, and an external player the
 //! app hands a stream to, which fetches from the host on its own,

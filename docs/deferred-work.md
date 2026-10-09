@@ -209,11 +209,27 @@ starting it, and delete it when you find it done.
   fresh resolve fetches the master playlist — and the variant, for a
   quality other than best — through the impersonating transport, ahead
   of the player's own fetches of the same host, and the budget does not
-  count them. Downloads running past the budget and a cached row's
-  liveness check are charged; the resolver is not, because it runs in
+  count them. Downloads running past the budget are held to what their
+  requests in flight leave and a cached row's liveness check is
+  charged; the resolver is not, because it runs in
   the providers, which hold no budget, and its other requests go to the
   provider's site rather than the CDN. It is one or two requests
   against a burst of twenty.
+
+- **A download running past the budget is held, not counted.** While
+  yt-dlp runs free, or an ffmpeg fallback reads the host directly,
+  every host is held to what the tool's requests in flight leave of
+  the burst, and left there when it ends. That keeps a player starting
+  beside it from adding a whole burst, but the tool's requests are not
+  counted: a run that sent hundreds of fragments in the last minute
+  leaves a host the same four tokens as one that sent sixteen. The
+  hold also ends with the run — when its tree outlives its teardown,
+  or while a cancelled tool's processes are still exiting — so their
+  last requests go uncounted. Counting would need the tool's requests
+  in view: routing a free run through the proxy, or reading its
+  fragment progress. It waits
+  because the hold already bounds what the player adds, and whether
+  the host refuses a player held that way has not been measured.
 
 - **What a history removal does not reach.** Removing a show from the
   history, or clearing it, misses five things, each described in
