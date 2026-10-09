@@ -5,6 +5,8 @@
 
 use std::collections::BTreeSet;
 
+use super::play_native_kanji_number::{kanji_number, with_kanji_numbers};
+
 /// Which kind of division a marker word names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Kind {
@@ -226,20 +228,10 @@ pub(super) fn japanese_trailing(title: &str) -> Option<(Marker, &str)> {
     Some((marker, before))
 }
 
-fn kanji_or_digit(c: char) -> Option<u32> {
-    const KANJI: &str = "一二三四五六七八九";
-    c.to_digit(10)
-        .or_else(|| KANJI.chars().position(|k| k == c).map(|i| i as u32 + 1))
-}
-
-/// The number written after 第: ASCII digits, or one kanji digit.
+/// The number written after 第: ASCII digits, or a kanji number,
+/// compound ones included ("十二").
 fn japanese_number(text: &str) -> Option<u32> {
-    if let Some(n) = number(text) {
-        return Some(n);
-    }
-    let mut chars = text.chars();
-    let n = kanji_or_digit(chars.next()?)?;
-    chars.next().is_none().then_some(n)
+    number(text).or_else(|| kanji_number(text))
 }
 
 /// Every ordinal a title names anywhere: each season or part marker,
@@ -260,7 +252,7 @@ pub(super) fn named_ordinals(title: &str) -> BTreeSet<u32> {
             .iter()
             .filter_map(|w| small_number(w).or_else(|| spelled_ordinal(w))),
     );
-    let half: String = title.chars().map(half_width).collect();
+    let half = with_kanji_numbers(&title.chars().map(half_width).collect::<String>());
     // Japanese writes a season's number straight after the title, with
     // no space to make it a word of its own ("怪獣８号", "…生活２").
     let tail: String = half
@@ -275,7 +267,7 @@ pub(super) fn named_ordinals(title: &str) -> BTreeSet<u32> {
         .map(|(i, m)| half.split_at(i + m.len()))
     {
         let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
-        out.extend(number(&digits).or_else(|| after.chars().next().and_then(kanji_or_digit)));
+        out.extend(number(&digits));
     }
     out
 }

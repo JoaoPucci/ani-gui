@@ -3,6 +3,7 @@
 //! numbered on from the entry's ("Show20" for "Show 2") — split from
 //! `play_native_title_reading` for the per-file complexity bar.
 
+use super::play_native_kanji_number::with_kanji_numbers;
 use super::play_native_title_grammar::words;
 
 /// A title's words before its first number, run together, and that
@@ -13,7 +14,9 @@ use super::play_native_title_grammar::words;
 /// ("show", "20"), "Mob Psycho 100 II" is ("mobpsycho", "100"), "86
 /// Part 2" is ("", "86").
 fn first_number(title: &str) -> Option<(String, String)> {
-    let words = words(title);
+    // A kanji number where one is expected counts as the number it is
+    // ("怪獣八十号" carries 80).
+    let words: Vec<String> = words(title).iter().map(|w| with_kanji_numbers(w)).collect();
     let at = words
         .iter()
         .position(|w| w.chars().any(|c| c.is_ascii_digit()))?;
