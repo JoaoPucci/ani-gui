@@ -74,5 +74,6 @@
 	"failure_timeout": "O download demorou demais e foi interrompido. Tente novamente mais tarde.",
 	"failure_write": "Não foi possível salvar o arquivo na pasta de download. Verifique se a pasta existe, permite gravação e tem espaço livre.",
 	"failure_no_folder": "Nenhuma pasta de download definida. Escolha uma e tente novamente.",
-	"failure_tool": "O programa de download parou com um erro. Tente novamente mais tarde."
+	"failure_tool": "O programa de download parou com um erro. Tente novamente mais tarde.",
+	"failure_tool_spawn": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele executa; caso contrário, reinstale o ani-gui."
 }

@@ -74,5 +74,6 @@
 	"failure_timeout": "The download took too long and was stopped. Try again later.",
 	"failure_write": "Couldn't save the file to the download folder. Check that the folder exists, is writable and has free space.",
 	"failure_no_folder": "No download folder is set. Choose one and try again.",
-	"failure_tool": "The downloader stopped with an error. Try again later."
+	"failure_tool": "The downloader stopped with an error. Try again later.",
+	"failure_tool_spawn": "The downloader couldn't be started. If you installed yt-dlp or ffmpeg yourself, check that it runs; otherwise reinstall ani-gui."
 }

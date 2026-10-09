@@ -8,7 +8,8 @@
  *     true of all three
  *   - `io`: the destination folder refusing the file
  *   - `config`: no download folder set and no default to fall back to
- *   - `scraper`: the download tool exiting non-zero
+ *   - `scraper`: the download tool exiting non-zero, or (with the key
+ *     `error.download.tool_spawn_failed`) not starting at all
  *
  * Every other kind gets describeError's sentence.
  */
@@ -24,8 +25,13 @@ const COPY_BY_KIND: Readonly<Record<string, () => string>> = {
 };
 
 export function describeDownloadFailure(e: unknown): string {
-	const kind =
-		typeof e === 'object' && e !== null ? (e as Record<string, unknown>).kind : undefined;
+	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
+	const kind = obj?.kind;
+	// The download-tool variant carries the spawn key when the tool was
+	// found but could not be started at all.
+	if (kind === 'scraper' && obj?.key === 'error.download.tool_spawn_failed') {
+		return m.download_failure_tool_spawn();
+	}
 	if (typeof kind === 'string' && Object.hasOwn(COPY_BY_KIND, kind)) return COPY_BY_KIND[kind]();
 	return describeError(e);
 }
