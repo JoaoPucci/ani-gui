@@ -28,7 +28,9 @@ pub enum AniError {
     /// that narrowing.
     #[error("scraper error")]
     Scraper {
-        /// i18n key under `error.scraper.*`.
+        /// i18n key: `error.scraper.parse_failed` for a tool that ran
+        /// and failed, `error.download.tool_spawn_failed` for one that
+        /// could not be started.
         key: &'static str,
     },
 

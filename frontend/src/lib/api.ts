@@ -266,8 +266,8 @@ export interface LaunchExternalPlayerArgs {
  * every SSE error event carry it, and so what api.ts calls reject
  * with. The backend always sends `kind` and `key`; the rest are the
  * variant's own fields. The fallback expect2xx builds for a body that
- * is not JSON has a `kind` and a `status` only. User-facing copy comes from `kind` and the
- * fields that change what the user should do — `status` on an
+ * is not JSON has a `kind` and a `status` only. User-facing copy
+ * comes from `kind` and the fields that change what the user should do — `status` on an
  * upstream, `retry_after_secs` on a rate limit, `binary` on a spawn
  * failure, `key` on a download-tool failure (see `describeError` in
  * $lib/play/describe-error and the mappers beside it). `detail` is

@@ -72,8 +72,9 @@ pub mod keys {
     /// Something the app read did not have the shape it expected.
     /// `AniError::ParseFailed` maps here from the metadata clients,
     /// the provider parsers, the proxy's manifest rewriter and session
-    /// URL parsing; `AniError::Scraper` maps here too, and the only
-    /// thing that constructs it is a download tool exiting non-zero.
+    /// URL parsing; `AniError::Scraper` maps here too for a download
+    /// tool exiting non-zero (a tool that cannot be started carries
+    /// `DOWNLOAD_TOOL_SPAWN_FAILED` instead).
     pub const SCRAPER_PARSE_FAILED: &str = "error.scraper.parse_failed";
     /// A deadline elapsed. `AniError::Timeout` maps here from a
     /// bounded resolve, an availability probe, and a download whose
