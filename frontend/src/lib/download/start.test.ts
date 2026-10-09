@@ -262,6 +262,27 @@ describe('startDownload', () => {
 		}
 	});
 
+	it('says the downloader could not start when the tool cannot be spawned', async () => {
+		// The backend raises the download-tool variant with its own key
+		// when yt-dlp or ffmpeg is found but cannot be started; a tool
+		// that ran and failed carries the other key. The user acts on
+		// the two differently, so they read differently.
+		const spawn = { kind: 'scraper', key: 'error.download.tool_spawn_failed' };
+		const ran = { kind: 'scraper', key: 'error.scraper.parse_failed' };
+		const shown: string[] = [];
+		for (const failure of [spawn, ran]) {
+			storeMock.downloadStore.markError.mockReset();
+			apiMock.downloadStream.mockRejectedValueOnce(failure);
+			startDownload(baseArgs);
+			await Promise.resolve();
+			await Promise.resolve();
+			shown.push(storeMock.downloadStore.markError.mock.calls[0]?.[1] as string);
+		}
+		expect(shown[0]).toMatch(/couldn't be started/i);
+		expect(shown[0]).not.toBe(shown[1]);
+		expect(shown[0]).not.toMatch(/connection/i);
+	});
+
 	it('falls back to localized generic copy for an unrecognised rejection', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce({ unexpected: true });
 		startDownload(baseArgs);
