@@ -337,3 +337,30 @@ fn a_spend_beside_an_unpaced_download_comes_off_what_the_hold_leaves() {
     let left = budget.on_hand("cdn.example:443").expect("spent");
     assert!((left - 2.0).abs() < 1e-3, "{left}");
 }
+
+/// Two unpaced downloads running together hold every host to what
+/// their requests in flight leave between them, and the first to end
+/// leaves every host there — a host fetched from before, and one not
+/// fetched from yet — not where its own requests alone would have.
+#[tokio::test(start_paused = true)]
+async fn overlapping_unpaced_downloads_leave_every_host_where_both_held_it() {
+    let budget = HostBudget::fresh();
+    budget.admit("cdn.example:443").await;
+    let first = budget.unpaced_run(8);
+    let second = budget.unpaced_run(8);
+    drop(first);
+    drop(second);
+    let left = budget.on_hand("cdn.example:443").expect("fetched from");
+    assert!((left - 4.0).abs() < 1e-6, "fetched from before: {left}");
+    for _ in 0..4 {
+        tokio::time::timeout(Duration::from_millis(1), budget.admit("seg.example:443"))
+            .await
+            .expect("within what the downloads left");
+    }
+    assert!(
+        tokio::time::timeout(SEGMENT_REFILL / 2, budget.admit("seg.example:443"))
+            .await
+            .is_err(),
+        "a host not fetched from yet: the fifth waits"
+    );
+}
