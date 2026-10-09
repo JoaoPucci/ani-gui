@@ -126,7 +126,7 @@ Cheap grep / AST tests under `tests/arch/`. They fail loudly when boundaries ero
 |---|---|
 | Frontend imports no Rust types except generated `bindings/*.ts` | custom ESLint rule |
 | Every HTTP API handler returns `Result<T, AniError>` | syn-based audit |
-| No hardcoded English in `.svelte` files (must go through `m.<key>()`) | regex test, allowlist for `aria-*`, `data-testid` |
+| No hardcoded English in `.svelte` files or `.ts` modules under `frontend/src/` (must go through `m.<key>()`) | custom ESLint rule `no-hardcoded-strings`, `i18n-ignore` escape |
 | Crate dependency direction (`cache` doesn't depend on `reqwest`, etc.) | `cargo-deny` + `cargo-modules` |
 
 ## Mutation testing (deferred)

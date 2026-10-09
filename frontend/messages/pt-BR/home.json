@@ -33,5 +33,6 @@
 	"clear_confirm_title_one": "Remover 1 entrada do histórico?",
 	"clear_confirm_title_other": "Remover {count} entradas do histórico?",
 	"clear_confirm_body": "Isso apaga o histórico de reprodução do ani-gui. Não pode ser desfeito.",
-	"clear_confirm_button": "Limpar tudo"
+	"clear_confirm_button": "Limpar tudo",
+	"hero_error_eyebrow_value": "Sem resposta do Kitsu"
 }

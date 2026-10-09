@@ -1,4 +1,14 @@
 {
 	"dismiss_default_label": "Entendi",
-	"failed_default": "Falhou"
+	"failed_default": "Falhou",
+	"reason_network": "Não foi possível acessar o serviço. Verifique sua conexão e tente novamente.",
+	"reason_timeout": "O serviço demorou demais para responder. Tente novamente em instantes.",
+	"reason_busy": "O serviço está ocupado agora. Aguarde alguns segundos e tente novamente.",
+	"reason_bad_response": "O serviço enviou uma resposta que o app não conseguiu ler. Tente novamente mais tarde.",
+	"reason_local": "Algo deu errado neste computador. Reinicie o app e tente novamente.",
+	"reason_generic": "Algo deu errado. Tente novamente.",
+	"reason_answered_error": "O serviço respondeu com um erro. Tente novamente mais tarde.",
+	"reason_not_found": "O serviço não encontrou o que foi pedido. Pode ter sido removido.",
+	"reason_service_down": "O serviço está fora do ar ou com problemas agora. Não há nada de errado do seu lado — tente novamente mais tarde.",
+	"reason_busy_wait": "O serviço está ocupado agora. Tente novamente em cerca de {seconds} s."
 }

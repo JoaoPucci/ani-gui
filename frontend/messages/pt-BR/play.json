@@ -76,7 +76,7 @@
 	"episode_card_num": "EP {episode}",
 	"episode_card_title_fallback": "Episódio {num}",
 	"episode_card_length_minutes": "{minutes}min",
-	"episodes_error_message": "Não foi possível carregar os episódios ({detail}).",
+	"episodes_error_message": "Não foi possível carregar os episódios. {reason}",
 	"episodes_loading_message": "Carregando episódios…",
 	"similar_strip_eyebrow": "Mais como este",
 	"error_play_headline": "Não foi possível reproduzir o episódio {episode}",
@@ -99,7 +99,7 @@
 	"play_failure_timeout": "A fonte de streaming demorou demais para responder. Tente de novo em alguns minutos.",
 	"play_failure_network": "Problema de rede ao acessar a fonte de streaming. Verifique sua conexão e tente de novo.",
 	"play_failure_rate_limited": "A fonte de streaming está ocupada agora. Aguarde alguns segundos e tente de novo.",
-	"play_failure_rate_limited_wait": "A fonte de streaming está ocupada agora. Tente de novo em uns {seconds} segundos.",
+	"play_failure_rate_limited_wait": "A fonte de streaming está ocupada agora. Tente de novo em uns {seconds} s.",
 	"play_failure_generic": "Não foi possível iniciar este episódio agora. Tente de novo em alguns minutos.",
 	"progress_searching": "Buscando em {provider}…",
 	"progress_matched": "Encontrado: {title}",
@@ -108,5 +108,14 @@
 	"error_host_slow": "O servidor de vídeo está respondendo devagar agora. Costuma ser um problema do provedor — tentar de novo mais tarde geralmente resolve.",
 	"error_fragment_loop": "O servidor de vídeo enviou um stream que o player não consegue armazenar — as partes chegam mas nunca tocam. A reprodução parou em vez de continuar pedindo a mesma parte ao servidor.",
 	"stall_toast_nudge": "A transmissão travou — o servidor de vídeo está lento. Tentando de novo…",
-	"play_failure_source_down": "A fonte de streaming está fora do ar ou em manutenção agora. Não há nada de errado do seu lado — tente de novo mais tarde."
+	"play_failure_source_down": "A fonte de streaming está fora do ar ou em manutenção agora. Não há nada de errado do seu lado — tente de novo mais tarde.",
+	"track_fallback_label": "Faixa {number}",
+	"error_playback_technical": "Erro de reprodução: {detail}",
+	"error_hls_unsupported": "Este webview não reproduz HLS.",
+	"error_no_show_id": "O endereço não traz o id do título.",
+	"test_error_hls_fatal": "Erro fatal de HLS: {detail}",
+	"test_error_play_failed": "Falha ao reproduzir: {detail}",
+	"test_error_setup_failed": "Falha na configuração: {detail}",
+	"error_load_failed": "Não foi possível carregar este título. {reason}",
+	"play_failure_source_error": "A fonte de streaming respondeu com um erro. Tente novamente mais tarde."
 }

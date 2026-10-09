@@ -25,8 +25,8 @@ pub struct AppInfo {
 /// Body of the command. Pure projection of `AppState` fields.
 ///
 /// # Errors
-/// Currently never returns an error; signature uses `Result` to keep the
-/// future-compatible shape Tauri commands expect.
+/// Currently never returns an error; the signature uses `Result` to
+/// match the other command bodies the HTTP handlers call with `?`.
 pub fn app_info(state: &crate::app::AppState) -> Result<AppInfo> {
     Ok(AppInfo {
         version: crate::display_version(),

@@ -1,10 +1,9 @@
 //! HTTP API exposed by the localhost server.
 //!
-//! Wraps the same `commands::*` functions Tauri's `#[tauri::command]`
-//! handlers used to call. The migration from Tauri (webkit2gtk) to
-//! Electron (Chromium) means the frontend talks to this router via
-//! `fetch` instead of `invoke`. Routes mirror the IPC surface 1:1 in
-//! shape; only the wire protocol changes.
+//! Wraps the `commands::*` functions. The frontend, running in the
+//! Electron shell, talks to this router via `fetch`. (The routes began
+//! as a 1:1 port of the `#[tauri::command]` handlers the app had before
+//! Electron; only the wire protocol changed.)
 //!
 //! Mounted alongside the streaming-proxy router (`crate::proxy`) on
 //! the same kernel-assigned loopback port. Both routers share the
@@ -58,9 +57,11 @@ impl IntoResponse for AniError {
     }
 }
 
-/// Convert an [`AniError`] into the JSON envelope every error answer
-/// carries: the HTTP error bodies and the play- and download-stream
-/// SSE error events alike
+/// Convert an [`AniError`] into the JSON envelope every error the app
+/// raises carries: the HTTP error bodies and the play- and download-stream
+/// SSE error events alike. Answers the router or an extractor gives
+/// before a handler runs, and `get_image`'s plain-text refusal, are not
+/// `AniError`s and carry no envelope
 /// (`{"kind": "<snake>", "key": "error.<scope>.<name>", ...}`)
 /// — the frontend matches on `kind` to render error-specific UI (the
 /// ffmpeg-missing modal, the rate-limit and upstream copy, the
@@ -425,10 +426,9 @@ struct ImageQuery {
     url: String,
 }
 
-/// Serve a cached/freshly-fetched image. The Tauri build used a custom
-/// `image://` URI scheme; under Electron the renderer can't reach
-/// that, so it asks for the bytes over plain HTTP. Same on-disk cache
-/// (`meta::images`) backs both transports.
+/// Serve a cached/freshly-fetched image over plain HTTP, from the
+/// on-disk cache in `meta::images`. (The Tauri build used a custom
+/// `image://` scheme for this; Electron has no such handler.)
 ///
 /// Only `https://` upstreams are accepted — refusing other schemes
 /// avoids letting a malicious renderer turn the loopback server into
@@ -1266,9 +1266,8 @@ mod tests {
 
     #[tokio::test]
     async fn ani_error_no_results_serializes_with_kind() {
-        // Spot-check the IntoResponse impl — the body has the same JSON
-        // shape Tauri used to deliver as the rejection payload, so the
-        // frontend's error parser can keep the same structure.
+        // Spot-check the IntoResponse impl — the body carries the `kind`
+        // discriminator the frontend's error copy is chosen from.
         let resp = AniError::NoResults.into_response();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         let body = body_string(resp).await;
@@ -1346,10 +1345,9 @@ mod tests {
         );
     }
 
-    /// Cross-origin `<img src=>` loads can't ride Tauri's `image://`
-    /// custom protocol from Electron — the renderer fetches via plain
-    /// HTTP. The route must serve cached bytes with the right
-    /// Content-Type, and refuse non-https upstreams (defense in depth
+    /// Images reach the renderer over plain HTTP (there is no
+    /// `image://` custom protocol under Electron). The route must serve
+    /// cached bytes with the right Content-Type, and refuse non-https upstreams (defense in depth
     /// against an XSS asking the loopback server to fetch arbitrary
     /// schemes).
     #[tokio::test]

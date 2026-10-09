@@ -43,6 +43,12 @@ pub mod keys {
     /// frontend change too.
     pub const DOWNLOAD_FFMPEG_MISSING: &str = "error.download.ffmpeg_missing";
 
+    /// A download tool was found but could not be started: gone since
+    /// it was found, not executable, or refused by the OS. Carried by
+    /// [`crate::error::AniError::Scraper`], the download-tool variant,
+    /// so the dock can tell it from a tool that ran and failed.
+    pub const DOWNLOAD_TOOL_SPAWN_FAILED: &str = "error.download.tool_spawn_failed";
+
     // --- error.io.* ---
     /// Generic filesystem error.
     pub const IO_GENERIC: &str = "error.io.generic";
@@ -66,8 +72,9 @@ pub mod keys {
     /// Something the app read did not have the shape it expected.
     /// `AniError::ParseFailed` maps here from the metadata clients,
     /// the provider parsers, the proxy's manifest rewriter and session
-    /// URL parsing; `AniError::Scraper` maps here too, and the only
-    /// thing that constructs it is a download tool exiting non-zero.
+    /// URL parsing; `AniError::Scraper` maps here too for a download
+    /// tool exiting non-zero (a tool that cannot be started carries
+    /// `DOWNLOAD_TOOL_SPAWN_FAILED` instead).
     pub const SCRAPER_PARSE_FAILED: &str = "error.scraper.parse_failed";
     /// A deadline elapsed. `AniError::Timeout` maps here from a
     /// bounded resolve, an availability probe, and a download whose
@@ -102,6 +109,7 @@ mod tests {
             CACHE_GENERIC,
             CONFIG_PARSE,
             DOWNLOAD_FFMPEG_MISSING,
+            DOWNLOAD_TOOL_SPAWN_FAILED,
             IO_GENERIC,
             METADATA_SOURCE,
             NETWORK_UNREACHABLE,

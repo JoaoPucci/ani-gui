@@ -76,7 +76,7 @@
 	"episode_card_num": "EP {episode}",
 	"episode_card_title_fallback": "Episode {num}",
 	"episode_card_length_minutes": "{minutes}m",
-	"episodes_error_message": "Couldn't load episodes ({detail}).",
+	"episodes_error_message": "Couldn't load episodes. {reason}",
 	"episodes_loading_message": "Loading episodes…",
 	"similar_strip_eyebrow": "More like this",
 	"error_play_headline": "Couldn't play episode {episode}",
@@ -99,7 +99,7 @@
 	"play_failure_timeout": "The streaming source took too long to respond. Try again in a few minutes.",
 	"play_failure_network": "Network trouble reaching the streaming source. Check your connection and try again.",
 	"play_failure_rate_limited": "The streaming source is busy right now. Wait a few seconds and try again.",
-	"play_failure_rate_limited_wait": "The streaming source is busy right now. Try again in about {seconds} seconds.",
+	"play_failure_rate_limited_wait": "The streaming source is busy right now. Try again in about {seconds} s.",
 	"play_failure_generic": "Couldn't start this episode right now. Try again in a few minutes.",
 	"progress_searching": "Searching {provider}…",
 	"progress_matched": "Matched {title}",
@@ -108,5 +108,14 @@
 	"error_host_slow": "The video host is responding slowly right now. This is usually on the provider’s side — retrying later often fixes it.",
 	"error_fragment_loop": "The video host sent a stream this player can’t buffer — its pieces arrive but never play. Playback stopped rather than keep asking the host for the same piece.",
 	"stall_toast_nudge": "Stream stalled — the video host is slow. Retrying…",
-	"play_failure_source_down": "The streaming source is down or under maintenance right now. Nothing is wrong on your end — try again later."
+	"play_failure_source_down": "The streaming source is down or under maintenance right now. Nothing is wrong on your end — try again later.",
+	"track_fallback_label": "Track {number}",
+	"error_playback_technical": "Playback error: {detail}",
+	"error_hls_unsupported": "HLS playback is not supported in this webview.",
+	"error_no_show_id": "The address is missing the show's id.",
+	"test_error_hls_fatal": "HLS fatal: {detail}",
+	"test_error_play_failed": "Play failed: {detail}",
+	"test_error_setup_failed": "Setup failed: {detail}",
+	"error_load_failed": "Couldn't load this title. {reason}",
+	"play_failure_source_error": "The streaming source answered with an error. Try again later."
 }

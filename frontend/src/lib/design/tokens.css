@@ -17,7 +17,8 @@
  *     Cleaner at small sizes than DejaVu / Liberation Mono.
  * Until self-hosted, the chains below try those by name (used if locally
  * installed) before falling through to ui-* and platform defaults. No
- * @import here — Tauri/Electron CSP defaults font-src to 'self' only. */
+ * @import of a hosted font stylesheet here: the plan is the self-hosted
+ * .woff2 above, not a font CDN fetched at runtime. */
 
 :root {
 	color-scheme: dark;

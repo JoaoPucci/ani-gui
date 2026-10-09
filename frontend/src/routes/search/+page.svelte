@@ -25,7 +25,9 @@
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { createSearchRunner } from '$lib/search/run-search';
+	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
+	import { describeError } from '$lib/play/error-copy';
 
 	let submitted = $state(''); // the query whose results are on screen.
 	let results = $state<KitsuAnimeRef[] | null>(null);
@@ -48,11 +50,12 @@
 	// to ~20 hits per query; sorting/filtering is cheap to do here
 	// rather than re-querying.
 	type SortKey = 'relevance' | 'title' | 'year' | 'rating';
-	const SORT_LABELS: Record<SortKey, string> = {
-		relevance: 'Relevance',
-		title: 'Title',
-		year: 'Year',
-		rating: 'Rating'
+	// Message functions, called at render so a locale switch relabels.
+	const SORT_LABELS: Record<SortKey, () => string> = {
+		relevance: m.search_sort_relevance,
+		title: m.search_sort_title,
+		year: m.search_sort_year,
+		rating: m.search_sort_rating
 	};
 	const SUBTYPES = ['TV', 'movie', 'special', 'OVA', 'ONA', 'music'];
 	let sortKey = $state<SortKey>('relevance');
@@ -149,7 +152,7 @@
 			results = visible;
 		},
 		onError: (e) => {
-			error = describeError(e);
+			error = { headline: m.search_error_headline(), detail: describeError(e) };
 			results = null;
 		},
 		onBusy: (b) => {
@@ -161,20 +164,6 @@
 		error = null;
 		submitted = q;
 		await searchRunner.run(q);
-	}
-
-	function describeError(e: unknown): { headline: string; detail: string | null } {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			const detail =
-				typeof obj.detail === 'string'
-					? obj.detail
-					: typeof obj.kind === 'string'
-						? obj.kind
-						: null;
-			return { headline: "Couldn't reach Kitsu.", detail };
-		}
-		return { headline: "Couldn't reach Kitsu.", detail: String(e) };
 	}
 
 	function posterFor(hit: KitsuAnimeRef): string | null {
@@ -198,9 +187,6 @@
 	function ratingOf(hit: KitsuAnimeRef): string | null {
 		if (hit.average_rating === null) return null;
 		return (hit.average_rating / 10).toFixed(1);
-	}
-	function subtypeOf(hit: KitsuAnimeRef): string {
-		return (hit.subtype ?? 'TV').toUpperCase();
 	}
 </script>
 
@@ -261,7 +247,7 @@
 							aria-checked={sortKey === key}
 							onclick={() => (sortKey = key as SortKey)}
 						>
-							{label}
+							{label()}
 						</button>
 					{/each}
 				</div>
@@ -277,7 +263,7 @@
 							aria-pressed={activeSubtypes.has(s)}
 							onclick={() => toggleSubtype(s)}
 						>
-							{s.toUpperCase()}
+							{subtypeLabel(s)}
 						</button>
 					{/each}
 					{#if activeSubtypes.size > 0}
@@ -378,7 +364,7 @@
 						<span class="card-body">
 							<span class="card-title">{hit.canonical_title}</span>
 							<span class="card-meta">
-								<span>{subtypeOf(hit)}</span>
+								<span>{subtypeLabel(hit.subtype)}</span>
 								{#if year}
 									<span class="card-meta-sep" aria-hidden="true">·</span>
 									<span>{year}</span>

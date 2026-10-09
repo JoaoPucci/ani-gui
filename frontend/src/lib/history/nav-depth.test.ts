@@ -9,9 +9,10 @@ const step = (type: NavType, prevDepth: number, stampedDepth: number | null = nu
 
 describe('nextDepth', () => {
 	it("'enter' resets to 0 regardless of prev or stamped depth", () => {
-		// Tauri's WebView sometimes preserves window.history.state across
-		// app launches; a stamped 5 from yesterday must not bleed into
-		// today's first paint.
+		// A webview can preserve window.history.state across app
+		// launches (the Tauri one this app ran in before Electron did);
+		// a stamped 5 from a previous session must not bleed into this
+		// one's first paint.
 		expect(nextDepth(step('enter', 5, 5))).toBe(0);
 		expect(nextDepth(step('enter', 0, null))).toBe(0);
 	});

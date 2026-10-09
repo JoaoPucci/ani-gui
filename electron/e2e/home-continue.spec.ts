@@ -365,7 +365,9 @@ test('Rate-limited play surfaces the busy-source copy with the advertised wait',
 		await card.click();
 
 		await expect(page.getByText(/busy right now/i)).toBeVisible({ timeout: 10_000 });
-		await expect(page.getByText(/about 9 seconds/i)).toBeVisible();
+		// The wait is written with the unit's abbreviation, which reads
+		// right for any number in every locale.
+		await expect(page.getByText(/about 9 s\b/i)).toBeVisible();
 	} finally {
 		await app.close();
 	}

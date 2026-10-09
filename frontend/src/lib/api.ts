@@ -107,6 +107,7 @@ async function apiBase(): Promise<string> {
 	}
 	throw new Error(
 		'ani-gui apiBase is not configured — Electron preload should set window.aniGui.apiBase, ' +
+			// i18n-ignore: developer-facing error, part of the message above
 			'or set VITE_ANI_GUI_API_BASE for browser-only dev.'
 	);
 }
@@ -130,9 +131,10 @@ async function url(path: string): Promise<string> {
 
 /**
  * Read the JSON body or throw the parsed error payload. The backend
- * serializes `AniError` as `{ kind, key?, detail?, status? }`; tests
- * downstream of api.ts inspect the same shape that Tauri's reject
- * payloads carried, so call-site error parsing is unchanged.
+ * sends its error envelope as the error response's body — `kind`, the
+ * variant's own fields and the stable `key` (see AniErrorPayload) —
+ * and that object is what callers catch; a body that is not JSON
+ * becomes `{ kind: 'http', status }`.
  */
 async function expect2xx<T>(resp: Response): Promise<T> {
 	if (!resp.ok) {
@@ -260,14 +262,26 @@ export interface LaunchExternalPlayerArgs {
 }
 
 /**
- * Shape of `AniError` once Tauri serializes it as the rejection value.
- * Frontend localizers look up `key` (when present) in the i18n catalog.
+ * The backend's error envelope, as every error the app raises carries
+ * it — an HTTP error body or an SSE error event — and so what api.ts
+ * calls reject with. The envelope always has `kind` and `key`; the rest
+ * are the variant's own fields. An answer the router or the HTTP layer
+ * gives before a handler runs, or the image route's refusal, carries no
+ * envelope. The fallback expect2xx builds for a body that
+ * is not JSON has a `kind` and a `status` only. User-facing copy
+ * comes from `kind` and the fields that change what the user should do — `status` on an
+ * upstream, `retry_after_secs` on a rate limit, `binary` on a spawn
+ * failure, `key` on a download-tool failure (see `describeError` in
+ * $lib/play/describe-error and the mappers beside it). `detail` is
+ * free text for logs and is never shown.
  */
 export interface AniErrorPayload {
 	kind: string;
 	key?: string;
 	detail?: string;
 	status?: number;
+	retry_after_secs?: number | null;
+	binary?: string;
 }
 
 /** Portrait poster URLs (5:7) at Kitsu's pre-rendered sizes. */

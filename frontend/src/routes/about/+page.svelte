@@ -16,6 +16,7 @@
 		ASSETS,
 		BUNDLED_TOOLS,
 		DONATION_ETH_ADDRESS,
+		assetName,
 		type AssetNoteId,
 		type BundledToolNoteId
 	} from '$lib/about/credits';
@@ -155,7 +156,7 @@
 					<div class="credit-head">
 						<!-- eslint-disable svelte/no-navigation-without-resolve -->
 						<a class="credit-name" href={asset.url} target="_blank" rel="noopener noreferrer"
-							>{asset.name}</a
+							>{assetName(asset.noteId)}</a
 						>
 						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 						<span class="credit-license">{asset.license}</span>

@@ -14,7 +14,10 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
-	import { describePlayFailure as sharedDescribePlayFailure } from '$lib/play/error-copy';
+	import {
+		describeError,
+		describePlayFailure as sharedDescribePlayFailure
+	} from '$lib/play/error-copy';
 	import { progressLabel } from '$lib/play/format';
 
 	// Per-id, split-per-transition gate for the Continue Watching
@@ -140,6 +143,9 @@
 	// sees a retry affordance instead of a false "nothing planned"
 	// (Codex PR #71).
 	let watchLaterFailed = $state(false);
+	// What the last failed load rejected with, so the rail's hint can
+	// say what went wrong instead of always blaming the connection.
+	let watchLaterError = $state<unknown>(null);
 	// Monotonic load token. Every rail load (mount effect + refresh)
 	// captures the next value and only writes its result if still the
 	// latest — so a slow initial load can't clobber a newer refresh, and
@@ -491,13 +497,14 @@
 				watchLaterFailed = false;
 				maybeAutoRefreshWatchLater(deps);
 			})
-			.catch(() => {
+			.catch((e: unknown) => {
 				// Loader's per-provider try/catch already swallowed
 				// individual failures; a top-level reject means every
 				// provider failed (or the bridge died). Flag the failure
 				// (distinct from a genuinely empty list) so the rail shows
 				// a retry affordance rather than "nothing planned".
 				if (seq !== watchLaterLoadSeq) return;
+				watchLaterError = e;
 				watchLaterFailed = true;
 			});
 	});
@@ -565,13 +572,14 @@
 			if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
 			watchLater = filtered;
 			watchLaterFailed = false;
-		} catch {
+		} catch (e) {
 			// Refresh-path reload failed (bridge / availability). Flag it
 			// rather than blanking the rail or leaking an unhandled
 			// rejection: a populated rail keeps showing its cards (the
 			// length>0 branch wins), an empty one shows the retry state
 			// (Codex PR #71).
 			if (seq !== watchLaterLoadSeq) return;
+			watchLaterError = e;
 			watchLaterFailed = true;
 		}
 	}
@@ -623,15 +631,6 @@
 		const now = Date.now();
 		const stale = providers.some((p) => isWatchLaterStale(readLastRefreshed(p), now));
 		if (stale) void refreshWatchLater();
-	}
-
-	function describeError(e: unknown): string {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			if (typeof obj.detail === 'string') return obj.detail;
-			if (typeof obj.kind === 'string') return obj.kind;
-		}
-		return String(e);
 	}
 
 	/** Play-call failure copy: the shared mapper, default phrasing.
@@ -843,7 +842,7 @@
 			<p class="eyebrow">
 				<span class="eyebrow-key">{m.home_hero_error_eyebrow_key()}</span>
 				<span class="eyebrow-rule" aria-hidden="true"></span>
-				<span class="eyebrow-value">{trendingError}</span>
+				<span class="eyebrow-value">{m.home_hero_error_eyebrow_value()}</span>
 			</p>
 			<h1 class="hero-title">{m.home_hero_error_title()}</h1>
 			<p class="hero-snippet">{m.home_hero_error_body()}</p>
@@ -1203,7 +1202,9 @@
 		caption={m.account_watch_later_failed()}
 		headerTrailing={watchLaterRefresh}
 	>
-		<p class="watch-later-empty">{m.account_watch_later_failed_hint()}</p>
+		<p class="watch-later-empty">
+			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
+		</p>
 	</Strip>
 {:else if accountStore.hasAny && watchLater !== null}
 	<!-- Connected and the cached Plan-to-Watch is genuinely empty. Still

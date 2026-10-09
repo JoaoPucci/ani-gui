@@ -21,6 +21,21 @@
 import type { ListEntry, Provider } from './types';
 import type { KitsuAnimeRef } from '$lib/api';
 import { mergedWatchLater } from './watch-later';
+import { AccountApiError } from './api';
+
+/** The backend's error envelope when an AccountApiError carries one as
+ *  its body, so a caller can word the failure by its `kind`; anything
+ *  else is returned as it was thrown. */
+function envelopeOf(e: unknown): unknown {
+	if (!(e instanceof AccountApiError)) return e;
+	try {
+		const body: unknown = JSON.parse(e.detail);
+		if (typeof body === 'object' && body !== null && 'kind' in body) return body;
+	} catch {
+		/* not JSON: fall through */
+	}
+	return { kind: 'http', status: e.status };
+}
 
 /**
  * Mirror of the backend's
@@ -61,7 +76,9 @@ export interface WatchLaterDeps {
  * provider's fetch fails, the loader rejects rather than resolving
  * `[]`: a total failure is distinct from a genuinely empty list, and
  * the caller surfaces a retry state for it instead of "nothing
- * planned" (Codex P2 #3415603155).
+ * planned" (Codex P2 #3415603155). The rejection is the first
+ * provider failure, as the backend's error envelope when its body
+ * carried one, so the caller can word it by `kind`.
  */
 export async function loadWatchLater(deps: WatchLaterDeps): Promise<KitsuAnimeRef[]> {
 	const providers = Object.keys(deps.credentials) as Provider[];
@@ -69,6 +86,7 @@ export async function loadWatchLater(deps: WatchLaterDeps): Promise<KitsuAnimeRe
 
 	const byProvider: Partial<Record<Provider, ListEntry[]>> = {};
 	let anySucceeded = false;
+	let firstFailure: unknown = null;
 	await Promise.all(
 		providers.map(async (provider) => {
 			const cred = deps.credentials[provider];
@@ -76,18 +94,22 @@ export async function loadWatchLater(deps: WatchLaterDeps): Promise<KitsuAnimeRe
 			try {
 				byProvider[provider] = await deps.fetchCachedList(provider, cred.bearer, cred.userId);
 				anySucceeded = true;
-			} catch {
+			} catch (e) {
 				/* Per-provider failure is non-fatal here: leave the entry
 				   empty so the merge proceeds with whatever else succeeded.
-				   The all-failed case is handled right after. */
+				   The all-failed case is handled right after, with the
+				   first failure kept so the caller can word it. */
+				firstFailure ??= envelopeOf(e);
 			}
 		})
 	);
 
 	// Every connected provider failed — that's a load failure, not an
-	// empty list. Reject so the caller can show its retry affordance.
+	// empty list. Reject with the first failure (the backend's envelope
+	// when there was one) so the caller can show its retry affordance
+	// and say what went wrong.
 	if (!anySucceeded) {
-		throw new Error('loadWatchLater: every connected provider failed');
+		throw firstFailure ?? new Error('loadWatchLater: no connected provider could be read');
 	}
 
 	const merged = mergedWatchLater(byProvider, deps.primary);

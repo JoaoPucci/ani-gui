@@ -33,5 +33,6 @@
 	"clear_confirm_title_one": "Remove 1 entry from history?",
 	"clear_confirm_title_other": "Remove {count} entries from history?",
 	"clear_confirm_body": "This clears ani-gui's watch history. Cannot be undone.",
-	"clear_confirm_button": "Clear all"
+	"clear_confirm_button": "Clear all",
+	"hero_error_eyebrow_value": "No answer from Kitsu"
 }

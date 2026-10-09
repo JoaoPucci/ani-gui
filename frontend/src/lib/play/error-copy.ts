@@ -1,78 +1,68 @@
 /**
- * Maps backend errors to user-facing copy on the play page. Two
- * helpers, in order of specificity:
+ * Maps backend errors to user-facing copy. The helpers, in order of
+ * specificity:
  *
- *   • `describeError` flattens the AniError envelope to a debug
- *     string (`"<kind>: <detail>"`); used for log lines and as the
- *     input to `describePlayFailure`'s pattern match.
+ *   • `describeError` (in ./describe-error, re-exported here) is the
+ *     general one: a short localized sentence naming the cause by the
+ *     error's `kind`. Every surface that shows a failure without a copy
+ *     of its own uses it.
+ *   • `describeRateLimit`, `describeSourceDown` and
+ *     `describeSourceAnswer` (in ./source-answer, re-exported here)
+ *     are first-chance mappers for the typed
+ *     provider answers (busy, down, any other status);
+ *     describePlayFailure calls them before its own branches.
  *   • `describePlayFailure` picks the right user-facing message for
  *     a play-call failure — "no episode," "scraper unhappy,"
  *     "network trouble," etc.
+ *   • `describeExternalLaunchFailure` covers "Open in external player".
  *
- * Extracted from the play page so the four message branches can be
+ * None of them prints the payload's `detail`. The backend documents it
+ * as free text for logs (ParseFailed carries serde's message, a URL that
+ * failed validation, …), and a raw `kind` token or a thrown Error's
+ * message is no better on screen.
+ *
+ * Extracted from the play page so the message branches can be
  * unit-tested instead of being threaded through Svelte effect
  * runtime.
  */
 
 import { m } from '$lib/paraglide/messages';
 
-/** Flatten an arbitrary thrown value into a stable debug string.
- *  Recognises the AniError envelope shape (`{ kind, detail }`) and
- *  falls back to `String(e)` for anything else. */
-export function describeError(e: unknown): string {
+/** Flatten a thrown value into the lowercase text `describePlayFailure`
+ *  matches its branches against. Internal: it can carry the payload's
+ *  detail, so it is for classification only and never shown. */
+function classifierText(e: unknown): string {
 	if (typeof e === 'object' && e !== null) {
 		const obj = e as Record<string, unknown>;
 		const kind = typeof obj.kind === 'string' ? obj.kind : null;
 		const detail = typeof obj.detail === 'string' ? obj.detail : null;
-		if (kind && detail) return `${kind}: ${detail}`;
-		if (kind) return kind;
+		if (kind && detail) return `${kind}: ${detail}`.toLowerCase();
+		if (kind) return kind.toLowerCase();
 	}
-	return String(e);
+	return String(e).toLowerCase();
 }
 
-/** First-chance mapper for the backend's typed rate limit. Returns
- *  the busy-source copy — with the upstream's advertised wait when
- *  it sent one ("try again in N seconds" → retry_after_secs) — or
- *  `null` for every other error. The detail and home pages keep
- *  their own surface-specific mappers for the older kinds; they call
- *  this first so all play surfaces share one localized rate-limit
- *  branch instead of each growing a divergent copy. */
-export function describeRateLimit(e: unknown): string | null {
-	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
-	if (obj?.kind !== 'rate_limited') return null;
-	const secs = obj.retry_after_secs;
-	return typeof secs === 'number'
-		? m.play_play_failure_rate_limited_wait({ seconds: secs })
-		: m.play_play_failure_rate_limited();
-}
+export { describeError } from './describe-error';
 
-/** Shared first-chance mapper for the provider being down: upstream
- *  5xx — the provider explicitly answering "service unavailable",
- *  maintenance or an outage — returns copy that blames the source
- *  and clears the user's own setup; null for everything else. The
- *  detail and home pages keep surface-specific mappers for the
- *  older kinds, so like the rate-limit branch this must be called
- *  by each of them, not folded into one mapper of three. */
-export function describeSourceDown(e: unknown): string | null {
-	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
-	if (obj?.kind === 'upstream' && typeof obj.status === 'number' && obj.status >= 500) {
-		return m.play_play_failure_source_down();
-	}
-	return null;
-}
+export { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
+import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
 
 /** User-facing copy for a play-call failure. The message branches
- *  match (in order): rate_limited → busy source (with the upstream's
- *  own retry hint when it sent one); episode_unavailable → the show
+ *  match (in order): rate_limited / upstream 429 → busy source (with
+ *  the upstream's own retry hint when it sent one); upstream 5xx →
+ *  source down; upstream 404/410 → catalogue miss; other upstream →
+ *  the source answered with an error; episode_unavailable → the show
  *  is there and this episode is not; no_results → catalogue miss;
  *  scraper → upstream unhappy; timeout → slow upstream; network /
- *  upstream → connection trouble; default → generic retry. */
+ *  gate_refused → connection trouble; default → generic retry. */
 export function describePlayFailure(e: unknown, opts?: { noResults?: () => string }): string {
 	const rateLimited = describeRateLimit(e);
 	if (rateLimited !== null) return rateLimited;
 	const sourceDown = describeSourceDown(e);
 	if (sourceDown !== null) return sourceDown;
-	const raw = describeError(e).toLowerCase();
+	const answered = describeSourceAnswer(e);
+	if (answered !== null) return answered;
+	const raw = classifierText(e);
 	if (raw.includes('episode_unavailable')) {
 		// The show is in the catalogue; this episode has no stream in
 		// the requested audio. The same copy on every surface — the
@@ -92,7 +82,7 @@ export function describePlayFailure(e: unknown, opts?: { noResults?: () => strin
 	if (raw.includes('timeout')) {
 		return m.play_play_failure_timeout();
 	}
-	if (raw.includes('network') || raw.includes('upstream')) {
+	if (raw.includes('network') || raw.includes('gate_refused')) {
 		return m.play_play_failure_network();
 	}
 	return m.play_play_failure_generic();

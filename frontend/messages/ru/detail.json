@@ -85,7 +85,7 @@
 	"play_button_continue": "Продолжить",
 	"quality_group_aria_label": "Качество",
 	"quality_group_label": "Качество",
-	"settings_error_prefix": "Настройки: {detail}",
+	"settings_error_prefix": "Настройки: {reason}",
 	"similar_strip_caption": "по поиску Kitsu",
 	"similar_strip_eyebrow": "Похожие тайтлы",
 	"status_current": "Сейчас выходит",
@@ -96,5 +96,7 @@
 	"synopsis_heading": "Описание",
 	"synopsis_toggle_less": "Свернуть",
 	"synopsis_toggle_more": "Читать дальше",
-	"unavailable_message": "Тайтла нет в стриминговом каталоге — воспроизведение и загрузка недоступны."
+	"unavailable_message": "Тайтла нет в стриминговом каталоге — воспроизведение и загрузка недоступны.",
+	"error_no_id_headline": "Аниме не выбрано.",
+	"error_no_id_detail": "В адресе нет id тайтла."
 }

@@ -110,6 +110,7 @@ export async function openOAuth(authUrl: string): Promise<OAuthOpenResult> {
 		return {
 			ok: false,
 			kind: 'no_bridge',
+			// i18n-ignore: diagnostic; the connect flow reads only `kind`
 			message: 'Electron preload is missing the account surface'
 		};
 	}

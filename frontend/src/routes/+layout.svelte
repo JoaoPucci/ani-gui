@@ -23,6 +23,7 @@
 	import { afterNavigate, goto } from '$app/navigation';
 	import Icon from '$lib/components/Icon.svelte';
 	import Breadcrumb from '$lib/components/Breadcrumb.svelte';
+	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
 	import { breadcrumb, defaultTrailFor } from '$lib/breadcrumb';
 	import {
@@ -133,6 +134,7 @@
 	$effect(() => {
 		expiryToastTracker.sync(accountStore.byProvider, {
 			push: (e) => {
+				// i18n-ignore: provider names are proper nouns
 				const providerLabel = e.provider === 'anilist' ? 'AniList' : e.provider.toUpperCase();
 				return toastStore.push({
 					kind: 'warning',
@@ -412,7 +414,7 @@
 	}
 	function hitMeta(hit: KitsuAnimeRef): string {
 		const year = hit.start_date ? hit.start_date.slice(0, 4) : null;
-		const subtype = (hit.subtype ?? 'TV').toUpperCase();
+		const subtype = subtypeLabel(hit.subtype);
 		return year ? `${year} · ${subtype}` : subtype;
 	}
 </script>

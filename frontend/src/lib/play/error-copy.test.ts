@@ -1,3 +1,4 @@
+import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { m } from '$lib/paraglide/messages';
 import {
@@ -28,31 +29,135 @@ describe('describeRateLimit', () => {
 });
 
 describe('describeError', () => {
-	it('formats AniError envelopes as "<kind>: <detail>"', () => {
-		expect(describeError({ kind: 'scraper', detail: 'no_results' })).toBe('scraper: no_results');
+	// User-facing copy: a localized sentence chosen by the error's kind.
+	// `detail` is the backend's free text for logs (ParseFailed carries
+	// serde's message, a URL that failed validation, …) and must never
+	// reach the screen, nor may a raw `kind` token or a thrown Error's
+	// message.
+	const KINDS = [
+		'parse_failed',
+		'metadata',
+		'network',
+		'gate_refused',
+		'upstream',
+		'http',
+		'timeout',
+		'rate_limited',
+		'cache',
+		'io',
+		'config',
+		'no_results',
+		'scraper',
+		'invalid_token',
+		'something_new'
+	];
+
+	it('never prints a ParseFailed detail', () => {
+		const detail = 'expected value at line 1 column 1';
+		const msg = describeError({ kind: 'parse_failed', detail });
+		expect(msg).not.toContain(detail);
+		expect(msg).not.toContain('parse_failed');
+		expect(msg).toMatch(/couldn't read/i);
 	});
 
-	it('falls back to just the kind when detail is missing', () => {
-		// The Rust backend's serializer omits `detail` for variants
-		// that don't carry one (Timeout, Network, etc.). Make sure
-		// those still render usefully.
-		expect(describeError({ kind: 'timeout' })).toBe('timeout');
+	it('the detail never changes the copy, whatever the kind', () => {
+		fc.assert(
+			fc.property(fc.constantFrom(...KINDS), fc.string(), (kind, detail) => {
+				expect(describeError({ kind, detail })).toBe(describeError({ kind }));
+			})
+		);
 	});
 
-	it('passes through other thrown values via String()', () => {
-		expect(describeError(new Error('boom'))).toBe('Error: boom');
-		expect(describeError('plain string')).toBe('plain string');
-		expect(describeError(42)).toBe('42');
-		expect(describeError(null)).toBe('null');
-		expect(describeError(undefined)).toBe('undefined');
+	it('never shows the raw kind token', () => {
+		for (const kind of KINDS) {
+			expect(describeError({ kind }), kind).not.toContain(kind);
+		}
 	});
 
-	it('ignores non-string kind / detail fields (defensive — backends sometimes drift)', () => {
-		// Numeric kind: not the AniError shape; fall through to
-		// String(e) which gives `[object Object]`. The user never
-		// sees this raw — describePlayFailure pattern-matches on
-		// the lowercase output and lands on the generic message.
-		expect(describeError({ kind: 1, detail: 'x' })).toBe('[object Object]');
+	it('names the cause by kind', () => {
+		expect(describeError({ kind: 'network' })).toMatch(/check your connection/i);
+		expect(describeError({ kind: 'gate_refused' })).toBe(describeError({ kind: 'network' }));
+	});
+
+	it('does not tell the user to check their connection when the service did answer', () => {
+		// `upstream` is a non-success status from a service that was
+		// reached, and `http` a non-JSON error body from the local
+		// backend; neither is a connection problem.
+		const answered = describeError({ kind: 'upstream', status: 403 });
+		expect(answered).toMatch(/answered with an error/i);
+		expect(answered).not.toBe(describeError({ kind: 'network' }));
+		expect(describeError({ kind: 'http', status: 500 })).toBe(answered);
+	});
+
+	it('tells apart the upstream statuses the user would act on differently', () => {
+		// The status is a variant field the copy can read: a missing
+		// resource is not worth retrying, a 5xx is the service's own
+		// outage, and a 429 is a busy service — three different next
+		// steps that one "answered with an error" sentence hid.
+		const answered = describeError({ kind: 'upstream', status: 403 });
+		const missing = describeError({ kind: 'upstream', status: 404 });
+		const down = describeError({ kind: 'upstream', status: 503 });
+		expect(missing).toMatch(/couldn't find/i);
+		expect(describeError({ kind: 'upstream', status: 410 })).toBe(missing);
+		expect(down).toMatch(/down/i);
+		expect(describeError({ kind: 'upstream', status: 502 })).toBe(down);
+		expect(describeError({ kind: 'upstream', status: 429 })).toBe(
+			describeError({ kind: 'rate_limited' })
+		);
+		expect(new Set([answered, missing, down]).size).toBe(3);
+		expect(describeError({ kind: 'upstream' })).toBe(answered);
+	});
+
+	it('names a catalogue miss as not found, not as a generic failure', () => {
+		expect(describeError({ kind: 'no_results' })).toBe(
+			describeError({ kind: 'upstream', status: 404 })
+		);
+	});
+
+	it("passes on the service's own wait when a rate limit carries one", () => {
+		const msg = describeError({ kind: 'rate_limited', retry_after_secs: 9 });
+		expect(msg).toMatch(/busy/i);
+		expect(msg).toMatch(/9/);
+		expect(describeError({ kind: 'rate_limited', retry_after_secs: null })).toBe(
+			describeError({ kind: 'rate_limited' })
+		);
+	});
+
+	it('names the cause by kind (continued)', () => {
+		expect(describeError({ kind: 'timeout' })).toMatch(/took too long/i);
+		expect(describeError({ kind: 'rate_limited' })).toMatch(/busy/i);
+		expect(describeError({ kind: 'metadata' })).toBe(describeError({ kind: 'parse_failed' }));
+		expect(describeError({ kind: 'cache' })).toMatch(/this computer/i);
+		expect(describeError({ kind: 'io' })).toBe(describeError({ kind: 'cache' }));
+		expect(describeError({ kind: 'config' })).toBe(describeError({ kind: 'cache' }));
+	});
+
+	it('falls back to generic copy for anything else, without echoing it', () => {
+		const generic = describeError({ kind: 'something_new' });
+		expect(generic).toMatch(/something went wrong/i);
+		expect(describeError(new Error('boom'))).toBe(generic);
+		expect(describeError('plain string')).toBe(generic);
+		expect(describeError(42)).toBe(generic);
+		expect(describeError(null)).toBe(generic);
+		expect(describeError(undefined)).toBe(generic);
+		expect(describeError({ kind: 1, detail: 'x' })).toBe(generic);
+	});
+});
+
+describe('describeRateLimit — an upstream 429 is a rate limit too', () => {
+	it('gives the busy-source copy for { kind: upstream, status: 429 }', () => {
+		// The backend keeps an upstream that throttles with HTTP 429 as
+		// `upstream` + status, distinct from the in-band `rate_limited`.
+		// On the play surfaces it fell through to "Network trouble …
+		// check your connection", which sends the user after a problem
+		// they do not have.
+		expect(describeRateLimit({ kind: 'upstream', status: 429 })).toBe(
+			m.play_play_failure_rate_limited()
+		);
+		expect(describePlayFailure({ kind: 'upstream', status: 429 })).toBe(
+			m.play_play_failure_rate_limited()
+		);
+		expect(describeRateLimit({ kind: 'upstream', status: 403 })).toBeNull();
 	});
 });
 
@@ -88,9 +193,31 @@ describe('describePlayFailure', () => {
 		expect(describePlayFailure({ kind: 'timeout' })).toMatch(/took too long to respond/);
 	});
 
-	it('matches the network branch on either kind', () => {
+	it('matches the network branch for a failure to connect', () => {
 		expect(describePlayFailure({ kind: 'network' })).toMatch(/Network trouble/);
-		expect(describePlayFailure({ kind: 'upstream', detail: '503' })).toMatch(/Network trouble/);
+		expect(describePlayFailure({ kind: 'gate_refused' })).toMatch(/Network trouble/);
+	});
+
+	it('reads an upstream status instead of blaming the connection', () => {
+		// `upstream` is the source answering with a non-success status,
+		// so the connection is fine. 404/410 is the source not having
+		// the thing, which is the catalogue-miss copy; any other status
+		// outside the busy (429) and down (5xx) shapes, and an upstream
+		// with no status at all, says the source answered with an error.
+		const miss = describePlayFailure({ kind: 'upstream', status: 404 });
+		expect(miss).toBe(m.play_play_failure_no_results());
+		expect(describePlayFailure({ kind: 'upstream', status: 410 })).toBe(miss);
+		// The detail page's definitive catalogue-miss override is for a
+		// title the catalogue lacks, which a 404 does not prove.
+		expect(describePlayFailure({ kind: 'upstream', status: 404 }, { noResults: () => 'X' })).toBe(
+			miss
+		);
+		const answered = describePlayFailure({ kind: 'upstream', status: 403 });
+		expect(answered).toBe(m.play_play_failure_source_error());
+		expect(answered).not.toBe(m.play_play_failure_network());
+		expect(describePlayFailure({ kind: 'upstream', status: 400 })).toBe(answered);
+		expect(describePlayFailure({ kind: 'upstream', detail: '503' })).toBe(answered);
+		expect(describeExternalLaunchFailure({ kind: 'upstream', status: 403 })).toBe(answered);
 	});
 
 	it('surfaces the rate-limit wait when the backend carries one', () => {
@@ -121,7 +248,7 @@ describe('describePlayFailure', () => {
 	});
 
 	it('treats no_results case-insensitively (backend may shift casing)', () => {
-		// describeError lowercases before matching, so an upstream
+		// The classifier lowercases before matching, so an upstream
 		// that emits "NO_RESULTS" still hits the catalogue-miss
 		// branch.
 		expect(describePlayFailure({ kind: 'NO_RESULTS' })).toMatch(/Couldn't find this title/);
@@ -194,8 +321,12 @@ describe('describePlayFailure — the provider being down names itself', () => {
 
 	it('genuine connection failures keep the check-your-connection copy', () => {
 		expect(describePlayFailure({ kind: 'network' })).toBe(m.play_play_failure_network());
-		// A 4xx upstream is not the down-for-maintenance shape.
-		expect(describePlayFailure({ kind: 'upstream', status: 403 })).toBe(
+		// A 4xx upstream is not the down-for-maintenance shape, and not
+		// a connection failure either.
+		expect(describePlayFailure({ kind: 'upstream', status: 403 })).not.toBe(
+			m.play_play_failure_source_down()
+		);
+		expect(describePlayFailure({ kind: 'upstream', status: 403 })).not.toBe(
 			m.play_play_failure_network()
 		);
 	});
@@ -234,5 +365,28 @@ describe('describePlayFailure — one mapper for every surface', () => {
 		expect(describePlayFailure({ kind: 'timeout' }, { noResults: () => 'not indexed' })).toBe(
 			m.play_play_failure_timeout()
 		);
+	});
+});
+
+describe('wait copy reads right for any number of seconds', () => {
+	// The message catalogue has no plural forms, so "{seconds} seconds"
+	// is wrong for 1 in English and for most numbers in Russian
+	// (1 секунду, 2 секунды, 5 секунд). The wait is written with the
+	// unit's abbreviation, which does not inflect.
+	const UNIT = { en: 's', 'pt-BR': 's', 'es-419': 's', ru: 'с' } as const;
+	const WAITS = [m.errors_reason_busy_wait, m.play_play_failure_rate_limited_wait];
+
+	it('abbreviates the unit after the number in every locale', () => {
+		for (const [locale, unit] of Object.entries(UNIT) as Array<[keyof typeof UNIT, string]>) {
+			for (const wait of WAITS) {
+				for (const seconds of [1, 2, 5, 21]) {
+					const text = wait({ seconds }, { locale });
+					expect(text, `${locale} ${seconds}`).toContain(`${seconds} ${unit}`);
+					expect(text, `${locale} ${seconds}`).not.toMatch(
+						new RegExp(`${seconds} ${unit}[A-Za-zА-Яа-яё]`)
+					);
+				}
+			}
+		}
 	});
 });

@@ -5,6 +5,7 @@ import {
 	type WatchLaterDeps
 } from './watch-later-loader';
 import type { ListEntry, Provider } from './types';
+import { AccountApiError } from './api';
 import type { KitsuAnimeRef } from '$lib/api';
 
 function row(over: Partial<ListEntry> = {}): ListEntry {
@@ -156,6 +157,42 @@ describe('loadWatchLater', () => {
 		};
 		await expect(loadWatchLater(deps)).rejects.toThrow();
 		expect(deps.kitsuByMalIds).not.toHaveBeenCalled();
+	});
+
+	// The rail words its failure by what went wrong, so the rejection
+	// has to keep the backend's error kind instead of replacing it with
+	// a message of its own. The cached-list route answers with the
+	// error envelope as the body of an AccountApiError.
+	it('keeps the backend error kind when every provider fails', async () => {
+		const envelope = { kind: 'cache', key: 'error.cache.generic' };
+		const deps: WatchLaterDeps = {
+			credentials: { anilist: { bearer: 'a', userId: 'u' } },
+			fetchCachedList: vi
+				.fn()
+				.mockRejectedValue(new AccountApiError(500, JSON.stringify(envelope))),
+			kitsuByMalIds: vi.fn().mockResolvedValue([])
+		};
+		await expect(loadWatchLater(deps)).rejects.toMatchObject({ kind: 'cache' });
+	});
+
+	it('rejects with an Error, never null, when no provider was even tried', async () => {
+		// A credentials map whose entries are all undefined tries
+		// nothing, so there is no first failure to pass on.
+		const deps: WatchLaterDeps = {
+			credentials: { anilist: undefined },
+			fetchCachedList: vi.fn(),
+			kitsuByMalIds: vi.fn().mockResolvedValue([])
+		};
+		await expect(loadWatchLater(deps)).rejects.toBeInstanceOf(Error);
+	});
+
+	it('passes a bridge failure through with its kind', async () => {
+		const deps: WatchLaterDeps = {
+			credentials: { anilist: { bearer: 'a', userId: 'u' } },
+			fetchCachedList: vi.fn().mockResolvedValue([row({ mal_id: 1 })]),
+			kitsuByMalIds: vi.fn().mockRejectedValue({ kind: 'upstream', status: 503 })
+		};
+		await expect(loadWatchLater(deps)).rejects.toMatchObject({ kind: 'upstream', status: 503 });
 	});
 
 	// The flip side: a provider that successfully returns an empty list
