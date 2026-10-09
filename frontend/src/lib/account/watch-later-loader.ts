@@ -109,7 +109,7 @@ export async function loadWatchLater(deps: WatchLaterDeps): Promise<KitsuAnimeRe
 	// when there was one) so the caller can show its retry affordance
 	// and say what went wrong.
 	if (!anySucceeded) {
-		throw firstFailure;
+		throw firstFailure ?? new Error('loadWatchLater: no connected provider could be read');
 	}
 
 	const merged = mergedWatchLater(byProvider, deps.primary);
