@@ -19,11 +19,13 @@ pub type Result<T, E = AniError> = std::result::Result<T, E>;
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AniError {
-    /// A download tool exited non-zero. The only thing that raises
-    /// this is `spawn_download_tool` when yt-dlp or ffmpeg fails in a
-    /// way that is not a missing tool and not a timeout — provider
-    /// resolution has its own variants and constructs none of these.
-    /// The name is older than that narrowing.
+    /// A download tool failed: yt-dlp or ffmpeg exited non-zero (key
+    /// `error.scraper.parse_failed`), or was found but could not be
+    /// started (key `error.download.tool_spawn_failed`). The only thing
+    /// that raises this is `spawn_download_tool`, in ways that are not a
+    /// missing tool and not a timeout — provider resolution has its own
+    /// variants and constructs none of these. The name is older than
+    /// that narrowing.
     #[error("scraper error")]
     Scraper {
         /// i18n key under `error.scraper.*`.

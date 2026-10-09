@@ -43,6 +43,12 @@ pub mod keys {
     /// frontend change too.
     pub const DOWNLOAD_FFMPEG_MISSING: &str = "error.download.ffmpeg_missing";
 
+    /// A download tool was found but could not be started: gone since
+    /// it was found, not executable, or refused by the OS. Carried by
+    /// [`crate::error::AniError::Scraper`], the download-tool variant,
+    /// so the dock can tell it from a tool that ran and failed.
+    pub const DOWNLOAD_TOOL_SPAWN_FAILED: &str = "error.download.tool_spawn_failed";
+
     // --- error.io.* ---
     /// Generic filesystem error.
     pub const IO_GENERIC: &str = "error.io.generic";
@@ -102,6 +108,7 @@ mod tests {
             CACHE_GENERIC,
             CONFIG_PARSE,
             DOWNLOAD_FFMPEG_MISSING,
+            DOWNLOAD_TOOL_SPAWN_FAILED,
             IO_GENERIC,
             METADATA_SOURCE,
             NETWORK_UNREACHABLE,
