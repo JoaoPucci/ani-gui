@@ -209,12 +209,17 @@ where
                 .sessions
                 .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
         };
+        // The relay opens the first time a paced run asks for it and
+        // closes when the transfer is done with it.
+        let download_relay = super::download::DownloadRelay::new(state, &source);
+        let relay = || download_relay.url();
         let pacing = super::download_pacing::Pacing::new(
             &is_live,
             super::download_pacing::PACING_POLL,
             &super::download_pacing::PACED_LANE,
         )
-        .woken_by(state.sessions.media_noted());
+        .woken_by(state.sessions.media_noted())
+        .with_relay(&relay);
         super::download_transfer::transfer_with_sidecars(
             &state.proxy_http,
             &state.host_budget,
