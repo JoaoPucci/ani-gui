@@ -132,6 +132,9 @@ function parseLcov(file, prefix = '') {
 		}
 	}
 	if (cur) refuse(`${file}: ends inside the record for ${cur.file}, before its end_of_record (truncated?)`);
+	// A coverage file with no record in it is a coverage run that did
+	// not happen, not one that covered nothing.
+	if (byFile.size === 0) refuse(`${file}: holds no coverage record`);
 	return byFile;
 }
 
@@ -239,7 +242,7 @@ if (jsonFlag) {
 	console.log('-'.repeat(72));
 	// The worst twenty, and past them every file down to five under the
 	// bar, so the boundary is in the log however many files sit above it.
-	for (const r of rows.filter((row, i) => i < 20 || row.crap > HIGH_RISK_BAR - BOUNDARY_MARGIN)) {
+	for (const r of rows.filter((row, i) => i < 20 || row.crap >= HIGH_RISK_BAR - BOUNDARY_MARGIN)) {
 		console.log(
 			pad(r.file, widths.file) +
 				pad(String(r.ccn), widths.ccn) +
