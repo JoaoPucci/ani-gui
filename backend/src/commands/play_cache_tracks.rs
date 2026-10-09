@@ -2,23 +2,59 @@
 //! [`super::play_cache`], which composes them: the stream's HEAD
 //! ping, the WebVTT prefix a track's first bytes must carry, and the
 //! track's GET read the way the relay reads it. Split out so the
-//! composing module stays under the CRAP ratchet's high-risk bar;
-//! no behaviour change.
+//! composing module stays under the CRAP ratchet's high-risk bar.
+
+use crate::proxy::host_budget::{host_key, HostBudget};
+use crate::proxy::upstream::{redirect_target, REDIRECT_HOP_CAP};
+
+/// Sends `method` to `url` with the `referer`, following redirects hop
+/// by hop on a `client` that follows none on its own, and spends a
+/// token at each hop's host without waiting: the check runs before the
+/// player starts, under a deadline of seconds, but the host counts its
+/// requests wherever they land — an edge a redirect sends the ping to
+/// is the host the player fetches from next. The first response that
+/// is not a redirect, or nothing once the request fails or
+/// [`REDIRECT_HOP_CAP`] hops have all redirected.
+async fn send_spent(
+    client: &reqwest::Client,
+    budget: &HostBudget,
+    method: reqwest::Method,
+    url: &url::Url,
+    referer: &str,
+) -> Option<reqwest::Response> {
+    let mut url = url.clone();
+    for _ in 0..=REDIRECT_HOP_CAP {
+        budget.spend(&host_key(&url), 1);
+        let mut req = client.request(method.clone(), url.as_str());
+        if !referer.is_empty() {
+            req = req.header(reqwest::header::REFERER, referer);
+        }
+        let resp = req.send().await.ok()?;
+        let location = resp
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|v| v.to_str().ok());
+        match redirect_target(resp.status(), location, &url) {
+            Some(next) => url = next,
+            None => return Some(resp),
+        }
+    }
+    None
+}
 
 /// HEAD-validate that `url` is still alive, with the supplied
-/// `referer` (empty string means "no Referer header"). 2xx and 3xx
-/// (CDN edge redirects) both count as live; everything else,
-/// including network errors, is dead.
+/// `referer` (empty string means "no Referer header"), each hop spent
+/// from `budget` ([`send_spent`]). A redirect is followed to where it
+/// lands; a 2xx there, or a 3xx naming nowhere to go, counts as live;
+/// everything else, including network errors and a chain past the hop
+/// cap, is dead.
 pub(crate) async fn upstream_head_ok(
     client: &reqwest::Client,
+    budget: &HostBudget,
     url: &url::Url,
     referer: &str,
 ) -> bool {
-    let mut req = client.head(url.as_str());
-    if !referer.is_empty() {
-        req = req.header(reqwest::header::REFERER, referer);
-    }
-    let Ok(resp) = req.send().await else {
+    let Some(resp) = send_spent(client, budget, reqwest::Method::HEAD, url, referer).await else {
         return false;
     };
     resp.status().is_success() || resp.status().is_redirection()
@@ -59,14 +95,12 @@ pub(crate) fn webvtt_prefix(bytes: &[u8]) -> Option<bool> {
 /// costs a request per track, not a track's worth of bytes.
 pub(crate) async fn cached_track_ok(
     client: &reqwest::Client,
+    budget: &HostBudget,
     url: &url::Url,
     referer: &str,
 ) -> bool {
-    let mut req = client.get(url.as_str());
-    if !referer.is_empty() {
-        req = req.header(reqwest::header::REFERER, referer);
-    }
-    let Ok(mut resp) = req.send().await else {
+    let Some(mut resp) = send_spent(client, budget, reqwest::Method::GET, url, referer).await
+    else {
         return false;
     };
     if !resp.status().is_success() {

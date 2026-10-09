@@ -43,8 +43,8 @@ pub struct AppState {
     /// `proxy_http` so these calls carry tight timeouts: the proxy
     /// client's 120s ceiling is sized for streaming bodies, and a
     /// stalled metadata connection could hold a probe handler for two
-    /// minutes. Same User-Agent as the proxy client — CDN HEAD probes
-    /// (`upstream_head_ok`) rely on the client default.
+    /// minutes. Same User-Agent as the proxy client, which a cached
+    /// row's liveness probes (`upstream_head_ok`) go out on.
     pub meta_http: reqwest::Client,
     /// Public base URL the frontend uses to reach the proxy
     /// (`http://127.0.0.1:<port>`). Set after the listener binds.
