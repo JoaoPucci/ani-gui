@@ -368,3 +368,26 @@ fn a_query_parameter_a_quoted_string_cannot_carry_defines_nothing() {
         assert!(out.contains("\ns.ts?t={$t}\n"), "{query}: {out}");
     }
 }
+
+/// A hexadecimal sequence may be spelled whole by a reference: the
+/// value a variable puts in an unquoted attribute is one when it reads
+/// `0x…`, so it is spelled out, and the definition it took can go. A
+/// reference whose value would make anything else of the attribute
+/// stays as written.
+#[test]
+fn a_reference_that_spells_a_whole_hexadecimal_value_is_substituted() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:NAME=\"iv\",VALUE=\"0x00ff\"\n\
+        #EXT-X-DEFINE:NAME=\"m\",VALUE=\"AES-128\"\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXT-X-KEY:METHOD={$m},URI=\"k.key\",IV={$iv}\n\
+        #EXTINF:5.0,\n\
+        s.ts\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+    let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+    let out = String::from_utf8(out).expect("utf8");
+    assert!(
+        out.contains("#EXT-X-KEY:METHOD={$m},URI=\"k.key\",IV=0x00ff\n"),
+        "{out}"
+    );
+}
