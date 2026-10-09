@@ -6,7 +6,8 @@
 use super::play_native_title_grammar::words;
 
 /// A title's words before its first number, run together, and that
-/// number's digits — those of the first word holding any, so a separate
+/// number's digits — the first run of them in the first word holding
+/// any, so a separate
 /// word after it never lengthens it ("Kaiju No. 8 2nd Season" carries
 /// 8): "Show 2" and "Show20" are ("show", "2") and
 /// ("show", "20"), "Mob Psycho 100 II" is ("mobpsycho", "100"), "86
