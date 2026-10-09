@@ -175,6 +175,17 @@ describe('loadWatchLater', () => {
 		await expect(loadWatchLater(deps)).rejects.toMatchObject({ kind: 'cache' });
 	});
 
+	it('rejects with an Error, never null, when no provider was even tried', async () => {
+		// A credentials map whose entries are all undefined tries
+		// nothing, so there is no first failure to pass on.
+		const deps: WatchLaterDeps = {
+			credentials: { anilist: undefined },
+			fetchCachedList: vi.fn(),
+			kitsuByMalIds: vi.fn().mockResolvedValue([])
+		};
+		await expect(loadWatchLater(deps)).rejects.toBeInstanceOf(Error);
+	});
+
 	it('passes a bridge failure through with its kind', async () => {
 		const deps: WatchLaterDeps = {
 			credentials: { anilist: { bearer: 'a', userId: 'u' } },
