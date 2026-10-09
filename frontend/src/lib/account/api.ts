@@ -8,6 +8,7 @@
  */
 
 import type { ListEntry, PkceWire, Provider, Tokens, UserProfile } from './types';
+import { apiBase, internalSecretHeader } from './backend-origin';
 
 // Window.aniGui augmentation lives in lib/api.ts to keep one source
 // of truth for the bridge shape; TypeScript can't merge contradictory
@@ -18,16 +19,8 @@ import type { ListEntry, PkceWire, Provider, Tokens, UserProfile } from './types
 // Exported so the editor endpoints in `entry-api.ts` can build on the
 // same primitives without re-implementing the fetch boilerplate (and
 // without inflating this file's CCN past the coverage ratchet).
-export async function apiBase(): Promise<string> {
-	const w = (typeof window !== 'undefined' ? window : undefined) as Window | undefined;
-	const base = w?.aniGui?.apiBase;
-	if (base) return base;
-	// Fall back to vite env for browser-only dev runs.
-	const env =
-		typeof import.meta !== 'undefined' ? import.meta.env?.VITE_ANI_GUI_API_BASE : undefined;
-	if (typeof env === 'string' && env.length > 0) return env;
-	throw new Error('ani-gui apiBase is not configured');
-}
+// `apiBase` itself lives in `./backend-origin.ts` for the same reason.
+export { apiBase };
 
 /**
  * Read the response body for inclusion in `AccountApiError.detail`.
@@ -212,12 +205,6 @@ export function dropListCache(
 		? `/api/account/list/${provider}/cache?fallback_user_id=${encodeURIComponent(fallbackUserId)}`
 		: `/api/account/list/${provider}/cache`;
 	return deleteEndpoint(path, bearer, internalSecretHeader());
-}
-
-function internalSecretHeader(): Record<string, string> {
-	const w = (typeof window !== 'undefined' ? window : undefined) as Window | undefined;
-	const secret = w?.aniGui?.internalSecret;
-	return secret ? { 'x-ani-gui-internal-secret': secret } : {};
 }
 
 // Bridge helpers now live in `./bridge.ts` so api.ts can stay focused

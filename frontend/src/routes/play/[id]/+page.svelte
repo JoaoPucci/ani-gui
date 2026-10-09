@@ -113,11 +113,8 @@
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
 	import { isStaleDragCallback } from '$lib/play/drag-generation';
-	import {
-		describeError,
-		describeExternalLaunchFailure,
-		describePlayFailure
-	} from '$lib/play/error-copy';
+	import { describeError, describePlayFailure } from '$lib/play/error-copy';
+	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
 	import {
 		canRecoverFromStaleStream,

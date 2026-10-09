@@ -7,6 +7,11 @@ use std::path::{Path, PathBuf};
 
 use crate::app::AppState;
 
+#[path = "anidb_offset_store_format.rs"]
+mod format;
+pub(super) use format::parse;
+use format::serialize;
+
 /// The offsets file: a sibling of the history file, one `slug\toffset` row
 /// per stamped show.
 pub(super) fn store_path(history_path: &Path) -> PathBuf {
@@ -35,49 +40,6 @@ pub(super) struct Row {
     pub(super) slug: String,
     pub(super) offset: u32,
     pub(super) display: Option<(u32, String)>,
-}
-
-pub(super) fn parse(body: &str) -> Vec<Row> {
-    body.lines()
-        .filter_map(|line| {
-            let mut cols = line.split('\t');
-            let slug = cols.next()?;
-            if slug.is_empty() {
-                return None;
-            }
-            let offset = cols.next()?.trim().parse().ok()?;
-            // Optional third+fourth columns; rows written before the
-            // display stamp existed have two and parse the same.
-            let display = match (cols.next(), cols.next()) {
-                (Some(slot), Some(tag)) if !tag.is_empty() => {
-                    slot.trim().parse().ok().map(|n| (n, tag.to_string()))
-                }
-                _ => None,
-            };
-            Some(Row {
-                slug: slug.to_string(),
-                offset,
-                display,
-            })
-        })
-        .collect()
-}
-
-fn serialize(rows: &[Row]) -> String {
-    let mut out = String::new();
-    for row in rows {
-        out.push_str(&row.slug);
-        out.push('\t');
-        out.push_str(&row.offset.to_string());
-        if let Some((slot, tag)) = &row.display {
-            out.push('\t');
-            out.push_str(&slot.to_string());
-            out.push('\t');
-            out.push_str(tag);
-        }
-        out.push('\n');
-    }
-    out
 }
 
 /// The locked read-merge-write every put shares.

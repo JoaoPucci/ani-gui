@@ -6,64 +6,22 @@
  * it; one left in its last minutes is finished and forgotten.
  */
 
-import { recoveryResume } from './resume-after-recovery';
-import { nextWrite, picks, writes } from './write-order';
+import { picks, writes } from './write-order';
+import { defaultStorage, keyOf, load, store, type PositionStorage } from './watch-position-storage';
+
+export { MAX_POSITIONS, type PositionStorage } from './watch-position-storage';
+export {
+	clearAllPositions,
+	clearPosition,
+	clearRowPositions,
+	clearShowPositions,
+	snapshotPositions
+} from './watch-position-clear';
 
 /** Below this, an episode is kept as started, at zero. */
 export const RESUME_MIN_S = 15;
 /** With this little left, an episode counts as finished. */
 export const FINISHED_REMAINING_S = 90;
-/** How many episodes' positions are kept. */
-export const MAX_POSITIONS = 200;
-
-const KEY = 'ani-gui.watch-positions';
-
-export type PositionStorage = Pick<Storage, 'getItem' | 'setItem'>;
-
-/** `[show:episode, seconds]` entries, oldest first. One a session a
- *  Continue card opened wrote carries the card's history row — its
- *  provider show id — third: removing the card forgets it, whatever
- *  show the card names by then. The latest write decides it. */
-type Position = [string, number] | [string, number, string];
-type Positions = Position[];
-
-function defaultStorage(): PositionStorage | null {
-	try {
-		return globalThis.localStorage ?? null;
-	} catch {
-		return null;
-	}
-}
-
-function load(storage: PositionStorage | null): Positions {
-	try {
-		const parsed: unknown = JSON.parse(storage?.getItem(KEY) ?? '[]');
-		return Array.isArray(parsed)
-			? parsed.filter(
-					(p): p is Position =>
-						Array.isArray(p) &&
-						typeof p[0] === 'string' &&
-						typeof p[1] === 'number' &&
-						(p[2] === undefined || typeof p[2] === 'string')
-				)
-			: [];
-	} catch {
-		return [];
-	}
-}
-
-/** Whether the storage took the write. */
-function store(storage: PositionStorage | null, positions: Positions): boolean {
-	try {
-		storage?.setItem(KEY, JSON.stringify(positions.slice(-MAX_POSITIONS)));
-		return true;
-	} catch {
-		// A storage that refuses only loses the resume point.
-		return false;
-	}
-}
-
-const keyOf = (showId: string, episode: number) => `${showId}:${episode}`;
 
 /** Records `seconds` into `episode` of `showId` — zero, a started
  *  mark, when that is its start — or forgets the episode when
@@ -122,82 +80,4 @@ export function readPosition(
 ): number | null {
 	const key = keyOf(showId, episode);
 	return load(storage).find(([k]) => k === key)?.[1] ?? null;
-}
-
-export function clearPosition(
-	showId: string,
-	episode: number,
-	storage: PositionStorage | null = defaultStorage()
-): void {
-	const key = keyOf(showId, episode);
-	store(
-		storage,
-		load(storage).filter(([k]) => k !== key)
-	);
-}
-
-/** The moment a removal's rows are gone. Its cleanup, handed this as
- *  `since`, forgets only what was written before it. */
-export function snapshotPositions(): number {
-	return nextWrite();
-}
-
-/** Forgets every kept episode of `showId` — its history row is gone —
- *  and a recovery's pending point for it: with `since`, only those
- *  written before it. */
-export function clearShowPositions(
-	showId: string,
-	storage: PositionStorage | null = defaultStorage(),
-	since?: number
-): void {
-	recoveryResume.forgetShow(showId, since);
-	const prefix = `${showId}:`;
-	const kept: Positions = [];
-	for (const p of load(storage)) {
-		const left = p[0].startsWith(prefix) ? afterRemoval(p, storage, since) : p;
-		if (left) kept.push(left);
-	}
-	store(storage, kept);
-}
-
-/** What a removal's cleanup leaves of `p`, kept before `since`: all of
- *  it when written since, a started mark when its episode was picked
- *  since, and otherwise nothing. */
-function afterRemoval(
-	p: Position,
-	storage: PositionStorage | null,
-	since?: number
-): Position | null {
-	if (writes.since(storage, p[0], since)) return p;
-	return picks.since(storage, p[0], since) ? [p[0], 0] : null;
-}
-
-/** Forgets every kept episode last written by a session one of
- *  `rows`' Continue cards opened — the rows are gone — and a
- *  recovery's pending point for its show, unless the episode's show
- *  is one of `keepShows`, still a remaining row's card: with `since`,
- *  only those written before it. */
-export function clearRowPositions(
-	rows: readonly string[],
-	storage: PositionStorage | null = defaultStorage(),
-	keepShows: ReadonlySet<string> = new Set(),
-	since?: number
-): void {
-	const removed = new Set(rows);
-	const kept: Positions = [];
-	for (const p of load(storage)) {
-		const show = p[0].slice(0, p[0].lastIndexOf(':'));
-		const theRows = p[2] !== undefined && removed.has(p[2]) && !keepShows.has(show);
-		const left = theRows ? afterRemoval(p, storage, since) : p;
-		if (left !== p) recoveryResume.forgetShow(show, since);
-		if (left) kept.push(left);
-	}
-	store(storage, kept);
-}
-
-/** Forgets every kept episode — the history is cleared — and any
- *  recovery's pending point. */
-export function clearAllPositions(storage: PositionStorage | null = defaultStorage()): void {
-	recoveryResume.forgetAll();
-	store(storage, []);
 }

@@ -9,7 +9,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -183,4 +183,223 @@ test('per-line DA data outranks a disagreeing LF/LH summary', () => {
 	);
 	assert.equal(out.top[0].cov, 100, 'ten DA lines, ten hits: the file is fully covered');
 	assert.equal(out.top[0].crap, 6, 'full coverage leaves only the bare complexity');
+});
+
+// The gate measures each language with its own parser, so complexity
+// arrives as one report per tool. Named on the command line, every
+// report is read; a report that is not there is a measurement that did
+// not happen, and the score refuses rather than ranking without it.
+test('--ccn reads every complexity report it is given', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-ccn-'));
+	const report = (items) => ['<?xml version="1.0" ?>', '<cppncss><measure type="Function">', ...items, '</measure></cppncss>'].join('\n');
+	fs.writeFileSync(path.join(tmpDir, 'rust.xml'), report([lizardItem('backend/src/a.rs', 4)]));
+	fs.writeFileSync(path.join(tmpDir, 'ts.xml'), report([lizardItem('frontend/src/b.ts', 3), lizardItem('frontend/src/b.ts', 2)]));
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), [lcovRecord('backend/src/a.rs', 10, 10), lcovRecord('frontend/src/b.ts', 10, 10)].join('\n'));
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--ccn=rust.xml', '--ccn=ts.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8',
+			stdio: ['ignore', 'pipe', 'pipe']
+		})
+	);
+	assert.equal(out.count, 2);
+	assert.deepEqual(
+		out.top.map((r) => [r.file, r.ccn]),
+		[
+			['frontend/src/b.ts', 5],
+			['backend/src/a.rs', 4]
+		]
+	);
+});
+
+test('--ccn naming a missing report fails instead of scoring without it', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-ccn-missing-'));
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('src/a.rs', 10, 10));
+	const run = spawnSync('node', [scriptUnderTest, '--ccn=absent.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+		cwd: tmpDir,
+		encoding: 'utf-8'
+	});
+	assert.notEqual(run.status, 0);
+	assert.match(run.stderr, /absent\.xml/);
+});
+
+// An item's name attribute is `<function>(...) at <file>:<line>`, XML-
+// escaped. The producers' function names carry no whitespace, so the
+// first ` at ` ends the name and everything up to the last `:` is the
+// file — whatever the file's path contains.
+test('a file path holding the delimiter, colons or escaped characters is read whole', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-path-'));
+	const file = 'src/a at b/x:y & "z" <w>.ts';
+	const escaped = file.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const xml = [
+		'<cppncss><measure type="Function">',
+		`<item name="f(...) at ${escaped}:3"><value>1</value><value>1</value><value>4</value></item>`,
+		`<item name="g(...) at ${escaped}:9"><value>2</value><value>1</value><value>2</value></item>`,
+		'</measure></cppncss>'
+	].join('\n');
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord(file, 10, 10));
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8'
+		})
+	);
+	assert.deepEqual(
+		out.top.map((r) => [r.file, r.ccn, r.cov]),
+		[[path.normalize(file), 6, 100]]
+	);
+});
+
+test('an item that names no file fails the run instead of dropping its complexity', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-unplaced-'));
+	const xml = '<cppncss><measure type="Function"><item name="f(...)"><value>1</value><value>1</value><value>4</value></item></measure></cppncss>';
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('src/a.rs', 10, 10));
+	const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+		cwd: tmpDir,
+		encoding: 'utf-8'
+	});
+	assert.notEqual(run.status, 0);
+	assert.match(run.stderr, /f\(\.\.\.\)/);
+});
+
+// Every <item> in a report is complexity; one the scorer cannot read
+// whole — another attribute layout, a line that is not a number, a
+// value that is not a count — would otherwise vanish from the totals.
+for (const [why, item] of [
+	['an unexpected layout', '<item name="k(...) at e.ts:1" ><value>1</value><value>1</value><value>5</value></item>'],
+	['a negative count', '<item name="k(...) at e.ts:1"><value>1</value><value>1</value><value>-1</value></item>'],
+	['no line number', '<item name="f(...) at a:b.ts"><value>1</value><value>1</value><value>5</value></item>'],
+	['a line that is not a number', '<item name="g(...) at c.ts:x"><value>1</value><value>1</value><value>5</value></item>']
+]) {
+	test(`an item with ${why} fails the run instead of dropping its complexity`, () => {
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-shape-'));
+		fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${item}</measure></cppncss>`);
+		fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('e.ts', 10, 10));
+		const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8'
+		});
+		assert.notEqual(run.status, 0, run.stdout);
+	});
+}
+
+test('numeric character references in a path are decoded like named ones', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-numeric-'));
+	const xml = `<cppncss><measure type="Function"><item name="f(...) at a&#39;b&#x26;c.ts:1"><value>1</value><value>1</value><value>3</value></item></measure></cppncss>`;
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord("a'b&c.ts", 10, 10));
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], { cwd: tmpDir, encoding: 'utf-8' })
+	);
+	assert.deepEqual(out.top.map((r) => [r.file, r.ccn, r.cov]), [["a'b&c.ts", 3, 100]]);
+});
+
+test('test files of every measured script kind are left out of the ranking', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-tests-'));
+	const files = ['src/a.test.mjs', 'src/b.spec.cjs', 'src/c.test.mts', 'src/d.test.cts', 'src/e.test.tsx', 'src/keep.mjs'];
+	const xml = ['<cppncss><measure type="Function">', ...files.map((f) => lizardItem(f, 5)), '</measure></cppncss>'].join('\n');
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('src/keep.mjs', 10, 10));
+	const out = JSON.parse(
+		execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], { cwd: tmpDir, encoding: 'utf-8' })
+	);
+	assert.deepEqual(out.top.map((r) => r.file), ['src/keep.mjs']);
+});
+
+// A report is read whole or not at all. A counter that exits 0 after
+// writing a truncated report would otherwise have the functions it
+// managed to write scored and the rest silently absent, and the firm
+// ceiling could pass on a file that was never measured.
+for (const [why, xml] of [
+	[
+		'an item that never closes',
+		'<cppncss><measure type="Function"><item name="f(...) at e.ts:1"><value>1</value><value>1</value><value>4</value><item name="g(...) at e.ts:9"><value>2</value><value>1</value><value>4</value></item></measure></cppncss>'
+	],
+	[
+		'a report cut off after a count',
+		'<?xml version="1.0" ?>\n<cppncss>\n\t<measure type="Function">\n\t\t<item name="f(...) at e.ts:1">\n\t\t\t<value>1</value>\n\t\t\t<value>1</value>\n\t\t\t<value>4</value>'
+	],
+	[
+		'a report cut off after its last item',
+		'<cppncss><measure type="Function"><item name="f(...) at e.ts:1"><value>1</value><value>1</value><value>4</value></item>'
+	]
+]) {
+	test(`${why} fails the run instead of scoring what was read`, () => {
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-whole-'));
+		fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), xml);
+		fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcovRecord('e.ts', 10, 10));
+		const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8'
+		});
+		assert.notEqual(run.status, 0, run.stdout);
+		assert.match(run.stderr, /not in the expected shape|does not close after its last item/);
+	});
+}
+
+// The same for coverage: a record that never reaches its
+// `end_of_record` — the file cut off, or the next record opening over
+// it — would otherwise be dropped without a word, and its file scored
+// at no coverage or under the wrong one.
+for (const [why, lcov] of [
+	['a coverage file cut off inside a record', ['TN:', 'SF:e.ts', 'DA:1,1', 'LF:1', 'LH:1'].join('\n')],
+	['a coverage record opening before the previous one closed', ['TN:', 'SF:a.ts', 'DA:1,1', 'SF:e.ts', 'DA:1,1', 'end_of_record'].join('\n')]
+]) {
+	test(`${why} fails the run instead of scoring without it`, () => {
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-lcov-whole-'));
+		fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${lizardItem('e.ts', 4)}</measure></cppncss>`);
+		fs.writeFileSync(path.join(tmpDir, 'lcov.info'), lcov);
+		const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+			cwd: tmpDir,
+			encoding: 'utf-8'
+		});
+		assert.notEqual(run.status, 0, run.stdout);
+		assert.match(run.stderr, /end_of_record/);
+	});
+}
+
+// A coverage file with no record in it is not a run with nothing
+// covered: every file would score at no coverage and the job would
+// fail for a reason the log never names.
+test('a coverage file with no record fails the run and says so', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-lcov-empty-'));
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${lizardItem('e.ts', 4)}</measure></cppncss>`);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), '\n');
+	const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+		cwd: tmpDir,
+		encoding: 'utf-8'
+	});
+	assert.notEqual(run.status, 0, run.stdout);
+	assert.match(run.stderr, /no coverage record/);
+});
+
+// The high-risk count sits at its ceiling, so the files just under
+// the bar decide the gate on a sliver of coverage. The table is where
+// they are read from — in the build log and locally — so it has to
+// reach them, however many files sit above the bar.
+test('the table reaches every file within five of the high-risk bar', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-table-'));
+	const items = [];
+	const records = [];
+	// Twenty-four files over the bar fill the old twenty-row table on
+	// their own; the one just under the bar comes after all of them.
+	for (let i = 0; i < 24; i++) {
+		const file = `src/over${String(i).padStart(2, '0')}.rs`;
+		items.push(lizardItem(file, 40));
+		records.push(lcovRecord(file, 10, 10));
+	}
+	items.push(lizardItem('src/near.rs', 29), lizardItem('src/edge.rs', 25), lizardItem('src/far.rs', 20));
+	records.push(lcovRecord('src/near.rs', 10, 10), lcovRecord('src/edge.rs', 10, 10), lcovRecord('src/far.rs', 10, 10));
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${items.join('')}</measure></cppncss>`);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), records.join('\n'));
+	const table = execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.'], {
+		cwd: tmpDir,
+		encoding: 'utf-8',
+		stdio: ['ignore', 'pipe', 'ignore']
+	});
+	assert.match(table, /src\/near\.rs/, 'a file within five of the bar must be in the table');
+	assert.match(table, /src\/edge\.rs/, 'a file exactly five under the bar is within five of it');
+	assert.doesNotMatch(table, /src\/far\.rs/, 'a file well under the bar is not');
 });
