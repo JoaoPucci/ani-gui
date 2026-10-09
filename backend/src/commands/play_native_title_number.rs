@@ -6,17 +6,24 @@
 use super::play_native_title_grammar::words;
 
 /// A title's words before its first number, run together, and that
-/// number's digits: "Show 2" and "Show20" are ("show", "2") and
+/// number's digits — those of the first word holding any, so a separate
+/// word after it never lengthens it ("Kaiju No. 8 2nd Season" carries
+/// 8): "Show 2" and "Show20" are ("show", "2") and
 /// ("show", "20"), "Mob Psycho 100 II" is ("mobpsycho", "100"), "86
 /// Part 2" is ("", "86").
 fn first_number(title: &str) -> Option<(String, String)> {
-    let text = words(title).concat();
-    let start = text.find(|c: char| c.is_ascii_digit())?;
-    let digits: String = text[start..]
+    let words = words(title);
+    let at = words
+        .iter()
+        .position(|w| w.chars().any(|c| c.is_ascii_digit()))?;
+    let word = &words[at];
+    let start = word.find(|c: char| c.is_ascii_digit())?;
+    let digits: String = word[start..]
         .chars()
         .take_while(char::is_ascii_digit)
         .collect();
-    Some((text[..start].to_string(), digits))
+    let before = words[..at].concat() + &word[..start];
+    Some((before, digits))
 }
 
 /// Whether `candidate` matches `title` up to its first number and then
