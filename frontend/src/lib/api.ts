@@ -262,10 +262,12 @@ export interface LaunchExternalPlayerArgs {
 }
 
 /**
- * The backend's error envelope, as every error response's body and
- * every SSE error event carry it, and so what api.ts calls reject
- * with. The backend always sends `kind` and `key`; the rest are the
- * variant's own fields. The fallback expect2xx builds for a body that
+ * The backend's error envelope, as every error the app raises carries
+ * it — an HTTP error body or an SSE error event — and so what api.ts
+ * calls reject with. The envelope always has `kind` and `key`; the rest
+ * are the variant's own fields. An answer the router or the HTTP layer
+ * gives before a handler runs, or the image route's refusal, carries no
+ * envelope. The fallback expect2xx builds for a body that
  * is not JSON has a `kind` and a `status` only. User-facing copy
  * comes from `kind` and the fields that change what the user should do — `status` on an
  * upstream, `retry_after_secs` on a rate limit, `binary` on a spawn
