@@ -335,6 +335,7 @@ for (const [why, xml] of [
 			encoding: 'utf-8'
 		});
 		assert.notEqual(run.status, 0, run.stdout);
+		assert.match(run.stderr, /not in the expected shape|does not close after its last item/);
 	});
 }
 
