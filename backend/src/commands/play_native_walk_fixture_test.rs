@@ -1466,3 +1466,32 @@ async fn a_title_s_first_number_ends_at_its_word() {
         assert_eq!(picked.hit.slug, "own", "{entry}");
     }
 }
+
+/// A Japanese number written in kanji is read as the number it is,
+/// compound ones included, wherever a Japanese number is expected:
+/// after 第 and before a counter.
+#[tokio::test]
+async fn a_kanji_number_is_read_as_the_number_it_is() {
+    for (entry, listing) in [
+        ("ショー 第十期", "Show Season 10"),
+        ("ショー 第十二部", "Show Part 12"),
+        ("ショー 第二十一期", "Show Season 21"),
+        ("怪獣八号", "Kaiju No. 8"),
+    ] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("own", listing, 12)]);
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{entry}: {listing} refused: {e:?}"));
+        assert_eq!(picked.hit.slug, "own", "{entry}");
+    }
+    let site = pool_of(
+        &["怪獣八号"],
+        Some(12),
+        2020,
+        "怪獣八号",
+        &[("x", "怪獣八十号", 12)],
+    );
+    if let Ok(p) = walk_over(site).await {
+        panic!("怪獣八号: picked {}", p.hit.slug);
+    }
+}
