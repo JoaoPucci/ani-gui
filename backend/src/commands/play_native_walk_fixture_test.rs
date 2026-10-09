@@ -1495,3 +1495,17 @@ async fn a_kanji_number_is_read_as_the_number_it_is() {
         panic!("怪獣八号: picked {}", p.hit.slug);
     }
 }
+
+/// 第〇期 names the zeroth division, as 第0期 does.
+#[tokio::test]
+async fn a_kanji_zero_names_the_zeroth_division() {
+    let site = pool_of(
+        &["ショー 第〇期"],
+        Some(12),
+        2020,
+        "ショー 第〇期",
+        &[("own", "Show Season 0", 12)],
+    );
+    let picked = walk_over(site).await.expect("the entry's own listing");
+    assert_eq!(picked.hit.slug, "own");
+}
