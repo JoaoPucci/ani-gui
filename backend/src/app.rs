@@ -1,4 +1,4 @@
-//! `AppState` — the single state value Tauri hands to every command.
+//! `AppState` — the one state value the HTTP API handlers share.
 //!
 //! Wires together everything the frontend can reach:
 //!
@@ -9,7 +9,9 @@
 //! - an admission gate for provider traffic so background probes
 //!   never hammer the upstream
 //!
-//! Built once during `tauri::Builder::setup` and stored as managed state.
+//! Built once by [`AppState::build`] at backend startup and shared with
+//! the API router as `Arc<AppState>`; the proxy router gets the derived
+//! [`ProxyState`] instead.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,7 +25,7 @@ use crate::meta::kitsu::KitsuClient;
 use crate::meta::mal_user::MalRefreshState;
 use crate::proxy::{AppSecret, ProxyOrigin, ProxyState, SessionTable};
 
-/// Single state container Tauri hands to every command.
+/// The one state container the HTTP API handlers share.
 #[derive(Clone)]
 pub struct AppState {
     /// HMAC secret for stream tokens.
@@ -75,7 +77,7 @@ pub struct AppState {
     /// all; a test lists the ones it stubs, so a stubbed outage
     /// cannot fall through to a real site.
     pub provider_order: Vec<crate::scraper::provider::ProviderId>,
-    /// On-disk image-cache directory served by the `image://` protocol.
+    /// On-disk image-cache directory served by the `/api/image` route.
     pub image_cache_dir: PathBuf,
     /// Connection pool for the SQLite metadata cache.
     pub cache_pool: SqlitePool,
@@ -203,7 +205,7 @@ impl AppState {
         cfg.image_cache_cap_mb.saturating_mul(1024 * 1024)
     }
 
-    /// Convert into a [`ProxyState`] suitable for the axum router.
+    /// Convert into the [`ProxyState`] the proxy router is built with.
     #[must_use]
     pub fn proxy_state(&self) -> ProxyState {
         ProxyState {

@@ -264,56 +264,6 @@ pub fn clear_all(cache_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Resolve an `image://` request to bytes + mime, going through the cache
-/// layer. Used by the Tauri custom-protocol handler in `lib::run`.
-///
-/// `request_uri` is the URL the webview asked for, in `image://host/path`
-/// shape.
-///
-/// # Errors
-/// - [`AniError::ParseFailed`] when the URI isn't a valid `image://` URL.
-/// - [`AniError::Upstream`], [`AniError::Network`], [`AniError::Io`] from
-///   the underlying fetch + store path.
-pub async fn handle_protocol_request(
-    client: &reqwest::Client,
-    cache_dir: &Path,
-    request_uri: &str,
-) -> Result<(Vec<u8>, &'static str)> {
-    let upstream = upstream_from_protocol_uri(request_uri)?;
-    get_or_fetch(client, cache_dir, &upstream).await
-}
-
-/// Reconstruct the upstream HTTPS URL from an `image://` protocol URI.
-///
-/// `image://media.kitsu.app/anime/12/poster.jpg` becomes
-/// `https://media.kitsu.app/anime/12/poster.jpg`.
-///
-/// Tauri requires the protocol scheme to use a host segment, and webkit2gtk
-/// normalizes the URL into `image://<host>/<path>` form. Reconstruction is
-/// therefore a literal scheme swap.
-///
-/// # Errors
-/// [`AniError::ParseFailed`] when the input doesn't have an `image://`
-/// scheme or is missing a host.
-pub fn upstream_from_protocol_uri(uri: &str) -> Result<String> {
-    let parsed = url::Url::parse(uri).map_err(|e| AniError::ParseFailed {
-        detail: format!("image:// uri parse: {e}"),
-    })?;
-    if parsed.scheme() != "image" {
-        return Err(AniError::ParseFailed {
-            detail: format!("expected image:// scheme, got {}://", parsed.scheme()),
-        });
-    }
-    let Some(host) = parsed.host_str() else {
-        return Err(AniError::ParseFailed {
-            detail: "image:// uri missing host".into(),
-        });
-    };
-    let path = parsed.path();
-    let query = parsed.query().map(|q| format!("?{q}")).unwrap_or_default();
-    Ok(format!("https://{host}{path}{query}"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,38 +425,6 @@ mod tests {
         let (bytes, mime) = read_cached(dir.path(), url).expect("cache hit");
         assert_eq!(bytes, b"hello");
         assert_eq!(mime, "image/jpeg");
-    }
-
-    #[test]
-    fn upstream_from_protocol_uri_swaps_scheme_to_https() {
-        assert_eq!(
-            upstream_from_protocol_uri("image://media.kitsu.app/anime/12/poster.jpg").unwrap(),
-            "https://media.kitsu.app/anime/12/poster.jpg"
-        );
-    }
-
-    #[test]
-    fn upstream_from_protocol_uri_preserves_query_string() {
-        assert_eq!(
-            upstream_from_protocol_uri("image://media.kitsu.app/x.jpg?v=2").unwrap(),
-            "https://media.kitsu.app/x.jpg?v=2"
-        );
-    }
-
-    #[test]
-    fn upstream_from_protocol_uri_rejects_wrong_scheme() {
-        assert!(matches!(
-            upstream_from_protocol_uri("https://x/y.jpg"),
-            Err(AniError::ParseFailed { .. })
-        ));
-    }
-
-    #[test]
-    fn upstream_from_protocol_uri_rejects_missing_host() {
-        assert!(matches!(
-            upstream_from_protocol_uri("image:///just-a-path"),
-            Err(AniError::ParseFailed { .. })
-        ));
     }
 
     // — Properties ────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
-//! `AniError` — the single error type that crosses every Tauri command
-//! boundary.
+//! `AniError` — the single error type that crosses every command and
+//! HTTP API boundary.
 //!
 //! Every variant maps to a stable i18n key returned to the frontend.
 //! Localized strings are resolved by the frontend (Paraglide), never by the
@@ -63,7 +63,7 @@ pub enum AniError {
     /// Something did not have the shape the code required. Mostly
     /// upstream bodies — Kitsu, AniList, MAL, the provider's HTML and
     /// JSON, the proxy's manifests — but also input the app validates
-    /// on its own, like a session's upstream URL or an `image://` URI.
+    /// on its own, like a session's upstream URL.
     /// The shared parse-or-validate variant, not a provider one.
     #[error("parse failed: {detail}")]
     ParseFailed {
