@@ -391,3 +391,25 @@ fn a_reference_that_spells_a_whole_hexadecimal_value_is_substituted() {
         "{out}"
     );
 }
+
+/// A value is a hexadecimal sequence only if it is one all through:
+/// `0x` and hex digits. A reference whose value merely starts `0x` —
+/// in an enumerated or decimal attribute, or carrying a comma that
+/// would add an attribute to the tag — stays as written.
+#[test]
+fn only_a_value_that_is_hexadecimal_all_through_is_substituted() {
+    let body = b"#EXTM3U\n\
+        #EXT-X-DEFINE:NAME=\"m\",VALUE=\"0x1z\"\n\
+        #EXT-X-DEFINE:NAME=\"c\",VALUE=\"0x1,URI=x\"\n\
+        #EXT-X-TARGETDURATION:5\n\
+        #EXT-X-KEY:METHOD={$m},URI=\"k.key\",IV={$c}\n\
+        #EXTINF:5.0,\n\
+        s.ts\n";
+    let url = Url::parse("https://cdn.example/a/index.m3u8").expect("url");
+    let out = super::super::m3u8_define::substitute(body, &url, &HashMap::new());
+    let out = String::from_utf8(out).expect("utf8");
+    assert!(
+        out.contains("#EXT-X-KEY:METHOD={$m},URI=\"k.key\",IV={$c}\n"),
+        "{out}"
+    );
+}
