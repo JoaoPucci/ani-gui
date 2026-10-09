@@ -548,6 +548,11 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v15: the entry's titles rule the pick. A v14 row can be a
+    //      clean miss persisted for a show the picker now finds
+    //      (Stone Ocean, TV on Kitsu and ONA on hianime), or a
+    //      positive capped at a sibling's count (Attack on Titan
+    //      Season 3 capped at Part 2's 10); re-keying re-probes.
     // v14: an entry the provider splits into several shows is probed
     //      against all of them, its cap counted across the parts in
     //      Kitsu's numbering. A v13 row for such a show carries one
@@ -629,7 +634,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v14:{kitsu_id}:{m}")
+    format!("availability:v15:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -3688,8 +3693,8 @@ mod tests {
     /// in the key generator gets caught immediately.
     #[test]
     fn cache_key_is_versioned_per_mode() {
-        assert_eq!(cache_key("kid-1", "sub"), "availability:v14:kid-1:sub");
-        assert_eq!(cache_key("kid-1", "dub"), "availability:v14:kid-1:dub");
+        assert_eq!(cache_key("kid-1", "sub"), "availability:v15:kid-1:sub");
+        assert_eq!(cache_key("kid-1", "dub"), "availability:v15:kid-1:dub");
     }
 
     #[test]

@@ -518,7 +518,12 @@ pub fn title_match_put(
 ///   so one bad row keeps steering a show to the wrong page for its
 ///   whole TTL. Re-keying orphans them; the next successful resolve
 ///   stamps a fresh v3 row.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 3;
+/// - v4: the entry's titles rule the pick. A v3 row can bind a
+///   sibling's key to the entry the user asked for — Gintama's
+///   "Second Half War" to Shirogane no Tamashii-hen — where the
+///   sibling's title carries no cour marker the guard could refuse
+///   it on; re-keying lets the next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 4;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
@@ -1674,6 +1679,26 @@ mod tests {
     // unrelated first hits. So we record the (provider show_id →
     // kitsu_id) pair on every successful play (where we know both
     // ids) and the home page reads it directly by show_id.
+
+    #[test]
+    fn a_mapping_stamped_by_the_picker_before_the_titles_ruled_it_is_not_read() {
+        // A play stamps the picked show's key with the entry the user
+        // asked for. Before titles ruled the pick, Gintama's "Silver
+        // Soul Arc - Second Half War" was picked for Shirogane no
+        // Tamashii-hen and its key stamped with that entry; the title
+        // carries no cour marker, so the cross-cour guard let it
+        // through. Nothing in a row says which pick wrote it.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:gintama-silver-soul-arc-second-half-war-1157";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v3:{key}"),
+            "14095",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
 
     #[test]
     fn allmanga_kitsu_cache_round_trips_for_a_given_show_id() {

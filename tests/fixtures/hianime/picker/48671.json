@@ -1,0 +1,36 @@
+{
+ "kitsu": {
+  "id": "48671",
+  "name": "Solo Leveling S2",
+  "canonical": "Ore dake Level Up na Ken: Season 2 - Arise from the Shadow",
+  "alt_titles": ["俺だけレベルアップな件 Season 2 -Arise from the Shadow-", "Solo Leveling Season 2 -Arise from the Shadow-", "Na Honjaman Level Up 2", "나 혼자만 레벨업 2", "俺だけレベルアップな件 第2期", "Ore dake Level Up na Ken 2nd Season"],
+  "episode_count": 13,
+  "year": 2025,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Ore dake Level Up na Ken: Season 2 - Arise from the Shadow": [
+    ["solo-leveling-season-2-arise-from-the-shadow-84", "Solo Leveling Season 2: Arise from the Shadow", "TV"]
+  ]
+ },
+ "episodes": {
+  "solo-leveling-season-2-arise-from-the-shadow-84": [
+    [2733, 1, null],
+    [2734, 2, null],
+    [2735, 3, null],
+    [2736, 4, null],
+    [2737, 5, null],
+    [2738, 6, null],
+    [2739, 7, null],
+    [2740, 8, null],
+    [2741, 9, null],
+    [2742, 10, null],
+    [2743, 11, null],
+    [2744, 12, null],
+    [2745, 13, null]
+  ]
+ },
+ "years": {
+  "solo-leveling-season-2-arise-from-the-shadow-84": 2025
+ }
+}

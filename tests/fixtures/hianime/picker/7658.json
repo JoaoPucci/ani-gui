@@ -1,0 +1,35 @@
+{
+ "kitsu": {
+  "id": "7658",
+  "name": "Fate Zero 2",
+  "canonical": "Fate/Zero 2nd Season",
+  "alt_titles": ["フェイト/ゼロ 2ndシーズン", "Fate/Zero Season 2", "Fate/Zero Second Season"],
+  "episode_count": 12,
+  "year": 2012,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Fate/Zero 2nd Season": [
+    ["fatezero-season-2-1117", "Fate/Zero Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "fatezero-season-2-1117": [
+    [18729, 1, null],
+    [18730, 2, null],
+    [18731, 3, null],
+    [18732, 4, null],
+    [18733, 5, null],
+    [18734, 6, null],
+    [18735, 7, null],
+    [18736, 8, null],
+    [18737, 9, null],
+    [18738, 10, null],
+    [18739, 11, null],
+    [18740, 12, null]
+  ]
+ },
+ "years": {
+  "fatezero-season-2-1117": 2012
+ }
+}

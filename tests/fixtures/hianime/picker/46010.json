@@ -1,0 +1,43 @@
+{
+ "kitsu": {
+  "id": "46010",
+  "name": "Stone Ocean Part 2",
+  "canonical": "JoJo no Kimyou na Bouken: Stone Ocean Part 2",
+  "alt_titles": ["ジョジョの奇妙な冒険 ストーンオーシャン 2クール", "JoJo's Bizarre Adventure: Stone Ocean Part 2"],
+  "episode_count": 12,
+  "year": 2022,
+  "subtype": "TV"
+ },
+ "searches": {
+  "JoJo no Kimyou na Bouken: Stone Ocean Part 2": [
+    ["jojos-bizarre-adventure-stone-ocean-part-2-1464", "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", "ONA"]
+  ],
+  "JoJo's Bizarre Adventure: Stone Ocean Part 2": [
+    ["jojos-bizarre-adventure-stone-ocean-part-2-1464", "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", "ONA"]
+  ],
+  "ジョジョの奇妙な冒険 ストーンオーシャン 2クール": [
+    ["jojos-bizarre-adventure-stone-ocean-1460", "JoJo's Bizarre Adventure Part 6: Stone Ocean", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-2-1464", "JoJo's Bizarre Adventure Part 6: Stone Ocean Part 2", "ONA"],
+    ["jojos-bizarre-adventure-stone-ocean-part-3-2834", "JoJo's Bizarre Adventure: Stone Ocean Part 3", "ONA"]
+  ]
+ },
+ "episodes": {
+  "jojos-bizarre-adventure-stone-ocean-part-2-1464": [
+    [25460, 1, null],
+    [25461, 2, null],
+    [25462, 3, null],
+    [25463, 4, null],
+    [25464, 5, null],
+    [25465, 6, null],
+    [25466, 7, null],
+    [25467, 8, null],
+    [25468, 9, null],
+    [25469, 10, null],
+    [25470, 11, null],
+    [25471, 12, null]
+  ]
+ },
+ "years": {
+  "jojos-bizarre-adventure-stone-ocean-part-2-1464": 2022
+ }
+}

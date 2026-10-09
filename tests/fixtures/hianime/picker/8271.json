@@ -1,0 +1,57 @@
+{
+ "kitsu": {
+  "id": "8271",
+  "name": "Tokyo Ghoul",
+  "canonical": "Tokyo Ghoul",
+  "alt_titles": ["東京喰種-トーキョーグール-", "Tokyo Kushu", "Toukyou Kushu", "Toukyou Ghoul"],
+  "episode_count": 12,
+  "year": 2014,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Tokyo Ghoul": [
+    ["tokyo-ghoul-890", "Tokyo Ghoul", "TV"],
+    ["tokyo-ghoul-a-891", "Tokyo Ghoul √A", "TV"],
+    ["tokyo-ghoul-jack-2773", "Tokyo Ghoul: \"Jack\"", "OVA"],
+    ["tokyo-ghoul-pinto-2801", "Tokyo Ghoul: \"Pinto\"", "OVA"],
+    ["tokyo-ghoulre-892", "Tokyo Ghoul:re", "TV"],
+    ["tokyo-ghoulre-2nd-season-893", "Tokyo Ghoul:re 2nd Season", "TV"]
+  ]
+ },
+ "episodes": {
+  "tokyo-ghoul-890": [
+    [14832, 1, null],
+    [14833, 2, null],
+    [14834, 3, null],
+    [14835, 4, null],
+    [14836, 5, null],
+    [14837, 6, null],
+    [14838, 7, null],
+    [14839, 8, null],
+    [14840, 9, null],
+    [14841, 10, null],
+    [14842, 11, null],
+    [14843, 12, null]
+  ],
+  "tokyo-ghoul-a-891": [
+    [14870, 1, null],
+    [14871, 2, null],
+    [14872, 3, null],
+    [14873, 4, null],
+    [14874, 5, null],
+    [14875, 6, null],
+    [14876, 7, null],
+    [14877, 8, null],
+    [14878, 9, null],
+    [14879, 10, null],
+    [14880, 11, null],
+    [14881, 12, null]
+  ]
+ },
+ "years": {
+  "tokyo-ghoul-890": 2014,
+  "tokyo-ghoul-a-891": 2015,
+  "tokyo-ghoulre-2nd-season-893": 2018,
+  "tokyo-ghoulre-892": 2018
+ }
+}

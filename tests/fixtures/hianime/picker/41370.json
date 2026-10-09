@@ -1,0 +1,68 @@
+{
+ "kitsu": {
+  "id": "41370",
+  "name": "Demon Slayer",
+  "canonical": "Kimetsu no Yaiba",
+  "alt_titles": ["鬼滅の刃", "Demon Slayer: Kimetsu no Yaiba", "Blade of Demon Destruction", "KnY", "Kimetsu no Yaiba: Kyoudai no Kizuna", "Demon Slayer: Kimetsu no Yaiba: Bonds of Siblings", "Demon Slayer: Kimetsu no Yaiba - Tanjiro Kamado, Unwavering Resolve Arc", "鬼滅の刃-兄妹の絆-", "鬼灭之刃", "הלהב קוטל השדים", "قاتل الشياطين", "ดาบพิฆาตอสูร", "Miecz zabójcy demonów – Kimetsu no Yaiba", "Guardians de la nit: Kimetsu no Yaiba", "İblis Keser"],
+  "episode_count": 26,
+  "year": 2019,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Kimetsu no Yaiba": [
+    ["demon-slayer-kimetsu-no-yaiba-843", "Demon Slayer: Kimetsu no Yaiba", "TV"],
+    ["demon-slayer-kimetsu-no-yaiba-swordsmith-village-arc-233", "Demon Slayer: Kimetsu no Yaiba Swordsmith Village Arc", "TV"],
+    ["demon-slayer-kimetsu-no-yaiba-mugen-train-arc-744", "The Demon Slayer: Kimetsu no Yaiba Mugen Train Arc TV", "TV"],
+    ["demon-slayer-kimetsu-no-yaiba-hashira-training-arc-430", "Demon Slayer: Kimetsu no Yaiba Hashira Training Arc", "TV"],
+    ["demon-slayer-kimetsu-no-yaiba-infinity-castle-i-232", "Demon Slayer: Kimetsu no Yaiba Infinity Castle", "MOVIE"],
+    ["demon-slayer-kimetsu-no-yaiba-infinity-castle-ii-2835", "Demon Slayer: Kimetsu no Yaiba Infinity Castle II", "MOVIE"],
+    ["demon-slayer-kimetsu-no-yaiba-infinity-castle-iii-4740", "Demon Slayer: Kimetsu no Yaiba Infinity Castle III", "MOVIE"],
+    ["demon-slayer-kimetsu-no-yaiba-to-the-swordsmith-village-9625", "Demon Slayer: Kimetsu no Yaiba – To the Swordsmith Village", "SPECIAL"],
+    ["demon-slayer-kimetsu-no-yaiba-hashira-training-arc-1-9482", "Demon Slayer: Kimetsu no Yaiba Hashira Training Arc", "TV"],
+    ["demon-slayer-kimetsu-no-yaiba-infinity-castle-part-2-7215", "Demon Slayer: Kimetsu no Yaiba Infinity Castle Part 2", "MOVIE (1 eps)"],
+    ["demon-slayer-kimetsu-no-yaiba-the-movie-mugen-train-745", "Demon Slayer Movie: Mugen Train", "MOVIE"],
+    ["demon-slayer-kimetsu-no-yaiba-entertainment-district-arc-749", "Demon Slayer: Entertainment District Arc", "TV"],
+    ["demon-slayer-sibling-s-bond-9730", "Demon Slayer: Sibling's Bond", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "demon-slayer-kimetsu-no-yaiba-843": [
+    [14251, 1, null],
+    [14252, 2, null],
+    [14253, 3, null],
+    [14254, 4, null],
+    [14255, 5, null],
+    [14256, 6, null],
+    [14257, 7, null],
+    [14258, 8, null],
+    [14259, 9, null],
+    [14260, 10, null],
+    [14261, 11, null],
+    [14262, 12, null],
+    [14263, 13, null],
+    [14264, 14, null],
+    [14265, 15, null],
+    [14266, 16, null],
+    [14267, 17, null],
+    [14268, 18, null],
+    [14269, 19, null],
+    [14270, 20, null],
+    [14271, 21, null],
+    [14272, 22, null],
+    [14273, 23, null],
+    [14274, 24, null],
+    [14275, 25, null],
+    [14276, 26, null]
+  ],
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-1-9482": [
+    [135506, 1, null]
+  ]
+ },
+ "years": {
+  "demon-slayer-kimetsu-no-yaiba-843": 2019,
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-1-9482": null,
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-430": 2024,
+  "demon-slayer-kimetsu-no-yaiba-mugen-train-arc-744": 2021,
+  "demon-slayer-kimetsu-no-yaiba-swordsmith-village-arc-233": 2023
+ }
+}

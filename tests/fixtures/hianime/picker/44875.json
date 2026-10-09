@@ -1,0 +1,57 @@
+{
+ "kitsu": {
+  "id": "44875",
+  "name": "Vinland S2",
+  "canonical": "Vinland Saga Season 2",
+  "alt_titles": ["ヴィンランド・サガ SEASON2"],
+  "episode_count": 24,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Vinland Saga Season 2": [
+    ["vinland-saga-season-2-902", "Vinland Saga: 2nd Season", "TV"],
+    ["vinland-saga-season-2-drowning-in-the-shadow-5185", "Vinland Saga Season 2: Drowning in the Shadow", "ONA"],
+    ["vinland-saga-season-2-same-old-story-3420", "Vinland Saga Season 2: Same Old Story", "ONA"]
+  ]
+ },
+ "episodes": {
+  "vinland-saga-season-2-902": [
+    [15016, 1, null],
+    [15017, 2, null],
+    [15018, 3, null],
+    [15019, 4, null],
+    [15020, 5, null],
+    [15021, 6, null],
+    [15022, 7, null],
+    [15023, 8, null],
+    [15024, 9, null],
+    [15025, 10, null],
+    [15026, 11, null],
+    [15027, 12, null],
+    [15028, 13, null],
+    [15029, 14, null],
+    [15030, 15, null],
+    [15031, 16, null],
+    [15032, 17, null],
+    [15033, 18, null],
+    [15034, 19, null],
+    [15035, 20, null],
+    [15036, 21, null],
+    [15037, 22, null],
+    [15038, 23, null],
+    [15039, 24, null]
+  ],
+  "vinland-saga-season-2-drowning-in-the-shadow-5185": [
+    [68217, 1, null]
+  ],
+  "vinland-saga-season-2-same-old-story-3420": [
+    [45157, 1, null]
+  ]
+ },
+ "years": {
+  "vinland-saga-season-2-902": 2023,
+  "vinland-saga-season-2-drowning-in-the-shadow-5185": 2023,
+  "vinland-saga-season-2-same-old-story-3420": 2023
+ }
+}

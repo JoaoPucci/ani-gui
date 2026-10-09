@@ -14,15 +14,21 @@
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
-use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
+use super::play_native_choice::{entry_rank, pick_without_count, select_winner, strongest_dead};
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
+use super::play_native_title_marker::EntryTitles;
+use super::play_native_title_verdict::{countless_miss, probe_head, rejection, rescuable};
+use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
-/// How many browse hits get an episodes probe. Beyond this the match
-/// was not a match; the request budget is better spent on the next
-/// alias.
+/// How many browse hits the entry's titles admit get an episodes
+/// probe. Beyond this the match was not a match; the request budget
+/// is better spent on the next alias. With a count, the refused hits
+/// among the first this many are probed besides, as evidence about
+/// the pool — at most twice this many probes per pool (see
+/// `play_native_title_verdict::probe_head`).
 pub const MAX_PROBED_CANDIDATES: usize = 5;
 
 /// A picked show: the hit plus the episode list the probe already
@@ -46,7 +52,8 @@ fn dead_outranks(best_failed: Option<(u8, usize)>, winner_rank: u8, winner_pos: 
     let Some((rank, pos)) = best_failed else {
         return false;
     };
-    rank < winner_rank || (rank == winner_rank && rank <= 1 && pos < winner_pos)
+    let identity = rank == 0 || rank % 2 == 1;
+    rank < winner_rank || (rank == winner_rank && identity && pos < winner_pos)
 }
 
 /// Distance tolerance: long-running shows get proportional slack,
@@ -59,7 +66,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// Pick the show a query meant from browse `hits`, using Kitsu's
 /// `expected` episode count and premiere `year` when known.
 ///
-/// - Considers at most [`MAX_PROBED_CANDIDATES`] hits.
+/// - Considers at most [`MAX_PROBED_CANDIDATES`] hits the entry's
+///   titles admit — plus, with a count, the refused ones among the
+///   first [`MAX_PROBED_CANDIDATES`] as evidence about the pool.
 /// - With `year = Some(y)`: candidates whose detail page names a
 ///   premiere year more than one off `y` are excluded before any
 ///   scoring — the identity signal that separates cour and
@@ -74,12 +83,21 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   survivor whose own year positively matched and whose episode
 ///   list is shorter than expected still wins — an airing part has
 ///   aired fewer episodes than the total Kitsu knows is coming.
-/// - With `expected = None`: an exact title match wins, else the
-///   first surviving hit — positional order is the provider's own
-///   ranking.
+/// - With `expected = None`: an exact title match wins; else a
+///   candidate whose part agrees with the entry's comes before one
+///   naming another part, and within each a matched year before the
+///   rest, the provider's order breaking ties — only a year-matched
+///   candidate when the year disproved part of the pool (see
+///   `pick_without_count`).
 /// - A candidate the searched title names a later part of ("X" when
 ///   asked for "X Season 2") is the season before, and never picked;
 ///   [`pick_candidate_titled`] reads every title the entry goes by.
+/// - A candidate the entry's titles do not admit — named for a
+///   season or part the entry is not — is never picked (with a
+///   count it is still probed); a pool rejected for that alone is
+///   not a clean miss; a listing that spans this entry and
+///   the next is cut to this entry's episodes (see
+///   `play_native_wide_listing`).
 /// - Probe errors skip the candidate rather than abort the pick; a
 ///   pick only fails when no probed candidate survives.
 ///
@@ -127,6 +145,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // from probes that failed below.
         return Err(crate::error::AniError::NoResults);
     }
+    let entry = EntryTitles::new(entry_titles);
     let needle = search_title.trim().to_lowercase();
     // Format disproof in both directions, over the RAW list — the
     // badge is free, so incompatible formats never crowd the bounded
@@ -136,14 +155,23 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // the pick would use it: alone, rescued as airing, or heading a
     // stitched chain.
     hits.retain(|h| !precedes_entry(&h.title, entry_titles));
-    let (head, year_excluded_any) = year_filtered(client, &hits, year).await?;
+    // The bounded head, by the entry's titles (see
+    // play_native_title_verdict::probe_head).
+    let (hits, refused_dropped) = probe_head(hits, expected.is_some(), entry)?;
+    let filtered = year_filtered(client, &hits, year).await;
+    let Some(expected) = expected else {
+        let picked = match filtered {
+            Ok((head, year_excluded_any)) => {
+                pick_without_count(client, &head, &needle, year_excluded_any, entry).await
+            }
+            Err(e) => Err(e),
+        };
+        return countless_miss(picked, refused_dropped);
+    };
+    let (head, _) = filtered?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
-
-    let Some(expected) = expected else {
-        return pick_without_count(client, &head, &needle, year_excluded_any).await;
-    };
 
     // Probe the surviving head; a failing probe removes the
     // candidate, never the pick. Each survivor keeps whether its
@@ -151,7 +179,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     let mut probed_ok: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = Vec::new();
     let mut any_transport_failure = false;
     // Identity carried by transport-DEAD candidates
-    // ([`identity_rank`]), with their provider position: a dead
+    // ([`entry_rank`]), with their provider position: a dead
     // candidate that outranks the eventual winner — or ties an
     // identity-bearing rank from an earlier position, where provider
     // order would have decided for it — makes the whole pick
@@ -184,16 +212,19 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                 }
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
-                    let failed =
-                        identity_rank(h.title.trim().to_lowercase() == needle, year_confirmed);
-                    if best_failed.is_none_or(|best| (failed, pos) < best) {
-                        best_failed = Some((failed, pos));
-                    }
+                    best_failed =
+                        strongest_dead(best_failed, entry, &h.title, &needle, year_confirmed, pos);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
         }
     }
+    // The entry's own titles over what the probes heard: a sibling
+    // named for another season or part is scored out, and a listing
+    // that spans this entry and the next is cut to this one's
+    // episodes (see play_native_wide_listing). Before the split
+    // stitching below, which still sees every part.
+    let refused_a_fit = fit_to_entry(&mut probed_ok, expected, entry);
     // An empty pool splits by what killed the probes: any transport
     // death means nothing was learned (the transient Network), while
     // all-answered not-found means the pool is dead but the provider
@@ -214,7 +245,9 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // was probed, so stitching them costs nothing. Only with every
     // candidate heard — a dead probe may have been one of the parts.
     if !any_transport_failure {
-        if let Some(picked) = super::play_native_split::stitched(&probed_ok, expected, best_dist) {
+        if let Some(picked) =
+            super::play_native_split::stitched(&probed_ok, expected, best_dist, entry)
+        {
             return Ok(picked);
         }
     }
@@ -227,18 +260,22 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         if let Some(idx) = probed_ok
             .iter()
             .enumerate()
-            .filter(|(_, (_, eps, _, confirmed))| {
-                *confirmed && regular_episode_count(eps) < expected
+            .filter(|(_, row)| rescuable(row, expected))
+            // Distance first, then the user's own words and the
+            // entry's part — the dominance winner selection keeps —
+            // with provider order as the final tie (min_by_key keeps
+            // the first of equals).
+            .min_by_key(|(_, (h, _, d, _))| {
+                (
+                    *d,
+                    h.title.trim().to_lowercase() != needle,
+                    !entry.part_agrees(&h.title),
+                )
             })
-            // Distance first, then the user's own words — the same
-            // dominance winner selection keeps — with provider order
-            // as the final tie (min_by_key keeps the first of
-            // equals).
-            .min_by_key(|(_, (h, _, d, _))| (*d, h.title.trim().to_lowercase() != needle))
             .map(|(i, _)| i)
         {
             let (h, _, _, c) = &probed_ok[idx];
-            let rescue_rank = identity_rank(h.title.trim().to_lowercase() == needle, *c);
+            let rescue_rank = entry_rank(entry, &h.title, &needle, *c);
             if dead_outranks(best_failed, rescue_rank, positions[idx]) {
                 // An identity-bearing candidate died unheard; the
                 // rescue must not outrank it on weather.
@@ -254,12 +291,9 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // got to answer: a transiently dead probe may have hidden
         // the right show, and NoResults rides the walk into a
         // persistable clean miss. Weather stays weather.
-        if any_transport_failure {
-            return Err(crate::error::AniError::Network);
-        }
-        return Err(crate::error::AniError::NoResults);
+        return Err(rejection(any_transport_failure, refused_a_fit));
     }
-    let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle);
+    let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
     if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {
         return Err(crate::error::AniError::Network);
     }

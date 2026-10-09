@@ -1,0 +1,35 @@
+{
+ "kitsu": {
+  "id": "42938",
+  "name": "Haikyuu To the Top 2",
+  "canonical": "Haikyuu!! TO THE TOP 2",
+  "alt_titles": ["ハイキュー!! TO THE TOP 2", "Haikyuu!!: To the Top Part 2"],
+  "episode_count": 12,
+  "year": 2020,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Haikyuu!! TO THE TOP 2": [
+    ["haikyu-to-the-top-2nd-cour-934", "Haikyuu!!: To the Top 2nd Season", "TV"]
+  ]
+ },
+ "episodes": {
+  "haikyu-to-the-top-2nd-cour-934": [
+    [15667, 1, null],
+    [15668, 2, null],
+    [15669, 3, null],
+    [15670, 4, null],
+    [15671, 5, null],
+    [15672, 6, null],
+    [15673, 7, null],
+    [15674, 8, null],
+    [15675, 9, null],
+    [15676, 10, null],
+    [15677, 11, null],
+    [15678, 12, null]
+  ]
+ },
+ "years": {
+  "haikyu-to-the-top-2nd-cour-934": 2020
+ }
+}

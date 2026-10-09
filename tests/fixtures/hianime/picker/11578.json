@@ -1,0 +1,41 @@
+{
+ "kitsu": {
+  "id": "11578",
+  "name": "Mob",
+  "canonical": "Mob Psycho 100",
+  "alt_titles": ["モブサイコ100", "Mob Psycho Hyaku", "Mob Psycho One Hundred"],
+  "episode_count": 12,
+  "year": 2016,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Mob Psycho 100": [
+    ["mob-psycho-100-926", "Mob Psycho 100", "TV"],
+    ["mob-psycho-100-ii-918", "Mob Psycho 100 II", "TV"],
+    ["mob-psycho-100-iii-917", "Mob Psycho 100 III", "TV"],
+    ["mob-psycho-100-spirits-and-such-company-trip-a-journey-that-mends-the-heart-and-heals-the-soul-3745", "Mob Psycho 100: Dai Ikkai Rei toka Soudansho Ian Ryokou - Kokoro Mitasu Iyashi no Tabi", "OVA"],
+    ["mob-psycho-100-reigen-the-miraculous-unknown-psychic-3185", "Mob Psycho 100: Reigen - Shirarezaru Kiseki no Reinouryokusha", "SPECIAL"]
+  ]
+ },
+ "episodes": {
+  "mob-psycho-100-926": [
+    [15518, 1, null],
+    [15519, 2, null],
+    [15520, 3, null],
+    [15521, 4, null],
+    [15522, 5, null],
+    [15523, 6, null],
+    [15524, 7, null],
+    [15525, 8, null],
+    [15526, 9, null],
+    [15527, 10, null],
+    [15528, 11, null],
+    [15529, 12, null]
+  ]
+ },
+ "years": {
+  "mob-psycho-100-926": 2016,
+  "mob-psycho-100-ii-918": 2019,
+  "mob-psycho-100-iii-917": 2022
+ }
+}

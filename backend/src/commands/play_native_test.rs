@@ -50,19 +50,22 @@ fn typed_hit(slug: &str, title: &str, kind: &str) -> BrowseHit {
 
 proptest::proptest! {
     /// The dead-candidate decision table: a strictly stronger
-    /// identity always blocks, an equal identity-bearing rank blocks
-    /// exactly from an earlier position, plain rank-2 ties never
-    /// block, weaker never blocks, and no failure never blocks.
+    /// identity always blocks, an equal identity-bearing rank — an
+    /// exact title (0) or a matched year (odd: 1 with the entry's
+    /// part, 3 without) — blocks exactly from an earlier position,
+    /// ties without either (2, 4) never block, weaker never blocks,
+    /// and no failure never blocks.
     #[test]
     fn dead_outranks_holds_over_all_ranks_and_positions(
-        failed_rank in 0u8..=2,
+        failed_rank in 0u8..=4,
         failed_pos in 0usize..8,
-        winner_rank in 0u8..=2,
+        winner_rank in 0u8..=4,
         winner_pos in 0usize..8,
     ) {
         let got = dead_outranks(Some((failed_rank, failed_pos)), winner_rank, winner_pos);
+        let bearing = failed_rank == 0 || failed_rank % 2 == 1;
         let expected = failed_rank < winner_rank
-            || (failed_rank == winner_rank && failed_rank <= 1 && failed_pos < winner_pos);
+            || (failed_rank == winner_rank && bearing && failed_pos < winner_pos);
         proptest::prop_assert_eq!(got, expected);
         proptest::prop_assert!(!dead_outranks(None, winner_rank, winner_pos));
     }
@@ -71,12 +74,12 @@ proptest::proptest! {
 proptest::proptest! {
     /// Winner selection over arbitrary pools: the winner sits at the
     /// best distance, no best-distance rival carries a strictly
-    /// better (title, confirmed) key, equal keys keep provider
+    /// better (title, part, confirmed) key, equal keys keep provider
     /// order, and the reported rank is the winner's own.
     #[test]
     fn winner_selection_holds_over_arbitrary_pools(
         pool in proptest::collection::vec(
-            (proptest::bool::ANY, proptest::bool::ANY, 0u32..6),
+            (proptest::bool::ANY, proptest::bool::ANY, 0u32..6, proptest::bool::ANY),
             1..8,
         ),
     ) {
@@ -84,12 +87,12 @@ proptest::proptest! {
         let hits: Vec<BrowseHit> = pool
             .iter()
             .enumerate()
-            .map(|(i, (title_match, _, _))| BrowseHit {
+            .map(|(i, (title_match, _, _, second_part))| BrowseHit {
                 slug: format!("s-{i}"),
-                title: if *title_match {
-                    "The Show".to_string()
-                } else {
-                    format!("Other {i}")
+                title: match (*title_match, *second_part) {
+                    (true, _) => "The Show".to_string(),
+                    (false, false) => format!("Other {i}"),
+                    (false, true) => format!("Other {i} Part 2"),
                 },
                 kind: None,
             })
@@ -97,13 +100,18 @@ proptest::proptest! {
         let probed: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = hits
             .iter()
             .zip(&pool)
-            .map(|(h, (_, confirmed, d))| (h, Vec::new(), *d, *confirmed))
+            .map(|(h, (_, confirmed, d, _))| (h, Vec::new(), *d, *confirmed))
             .collect();
         let best = probed.iter().map(|(_, _, d, _)| *d).min().expect("non-empty");
-        let (idx, rank) = select_winner(&probed, best, needle);
+        let entry = EntryTitles::bare(needle);
+        let (idx, rank) = select_winner(&probed, best, needle, entry);
         let key = |i: usize| {
             let (h, _, _, c) = &probed[i];
-            (h.title.trim().to_lowercase() != needle, !*c)
+            (
+                h.title.trim().to_lowercase() != needle,
+                h.title.ends_with("Part 2"),
+                !*c,
+            )
         };
         proptest::prop_assert_eq!(probed[idx].2, best);
         for (i, row) in probed.iter().enumerate() {
@@ -117,7 +125,7 @@ proptest::proptest! {
         let (h, _, _, c) = &probed[idx];
         proptest::prop_assert_eq!(
             rank,
-            identity_rank(h.title.trim().to_lowercase() == needle, *c)
+            super::super::play_native_choice::entry_rank(entry, &h.title, needle, *c)
         );
     }
 }
