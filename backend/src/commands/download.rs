@@ -4,13 +4,15 @@
 //! ffmpeg when yt-dlp is absent or fails, to write the file to disk.
 //!
 //! Everything the dock shows arrives as one stream of text lines,
-//! forwarded to the SSE handler in `api::get_download_stream`, and the
-//! tool is only its last third. Resolution reports go first —
-//! `Searching`, `Matched`, `… links fetched` — because they happen
-//! before either tool exists. A range download interleaves its own
-//! `Matched` and a `Playing episode N` per episode from the loop in
-//! `download_range`. Then the tool's stderr. A change to the protocol
-//! is a change to all three, not to yt-dlp's output alone.
+//! forwarded to the SSE handler in `api::get_download_stream`, from
+//! four sources. Resolution reports go first — `Searching`, `Matched`,
+//! `… links fetched` — because they happen before either tool exists.
+//! A range download interleaves its own `Matched` and a `Playing
+//! episode N` per episode from the loop in `download_range`. Then the
+//! tool's stderr, and, beside it, the run's speed as a
+//! `status.download.rate` line once a second, measured from the
+//! progress the tool prints on stdout. A change to the protocol is a
+//! change to all four, not to yt-dlp's output alone.
 
 use std::path::PathBuf;
 
@@ -71,13 +73,14 @@ pub struct DownloadArgs {
 }
 
 /// SSE event body for one line of the download's progress stream —
-/// see the module header for the three sources that feed it. Frontend
-/// renders the latest line under each active download row.
+/// see the module header for the four sources that feed it. The
+/// frontend keeps a speed report as the download's speed and renders
+/// any other latest line under its row.
 #[derive(Debug, Clone, Serialize)]
 pub struct DownloadProgress {
     /// One line of text. A tool's stderr arrives ANSI-stripped; the
-    /// resolution and orchestration lines are composed here and carry
-    /// no escapes to strip.
+    /// resolution, orchestration and speed lines are composed here and
+    /// carry no escapes to strip.
     pub line: String,
 }
 
@@ -104,7 +107,7 @@ pub struct DownloadResponse {
 /// what gets saved, then spawns the downloader with the chosen
 /// destination directory. `on_progress` is invoked for every line of
 /// the progress stream — resolution reports, a range run's own
-/// per-episode lines, and the tool's stderr alike.
+/// per-episode lines, the tool's stderr and the run's speed alike.
 ///
 /// # Errors
 /// - [`AniError::Config`] when no destination is supplied and the
@@ -182,9 +185,9 @@ where
     // Resolve the stream natively — the same walk, disambiguation
     // and episode mapping as the play path — then hand the master URL
     // to the download tool directly, exactly as 5.0's own download()
-    // would. The one-hour transfer deadline stays: yt-dlp / ffmpeg
-    // keep stderr quiet mid-transfer, so no shorter timeout can be
-    // informed by progress.
+    // would. The one-hour transfer deadline stays a guard on a hung
+    // tool; the progress the tools now report feeds the dock's speed,
+    // not a shorter timeout.
     let quality = args.quality.as_deref().unwrap_or("best");
     // Downloads are always a user waiting at the dock — interactive
     // priority, like the play path's non-prefetch requests.
@@ -316,7 +319,7 @@ where
         path_env,
         std::time::Duration::from_secs(60 * 60),
         &mut |line| {
-            tracing::info!(line = %line, "download.tool.stderr");
+            super::download_tool_output::log_progress_line(line);
             on_progress(DownloadProgress {
                 line: line.to_string(),
             });
@@ -1836,7 +1839,11 @@ where
         }
         cmd.arg("-loglevel")
             .arg("error")
-            .arg("-stats")
+            .arg("-nostats")
+            // Its key=value progress, one per line on stdout, which
+            // the run's meter reads for its speed.
+            .arg("-progress")
+            .arg("pipe:1")
             .args(ffmpeg_referer_args(input_referer))
             .args(ffmpeg_pace_args(live && relayed.is_none()))
             .arg("-i")
@@ -2131,8 +2138,26 @@ fn ytdlp_command(
     if let Some(p) = child_path {
         cmd.env("PATH", p);
     }
-    cmd.args(ytdlp_referer_args(referer))
+    // The run the app built, not one a user's configuration file
+    // reshapes: a configured --no-progress, --quiet or downloader
+    // silences the progress line the meter reads.
+    cmd.arg("--ignore-config")
+        .args(ytdlp_referer_args(referer))
         .arg(master_url)
+        // Every download is a finished episode. yt-dlp guesses live
+        // from the first variant it checks, and a stream it takes for
+        // live gets no progress line and can be handed to an ffmpeg
+        // run without the extension option the relay's addresses need.
+        .arg("--extractor-args")
+        .arg("generic:is_live=false")
+        // A progress line of the app's shape, one per update, which
+        // the run's meter reads for its speed.
+        .arg("--newline")
+        .arg("--progress-template")
+        .arg(format!(
+            "download:{} %(progress.downloaded_bytes)s",
+            super::download_progress::YTDLP_PROGRESS_MARK
+        ))
         .arg("--no-skip-unavailable-fragments")
         .arg("--fragment-retries")
         .arg("infinite")
@@ -2190,7 +2215,8 @@ enum ToolEnd {
     Outlived,
 }
 
-/// Run one download tool to completion, streaming stderr lines.
+/// Run one download tool to completion, streaming its stderr lines and
+/// its speed.
 ///
 /// # Errors
 /// [`AniError::Timeout`] past the deadline, [`AniError::Network`] on
@@ -2241,7 +2267,6 @@ async fn run_tool_until<F>(
 where
     F: FnMut(&str) + Send,
 {
-    use tokio::io::{AsyncBufReadExt, BufReader};
     // §5's subprocess environment: nothing the child prints may
     // depend on the terminal that launched the backend. Both tools
     // colorize when the inherited environment says to, and every
@@ -2249,7 +2274,9 @@ where
     cmd.env("TERM", "dumb")
         .env("NO_COLOR", "1")
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
+        // The tools' progress — yt-dlp's template line, ffmpeg's
+        // key=value report — comes on stdout.
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
     // In its tree before it runs — its own process group on Unix, its
@@ -2280,24 +2307,20 @@ where
     // the transfer deadline elapsing — the guard takes the tool's
     // tree down; a tree already gone is left alone.
     let stderr = child.stderr_mut().take().ok_or(AniError::Io)?;
+    let stdout = child.stdout_mut().take().ok_or(AniError::Io)?;
+    // Whether the run reported a speed: if it did, it reports zero as
+    // it ends, however it ends, so the indicators do not go on showing
+    // its last speed while nothing moves.
+    let measured = std::sync::atomic::AtomicBool::new(false);
     let drive = async {
-        let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(raw)) = lines.next_line().await {
-            // Defense in depth behind the environment above: the
-            // dock's DownloadProgress promises stripped text, and a
-            // tool that colorizes anyway must not reach it.
-            let line = crate::spawn::strip_ansi(raw.as_bytes());
-            // The run is condemned the moment yt-dlp reports it left
-            // MPEG-TS under the .mp4 name: how it ends stops
-            // mattering (exit 0 included), and stopping now spares
-            // the rest of a transfer whose output is already wrong.
-            // The armed guard takes the tool down on return.
-            if crate::commands::download_tool::yt_dlp_could_not_repackage(&line) {
-                *repackage_failed = true;
-                return Err(AniError::FfmpegMissing);
-            }
-            on_line(&line);
-        }
+        super::download_tool_output::read_tool_output(
+            stderr,
+            stdout,
+            on_line,
+            repackage_failed,
+            &measured,
+        )
+        .await?;
         child.wait().await.map_err(|_| AniError::Io)
     };
     // Whichever resolves first: the tool running to its end (or the
@@ -2309,6 +2332,7 @@ where
         run = tokio::time::timeout_at(deadline, drive) => Some(run),
         () = stop => None,
     };
+    super::download_tool_output::report_end(&measured, on_line);
     // However the run ended, the tree is taken down before anything
     // follows it: when the tool is still running, and for helpers still
     // in it when the tool exited by itself. A tree that outlives the

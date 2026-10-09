@@ -230,7 +230,7 @@ where
             path_env,
             std::time::Duration::from_secs(60 * 60),
             &mut |line| {
-                tracing::info!(line = %line, "download.tool.stderr");
+                super::download_tool_output::log_progress_line(line);
                 on_progress(DownloadProgress {
                     line: line.to_string(),
                 });

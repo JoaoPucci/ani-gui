@@ -40,7 +40,7 @@
 	"bar_cancel_all_title": "Cancelar todas las descargas",
 	"bar_cancel_confirm_single": "¿Cancelar la descarga de «{title}»?",
 	"bar_cancel_confirm_multi": "¿Cancelar {count} descargas activas?",
-	"dock_active_label": "{count} descarga(s) en curso",
+	"dock_active_speed_label": "{count} descarga(s) en curso, {speed}",
 	"dock_unseen_label": "{count} descarga(s) finalizadas",
 	"dock_idle_label": "Descargas",
 	"dock_title": "Descargas",
@@ -63,5 +63,7 @@
 	"status_abandoned_claim": "Una descarga interrumpida dejó un archivo vacío en {path}; elimínalo e inténtalo de nuevo.",
 	"status_claim_pending": "Otra descarga está publicando {path} y aún no termina; inténtalo de nuevo en un momento.",
 	"status_repackage_retry": "yt-dlp no pudo reempaquetar la transmisión; reintentando con ffmpeg.",
-	"status_retry_ffmpeg": "yt-dlp falló; reintentando con ffmpeg."
+	"status_retry_ffmpeg": "yt-dlp falló; reintentando con ffmpeg.",
+	"speed_kbps": "{value} KB/s",
+	"speed_mbps": "{value} MB/s"
 }

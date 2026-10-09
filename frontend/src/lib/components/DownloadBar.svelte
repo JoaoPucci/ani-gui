@@ -22,11 +22,13 @@
 	import { cubicOut } from 'svelte/easing';
 	import { downloadStore } from '$lib/download/store.svelte';
 	import { formatDownloadBarLabel } from '$lib/download/bar-label';
+	import { formatSpeed, totalSpeed } from '$lib/download/speed';
 	import { m } from '$lib/paraglide/messages';
 
 	const active = $derived(downloadStore.active);
 	const visible = $derived(active.length > 0);
 	const label = $derived(formatDownloadBarLabel(active));
+	const speed = $derived(totalSpeed(active));
 
 	function cancelAll() {
 		const count = active.length;
@@ -85,6 +87,9 @@
 				</span>
 			{/if}
 		</span>
+		{#if speed !== null}
+			<span class="dl-bar-speed">{formatSpeed(speed)}</span>
+		{/if}
 		<button
 			type="button"
 			class="dl-bar-cancel"
@@ -191,6 +196,19 @@
 	.dl-bar-suffix {
 		flex-shrink: 0;
 		white-space: nowrap;
+		color: var(--brand);
+	}
+	/* The running downloads' total speed; mono tabular figures so the
+	   bar does not shift as the number moves. */
+	.dl-bar-speed {
+		flex-shrink: 0;
+		/* Wide enough for the longest reading, so the bar keeps one
+		   layout while the number changes. */
+		min-inline-size: 10ch;
+		text-align: end;
+		white-space: nowrap;
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums;
 		color: var(--brand);
 	}
 	.dl-bar-cancel {
