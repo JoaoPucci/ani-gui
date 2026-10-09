@@ -9,23 +9,39 @@ fn is_numeral(c: char) -> bool {
     DIGITS.contains(c) || c == '十' || c == '百'
 }
 
-/// The number a run of kanji numerals writes, or `None` when `text`
-/// is anything else or writes nothing: "十" is 10, "十二" 12, "二十一"
-/// 21, "百二" 102, "八" 8.
+/// The number a run of kanji numerals writes the compound way — a
+/// digit before 百, a digit before 十, a last digit, each optional and
+/// in that order: "十" is 10, "十二" 12, "二十一" 21, "百二" 102, "八"
+/// 8, and "〇" alone 0. `None` for any other run ("一二", "十十") and
+/// for anything that is not kanji numerals.
 pub(super) fn kanji_number(text: &str) -> Option<u32> {
-    let (mut total, mut digit) = (0u32, None::<u32>);
-    for c in text.chars() {
-        if let Some(d) = DIGITS.chars().position(|k| k == c) {
-            digit = Some(d as u32);
-        } else if c == '十' || c == '百' {
-            let unit = if c == '十' { 10 } else { 100 };
-            total += digit.take().unwrap_or(1) * unit;
-        } else {
-            return None;
+    if text == "〇" {
+        return Some(0);
+    }
+    let digit = |c: char| {
+        DIGITS
+            .chars()
+            .position(|k| k == c)
+            .filter(|&d| d > 0)
+            .map(|d| d as u32)
+    };
+    let mut chars = text.chars().peekable();
+    let mut total = 0;
+    for (unit, value) in [('百', 100), ('十', 10)] {
+        let mut ahead = chars.clone();
+        let lead = ahead.next().and_then(digit);
+        if lead.is_some() && ahead.peek() == Some(&unit) {
+            chars = ahead;
+        }
+        if chars.peek() == Some(&unit) {
+            chars.next();
+            total += lead.unwrap_or(1) * value;
         }
     }
-    let n = total + digit.unwrap_or(0);
-    (n > 0).then_some(n)
+    if let Some(c) = chars.next() {
+        total += digit(c)?;
+    }
+    (chars.next().is_none() && total > 0).then_some(total)
 }
 
 /// `text` with every run of kanji numerals that stands where a
@@ -48,7 +64,10 @@ pub(super) fn with_kanji_numbers(text: &str) -> String {
             .unwrap_or(chars.len());
         let run: String = chars[i..end].iter().collect();
         let after_dai = i > 0 && chars[i - 1] == '第';
-        let before_counter = chars.get(end).is_some_and(|c| "号期話部ク".contains(*c));
+        let rest: String = chars[end..].iter().collect();
+        let before_counter = ["号", "期", "話", "部", "クール"]
+            .iter()
+            .any(|c| rest.starts_with(c));
         match kanji_number(&run).filter(|_| after_dai || before_counter) {
             Some(n) => out.push_str(&n.to_string()),
             None => out.push_str(&run),
