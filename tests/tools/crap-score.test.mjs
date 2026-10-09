@@ -360,6 +360,21 @@ for (const [why, lcov] of [
 	});
 }
 
+// A coverage file with no record in it is not a run with nothing
+// covered: every file would score at no coverage and the job would
+// fail for a reason the log never names.
+test('a coverage file with no record fails the run and says so', () => {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'crap-score-lcov-empty-'));
+	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${lizardItem('e.ts', 4)}</measure></cppncss>`);
+	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), '\n');
+	const run = spawnSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.', '--json'], {
+		cwd: tmpDir,
+		encoding: 'utf-8'
+	});
+	assert.notEqual(run.status, 0, run.stdout);
+	assert.match(run.stderr, /no coverage record/);
+});
+
 // The high-risk count sits at its ceiling, so the files just under
 // the bar decide the gate on a sliver of coverage. The table is where
 // they are read from — in the build log and locally — so it has to
@@ -375,8 +390,8 @@ test('the table reaches every file within five of the high-risk bar', () => {
 		items.push(lizardItem(file, 40));
 		records.push(lcovRecord(file, 10, 10));
 	}
-	items.push(lizardItem('src/near.rs', 29), lizardItem('src/far.rs', 20));
-	records.push(lcovRecord('src/near.rs', 10, 10), lcovRecord('src/far.rs', 10, 10));
+	items.push(lizardItem('src/near.rs', 29), lizardItem('src/edge.rs', 25), lizardItem('src/far.rs', 20));
+	records.push(lcovRecord('src/near.rs', 10, 10), lcovRecord('src/edge.rs', 10, 10), lcovRecord('src/far.rs', 10, 10));
 	fs.writeFileSync(path.join(tmpDir, 'ccn.xml'), `<cppncss><measure type="Function">${items.join('')}</measure></cppncss>`);
 	fs.writeFileSync(path.join(tmpDir, 'lcov.info'), records.join('\n'));
 	const table = execFileSync('node', [scriptUnderTest, '--ccn=ccn.xml', '--lcov=lcov.info', '--root=.'], {
@@ -385,5 +400,6 @@ test('the table reaches every file within five of the high-risk bar', () => {
 		stdio: ['ignore', 'pipe', 'ignore']
 	});
 	assert.match(table, /src\/near\.rs/, 'a file within five of the bar must be in the table');
+	assert.match(table, /src\/edge\.rs/, 'a file exactly five under the bar is within five of it');
 	assert.doesNotMatch(table, /src\/far\.rs/, 'a file well under the bar is not');
 });
