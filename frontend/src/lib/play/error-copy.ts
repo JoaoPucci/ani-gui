@@ -9,9 +9,8 @@
  *   • `describeRateLimit`, `describeSourceDown` and
  *     `describeSourceAnswer` (in ./source-answer, re-exported here)
  *     are first-chance mappers for the typed
- *     provider answers (busy, down, any other status); every play
- *     surface and the download dock call them before their own
- *     branches, so one answer reads the same everywhere.
+ *     provider answers (busy, down, any other status);
+ *     describePlayFailure calls them before its own branches.
  *   • `describePlayFailure` picks the right user-facing message for
  *     a play-call failure — "no episode," "scraper unhappy,"
  *     "network trouble," etc.

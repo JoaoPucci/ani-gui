@@ -1,20 +1,21 @@
 /**
  * First-chance mappers for the provider's typed answers: a rate limit
  * (in-band `rate_limited` or an upstream 429), the source being down
- * (upstream 5xx) and any other upstream status. Every play surface and
- * the download dock call them before their own branches, so one answer
- * reads the same everywhere. Re-exported from ./error-copy.
+ * (upstream 5xx) and any other upstream status. describePlayFailure
+ * calls all three before its own branches, so every surface that uses
+ * it — and the download dock, which routes provider answers through it
+ * and calls describeRateLimit itself — reads one answer the same way.
+ * Re-exported from ./error-copy.
  */
 
 import { m } from '$lib/paraglide/messages';
 
-/** First-chance mapper for the backend's typed rate limit. Returns
- *  the busy-source copy — with the upstream's advertised wait when
- *  it sent one ("try again in N seconds" → retry_after_secs) — or
- *  `null` for every other error. The detail and home pages keep
- *  their own surface-specific mappers for the older kinds; they call
- *  this first so all play surfaces share one localized rate-limit
- *  branch instead of each growing a divergent copy. */
+/** First-chance mapper for a rate limit: the in-band `rate_limited`
+ *  (with the upstream's advertised wait when it sent one, "try again
+ *  in N seconds" → retry_after_secs) or an upstream 429. Returns the
+ *  busy-source copy, or `null` for every other error.
+ *  describePlayFailure calls it first, and the download dock calls it
+ *  directly before its own branches. */
 export function describeRateLimit(e: unknown): string | null {
 	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
 	// An upstream that throttles with HTTP 429 is a rate limit too; the
@@ -27,13 +28,11 @@ export function describeRateLimit(e: unknown): string | null {
 		: m.play_play_failure_rate_limited();
 }
 
-/** Shared first-chance mapper for the provider being down: upstream
- *  5xx — the provider explicitly answering "service unavailable",
- *  maintenance or an outage — returns copy that blames the source
- *  and clears the user's own setup; null for everything else. The
- *  detail and home pages keep surface-specific mappers for the
- *  older kinds, so like the rate-limit branch this must be called
- *  by each of them, not folded into one mapper of three. */
+/** First-chance mapper for the provider being down: upstream 5xx —
+ *  the provider explicitly answering "service unavailable",
+ *  maintenance or an outage — returns copy that blames the source and
+ *  clears the user's own setup; null for everything else.
+ *  describePlayFailure calls it after describeRateLimit. */
 export function describeSourceDown(e: unknown): string | null {
 	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
 	if (obj?.kind === 'upstream' && typeof obj.status === 'number' && obj.status >= 500) {
@@ -42,7 +41,7 @@ export function describeSourceDown(e: unknown): string | null {
 	return null;
 }
 
-/** Shared first-chance mapper for every other answer from the source:
+/** First-chance mapper for every other answer from the source:
  *  an `upstream` whose status is neither the busy nor the down shape.
  *  The source answered, so the connection is fine — 404/410 is the
  *  source not having the thing (the catalogue-miss copy, never the

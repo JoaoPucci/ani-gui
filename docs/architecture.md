@@ -214,7 +214,7 @@ User-editable settings live in `$XDG_CONFIG_HOME/ani-gui/config.toml`. The Setti
 
 Four MVP locales: English (`en`), Brazilian Portuguese (`pt-BR`), Latin American Spanish (`es-419`), Russian (`ru`). The set was chosen for free-content market fit, not language-coverage prestige. Phase-2 candidates listed in `docs/i18n.md`.
 
-The backend never returns localized text. Errors carry a `kind` and a stable key (`error.scraper.timeout`, `error.search.no_results`, etc.); the frontend maps the `kind` to Paraglide messages and never shows an error's free-text `detail`. Anime titles themselves are not translated by the app — they come from Kitsu/AniList per a user-chosen title-language preference.
+The backend never returns localized text. Every error — an HTTP error body or an SSE error event — carries a `kind`, a stable key (`error.scraper.timeout`, `error.search.no_results`, etc.) and the variant's own fields; the frontend maps the `kind`, and the fields that change what the user should do (an upstream's `status`, a rate limit's `retry_after_secs`, a failed player's `binary`, a download-tool failure's key), to Paraglide messages, and never shows an error's free-text `detail`. Anime titles themselves are not translated by the app — they come from Kitsu/AniList per a user-chosen title-language preference.
 
 The Electron main process shows two dialogs of its own, where no page can: the error a failed startup ends with, and the prompt on a quit with downloads running. Their text lives in `electron/lib/main-messages.cjs`, in the same four locales, and the locale is resolved in the renderer's order: the one saved in the config, then the system's languages as Chromium reports them, then English.
 

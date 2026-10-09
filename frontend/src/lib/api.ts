@@ -131,9 +131,10 @@ async function url(path: string): Promise<string> {
 
 /**
  * Read the JSON body or throw the parsed error payload. The backend
- * serializes `AniError` into the error response's body as
- * `{ kind, key?, detail?, status? }`, and that object is what callers
- * catch; a body that is not JSON becomes `{ kind: 'http', status }`.
+ * sends its error envelope as the error response's body — `kind`, the
+ * variant's own fields and the stable `key` (see AniErrorPayload) —
+ * and that object is what callers catch; a body that is not JSON
+ * becomes `{ kind: 'http', status }`.
  */
 async function expect2xx<T>(resp: Response): Promise<T> {
 	if (!resp.ok) {
@@ -261,16 +262,24 @@ export interface LaunchExternalPlayerArgs {
 }
 
 /**
- * Shape of `AniError` as the backend serializes it into an error
- * response's body, and so of what api.ts calls reject with. `detail` is
- * free text for logs; user-facing copy comes from `kind` (see
- * `describeError` in $lib/play/error-copy).
+ * The backend's error envelope, as every error response's body and
+ * every SSE error event carry it, and so what api.ts calls reject
+ * with. The backend always sends `kind` and `key`; the rest are the
+ * variant's own fields. The fallback expect2xx builds for a body that
+ * is not JSON has a `kind` and a `status` only. User-facing copy comes from `kind` and the
+ * fields that change what the user should do — `status` on an
+ * upstream, `retry_after_secs` on a rate limit, `binary` on a spawn
+ * failure, `key` on a download-tool failure (see `describeError` in
+ * $lib/play/describe-error and the mappers beside it). `detail` is
+ * free text for logs and is never shown.
  */
 export interface AniErrorPayload {
 	kind: string;
 	key?: string;
 	detail?: string;
 	status?: number;
+	retry_after_secs?: number | null;
+	binary?: string;
 }
 
 /** Portrait poster URLs (5:7) at Kitsu's pre-rendered sizes. */
