@@ -7,7 +7,8 @@
  *     error's `kind`. Every surface that shows a failure without a copy
  *     of its own uses it.
  *   • `describeRateLimit`, `describeSourceDown` and
- *     `describeSourceAnswer` are first-chance mappers for the typed
+ *     `describeSourceAnswer` (in ./source-answer, re-exported here)
+ *     are first-chance mappers for the typed
  *     provider answers (busy, down, any other status); every play
  *     surface and the download dock call them before their own
  *     branches, so one answer reads the same everywhere.
@@ -44,55 +45,8 @@ function classifierText(e: unknown): string {
 
 export { describeError } from './describe-error';
 
-/** First-chance mapper for the backend's typed rate limit. Returns
- *  the busy-source copy — with the upstream's advertised wait when
- *  it sent one ("try again in N seconds" → retry_after_secs) — or
- *  `null` for every other error. The detail and home pages keep
- *  their own surface-specific mappers for the older kinds; they call
- *  this first so all play surfaces share one localized rate-limit
- *  branch instead of each growing a divergent copy. */
-export function describeRateLimit(e: unknown): string | null {
-	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
-	// An upstream that throttles with HTTP 429 is a rate limit too; the
-	// backend keeps it as `upstream` + status rather than `rate_limited`.
-	if (obj?.kind === 'upstream' && obj.status === 429) return m.play_play_failure_rate_limited();
-	if (obj?.kind !== 'rate_limited') return null;
-	const secs = obj.retry_after_secs;
-	return typeof secs === 'number'
-		? m.play_play_failure_rate_limited_wait({ seconds: secs })
-		: m.play_play_failure_rate_limited();
-}
-
-/** Shared first-chance mapper for the provider being down: upstream
- *  5xx — the provider explicitly answering "service unavailable",
- *  maintenance or an outage — returns copy that blames the source
- *  and clears the user's own setup; null for everything else. The
- *  detail and home pages keep surface-specific mappers for the
- *  older kinds, so like the rate-limit branch this must be called
- *  by each of them, not folded into one mapper of three. */
-export function describeSourceDown(e: unknown): string | null {
-	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
-	if (obj?.kind === 'upstream' && typeof obj.status === 'number' && obj.status >= 500) {
-		return m.play_play_failure_source_down();
-	}
-	return null;
-}
-
-/** Shared first-chance mapper for every other answer from the source:
- *  an `upstream` whose status is neither the busy nor the down shape.
- *  The source answered, so the connection is fine — 404/410 is the
- *  source not having the thing (the catalogue-miss copy, never the
- *  detail page's definitive override, since a 404 does not prove a
- *  title absent from the catalogue), and any other status, or an
- *  upstream with no status, is the source answering with an error.
- *  Null for every other kind. Called after describeRateLimit and
- *  describeSourceDown, which take the 429 and 5xx shapes first. */
-export function describeSourceAnswer(e: unknown): string | null {
-	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
-	if (obj?.kind !== 'upstream') return null;
-	if (obj.status === 404 || obj.status === 410) return m.play_play_failure_no_results();
-	return m.play_play_failure_source_error();
-}
+export { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
+import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
 
 /** User-facing copy for a play-call failure. The message branches
  *  match (in order): rate_limited / upstream 429 → busy source (with
