@@ -10,5 +10,5 @@
 	"reason_answered_error": "El servicio respondió con un error. Inténtalo más tarde.",
 	"reason_not_found": "El servicio no encontró lo que se pidió. Puede que se haya eliminado.",
 	"reason_service_down": "El servicio está caído o con problemas ahora. No es nada de tu lado — inténtalo más tarde.",
-	"reason_busy_wait": "El servicio está ocupado ahora. Inténtalo de nuevo en unos {seconds} segundos."
+	"reason_busy_wait": "El servicio está ocupado ahora. Inténtalo de nuevo en unos {seconds} s."
 }

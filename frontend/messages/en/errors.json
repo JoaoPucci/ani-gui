@@ -10,5 +10,5 @@
 	"reason_answered_error": "The service answered with an error. Try again later.",
 	"reason_not_found": "The service couldn't find it. It may have been removed.",
 	"reason_service_down": "The service is down or having trouble right now. Nothing is wrong on your end — try again later.",
-	"reason_busy_wait": "The service is busy right now. Try again in about {seconds} seconds."
+	"reason_busy_wait": "The service is busy right now. Try again in about {seconds} s."
 }
