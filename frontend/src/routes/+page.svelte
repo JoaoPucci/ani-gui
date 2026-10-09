@@ -143,6 +143,9 @@
 	// sees a retry affordance instead of a false "nothing planned"
 	// (Codex PR #71).
 	let watchLaterFailed = $state(false);
+	// What the last failed load rejected with, so the rail's hint can
+	// say what went wrong instead of always blaming the connection.
+	let watchLaterError = $state<unknown>(null);
 	// Monotonic load token. Every rail load (mount effect + refresh)
 	// captures the next value and only writes its result if still the
 	// latest — so a slow initial load can't clobber a newer refresh, and
@@ -494,13 +497,14 @@
 				watchLaterFailed = false;
 				maybeAutoRefreshWatchLater(deps);
 			})
-			.catch(() => {
+			.catch((e: unknown) => {
 				// Loader's per-provider try/catch already swallowed
 				// individual failures; a top-level reject means every
 				// provider failed (or the bridge died). Flag the failure
 				// (distinct from a genuinely empty list) so the rail shows
 				// a retry affordance rather than "nothing planned".
 				if (seq !== watchLaterLoadSeq) return;
+				watchLaterError = e;
 				watchLaterFailed = true;
 			});
 	});
@@ -568,13 +572,14 @@
 			if (seq !== watchLaterLoadSeq) return; // a newer load superseded this one
 			watchLater = filtered;
 			watchLaterFailed = false;
-		} catch {
+		} catch (e) {
 			// Refresh-path reload failed (bridge / availability). Flag it
 			// rather than blanking the rail or leaking an unhandled
 			// rejection: a populated rail keeps showing its cards (the
 			// length>0 branch wins), an empty one shows the retry state
 			// (Codex PR #71).
 			if (seq !== watchLaterLoadSeq) return;
+			watchLaterError = e;
 			watchLaterFailed = true;
 		}
 	}
@@ -1197,7 +1202,9 @@
 		caption={m.account_watch_later_failed()}
 		headerTrailing={watchLaterRefresh}
 	>
-		<p class="watch-later-empty">{m.account_watch_later_failed_hint()}</p>
+		<p class="watch-later-empty">
+			{m.account_watch_later_failed_hint({ reason: describeError(watchLaterError) })}
+		</p>
 	</Strip>
 {:else if accountStore.hasAny && watchLater !== null}
 	<!-- Connected and the cached Plan-to-Watch is genuinely empty. Still
