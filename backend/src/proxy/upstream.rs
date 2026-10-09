@@ -46,8 +46,8 @@ pub fn build_client() -> Result<reqwest::Client> {
 /// Build the metadata HTTP client (Kitsu, AniList, provider search,
 /// images, GitHub polls). A stalled metadata connection must fail a
 /// probe in seconds, not ride [`build_client`]'s streaming-sized
-/// 120s ceiling. Same UA so CDN HEAD probes keep their accepted
-/// fingerprint. Falls back to the default client if the builder
+/// 120s ceiling. Same UA as the proxy's client, so a host sees one
+/// fingerprint from the app. Falls back to the default client if the builder
 /// fails (never observed in practice).
 #[must_use]
 pub fn build_meta_client() -> reqwest::Client {
