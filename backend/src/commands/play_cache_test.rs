@@ -149,6 +149,45 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
     );
 }
 
+/// The liveness check's requests are spent where they land: a ping
+/// the stream's host redirects to an edge is a request to each, so
+/// the edge — the host the player will fetch from — is charged too.
+#[tokio::test]
+async fn a_cached_rows_check_is_spent_at_every_host_a_redirect_reaches() {
+    let origin = MockServer::start().await;
+    let edge = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/video.mp4", edge.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&edge)
+        .await;
+    let cached = cached_blank(
+        format!("{}/video.mp4", origin.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    let mut state = state_with_proxy_origin();
+    // The app's own client for stream traffic, which follows no
+    // redirect on its own.
+    state.proxy_http = crate::proxy::upstream::build_client().expect("client");
+    assert!(try_serve_cached(&state, &cached).await.is_some());
+    let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
+    for server in [&origin, &edge] {
+        let host =
+            crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+        let left = state.host_budget.on_hand(&host).unwrap_or(burst);
+        assert!((left - (burst - 1.0)).abs() < 0.01, "{host}: {left}");
+    }
+}
+
 mod webvtt_prefix_props {
     use crate::commands::play_cache_tracks::webvtt_prefix;
     use crate::proxy::is_webvtt;
