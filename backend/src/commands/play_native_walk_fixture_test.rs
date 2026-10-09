@@ -1445,3 +1445,24 @@ async fn a_title_continuing_the_entry_s_number_is_another_show() {
         }
     }
 }
+
+/// A title's first number ends at its word: a separate word that
+/// starts with a digit after it never lengthens it, so these sequels,
+/// each the entry's own listing, are not taken for a title continuing
+/// the entry's number.
+#[tokio::test]
+async fn a_title_s_first_number_ends_at_its_word() {
+    for (entry, listing) in [
+        ("Kaiju No. 8 Season 2", "Kaiju No. 8 2nd Season"),
+        ("Kaiju No. 8 Season 2", "Kaiju No. 8: 2nd Season"),
+        ("Mob Psycho 100 II", "Mob Psycho 100 2nd Season"),
+        ("86 Part 2", "86 2nd Season"),
+        ("Show 2", "Show 2 (2020)"),
+    ] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("own", listing, 12)]);
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{entry}: {listing} refused: {e:?}"));
+        assert_eq!(picked.hit.slug, "own", "{entry}");
+    }
+}
