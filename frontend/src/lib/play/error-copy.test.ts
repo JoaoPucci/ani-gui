@@ -367,3 +367,26 @@ describe('describePlayFailure — one mapper for every surface', () => {
 		);
 	});
 });
+
+describe('wait copy reads right for any number of seconds', () => {
+	// The message catalogue has no plural forms, so "{seconds} seconds"
+	// is wrong for 1 in English and for most numbers in Russian
+	// (1 секунду, 2 секунды, 5 секунд). The wait is written with the
+	// unit's abbreviation, which does not inflect.
+	const UNIT = { en: 's', 'pt-BR': 's', 'es-419': 's', ru: 'с' } as const;
+	const WAITS = [m.errors_reason_busy_wait, m.play_play_failure_rate_limited_wait];
+
+	it('abbreviates the unit after the number in every locale', () => {
+		for (const [locale, unit] of Object.entries(UNIT) as Array<[keyof typeof UNIT, string]>) {
+			for (const wait of WAITS) {
+				for (const seconds of [1, 2, 5, 21]) {
+					const text = wait({ seconds }, { locale });
+					expect(text, `${locale} ${seconds}`).toContain(`${seconds} ${unit}`);
+					expect(text, `${locale} ${seconds}`).not.toMatch(
+						new RegExp(`${seconds} ${unit}[A-Za-zА-Яа-яё]`)
+					);
+				}
+			}
+		}
+	});
+});
