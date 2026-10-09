@@ -4,9 +4,9 @@
 use super::Variables;
 
 /// A tag's line with references spelled in its quoted-string values and
-/// its hexadecimal-sequence values — an unquoted value that reads `0x…`
-/// once spelled, whether it was written so or a reference spells it
-/// whole — and nowhere else.
+/// its hexadecimal-sequence values — an unquoted value that is `0x` and
+/// hex digits once spelled, whether it was written so or a reference
+/// spells it whole — and nowhere else.
 pub(super) fn spell_attributes(line: &str, vars: &Variables) -> String {
     let mut out = String::with_capacity(line.len());
     let mut rest = line;
@@ -19,7 +19,12 @@ pub(super) fn spell_attributes(line: &str, vars: &Variables) -> String {
         } else if let Some(value) = rest.strip_prefix('=') {
             let end = value.find([',', '"', '\r', '\n']).unwrap_or(value.len());
             let spelled = spell(&value[..end], vars);
-            let hex = spelled.starts_with("0x") || spelled.starts_with("0X");
+            let hex = spelled
+                .strip_prefix("0x")
+                .or_else(|| spelled.strip_prefix("0X"))
+                .is_some_and(|digits| {
+                    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_hexdigit())
+                });
             out.push('=');
             out.push_str(if hex { &spelled } else { &value[..end] });
             rest = &value[end..];
