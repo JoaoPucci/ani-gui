@@ -7226,3 +7226,79 @@ mod rate_from_the_runs_start {
         assert_eq!(ytdlp_progress("ani-gui-progress 137 NA"), None);
     }
 }
+
+mod progress_props {
+    use crate::commands::download_progress::{
+        ffmpeg_progress_bytes, progress, rate_report, ytdlp_progress, RateMeter, Resumed,
+        RATE_STATUS,
+    };
+    use proptest::prelude::*;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    proptest! {
+        /// Whatever format yt-dlp names and whatever count it has, its
+        /// progress line reads back as them; a line with the count alone
+        /// names no format; ffmpeg's reads as its bytes, for no format.
+        #[test]
+        fn a_progress_line_reads_back_as_written(
+            format in "[A-Za-z0-9_+-]{1,16}",
+            bytes in proptest::num::u64::ANY,
+        ) {
+            prop_assert_eq!(
+                ytdlp_progress(&format!("ani-gui-progress {format} {bytes}")),
+                Some((Some(format.clone()), bytes))
+            );
+            prop_assert_eq!(ytdlp_progress(&format!("ani-gui-progress {bytes}")), Some((None, bytes)));
+            prop_assert_eq!(ffmpeg_progress_bytes(&format!("total_size={bytes}")), Some(bytes));
+            prop_assert_eq!(progress(&format!("total_size={bytes}")), Some((None, bytes)));
+        }
+
+        /// A speed report carries the speed rounded to whole bytes, and
+        /// none below zero.
+        #[test]
+        fn a_speed_report_is_the_speed_rounded_and_never_negative(speed in -1.0e12f64..1.0e12) {
+            let line = rate_report(speed);
+            let number: u64 = line
+                .strip_prefix(RATE_STATUS)
+                .expect("the status")
+                .trim()
+                .parse()
+                .expect("a number");
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let expected = speed.max(0.0).round() as u64;
+            prop_assert_eq!(number, expected);
+        }
+
+        /// Whatever a format resumes from and whatever it fetches next,
+        /// the first count of it reads as what it fetched, not its
+        /// partial, and a format after it starts from its own.
+        #[test]
+        fn each_formats_first_count_reads_as_what_it_fetched(
+            first in 0u64..1 << 40,
+            second in 0u64..1 << 40,
+            got_first in 0u64..1 << 30,
+            got_second in 0u64..1 << 30,
+        ) {
+            let start = Instant::now();
+            let resumed = Resumed {
+                whole: 0,
+                formats: std::collections::HashMap::from([
+                    ("v".to_string(), first),
+                    ("a".to_string(), second),
+                ]),
+            };
+            let mut meter = RateMeter::starting_from_partials(resumed, start);
+            let one = start + Duration::from_secs(1);
+            meter.observe_format(Some("v"), first + got_first, one);
+            #[allow(clippy::cast_precision_loss)]
+            let expected = got_first as f64;
+            prop_assert!((meter.rate_at(one) - expected).abs() < 1.0);
+            let two = start + Duration::from_secs(2);
+            meter.observe_format(Some("a"), second + got_second, two);
+            #[allow(clippy::cast_precision_loss)]
+            let expected = (got_first + got_second) as f64 / 2.0;
+            prop_assert!((meter.rate_at(two) - expected).abs() < 1.0);
+        }
+    }
+}
