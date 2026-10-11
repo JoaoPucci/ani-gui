@@ -7181,6 +7181,24 @@ mod rate_from_the_runs_start {
         );
     }
 
+    /// A format's id may carry dots — an HLS rendition's name flows into
+    /// it — and its partial is read by the whole id, up to the
+    /// extension.
+    #[test]
+    fn a_format_whose_id_has_dots_is_read_by_its_whole_id() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(
+            dir.path().join("episode.part.fhls-English_2.0.m4a.part"),
+            vec![0u8; 2048],
+        )
+        .expect("write");
+        assert_eq!(
+            super::super::resumed_partials(&out).formats,
+            std::collections::HashMap::from([("hls-English_2.0".to_string(), 2048)])
+        );
+    }
+
     /// yt-dlp fetches the formats it keeps apart one after another, and
     /// counts each from its own partial: each format's count is measured
     /// from that format's partial, so a resumed format's growth is its
