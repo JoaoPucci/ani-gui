@@ -20,8 +20,11 @@
 //!   URI, key URI, and init-segment URI.
 //! - `build_proxy_uri` (private) — resolve a relative URI against a base,
 //!   then build a proxy URL with HMAC token, marked `k=pl` when a master
-//!   names it as a playlist and `k=md` when it names media — a master's
-//!   session key or session data, anything a media playlist names.
+//!   names it as a playlist — with its kind of stream and the master's
+//!   variables — and `k=md` when it names media — a master's session key
+//!   or session data, anything a media playlist names, a segment with
+//!   the stream it feeds and the playback it buys. The token signs the
+//!   marks with the upstream.
 //! - [`names_a_playlist`] — whether the segment route is fetching a
 //!   playlist: by that mark, or for an unmarked URL by a lowercase
 //!   `.m3u8` path.
@@ -41,13 +44,14 @@ use url::Url;
 
 use crate::error::{AniError, Result};
 use crate::proxy::host_budget_demand::Stream;
-use crate::proxy::token::{sign_segment, AppSecret, SessionId};
+use crate::proxy::token::{sign_marked, AppSecret, SessionId};
 
 /// How the proxy should render rewritten URIs back into the manifest.
 /// Path style: `/s/<session>/seg?u=<base64-url-encoded-original>&t=<hmac>`,
-/// with `&k=pl` on a URI a master names as a playlist and `&k=md` on
-/// one that names media — a master's session key or session data,
-/// anything a media playlist names.
+/// with `&k=pl&s=<stream>[&v=<variables>]` on a URI a master names as a
+/// playlist and `&k=md[&r=<stream>&d=<ms>]` on one that names media — a
+/// master's session key or session data, anything a media playlist
+/// names — every mark signed with the upstream by the token.
 #[derive(Debug, Clone)]
 pub struct ProxyOrigin {
     /// e.g. `http://127.0.0.1:42337` — no trailing slash.
@@ -76,31 +80,24 @@ impl ProxyOrigin {
         )
     }
 
-    /// Render the URL of a playlist a master names: the segment route,
-    /// told it is fetching a playlist and which kind of stream it
-    /// carries.
+    /// Render the URL the player fetches for `original` with `marks`
+    /// beside the token — the query pairs the token signs with it.
     #[must_use]
-    pub fn playlist_url(
+    pub fn marked_url(
         &self,
         session: SessionId,
         original: &str,
         token: &str,
-        stream: Stream,
+        marks: &str,
     ) -> String {
-        format!(
-            "{}&{PLAYLIST_KIND}&s={}",
-            self.segment_url(session, original, token),
-            stream.slot()
-        )
+        let url = self.segment_url(session, original, token);
+        if marks.is_empty() {
+            url
+        } else {
+            format!("{url}&{marks}")
+        }
     }
 }
-
-/// The query pair that marks a proxied URI as a playlist.
-const PLAYLIST_KIND: &str = "k=pl";
-
-/// The query pair that marks a proxied URI as media, a key or an init
-/// segment.
-const MEDIA_KIND: &str = "k=md";
 
 /// Whether the segment route is fetching a playlist. HLS names a
 /// playlist by where it appears, not by its URL, so the rewrite marks
@@ -122,11 +119,52 @@ pub fn names_a_playlist(kind: Option<&str>, upstream: &Url) -> bool {
 /// What a rewritten URI points at, which decides how the segment route
 /// serves it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    /// A playlist carrying a kind of stream, fetched and rewritten.
-    Playlist(Stream),
-    /// Media, a key or an init segment, streamed through.
+enum Kind<'a> {
+    /// A playlist carrying a kind of stream, fetched and rewritten,
+    /// with the variables of the master that named it, encoded
+    /// ([`encode_variables`]) — empty when it defines none.
+    Playlist(Stream, &'a str),
+    /// A key, an init segment, a master's session key or data,
+    /// streamed through.
     Media,
+    /// A media segment, streamed through: the kind of stream it feeds
+    /// and the playback it buys, in milliseconds.
+    Segment(Stream, u64),
+}
+
+/// The marks a proxied URI of `kind` carries after its token, in the
+/// order the segment route reads them back ([`super::marks_of`]): the
+/// playlist-or-media mark `k`, then a playlist's stream `s` and its
+/// master's variables `v`, or a segment's stream `r` and playback `d`.
+fn marks(kind: Kind<'_>) -> String {
+    match kind {
+        Kind::Playlist(stream, "") => format!("k=pl&s={}", stream.slot()),
+        Kind::Playlist(stream, vars) => format!("k=pl&s={}&v={vars}", stream.slot()),
+        Kind::Media => "k=md".to_owned(),
+        Kind::Segment(stream, millis) => format!("k=md&r={}&d={millis}", stream.slot()),
+    }
+}
+
+/// A master's variables as a playlist's URI carries them: JSON, in
+/// name order, base64url — empty for none.
+#[must_use]
+pub fn encode_variables(vars: &super::m3u8_define::Variables) -> String {
+    if vars.is_empty() {
+        return String::new();
+    }
+    let ordered: std::collections::BTreeMap<_, _> = vars.iter().collect();
+    let json = serde_json::to_vec(&ordered).unwrap_or_default();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json)
+}
+
+/// The variables a playlist's URI carries ([`encode_variables`]);
+/// `None` when the mark does not read as them.
+#[must_use]
+pub fn decode_variables(mark: &str) -> Option<super::m3u8_define::Variables> {
+    let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(mark)
+        .ok()?;
+    serde_json::from_slice(&json).ok()
 }
 
 /// Rewrite a master playlist. Returns the new manifest as a string.
@@ -144,6 +182,10 @@ pub fn rewrite_master(
     session: SessionId,
     secret: &AppSecret,
 ) -> Result<String> {
+    // What the master defines travels, signed, in the URI of every
+    // playlist it names, for that playlist to import: bound to this
+    // response, not to whatever the master says when next served.
+    let vars = encode_variables(&master_variables(body, master_url));
     let body =
         &super::m3u8_define::substitute(body, master_url, &super::m3u8_define::Variables::new());
     let parsed = m3u8_rs::parse_master_playlist_res(body).map_err(|e| AniError::ParseFailed {
@@ -158,14 +200,20 @@ pub fn rewrite_master(
             origin,
             session,
             secret,
-            Kind::Playlist(Stream::Main),
+            Kind::Playlist(Stream::Main, &vars),
         );
     }
     for a in &mut out.alternatives {
         let stream = alternative_stream(&a.media_type);
         if let Some(uri) = a.uri.as_mut() {
             let resolved = resolve(master_url, uri)?;
-            *uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Playlist(stream));
+            *uri = build_proxy_uri(
+                &resolved,
+                origin,
+                session,
+                secret,
+                Kind::Playlist(stream, &vars),
+            );
         }
     }
     for key in &mut out.session_key {
@@ -274,16 +322,18 @@ pub fn rewrite_media_importing(
 
     for seg in &mut out.segments {
         let resolved = resolve(media_url, &seg.uri)?;
-        let fresh = !resolved.as_str().starts_with(&origin.base);
-        seg.uri = build_proxy_uri(&resolved, origin, session, secret, Kind::Media);
-        if fresh {
-            // What the fetch of this segment feeds and buys, for the
-            // budget to know what the player needs.
-            let millis = (f64::from(seg.duration) * 1000.0).round();
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let millis = millis.max(0.0) as u64;
-            seg.uri = format!("{}&r={}&d={millis}", seg.uri, stream.slot());
-        }
+        // What the fetch of this segment feeds and buys, for the
+        // budget to know what the player needs.
+        let millis = (f64::from(seg.duration) * 1000.0).round();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let millis = millis.max(0.0) as u64;
+        seg.uri = build_proxy_uri(
+            &resolved,
+            origin,
+            session,
+            secret,
+            Kind::Segment(stream, millis),
+        );
         if let Some(map) = seg.map.as_mut() {
             let r = resolve(media_url, &map.uri)?;
             map.uri = build_proxy_uri(&r, origin, session, secret, Kind::Media);
@@ -346,20 +396,15 @@ fn build_proxy_uri(
     origin: &ProxyOrigin,
     session: SessionId,
     secret: &AppSecret,
-    kind: Kind,
+    kind: Kind<'_>,
 ) -> String {
     let upstream_str = upstream.as_str();
     if upstream_str.starts_with(&origin.base) {
         return upstream_str.to_string();
     }
-    let tok = sign_segment(secret, session, upstream_str);
-    match kind {
-        Kind::Playlist(stream) => origin.playlist_url(session, upstream_str, &tok, stream),
-        Kind::Media => format!(
-            "{}&{MEDIA_KIND}",
-            origin.segment_url(session, upstream_str, &tok)
-        ),
-    }
+    let marks = marks(kind);
+    let tok = sign_marked(secret, session, upstream_str, &marks);
+    origin.marked_url(session, upstream_str, &tok, &marks)
 }
 
 #[cfg(test)]

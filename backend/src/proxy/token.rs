@@ -10,8 +10,11 @@
 //! The frontend's `<video>` + hls.js fetch goes to the proxy at
 //! `http://127.0.0.1:<port>/s/<session>/master.m3u8`. For each segment the
 //! proxy rewrites into the manifest, the URL carries an HMAC-signed token
-//! `t = base64url(hmac(secret, session_id || segment_url))`. The proxy
-//! verifies `t` before forwarding the segment fetch upstream.
+//! `t = base64url(hmac(secret, session_id || segment_url || marks))`,
+//! where the marks are the query pairs the rewrite writes after the
+//! token — what the URI points at and what it carries — so none of them
+//! can be changed apart from the token. The proxy verifies `t` before
+//! forwarding the segment fetch upstream.
 //!
 //! Sessions don't authenticate the user (everything is `127.0.0.1`); they
 //! prevent a malicious local page from guessing a port and replaying
@@ -23,7 +26,8 @@
 //! - [`SessionId`], [`StreamSession`] — typed wrappers around the data.
 //! - [`SessionTable`] — concurrent map; sessions garbage-collected on
 //!   read against `expires_at`.
-//! - [`sign_segment`] / [`verify_segment`] — pure HMAC helpers, easy to
+//! - [`sign_segment`] / [`verify_segment`], and [`sign_marked`] /
+//!   [`verify_marked`] for a URI with marks — pure HMAC helpers, easy to
 //!   property-test.
 
 use std::sync::Arc;
@@ -272,9 +276,6 @@ impl StreamSession {
 #[derive(Clone, Default)]
 pub struct SessionTable {
     inner: Arc<DashMap<SessionId, Arc<StreamSession>>>,
-    /// The variables each session's master defines, for its media
-    /// playlists to import.
-    variables: Arc<DashMap<SessionId, crate::proxy::m3u8_define::Variables>>,
     media_activity: Arc<std::sync::Mutex<Option<Instant>>>,
     /// Woken each time a media fetch is noted, so a download waiting
     /// on the record learns of playback at once rather than at its
@@ -327,25 +328,6 @@ impl SessionTable {
     /// Remove a session unconditionally.
     pub fn remove(&self, id: &SessionId) {
         self.inner.remove(id);
-        self.variables.remove(id);
-    }
-
-    /// Record what a session's master defines, while the session is
-    /// there to hold it.
-    pub fn set_master_variables(&self, id: SessionId, vars: crate::proxy::m3u8_define::Variables) {
-        if self.inner.contains_key(&id) {
-            self.variables.insert(id, vars);
-        }
-    }
-
-    /// What a session's master defines; nothing for a session whose
-    /// master has not been served.
-    #[must_use]
-    pub fn master_variables(&self, id: &SessionId) -> crate::proxy::m3u8_define::Variables {
-        self.variables
-            .get(id)
-            .map(|v| v.value().clone())
-            .unwrap_or_default()
     }
 
     /// Sweep all expired sessions. Intended for periodic background calls.
@@ -361,9 +343,6 @@ impl SessionTable {
         for id in to_remove {
             self.remove(&id);
         }
-        // Whatever a removal raced past: no variables outlive their
-        // session.
-        self.variables.retain(|id, _| self.inner.contains_key(id));
         n
     }
 
@@ -414,13 +393,46 @@ impl SessionTable {
 /// comfortably as a query parameter in rewritten manifests.
 #[must_use]
 pub fn sign_segment(secret: &AppSecret, session: SessionId, segment_url: &str) -> String {
+    sign_marked(secret, session, segment_url, "")
+}
+
+/// [`sign_segment`] for a URI that carries `marks` beside the token —
+/// the query pairs the rewrite writes after it, in the order it writes
+/// them — signed with the session and the upstream, so none of them can
+/// be changed or dropped without the token failing. No marks signs as
+/// [`sign_segment`] does.
+#[must_use]
+pub fn sign_marked(
+    secret: &AppSecret,
+    session: SessionId,
+    segment_url: &str,
+    marks: &str,
+) -> String {
+    let bytes = marked_mac(secret, session, segment_url, marks)
+        .finalize()
+        .into_bytes();
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// The MAC over a session, an upstream and its marks. A URL never
+/// carries a NUL, so the one ahead of the marks keeps a URL and its
+/// marks from reading as another URL with others.
+fn marked_mac(
+    secret: &AppSecret,
+    session: SessionId,
+    segment_url: &str,
+    marks: &str,
+) -> HmacSha256 {
     let mut mac =
         HmacSha256::new_from_slice(secret.key_bytes()).expect("HMAC-SHA256 accepts any key length");
     mac.update(session.0.as_bytes());
     mac.update(b"|");
     mac.update(segment_url.as_bytes());
-    let bytes = mac.finalize().into_bytes();
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+    if !marks.is_empty() {
+        mac.update(b"\0");
+        mac.update(marks.as_bytes());
+    }
+    mac
 }
 
 /// Verify a token against a (`session`, `segment_url`) pair. Constant-time
@@ -437,18 +449,30 @@ pub fn verify_segment(
     segment_url: &str,
     token: &str,
 ) -> Result<()> {
+    verify_marked(secret, session, segment_url, "", token)
+}
+
+/// [`verify_segment`] for a URI that carries `marks`
+/// ([`sign_marked`]).
+///
+/// # Errors
+/// As [`verify_segment`].
+pub fn verify_marked(
+    secret: &AppSecret,
+    session: SessionId,
+    segment_url: &str,
+    marks: &str,
+    token: &str,
+) -> Result<()> {
     let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(token)
         .map_err(|_| AniError::InvalidToken)?;
     if bytes.len() != 32 {
         return Err(AniError::InvalidToken);
     }
-    let mut mac =
-        HmacSha256::new_from_slice(secret.key_bytes()).expect("HMAC-SHA256 accepts any key length");
-    mac.update(session.0.as_bytes());
-    mac.update(b"|");
-    mac.update(segment_url.as_bytes());
-    mac.verify_slice(&bytes).map_err(|_| AniError::InvalidToken)
+    marked_mac(secret, session, segment_url, marks)
+        .verify_slice(&bytes)
+        .map_err(|_| AniError::InvalidToken)
 }
 
 /// Diagnostic: how long until a session's expiry, in seconds (0 if expired).

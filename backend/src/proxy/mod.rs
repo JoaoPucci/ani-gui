@@ -4,10 +4,12 @@
 //!
 //! - `GET /healthz` — liveness probe used by the frontend bootstrap.
 //! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master.
-//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>]`
+//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>[&v=<variables>]]`
 //!   — fetch + rewrite + return a rendition playlist when the master
-//!   marked it `k=pl` (with its kind of stream, `s=`), or, for a URL
-//!   without a mark, when its path ends in lowercase `.m3u8`.
+//!   marked it `k=pl` (with its kind of stream, `s=`, and the variables
+//!   that master response defined, `v=`, which the playlist imports),
+//!   or, for a URL without a mark, when its path ends in lowercase
+//!   `.m3u8`.
 //! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>&k=md[&r=<stream>&d=<ms>]`
 //!   — proxy a segment, key or init object a media playlist named, a
 //!   master's session key or session data, or an unmarked URL whose
@@ -18,7 +20,9 @@
 //! header, when the session stores one — an empty stored referer is a
 //! stream whose CDN asks for none, and the fetch then carries no such
 //! header. Segment URLs in rewritten manifests carry an HMAC signature
-//! the proxy verifies before issuing the upstream fetch.
+//! over the upstream and every mark beside it, which the proxy verifies
+//! before issuing the upstream fetch: a URI whose marks were changed or
+//! dropped is refused.
 
 pub mod host_budget;
 pub mod host_budget_demand;
@@ -49,8 +53,8 @@ pub use m3u8::{
     ProxyOrigin,
 };
 pub use token::{
-    sign_segment, verify_segment, AppSecret, MediaKind, SessionId, SessionSubtitle, SessionTable,
-    StreamSession,
+    sign_marked, sign_segment, verify_marked, verify_segment, AppSecret, MediaKind, SessionId,
+    SessionSubtitle, SessionTable, StreamSession,
 };
 use upstream::Admission;
 
@@ -162,10 +166,6 @@ async fn handle_master(
         Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
     };
 
-    // What the master defines, for the media playlists that import it.
-    state
-        .sessions
-        .set_master_variables(session, master_variables(&body, &served_from));
     let rewritten = match rewrite_master(&body, &served_from, &state.origin, session, &state.secret)
     {
         Ok(s) => s,
@@ -422,6 +422,28 @@ struct SegmentQuery {
     /// The playback a media segment buys, in milliseconds.
     #[serde(default)]
     d: Option<u64>,
+    /// The variables of the master that named a playlist, for it to
+    /// import ([`m3u8::encode_variables`]).
+    #[serde(default)]
+    v: Option<String>,
+}
+
+/// The marks a segment-route request carries after its token, in the
+/// order the rewrite writes them — `k`, `s`, `v`, `r`, `d`, each only
+/// when present — which the token signs with the upstream.
+fn marks_of(q: &SegmentQuery) -> String {
+    let d = q.d.map(|d| d.to_string());
+    [
+        ("k", q.k.as_deref()),
+        ("s", q.s.as_deref()),
+        ("v", q.v.as_deref()),
+        ("r", q.r.as_deref()),
+        ("d", d.as_deref()),
+    ]
+    .into_iter()
+    .filter_map(|(name, value)| value.map(|value| format!("{name}={value}")))
+    .collect::<Vec<_>>()
+    .join("&")
 }
 
 async fn handle_seg(
@@ -442,7 +464,15 @@ async fn handle_seg(
         Err(_) => return error_response(StatusCode::BAD_REQUEST, "bad segment url encoding"),
     };
 
-    if verify_segment(&state.secret, session, upstream_url.as_str(), &q.t).is_err() {
+    if verify_marked(
+        &state.secret,
+        session,
+        upstream_url.as_str(),
+        &marks_of(&q),
+        &q.t,
+    )
+    .is_err()
+    {
         return error_response(StatusCode::FORBIDDEN, "invalid segment token");
     }
 
@@ -482,7 +512,15 @@ async fn handle_seg(
             }
             Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
         };
-        let imported = state.sessions.master_variables(&session);
+        // The variables of the master response that named this
+        // playlist, signed into its URI with the rest of its marks.
+        let imported = match q.v.as_deref().map(m3u8::decode_variables) {
+            None => m3u8_define::Variables::new(),
+            Some(Some(vars)) => vars,
+            Some(None) => {
+                return error_response(StatusCode::BAD_REQUEST, "bad playlist variables");
+            }
+        };
         let rewritten = match rewrite_media_importing(
             &body,
             &served_from,
