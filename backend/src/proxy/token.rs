@@ -355,19 +355,29 @@ impl SessionTable {
         id: SessionId,
         vars: crate::proxy::m3u8_define::Variables,
     ) -> Option<String> {
-        if vars.is_empty() || !self.inner.contains_key(&id) {
+        if vars.is_empty() {
             return None;
         }
         let ordered: std::collections::BTreeMap<_, _> = vars.iter().collect();
         let digest = Sha256::digest(serde_json::to_vec(&ordered).unwrap_or_default());
         let key = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&digest[..12]);
         let mut kept = self.variables.entry(id).or_default();
-        if !kept.iter().any(|(k, _)| *k == key) {
-            if kept.len() == MASTER_VARIABLES_KEPT {
-                kept.pop_front();
-            }
-            kept.push_back((key.clone(), vars));
+        // Looked for while the entry is held: a removal takes the
+        // session before its variables, so one that lands now finds
+        // these, and one that landed before leaves no session here.
+        if !self.inner.contains_key(&id) {
+            drop(kept);
+            self.variables.remove_if(&id, |_, kept| kept.is_empty());
+            return None;
         }
+        // Named again, they are the latest; otherwise the oldest goes
+        // to make room.
+        if let Some(at) = kept.iter().position(|(k, _)| *k == key) {
+            kept.remove(at);
+        } else if kept.len() == MASTER_VARIABLES_KEPT {
+            kept.pop_front();
+        }
+        kept.push_back((key.clone(), vars));
         Some(key)
     }
 
