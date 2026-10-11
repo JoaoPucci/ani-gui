@@ -840,7 +840,7 @@ pub(crate) mod tests {
         let row = play_resolution_cache::get(&state.cache_pool, &setting_cache_key(&args))
             .expect("cache readable")
             .expect("the resolve records its row for the watch bookkeeping");
-        assert_eq!(row.show_id, "the-show-77");
+        assert_eq!(row.show_id, walked_key("the-show-77"));
         let second = play_with_progress(&state, &args, |_| {})
             .await
             .expect("the second play resolves fresh");
@@ -967,13 +967,16 @@ pub(crate) mod tests {
         kind: MediaKind,
     ) -> CachedResolution {
         CachedResolution {
-            show_id: crate::scraper::provider::ShowKey::new(
-                crate::provider_set::ProviderSet::TEST_DEFAULT,
-                "cached-show-1",
-            )
-            .to_string(),
+            show_id: walked_key("cached-show-1"),
             ..cached_blank(upstream_url, referer, kind)
         }
+    }
+
+    /// The key a resolve through the test state's provider stamps on
+    /// `slug`.
+    pub(crate) fn walked_key(slug: &str) -> String {
+        crate::scraper::provider::ShowKey::new(crate::provider_set::ProviderSet::TEST_DEFAULT, slug)
+            .to_string()
     }
 
     #[test]
@@ -1333,7 +1336,7 @@ pub(crate) mod tests {
                 upstream_url: upstream.into(),
                 referer: referer.into(),
                 media_kind: MediaKind::Mp4,
-                show_id: "abc".into(),
+                show_id: walked_key("abc"),
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles,
@@ -1727,7 +1730,7 @@ pub(crate) mod tests {
                 upstream_url: format!("{}/ep/3", server.uri()),
                 referer: "https://allmanga.to".into(),
                 media_kind: MediaKind::Mp4,
-                show_id: "x".into(),
+                show_id: walked_key("x"),
                 show_title: "Fast4 (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),

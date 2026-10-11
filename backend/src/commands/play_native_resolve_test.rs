@@ -1,5 +1,11 @@
 use super::super::play_native_test_provider::{hits, scripted, Pool, MASTER, THE_SHOW};
 use super::*;
+
+/// The key a resolve through the test's provider stamps on `slug`.
+fn key(slug: &str) -> String {
+    crate::scraper::provider::ShowKey::new(crate::provider_set::ProviderSet::TEST_DEFAULT, slug)
+        .to_string()
+}
 use crate::commands::progress::ProgressLine;
 use crate::scraper::provider::EpisodeRef;
 use crate::scraper::table_provider::{Answer, Asked, Gated, TableProvider};
@@ -41,7 +47,7 @@ async fn canonical_title_resolves_to_the_master_url() {
     let provider = scripted(&[("the show", THE_SHOW)]);
     let (got, events) = run(&provider, "the show", &[], "2", Some(3)).await;
     let resolved = got.expect("resolved");
-    assert_eq!(resolved.slug, "the-show-77");
+    assert_eq!(resolved.slug, key("the-show-77"));
     assert_eq!(resolved.title, "The Show");
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
     // Two real episodes plus the "2.5" recap occupying slot 3: the
@@ -70,7 +76,7 @@ async fn alt_title_recovers_when_canonical_finds_nothing() {
     let provider = scripted(&[("romanized", THE_SHOW)]);
     let alts = vec!["romanized name".to_string()];
     let (got, _) = run(&provider, "english name", &alts, "2", Some(3)).await;
-    assert_eq!(got.expect("resolved").slug, "the-show-77");
+    assert_eq!(got.expect("resolved").slug, key("the-show-77"));
 }
 
 #[tokio::test]
@@ -83,7 +89,7 @@ async fn a_rejected_pool_keeps_the_walk_going() {
     ]);
     let alts = vec!["romanized".to_string()];
     let (got, _) = run(&provider, "english", &alts, "2", Some(3)).await;
-    assert_eq!(got.expect("resolved").slug, "the-show-77");
+    assert_eq!(got.expect("resolved").slug, key("the-show-77"));
 }
 
 #[tokio::test]
@@ -99,7 +105,7 @@ async fn a_transient_pick_failure_keeps_the_walk_going() {
     ]);
     let alts = vec!["romanized".to_string()];
     let (got, _) = run(&provider, "english", &alts, "2", Some(3)).await;
-    assert_eq!(got.expect("resolved").slug, "the-show-77");
+    assert_eq!(got.expect("resolved").slug, key("the-show-77"));
 }
 
 #[tokio::test]
@@ -379,7 +385,7 @@ async fn a_continuation_entry_maps_kitsu_numbers_onto_its_own() {
     let provider = scripted(&[("sequel", Pool::Hits(&[("the-sequel-88", "The Sequel")]))]);
     let (got, _) = run(&provider, "the sequel", &[], "1", None).await;
     let resolved = got.expect("episode 1 resolves through the offset");
-    assert_eq!(resolved.slug, "the-sequel-88");
+    assert_eq!(resolved.slug, key("the-sequel-88"));
     assert_eq!(resolved.master_url, "https://cdn.example/x/master.m3u8");
     assert_eq!(resolved.episode_cap, Some(2));
 }
@@ -705,7 +711,7 @@ async fn an_answered_episode_dead_end_keeps_the_alias_walk_going() {
     // number 41 (kitsu 1 + offset 40) resolves via 8841.
     let (got, _) = run(&provider, "first", &["second".to_string()], "1", None).await;
     let resolved = got.expect("the alias walk must reach the sequel");
-    assert_eq!(resolved.slug, "the-sequel-88");
+    assert_eq!(resolved.slug, key("the-sequel-88"));
 }
 
 /// A transport whose every request hangs forever — the provider
@@ -981,10 +987,9 @@ async fn the_cache_row_and_the_launch_built_from_a_resolve_share_the_bound() {
     assert_eq!(launch.subtitle_urls.len(), SUBTITLE_TRACK_CAP);
 }
 
-/// The resolved play's id says whose it is: anidb keeps the bare
-/// slug every existing row holds, another provider's carries its
-/// label — and the resolve names the provider that answered, for the
-/// breaker and the progress lines that come next.
+/// The resolved play's id says whose it is: every provider's key
+/// carries its label — and the resolve names the provider that
+/// answered, for the breaker and the progress lines that come next.
 #[tokio::test]
 async fn a_resolved_play_is_keyed_by_the_providers_show_key() {
     let req = NativeResolveRequest {
@@ -997,27 +1002,16 @@ async fn a_resolved_play_is_keyed_by_the_providers_show_key() {
         year: None,
         subtype: None,
     };
-    let anidb = resolve_native(
-        &RefererProvider(crate::scraper::provider::ProviderId::Anidb),
-        req,
-        &mut |_| {},
-    )
-    .await
-    .expect("resolved");
-    assert_eq!(anidb.slug, "the-show-77");
-    assert_eq!(anidb.provider, crate::scraper::provider::ProviderId::Anidb);
-    let hianime = resolve_native(
-        &RefererProvider(crate::scraper::provider::ProviderId::Hianime),
-        req,
-        &mut |_| {},
-    )
-    .await
-    .expect("resolved");
-    assert_eq!(hianime.slug, "hianime:the-show-77");
-    assert_eq!(
-        hianime.provider,
-        crate::scraper::provider::ProviderId::Hianime
-    );
+    for provider in [
+        crate::scraper::provider::ProviderId::Hianime,
+        crate::scraper::provider::ProviderId::TestA,
+    ] {
+        let resolved = resolve_native(&RefererProvider(provider), req, &mut |_| {})
+            .await
+            .expect("resolved");
+        assert_eq!(resolved.slug, format!("{}:the-show-77", provider.label()));
+        assert_eq!(resolved.provider, provider);
+    }
 }
 
 // ── the episode step's own verdict ─────────────────────────────────

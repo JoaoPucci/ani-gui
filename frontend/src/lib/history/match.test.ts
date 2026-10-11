@@ -285,7 +285,7 @@ describe('resolveKitsuMatch', () => {
 			preliminary.searchTitle,
 			preliminary.cour,
 			'fresh-id',
-			'anidb'
+			null
 		);
 	});
 
@@ -387,7 +387,7 @@ describe('resolveKitsuMatch', () => {
 		mockedSearch.mockResolvedValue([]);
 
 		await resolveKitsuMatch(preliminary);
-		expect(mockedGetMatch).toHaveBeenCalledWith(preliminary.searchTitle, 2, 'anidb');
+		expect(mockedGetMatch).toHaveBeenCalledWith(preliminary.searchTitle, 2, null);
 	});
 
 	it('multi-cour entry: tries slug-fetch first and skips search when slug hits', async () => {

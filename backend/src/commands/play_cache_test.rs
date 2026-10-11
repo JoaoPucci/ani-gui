@@ -484,8 +484,8 @@ mod row_provider_props {
 
     proptest! {
         /// A row's provider is the one its show key names — the
-        /// qualified prefix, or anidb for a bare key — and a row from
-        /// before the field, with an empty key, names none.
+        /// qualified prefix — and a bare key, anidb.app's or a row's
+        /// from before the field, names none.
         #[test]
         fn the_rows_provider_is_the_one_its_show_key_names(
             prefix in proptest::option::of(Just("hianime:")),
@@ -495,7 +495,7 @@ mod row_provider_props {
             prop_assert_eq!(cached_row_provider(&row(&id)), ShowKey::parse(&id).provider);
             prop_assert_eq!(
                 cached_row_provider(&row(&id)),
-                Some(if prefix.is_some() { ProviderId::Hianime } else { ProviderId::Anidb })
+                prefix.map(|_| ProviderId::Hianime)
             );
             prop_assert_eq!(cached_row_provider(&row("")), None);
         }

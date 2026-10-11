@@ -463,13 +463,13 @@ fn delete_keeps_title_match_rows_of_a_title_that_extends_the_rows() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     write_atomic(&path, &[row("re-1", "Re")]).unwrap();
-    put(&s, "title-match:v3:anidb.app:re:c1", "1");
-    put(&s, "title-match:v3:anidb.app:re:creators:c1", "2");
+    put(&s, "title-match:v3:legacy:re:c1", "1");
+    put(&s, "title-match:v3:legacy:re:creators:c1", "2");
 
     assert!(history_delete(&s, "re-1").unwrap());
 
-    assert_eq!(cached(&s, "title-match:v3:anidb.app:re:c1"), None);
-    assert!(cached(&s, "title-match:v3:anidb.app:re:creators:c1").is_some());
+    assert_eq!(cached(&s, "title-match:v3:legacy:re:c1"), None);
+    assert!(cached(&s, "title-match:v3:legacy:re:creators:c1").is_some());
 }
 
 // Title-match rows are keyed by what Continue Watching searched — the
@@ -493,13 +493,13 @@ fn delete_keeps_the_title_match_rows_a_remaining_row_searches() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:legacy:naruto:c1", "11");
     put(&s, "title-match:v2:naruto:c1", "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
     assert_eq!(
-        cached(&s, "title-match:v3:anidb.app:naruto:c1").as_deref(),
+        cached(&s, "title-match:v3:legacy:naruto:c1").as_deref(),
         Some("11")
     );
     assert_eq!(
@@ -521,7 +521,7 @@ fn delete_keeps_an_older_title_match_another_provider_searches() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:legacy:naruto:c1", "11");
     put(&s, "title-match:v3:hianime:naruto:c1", "11");
     put(&s, "title-match:v2:naruto:c1", "11");
 
@@ -532,7 +532,7 @@ fn delete_keeps_an_older_title_match_another_provider_searches() {
         None,
         "its own"
     );
-    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
     assert!(
         cached(&s, "title-match:v2:naruto:c1").is_some(),
         "the older key both providers' rows search"
@@ -552,11 +552,11 @@ fn delete_keeps_a_title_match_a_remaining_row_searches_less_its_episode_tail() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:legacy:naruto:c1", "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
-    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
 }
 
 #[test]
@@ -572,21 +572,17 @@ fn delete_takes_its_own_title_match_beside_one_a_remaining_row_searches() {
         ],
     )
     .unwrap();
-    put(
-        &s,
-        "title-match:v3:anidb.app:naruto (220 episodes):c1",
-        "11",
-    );
-    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:legacy:naruto (220 episodes):c1", "11");
+    put(&s, "title-match:v3:legacy:naruto:c1", "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
     assert_eq!(
-        cached(&s, "title-match:v3:anidb.app:naruto (220 episodes):c1"),
+        cached(&s, "title-match:v3:legacy:naruto (220 episodes):c1"),
         None,
         "the key only the removed row searched"
     );
-    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
 }
 
 /// A cache that cannot forget a row's entries fails the delete before
@@ -879,7 +875,7 @@ fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
     put(&s, "title-match:v3:hianime:seitokai:c1", "11");
     put(&s, "allmanga2kitsu:v2:hianime:seitokai-10497", "20");
     crate::commands::kitsu::allmanga_kitsu_put(&s, "naruto-20", "11").unwrap();
-    put(&s, "title-match:v3:anidb.app:bleach:c1", "20");
+    put(&s, "title-match:v3:legacy:bleach:c1", "20");
     for key in [
         "aniskip:v2:1623:1:1",
         "aniskip:v2:11:2:1",

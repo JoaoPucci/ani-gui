@@ -3,10 +3,28 @@
 use super::*;
 
 #[test]
-fn anidb_keys_are_the_bare_slug_every_existing_row_holds() {
-    let key = ShowKey::new(ProviderId::Anidb, "one-piece-69");
-    assert_eq!(key.to_string(), "one-piece-69");
-    assert_eq!(ShowKey::parse("one-piece-69"), key);
+fn a_bare_id_names_no_provider() {
+    // Every row anidb.app's resolves wrote holds its bare slug, and
+    // the allanime-era rows before them their opaque ids. The app
+    // walks neither provider; the key says so, and keeps the id.
+    for id in ["one-piece-69", "vDTSJHSpYnrkZnAvG", ""] {
+        let key = ShowKey::parse(id);
+        assert_eq!(key.provider, None, "{id:?}");
+        assert_eq!(key.slug, id);
+        assert_eq!(key.to_string(), id, "a bare id prints as it was stored");
+    }
+}
+
+#[test]
+fn every_known_providers_key_carries_its_label() {
+    for &provider in ProviderId::ALL {
+        let key = ShowKey::new(provider, "cowboy-bebop-1281");
+        assert_eq!(
+            key.to_string(),
+            format!("{}:cowboy-bebop-1281", provider.label())
+        );
+        assert_eq!(ShowKey::parse(&key.to_string()), key);
+    }
 }
 
 #[test]
@@ -17,11 +35,11 @@ fn another_providers_key_carries_its_label() {
 }
 
 #[test]
-fn an_unknown_prefix_is_part_of_an_anidb_slug() {
+fn an_unknown_prefix_is_part_of_a_bare_id() {
     // Only a label the app knows is a prefix; anything else is the
     // bare id it always was, colon and all.
     let key = ShowKey::parse("weird:thing-12");
-    assert_eq!(key.provider, Some(ProviderId::Anidb));
+    assert_eq!(key.provider, None);
     assert_eq!(key.slug, "weird:thing-12");
 }
 
@@ -45,18 +63,16 @@ fn the_search_term_is_the_slugs_words_for_either_provider() {
 }
 
 #[test]
-fn a_label_parses_back_to_its_provider_and_anything_else_is_anidb() {
-    assert_eq!(ProviderId::from_label("hianime"), Some(ProviderId::Hianime));
-    assert_eq!(ProviderId::from_label("anidb.app"), Some(ProviderId::Anidb));
+fn a_label_parses_back_to_its_provider_and_anything_else_to_none() {
+    for &provider in ProviderId::ALL {
+        assert_eq!(ProviderId::from_label(provider.label()), Some(provider));
+    }
     assert_eq!(
         ProviderId::from_label(""),
-        Some(ProviderId::Anidb),
-        "an absent label is the default every existing caller means"
+        None,
+        "an absent label names nobody"
     );
-    assert_eq!(
-        ProviderId::from_label("something else"),
-        Some(ProviderId::Anidb)
-    );
+    assert_eq!(ProviderId::from_label("something else"), None);
 }
 
 proptest::proptest! {
@@ -67,8 +83,12 @@ proptest::proptest! {
         words in proptest::collection::vec("[a-z0-9]{1,8}", 1..6),
         id in 0u64..1_000_000,
     ) {
-        let provider = if hianime { ProviderId::Hianime } else { ProviderId::Anidb };
-        let key = ShowKey::new(provider, format!("{}-{id}", words.join("-")));
+        let slug = format!("{}-{id}", words.join("-"));
+        let key = if hianime {
+            ShowKey::new(ProviderId::Hianime, slug)
+        } else {
+            ShowKey::parse(&slug)
+        };
         proptest::prop_assert_eq!(ShowKey::parse(&key.to_string()), key);
     }
 }
