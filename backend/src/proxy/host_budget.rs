@@ -18,11 +18,12 @@
 //! where a redirect sends it on, and a download charges the subtitle
 //! tracks it stages beside its transfer, since the host counts both
 //! against the one address — as background traffic, which takes a token
-//! only while no one waits for one. What reaches the host past the
-//! budget counts against it too: a cached resolution's liveness check
-//! spends a token per request without waiting, at each host a redirect
-//! reaches — it runs before the player starts, under a deadline of
-//! seconds — and while download tools run, every host's tokens are held
+//! only while no one waits for one. A cached resolution's liveness
+//! check, before the player starts, waits for its tokens the same way,
+//! hop by hop at each host a redirect reaches, under a deadline of
+//! seconds that a spent budget lets elapse — the row then reads as not
+//! live. What reaches the host past the budget counts against it too:
+//! while download tools run, every host's tokens are held
 //! to what their requests in flight leave of the burst, never below
 //! one: their fragments go wherever their playlists send them, which
 //! the app does not see. That is a hold, not a count: what a tool sent
@@ -102,17 +103,6 @@ pub(crate) fn take(
         // long and asks again is not turned away by rounding.
         Some(refill.mul_f64(1.0 - bucket.tokens) + Duration::from_millis(1))
     }
-}
-
-/// Spends `n` tokens from the bucket at `now` without waiting for
-/// them: what reached the host past the budget. Topped up first, as a
-/// take is; never below empty.
-pub(crate) fn spend_from(bucket: &mut Bucket, now: Instant, burst: u32, refill: Duration, n: u32) {
-    let elapsed = now.saturating_duration_since(bucket.refilled_at);
-    let refilled = elapsed.as_secs_f64() / refill.as_secs_f64();
-    bucket.tokens = (bucket.tokens + refilled).min(f64::from(burst));
-    bucket.refilled_at = now;
-    bucket.tokens = (bucket.tokens - f64::from(n)).max(0.0);
 }
 
 /// The budgets of every host fetched from, the line of requests
@@ -203,18 +193,6 @@ impl HostBudget {
             };
             tokio::time::sleep(wait).await;
         }
-    }
-
-    /// Spends `n` tokens of `host`'s budget without waiting for them:
-    /// requests the app sent past the budget, which the host counts.
-    pub(crate) fn spend(&self, host: &str, n: u32) {
-        let mut buckets = self.buckets.lock().unwrap_or_else(|e| e.into_inner());
-        let now = Instant::now();
-        let bucket = buckets
-            .entry(host.to_owned())
-            .or_insert_with(|| self.new_bucket(now));
-        self.hold_to_unpaced(bucket, now);
-        spend_from(bucket, now, self.burst, self.refill, n);
     }
 
     /// The line of requests waiting at `host`.

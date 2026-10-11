@@ -136,11 +136,12 @@ pub(crate) async fn cached_row_is_live_within(
         };
         track_urls.push(url);
     }
-    // The check waits for no token — it runs before the player starts,
-    // under a deadline of seconds — but the host counts its requests,
-    // so each hop is spent from the budget of the host it reaches. The
-    // proxy's client follows no redirect on its own, so every hop is
-    // seen.
+    // The host counts the check's requests, so each hop waits for a
+    // token at the host it reaches, as background traffic: a player
+    // already playing there goes first. The proxy's client follows no
+    // redirect on its own, so every hop is seen; a check its tokens
+    // keep past the deadline reads as not live, and a fresh resolve
+    // takes its place.
     let budget = &state.host_budget;
     let stream = async {
         upstream_head_ok(&state.proxy_http, budget, &stream_url, &cached.referer)

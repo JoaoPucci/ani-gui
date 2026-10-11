@@ -8,14 +8,14 @@ use crate::proxy::host_budget::{host_key, HostBudget};
 use crate::proxy::upstream::{redirect_target, REDIRECT_HOP_CAP};
 
 /// Sends `method` to `url` with the `referer`, following redirects hop
-/// by hop on a `client` that follows none on its own, and spends a
-/// token at each hop's host without waiting: the check runs before the
-/// player starts, under a deadline of seconds, but the host counts its
-/// requests wherever they land — an edge a redirect sends the ping to
-/// is the host the player fetches from next. The first response that
+/// by hop on a `client` that follows none on its own, each hop admitted
+/// first at its host's budget as background traffic: the host counts
+/// the check's requests wherever they land — an edge a redirect sends
+/// the ping to is the host the player fetches from next — and a player
+/// already playing there is served first. The first response that
 /// is not a redirect, or nothing once the request fails or
 /// [`REDIRECT_HOP_CAP`] hops have all redirected.
-async fn send_spent(
+async fn send_admitted(
     client: &reqwest::Client,
     budget: &HostBudget,
     method: reqwest::Method,
@@ -24,7 +24,7 @@ async fn send_spent(
 ) -> Option<reqwest::Response> {
     let mut url = url.clone();
     for _ in 0..=REDIRECT_HOP_CAP {
-        budget.spend(&host_key(&url), 1);
+        budget.admit_background(&host_key(&url)).await;
         let mut req = client.request(method.clone(), url.as_str());
         if !referer.is_empty() {
             req = req.header(reqwest::header::REFERER, referer);
@@ -43,8 +43,8 @@ async fn send_spent(
 }
 
 /// HEAD-validate that `url` is still alive, with the supplied
-/// `referer` (empty string means "no Referer header"), each hop spent
-/// from `budget` ([`send_spent`]). A redirect is followed to where it
+/// `referer` (empty string means "no Referer header"), each hop admitted
+/// at `budget` ([`send_admitted`]). A redirect is followed to where it
 /// lands; a 2xx there, or a 3xx naming nowhere to go, counts as live;
 /// everything else, including network errors and a chain past the hop
 /// cap, is dead.
@@ -54,7 +54,8 @@ pub(crate) async fn upstream_head_ok(
     url: &url::Url,
     referer: &str,
 ) -> bool {
-    let Some(resp) = send_spent(client, budget, reqwest::Method::HEAD, url, referer).await else {
+    let Some(resp) = send_admitted(client, budget, reqwest::Method::HEAD, url, referer).await
+    else {
         return false;
     };
     resp.status().is_success() || resp.status().is_redirection()
@@ -99,7 +100,7 @@ pub(crate) async fn cached_track_ok(
     url: &url::Url,
     referer: &str,
 ) -> bool {
-    let Some(mut resp) = send_spent(client, budget, reqwest::Method::GET, url, referer).await
+    let Some(mut resp) = send_admitted(client, budget, reqwest::Method::GET, url, referer).await
     else {
         return false;
     };
