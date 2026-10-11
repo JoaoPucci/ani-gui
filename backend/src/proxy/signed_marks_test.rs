@@ -392,3 +392,28 @@ proptest::proptest! {
         );
     }
 }
+
+/// The responses a session keeps variables for are its latest: a
+/// response that names variables kept before brings them back to the
+/// front, so the eight responses after it do not push them out from
+/// under its playlists.
+#[test]
+fn a_masters_variables_named_again_are_kept_as_the_latest() {
+    let table = SessionTable::new();
+    let session = StreamSession::new(
+        url::Url::parse("https://cdn.example/m.m3u8").expect("url"),
+        String::new(),
+    );
+    let id = table.insert(session);
+    let vars = |n: usize| m3u8_define::Variables::from([("n".to_string(), n.to_string())]);
+    let first = table.keep_master_variables(id, vars(0)).expect("a key");
+    for n in 1..token::MASTER_VARIABLES_KEPT {
+        table.keep_master_variables(id, vars(n));
+    }
+    assert_eq!(
+        table.keep_master_variables(id, vars(0)),
+        Some(first.clone())
+    );
+    table.keep_master_variables(id, vars(100));
+    assert_eq!(table.master_variables(&id, &first), Some(vars(0)));
+}
