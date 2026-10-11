@@ -503,6 +503,17 @@ async fn handle_seg(
             q.s.as_deref()
                 .and_then(Stream::from_slot)
                 .unwrap_or(Stream::Main);
+        // The variables of the master response that named this
+        // playlist, signed into its URI with the rest of its marks —
+        // read before the playlist is fetched, so one that cannot be
+        // read costs the host nothing.
+        let imported = match q.v.as_deref().map(m3u8::decode_variables) {
+            None => m3u8_define::Variables::new(),
+            Some(Some(vars)) => vars,
+            Some(None) => {
+                return error_response(StatusCode::BAD_REQUEST, "bad playlist variables");
+            }
+        };
         let (body, served_from) = match upstream::fetch_text(
             &state.client,
             &state.host_budget,
@@ -520,15 +531,6 @@ async fn handle_seg(
                 );
             }
             Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-        };
-        // The variables of the master response that named this
-        // playlist, signed into its URI with the rest of its marks.
-        let imported = match q.v.as_deref().map(m3u8::decode_variables) {
-            None => m3u8_define::Variables::new(),
-            Some(Some(vars)) => vars,
-            Some(None) => {
-                return error_response(StatusCode::BAD_REQUEST, "bad playlist variables");
-            }
         };
         let rewritten = match rewrite_media_importing(
             &body,
