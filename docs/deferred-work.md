@@ -219,8 +219,8 @@ starting it, and delete it when you find it done.
   quality other than best — through the impersonating transport, ahead
   of the player's own fetches of the same host, and the budget does not
   count them. Downloads running past the budget are held to what their
-  requests in flight leave and a cached row's liveness check is
-  charged; the resolver is not, because it runs in
+  requests in flight leave and a cached row's liveness check waits
+  for its tokens; the resolver is not counted, because it runs in
   the providers, which hold no budget, and its other requests go to the
   provider's site rather than the CDN. It is one or two requests
   against a burst of twenty.
