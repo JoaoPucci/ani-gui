@@ -24,8 +24,8 @@ impl Drop for BackgroundWaiting<'_> {
 
 impl HostBudget {
     /// A token for `host`, waiting for one while the burst is spent: the
-    /// player's requests, through the proxy and a cached row's liveness
-    /// check before it starts. Waiters are served in the order they arrived: each takes its
+    /// player's requests through the proxy. Waiters are served in the
+    /// order they arrived: each takes its
     /// place in the host's line and keeps it until it has its token,
     /// so a request arriving as a token matures does not take it from
     /// one that has waited for it, and a few requests arriving at once
@@ -90,7 +90,9 @@ impl HostBudget {
     /// need with its room is the whole refill or more there is no rest,
     /// and the background request waits until the player stops asking.
     /// A cached row's probe waiting at the host ([`Self::admit_probe`])
-    /// is served first: background traffic waits while one does.
+    /// is served first — background traffic waits while one does — but
+    /// for a turn the player's line already owes it, which it takes, so
+    /// the line, which steps aside for that turn, moves on.
     pub(crate) async fn admit_background(&self, host: &str) {
         let lane = self.lane(host);
         let _turn = lane.lock().await;
@@ -98,14 +100,15 @@ impl HostBudget {
         let _waiting = BackgroundWaiting { budget: self, host };
         self.with_state(host, |state| state.turn.background_waiting = true);
         loop {
-            if self.probes_waiting(host) {
-                tokio::time::sleep(self.refill).await;
-                continue;
-            }
             let player_waiting = line.try_lock().is_err();
+            let probe_waiting = self.probes_waiting(host);
             let wait = self.with_state(host, |state| {
                 let reserve = match (player_waiting, state.turn.background_owed) {
+                    // A turn the player's line owes it is taken whatever
+                    // else waits: the line has stepped aside for it.
                     (_, true) => 0,
+                    // Otherwise a waiting probe goes first.
+                    _ if probe_waiting => return Some(self.refill),
                     (false, false) => self.reserve,
                     (true, false) => return Some(self.refill),
                 };
