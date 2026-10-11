@@ -7,9 +7,21 @@ use std::collections::BTreeSet;
 
 use super::play_native_kanji_number::{kanji_number, with_kanji_numbers};
 
+#[path = "play_native_title_words.rs"]
+mod title_words;
+pub(crate) use title_words::*;
+
+#[path = "play_native_title_japanese.rs"]
+mod title_japanese;
+pub(crate) use title_japanese::*;
+
+#[path = "play_native_title_named.rs"]
+mod title_named;
+pub(crate) use title_named::*;
+
 /// Which kind of division a marker word names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Kind {
+pub(crate) enum Kind {
     Season,
     Part,
 }
@@ -17,9 +29,9 @@ pub(super) enum Kind {
 /// One season or part marker: its kind and the ordinals it names —
 /// several for a span ("Part 1+2").
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Marker {
-    pub(super) kind: Kind,
-    pub(super) ordinals: Vec<u32>,
+pub(crate) struct Marker {
+    pub(crate) kind: Kind,
+    pub(crate) ordinals: Vec<u32>,
 }
 
 impl Marker {
@@ -29,84 +41,6 @@ impl Marker {
     pub(super) fn named_by(&self, named: &BTreeSet<u32>) -> bool {
         self.ordinals.contains(&1) || self.ordinals.iter().all(|n| named.contains(n))
     }
-}
-
-/// A title's words, lowercased, split at anything that is neither a
-/// letter, a digit, nor the `+` a span is written with. Full-width
-/// digits read as their ASCII forms.
-pub(super) fn words(title: &str) -> Vec<String> {
-    title
-        .to_lowercase()
-        .chars()
-        .map(half_width)
-        .collect::<String>()
-        .split(|c: char| !(c.is_alphanumeric() || c == '+'))
-        .filter(|w| !w.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
-/// A full-width digit's ASCII form; any other character as it is.
-fn half_width(c: char) -> char {
-    match c {
-        '０'..='９' => char::from_u32(c as u32 - '０' as u32 + '0' as u32).unwrap_or(c),
-        _ => c,
-    }
-}
-
-pub(super) fn kind_of(word: &str) -> Option<Kind> {
-    match word {
-        "season" => Some(Kind::Season),
-        "part" | "cour" | "stage" => Some(Kind::Part),
-        _ => None,
-    }
-}
-
-/// The ordinal a word spells as an ordinal: "2nd", "second", "II". A
-/// bare number is not one ("100" in "Mob Psycho 100").
-pub(super) fn spelled_ordinal(word: &str) -> Option<u32> {
-    const SPELLED: &[(&str, u32)] = &[
-        ("first", 1),
-        ("second", 2),
-        ("third", 3),
-        ("fourth", 4),
-        ("fifth", 5),
-        ("sixth", 6),
-        ("ii", 2),
-        ("iii", 3),
-        ("iv", 4),
-        ("v", 5),
-        ("vi", 6),
-    ];
-    if let Some((_, n)) = SPELLED.iter().find(|(w, _)| *w == word) {
-        return Some(*n);
-    }
-    let digits = ["st", "nd", "rd", "th"]
-        .iter()
-        .find_map(|suffix| word.strip_suffix(suffix))?;
-    number(digits)
-}
-
-/// A number of up to three digits — an ordinal beside a marker word.
-fn number(word: &str) -> Option<u32> {
-    (!word.is_empty() && word.len() <= 3 && word.chars().all(|c| c.is_ascii_digit()))
-        .then(|| word.parse().ok())
-        .flatten()
-}
-
-/// A one- or two-digit number: one a title names without a marker.
-pub(super) fn small_number(word: &str) -> Option<u32> {
-    number(word).filter(|_| word.len() <= 2)
-}
-
-/// A cardinal spelled out, read only after a marker word ("Season
-/// Two").
-fn cardinal(word: &str) -> Option<u32> {
-    const CARDINALS: &[&str] = &["one", "two", "three", "four", "five", "six"];
-    CARDINALS
-        .iter()
-        .position(|w| *w == word)
-        .map(|i| i as u32 + 1)
 }
 
 /// The ordinals the word after a marker names: "2", "2nd", "ii",
@@ -195,131 +129,6 @@ fn parse_tail(title: &str) -> (Vec<String>, Vec<Marker>) {
 /// on its season.
 pub(super) fn trailing_markers(title: &str) -> Vec<Marker> {
     parse_tail(title).1
-}
-
-/// The ordinal `rest` names when it is nothing but one marker naming
-/// one ordinal — "2nd Stage", "Part 3", ": Season 2", "II", "第2期".
-/// `None` for anything else, a span or two markers included.
-pub(crate) fn sole_ordinal(rest: &str) -> Option<u32> {
-    let (before, markers) = parse_tail(rest);
-    match (before.is_empty(), markers.as_slice()) {
-        (true, [only]) if only.ordinals.len() == 1 => Some(only.ordinals[0]),
-        _ => None,
-    }
-}
-
-/// The 第N期 / 第N部 / 第Nクール a title ends on, closing brackets
-/// aside, with the text before its 第.
-pub(super) fn japanese_trailing(title: &str) -> Option<(Marker, &str)> {
-    let trimmed = title.trim_end_matches(|c: char| c.is_whitespace() || ")）]】".contains(c));
-    let (body, kind) = [
-        ("期", Kind::Season),
-        ("部", Kind::Part),
-        ("クール", Kind::Part),
-    ]
-    .iter()
-    .find_map(|(suffix, kind)| trimmed.strip_suffix(suffix).map(|b| (b, *kind)))?;
-    let (before, number) = body.rsplit_once('第')?;
-    let number: String = number.chars().map(half_width).collect();
-    let marker = Marker {
-        kind,
-        ordinals: vec![japanese_number(&number)?],
-    };
-    Some((marker, before))
-}
-
-/// The number written after 第: ASCII digits, or a kanji number,
-/// compound ones included ("十二").
-fn japanese_number(text: &str) -> Option<u32> {
-    number(text).or_else(|| kanji_number(text))
-}
-
-/// Every ordinal a title names anywhere: each season or part marker,
-/// every small number or numeral in it ("Tokyo Ghoul:re 2", "Mushoku
-/// Tensei II: Isekai Ittara Honki Dasu"), a Japanese 第N, and a number
-/// written before a Japanese counter (the ８ of "怪獣８号"). Read as
-/// evidence of what an entry names, so reading too much only ever
-/// admits more.
-pub(super) fn named_ordinals(title: &str) -> BTreeSet<u32> {
-    let words = words(title);
-    let mut out: BTreeSet<u32> = words
-        .windows(2)
-        .filter_map(|w| marker_of(&w[0], &w[1]))
-        .flat_map(|m| m.ordinals)
-        .collect();
-    out.extend(
-        words
-            .iter()
-            .filter_map(|w| small_number(w).or_else(|| spelled_ordinal(w))),
-    );
-    let half = with_kanji_numbers(&title.chars().map(half_width).collect::<String>());
-    // Japanese writes a season's number straight after the title, with
-    // no space to make it a word of its own ("怪獣８号", "…生活２").
-    let tail: String = half
-        .chars()
-        .rev()
-        .take_while(char::is_ascii_digit)
-        .collect();
-    out.extend(small_number(&tail.chars().rev().collect::<String>()));
-    out.extend(counted_numbers(&half));
-    for (_, after) in half
-        .match_indices('第')
-        .map(|(i, m)| half.split_at(i + m.len()))
-    {
-        let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
-        out.extend(number(&digits));
-    }
-    out
-}
-
-/// Every number of one or two digits written straight before a
-/// Japanese counter — 号, 期 or 話 — in `half` (a title with its
-/// full-width digits already read as ASCII): the 8 of "怪獣8号".
-fn counted_numbers(half: &str) -> Vec<u32> {
-    const COUNTERS: &[char] = &['号', '期', '話'];
-    let mut out = Vec::new();
-    let mut run = String::new();
-    for c in half.chars() {
-        if c.is_ascii_digit() {
-            run.push(c);
-            continue;
-        }
-        if COUNTERS.contains(&c) {
-            out.extend(small_number(&run));
-        }
-        run.clear();
-    }
-    out
-}
-
-/// The part ordinals a title ends on.
-pub(super) fn part_ordinals(title: &str) -> BTreeSet<u32> {
-    trailing_markers(title)
-        .into_iter()
-        .filter(|m| m.kind == Kind::Part)
-        .flat_map(|m| m.ordinals)
-        .collect()
-}
-
-/// The bare number a title's stem ends on, one or two digits: "Show
-/// 2", "Show 2 Part 2", the ２ glued to "ショー２". A sequel's number,
-/// as a spelled ordinal standing alone is.
-pub(super) fn stem_number(title: &str) -> Option<u32> {
-    let own = stem(title);
-    let last = own.last()?;
-    small_number(last).or_else(|| glued_number(last))
-}
-
-/// A one- or two-digit number glued to the end of a Japanese word
-/// ("ショー2", "怪獣8号" aside — that one ends on a kanji).
-pub(super) fn glued_number(word: &str) -> Option<u32> {
-    let digits = word.len() - word.trim_end_matches(|c: char| c.is_ascii_digit()).len();
-    let (head, tail) = word.split_at(word.len() - digits);
-    head.chars()
-        .last()
-        .is_some_and(|c| !c.is_ascii())
-        .then(|| small_number(tail))
-        .flatten()
 }
 
 /// A title's words with the markers it ends on removed: the name the

@@ -9,6 +9,14 @@ use super::play_native_title_grammar::{
     spelled_ordinal, stem, trailing_markers, words, Kind, Marker,
 };
 
+#[path = "play_native_title_past.rs"]
+mod title_past;
+pub(crate) use title_past::*;
+
+#[path = "play_native_title_name.rs"]
+mod title_name;
+pub(crate) use title_name::*;
+
 /// The ordinals `sibling` names as divisions of its own right after
 /// `wide`'s stem, leaving out any division `wide` itself ends on:
 /// "Attack on Titan Season 3 Part 2" beside "Attack on Titan Season
@@ -35,87 +43,6 @@ pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
         .into_iter()
         .filter(|m| !wide_markers.contains(m))
         .collect()
-}
-
-/// What follows `wide`'s stem in `title`, when `title` starts with it
-/// at a word's end or with a digit or 第 glued to it — as Japanese
-/// writes them ("ショー２", "ショー第2期"), though any glued digit
-/// counts ("Show2") — except after a stem that itself ends in a digit
-/// ([`rest_after`]). "Showtime 2" does not start with "Show". With it,
-/// the divisions `wide` ends on, which are `wide`'s own.
-///
-/// A bare number `wide`'s stem ends on stays in the stem, so "Lucky 2
-/// 2nd Season" is read past "Lucky 2". A title that does not start
-/// with the whole stem is read past it without the number, then one of
-/// `wide`'s own divisions: "Show Season 3" beside "Show 2" names a
-/// season 3, as it does beside "Show 2nd Season". A title whose number
-/// in its place only continues it or is lower ("Show 20 Part 2") is not
-/// read past it ([`leading_number`]); the same or a higher one is.
-fn past_stem(title: &str, wide: &str) -> Option<(String, Vec<Marker>)> {
-    let own = stem(wide);
-    let text = words(title).join(" ");
-    let mut wide_markers = trailing_markers(wide);
-    if let Some(rest) = rest_after(&text, &own.join(" ")) {
-        return Some((rest, wide_markers));
-    }
-    let (shorter, n) = without_stem_number(&own)?;
-    let rest = rest_after(&text, &shorter)?;
-    // The number a title carries where W's stands: one that only
-    // continues W's digits ("Show 20 Part 2", "ショー２０第2部" beside
-    // "Show 2", "ショー２") or is lower is another number, not W's stem
-    // without one; the same number or a higher one is read on.
-    let other =
-        |(m, digits): (u32, String)| m < n || (m != n && digits.starts_with(&n.to_string()));
-    if leading_number(&rest).is_some_and(other) {
-        return None;
-    }
-    wide_markers.push(Marker {
-        kind: Kind::Season,
-        ordinals: vec![n],
-    });
-    Some((rest, wide_markers))
-}
-
-/// The number `rest` opens on, and its digits: a run of digits
-/// standing as a number — ending the text, before a space, or before a
-/// non-ASCII character glued to it, as a Japanese one is ("20第2部") —
-/// not an ordinal's ("2nd"). Compared as a number against W's, so a
-/// zero-padded "02" is the number 2.
-fn leading_number(rest: &str) -> Option<(u32, String)> {
-    let rest = rest.trim_start();
-    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
-    let after = rest[digits.len()..].chars().next();
-    (!digits.is_empty() && after.is_none_or(|c| c == ' ' || !c.is_ascii()))
-        .then(|| digits.parse().ok().map(|m| (m, digits)))
-        .flatten()
-}
-
-/// What follows `own` at the start of `text`, when `own` ends there
-/// at a word's end or with a digit or 第 glued to it. A digit glued to
-/// an `own` that itself ends in one continues that number rather than
-/// following it: "Show 20" does not start with "Show 2".
-fn rest_after(text: &str, own: &str) -> Option<String> {
-    let rest = text.strip_prefix(own)?;
-    let numbered = own.chars().last().is_some_and(|c| c.is_ascii_digit());
-    rest.chars()
-        .next()
-        .is_none_or(|c| c == ' ' || c == '第' || (c.is_ascii_digit() && !numbered))
-        .then(|| rest.to_string())
-}
-
-/// A stem with the bare number it ends on taken off — a word of its
-/// own ("Show 2") or glued to a Japanese word ("ショー２") — and that
-/// number, when something of the stem is left.
-fn without_stem_number(stem: &[String]) -> Option<(String, u32)> {
-    let (last, before) = stem.split_last()?;
-    if let Some(n) = small_number(last) {
-        return (!before.is_empty()).then(|| (before.join(" "), n));
-    }
-    let n = glued_number(last)?;
-    let head = last.trim_end_matches(|c: char| c.is_ascii_digit());
-    let mut words = before.to_vec();
-    words.push(head.to_string());
-    Some((words.join(" "), n))
 }
 
 /// Every division `words` name, first word to last: a marker pair, a
@@ -199,46 +126,6 @@ fn glued_divisions(word: &str) -> Option<(Vec<Marker>, &str)> {
     Some((out, head))
 }
 
-/// A title's name: its words up to the first division it names
-/// ([`division_at`]), with what a Japanese word holds before a
-/// division glued to it — the words a show's seasons and parts share
-/// however each is numbered. "Show", "Show 2", "Show 2nd Season Part
-/// 2" and "Show II Part 2: Arc" are all named "Show"; "Other Show
-/// Season 2" is named "Other Show"; "ショー２" and "ショー第2期" are
-/// named "ショー". A title that opens on a division ("86") is named by
-/// its stem.
-pub(super) fn name(title: &str) -> Vec<String> {
-    let words = words(title);
-    let mut out = Vec::new();
-    for (i, w) in words.iter().enumerate() {
-        if division_at(&words, i).is_none() {
-            out.push(w.clone());
-            continue;
-        }
-        let head = glued_divisions(w).map_or_else(
-            || w.trim_end_matches(|c: char| c.is_ascii_digit()),
-            |(_, before)| before,
-        );
-        if !head.is_empty() && head != w {
-            out.push(head.to_string());
-        }
-        break;
-    }
-    if out.is_empty() {
-        stem(title)
-    } else {
-        out
-    }
-}
-
-/// Whether `title` starts with `other`'s name ([`name`]), on the terms
-/// of [`past_stem`]: "Show 2nd Season" and "Show Final Arc 2nd Season"
-/// start with the name of "Show Part 2"; "Other Show 2nd Season" and
-/// "Showtime 2" do not.
-pub(super) fn starts_with_name_of(title: &str, other: &str) -> bool {
-    rest_after(&words(title).join(" "), &name(other).join(" ")).is_some()
-}
-
 /// How a title reads: the ordinals of every division it names
 /// ([`divisions`]), in order, a division whose first ordinal is 1 left
 /// out as the whole ("Part 1", "First Half", "(Part 1+2)"). The one
@@ -253,22 +140,4 @@ pub(super) fn reading(title: &str) -> Vec<u32> {
         .filter(|m| m.ordinals.first() != Some(&1))
         .flat_map(|m| m.ordinals)
         .collect()
-}
-
-/// Whether `title` opens what follows `wide`'s stem ([`past_stem`])
-/// on first divisions alone — "Show Part 1", "Show Season 1", "Show
-/// First Half" beside "Show" — leaving out any `wide` itself ends on:
-/// `wide`'s own first part.
-pub(super) fn opens_on_a_first_division(title: &str, wide: &str) -> bool {
-    let named = later_division_markers(title, wide);
-    !named.is_empty() && named.iter().all(|m| m.ordinals.first() == Some(&1))
-}
-
-/// Whether `title` starts with `wide`'s stem ([`past_stem`]) and
-/// opens what follows it with a division ([`scan`], a first one
-/// included): "Show 2", "Show Part 1" and "Show 2nd Season Part 2"
-/// beside "Show" do; "Show Side Story 3" (a spinoff), "Show: Final Arc
-/// Season 2" and "Showtime 2" do not.
-pub(super) fn names_past_stem(title: &str, wide: &str) -> bool {
-    past_stem(title, wide).is_some_and(|(rest, _)| !scan(&words(&rest), true).is_empty())
 }
