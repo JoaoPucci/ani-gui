@@ -7181,6 +7181,31 @@ mod rate_from_the_runs_start {
         );
     }
 
+    /// A format's id is read whole whatever it holds: the count is the
+    /// progress line's last word and the id everything before it, so the
+    /// reading does not rest on yt-dlp having replaced the spaces of an
+    /// HLS rendition's name, as it does today; the partial's name is
+    /// read by the whole id too.
+    #[test]
+    fn a_format_whose_id_has_spaces_is_read_by_its_whole_id() {
+        use crate::commands::download_progress::ytdlp_progress;
+        assert_eq!(
+            ytdlp_progress("ani-gui-progress hls-English 2.0 2048"),
+            Some((Some("hls-English 2.0".to_string()), 2048))
+        );
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(
+            dir.path().join("episode.part.fhls-English 2.0.m4a.part"),
+            vec![0u8; 512],
+        )
+        .expect("write");
+        assert_eq!(
+            super::super::resumed_partials(&out).formats,
+            std::collections::HashMap::from([("hls-English 2.0".to_string(), 512)])
+        );
+    }
+
     /// A format's id may carry dots — an HLS rendition's name flows into
     /// it — and its partial is read by the whole id, up to the
     /// extension.
@@ -7260,7 +7285,7 @@ mod progress_props {
         /// names no format; ffmpeg's reads as its bytes, for no format.
         #[test]
         fn a_progress_line_reads_back_as_written(
-            format in "[A-Za-z0-9_+-]{1,16}",
+            format in "[A-Za-z0-9_+-][A-Za-z0-9_+. -]{0,14}[A-Za-z0-9_+-]",
             bytes in proptest::num::u64::ANY,
         ) {
             prop_assert_eq!(
