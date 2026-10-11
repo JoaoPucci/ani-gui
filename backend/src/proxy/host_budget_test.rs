@@ -341,3 +341,72 @@ async fn overlapping_unpaced_downloads_leave_every_host_where_both_held_it() {
         "a host not fetched from yet: the fifth waits"
     );
 }
+
+proptest! {
+    /// Whatever the burst, the refill and the times between takes, a
+    /// bucket holds between none and the burst, and no wait it names is
+    /// longer than a refill.
+    #[test]
+    fn any_bucket_stays_within_its_burst_and_waits_at_most_a_refill(
+        burst in 1u32..64,
+        refill_ms in 1u64..10_000,
+        gaps in proptest::collection::vec(0u64..20_000, 1..100),
+    ) {
+        let refill = Duration::from_millis(refill_ms);
+        let mut now = Instant::now();
+        let mut bucket = Bucket::full(burst, now);
+        for gap in gaps {
+            now += Duration::from_millis(gap);
+            let wait = take(&mut bucket, now, burst, refill);
+            prop_assert!(bucket.tokens() >= 0.0);
+            prop_assert!(bucket.tokens() <= f64::from(burst));
+            if let Some(wait) = wait {
+                prop_assert!(wait <= refill + Duration::from_millis(1));
+            }
+        }
+    }
+
+    /// Holding a bucket tops it up by the time since it last was, as a
+    /// take does, then caps it at the burst and at what it is held to —
+    /// never adding more than the time bought, never below empty.
+    #[test]
+    fn a_hold_tops_up_then_caps_at_the_burst_and_the_hold(
+        burst in 1u32..64,
+        refill_ms in 1u64..10_000,
+        start in 0.0f64..64.0,
+        elapsed_ms in 0u64..600_000,
+        most in 0u32..80,
+    ) {
+        let refill = Duration::from_millis(refill_ms);
+        let then = Instant::now();
+        let mut bucket = Bucket::full(burst, then);
+        bucket.tokens = start.min(f64::from(burst));
+        let before = bucket.tokens;
+        let now = then + Duration::from_millis(elapsed_ms);
+        unpaced::hold_to(&mut bucket, now, burst, refill, most);
+        let topped = before + Duration::from_millis(elapsed_ms).as_secs_f64() / refill.as_secs_f64();
+        let expected = topped.min(f64::from(burst)).min(f64::from(most));
+        prop_assert!((bucket.tokens - expected).abs() < 1e-9, "{} vs {expected}", bucket.tokens);
+        prop_assert!(bucket.tokens >= 0.0);
+        prop_assert_eq!(bucket.refilled_at, now);
+    }
+
+    /// What a host is held to beside requests in flight is what they
+    /// leave of the burst, never below one: at most the burst, less for
+    /// more in flight, and one once they reach it.
+    #[test]
+    fn a_hold_leaves_what_the_requests_in_flight_leave_and_never_none(
+        burst in 1u32..64,
+        in_flight in 0u32..200,
+    ) {
+        let budget = HostBudget::new(burst, Duration::from_millis(1500));
+        let held = budget.held_to(in_flight);
+        prop_assert!((1..=burst).contains(&held));
+        if in_flight < burst {
+            prop_assert_eq!(held, burst - in_flight);
+        } else {
+            prop_assert_eq!(held, 1);
+        }
+        prop_assert!(budget.held_to(in_flight + 1) <= held);
+    }
+}
