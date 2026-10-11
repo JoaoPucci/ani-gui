@@ -1947,13 +1947,32 @@ enum ToolEnd {
     Outlived,
 }
 
-/// What a yt-dlp run writing to `output` resumes from: the size of the
-/// partial file yt-dlp keeps beside it, which it reports as downloaded
-/// from its first progress on; zero when there is none.
+/// What a yt-dlp run writing to `output` resumes from: the partial
+/// files yt-dlp keeps beside it — `<output>.part`, or one per format,
+/// `<stem>.f<id>.<ext>.part`, for a stream it fetches video and audio
+/// apart — whose sizes it reports as downloaded from its first progress
+/// on; zero when there are none. A fragment's own partial
+/// (`….part-Frag<n>.part`) is not one. With formats apart this is their
+/// sum, at least the first format's count, so that count reads as
+/// nothing gained rather than as the bytes resumed.
 fn resumed_bytes(output: &std::path::Path) -> u64 {
-    let mut partial = output.as_os_str().to_owned();
-    partial.push(".part");
-    std::fs::metadata(partial).map_or(0, |m| m.len())
+    let (Some(dir), Some(stem)) = (output.parent(), output.file_stem()) else {
+        return 0;
+    };
+    let prefix = format!("{}.", stem.to_string_lossy());
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .filter_map(std::result::Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            name.starts_with(&prefix) && name.ends_with(".part") && !name.contains(".part-Frag")
+        })
+        .filter_map(|entry| entry.metadata().ok())
+        .map(|meta| meta.len())
+        .sum()
 }
 
 /// Run one download tool to completion, streaming its stderr lines and
