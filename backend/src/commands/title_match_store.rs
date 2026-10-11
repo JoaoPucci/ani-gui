@@ -1,10 +1,10 @@
 //! Storing a title-match row: only for a title a history row carries
-//! — split from `history_forget_titles` for the per-file complexity
-//! bar.
+//! — and the retired segments a bare row's rows may sit under. Split
+//! from `history_forget_titles` for the per-file complexity bar.
 
 use crate::app::AppState;
 use crate::commands::history_title_tail::without_episode_tail;
-use crate::commands::kitsu::title_match_put;
+use crate::commands::kitsu::{title_match_put, RETIRED_TITLE_MATCH_SEGMENTS, TITLE_MATCH_VERSION};
 use crate::error::Result;
 use crate::history::HistoryEntry;
 use crate::scraper::provider::{ProviderId, ShowKey};
@@ -45,4 +45,21 @@ fn searches(entry: &HistoryEntry, provider: Option<ProviderId>, title: &str) -> 
         && [entry.title.as_str(), without_episode_tail(&entry.title)]
             .iter()
             .any(|searched| searched.trim().to_lowercase() == wanted)
+}
+
+/// The key prefixes a bare row's title matches for `normalized` may
+/// also sit under: the segments retired with the provider whose rows
+/// were bare ([`RETIRED_TITLE_MATCH_SEGMENTS`]), every cour to follow.
+/// A row whose key names a provider has none.
+pub(crate) fn retired_title_match_prefixes(
+    provider: Option<ProviderId>,
+    normalized: &str,
+) -> Vec<String> {
+    if provider.is_some() {
+        return Vec::new();
+    }
+    RETIRED_TITLE_MATCH_SEGMENTS
+        .iter()
+        .map(|segment| format!("title-match:v{TITLE_MATCH_VERSION}:{segment}:{normalized}:c"))
+        .collect()
 }

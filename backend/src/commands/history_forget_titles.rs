@@ -4,9 +4,8 @@
 
 use crate::app::AppState;
 use crate::cache::{meta_cache_delete, meta_cache_entries_prefix};
-use crate::commands::kitsu::{
-    title_match_prefix, RETIRED_TITLE_MATCH_SEGMENTS, TITLE_MATCH_VERSION,
-};
+use crate::commands::kitsu::{title_match_prefix, TITLE_MATCH_VERSION};
+use crate::commands::title_match_store::retired_title_match_prefixes;
 use crate::error::Result;
 use crate::history::HistoryEntry;
 use crate::scraper::provider::ShowKey;
@@ -60,20 +59,14 @@ fn own_matches(state: &AppState, id: &str, title: &str) -> Result<Vec<(String, S
 /// "(N episodes)" tail; the current version's key names the provider,
 /// the versions before it did not. A bare row's matches also sit under
 /// the segments retired with the provider whose rows were bare
-/// ([`RETIRED_TITLE_MATCH_SEGMENTS`]).
+/// ([`retired_title_match_prefixes`]).
 fn title_match_prefixes(id: &str, title: &str) -> Vec<String> {
     let provider = ShowKey::parse(id).provider;
     let mut prefixes = Vec::new();
     for searched in [title, without_episode_tail(title)] {
         prefixes.push(title_match_prefix(provider, searched));
         let normalized = searched.trim().to_lowercase();
-        if provider.is_none() {
-            for segment in RETIRED_TITLE_MATCH_SEGMENTS {
-                prefixes.push(format!(
-                    "title-match:v{TITLE_MATCH_VERSION}:{segment}:{normalized}:c"
-                ));
-            }
-        }
+        prefixes.extend(retired_title_match_prefixes(provider, &normalized));
         for version in 1..TITLE_MATCH_VERSION {
             prefixes.push(format!("title-match:v{version}:{normalized}:c"));
         }
