@@ -7149,4 +7149,23 @@ mod rate_from_the_runs_start {
         std::fs::write(dir.path().join("episode.part.mp4.part"), vec![0u8; 4096]).expect("write");
         assert_eq!(super::super::resumed_bytes(&out), 4096);
     }
+
+    /// A stream whose video and audio yt-dlp fetches apart keeps a
+    /// partial file per format, named for the format beside the
+    /// output's stem; what the run resumes from counts every one of
+    /// them, and not the fragment files a download in flight keeps, nor
+    /// another output's.
+    #[test]
+    fn what_a_run_resumes_from_counts_every_format_it_keeps_apart() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        let write = |name: &str, len: usize| {
+            std::fs::write(dir.path().join(name), vec![0u8; len]).expect("write");
+        };
+        write("episode.part.f137.mp4.part", 4096);
+        write("episode.part.f140.m4a.part", 1024);
+        write("episode.part.f137.mp4.part-Frag7.part", 512);
+        write("other.part.f137.mp4.part", 2048);
+        assert_eq!(super::super::resumed_bytes(&out), 5120);
+    }
 }
