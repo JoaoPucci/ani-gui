@@ -995,15 +995,33 @@ async fn a_level_switch_mid_fill_keeps_background_turns() {
     );
 }
 
-/// A segment shorter than half a second says nothing the budget can
-/// trust about the player's pace — a tiny trailing segment, a broken
-/// duration — and is not counted, rather than counted as a stream
-/// asking twice a second.
+/// A lone segment shorter than half a second says nothing the budget
+/// can trust about the player's pace — a tiny trailing segment, a
+/// broken duration — and is not counted, rather than counted as a
+/// stream asking several times a second.
 #[tokio::test(start_paused = true)]
 async fn a_segment_too_short_to_trust_is_not_counted() {
     let budget = HostBudget::fresh();
     budget.note_player_segment("cdn.example:443", Stream::Main, Duration::from_millis(100));
     assert_eq!(budget.player_demand("cdn.example:443"), 0.0);
+}
+
+/// Short segments that recur are the stream's pace, not a tail: a
+/// rendition of 400 ms segments asks for more than the refill gives,
+/// so a background request beside it gets no turn while the player
+/// waits, and a normal segment after them is counted as itself.
+#[tokio::test(start_paused = true)]
+async fn recurring_short_segments_count_toward_the_players_need() {
+    let budget = HostBudget::fresh();
+    let host = "cdn.example:443";
+    budget.note_player_segment(host, Stream::Main, Duration::from_millis(400));
+    budget.note_player_segment(host, Stream::Main, Duration::from_millis(400));
+    let need = budget.player_demand(host);
+    assert!(need >= 2.0, "{need}");
+    assert_eq!(player_turns(need, SEGMENT_REFILL), None);
+    budget.note_player_segment(host, Stream::Main, Duration::from_secs(5));
+    let need = budget.player_demand(host);
+    assert!((need - 0.2).abs() < 1e-9, "{need}");
 }
 
 /// A player whose need with a quarter to spare reaches the refill —
