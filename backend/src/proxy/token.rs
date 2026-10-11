@@ -38,7 +38,7 @@ use dashmap::DashMap;
 use hmac::{Hmac, Mac};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::error::{AniError, Result};
@@ -271,11 +271,24 @@ impl StreamSession {
 /// segments or mp4 ranges, chunk by chunk as their bodies stream — so
 /// that a download running beside a playing stream can yield to it
 /// ([`SessionTable::playback_live`]).
+/// How many master responses' variables a session keeps: a player
+/// asks for its master once, and again only to recover, so a few cover
+/// every playlist still being fetched.
+pub const MASTER_VARIABLES_KEPT: usize = 8;
+
 /// The app state and the proxy state hold clones of one table, so the
 /// proxy's note is the download command's answer.
 #[derive(Clone, Default)]
 pub struct SessionTable {
     inner: Arc<DashMap<SessionId, Arc<StreamSession>>>,
+    /// The variables each session's master responses defined, by the
+    /// key the playlists they name carry ([`Self::keep_master_variables`]).
+    variables: Arc<
+        DashMap<
+            SessionId,
+            std::collections::VecDeque<(String, crate::proxy::m3u8_define::Variables)>,
+        >,
+    >,
     media_activity: Arc<std::sync::Mutex<Option<Instant>>>,
     /// Woken each time a media fetch is noted, so a download waiting
     /// on the record learns of playback at once rather than at its
@@ -328,6 +341,49 @@ impl SessionTable {
     /// Remove a session unconditionally.
     pub fn remove(&self, id: &SessionId) {
         self.inner.remove(id);
+        self.variables.remove(id);
+    }
+
+    /// Keep what one of a session's master responses defined, while the
+    /// session is there to hold it, and say the key its playlists name
+    /// it by: a digest of the variables themselves, so each response's
+    /// are kept apart from another's and a response served again with
+    /// the same ones names the same. Nothing for no variables, or no
+    /// session. A session keeps its last [`MASTER_VARIABLES_KEPT`].
+    pub fn keep_master_variables(
+        &self,
+        id: SessionId,
+        vars: crate::proxy::m3u8_define::Variables,
+    ) -> Option<String> {
+        if vars.is_empty() || !self.inner.contains_key(&id) {
+            return None;
+        }
+        let ordered: std::collections::BTreeMap<_, _> = vars.iter().collect();
+        let digest = Sha256::digest(serde_json::to_vec(&ordered).unwrap_or_default());
+        let key = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&digest[..12]);
+        let mut kept = self.variables.entry(id).or_default();
+        if !kept.iter().any(|(k, _)| *k == key) {
+            if kept.len() == MASTER_VARIABLES_KEPT {
+                kept.pop_front();
+            }
+            kept.push_back((key.clone(), vars));
+        }
+        Some(key)
+    }
+
+    /// The variables a session keeps under `key`; nothing for a key it
+    /// does not keep.
+    #[must_use]
+    pub fn master_variables(
+        &self,
+        id: &SessionId,
+        key: &str,
+    ) -> Option<crate::proxy::m3u8_define::Variables> {
+        self.variables
+            .get(id)?
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, vars)| vars.clone())
     }
 
     /// Sweep all expired sessions. Intended for periodic background calls.
@@ -343,6 +399,9 @@ impl SessionTable {
         for id in to_remove {
             self.remove(&id);
         }
+        // Whatever a removal raced past: no variables outlive their
+        // session.
+        self.variables.retain(|id, _| self.inner.contains_key(id));
         n
     }
 

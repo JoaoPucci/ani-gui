@@ -6,8 +6,9 @@
 //! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master.
 //! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>[&v=<variables>]]`
 //!   — fetch + rewrite + return a rendition playlist when the master
-//!   marked it `k=pl` (with its kind of stream, `s=`, and the variables
-//!   that master response defined, `v=`, which the playlist imports),
+//!   marked it `k=pl` (with its kind of stream, `s=`, and the key the
+//!   session keeps that master response's variables under, `v=`, which
+//!   the playlist imports),
 //!   or, for a URL without a mark, when its path ends in lowercase
 //!   `.m3u8`.
 //! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>&k=md[&r=<stream>&d=<ms>]`
@@ -49,8 +50,8 @@ use crate::error::AniError;
 
 use host_budget_demand::Stream;
 pub use m3u8::{
-    master_variables, rewrite_master, rewrite_media, rewrite_media_as, rewrite_media_importing,
-    ProxyOrigin,
+    master_variables, rewrite_master, rewrite_master_naming, rewrite_media, rewrite_media_as,
+    rewrite_media_importing, ProxyOrigin,
 };
 pub use token::{
     sign_marked, sign_segment, verify_marked, verify_segment, AppSecret, MediaKind, SessionId,
@@ -166,8 +167,20 @@ async fn handle_master(
         Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
     };
 
-    let rewritten = match rewrite_master(&body, &served_from, &state.origin, session, &state.secret)
-    {
+    // What this response defines, kept for the playlists it names to
+    // import under the key their URIs carry.
+    let vars = state
+        .sessions
+        .keep_master_variables(session, master_variables(&body, &served_from))
+        .unwrap_or_default();
+    let rewritten = match rewrite_master_naming(
+        &body,
+        &served_from,
+        &state.origin,
+        session,
+        &state.secret,
+        &vars,
+    ) {
         Ok(s) => s,
         Err(_) => {
             // Try as a media playlist before giving up — some upstreams
@@ -422,8 +435,9 @@ struct SegmentQuery {
     /// The playback a media segment buys, in milliseconds.
     #[serde(default)]
     d: Option<u64>,
-    /// The variables of the master that named a playlist, for it to
-    /// import ([`m3u8::encode_variables`]).
+    /// The key the session keeps the variables of the master response
+    /// that named a playlist under, for it to import
+    /// ([`SessionTable::keep_master_variables`]).
     #[serde(default)]
     v: Option<String>,
 }
@@ -507,12 +521,14 @@ async fn handle_seg(
         // playlist, signed into its URI with the rest of its marks —
         // read before the playlist is fetched, so one that cannot be
         // read costs the host nothing.
-        let imported = match q.v.as_deref().map(m3u8::decode_variables) {
+        let imported = match q.v.as_deref() {
             None => m3u8_define::Variables::new(),
-            Some(Some(vars)) => vars,
-            Some(None) => {
-                return error_response(StatusCode::BAD_REQUEST, "bad playlist variables");
-            }
+            Some(key) => match state.sessions.master_variables(&session, key) {
+                Some(vars) => vars,
+                None => {
+                    return error_response(StatusCode::BAD_REQUEST, "unknown playlist variables");
+                }
+            },
         };
         let (body, served_from) = match upstream::fetch_text(
             &state.client,

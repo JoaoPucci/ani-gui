@@ -20,8 +20,8 @@
 //!   URI, key URI, and init-segment URI.
 //! - `build_proxy_uri` (private) — resolve a relative URI against a base,
 //!   then build a proxy URL with HMAC token, marked `k=pl` when a master
-//!   names it as a playlist — with its kind of stream and the master's
-//!   variables — and `k=md` when it names media — a master's session key
+//!   names it as a playlist — with its kind of stream and the key the
+//!   session keeps the master's variables under — and `k=md` when it names media — a master's session key
 //!   or session data, anything a media playlist names, a segment with
 //!   the stream it feeds and the playback it buys. The token signs the
 //!   marks with the upstream.
@@ -121,8 +121,8 @@ pub fn names_a_playlist(kind: Option<&str>, upstream: &Url) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind<'a> {
     /// A playlist carrying a kind of stream, fetched and rewritten,
-    /// with the variables of the master that named it, encoded
-    /// ([`encode_variables`]) — empty when it defines none.
+    /// with the key the session keeps the variables of the master that
+    /// named it under — empty when it defines none.
     Playlist(Stream, &'a str),
     /// A key, an init segment, a master's session key or data,
     /// streamed through.
@@ -135,7 +135,8 @@ enum Kind<'a> {
 /// The marks a proxied URI of `kind` carries after its token, in the
 /// order the segment route reads them back ([`super::marks_of`]): the
 /// playlist-or-media mark `k`, then a playlist's stream `s` and its
-/// master's variables `v`, or a segment's stream `r` and playback `d`.
+/// master's variables' key `v`, or a segment's stream `r` and playback
+/// `d`.
 fn marks(kind: Kind<'_>) -> String {
     match kind {
         Kind::Playlist(stream, "") => format!("k=pl&s={}", stream.slot()),
@@ -143,28 +144,6 @@ fn marks(kind: Kind<'_>) -> String {
         Kind::Media => "k=md".to_owned(),
         Kind::Segment(stream, millis) => format!("k=md&r={}&d={millis}", stream.slot()),
     }
-}
-
-/// A master's variables as a playlist's URI carries them: JSON, in
-/// name order, base64url — empty for none.
-#[must_use]
-pub fn encode_variables(vars: &super::m3u8_define::Variables) -> String {
-    if vars.is_empty() {
-        return String::new();
-    }
-    let ordered: std::collections::BTreeMap<_, _> = vars.iter().collect();
-    let json = serde_json::to_vec(&ordered).unwrap_or_default();
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json)
-}
-
-/// The variables a playlist's URI carries ([`encode_variables`]);
-/// `None` when the mark does not read as them.
-#[must_use]
-pub fn decode_variables(mark: &str) -> Option<super::m3u8_define::Variables> {
-    let json = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(mark)
-        .ok()?;
-    serde_json::from_slice(&json).ok()
 }
 
 /// Rewrite a master playlist. Returns the new manifest as a string.
@@ -182,10 +161,24 @@ pub fn rewrite_master(
     session: SessionId,
     secret: &AppSecret,
 ) -> Result<String> {
-    // What the master defines travels, signed, in the URI of every
-    // playlist it names, for that playlist to import: bound to this
-    // response, not to whatever the master says when next served.
-    let vars = encode_variables(&master_variables(body, master_url));
+    rewrite_master_naming(body, master_url, origin, session, secret, "")
+}
+
+/// [`rewrite_master`] for a master whose variables the session keeps
+/// under `vars`: the key travels, signed, in the URI of every playlist
+/// it names, for that playlist to import this response's variables, not
+/// whatever the master says when next served.
+///
+/// # Errors
+/// As [`rewrite_master`].
+pub fn rewrite_master_naming(
+    body: &[u8],
+    master_url: &Url,
+    origin: &ProxyOrigin,
+    session: SessionId,
+    secret: &AppSecret,
+    vars: &str,
+) -> Result<String> {
     let body =
         &super::m3u8_define::substitute(body, master_url, &super::m3u8_define::Variables::new());
     let parsed = m3u8_rs::parse_master_playlist_res(body).map_err(|e| AniError::ParseFailed {
@@ -200,7 +193,7 @@ pub fn rewrite_master(
             origin,
             session,
             secret,
-            Kind::Playlist(Stream::Main, &vars),
+            Kind::Playlist(Stream::Main, vars),
         );
     }
     for a in &mut out.alternatives {
@@ -212,7 +205,7 @@ pub fn rewrite_master(
                 origin,
                 session,
                 secret,
-                Kind::Playlist(stream, &vars),
+                Kind::Playlist(stream, vars),
             );
         }
     }
