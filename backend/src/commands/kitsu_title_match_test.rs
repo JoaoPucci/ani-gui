@@ -34,7 +34,7 @@ fn state() -> AppState {
 #[test]
 fn the_same_title_maps_per_provider() {
     let s = state();
-    title_match_put(&s, Some(ProviderId::Anidb), "Stone Ocean", 1, "id-anidb").expect("put");
+    title_match_put(&s, Some(ProviderId::TestA), "Stone Ocean", 1, "id-a").expect("put");
     title_match_put(
         &s,
         Some(ProviderId::Hianime),
@@ -44,10 +44,10 @@ fn the_same_title_maps_per_provider() {
     )
     .expect("put");
     assert_eq!(
-        title_match_get(&s, Some(ProviderId::Anidb), "stone ocean", 1)
+        title_match_get(&s, Some(ProviderId::TestA), "stone ocean", 1)
             .expect("get")
             .as_deref(),
-        Some("id-anidb")
+        Some("id-a")
     );
     assert_eq!(
         title_match_get(&s, Some(ProviderId::Hianime), "stone ocean", 1)
@@ -70,7 +70,7 @@ fn a_row_from_the_provider_blind_schema_is_a_miss() {
     )
     .expect("put");
     assert_eq!(
-        title_match_get(&s, Some(ProviderId::Anidb), "Stone Ocean", 1).expect("get"),
+        title_match_get(&s, Some(ProviderId::TestA), "Stone Ocean", 1).expect("get"),
         None
     );
 }

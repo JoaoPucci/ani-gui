@@ -157,10 +157,9 @@ describe('play route — native progress through Paraglide', () => {
 		const es = FakeEventSource.instances.find((i) => i.url.includes('episode=5'))!;
 		expect(es).toBeTruthy();
 
-		es.dispatch('progress', JSON.stringify({ kind: 'searching', provider: 'anidb.app' }));
+		es.dispatch('progress', JSON.stringify({ kind: 'searching', provider: 'hianime' }));
 		await until(
-			() =>
-				(target.textContent ?? '').includes(m.play_progress_searching({ provider: 'anidb.app' })),
+			() => (target.textContent ?? '').includes(m.play_progress_searching({ provider: 'hianime' })),
 			'the localized searching caption'
 		);
 

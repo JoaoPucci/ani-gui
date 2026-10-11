@@ -1,18 +1,18 @@
 //! The playlist helpers' own tests: variant parsing, the quality
-//! arms, and the marker that tells a playlist from a page. The
-//! selection flow over a provider is exercised through the anidb
-//! client's tests.
+//! arms, the marker that tells a playlist from a page, and the
+//! selection flow over stub providers. hianime's client runs the same
+//! flow inside its walk of the servers, under its own tests.
 
 use super::*;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
 
-/// The master playlist captured from a provider — an HLS master is
-/// the same document whichever site served it.
+/// A master playlist fixture — an HLS master is the same document
+/// whichever site served it.
 fn fixture(name: &str) -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("repo root")
-        .join("tests/fixtures/anidb")
+        .join("tests/fixtures/hls")
         .join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }

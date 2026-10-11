@@ -16,7 +16,7 @@ fn the_shipped_set_walks_hianime_alone() {
 /// [`ProviderId::ALL`] compiles and then has no gate.
 fn ships(id: ProviderId) -> bool {
     match id {
-        ProviderId::Anidb | ProviderId::Hianime => true,
+        ProviderId::Hianime => true,
         ProviderId::TestA | ProviderId::TestB => false,
     }
 }
@@ -47,7 +47,7 @@ fn every_known_provider_has_a_gate_whether_or_not_it_is_ordered() {
         assert!(!set.gate(*id).is_open(), "{id:?} has a fresh gate");
     }
     assert!(
-        !std::ptr::eq(set.gate(ProviderId::Anidb), set.gate(ProviderId::Hianime)),
+        !std::ptr::eq(set.gate(ProviderId::TestA), set.gate(ProviderId::Hianime)),
         "one gate per provider, never shared"
     );
 }
@@ -59,36 +59,36 @@ fn a_clone_shares_the_gates() {
     let set = ProviderSet::for_tests();
     let other = set.clone();
     assert!(std::ptr::eq(
-        set.gate(ProviderId::Anidb),
-        other.gate(ProviderId::Anidb)
+        set.gate(ProviderId::TestA),
+        other.gate(ProviderId::TestA)
     ));
 }
 
 #[test]
 fn origins_are_absent_until_a_test_points_a_provider_somewhere() {
     let mut set = ProviderSet::for_tests();
-    assert_eq!(set.origin(ProviderId::Anidb), None);
+    assert_eq!(set.origin(ProviderId::TestA), None);
     assert_eq!(set.origin(ProviderId::Hianime), None);
     set.set_origin(ProviderId::Hianime, "http://127.0.0.1:1");
     assert_eq!(set.origin(ProviderId::Hianime), Some("http://127.0.0.1:1"));
     assert_eq!(
-        set.origin(ProviderId::Anidb),
+        set.origin(ProviderId::TestA),
         None,
         "an override is per provider"
     );
-    let chained = set.with_origin(ProviderId::Anidb, "http://127.0.0.1:2");
+    let chained = set.with_origin(ProviderId::TestA, "http://127.0.0.1:2");
     assert_eq!(
-        chained.origin(ProviderId::Anidb),
+        chained.origin(ProviderId::TestA),
         Some("http://127.0.0.1:2")
     );
 }
 
 #[test]
 fn the_order_can_be_replaced_without_touching_gates_or_origins() {
-    let mut set = ProviderSet::for_tests().with_origin(ProviderId::Anidb, "http://127.0.0.1:1");
-    let gate_before = set.gate(ProviderId::Anidb) as *const ScraperGate;
-    set.set_order(vec![ProviderId::Hianime, ProviderId::Anidb]);
-    assert_eq!(set.order(), &[ProviderId::Hianime, ProviderId::Anidb]);
-    assert!(std::ptr::eq(set.gate(ProviderId::Anidb), gate_before));
-    assert_eq!(set.origin(ProviderId::Anidb), Some("http://127.0.0.1:1"));
+    let mut set = ProviderSet::for_tests().with_origin(ProviderId::TestA, "http://127.0.0.1:1");
+    let gate_before = set.gate(ProviderId::TestA) as *const ScraperGate;
+    set.set_order(vec![ProviderId::Hianime, ProviderId::TestA]);
+    assert_eq!(set.order(), &[ProviderId::Hianime, ProviderId::TestA]);
+    assert!(std::ptr::eq(set.gate(ProviderId::TestA), gate_before));
+    assert_eq!(set.origin(ProviderId::TestA), Some("http://127.0.0.1:1"));
 }

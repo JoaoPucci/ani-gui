@@ -810,8 +810,9 @@ fn is_music_subtype(subtype: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
-/// Bridge a history-recorded show_id to its Kitsu entry. anidb slug
-/// rows resolve by searching Kitsu with the slug's own words; a match
+/// Bridge a history-recorded show_id to its Kitsu entry. Slug-shaped
+/// rows — a provider's, or anidb.app's bare ones — resolve by
+/// searching Kitsu with the slug's own words; a match
 /// persists the `(show_id → kitsu_id)` reverse mapping so subsequent
 /// calls short-circuit through `allmanga_kitsu_get`, unless a play
 /// stored the mapping there or no history row carries the show id any
@@ -1524,7 +1525,7 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         title_match_put(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "Stone Ocean Part 2",
             2,
             "kitsu-id-42",
@@ -1532,7 +1533,7 @@ mod tests {
         .expect("put ok");
         let got = title_match_get(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "Stone Ocean Part 2",
             2,
         )
@@ -1549,7 +1550,7 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         title_match_put(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "Stone Ocean",
             1,
             "id-1",
@@ -1557,14 +1558,14 @@ mod tests {
         .expect("put");
         let got_lc = title_match_get(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "stone ocean",
             1,
         )
         .expect("get lowercased");
         let got_padded = title_match_get(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "  STONE OCEAN  ",
             1,
         )
@@ -1580,7 +1581,7 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         title_match_put(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "Stone Ocean",
             1,
             "id-part1",
@@ -1588,7 +1589,7 @@ mod tests {
         .expect("put p1");
         title_match_put(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "Stone Ocean",
             2,
             "id-part2",
@@ -1597,7 +1598,7 @@ mod tests {
         assert_eq!(
             title_match_get(
                 &state,
-                Some(crate::scraper::provider::ProviderId::Anidb),
+                Some(crate::scraper::provider::ProviderId::TestA),
                 "Stone Ocean",
                 1
             )
@@ -1607,7 +1608,7 @@ mod tests {
         assert_eq!(
             title_match_get(
                 &state,
-                Some(crate::scraper::provider::ProviderId::Anidb),
+                Some(crate::scraper::provider::ProviderId::TestA),
                 "Stone Ocean",
                 2
             )
@@ -1622,7 +1623,7 @@ mod tests {
         assert_eq!(
             title_match_get(
                 &state,
-                Some(crate::scraper::provider::ProviderId::Anidb),
+                Some(crate::scraper::provider::ProviderId::TestA),
                 "Nothing here",
                 1
             )
@@ -1638,7 +1639,7 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         title_match_put(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "Demon Slayer",
             1,
             "old",
@@ -1646,7 +1647,7 @@ mod tests {
         .expect("put old");
         title_match_put(
             &state,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             "Demon Slayer",
             1,
             "new",
@@ -1655,7 +1656,7 @@ mod tests {
         assert_eq!(
             title_match_get(
                 &state,
-                Some(crate::scraper::provider::ProviderId::Anidb),
+                Some(crate::scraper::provider::ProviderId::TestA),
                 "Demon Slayer",
                 1
             )
@@ -1814,7 +1815,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_slug_row_resolves_through_kitsu_without_allanime() {
-        // Post-provider-switch history rows key on the anidb slug
+        // History rows from anidb.app's days key on its bare slug
         // ("one-piece-69"). A slug carries its identity in its own
         // words: the resolver derives the Kitsu search text from
         // them and walks Kitsu directly. The mapping persists so

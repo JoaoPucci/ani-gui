@@ -909,13 +909,12 @@ mod tests {
     async fn get_play_stream_emits_a_terminal_error_event_when_the_gate_refuses() {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        // The native play admits through the anidb gate since the
-        // provider split; priming the provider gate no longer
-        // refuses anything on this path.
+        // The native play admits through the walked provider's own
+        // gate; priming it is what makes the play refuse.
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
                 .providers
-                .gate(crate::scraper::provider::ProviderId::Anidb)
+                .gate(crate::scraper::provider::ProviderId::TestA)
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let router = build_api_router(Arc::new(state));
@@ -1183,7 +1182,7 @@ mod tests {
             "null"
         );
 
-        // The row is hianime's; a request without a provider is anidb's.
+        // The row is hianime's; a request without a provider names none.
         let other_provider = r#"{"title":"Naruto","cour":1,"kitsu_id":"11"}"#;
         assert_eq!(
             put_title_match(&router, other_provider).await,

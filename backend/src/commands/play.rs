@@ -570,7 +570,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
@@ -634,7 +634,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
@@ -686,7 +686,7 @@ pub(crate) mod tests {
         assert!(
             state
                 .providers
-                .gate(crate::scraper::provider::ProviderId::Anidb)
+                .gate(crate::scraper::provider::ProviderId::TestA)
                 .admit(crate::scraper::gate::ScrapePriority::Background)
                 .await
                 .is_ok(),
@@ -2053,7 +2053,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(2),
             &[],
@@ -2152,7 +2152,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(12),
             &[],

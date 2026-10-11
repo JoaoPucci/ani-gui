@@ -46,7 +46,7 @@ fn native() -> NativeResolved {
         extra_tags: Vec::new(),
         resolved_slot: 2,
         resolved_tag: None,
-        provider: crate::scraper::provider::ProviderId::Anidb,
+        provider: crate::scraper::provider::ProviderId::TestA,
         referer: None,
         subtitles: Vec::new(),
     }

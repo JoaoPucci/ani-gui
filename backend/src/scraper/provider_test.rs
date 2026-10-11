@@ -95,15 +95,18 @@ proptest::proptest! {
 
 #[test]
 fn a_provider_id_serializes_as_the_renderers_identifier() {
-    // The identifier the frontend's `StreamProvider` names — `anidb`,
-    // not the label `anidb.app` a show key carries — so a response
-    // field typed on one side matches the other without a map.
+    // The identifier the frontend's `StreamProvider` names, so a
+    // response field typed on one side matches the other without a map.
     assert_eq!(
-        serde_json::to_string(&ProviderId::Anidb).expect("json"),
-        r#""anidb""#
+        serde_json::to_string(&ProviderId::Hianime).expect("json"),
+        r#""hianime""#
     );
     assert_eq!(
         serde_json::from_str::<ProviderId>(r#""hianime""#).expect("json"),
         ProviderId::Hianime
+    );
+    assert!(
+        serde_json::from_str::<ProviderId>(r#""anidb""#).is_err(),
+        "a provider the app no longer knows is no identifier"
     );
 }

@@ -183,7 +183,7 @@ fn a_claimed_id_is_kept_whichever_side_is_padded() {
 fn a_title_match_naming_a_forgotten_id_goes_though_padded() {
     let td = TempDir::new().expect("tempdir");
     let s = state(&td);
-    let provider = crate::scraper::provider::ProviderId::Anidb;
+    let provider = crate::scraper::provider::ProviderId::TestA;
     k::title_match_put(&s, Some(provider), "Elsewhere", 1, PADDED).expect("seed");
     crate::commands::history_forget_titles::forget_title_matches_naming(
         &s,

@@ -61,14 +61,14 @@ async fn canonical_title_resolves_to_the_master_url() {
     // stable keys only. The test change is this red's spec: the old
     // pin asserted the Banner shape itself.
     assert!(
-        matches!(events.first(), Some(ProgressLine::Searching { provider }) if provider == "anidb.app")
+        matches!(events.first(), Some(ProgressLine::Searching { provider }) if provider == crate::provider_set::ProviderSet::TEST_DEFAULT.label())
     );
     assert!(events
         .iter()
         .any(|e| matches!(e, ProgressLine::Matched { title } if title == "The Show")));
     assert!(events
         .iter()
-        .any(|e| matches!(e, ProgressLine::LinksFetched { provider } if provider == "anidb.app")));
+        .any(|e| matches!(e, ProgressLine::LinksFetched { provider } if provider == crate::provider_set::ProviderSet::TEST_DEFAULT.label())));
 }
 
 #[tokio::test]
@@ -376,8 +376,8 @@ async fn a_mode_without_embed_is_a_dead_end_not_absence() {
 
 #[tokio::test]
 async fn a_continuation_entry_maps_kitsu_numbers_onto_its_own() {
-    // anidb.app numbers a later cour cumulatively: TYBW's fourth part
-    // lists episodes 41 and 42, while Kitsu (and so every episode the
+    // A provider can number a later cour cumulatively: TYBW's fourth
+    // part listed as episodes 41 and 42, while Kitsu (and so every episode the
     // UI can request) numbers the same cour 1..13. Episode "1" must
     // land on the entry's first listed episode, and the cap must come
     // back in the request's numbering — 2 aired — not the provider's
@@ -834,7 +834,7 @@ async fn a_resolved_play_carries_the_sources_referer() {
         subtype: None,
     };
     let native = resolve_native(
-        &RefererProvider(crate::scraper::provider::ProviderId::Anidb),
+        &RefererProvider(crate::scraper::provider::ProviderId::TestA),
         req,
         &mut |_| {},
     )
@@ -862,7 +862,7 @@ struct ListingProvider(Vec<crate::scraper::provider::SubtitleTrack>);
 #[async_trait::async_trait]
 impl crate::scraper::provider::Provider for ListingProvider {
     fn id(&self) -> crate::scraper::provider::ProviderId {
-        crate::scraper::provider::ProviderId::Anidb
+        crate::scraper::provider::ProviderId::TestA
     }
     async fn search(
         &self,

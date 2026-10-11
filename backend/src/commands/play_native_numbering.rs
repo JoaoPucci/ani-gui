@@ -3,9 +3,9 @@
 //! ratchet's per-file bar.
 
 /// The shift between the provider's episode numbers and the
-/// per-entry numbers every caller requests. anidb.app keeps a
-/// franchise's cumulative count on continuation cours — TYBW's
-/// fourth part lists episodes 41 and 42 — while Kitsu (and so every
+/// per-entry numbers every caller requests. A provider can keep a
+/// franchise's cumulative count on continuation cours — anidb.app
+/// listed TYBW's fourth part as episodes 41 and 42 — while Kitsu (and so every
 /// number the UI can send) restarts each entry at 1. An entry whose
 /// first listed number is above 1 is such a continuation; entries
 /// starting at 0 or 1 already number per-entry and shift nothing.

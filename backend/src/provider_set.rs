@@ -86,7 +86,7 @@ impl ProviderSet {
     /// one [`Self::for_tests`] orders, a table answers as by default,
     /// and a fixture row names when it is meant to be served.
     #[cfg(test)]
-    pub const TEST_DEFAULT: ProviderId = ProviderId::Anidb;
+    pub const TEST_DEFAULT: ProviderId = ProviderId::TestA;
 
     /// The providers a walk runs against, in order — the next is
     /// asked only when the one before it was unreachable, refusing

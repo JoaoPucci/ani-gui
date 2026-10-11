@@ -149,7 +149,7 @@ pub struct CachedResolution {
     /// Whether the proxy should serve this as HLS (manifest rewrite)
     /// or MP4 (byte-stream pass-through).
     pub media_kind: MediaKind,
-    /// Provider show id (anidb slug) of the chosen candidate. Captured
+    /// The show key of the chosen candidate. Captured
     /// during the fresh-fetch path so a subsequent cache-hit can write
     /// the same history row a fresh resolve would. Empty string on rows
     /// written before this field existed — callers fall back to

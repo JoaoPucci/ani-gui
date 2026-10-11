@@ -1,7 +1,6 @@
 //! The transport's own tests: binary resolution and failover
 //! order, the child's argv, the subprocess itself, and log redaction.
-//! Moved here with the transport; the anidb client's tests stay with
-//! that client.
+//! The provider clients' tests stay with each client.
 
 use super::*;
 
@@ -358,7 +357,7 @@ fn every_wrapper_and_plain_curl_carry_no_target() {
 #[test]
 fn a_candidate_with_a_target_passes_it_on_the_command_line() {
     let args = fetch_args(
-        &FetchRequest::get("https://anidb.app/anime/x"),
+        &FetchRequest::get("https://provider.example/anime/x"),
         Some("chrome136"),
     );
     let i = args
@@ -370,7 +369,7 @@ fn a_candidate_with_a_target_passes_it_on_the_command_line() {
 
 #[test]
 fn a_candidate_without_a_target_gets_no_impersonate_flag() {
-    let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), None);
+    let args = fetch_args(&FetchRequest::get("https://provider.example/anime/x"), None);
     assert!(
         !args.iter().any(|a| a == "--impersonate"),
         "a wrapper already carries its fingerprint; passing a target too would fight it"
@@ -386,7 +385,10 @@ fn a_candidate_without_a_target_gets_no_impersonate_flag() {
 #[test]
 fn the_windows_child_reads_the_native_certificate_store() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             args.iter().any(|a| a == "--ca-native"),
             "without the flag a BoringSSL child on Windows fails every TLS verify"
@@ -402,7 +404,10 @@ fn the_windows_child_reads_the_native_certificate_store() {
 #[test]
 fn other_platforms_keep_the_builds_own_verification_defaults() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             !args.iter().any(|a| a == "--ca-native"),
             "the flag is a Windows accommodation, not a default"
@@ -419,18 +424,18 @@ fn other_platforms_keep_the_builds_own_verification_defaults() {
 #[test]
 fn transport_logs_elide_credential_shaped_url_parts() {
     let signed = redacted_url(
-        "https://hls.anidb.app/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8",
+        "https://hls.provider.example/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8",
     );
     assert!(
         !signed.contains("lCu4egwqaEzu"),
         "a path segment that long is a token, not a name: {signed}"
     );
     assert!(
-        signed.contains("hls.anidb.app") && signed.contains("master.m3u8"),
+        signed.contains("hls.provider.example") && signed.contains("master.m3u8"),
         "host and the failing endpoint must survive redaction: {signed}"
     );
 
-    let with_query = redacted_url("https://anidb.app/browse?q=some+title");
+    let with_query = redacted_url("https://provider.example/browse?q=some+title");
     assert!(
         !with_query.contains("some") && !with_query.contains('?'),
         "queries carry signatures and search text; they never reach the log: {with_query}"
@@ -440,9 +445,9 @@ fn transport_logs_elide_credential_shaped_url_parts() {
         "the endpoint survives: {with_query}"
     );
 
-    let ordinary = redacted_url("https://anidb.app/api/frontend/anime/1234/episodes");
+    let ordinary = redacted_url("https://provider.example/api/frontend/anime/1234/episodes");
     assert_eq!(
-        ordinary, "https://anidb.app/api/frontend/anime/1234/episodes",
+        ordinary, "https://provider.example/api/frontend/anime/1234/episodes",
         "short-segment paths carry no credential and stay legible"
     );
 
@@ -462,13 +467,16 @@ fn transport_logs_elide_credential_shaped_url_parts() {
 #[test]
 fn the_child_never_globs_and_its_stderr_echo_is_redacted() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             args.iter().any(|a| a == "-g"),
             "an unmatched bracket in a URL makes curl print the whole operand to stderr"
         );
     }
-    let url = "https://hls.anidb.app/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8";
+    let url = "https://hls.provider.example/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8";
     let scrubbed = scrub_stderr(&format!("curl: (3) URL rejected: {url}"), url);
     assert!(
         !scrubbed.contains("lCu4egwqaEzu"),
@@ -492,7 +500,10 @@ fn the_child_never_globs_and_its_stderr_echo_is_redacted() {
 #[test]
 fn the_child_reports_its_error_text_despite_silent_mode() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             args.iter().any(|a| a == "-sSL"),
             "silent mode without show-error logs an empty stderr on every transfer failure"
@@ -510,7 +521,10 @@ fn the_child_reports_its_error_text_despite_silent_mode() {
 #[test]
 fn the_child_decodes_the_content_encoding_it_advertises() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             args.iter().any(|a| a == "--compressed"),
             "an advertised encoding the child does not decode is a parse failure downstream"
@@ -526,7 +540,10 @@ fn the_child_decodes_the_content_encoding_it_advertises() {
 #[test]
 fn the_child_reports_the_url_the_transfer_ended_on() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         let at = args
             .iter()
             .position(|a| a == "-w")
@@ -589,10 +606,13 @@ async fn an_unredirected_response_carries_the_url_that_was_asked_for() {
 #[test]
 fn the_url_stays_last_whether_or_not_a_target_is_passed() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert_eq!(
             args.last().map(String::as_str),
-            Some("https://anidb.app/anime/x")
+            Some("https://provider.example/anime/x")
         );
     }
 }

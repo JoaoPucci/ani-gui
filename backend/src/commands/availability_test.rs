@@ -289,7 +289,7 @@ fn positive_ttl_for_current_returns_24_hour_window() {
 /// fires on every detail-page mount and every rail warm.
 #[tokio::test]
 async fn check_availability_honours_the_state_level_override() {
-    let server = no_results(ProviderId::Anidb);
+    let server = no_results(ProviderId::TestA);
     let td = tempfile::tempdir().expect("tempdir");
     let mut state = cache_only_state(&td);
     state.providers.set_stub(Arc::clone(&server));
@@ -333,13 +333,21 @@ fn stub_one_show(count: u32) -> Arc<TableProvider> {
 
 #[tokio::test]
 async fn the_response_names_the_provider_whose_catalogue_answered() {
-    // Two providers means "available" needs an owner: the row
-    // says whose catalogue it describes, in the identifier the
-    // renderer's `StreamProvider` uses, and rows written before
-    // the field parse as unattributed rather than failing.
-    let server = stub_one_show(7);
+    // "Available" needs an owner: the row says whose catalogue it
+    // describes, in the identifier the renderer's `StreamProvider`
+    // uses, and rows written before the field parse as unattributed
+    // rather than failing.
+    let rows: Vec<u64> = (5001..=5007).collect();
+    let server = Arc::new(one_show(
+        ProviderId::Hianime,
+        ("probe-show-5", "Probe Show", None),
+        &rows,
+        true,
+        false,
+    ));
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let mut state = cache_only_state(&td);
+    state.providers.set_order(vec![ProviderId::Hianime]);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Probe Show",
         "mode": "sub",
@@ -350,9 +358,9 @@ async fn the_response_names_the_provider_whose_catalogue_answered() {
     let got = check_with(&state, &args, &server)
         .await
         .expect("probe succeeds");
-    assert_eq!(got.provider, Some(ProviderId::Anidb));
+    assert_eq!(got.provider, Some(ProviderId::Hianime));
     let body = serde_json::to_value(&got).expect("json");
-    assert_eq!(body["provider"], "anidb");
+    assert_eq!(body["provider"], "hianime");
     let legacy: AvailabilityResponse =
         serde_json::from_str(r#"{"available":true,"episode_count":7,"extra_episodes":[]}"#)
             .expect("a row from before the field");
@@ -384,7 +392,7 @@ async fn the_cached_row_keeps_the_provider_that_answered() {
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert_eq!(
         row.provider,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the row names the provider whose catalogue answered"
     );
 }
@@ -1228,7 +1236,7 @@ fn the_remembered_provider_is_read_off_a_positive_row_alone() {
 /// A primary whose search answers with nothing — the one answer
 /// that proves absence.
 fn stub_no_results() -> Arc<TableProvider> {
-    no_results(ProviderId::Anidb)
+    no_results(ProviderId::TestA)
 }
 
 #[tokio::test]
@@ -1255,7 +1263,7 @@ async fn a_clean_miss_row_names_the_provider_that_answered_it() {
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert_eq!(
         row.provider,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the negative row names the provider whose miss it is"
     );
 }
@@ -1317,8 +1325,8 @@ fn a_negative_row_is_served_while_its_provider_is_reachable() {
     // Reachable means seen answering: a fresh gate has answered
     // nothing, and a row served on it would stand on a provider
     // that may be down since before the process started.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
-    write_cache(&state, "562", "sub", false, Some(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
+    write_cache(&state, "562", "sub", false, Some(ProviderId::TestA));
     let listed = batch_cached(
         &state,
         &AvailabilityBatchArgs {
@@ -1453,7 +1461,7 @@ async fn one_probe_leaves_the_breaker_one_outcome() {
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD - 1 {
         state
             .providers
-            .gate(ProviderId::Anidb)
+            .gate(ProviderId::TestA)
             .record_outcome(false, tokio::time::Instant::now());
     }
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1466,7 +1474,7 @@ async fn one_probe_leaves_the_breaker_one_outcome() {
     assert!(
         state
             .providers
-            .gate(ProviderId::Anidb)
+            .gate(ProviderId::TestA)
             .admit(crate::scraper::gate::ScrapePriority::Background)
             .await
             .is_err(),
@@ -1568,7 +1576,7 @@ async fn a_sub_only_show_probed_for_dub_caches_unavailable() {
     // The provider ANSWERED absence for this mode, so the
     // negative verdict is cacheable — like the clean search miss.
     let server = Arc::new(one_show(
-        ProviderId::Anidb,
+        ProviderId::TestA,
         ("sub-only-71", "Sub Only Show", None),
         &[711, 712],
         true,
@@ -1641,7 +1649,7 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
 
 #[tokio::test]
 async fn a_transient_provider_failure_surfaces_network_and_writes_nothing() {
-    let server = refusing(ProviderId::Anidb, 500);
+    let server = refusing(ProviderId::TestA, 500);
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1882,7 +1890,7 @@ fn write_cache_round_trips_for_negative_results() {
     let td = tempfile::tempdir().expect("tempdir");
     let state = cache_only_state(&td);
     // A negative row is usable only on a provider seen answering.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
     write_cache(
         &state,
         "kid-2",
@@ -2002,7 +2010,7 @@ fn batch_cached_returns_playable_episode_counts() {
     let td = tempfile::tempdir().expect("tempdir");
     let state = cache_only_state(&td);
     // The negative row below stands on a provider seen answering.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
     write_cache_full(
         &state,
         "ongoing-show",
@@ -2284,7 +2292,7 @@ async fn background_probe_skips_the_network_while_the_breaker_is_open() {
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
         state
             .providers
-            .gate(ProviderId::Anidb)
+            .gate(ProviderId::TestA)
             .record_outcome(false, tokio::time::Instant::now());
     }
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -2352,7 +2360,7 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     // A negative row is usable only on a provider seen answering.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
     let legacy = AvailabilityResponse {
         available: true,
         episode_count: None,
@@ -2412,7 +2420,7 @@ fn usability_is_negative_or_a_confirmed_count() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     // A negative row is usable only on a provider seen answering.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
     let cases = (
         proptest::bool::ANY,
         proptest::option::of(0u32..2000),

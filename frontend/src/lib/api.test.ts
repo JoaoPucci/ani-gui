@@ -621,12 +621,12 @@ describe('playStream', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		const es = FakeEventSource.instances[0];
-		es.dispatch('progress', JSON.stringify({ kind: 'searching', provider: 'anidb.app' }));
+		es.dispatch('progress', JSON.stringify({ kind: 'searching', provider: 'hianime' }));
 		es.dispatch('progress', JSON.stringify({ kind: 'matched', title: 'The Show' }));
 		es.dispatch('done', JSON.stringify(donePayload()));
 		await promise;
 		expect(seen).toEqual([
-			{ kind: 'searching', provider: 'anidb.app' },
+			{ kind: 'searching', provider: 'hianime' },
 			{ kind: 'matched', title: 'The Show' }
 		]);
 	});
@@ -1017,10 +1017,10 @@ describe('kitsuTitleMatchGet', () => {
 	it('GETs /api/title-match with title + cour as query params', async () => {
 		const fetchMock = mockFetchOnce('kitsu-id-42');
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
-		const got = await kitsuTitleMatchGet('Stone Ocean Part 2', 2, 'anidb');
+		const got = await kitsuTitleMatchGet('Stone Ocean Part 2', 2, 'hianime');
 		const { url } = lastCall(fetchMock);
 		// URLSearchParams emits `+` for spaces in `application/x-www-form-urlencoded`.
-		expect(url).toBe(`${BASE}/api/title-match?title=Stone+Ocean+Part+2&cour=2&provider=anidb`);
+		expect(url).toBe(`${BASE}/api/title-match?title=Stone+Ocean+Part+2&cour=2&provider=hianime`);
 		expect(got).toBe('kitsu-id-42');
 	});
 

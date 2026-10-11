@@ -5,7 +5,7 @@
  * The renderer never parses the slug — only the label, and only to say
  * which provider's title a cache key is for.
  */
-export type StreamProvider = 'anidb' | 'hianime';
+export type StreamProvider = 'hianime';
 
 const LABELED: ReadonlyArray<StreamProvider> = ['hianime'];
 

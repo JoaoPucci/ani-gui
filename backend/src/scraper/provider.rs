@@ -32,13 +32,11 @@ pub fn encode_query(query: &str) -> String {
 /// failover between providers can attribute each attempt.
 ///
 /// Serialized as the identifier the renderer's `StreamProvider`
-/// names — `anidb`, `hianime` — not as the label a show key carries,
-/// so a response field typed on one side matches the other.
+/// names — `hianime` — not as the label a show key carries, so a
+/// response field typed on one side matches the other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderId {
-    /// anidb.app — the provider ani-cli 5.0 scrapes.
-    Anidb,
     /// hianime — the provider ani-cli moved to when anidb.app went
     /// dark in September 2026.
     Hianime,
@@ -56,7 +54,7 @@ impl ProviderId {
     /// Every provider the app knows, whether or not a state orders
     /// it: the set a gate exists for, and the set a stored label can
     /// name.
-    pub const ALL: &'static [ProviderId] = &[Self::Anidb, Self::Hianime];
+    pub const ALL: &'static [ProviderId] = &[Self::Hianime];
 
     /// The providers that exist only in tests. They have gates like
     /// every known provider and answer only from a table a test
@@ -85,7 +83,6 @@ impl ProviderId {
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
-            Self::Anidb => "anidb.app",
             // The brand, not a domain: the site's domain churns and is
             // filtered per ISP, and the label names who answered.
             Self::Hianime => "hianime",
