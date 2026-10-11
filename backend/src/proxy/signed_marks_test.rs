@@ -181,3 +181,33 @@ async fn a_media_playlist_imports_from_the_master_response_that_named_it() {
     );
     assert_eq!(upstream_of(&segment), format!("{}/one/s0.ts", server.uri()));
 }
+
+/// A mark's value cannot carry another mark: separators encoded into a
+/// value read back as that value, not as the pairs they spell, so a
+/// token signed for a playlist's `k=pl&s=audio` does not verify for a
+/// single `k` whose value is `pl&s=audio`.
+#[tokio::test]
+async fn a_separator_encoded_into_a_mark_does_not_read_as_another_mark() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/a/en.m3u8"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:5\n#EXTINF:5.0,\nseg.aac\n#EXT-X-ENDLIST\n",
+        ))
+        .mount(&server)
+        .await;
+    let (router, id) = proxy_over(&format!("{}/master.m3u8", server.uri()));
+    let secret = AppSecret::from_bytes([9u8; 32]);
+    let playlist = format!("{}/a/en.m3u8", server.uri());
+    let token = sign_marked(&secret, id, &playlist, "k=pl&s=audio");
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(playlist.as_bytes());
+    let base = format!("/s/{}/seg?u={encoded}&t={token}", id.as_string());
+    assert_eq!(
+        fetch(&router, &format!("{base}&k=pl&s=audio")).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        fetch(&router, &format!("{base}&k=pl%26s%3Daudio")).await.0,
+        StatusCode::FORBIDDEN
+    );
+}
