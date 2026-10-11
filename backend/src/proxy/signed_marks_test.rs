@@ -219,15 +219,19 @@ fn query_of(uri: &str) -> SegmentQuery {
 }
 
 proptest::proptest! {
-    /// Whatever variables a master defines, the playlist URIs it names
-    /// carry them back as they were.
+    /// Whatever variables a master defines, the session keeps them
+    /// under the key a playlist's URI names, and gives them back as
+    /// they were; a key it does not keep names nothing.
     #[test]
-    fn a_masters_variables_come_back_as_they_were(
-        vars in proptest::collection::hash_map("[A-Za-z0-9_-]{1,8}", "[ -~]{0,16}", 0..5),
+    fn a_masters_variables_come_back_under_their_key(
+        vars in proptest::collection::hash_map("[A-Za-z0-9_-]{1,8}", "[ -~]{0,16}", 1..5),
     ) {
-        let encoded = m3u8::encode_variables(&vars);
-        let back = if encoded.is_empty() { Some(m3u8_define::Variables::new()) } else { m3u8::decode_variables(&encoded) };
-        proptest::prop_assert_eq!(back, Some(vars));
+        let table = SessionTable::new();
+        let session = StreamSession::new(url::Url::parse("https://cdn.example/m.m3u8").expect("url"), String::new());
+        let id = table.insert(session);
+        let key = table.keep_master_variables(id, vars.clone()).expect("a key");
+        proptest::prop_assert_eq!(table.master_variables(&id, &key), Some(vars));
+        proptest::prop_assert_eq!(table.master_variables(&id, "0000"), None);
     }
 
     /// Every URI the rewrite writes — a master's playlists, with and
@@ -289,4 +293,54 @@ async fn a_playlist_uri_whose_variables_do_not_read_is_refused() {
     let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(playlist.as_bytes());
     let uri = format!("/s/{}/seg?u={encoded}&t={token}&{marks}", id.as_string());
     assert_eq!(fetch(&router, &uri).await.0, StatusCode::BAD_REQUEST);
+}
+
+/// However much a master defines, the playlist URIs it names stay
+/// short: a tool reading the rewritten master — ffmpeg reads each line
+/// into a few kilobytes — follows them, and the variables stay with the
+/// session under a key the URI names.
+#[tokio::test]
+async fn a_masters_variables_keep_its_playlist_uris_short() {
+    let server = MockServer::start().await;
+    let long = "x".repeat(8 * 1024);
+    let master = format!(
+        "#EXTM3U\n#EXT-X-DEFINE:NAME=\"edge\",VALUE=\"{long}\"\n\
+         #EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8\n"
+    );
+    Mock::given(method("GET"))
+        .and(wm_path("/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(master))
+        .mount(&server)
+        .await;
+    let (router, id) = proxy_over(&format!("{}/master.m3u8", server.uri()));
+    let (status, body) = fetch(&router, &format!("/s/{}/master.m3u8", id.as_string())).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let variant = body
+        .lines()
+        .find(|l| l.contains("/seg?u="))
+        .expect("a variant");
+    assert!(variant.len() < 1024, "{} bytes", variant.len());
+}
+
+/// A session forgets its masters' variables with it.
+#[test]
+fn a_sessions_master_variables_leave_with_it() {
+    let table = SessionTable::new();
+    let session = StreamSession::new(
+        url::Url::parse("https://cdn.example/m.m3u8").expect("url"),
+        String::new(),
+    );
+    let id = table.insert(session);
+    let vars = m3u8_define::Variables::from([("a".to_string(), "A".to_string())]);
+    let key = table.keep_master_variables(id, vars).expect("a key");
+    table.remove(&id);
+    assert_eq!(table.master_variables(&id, &key), None);
+    assert_eq!(
+        table.keep_master_variables(
+            id,
+            m3u8_define::Variables::from([("a".to_string(), "A".to_string())])
+        ),
+        None,
+        "nothing kept for a session that is gone"
+    );
 }
