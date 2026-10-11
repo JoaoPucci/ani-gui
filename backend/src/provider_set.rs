@@ -49,7 +49,7 @@ impl ProviderSet {
     /// The providers the app ships, in the order a walk asks them.
     #[must_use]
     pub fn shipped() -> Self {
-        Self::listing(vec![ProviderId::Anidb, ProviderId::Hianime])
+        Self::listing(vec![ProviderId::Hianime])
     }
 
     /// A set walking `order`, with a fresh gate for every known
