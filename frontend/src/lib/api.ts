@@ -260,7 +260,7 @@ export interface LaunchExternalPlayerArgs {
 }
 
 /**
- * Shape of `AniError` once Tauri serializes it as the rejection value.
+ * Shape of `AniError` as the backend serializes it into an error body.
  * Frontend localizers look up `key` (when present) in the i18n catalog.
  */
 export interface AniErrorPayload {

@@ -5,13 +5,17 @@
 // and cov = line coverage % for that file (0..1).
 //
 // We aggregate per FILE rather than per function — function-level
-// CRAP needs precise line ranges that lizard's XML doesn't expose,
+// CRAP needs precise line ranges that the complexity XML doesn't expose,
 // and the per-file signal already surfaces the same anti-pattern:
 // a file with high total complexity AND poor coverage is the place
 // to look.
 //
 // Inputs:
-//   - lizard XML on stdin (run: `lizard --xml <paths> | crap-score.mjs`)
+//   - per-function complexity in lizard's XML shape, from each file
+//     named by `--ccn=<path>` (one or more times), or from stdin when
+//     none is named. The gate names two: tools/rust-ccn's report for
+//     backend/src and tools/ts-ccn.mjs's for frontend/src. A named
+//     report that cannot be read fails the run.
 //   - lcov.info path via `--lcov=<path>[:<prefix>]` (one or more times).
 //     The optional `:prefix` is prepended to every relative SF: path
 //     in that lcov so paths line up across the repo. Frontend lcov
@@ -19,8 +23,8 @@
 //     absolute paths (handled separately).
 //   - --root=<repoRoot> to make file paths comparable across inputs
 //
-// Filters out test files (*.test.{ts,js}, *_test.rs, tests/) — lizard
-// counts their complexity but lcov never covers them, so they'd
+// Filters out test files (*.test.{ts,js}, *_test.rs, tests/) — the
+// complexity tools count them but lcov never covers them, so they'd
 // dominate the CRAP rankings as artifacts.
 //
 // Output: a sorted-by-CRAP-desc table on stdout, plus aggregate
@@ -35,25 +39,60 @@ const lcovPaths = args.filter((a) => a.startsWith('--lcov=')).map((a) => a.slice
 const rootFlag = args.find((a) => a.startsWith('--root='));
 const root = rootFlag ? rootFlag.slice('--root='.length) : process.cwd();
 const jsonFlag = args.includes('--json');
+const ccnPaths = args.filter((a) => a.startsWith('--ccn=')).map((a) => a.slice('--ccn='.length));
 
 if (lcovPaths.length === 0) {
-	console.error('usage: lizard --xml <paths> | crap-score.mjs --lcov=<path> [--lcov=<path> ...] [--root=<dir>] [--json]');
+	console.error('usage: crap-score.mjs [--ccn=<xml> ...] --lcov=<path> [--lcov=<path> ...] [--root=<dir>] [--json]  (complexity XML on stdin when no --ccn)');
 	process.exit(2);
 }
 
-/** Parse lizard's XML output for per-file complexity totals. */
-function parseLizardXml(xml) {
-	// Each function is <item name="fn(...) at file:line"><value>nr</value><value>NCSS</value><value>CCN</value></item>
-	const re = /<item name="[^"]*?at ([^:]+):\d+">\s*<value>\d+<\/value>\s*<value>\d+<\/value>\s*<value>(\d+)<\/value>/g;
-	/** @type {Map<string, number>} */
-	const ccnByFile = new Map();
+/** Parse lizard-shaped XML for per-file complexity totals, adding to `ccnByFile`. */
+function parseLizardXml(xml, ccnByFile) {
+	// Each function is <item name="fn(...) at file:line"><value>nr</value><value>NCSS</value><value>CCN</value></item>,
+	// the name attribute XML-escaped. Function names carry no whitespace
+	// (tools/rust-ccn and tools/ts-ccn.mjs reduce them to ASCII name
+	// characters), so the first ` at ` ends the name; the line number is
+	// the digits after the last `:`, and the file is everything between,
+	// however many ` at `s or colons its path holds.
+	//
+	// Every <item> is complexity. One the scorer cannot read whole — a
+	// different layout, a count that is not a number, a label with no
+	// file or line, no `</item>` — fails the run rather than leaving the
+	// totals. So does a document that does not close after its last
+	// item: a counter that exits 0 after writing a truncated report
+	// would otherwise have the functions it wrote scored and the rest
+	// silently absent.
+	const re = /<item name="([^"]*)">\s*<value>\d+<\/value>\s*<value>\d+<\/value>\s*<value>(\d+)<\/value>\s*<\/item>/g;
+	const items = (xml.match(/<item\b/g) ?? []).length;
+	let read = 0;
 	let m;
 	while ((m = re.exec(xml)) !== null) {
-		const file = path.normalize(m[1]);
+		read += 1;
+		const label = xmlUnescape(m[1]);
+		const placed = /^.*? at (.*):(\d+)$/s.exec(label);
+		if (!placed) refuse(`complexity item without "<name> at <file>:<line>": ${label}`);
+		const file = path.normalize(placed[1]);
 		const ccn = Number(m[2]);
 		ccnByFile.set(file, (ccnByFile.get(file) ?? 0) + ccn);
 	}
-	return ccnByFile;
+	if (read !== items) refuse(`${items - read} of ${items} complexity items are not in the expected shape`);
+	const closed = xml.lastIndexOf('</cppncss>');
+	if (closed < 0 || closed < xml.lastIndexOf('</item>')) refuse('complexity report does not close after its last item (truncated?)');
+}
+
+/** Stop on input the scorer cannot read whole: scoring what was read would
+ *  leave the rest silently absent from the totals. */
+function refuse(why) {
+	console.error(`crap-score: ${why}`);
+	process.exit(2);
+}
+
+/** XML's five named entities and numeric character references, in one pass. */
+function xmlUnescape(s) {
+	const named = { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' };
+	return s.replace(/&(?:(lt|gt|quot|apos|amp)|#(\d+)|#x([0-9a-fA-F]+));/g, (_, name, dec, hex) =>
+		name ? named[name] : String.fromCodePoint(dec ? Number(dec) : parseInt(hex, 16))
+	);
 }
 
 /** Parse one lcov.info, return { file → { LF, LH } } keyed by repo-relative path. */
@@ -65,6 +104,10 @@ function parseLcov(file, prefix = '') {
 	for (const raw of text.split('\n')) {
 		const line = raw.trim();
 		if (line.startsWith('SF:')) {
+			// A record is read whole or not at all: one the next record
+			// opens over, or the file ends inside, would otherwise drop out
+			// without a word and its file score at no coverage.
+			if (cur) refuse(`${file}: the record for ${cur.file} has no end_of_record before the next SF:`);
 			let p = line.slice(3);
 			if (path.isAbsolute(p)) {
 				p = path.relative(root, p);
@@ -88,21 +131,39 @@ function parseLcov(file, prefix = '') {
 			cur = null;
 		}
 	}
+	if (cur) refuse(`${file}: ends inside the record for ${cur.file}, before its end_of_record (truncated?)`);
+	// A coverage file with no record in it is a coverage run that did
+	// not happen, not one that covered nothing.
+	if (byFile.size === 0) refuse(`${file}: holds no coverage record`);
 	return byFile;
 }
 
-/** Should this file count toward CRAP? Excludes test files since lizard
- *  scores their complexity but lcov never covers them — they'd
+/** Should this file count toward CRAP? Excludes test files since the
+ *  complexity tools score them but lcov never covers them — they'd
  *  artifact-dominate the rankings. */
 function isProductionFile(file) {
-	if (/\.(test|spec)\.[jt]sx?$/.test(file)) return false;
+	if (/\.(test|spec)\.([mc]?[jt]s|[jt]sx)$/.test(file)) return false;
 	if (/(^|\/)tests?\//.test(file)) return false;
 	if (/_test\.rs$/.test(file)) return false;
 	return true;
 }
 
-const xml = fs.readFileSync(0, 'utf-8');
-const ccnByFile = parseLizardXml(xml);
+/** @type {Map<string, number>} */
+const ccnByFile = new Map();
+if (ccnPaths.length === 0) {
+	parseLizardXml(fs.readFileSync(0, 'utf-8'), ccnByFile);
+} else {
+	for (const p of ccnPaths) {
+		let xml;
+		try {
+			xml = fs.readFileSync(p, 'utf-8');
+		} catch (err) {
+			console.error(`crap-score: cannot read complexity report ${p}: ${err.message}`);
+			process.exit(2);
+		}
+		parseLizardXml(xml, ccnByFile);
+	}
+}
 /** @type {Map<string, { LF: number, LH: number }>} */
 const cov = new Map();
 for (const spec of lcovPaths) {
@@ -114,7 +175,7 @@ const rows = [];
 for (const [file, ccn] of ccnByFile) {
 	if (!isProductionFile(file)) continue;
 	const c = cov.get(file);
-	// Files lizard saw but no lcov entry → assume zero coverage, full
+	// Files measured for complexity but with no lcov entry → assume zero coverage, full
 	// risk. Conversely lcov-only files have no complexity to reason
 	// about; skip those.
 	const lf = c?.LF ?? 0;
@@ -136,7 +197,13 @@ const p95 = sorted[Math.floor(0.95 * (sorted.length - 1))] ?? 0;
 // 181 files it is already below a ten-row report — so the report has
 // to be sized to reach it rather than to a fixed length.
 const p95Index = rows.length ? rows.length - 1 - Math.floor(0.95 * (rows.length - 1)) : 0;
-const high_risk = rows.filter((r) => r.crap > 30).length;
+/** The high-risk bar: a file scoring above it counts against `high_risk_le`. */
+const HIGH_RISK_BAR = 30;
+/** How far under the bar the table still reaches. The count sits at its
+ *  ceiling, so the files just under the bar decide the gate on a sliver
+ *  of coverage; the table is where they are read from. */
+const BOUNDARY_MARGIN = 5;
+const high_risk = rows.filter((r) => r.crap > HIGH_RISK_BAR).length;
 
 if (jsonFlag) {
 	// `high_risk_files` names what the count is counting. Without it a
@@ -164,7 +231,7 @@ if (jsonFlag) {
 			p95: r2(p95),
 			high_risk,
 			count: rows.length,
-			high_risk_files: rows.filter((r) => r.crap > 30).map(report),
+			high_risk_files: rows.filter((r) => r.crap > HIGH_RISK_BAR).map(report),
 			top: rows.slice(0, Math.max(TOP_N, p95Index + 1)).map(report),
 			p95_file: rows[p95Index]?.file ?? null
 		}) + '\n'
@@ -173,7 +240,9 @@ if (jsonFlag) {
 	const widths = { file: 50, ccn: 6, cov: 8, crap: 8 };
 	console.log(`${pad('file', widths.file)}${pad('ccn', widths.ccn)}${pad('cov', widths.cov)}${pad('crap', widths.crap)}`);
 	console.log('-'.repeat(72));
-	for (const r of rows.slice(0, 20)) {
+	// The worst twenty, and past them every file down to five under the
+	// bar, so the boundary is in the log however many files sit above it.
+	for (const r of rows.filter((row, i) => i < 20 || row.crap >= HIGH_RISK_BAR - BOUNDARY_MARGIN)) {
 		console.log(
 			pad(r.file, widths.file) +
 				pad(String(r.ccn), widths.ccn) +
@@ -181,7 +250,7 @@ if (jsonFlag) {
 				pad(r.crap.toFixed(1), widths.crap)
 		);
 	}
-	console.error(`\nmax=${r2(max)}  p95=${r2(p95)}  high_risk(>30)=${high_risk}  files=${rows.length}`);
+	console.error(`\nmax=${r2(max)}  p95=${r2(p95)}  high_risk(>${HIGH_RISK_BAR})=${high_risk}  files=${rows.length}`);
 }
 
 function r2(x) {

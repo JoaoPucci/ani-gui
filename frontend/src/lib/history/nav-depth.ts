@@ -44,9 +44,8 @@ export function nextDepth(step: NavStep): number {
 		case 'enter':
 			// Fresh app load (or hard reload). Reset to root regardless of
 			// any leftover history.state from a prior session — Tauri's
-			// WebView will sometimes preserve state across launches and
-			// without this reset the BackButton showed up immediately on
-			// open.
+			// WebView used to preserve state across launches, and without
+			// this reset the BackButton showed up immediately on open.
 			return 0;
 		case 'popstate':
 			// Read the new entry's stamped depth. If absent (the very

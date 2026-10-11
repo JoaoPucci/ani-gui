@@ -82,8 +82,8 @@ pub fn cache_dir() -> Option<PathBuf> {
     project_dirs().map(|d| d.cache_dir().to_path_buf())
 }
 
-/// `$XDG_CACHE_HOME/ani-gui/images/` — backing store for the `image://`
-/// custom protocol.
+/// `$XDG_CACHE_HOME/ani-gui/images/` — backing store for the image cache
+/// the `/api/image` route serves.
 #[must_use]
 pub fn image_cache_dir() -> Option<PathBuf> {
     cache_dir().map(|d| d.join("images"))
