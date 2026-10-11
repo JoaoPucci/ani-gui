@@ -19,7 +19,6 @@ use crate::commands::play_native_resolve::{
 };
 use crate::commands::progress::ProgressLine;
 use crate::error::AniError;
-use crate::provider_set::ProviderSet;
 use crate::scraper::gate::{ScrapePriority, ScraperGate};
 use crate::scraper::provider::{Provider, ProviderId};
 
@@ -782,26 +781,22 @@ pub fn gate_of(state: &AppState, provider: ProviderId) -> &ScraperGate {
 
 /// The production client for `provider`: the curl-impersonate
 /// transport resolved through the bundled directory then PATH,
-/// pointed at the site (or the origin `providers` points it at),
-/// with every request admitted through the provider's own gate at
-/// `priority` — the walk fans out into candidate probes and the
-/// episode chain, and each of those is a provider request the
-/// pacing contract covers, not just the search. The gate is always
-/// the state's own: `providers` may be a caller's copy carrying an
-/// origin override (the availability command's test seam), and a
-/// copy shares the state's gates.
+/// pointed at the site (or the origin the state's provider set points
+/// it at, in tests), with every request admitted through the
+/// provider's own gate at `priority` — the walk fans out into
+/// candidate probes and the episode chain, and each of those is a
+/// provider request the pacing contract covers, not just the search.
 ///
 /// # Errors
 /// [`AniError::Network`] when no curl binary resolves at all — the
 /// host cannot reach any provider by any transport.
 pub fn client_for<'a>(
     state: &'a AppState,
-    providers: &ProviderSet,
     provider: ProviderId,
     priority: ScrapePriority,
 ) -> crate::error::Result<Box<dyn Provider + 'a>> {
     #[cfg(test)]
-    if let Some(table) = providers.stub(provider) {
+    if let Some(table) = state.providers.stub(provider) {
         return Ok(Box::new(crate::scraper::table_provider::Gated::new(
             table,
             Some(gate_of(state, provider)),
@@ -819,7 +814,7 @@ pub fn client_for<'a>(
     })?;
     let fetch =
         crate::scraper::gated::GatedFetch::new(fetch, Some(gate_of(state, provider)), priority);
-    let origin = providers.origin(provider);
+    let origin = state.providers.origin(provider);
     Ok(match provider {
         ProviderId::Anidb => match origin {
             Some(base) => Box::new(crate::scraper::anidb::AnidbClient::with_base(fetch, base)),
@@ -844,7 +839,7 @@ pub async fn run<'a, A: Attempt>(
     priority: ScrapePriority,
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
-    run_at(state, &state.providers, None, priority, attempt).await
+    run_from(state, None, priority, attempt).await
 }
 
 /// [`run`] starting from `remembered` — the provider a positive
@@ -861,7 +856,17 @@ pub async fn run_from<'a, A: Attempt>(
     priority: ScrapePriority,
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
-    run_at(state, &state.providers, remembered, priority, attempt).await
+    with_failover(
+        state.providers.order(),
+        remembered,
+        priority,
+        RESOLVE_DEADLINE,
+        PRIMARY_ATTEMPT_BUDGET,
+        |provider| client_for(state, provider, priority),
+        |provider| gate_of(state, provider),
+        attempt,
+    )
+    .await
 }
 
 /// `order` with `remembered` moved to the front when it is listed;
@@ -878,33 +883,6 @@ pub fn order_with_affinity(
             .collect(),
         _ => order.to_vec(),
     }
-}
-
-/// [`run`] against `providers` — the state's own set, or a caller's
-/// copy of it carrying an origin override — and the provider a
-/// positive row put first, when one did; the walk starts from it
-/// when the order lists it.
-///
-/// # Errors
-/// As [`with_failover`].
-pub async fn run_at<'a, A: Attempt>(
-    state: &'a AppState,
-    providers: &ProviderSet,
-    remembered: Option<ProviderId>,
-    priority: ScrapePriority,
-    attempt: &mut A,
-) -> Result<Attempted<'a, A::Output>, NativeError> {
-    with_failover(
-        providers.order(),
-        remembered,
-        priority,
-        RESOLVE_DEADLINE,
-        PRIMARY_ATTEMPT_BUDGET,
-        |provider| client_for(state, providers, provider, priority),
-        |provider| gate_of(state, provider),
-        attempt,
-    )
-    .await
 }
 
 /// The play resolve as an attempt: alias walk, bounded probing,

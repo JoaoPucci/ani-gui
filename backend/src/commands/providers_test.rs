@@ -537,8 +537,7 @@ fn each_provider_gets_a_client_of_its_own_on_its_own_gate() {
     let td = tempfile::tempdir().expect("td");
     let state = unroutable_state(&td, &ORDER);
     for p in ORDER {
-        let client = client_for(&state, &state.providers, p, ScrapePriority::Interactive)
-            .expect("a curl on PATH");
+        let client = client_for(&state, p, ScrapePriority::Interactive).expect("a curl on PATH");
         assert_eq!(client.id(), p);
     }
     assert!(std::ptr::eq(

@@ -646,17 +646,6 @@ pub async fn check_availability(
     state: &AppState,
     args: &AvailabilityArgs,
 ) -> Result<AvailabilityResponse> {
-    check_availability_with_base(state, args, None).await
-}
-
-/// [`check_availability`] with an anidb origin override exposed for
-/// tests. Production passes `None` via the public wrapper, which
-/// walks the state's own provider set.
-pub(crate) async fn check_availability_with_base(
-    state: &AppState,
-    args: &AvailabilityArgs,
-    anidb_base: Option<&str>,
-) -> Result<AvailabilityResponse> {
     let mode = if args.mode == "dub" { "dub" } else { "sub" };
     // Read before any network work, compared again before the write:
     // a refresh answering in between means this lookup's row is the
@@ -710,24 +699,12 @@ pub(crate) async fn check_availability_with_base(
     // records it under the play path's mapping: answered verdicts
     // (the clean miss included) are health, weather is distress, a
     // gate refusal records nothing.
-    let overridden;
-    let providers = match anidb_base {
-        Some(base) => {
-            overridden = state
-                .providers
-                .clone()
-                .with_origin(crate::scraper::provider::ProviderId::Anidb, base);
-            &overridden
-        }
-        None => &state.providers,
-    };
     let mut attempt = ProbeAttempt {
         args,
         mode,
         answered_by: None,
     };
-    let probed =
-        crate::commands::providers::run_at(state, providers, remembered, prio, &mut attempt).await;
+    let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
     let (available, episode_count, extra_episodes, provider) = match probed {
         Ok(attempted) => {
             let (p, present) = attempted.value;
