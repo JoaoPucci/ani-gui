@@ -276,3 +276,17 @@ proptest::proptest! {
         }
     }
 }
+/// A playlist URI whose variables do not read as variables is refused
+/// with a 400, though its token is good — before the playlist is
+/// fetched, so the host is not asked for what cannot be rewritten.
+#[tokio::test]
+async fn a_playlist_uri_whose_variables_do_not_read_is_refused() {
+    let (router, id) = proxy_over("https://cdn.example/master.m3u8");
+    let secret = AppSecret::from_bytes([9u8; 32]);
+    let playlist = "https://cdn.example/v.m3u8";
+    let marks = "k=pl&s=main&v=bm90LWpzb24";
+    let token = sign_marked(&secret, id, playlist, marks);
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(playlist.as_bytes());
+    let uri = format!("/s/{}/seg?u={encoded}&t={token}&{marks}", id.as_string());
+    assert_eq!(fetch(&router, &uri).await.0, StatusCode::BAD_REQUEST);
+}
