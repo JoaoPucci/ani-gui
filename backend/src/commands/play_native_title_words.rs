@@ -35,8 +35,10 @@ pub(crate) fn kind_of(word: &str) -> Option<Kind> {
     }
 }
 
-/// The ordinal a word spells as an ordinal: "2nd", "second", "II". A
-/// bare number is not one ("100" in "Mob Psycho 100").
+/// The ordinal a word spells as an ordinal: "2nd", "second" to
+/// "twentieth", "II" to "IX" — never "X", a word of its own in titles
+/// like "Spy x Family". A bare number is not one ("100" in "Mob Psycho
+/// 100").
 pub(crate) fn spelled_ordinal(word: &str) -> Option<u32> {
     const SPELLED: &[(&str, u32)] = &[
         ("first", 1),
@@ -45,11 +47,28 @@ pub(crate) fn spelled_ordinal(word: &str) -> Option<u32> {
         ("fourth", 4),
         ("fifth", 5),
         ("sixth", 6),
+        ("seventh", 7),
+        ("eighth", 8),
+        ("ninth", 9),
+        ("tenth", 10),
+        ("eleventh", 11),
+        ("twelfth", 12),
+        ("thirteenth", 13),
+        ("fourteenth", 14),
+        ("fifteenth", 15),
+        ("sixteenth", 16),
+        ("seventeenth", 17),
+        ("eighteenth", 18),
+        ("nineteenth", 19),
+        ("twentieth", 20),
         ("ii", 2),
         ("iii", 3),
         ("iv", 4),
         ("v", 5),
         ("vi", 6),
+        ("vii", 7),
+        ("viii", 8),
+        ("ix", 9),
     ];
     if let Some((_, n)) = SPELLED.iter().find(|(w, _)| *w == word) {
         return Some(*n);
@@ -72,10 +91,31 @@ pub(crate) fn small_number(word: &str) -> Option<u32> {
     number(word).filter(|_| word.len() <= 2)
 }
 
-/// A cardinal spelled out, read only after a marker word ("Season
-/// Two").
+/// A cardinal spelled out, "one" to "twenty", read only after a marker
+/// word ("Season Two").
 pub(crate) fn cardinal(word: &str) -> Option<u32> {
-    const CARDINALS: &[&str] = &["one", "two", "three", "four", "five", "six"];
+    const CARDINALS: &[&str] = &[
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        "eleven",
+        "twelve",
+        "thirteen",
+        "fourteen",
+        "fifteen",
+        "sixteen",
+        "seventeen",
+        "eighteen",
+        "nineteen",
+        "twenty",
+    ];
     CARDINALS
         .iter()
         .position(|w| *w == word)
