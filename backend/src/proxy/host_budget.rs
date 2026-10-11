@@ -57,6 +57,8 @@ pub(crate) const SEGMENT_BURST: u32 = 20;
 /// it.
 pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
 
+#[path = "host_budget_probe.rs"]
+mod probe;
 #[path = "host_budget_unpaced.rs"]
 mod unpaced;
 use unpaced::Unpaced;
@@ -117,6 +119,9 @@ pub struct HostBudget {
     lines: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     /// The unpaced downloads running, and when the last one ended.
     unpaced: Mutex<Unpaced>,
+    /// The cached-row probes waiting at each host, which background
+    /// traffic yields to ([`Self::admit_probe`]).
+    probes: Mutex<HashMap<String, u32>>,
     burst: u32,
     refill: Duration,
 }
@@ -128,6 +133,7 @@ impl HostBudget {
             buckets: Mutex::new(HashMap::new()),
             lines: Mutex::new(HashMap::new()),
             unpaced: Mutex::new(Unpaced::default()),
+            probes: Mutex::new(HashMap::new()),
             burst,
             refill,
         }
@@ -154,8 +160,8 @@ impl HostBudget {
     }
 
     /// A token for `host`, waiting for one while the burst is spent: the
-    /// player's requests, through the proxy and a cached row's liveness
-    /// check before it starts. Waiters are served in the order they arrived: each takes its
+    /// player's requests through the proxy. Waiters are served in the
+    /// order they arrived: each takes its
     /// place in the host's line and keeps it until it has its token,
     /// so a request arriving as a token matures does not take it from
     /// one that has waited for it, and a few requests arriving at once
@@ -185,17 +191,18 @@ impl HostBudget {
     /// it takes a token only while no one is waiting for one, and
     /// otherwise waits a refill and looks again. Whoever is in the
     /// line is served first, however long the background fetch has
-    /// been waiting; with the line empty it waits for its token like
+    /// been waiting, and so is a cached row's probe waiting at the host
+    /// ([`Self::admit_probe`]); with neither, it waits for its token like
     /// any other.
     pub(crate) async fn admit_background(&self, host: &str) {
         let line = self.line(host);
         loop {
             let wait = match line.try_lock() {
-                Ok(_nobody_waiting) => match self.take_for(host) {
+                Ok(_nobody_waiting) if !self.probes_waiting(host) => match self.take_for(host) {
                     None => return,
                     Some(wait) => wait,
                 },
-                Err(_someone_waiting) => self.refill,
+                _someone_waiting => self.refill,
             };
             tokio::time::sleep(wait).await;
         }
