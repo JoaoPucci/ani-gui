@@ -1,9 +1,12 @@
 //! HTTP API exposed by the localhost server.
 //!
-//! Wraps the `commands::*` functions. The frontend, running in the
-//! Electron shell, talks to this router via `fetch`. (The routes began
-//! as a 1:1 port of the `#[tauri::command]` handlers the app had before
-//! Electron; only the wire protocol changed.)
+//! The module began as a port of the Tauri IPC surface: each route
+//! stood in for a `#[tauri::command]` handler and called the same
+//! `commands::*` function, and the frontend switched from `invoke` to
+//! `fetch`. Most routes keep that shape, a thin handler over one
+//! `commands::*` function. A few reach the module they serve directly
+//! (`meta::images`, `cache`, `meta::github`, `config::paths`), and the
+//! SSE routes wrap their command in streaming plumbing.
 //!
 //! Mounted alongside the streaming-proxy router (`crate::proxy`) on
 //! the same kernel-assigned loopback port. Both routers share the
@@ -426,9 +429,10 @@ struct ImageQuery {
     url: String,
 }
 
-/// Serve a cached/freshly-fetched image over plain HTTP, from the
-/// on-disk cache in `meta::images`. (The Tauri build used a custom
-/// `image://` scheme for this; Electron has no such handler.)
+/// Serve a cached/freshly-fetched image. The Tauri build served images
+/// over a custom `image://` scheme; the Electron renderer has no such
+/// scheme and asks for the bytes over plain HTTP. The on-disk cache
+/// (`meta::images`) is the one that scheme used.
 ///
 /// Only `https://` upstreams are accepted — refusing other schemes
 /// avoids letting a malicious renderer turn the loopback server into
@@ -1345,9 +1349,10 @@ mod tests {
         );
     }
 
-    /// Images reach the renderer over plain HTTP (there is no
-    /// `image://` custom protocol under Electron). The route must serve
-    /// cached bytes with the right Content-Type, and refuse non-https upstreams (defense in depth
+    /// Cross-origin `<img src=>` loads could not ride Tauri's `image://`
+    /// custom protocol from Electron — the renderer fetches via plain
+    /// HTTP. The route must serve cached bytes with the right
+    /// Content-Type, and refuse non-https upstreams (defense in depth
     /// against an XSS asking the loopback server to fetch arbitrary
     /// schemes).
     #[tokio::test]

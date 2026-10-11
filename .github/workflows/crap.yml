@@ -1,8 +1,19 @@
 name: 'crap score'
 # CRAP = Change Risk Anti-Patterns. Per-file, ccn² × (1 − cov)² + ccn.
-# Self-contained: regenerates Rust + frontend lcov files, runs lizard,
+# Self-contained: regenerates Rust + frontend lcov files, measures
+# per-function complexity with a real parser per language
+# (tools/rust-ccn on syn, tools/ts-ccn.mjs on the TypeScript compiler),
 # computes per-file CRAP, then ratchets against `coverage-baseline.json`.
 # Gates the merge — current numbers are the ceiling.
+#
+# The complexity used to come from lizard, whose regex tokenizers lost
+# their place on ordinary Rust and TypeScript and dropped functions from
+# the counts without saying so. Each tool here fails the run on a file it
+# cannot parse, a root with nothing to measure, or a file of a kind it
+# neither measures nor declares, and states on stderr what it does not
+# measure: functions inside item-position macros (as blocks), closures
+# inside macro input (charged to the enclosing function), decisions
+# outside any function, and the files it lists as not measured.
 #
 # Always fires; the `filter` job decides whether downstream steps run
 # the real pipeline or no-op. See rust.yml for the design rationale.
@@ -38,7 +49,7 @@ jobs:
           # See rust.yml's filter for why we avoid `git diff | grep -q`
           # under pipefail (SIGPIPE on early grep exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(backend/|frontend/|tools/|coverage-baseline\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/crap\.yml$)' <<<"$changed"; then
+          if grep -qE '^(backend/|frontend/|tools/|tests/complexity/|coverage-baseline\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/crap\.yml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -46,6 +57,9 @@ jobs:
 
   crap:
     needs: filter
+    # The name is the status check the master ruleset requires, so it
+    # outlives the tool it names: lizard no longer runs here. Renaming
+    # it is a ruleset change too.
     name: lizard + ratchet
     runs-on: ubuntu-latest
     steps:
@@ -53,14 +67,6 @@ jobs:
         run: 'echo "Not required: no backend / frontend / tools changes in this PR"'
       - if: needs.filter.outputs.relevant == 'true'
         uses: actions/checkout@v4
-
-      - if: needs.filter.outputs.relevant == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - if: needs.filter.outputs.relevant == 'true'
-        name: Install lizard (cyclomatic complexity)
-        run: pip install lizard==1.22.1
 
       - if: needs.filter.outputs.relevant == 'true'
         uses: dtolnay/rust-toolchain@stable
@@ -98,6 +104,19 @@ jobs:
           sudo apt-get install -y curl mpv ffmpeg aria2
 
       - if: needs.filter.outputs.relevant == 'true'
+        name: Test the complexity tools
+        # The gate's instruments are checked before they measure. The
+        # TypeScript tool's tests live outside tests/tools/ because they
+        # need the compiler from the frontend's dependencies, and the
+        # job that runs tests/tools/ (arch.yml) installs none; this one
+        # does. The Rust tool gets the lints its tests do not cover.
+        run: |
+          cargo fmt --check --manifest-path tools/rust-ccn/Cargo.toml
+          cargo clippy --locked --all-targets --manifest-path tools/rust-ccn/Cargo.toml -- -D warnings
+          cargo test --locked --manifest-path tools/rust-ccn/Cargo.toml
+          node --test tests/complexity/*.test.mjs
+
+      - if: needs.filter.outputs.relevant == 'true'
         name: Generate Rust lcov
         working-directory: backend
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
@@ -114,23 +133,29 @@ jobs:
         name: Compute CRAP
         run: |
           mkdir -p coverage
-          # Run lizard once, fan out to two crap-score invocations:
-          # the JSON one feeds the ratchet check; the table goes to
-          # the build log so failures surface the top-N offenders
-          # without needing a second push.
-          # Exclude Paraglide's compiled output — it's a generated
-          # artifact (one switch arm per message key, regenerated at
-          # i18n:compile time) and inflates max/p95 wildly without
-          # representing handwritten complexity.
-          lizard --xml -x "*paraglide*" backend/src frontend/src > coverage/lizard.xml
+          # Measure once per language, fan out to two crap-score
+          # invocations: the JSON one feeds the ratchet check; the table
+          # goes to the build log so a failure surfaces the offenders —
+          # and the files sitting just under the high-risk bar — without
+          # needing a second push. ts-ccn skips
+          # Paraglide's compiled output — a generated artifact (one
+          # switch arm per message key, regenerated at i18n:compile
+          # time) that would inflate max/p95 without representing
+          # handwritten complexity.
+          cargo run --locked --release --quiet \
+              --manifest-path tools/rust-ccn/Cargo.toml -- backend/src \
+              > coverage/rust-ccn.xml
+          node tools/ts-ccn.mjs frontend/src > coverage/ts-ccn.xml
           node tools/crap-score.mjs \
+              --ccn=coverage/rust-ccn.xml --ccn=coverage/ts-ccn.xml \
               --lcov=backend/lcov.info \
               --lcov=frontend/coverage/lcov.info:frontend \
-              --root=. < coverage/lizard.xml
+              --root=.
           node tools/crap-score.mjs \
+              --ccn=coverage/rust-ccn.xml --ccn=coverage/ts-ccn.xml \
               --lcov=backend/lcov.info \
               --lcov=frontend/coverage/lcov.info:frontend \
-              --root=. --json < coverage/lizard.xml > coverage/crap-summary.json
+              --root=. --json > coverage/crap-summary.json
           cat coverage/crap-summary.json
 
       - if: needs.filter.outputs.relevant == 'true'
@@ -150,4 +175,6 @@ jobs:
             backend/lcov.info
             frontend/coverage/lcov.info
             coverage/crap-summary.json
+            coverage/rust-ccn.xml
+            coverage/ts-ccn.xml
           retention-days: 3

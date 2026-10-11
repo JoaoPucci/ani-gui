@@ -1,13 +1,16 @@
 //! Network plumbing for [`super::mal_user::MalProvider`]. Holds the
 //! shared `post_token_form` + `get_auth_bytes` helpers, the
-//! refresh-coalesce cache type, and the inner refresh implementation
-//! (mutex acquisition + cache hit/miss + network rotation). Extracted
+//! refresh-coalesce cache type, and — in the `mal_user_net_refresh.rs`
+//! child — the inner refresh implementation (mutex acquisition + cache
+//! hit/miss + network rotation) and `url_origin`. Extracted
 //! so the trait-impl file in `mal_user.rs` stays narrow enough to
 //! clear the CRAP ratchet.
 //!
-//! Everything here is `pub(super)` — the trait impl is the only
-//! caller. The helpers expect a parent reference (`MalProvider`) and
-//! delegate field access through accessors `mal_user.rs` exposes.
+//! The helpers are visible to `meta` only — the trait impl is their
+//! only caller; `MalRefreshState`, which `AppState` holds, is public
+//! and re-exported from `mal_user.rs`. The helpers expect a parent
+//! reference (`MalProvider`) and delegate field access through
+//! accessors `mal_user.rs` exposes.
 
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -20,6 +23,10 @@ use super::mal_user_parse::parse_token_response;
 use crate::account::credentials::MAL_CLIENT_ID;
 use crate::account::provider::Tokens;
 use crate::error::{AniError, Result};
+
+#[path = "mal_user_net_refresh.rs"]
+mod refresh;
+pub(super) use refresh::url_origin;
 
 /// `User-Agent` advertised on every MAL request. Per the API license
 /// notes (Phase 0), we identify clearly so MAL can correlate traffic
@@ -156,59 +163,4 @@ impl MalProvider {
         Self::check_status(resp.status())?;
         resp.bytes().await.map_err(|_| AniError::Network)
     }
-
-    /// Inner `refresh` implementation. Holds the mutex across the
-    /// cache-check + network call so two concurrent refreshers
-    /// serialize, hits the cache when the input refresh token
-    /// matches a previously-rotated set and that set hasn't yet
-    /// expired (Codex P2 #3375578767), otherwise rotates and stores
-    /// the result.
-    pub(super) async fn refresh_inner(&self, refresh_token: &str) -> Result<Tokens> {
-        let mut guard = self.refresh_state().lock().lock().await;
-        if let Some(cached) = guard.as_ref() {
-            if cached.input_refresh_token == refresh_token {
-                let now_s = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0);
-                if cached.tokens.expires_at_epoch_s > now_s {
-                    return Ok(cached.tokens.clone());
-                }
-            }
-        }
-        let form = [
-            ("client_id", MAL_CLIENT_ID),
-            ("grant_type", "refresh_token"),
-            ("refresh_token", refresh_token),
-        ];
-        let tokens = self.post_token_form(&form).await?;
-        *guard = Some(CoalescedRefresh {
-            input_refresh_token: refresh_token.to_string(),
-            tokens: tokens.clone(),
-        });
-        Ok(tokens)
-    }
-}
-
-/// Extract the (scheme, host, port) tuple of a URL string for origin
-/// comparison. Returns `("", "", 0)` for unparseable input — the
-/// caller treats that as a non-matching origin so a malformed
-/// `paging.next` value is dropped rather than followed (Codex P2
-/// #3375623170).
-pub(super) fn url_origin(s: &str) -> (String, String, u16) {
-    let Ok(u) = url::Url::parse(s) else {
-        return (String::new(), String::new(), 0);
-    };
-    let host = u.host_str().unwrap_or("").to_string();
-    let port = u
-        .port_or_known_default()
-        .or_else(|| {
-            if u.scheme() == "http" {
-                Some(80)
-            } else {
-                Some(443)
-            }
-        })
-        .unwrap_or(0);
-    (u.scheme().to_string(), host, port)
 }

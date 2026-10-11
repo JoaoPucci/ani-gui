@@ -267,9 +267,9 @@ export interface LaunchExternalPlayerArgs {
  * calls reject with. The envelope always has `kind` and `key`; the rest
  * are the variant's own fields. An answer the router or the HTTP layer
  * gives before a handler runs, or the image route's refusal, carries no
- * envelope. The fallback expect2xx builds for a body that
- * is not JSON has a `kind` and a `status` only. User-facing copy
- * comes from `kind` and the fields that change what the user should do — `status` on an
+ * envelope. The fallback expect2xx builds for a body that is not JSON
+ * has a `kind` and a `status` only. User-facing copy comes from `kind`
+ * and the fields that change what the user should do — `status` on an
  * upstream, `retry_after_secs` on a rate limit, `binary` on a spawn
  * failure, `key` on a download-tool failure (see `describeError` in
  * $lib/play/describe-error and the mappers beside it). `detail` is

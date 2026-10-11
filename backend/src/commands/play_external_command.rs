@@ -6,7 +6,7 @@
 //! action is a direct
 //! `external_player::open_external_player` spawn instead of a
 //! StreamSession + proxy. Lives outside `commands/play.rs` so the
-//! play module's lizard ccn stays under the firm CRAP ceiling.
+//! play module's ccn stays under the firm CRAP ceiling.
 
 use crate::app::AppState;
 use crate::commands::external_player;
