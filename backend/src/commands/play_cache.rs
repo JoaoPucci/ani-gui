@@ -116,8 +116,23 @@ pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
 /// together under [`CACHED_ROW_CHECK_DEADLINE`]; the first dead URL
 /// ends the check, a URL that does not parse is dead, and a deadline
 /// that elapses is a row that is not live.
+///
+/// Before any of that, the row has to come from a provider the state
+/// walks ([`cached_row_is_walked`]). The checks ask whether URLs
+/// answer, and an answer is not the stream: a redirect counts as live,
+/// and a provider that has left can redirect every URL it ever served
+/// to another site, whose page the player would then be handed.
 pub(crate) async fn cached_row_is_live(state: &AppState, cached: &CachedResolution) -> bool {
-    cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE).await
+    cached_row_is_walked(state, cached)
+        && cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE).await
+}
+
+/// Whether a cached row was resolved through a provider the state
+/// walks. A row naming another provider, or none — a row from before
+/// the field — is not replayed: the play resolves afresh and the
+/// fresh row replaces it.
+pub(crate) fn cached_row_is_walked(state: &AppState, cached: &CachedResolution) -> bool {
+    cached_row_provider(cached).is_some_and(|p| state.providers.order().contains(&p))
 }
 
 /// [`cached_row_is_live`] under a caller's deadline.
