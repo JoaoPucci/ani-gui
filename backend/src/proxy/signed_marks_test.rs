@@ -211,3 +211,68 @@ async fn a_separator_encoded_into_a_mark_does_not_read_as_another_mark() {
         StatusCode::FORBIDDEN
     );
 }
+
+/// The query of a proxied URI, as the segment route reads it.
+fn query_of(uri: &str) -> SegmentQuery {
+    let query = uri.split_once('?').expect("a query").1;
+    serde_urlencoded::from_str(query).expect("the route reads it")
+}
+
+proptest::proptest! {
+    /// Whatever variables a master defines, the playlist URIs it names
+    /// carry them back as they were.
+    #[test]
+    fn a_masters_variables_come_back_as_they_were(
+        vars in proptest::collection::hash_map("[A-Za-z0-9_-]{1,8}", "[ -~]{0,16}", 0..5),
+    ) {
+        let encoded = m3u8::encode_variables(&vars);
+        let back = if encoded.is_empty() { Some(m3u8_define::Variables::new()) } else { m3u8::decode_variables(&encoded) };
+        proptest::prop_assert_eq!(back, Some(vars));
+    }
+
+    /// Every URI the rewrite writes — a master's playlists, with and
+    /// without variables, and a media playlist's segments, keys and
+    /// init segments — reads back on the segment route as the marks its
+    /// token signed: the route verifies what the rewrite wrote.
+    #[test]
+    fn every_uri_the_rewrite_writes_verifies_as_written(
+        millis in 0u32..20_000,
+        edge in "[a-z]{0,8}",
+        audio in proptest::bool::ANY,
+    ) {
+        let secret = AppSecret::from_bytes([5u8; 32]);
+        let id = SessionId::new();
+        let origin = ProxyOrigin::new("127.0.0.1", 1);
+        let define = if edge.is_empty() { String::new() } else { format!("#EXT-X-DEFINE:NAME=\"edge\",VALUE=\"{edge}\"\n") };
+        let master = format!(
+            "#EXTM3U\n{define}#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"a\",NAME=\"en\",URI=\"a.m3u8\"\n\
+             #EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO=\"a\"\nv.m3u8\n"
+        );
+        let master_url = url::Url::parse("https://cdn.example/x/master.m3u8").expect("url");
+        let out = rewrite_master(master.as_bytes(), &master_url, &origin, id, &secret).expect("master");
+        let seconds = f64::from(millis) / 1000.0;
+        let media = format!(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:20\n#EXT-X-KEY:METHOD=AES-128,URI=\"k.key\"\n\
+             #EXT-X-MAP:URI=\"init.mp4\"\n#EXTINF:{seconds:.3},\ns0.ts\n#EXT-X-ENDLIST\n"
+        );
+        let media_url = url::Url::parse("https://cdn.example/x/v.m3u8").expect("url");
+        let stream = if audio { Stream::Audio } else { Stream::Main };
+        let rewritten = rewrite_media_as(media.as_bytes(), &media_url, &origin, id, &secret, stream).expect("media");
+        let uris: Vec<String> = out
+            .lines()
+            .chain(rewritten.lines())
+            .flat_map(|l| l.split('"'))
+            .filter(|s| s.contains("/seg?u="))
+            .map(|s| s.trim().to_owned())
+            .collect();
+        proptest::prop_assert!(uris.len() >= 5, "{out}\n{rewritten}");
+        for uri in uris {
+            let q = query_of(&uri);
+            let upstream = decode_seg_url(&q.u).expect("upstream");
+            proptest::prop_assert!(
+                verify_marked(&secret, id, upstream.as_str(), &marks_of(&q), &q.t).is_ok(),
+                "{uri}"
+            );
+        }
+    }
+}
