@@ -261,8 +261,9 @@ pub(crate) fn store(
 }
 
 /// Drop a single cached resolution. Two callers feed this:
-/// 1. The play flow's HEAD-fail branch — the cached URL is dead so
-///    the row should not linger if the fresh resolve also fails.
+/// 1. The play flow's unservable-row branch — the row's provider is
+///    no longer walked, or the cached URL is dead — so the row should
+///    not linger if the fresh resolve also fails.
 /// 2. The frontend's player-error feedback path — the player tried
 ///    the cached upstream and got a 4xx/5xx, so the URL has rotated
 ///    even though our HEAD said it was alive.

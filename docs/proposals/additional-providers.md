@@ -216,7 +216,8 @@ ever the pick, this is its own investigation first.
 ## How a second provider slots in
 
 - **The code seam.** The scraper module is already split into a
-  client (`backend/src/scraper/anidb/`) and provider-agnostic policy
+  client (`backend/src/scraper/anidb/`, removed with anidb.app) and
+  provider-agnostic policy
   (`gate`, `outcome`, `reservation` — "nothing here decides
   policy"). What is missing is the trait boundary: the play,
   availability and download commands import the concrete client and
@@ -296,7 +297,8 @@ ever the pick, this is its own investigation first.
   last-watched stamp wins, or one row per Kitsu entry carrying the
   provider as an attribute); the numbering-offsets sidecar beside
   the history file
-  (`backend/src/commands/anidb_offset_store.rs`), one row per bare
+  (`backend/src/commands/anidb_offset_store.rs`, since renamed
+  `numbering_offset_store.rs`), one row per bare
   slug carrying a show's numbering offset and last-watch display
   stamp — it outlives SQLite cache clears and is consulted on every
   history read and write, so a second provider's slugs landing in it

@@ -15,15 +15,18 @@
 //! - its place in [`ProviderSet::shipped`]'s order;
 //! - a client behind the [`Provider`](crate::scraper::provider::Provider)
 //!   trait, and its arm in
-//!   [`client_for`](crate::commands::providers::client_for);
-//! - when its show keys carry its label, the label in
-//!   [`ProviderId::from_label`] and
-//!   [`ShowKey::parse`](crate::scraper::provider::ShowKey::parse).
+//!   [`client_for`](crate::commands::providers::client_for).
 //!
-//! A gate exists for every known id, not just the ordered ones: a
-//! row written by a provider the order no longer lists still names
-//! that provider, and the availability cache's read rule asks its
-//! gate whether it can stand behind the row.
+//! Nothing else names providers one by one: [`ProviderId::from_label`]
+//! and [`ShowKey::parse`](crate::scraper::provider::ShowKey::parse)
+//! walk every known id, so a new variant's label is recognised in
+//! stored keys as soon as it exists. Its label has to equal the
+//! identifier it serializes as — the renderer sends that identifier
+//! where the API reads a label — which `provider_set_test.rs` checks
+//! for every member of [`ProviderId::ALL`].
+//!
+//! A gate exists for every known id, not just the ordered ones, so a
+//! change of order never leaves a walked provider without one.
 
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -2,9 +2,9 @@
 //!
 //! The renderer's detail page calls `POST /api/play` (or its sibling
 //! `/api/play/external`) with the canonical title + episode + mode.
-//! Resolution is native: the anidb client searches, disambiguates by
-//! episode count, and walks episode → languages → embed →
-//! master-playlist URL, which becomes a [`StreamSession`]. The
+//! Resolution is native: the walked providers' clients search,
+//! disambiguate by episode count, and walk episode → servers → embed
+//! → master-playlist URL, which becomes a [`StreamSession`]. The
 //! external and download siblings take the same walk and differ only
 //! in what they do with the result.
 //!
@@ -295,7 +295,8 @@ where
                 .await;
                 return Ok(resp);
             }
-            // HEAD failed — the cached URL is dead. Evict the row and
+            // The row is not served: its provider is no longer walked,
+            // or HEAD failed and the cached URL is dead. Evict it and
             // fall through to a fresh resolve. Eviction is explicit (not
             // just overwrite-on-put) because if the fresh resolve ALSO
             // fails, we don't want the stale row to linger and bite the
@@ -304,13 +305,13 @@ where
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
-                "play: cache row stale (HEAD failed), evicted, resolving afresh",
+                "play: cache row unservable (provider not walked or HEAD failed), evicted, resolving afresh",
             );
         }
     }
 
-    // Resolve natively against anidb: alias walk, bounded probing,
-    // episode-to-master resolution. The subprocess never runs on the
+    // Resolve natively against the walked providers: alias walk,
+    // bounded probing, episode-to-master resolution. The subprocess never runs on the
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
     let request = NativeResolveRequest {
@@ -1271,8 +1272,7 @@ pub(crate) mod tests {
     }
 
     /// A cached row whose show key names the provider it was
-    /// resolved through — a qualified key for any provider but
-    /// anidb, whose keys are bare.
+    /// resolved through — a qualified key; a bare one names none.
     fn seed_play_cache_from(state: &AppState, args: &PlayArgs, upstream: &str, show_id: &str) {
         let key = play_resolution_cache::cache_key(
             &args.title,

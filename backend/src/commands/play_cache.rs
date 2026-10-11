@@ -41,9 +41,9 @@ use crate::commands::session::{
 use crate::scraper::provider::{ProviderId, ShowKey};
 
 /// The provider a cached row was resolved through: the one its show
-/// key names — a qualified key for any provider but anidb, whose
-/// keys are bare. A row from before the field carries an empty key
-/// and names no provider.
+/// key names. A bare key — anidb.app's, written before its removal —
+/// names none, and so does the empty key of a row from before the
+/// field.
 pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderId> {
     if cached.show_id.is_empty() {
         return None;
@@ -168,9 +168,10 @@ pub(crate) async fn cached_row_is_live_within(
 }
 
 /// Serve a cached row as a fresh CreateSessionResponse when the row
-/// is live ([`cached_row_is_live`]), or `None` when its stream or one
-/// of its tracks is dead, unreachable or answers an error status —
-/// the caller falls through to a fresh resolve.
+/// is live ([`cached_row_is_live`]), or `None` when its provider is
+/// no longer walked, or its stream or one of its tracks is dead,
+/// unreachable or answers an error status — the caller falls through
+/// to a fresh resolve.
 pub(crate) async fn try_serve_cached(
     state: &AppState,
     cached: &CachedResolution,
@@ -194,9 +195,9 @@ pub(crate) async fn try_serve_cached(
 /// Cache-hit branch of `play_external` and `play_syncplay`: returns
 /// ready-to-launch `LaunchArgs` when the play_resolution_cache has a
 /// live row ([`cached_row_is_live`]), otherwise `None` (caller falls
-/// through to a fresh resolve). A dead stream or a dead track evicts
-/// the row before returning None so the next attempt isn't bitten by
-/// the same dead URL.
+/// through to a fresh resolve). A row from a provider no longer
+/// walked, a dead stream or a dead track evicts the row before
+/// returning None so the next attempt isn't bitten by the same row.
 pub(crate) async fn try_launch_args_from_cache(
     state: &AppState,
     args: &super::play::PlayArgs,
@@ -227,7 +228,7 @@ pub(crate) async fn try_launch_args_from_cache(
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play_external: cache row stale (the stream's HEAD or a track's read failed), evicted, resolving afresh",
+            "play_external: cache row unservable (provider not walked, or the stream's HEAD or a track's read failed), evicted, resolving afresh",
         );
         return None;
     }
