@@ -39,6 +39,19 @@ fn every_variant_is_listed_where_it_belongs() {
 }
 
 #[test]
+fn every_shipped_providers_label_is_the_identifier_it_serializes_as() {
+    // The renderer names a provider by its serialized identifier, and
+    // the title-match routes read that value with `from_label`: a
+    // provider whose two names differed would store its mappings
+    // under the legacy segment.
+    for id in ProviderId::ALL {
+        let identifier = serde_json::to_value(id).expect("serializes");
+        assert_eq!(identifier.as_str(), Some(id.label()), "{id:?}");
+        assert_eq!(ProviderId::from_label(id.label()), Some(*id), "{id:?}");
+    }
+}
+
+#[test]
 fn every_known_provider_has_a_gate_whether_or_not_it_is_ordered() {
     // A row written by a provider the order no longer lists still
     // names it, and the cache's read rule asks that gate.
