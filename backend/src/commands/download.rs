@@ -1975,8 +1975,10 @@ fn resumed_partials(output: &std::path::Path) -> super::download_progress::Resum
             resumed.whole = len;
         } else if let Some(format) = name
             .strip_prefix(&prefix)
-            .filter(|rest| rest.ends_with(".part") && !rest.contains(".part-Frag"))
-            .and_then(|rest| rest.split_once('.'))
+            .filter(|rest| !rest.contains(".part-Frag"))
+            .and_then(|rest| rest.strip_suffix(".part"))
+            // The id runs up to the extension: it may carry dots itself.
+            .and_then(|rest| rest.rsplit_once('.'))
             .map(|(format, _)| format.to_owned())
         {
             resumed.formats.insert(format, len);
