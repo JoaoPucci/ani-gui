@@ -219,7 +219,7 @@ pub(crate) async fn try_launch_args_from_cache(
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play_external: cache row stale (the stream's HEAD or a track's read failed), evicted, resolving afresh",
+            "play_external: cache row not live (the stream's HEAD or a track's read failed, or the check timed out), evicted, resolving afresh",
         );
         return None;
     }

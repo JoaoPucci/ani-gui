@@ -19,10 +19,10 @@
 //! tracks it stages beside its transfer, since the host counts both
 //! against the one address — as background traffic, which takes a token
 //! only while no one waits for one. A cached resolution's liveness
-//! check, before the player starts, waits for its tokens the same way,
-//! hop by hop at each host a redirect reaches, under a deadline of
-//! seconds that a spent budget lets elapse — the row then reads as not
-//! live. What reaches the host past the budget counts against it too:
+//! check, before the player starts, is the player's first request and
+//! waits in the host's line, hop by hop at each host a redirect reaches,
+//! under a deadline of seconds that a spent budget lets elapse — the
+//! row then reads as dead. What reaches the host past the budget counts against it too:
 //! while download tools run, every host's tokens are held
 //! to what their requests in flight leave of the burst, never below
 //! one: their fragments go wherever their playlists send them, which
@@ -148,8 +148,9 @@ impl HostBudget {
             .map(Bucket::tokens)
     }
 
-    /// A token for `host`, waiting for one while the burst is spent.
-    /// Waiters are served in the order they arrived: each takes its
+    /// A token for `host`, waiting for one while the burst is spent: the
+    /// player's requests, through the proxy and a cached row's liveness
+    /// check before it starts. Waiters are served in the order they arrived: each takes its
     /// place in the host's line and keeps it until it has its token,
     /// so a request arriving as a token matures does not take it from
     /// one that has waited for it, and a few requests arriving at once

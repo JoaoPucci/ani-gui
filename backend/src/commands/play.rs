@@ -295,16 +295,18 @@ where
                 .await;
                 return Ok(resp);
             }
-            // HEAD failed — the cached URL is dead. Evict the row and
-            // fall through to a fresh resolve. Eviction is explicit (not
-            // just overwrite-on-put) because if the fresh resolve ALSO
-            // fails, we don't want the stale row to linger and bite the
-            // next attempt.
+            // The check failed — a URL dead or refused, or one the host's
+            // budget kept from being asked within the check's deadline,
+            // which reads the same. Evict the row and fall through to a
+            // fresh resolve. Eviction is explicit (not just
+            // overwrite-on-put) because if the fresh resolve ALSO fails,
+            // we don't want the stale row to linger and bite the next
+            // attempt.
             play_resolution_cache::evict(&state.cache_pool, &cache_key);
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
-                "play: cache row stale (HEAD failed), evicted, resolving afresh",
+                "play: cache row not live (check failed or timed out), evicted, resolving afresh",
             );
         }
     }
