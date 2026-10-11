@@ -431,6 +431,10 @@ struct SegmentQuery {
 /// The marks a segment-route request carries after its token, in the
 /// order the rewrite writes them — `k`, `s`, `v`, `r`, `d`, each only
 /// when present — which the token signs with the upstream.
+/// Each value is written back encoded, as the rewrite writes it — its
+/// values need no encoding, so they read the same — so a separator a
+/// request encoded into a value stays in that value rather than
+/// spelling another mark.
 fn marks_of(q: &SegmentQuery) -> String {
     let d = q.d.map(|d| d.to_string());
     [
@@ -441,7 +445,12 @@ fn marks_of(q: &SegmentQuery) -> String {
         ("d", d.as_deref()),
     ]
     .into_iter()
-    .filter_map(|(name, value)| value.map(|value| format!("{name}={value}")))
+    .filter_map(|(name, value)| {
+        value.map(|value| {
+            let value: String = url::form_urlencoded::byte_serialize(value.as_bytes()).collect();
+            format!("{name}={value}")
+        })
+    })
     .collect::<Vec<_>>()
     .join("&")
 }
