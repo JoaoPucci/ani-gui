@@ -1216,3 +1216,61 @@ async fn background_traffic_beside_an_unpaced_download_still_gets_a_token() {
     .await
     .expect("and beside two, with the hold at one");
 }
+
+proptest! {
+    /// However the player's segments arrive — any stream, any duration,
+    /// any gaps — the need they make is never negative and never more
+    /// than every stream asking for its shortest counted segment twice a
+    /// second; and a stream whose short segments recur asks at least that.
+    #[test]
+    fn the_segments_need_is_bounded_and_a_short_run_asks_its_pace(
+        notes in proptest::collection::vec((0usize..3, 0u64..120_000, 0u64..10_000), 1..40),
+        run in 2usize..6,
+    ) {
+        let streams = [Stream::Main, Stream::Audio, Stream::Subtitles];
+        let mut demand = Demand::default();
+        let mut now = Instant::now();
+        for (which, millis, gap) in notes {
+            now += Duration::from_millis(gap);
+            demand.note(streams[which], Duration::from_millis(millis), now);
+        }
+        let need = demand.per_second(now);
+        prop_assert!(need >= 0.0);
+        prop_assert!(need <= 3.0 * 2.0 + 1e-9, "{need}");
+        let mut short = Demand::default();
+        for _ in 0..run {
+            short.note(Stream::Main, Duration::from_millis(400), now);
+        }
+        prop_assert!(short.per_second(now) >= 2.0 - 1e-9);
+    }
+
+    /// A stream's slot reads back as the stream, and nothing else reads
+    /// as one.
+    #[test]
+    fn a_streams_slot_reads_back_as_it_and_nothing_else_does(other in "[a-z]{0,8}") {
+        for stream in [Stream::Main, Stream::Audio, Stream::Subtitles] {
+            prop_assert_eq!(Stream::from_slot(stream.slot()), Some(stream));
+        }
+        if !["main", "audio", "subs"].contains(&other.as_str()) {
+            prop_assert_eq!(Stream::from_slot(&other), None);
+        }
+    }
+
+    /// The reserve background traffic keeps beside free downloads is
+    /// never more than asked, never more than one under what the hold
+    /// leaves, and is what was asked with none running.
+    #[test]
+    fn the_reserve_under_a_hold_never_exceeds_the_hold(
+        reserve in 0u32..20,
+        in_flight in 0u32..64,
+    ) {
+        let budget = HostBudget::new(SEGMENT_BURST, SEGMENT_REFILL);
+        prop_assert_eq!(budget.reserve_under_hold(reserve), reserve);
+        let _run = budget.unpaced_run(in_flight);
+        let kept = budget.reserve_under_hold(reserve);
+        prop_assert!(kept <= reserve);
+        if in_flight > 0 {
+            prop_assert!(kept < budget.held_to(in_flight));
+        }
+    }
+}

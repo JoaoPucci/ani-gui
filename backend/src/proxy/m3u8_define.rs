@@ -15,6 +15,9 @@ pub type Variables = HashMap<String, String>;
 #[path = "m3u8_define_parse.rs"]
 mod parse;
 use parse::{attributes, percent_decode};
+#[cfg(test)]
+#[path = "m3u8_define_prop_test.rs"]
+mod prop_tests;
 #[path = "m3u8_define_spell.rs"]
 mod spell;
 use spell::{spell, spell_attributes};
