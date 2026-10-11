@@ -40,7 +40,8 @@
 //! request waits in the host's line, so a playing player's next segment
 //! is never queued behind it, and from the reserve, which is kept for
 //! the player's next requests; background traffic yields to it while it
-//! waits, turns and all, so downloads never starve it. It waits so hop
+//! waits — but for a turn the player's line already owes it, which keeps
+//! the line moving — so downloads never starve it. It waits so hop
 //! by hop, at each host a redirect reaches, under a deadline of seconds
 //! that a spent budget lets elapse — the row then reads as dead. What
 //! reaches the host past the budget counts against it too: while download tools run, every host's
