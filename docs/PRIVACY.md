@@ -164,48 +164,19 @@ requires it; the exception is the update check that runs on launch
 (below). For each kind of request:
 
 - **Anime catalogue lookups** — Kitsu, AniList, MyAnimeList (the last
-  only if connected), and the streaming catalogues playback resolves
-  against: anidb.app first, and hianime (reached at hianime.at) when the
-  walk moves on from anidb.app — because it was unreachable, refused or
-  rate-limited the request, answered a page the app cannot read, or its
-  own gate turned a background request away, or because it answered
-  without settling the question: it found the show but said nothing about
-  the audio asked for, or it denied a show a live record remembers it
-  carrying, which the record outranks until the rest of the order has been
-  asked — and hianime first, for a while, for a show it was found on while
-  the walk had moved on — a positive availability record: written by a
-  probe or a fresh resolve, it says the show and the audio are listed
-  there, not that a stream was played; written again by a play, hand-off
-  or page warm served from the app's own resolution cache after the record
-  had lapsed, it says only that a stream resolved there once validated
-  again at its CDN — the record is written before anything plays, and a
-  page warm plays nothing — and is where the next walk starts. The app
-  remembers which catalogue carried a show for as long as its availability
-  record lasts — a day from the last resolve that found the show there: a
-  play, a download, a hand-off — a play, hand-off or page warm served from
-  the app's own resolution cache leaves a live record as it is and writes
-  a day's record again once it has lapsed, while a download always
-  resolves afresh and never reads that cache — or the background warm a
-  page runs — the detail page for the episode its Play button targets,
-  which is the resume point when there is one, and the play page for the
-  episode after the one playing, or, with resolution caching turned on,
-  both pages for every aired and playable episode in view (the detail
-  page's grid, the play page's episode strip); the warm follows the page
-  rather than running once on opening, so paging the grid or the strip to
-  new episodes, or changing the audio mode or quality setting, resolves
-  what is newly in view — each warm that resolves afresh restamps the
-  record with a day's life, while one that reuses a stream from the app's
-  own resolution cache leaves a live record as it is, like any
-  cache-served play, so opening a show's page renews the record only when
-  something in view still resolves; a probe alone — the detail page's or a
-  list's, with nothing resolved after it — leaves an ongoing show's record
-  for a day and a finished show's for thirty — and asks that one first for
-  later plays, downloads and hand-offs of it, so those requests reach
-  hianime after anidb.app recovers; once the record expires the next
-  resolve starts from anidb.app again — unless a play, hand-off or page
-  warm served from the app's own resolution cache has written a day's
-  record first, as described above, in which case it starts from the
-  provider that record names. These requests carry the search terms you
+  only if connected), and the streaming catalogue playback resolves
+  against: hianime (reached at hianime.at). anidb.app was asked first
+  until it was retired in October 2026, and nothing contacts it now.
+  Searches and episode listings are asked for as you browse and play,
+  and a background warm a page runs asks for what is in view — the
+  detail page for the episode its Play button targets, which is the
+  resume point when there is one, and the play page for the episode
+  after the one playing, or, with resolution caching turned on, both
+  pages for every aired and playable episode in view (the detail page's
+  grid, the play page's episode strip); the warm follows the page rather
+  than running once on opening, so paging the grid or the strip to new
+  episodes, or changing the audio mode or quality setting, resolves
+  what is newly in view. These requests carry the search terms you
   typed or the anime IDs you're browsing; they do not carry any account
   identifier unless you've connected one. Resolving an episode through
   hianime also fetches an embed page from the embed hosts the site names
@@ -249,9 +220,7 @@ requires it; the exception is the update check that runs on launch
   of the embed page the stream was read from — the host that actually
   served that page, which is not always the host the catalogue's listing
   named, because the catalogue moves those pages between hosts and the
-  request follows the move; for anidb.app the requests carry no
-  `Referer` at all — its CDN asks for none, and the app adds none.
-  Nothing identifying you is sent with it. The CDN is also reached
+  request follows the move. Nothing identifying you is sent with it. The CDN is also reached
   before any playback, whenever an episode is resolved or a cached
   resolution is reused: a resolve — a page warm, a play or hand-off
   that finds nothing cached, or a download, which always resolves

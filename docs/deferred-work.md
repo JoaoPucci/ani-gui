@@ -288,8 +288,7 @@ starting it, and delete it when you find it done.
   would give them, and whatever later features emit, somewhere to go
   when the user was not looking. The second is telling users about
   outages like the provider failure of 2026-08-27 — the outage that
-  led to the second provider, now failed over to automatically (see
-  "Providers and failover" in `docs/architecture.md`): every
+  led the app to hianime: every
   uncached play failed as unreachable and
   the app had nowhere to say the problem was the provider's, not
   their setup's. That job needs a
@@ -397,13 +396,14 @@ starting it, and delete it when you find it done.
   a partly dubbed show advertises its whole listing under the dub
   key and an undubbed episode fails when clicked.
 
-  This is a regression the anidb switch introduced, not longstanding
-  behaviour. allanime returned `availableEpisodesDetail` with
-  separate `sub` and `dub` arrays, so a single show fetch gave the
-  exact per-mode cap and the per-mode extras for free. anidb's
-  episode listing carries no audio at all — it lives on each
-  episode's languages row — so the same answer now costs one request
-  per episode.
+  This is a regression the move away from allanime introduced, not
+  longstanding behaviour. allanime returned `availableEpisodesDetail`
+  with separate `sub` and `dub` arrays, so a single show fetch gave
+  the exact per-mode cap and the per-mode extras for free. No
+  provider since has published audio on the listing: hianime types
+  each server sub or dub, which is the per-episode signal wanted
+  here, but it lists servers per episode in its own request, so the
+  answer for a show costs one request per episode.
 
   Deriving the prefix anyway was attempted and withdrawn: a
   sub-linear search cannot vouch for rows it never fetched, and
@@ -414,41 +414,77 @@ starting it, and delete it when you find it done.
   small enough to afford it — not a smarter search over the same
   requests.
 
-  The second provider did not change the cost. hianime types each
-  server sub or dub, which is the per-episode signal wanted here,
-  but it lists servers per episode in its own request, so the
-  answer for a show is still one request per episode on either
-  provider.
+## A second provider, and what it would allow
 
-## Filling catalogue gaps from the second provider
+- **Add a second provider when one is worth having.** One provider
+  ships, hianime. The walk, the per-provider gates, the availability
+  rows that name their provider and the show keys that carry its
+  label are all written for several, so a second is a client behind
+  the `Provider` trait, a `ProviderId` variant with its label and its
+  entry in `ProviderId::ALL`, its place in the shipped order and an
+  arm in `client_for` — the recipe in `backend/src/provider_set.rs`.
+  The survey in [`proposals/additional-providers.md`](./proposals/additional-providers.md)
+  is the starting list; it rots quickly, so re-verify every row.
 
-- **Ask the next provider when the first answers a miss**, so a show
-  the first provider does not carry plays from the second instead of
-  being hidden — the catalogues as a union. Today an answered miss
-  ends the walk; only an unreachable, refusing or broken provider
-  moves it on. The one exception already ships: a provider a
-  positive availability record put first has its answered miss set
-  aside and the rest of the order asked, since the record proves
-  the show, not every episode. Asking every provider for every
-  request would double the traffic on the resource this entry
-  worries about and buy nothing when the first provider carries the
-  show, which is most of the time.
+  anidb.app, which shipped first, left in October 2026 after its
+  domain began redirecting every page to an unrelated site. Its
+  operator's site now appears to live at https://anidb.se, a
+  WordPress site titled "AniDB - Watch Anime online English Subbed
+  and Dubbed HD". `/browse` answers 404; shows live at
+  `/anime/<slug>/` and episodes at `/<show>-episode-<n>-english-subbed/`;
+  the search form posts to `/?s=`, but a `?s=naruto` request answered
+  with the front page's list; and an episode page carries no player
+  iframe in its static HTML, so the player is most likely loaded by
+  script. Supporting it would be a new scraper, not a domain switch.
 
-  It waited on a measurement. A miss costs a full walk — every alias
-  searched, up to five candidates probed per alias — and the union
-  makes every genuinely absent show cost one such walk per provider
-  on the page's probe; the background warm holds back for a show the
-  probe found absent, so it adds none. What hianime tolerates at
-  that rate is unmeasured: in September 2026, with
-  anidb.app down, it carried every request without visible pushback,
-  and a breaker learns after the block, not before.
+  Two things waited on a second provider and still do. The catalogue
+  union: asking the next provider when the first answers a miss, so a
+  show one catalogue lacks plays from the other instead of being
+  hidden. An answered miss ends the walk today, and the measurement
+  that gates the union was never made: a miss costs a full walk —
+  every alias searched, up to five candidates probed per alias — so
+  the union makes every genuinely absent show cost one walk per
+  provider, and what a provider tolerates at that rate is unknown; in
+  September 2026 hianime carried every request as the only working
+  provider without visible pushback, and a breaker learns after the
+  block, not before. And a provider order and switch in settings:
+  with one provider there is nothing to order, and the union should
+  come first, so that putting a provider first is a preference rather
+  than a way of shrinking the catalogue to one site. The cache's read
+  rule already copes with a provider the app no longer walks — a row
+  naming it is not served, and re-probes.
 
   Two things a grep will not surface: only the zokoanime embed pages
   carry the MyAnimeList id in their path, so a cross-check against
-  Kitsu's mapping is per host, not a signal every pick gets; and if
-  the second provider becomes load-bearing rather than a fallback,
-  its domain churn arrives sooner — the canonical domain is filtered
-  per ISP, and the origin is a constant with a test override only.
+  Kitsu's mapping is per host, not a signal every pick gets; and with
+  one provider load-bearing, its domain churn is the whole app's —
+  the canonical domain is filtered per ISP, and the origin is a
+  constant with a test override only.
+
+## Holding a provider's own requests to its origin
+
+- **Decide whether a provider's catalogue requests follow redirects
+  off its origin.** The transport follows every redirect. When
+  anidb.app began redirecting its search to an unrelated site, the
+  app followed, read that site's home page as an empty search, and
+  persisted it as anidb's clean miss. Holding a catalogue request to
+  the provider's own origin — following a redirect only while it
+  stays there, and reading a page another origin served as no answer
+  — closes that. An implementation was built for anidb.app's client
+  before it left, in closed pull request #223: the transport's held
+  request and its same-origin hop rule (718e9f40b, with the tests of
+  its argv, hop limit and rule in c9d8c8d8b).
+
+  Why it waits: for hianime it is a tradeoff, not a fix, and the
+  maintainer's call. Its canonical domain is filtered per ISP, and the
+  app already reads it at another front (hianime.at); held to its
+  origin, a legitimate move of that front becomes an outage until the
+  base URL changes, where today the app follows the redirect. Unheld, a
+  redirect to an unrelated site can poison availability with that
+  site's answers, as anidb.app's did. hianime's embed pages follow
+  redirects between its own hosts by design (the walk keys a page on
+  the host that served it), so a hold would apply to the catalogue
+  requests alone.
 
 ## Decoding hianime's other embed hosts
 
@@ -517,7 +553,8 @@ starting it, and delete it when you find it done.
   for an episode failed for the app at once — zokoanime's CDN origin
   timed out with a 522, and megaplay changed its sources answer to
   an encrypted field with a CDN selector on the embed URL — while
-  anidb.app was under maintenance, and hianime.ms kept playing the
+  the provider the app then asked first was under maintenance, and
+  hianime.ms kept playing the
   same episodes through Ryu. A third catalogue front, or a third
   embed host, is what a fallback of one site cannot give.
 
@@ -525,23 +562,6 @@ starting it, and delete it when you find it done.
   — hianime.ms's player and catalogue API, vidnest's embed page —
   each a maintenance cost of its own, like every host the client
   reads.
-
-## A provider order and switch in settings
-
-- **Let the user order the providers and switch one off.** The
-  order is fixed at build — anidb.app, then hianime — and there is
-  no way to prefer the second or to leave one out.
-
-  Why it waited: it wants the union above first, so that putting a
-  provider first is a preference rather than a way of shrinking the
-  catalogue to one site.
-
-  Worth knowing: the cache's read rule already copes with a provider
-  the app no longer lists — a negative row naming it has nobody to
-  stand behind it and re-probes, and a positive row's affinity to it
-  is ignored. A per-title provider picker is not this, and is not
-  planned: affinity already remembers where each show and its
-  audio were listed, and starts there.
 
 ## Retiring the legacy-script sweep — the v1.0 marker
 
@@ -668,8 +688,8 @@ the shape against the app as it is then.
   the theme's number and kind, credited and creditless variants, and
   links to the MyAnimeList, AniList and Kitsu ids of each show —
   the ids the title-resolution bridge already speaks — plus an
-  AniDB.net id, which is a database's id and nothing to do with the
-  anidb.app streaming provider, resolved by title. Seen on
+  AniDB.net id — a database's id, not a streaming provider's —
+  resolved by title. Seen on
   the day: the API answers without a key at ninety requests a minute
   and its CDN serves the files to a plain GET with range requests;
   its JSON API is marked deprecated in favour of a GraphQL endpoint

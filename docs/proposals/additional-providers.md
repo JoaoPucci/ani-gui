@@ -17,6 +17,15 @@ install time), and handed off to an external player, all through
 hianime. The candidate survey describes a landscape that rots
 quickly — re-verify every claim in it before building on one.
 
+In October 2026 anidb.app began redirecting every page to an
+unrelated site, and it was removed: the "primary" this proposal
+describes is gone, and hianime is the one provider that ships. The
+seam, the per-provider gates and the orchestrator it asked for remain,
+written for several providers, so the next one is a client and not a
+redesign. Where its operator's site appears to live now, and why
+supporting it would be a new scraper, is in
+[`deferred-work.md`](../deferred-work.md#a-second-provider-and-what-it-would-allow).
+
 ## Why this matters
 
 All stream resolution rides a single provider, anidb.app, and inside
