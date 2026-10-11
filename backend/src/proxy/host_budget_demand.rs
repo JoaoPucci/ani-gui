@@ -59,9 +59,11 @@ impl Stream {
 /// catch up in, and a buffer still filling has to grow in.
 pub(crate) const PLAYER_HEADROOM: f64 = 1.25;
 
-/// The shortest segment counted. A shorter one — a tiny trailing
-/// segment, a broken duration — says nothing about the player's pace,
-/// and counting it would claim a stream asking several times a second.
+/// The shortest segment counted as itself. A shorter one alone — a
+/// tiny trailing segment, a broken duration — says nothing about the
+/// player's pace, and counting it would claim a stream asking several
+/// times a second; short ones in a row are the stream's pace, and count
+/// as this.
 const SHORTEST_SEGMENT: Duration = Duration::from_millis(500);
 
 /// The longest segment counted as itself; a longer one counts as this,
@@ -132,6 +134,9 @@ impl Rendition {
 #[derive(Debug, Default)]
 pub(crate) struct Demand {
     streams: HashMap<Stream, Rendition>,
+    /// The streams whose last segment was short, so the next short one
+    /// is a run rather than a tail.
+    short: std::collections::HashSet<Stream>,
     /// When the player's other requests arrived, within
     /// [`OTHERS_WINDOW`].
     others: VecDeque<Instant>,
@@ -139,15 +144,21 @@ pub(crate) struct Demand {
 
 impl Demand {
     /// The player fetched a segment of `stream` buying `segment` of
-    /// playback. A segment too short to say anything is not counted.
+    /// playback. A lone segment too short to say anything is not
+    /// counted; one following another as short is, as the shortest
+    /// counted ([`SHORTEST_SEGMENT`]).
     pub(crate) fn note(&mut self, stream: Stream, segment: Duration, now: Instant) {
-        if segment < SHORTEST_SEGMENT {
+        let short = segment < SHORTEST_SEGMENT;
+        if short && self.short.insert(stream) {
             return;
+        }
+        if !short {
+            self.short.remove(&stream);
         }
         self.streams.insert(
             stream,
             Rendition {
-                segment: segment.min(LONGEST_SEGMENT),
+                segment: segment.clamp(SHORTEST_SEGMENT, LONGEST_SEGMENT),
                 fetched_at: now,
             },
         );
