@@ -274,6 +274,44 @@ async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
     assert!(!live, "nothing reached the host before the deadline");
 }
 
+/// The check is the player's first request: it takes its place in the
+/// host's line in the order it arrived, rather than yielding to a
+/// player already asking there — which, filling its buffer, asks without
+/// pause — so it is served within its deadline once the tokens ahead of
+/// it are.
+#[tokio::test]
+async fn a_cached_rows_check_takes_its_turn_beside_a_playing_player() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let cached = cached_blank(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    let state = state_with_proxy_origin();
+    let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
+        state.host_budget.admit(&host).await;
+    }
+    // A player filling its buffer: always a request in the line.
+    let budget = std::sync::Arc::clone(&state.host_budget);
+    let player_host = host.clone();
+    let player = tokio::spawn(async move {
+        loop {
+            budget.admit(&player_host).await;
+        }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let live =
+        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(4)).await;
+    player.abort();
+    assert!(live, "served in its turn within the deadline");
+}
+
 mod webvtt_prefix_props {
     use crate::commands::play_cache_tracks::webvtt_prefix;
     use crate::proxy::is_webvtt;
