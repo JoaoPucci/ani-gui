@@ -464,6 +464,12 @@ pub(crate) fn title_match_prefix(
 /// names no provider — a row from a provider the app no longer ships.
 pub(crate) const LEGACY_TITLE_MATCH_SEGMENT: &str = "legacy";
 
+/// The segments a bare history row's title matches were written under
+/// before bare keys named no provider: anidb.app's label, while the
+/// app shipped it. They are no longer read; a removal of the row still
+/// takes them.
+pub(crate) const RETIRED_TITLE_MATCH_SEGMENTS: &[&str] = &["anidb.app"];
+
 /// Read the cached `(title, cour) → kitsu_id` mapping. Returns `None`
 /// on miss; errors propagate the SQLite read failure.
 pub fn title_match_get(
