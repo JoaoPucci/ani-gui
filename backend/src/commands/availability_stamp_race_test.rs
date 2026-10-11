@@ -19,6 +19,18 @@ use super::*;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
 use crate::scraper::table_provider::TableProvider;
 
+/// A state that walks both test providers, primary first — the walk
+/// every scenario here fails over along. A row is weighed only on the
+/// word of a provider the state walks, so the fallback's rows these
+/// races write must come from one it does.
+fn walking_both(td: &tempfile::TempDir) -> AppState {
+    let mut state = cache_only_state(td);
+    state
+        .providers
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state
+}
+
 /// The show both writers stamp, in the mode a resolve's cap is exact
 /// for.
 const ID: &str = "9";
@@ -139,7 +151,7 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
 #[tokio::test]
 async fn a_replay_keeps_the_cap_a_resolve_wrote_while_it_waited_for_the_row() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestA, 12);
 
     a_resolve_writes_while_the_replay_waits_for_the_row(
@@ -171,7 +183,7 @@ async fn a_replay_keeps_the_cap_a_resolve_wrote_while_it_waited_for_the_row() {
 #[tokio::test]
 async fn a_replay_keeps_the_row_a_failed_over_resolve_wrote_while_it_waited() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestA, 12);
 
     a_resolve_writes_while_the_replay_waits_for_the_row(
@@ -209,7 +221,7 @@ async fn a_replay_keeps_the_row_a_failed_over_resolve_wrote_while_it_waited() {
 #[tokio::test]
 async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_it_is() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestB, 24);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
@@ -248,8 +260,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
             .delaying_searches(std::time::Duration::from_millis(300)),
     );
     let td = tempfile::tempdir().expect("td");
-    let mut state = cache_only_state(&td);
-    state.providers.set_order(vec![ProviderId::TestA]);
+    let state = walking_both(&td);
     let state = std::sync::Arc::new(state);
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -301,7 +312,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
 #[tokio::test]
 async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestB, 24);
     age_row(&state, 3600);
     let stamped_at = written_at(&state);
@@ -333,7 +344,7 @@ async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
 #[tokio::test]
 async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_out() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
@@ -372,7 +383,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_ou
 #[tokio::test]
 async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set_out() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestA, 12);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
@@ -408,7 +419,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set
 #[tokio::test]
 async fn a_replay_past_the_rows_lifetime_writes_the_providers_positive_row_again() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestB, 24);
     age_row(
         &state,
@@ -445,7 +456,7 @@ async fn a_replay_past_the_rows_lifetime_writes_the_providers_positive_row_again
 #[tokio::test]
 async fn a_native_miss_over_the_row_it_set_out_from_writes_the_negative() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestB, 24);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
@@ -475,7 +486,7 @@ async fn a_native_miss_over_the_row_it_set_out_from_writes_the_negative() {
 #[tokio::test]
 async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_stood() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestA, 12);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
@@ -517,8 +528,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
             .delaying_searches(std::time::Duration::from_millis(300)),
     );
     let td = tempfile::tempdir().expect("td");
-    let mut state = cache_only_state(&td);
-    state.providers.set_order(vec![ProviderId::TestA]);
+    let state = walking_both(&td);
     let state = std::sync::Arc::new(state);
     seed_standing_row(&state, ProviderId::TestA, 12);
 
@@ -574,7 +584,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
 #[tokio::test]
 async fn a_resolve_setting_out_during_a_positive_stamp_reads_the_finished_stamp() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     let key = cache_key(ID, MODE);
 
     // The stamp: row held, the row written, the count not yet moved.
@@ -627,7 +637,7 @@ async fn a_resolve_setting_out_during_a_positive_stamp_reads_the_finished_stamp(
 #[tokio::test]
 async fn a_replay_over_a_standing_row_counts_as_a_positive_for_a_miss_that_set_out_before_it() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     seed_standing_row(&state, ProviderId::TestB, 24);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
@@ -663,7 +673,7 @@ async fn a_replay_over_a_standing_row_counts_as_a_positive_for_a_miss_that_set_o
 #[tokio::test]
 async fn a_later_native_success_does_not_overwrite_a_positive_row_written_after_it_set_out() {
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let state = walking_both(&td);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
@@ -731,8 +741,7 @@ fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
 async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
     let primary = stub_one_show_slowly(7);
     let td = tempfile::tempdir().expect("td");
-    let mut state = cache_only_state(&td);
-    state.providers.set_order(vec![ProviderId::TestA]);
+    let state = walking_both(&td);
     let state = std::sync::Arc::new(state);
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
