@@ -142,7 +142,7 @@ impl TableProvider {
     /// unknown, everything else is not found.
     pub(crate) fn new() -> Self {
         Self {
-            id: ProviderId::Anidb,
+            id: crate::provider_set::ProviderSet::TEST_DEFAULT,
             searches: Vec::new(),
             search_default: Answer::Ok(Vec::new()),
             listings: HashMap::new(),

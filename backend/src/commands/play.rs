@@ -609,7 +609,7 @@ pub(crate) mod tests {
                 extra_episodes: vec!["999.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
-                provider: None,
+                provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             },
         );
         let args = PlayArgs {
@@ -1482,7 +1482,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The row and the cached play are hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = PlayArgs {
             kitsu_id: Some("K10".into()),
             ..external_args("Capped Show", "2")
@@ -1970,7 +1974,13 @@ pub(crate) mod tests {
 
         // The refresh answers first: bump + a positive write.
         state.availability_refreshes.bump(&row);
-        crate::commands::availability::write_cache(&state, "race-1", "sub", true, None);
+        crate::commands::availability::write_cache(
+            &state,
+            "race-1",
+            "sub",
+            true,
+            Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+        );
 
         // The stale resolution now tries to stamp a negative.
         stamp_availability_after_native(&state, &args, false, None, &at_start, None, &[]).await;

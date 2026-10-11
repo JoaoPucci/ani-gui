@@ -1338,3 +1338,7 @@ mod tests;
 #[cfg(test)]
 #[path = "availability_subtype_args_test.rs"]
 mod subtype_args_tests;
+
+#[cfg(test)]
+#[path = "availability_unwalked_test.rs"]
+mod unwalked_tests;

@@ -79,8 +79,14 @@ impl ProviderSet {
     #[cfg(test)]
     #[must_use]
     pub fn for_tests() -> Self {
-        Self::listing(vec![ProviderId::Anidb])
+        Self::listing(vec![Self::TEST_DEFAULT])
     }
+
+    /// The provider a unit test walks unless it says otherwise: the
+    /// one [`Self::for_tests`] orders, a table answers as by default,
+    /// and a fixture row names when it is meant to be served.
+    #[cfg(test)]
+    pub const TEST_DEFAULT: ProviderId = ProviderId::Anidb;
 
     /// The providers a walk runs against, in order — the next is
     /// asked only when the one before it was unreachable, refusing
