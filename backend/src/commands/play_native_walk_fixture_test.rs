@@ -1509,3 +1509,32 @@ async fn a_kanji_zero_names_the_zeroth_division() {
     let picked = walk_over(site).await.expect("the entry's own listing");
     assert_eq!(picked.hit.slug, "own");
 }
+
+/// Word ordinals run to twentieth, cardinals after a marker to twenty
+/// and Roman numerals to IX, read by every rule the grammar feeds: what
+/// an entry names, what a candidate ends on, and the season before.
+#[tokio::test]
+async fn word_ordinals_above_sixth_are_read() {
+    for (entry, listing) in [
+        ("Show Seventh Season", "Show 7th Season"),
+        ("Show Season Seven", "Show 7th Season"),
+        ("Show Twelfth Season", "Show Season 12"),
+        ("Show VII", "Show Season 7"),
+        ("Spy x Family", "Spy x Family"),
+    ] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("own", listing, 12)]);
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{entry}: {listing} refused: {e:?}"));
+        assert_eq!(picked.hit.slug, "own", "{entry}");
+    }
+    for (entry, listing) in [
+        ("Show", "Show Seventh Season"),
+        ("Show Seventh Season", "Show"),
+    ] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
+        if let Ok(p) = walk_over(site).await {
+            panic!("{entry}: picked {}", p.hit.slug);
+        }
+    }
+}
