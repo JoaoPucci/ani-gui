@@ -1538,3 +1538,33 @@ async fn word_ordinals_above_sixth_are_read() {
         }
     }
 }
+
+/// A word ordinal ends a title's name only where divisions alone
+/// follow it: "The Seventh Son" is not named "The", so it heads no
+/// broad listing for "The Seventh Sense".
+#[tokio::test]
+async fn a_word_ordinal_inside_a_name_does_not_end_it() {
+    for (entry, w, l) in [
+        (
+            "The Seventh Sense",
+            "The Seventh Son",
+            "The Seventh Son Season 2",
+        ),
+        (
+            "The Second Sense",
+            "The Second Son",
+            "The Second Son Season 2",
+        ),
+    ] {
+        let site = pool_of(
+            &[entry],
+            Some(12),
+            2020,
+            entry,
+            &[("w", w, 24), ("l", l, 12)],
+        );
+        if let Ok(p) = walk_over(site).await {
+            panic!("{entry}: picked {} ({})", p.hit.slug, p.episodes.len());
+        }
+    }
+}
