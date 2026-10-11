@@ -6927,7 +6927,9 @@ async fn a_yt_dlp_run_reports_its_speed_to_the_dock() {
         .expect("ran");
     assert!(run.contains("--newline"), "{run}");
     assert!(
-        run.contains("--progress-template download:ani-gui-progress %(progress.downloaded_bytes)s"),
+        run.contains(
+            "--progress-template download:ani-gui-progress %(info.format_id)s %(progress.downloaded_bytes)s"
+        ),
         "{run}"
     );
     let rates = reported_rates(&lines);
@@ -7145,18 +7147,23 @@ mod rate_from_the_runs_start {
     fn what_a_run_resumes_from_is_the_partial_file_ytdlp_keeps() {
         let dir = tempfile::tempdir().expect("dir");
         let out = dir.path().join("episode.part.mp4");
-        assert_eq!(super::super::resumed_bytes(&out), 0, "nothing to resume");
+        let resumed = super::super::resumed_partials(&out);
+        assert_eq!(
+            (resumed.whole, resumed.formats.len()),
+            (0, 0),
+            "nothing to resume"
+        );
         std::fs::write(dir.path().join("episode.part.mp4.part"), vec![0u8; 4096]).expect("write");
-        assert_eq!(super::super::resumed_bytes(&out), 4096);
+        assert_eq!(super::super::resumed_partials(&out).whole, 4096);
     }
 
     /// A stream whose video and audio yt-dlp fetches apart keeps a
     /// partial file per format, named for the format beside the
-    /// output's stem; what the run resumes from counts every one of
-    /// them, and not the fragment files a download in flight keeps, nor
-    /// another output's.
+    /// output's stem; what the run resumes from is each of them by its
+    /// format, and not the fragment files a download in flight keeps,
+    /// nor another output's.
     #[test]
-    fn what_a_run_resumes_from_counts_every_format_it_keeps_apart() {
+    fn what_a_run_resumes_from_is_each_format_it_keeps_apart() {
         let dir = tempfile::tempdir().expect("dir");
         let out = dir.path().join("episode.part.mp4");
         let write = |name: &str, len: usize| {
@@ -7166,6 +7173,56 @@ mod rate_from_the_runs_start {
         write("episode.part.f140.m4a.part", 1024);
         write("episode.part.f137.mp4.part-Frag7.part", 512);
         write("other.part.f137.mp4.part", 2048);
-        assert_eq!(super::super::resumed_bytes(&out), 5120);
+        let resumed = super::super::resumed_partials(&out);
+        assert_eq!(resumed.whole, 0);
+        assert_eq!(
+            resumed.formats,
+            std::collections::HashMap::from([("137".to_string(), 4096), ("140".to_string(), 1024)])
+        );
+    }
+
+    /// yt-dlp fetches the formats it keeps apart one after another, and
+    /// counts each from its own partial: each format's count is measured
+    /// from that format's partial, so a resumed format's growth is its
+    /// speed however large another format's partial is, and a format
+    /// starting after another is measured from its own.
+    #[test]
+    fn each_resumed_format_is_measured_from_its_own_partial() {
+        const MIB: u64 = 1024 * 1024;
+        let start = Instant::now();
+        let resumed = crate::commands::download_progress::Resumed {
+            whole: 0,
+            formats: std::collections::HashMap::from([
+                ("137".to_string(), 4 * MIB),
+                ("140".to_string(), MIB),
+            ]),
+        };
+        let mut meter = RateMeter::starting_from_partials(resumed, start);
+        meter.observe_format(
+            Some("137"),
+            4 * MIB + MIB / 2,
+            start + Duration::from_secs(1),
+        );
+        let rate = meter.rate_at(start + Duration::from_secs(1));
+        assert!((rate - (MIB / 2) as f64).abs() < 1.0, "{rate}");
+        meter.observe_format(Some("140"), MIB + MIB / 2, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - MIB as f64 / 2.0).abs() < 1.0, "{rate}");
+    }
+
+    /// yt-dlp's progress line names the format it is fetching ahead of
+    /// its count.
+    #[test]
+    fn a_progress_line_names_its_format() {
+        use crate::commands::download_progress::{ytdlp_progress, ytdlp_progress_bytes};
+        assert_eq!(
+            ytdlp_progress("ani-gui-progress 137 2048"),
+            Some((Some("137".to_string()), 2048))
+        );
+        assert_eq!(
+            ytdlp_progress_bytes("ani-gui-progress 137 2048"),
+            Some(2048)
+        );
+        assert_eq!(ytdlp_progress("ani-gui-progress 137 NA"), None);
     }
 }
