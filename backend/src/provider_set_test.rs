@@ -15,14 +15,20 @@ fn the_shipped_set_orders_every_known_provider() {
 fn ships(id: ProviderId) -> bool {
     match id {
         ProviderId::Anidb | ProviderId::Hianime => true,
+        ProviderId::TestA | ProviderId::TestB => false,
     }
 }
 
 #[test]
 fn every_variant_is_listed_where_it_belongs() {
-    let listed: Vec<ProviderId> = ProviderId::ALL.to_vec();
+    let listed: Vec<ProviderId> = ProviderId::ALL
+        .iter()
+        .chain(ProviderId::TEST)
+        .copied()
+        .collect();
     for id in &listed {
         assert_eq!(ProviderId::ALL.contains(id), ships(*id), "{id:?}");
+        assert_eq!(ProviderId::TEST.contains(id), !ships(*id), "{id:?}");
     }
     let set = ProviderSet::for_tests();
     for id in listed {

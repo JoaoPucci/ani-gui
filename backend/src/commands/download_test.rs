@@ -3611,7 +3611,9 @@ impl SidecarClaim {
 /// broken: every stream answers a block. Search and listing are the
 /// range stub's.
 #[cfg(unix)]
-fn stub_range_show_with_a_broken_stream_chain() -> std::sync::Arc<TableProvider> {
+fn stub_range_show_with_a_broken_stream_chain(
+    provider: crate::scraper::provider::ProviderId,
+) -> std::sync::Arc<TableProvider> {
     let blocked =
         || crate::scraper::table_provider::Answer::fails(|| AniError::Upstream { status: 503 });
     std::sync::Arc::new(
@@ -3622,6 +3624,7 @@ fn stub_range_show_with_a_broken_stream_chain() -> std::sync::Arc<TableProvider>
             &[],
             "",
         )
+        .answering_as(provider)
         .stream_from(2101, "sub", blocked())
         .stream_from(2102, "sub", blocked()),
     )
@@ -3630,7 +3633,9 @@ fn stub_range_show_with_a_broken_stream_chain() -> std::sync::Arc<TableProvider>
 /// A fallback carrying the same two-episode show, each episode
 /// streaming in sub.
 #[cfg(unix)]
-fn stub_hianime_range_show() -> std::sync::Arc<TableProvider> {
+fn stub_fallback_range_show(
+    provider: crate::scraper::provider::ProviderId,
+) -> std::sync::Arc<TableProvider> {
     std::sync::Arc::new(
         TableProvider::one_show(
             "",
@@ -3639,7 +3644,7 @@ fn stub_hianime_range_show() -> std::sync::Arc<TableProvider> {
             &[],
             "",
         )
-        .answering_as(crate::scraper::provider::ProviderId::Hianime)
+        .answering_as(provider)
         .stream(9101, "sub", "https://cdn.example/h/9101/master.m3u8")
         .stream(9102, "sub", "https://cdn.example/h/9102/master.m3u8"),
     )
@@ -3653,15 +3658,16 @@ fn stub_hianime_range_show() -> std::sync::Arc<TableProvider> {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_range_download_fails_over_when_the_primarys_stream_chain_is_broken() {
-    let anidb = stub_range_show_with_a_broken_stream_chain();
-    let hianime = stub_hianime_range_show();
+    let primary =
+        stub_range_show_with_a_broken_stream_chain(crate::scraper::provider::ProviderId::TestA);
+    let fallback = stub_fallback_range_show(crate::scraper::provider::ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
-    let mut state = native_test_state(&td, &anidb);
+    let mut state = native_test_state(&td, &primary);
     state.providers.set_order(vec![
-        crate::scraper::provider::ProviderId::Anidb,
-        crate::scraper::provider::ProviderId::Hianime,
+        crate::scraper::provider::ProviderId::TestA,
+        crate::scraper::provider::ProviderId::TestB,
     ]);
-    state.providers.set_stub(std::sync::Arc::clone(&hianime));
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let log = dest.path().join("calls.log");
@@ -3742,15 +3748,16 @@ async fn a_download_remembers_the_provider_that_served_it() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_range_download_through_the_fallback_remembers_the_fallback() {
-    let anidb = stub_range_show_with_a_broken_stream_chain();
-    let hianime = stub_hianime_range_show();
+    let primary =
+        stub_range_show_with_a_broken_stream_chain(crate::scraper::provider::ProviderId::TestA);
+    let fallback = stub_fallback_range_show(crate::scraper::provider::ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
-    let mut state = native_test_state(&td, &anidb);
+    let mut state = native_test_state(&td, &primary);
     state.providers.set_order(vec![
-        crate::scraper::provider::ProviderId::Anidb,
-        crate::scraper::provider::ProviderId::Hianime,
+        crate::scraper::provider::ProviderId::TestA,
+        crate::scraper::provider::ProviderId::TestB,
     ]);
-    state.providers.set_stub(std::sync::Arc::clone(&hianime));
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(
@@ -3772,7 +3779,7 @@ async fn a_range_download_through_the_fallback_remembers_the_fallback() {
         .expect("the range completes through the fallback");
     assert_eq!(
         crate::commands::availability::cached_provider(&state, "3821", "sub"),
-        Some(crate::scraper::provider::ProviderId::Hianime),
+        Some(crate::scraper::provider::ProviderId::TestB),
         "the fallback that served the range is remembered"
     );
 }
@@ -3957,21 +3964,23 @@ fn the_rename_install_fails_plainly_where_it_cannot_claim_and_keeps_no_claim_wit
 #[tokio::test]
 async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_and_the_row() {
     // A catalogue that answers every search with nothing.
-    let anidb = std::sync::Arc::new(TableProvider::new());
-    let hianime = stub_hianime_range_show();
+    let primary = std::sync::Arc::new(
+        TableProvider::new().answering_as(crate::scraper::provider::ProviderId::TestA),
+    );
+    let fallback = stub_fallback_range_show(crate::scraper::provider::ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
-    let mut state = native_test_state(&td, &anidb);
+    let mut state = native_test_state(&td, &primary);
     state.providers.set_order(vec![
-        crate::scraper::provider::ProviderId::Anidb,
-        crate::scraper::provider::ProviderId::Hianime,
+        crate::scraper::provider::ProviderId::TestA,
+        crate::scraper::provider::ProviderId::TestB,
     ]);
-    state.providers.set_stub(std::sync::Arc::clone(&hianime));
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
     crate::commands::availability::write_cache(
         &state,
         "3821",
         "sub",
         true,
-        Some(crate::scraper::provider::ProviderId::Hianime),
+        Some(crate::scraper::provider::ProviderId::TestB),
     );
     let dest = tempfile::tempdir().expect("dest");
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -3989,7 +3998,7 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
     assert!(matches!(err, AniError::EpisodeUnavailable), "{err:?}");
     assert_eq!(
         crate::commands::availability::cached_provider(&state, "3821", "sub"),
-        Some(crate::scraper::provider::ProviderId::Hianime),
+        Some(crate::scraper::provider::ProviderId::TestB),
         "the row that remembered the provider stands; an episode verdict writes no absence"
     );
 }

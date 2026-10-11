@@ -42,6 +42,14 @@ pub enum ProviderId {
     /// hianime — the provider ani-cli moved to when anidb.app went
     /// dark in September 2026.
     Hianime,
+    /// A provider that exists only in tests: the orchestrator's walks
+    /// are written for any number of providers, and their tests need
+    /// two that are nobody's site.
+    #[cfg(test)]
+    TestA,
+    /// The second test-only provider; see [`ProviderId::TestA`].
+    #[cfg(test)]
+    TestB,
 }
 
 impl ProviderId {
@@ -49,6 +57,12 @@ impl ProviderId {
     /// it: the set a gate exists for, and the set a stored label can
     /// name.
     pub const ALL: &'static [ProviderId] = &[Self::Anidb, Self::Hianime];
+
+    /// The providers that exist only in tests. They have gates like
+    /// every known provider and answer only from a table a test
+    /// registers.
+    #[cfg(test)]
+    pub const TEST: &'static [ProviderId] = &[Self::TestA, Self::TestB];
 
     /// The provider a label names. Anything that is not a known
     /// label — an absent one included — is anidb, the default every
@@ -70,6 +84,10 @@ impl ProviderId {
             // The brand, not a domain: the site's domain churns and is
             // filtered per ISP, and the label names who answered.
             Self::Hianime => "hianime",
+            #[cfg(test)]
+            Self::TestA => "test-a",
+            #[cfg(test)]
+            Self::TestB => "test-b",
         }
     }
 }

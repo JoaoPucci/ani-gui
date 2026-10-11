@@ -58,8 +58,10 @@ impl ProviderSet {
     /// site.
     #[must_use]
     pub fn listing(order: Vec<ProviderId>) -> Self {
-        let gates = ProviderId::ALL
-            .iter()
+        let known = ProviderId::ALL.iter();
+        #[cfg(test)]
+        let known = known.chain(ProviderId::TEST);
+        let gates = known
             .map(|id| (*id, Arc::new(ScraperGate::new())))
             .collect();
         Self {

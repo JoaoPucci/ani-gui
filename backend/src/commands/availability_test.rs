@@ -389,20 +389,16 @@ async fn the_cached_row_keeps_the_provider_that_answered() {
     );
 }
 
-/// A fallback carrying one show whose episodes offer sub only.
-pub(super) fn stub_hianime_sub_only() -> Arc<TableProvider> {
+/// A provider answering as `id` carrying one show whose episodes
+/// offer sub only.
+pub(super) fn stub_sub_only(id: ProviderId) -> Arc<TableProvider> {
     Arc::new(one_show(
-        ProviderId::Hianime,
+        id,
         ("fallback-show-7", "Fallback Show", Some("TV")),
         &[7001, 7002],
         true,
         false,
     ))
-}
-
-/// A fallback that answers every search with nothing.
-fn stub_hianime_no_results() -> Arc<TableProvider> {
-    no_results(ProviderId::Hianime)
 }
 
 pub(super) fn open_breaker(gate: &crate::scraper::gate::ScraperGate) {
@@ -441,13 +437,13 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
     // the fallback up, so the outage does not re-walk an absent
     // show on every look, and not once the primary is back, since
     // absence on the fallback proves nothing about it.
-    let hianime = stub_hianime_sub_only();
+    let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "dub",
@@ -455,7 +451,7 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &unreachable(ProviderId::Anidb))
+    let got = check_with(&state, &args, &unreachable(ProviderId::TestA))
         .await
         .expect("the fallback answered");
     assert!(!got.available, "the fallback carries no dub");
@@ -465,12 +461,12 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert_eq!(
         row.provider,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "and named as the fallback's"
     );
 
     // The outage is on: the row is served, the lists hide.
-    open_breaker(state.providers.gate(ProviderId::Anidb));
+    open_breaker(state.providers.gate(ProviderId::TestA));
     let listed = batch_cached(
         &state,
         &AvailabilityBatchArgs {
@@ -479,11 +475,11 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
         },
     );
     assert_eq!(listed.cached.get("558"), Some(&false));
-    let asked_before = hianime.asked().len();
-    check_with(&state, &args, &unreachable(ProviderId::Anidb))
+    let asked_before = fallback.asked().len();
+    check_with(&state, &args, &unreachable(ProviderId::TestA))
         .await
         .expect("served");
-    let asked_after = hianime.asked().len();
+    let asked_after = fallback.asked().len();
     assert_eq!(
         asked_before, asked_after,
         "a cache hit asks the fallback nothing"
@@ -491,7 +487,7 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
 
     // The primary is back: the fallback's row no longer stands
     // for it.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
     let listed = batch_cached(
         &state,
         &AvailabilityBatchArgs {
@@ -507,20 +503,20 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
 
 #[tokio::test]
 async fn a_fallbacks_clean_miss_during_the_primarys_outage_is_persisted_as_its_own() {
-    let hianime = stub_hianime_no_results();
+    let fallback = no_results(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Nowhere Show",
         "mode": "sub",
         "kitsu_id": "563"
     }))
     .expect("args");
-    let got = check_with(&state, &args, &unreachable(ProviderId::Anidb))
+    let got = check_with(&state, &args, &unreachable(ProviderId::TestA))
         .await
         .expect("a clean miss on the fallback is an answer");
     assert!(!got.available);
@@ -528,7 +524,7 @@ async fn a_fallbacks_clean_miss_during_the_primarys_outage_is_persisted_as_its_o
         .expect("cache read")
         .expect("persisted");
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
-    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.provider, Some(ProviderId::TestB));
 }
 
 #[tokio::test]
@@ -541,21 +537,21 @@ async fn a_fallbacks_clean_miss_stays_the_fallbacks_when_the_skipped_primary_is_
     // named as the primary's it would be served the moment the
     // breaker closed, for the rest of the negative TTL, hiding a
     // show only the primary carries.
-    let hianime = stub_hianime_no_results();
+    let fallback = no_results(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
-    open_breaker(state.providers.gate(ProviderId::Anidb));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
+    open_breaker(state.providers.gate(ProviderId::TestA));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Nowhere Show",
         "mode": "sub",
         "kitsu_id": "564"
     }))
     .expect("args");
-    let got = check_with(&state, &args, &unreachable(ProviderId::Anidb))
+    let got = check_with(&state, &args, &unreachable(ProviderId::TestA))
         .await
         .expect("a clean miss on the fallback is an answer");
     assert!(!got.available);
@@ -565,7 +561,7 @@ async fn a_fallbacks_clean_miss_stays_the_fallbacks_when_the_skipped_primary_is_
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert_eq!(
         row.provider,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the miss is the fallback's, not the retried primary's"
     );
 }
@@ -582,12 +578,12 @@ fn a_negative_row_is_not_served_while_its_provider_is_in_a_rate_limit_pause() {
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
     // Both seen answering, so either can stand behind a row.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
-    close_breaker(state.providers.gate(ProviderId::Hianime));
-    write_cache(&state, "570", "sub", false, Some(ProviderId::Anidb));
-    write_cache(&state, "571", "sub", false, Some(ProviderId::Hianime));
+    close_breaker(state.providers.gate(ProviderId::TestA));
+    close_breaker(state.providers.gate(ProviderId::TestB));
+    write_cache(&state, "570", "sub", false, Some(ProviderId::TestA));
+    write_cache(&state, "571", "sub", false, Some(ProviderId::TestB));
     let served = |state: &AppState| {
         let listed = batch_cached(
             state,
@@ -607,9 +603,9 @@ fn a_negative_row_is_not_served_while_its_provider_is_in_a_rate_limit_pause() {
         "both providers reachable: the primary's negative stands, the fallback's does not"
     );
 
-    pause_provider(state.providers.gate(ProviderId::Anidb));
+    pause_provider(state.providers.gate(ProviderId::TestA));
     assert!(
-        !state.providers.gate(ProviderId::Anidb).is_open(),
+        !state.providers.gate(ProviderId::TestA).is_open(),
         "a pause is not the breaker opening"
     );
     assert_eq!(
@@ -618,15 +614,15 @@ fn a_negative_row_is_not_served_while_its_provider_is_in_a_rate_limit_pause() {
         "the primary pausing: its negative yields, the fallback's stands"
     );
 
-    pause_provider(state.providers.gate(ProviderId::Hianime));
+    pause_provider(state.providers.gate(ProviderId::TestB));
     assert_eq!(
         served(&state),
         (false, false),
         "both pausing: nobody stands behind either row"
     );
 
-    close_breaker(state.providers.gate(ProviderId::Anidb));
-    close_breaker(state.providers.gate(ProviderId::Hianime));
+    close_breaker(state.providers.gate(ProviderId::TestA));
+    close_breaker(state.providers.gate(ProviderId::TestB));
     assert_eq!(
         served(&state),
         (true, false),
@@ -649,34 +645,34 @@ async fn a_reprobe_of_a_count_less_positive_row_starts_from_the_provider_it_reme
     // instead has to start from the provider that proved the show,
     // or the primary's clean miss ends the walk and overwrites the
     // fallback's proof with a negative that disables Play.
-    let anidb = no_results(ProviderId::Anidb);
-    let hianime = stub_hianime_sub_only();
+    let primary = no_results(ProviderId::TestA);
+    let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
-    write_cache(&state, "580", "sub", true, Some(ProviderId::Hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
+    write_cache(&state, "580", "sub", true, Some(ProviderId::TestB));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
         "kitsu_id": "580"
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb).await.expect("answered");
+    let got = check_with(&state, &args, &primary).await.expect("answered");
     assert!(
         got.available,
         "the provider the row remembers still carries the show"
     );
-    assert_eq!(got.provider, Some(ProviderId::Hianime));
+    assert_eq!(got.provider, Some(ProviderId::TestB));
     assert!(
-        anidb.asked().is_empty(),
+        primary.asked().is_empty(),
         "the remembered provider answered; the primary was not asked"
     );
     assert_eq!(
         cached_provider(&state, "580", "sub"),
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the row keeps its provider"
     );
 }
@@ -691,33 +687,33 @@ async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest
     // nothing persists — the primary's negative would outlive the
     // fallback's recovery and keep a playable title disabled for
     // the negative's whole TTL.
-    let anidb = no_results(ProviderId::Anidb);
-    let hianime = refusing(ProviderId::Hianime, 503);
+    let primary = no_results(ProviderId::TestA);
+    let fallback = refusing(ProviderId::TestB, 503);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
-    write_cache(&state, "580", "sub", true, Some(ProviderId::Hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
+    write_cache(&state, "580", "sub", true, Some(ProviderId::TestB));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
         "kitsu_id": "580"
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb).await;
+    let got = check_with(&state, &args, &primary).await;
     assert!(
         matches!(&got, Err(e) if crate::commands::providers::fails_over(e)),
         "the fallback's own unavailability is the verdict the caller sees: {got:?}"
     );
     assert!(
-        !anidb.asked().is_empty(),
+        !primary.asked().is_empty(),
         "the walk moved past the unreachable provider to the primary"
     );
     assert_eq!(
         cached_provider(&state, "580", "sub"),
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the positive row stands until its provider is reachable again"
     );
 }
@@ -733,21 +729,21 @@ async fn a_skipped_primary_gets_its_trial_when_the_fallback_finds_the_show_witho
     // the walk's. Without the trial the row would name the
     // fallback's absence and the page would disable playback for
     // the breaker's whole window on a show the primary dubs.
-    let anidb = Arc::new(one_show(
-        ProviderId::Anidb,
+    let primary = Arc::new(one_show(
+        ProviderId::TestA,
         ("fallback-show-72", "Fallback Show", None),
         &[721, 722],
         true,
         true,
     ));
-    let hianime = stub_hianime_sub_only();
+    let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
-    open_breaker(state.providers.gate(ProviderId::Anidb));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
+    open_breaker(state.providers.gate(ProviderId::TestA));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "dub",
@@ -755,26 +751,29 @@ async fn a_skipped_primary_gets_its_trial_when_the_fallback_finds_the_show_witho
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb)
+    let got = check_with(&state, &args, &primary)
         .await
         .expect("the primary's trial answered");
     assert!(got.available, "the primary carries the dub: {got:?}");
     assert_eq!(
         got.provider,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the answer is the retried primary's"
     );
     assert!(
-        asked_the_mode(&hianime),
+        asked_the_mode(&fallback),
         "the fallback was asked first and answered absence"
     );
-    assert!(asked_the_mode(&anidb), "the skipped primary got its trial");
+    assert!(
+        asked_the_mode(&primary),
+        "the skipped primary got its trial"
+    );
     let row = meta_cache_get(&state.cache_pool, &cache_key("581", "dub"))
         .expect("cache read")
         .expect("persisted");
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert!(row.available, "the row is the primary's positive");
-    assert_eq!(row.provider, Some(ProviderId::Anidb));
+    assert_eq!(row.provider, Some(ProviderId::TestA));
 }
 
 #[tokio::test]
@@ -788,21 +787,21 @@ async fn a_remembered_providers_absence_yields_to_a_primary_that_carries_the_mod
     // fallback's absence would tell the page the title has no
     // dub and disable playback for the row's lifetime on a show
     // the primary dubs.
-    let anidb = Arc::new(one_show(
-        ProviderId::Anidb,
+    let primary = Arc::new(one_show(
+        ProviderId::TestA,
         ("fallback-show-73", "Fallback Show", None),
         &[731, 732],
         true,
         true,
     ));
-    let hianime = stub_hianime_sub_only();
+    let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
-    write_cache(&state, "582", "dub", true, Some(ProviderId::Hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
+    write_cache(&state, "582", "dub", true, Some(ProviderId::TestB));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "dub",
@@ -810,26 +809,26 @@ async fn a_remembered_providers_absence_yields_to_a_primary_that_carries_the_mod
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb)
+    let got = check_with(&state, &args, &primary)
         .await
         .expect("the primary answered the mode");
     assert!(got.available, "the primary carries the dub: {got:?}");
     assert_eq!(
         got.provider,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the answer is the primary's"
     );
     assert!(
-        asked_the_mode(&hianime),
+        asked_the_mode(&fallback),
         "the remembered provider was asked first and answered absence"
     );
-    assert!(asked_the_mode(&anidb), "the walk went on to the primary");
+    assert!(asked_the_mode(&primary), "the walk went on to the primary");
     let row = meta_cache_get(&state.cache_pool, &cache_key("582", "dub"))
         .expect("cache read")
         .expect("persisted");
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert!(row.available, "the row is the primary's positive");
-    assert_eq!(row.provider, Some(ProviderId::Anidb));
+    assert_eq!(row.provider, Some(ProviderId::TestA));
 }
 
 #[tokio::test]
@@ -842,39 +841,39 @@ async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest
     // persisting it as the primary's negative would stay backed
     // by a healthy primary and keep a playable title disabled
     // long after the fallback recovered.
-    let anidb = Arc::new(one_show(
-        ProviderId::Anidb,
+    let primary = Arc::new(one_show(
+        ProviderId::TestA,
         ("fallback-show-71", "Fallback Show", None),
         &[711, 712],
         true,
         false,
     ));
-    let hianime = refusing(ProviderId::Hianime, 503);
+    let fallback = refusing(ProviderId::TestB, 503);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
-    write_cache(&state, "580", "dub", true, Some(ProviderId::Hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
+    write_cache(&state, "580", "dub", true, Some(ProviderId::TestB));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "dub",
         "kitsu_id": "580"
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb).await;
+    let got = check_with(&state, &args, &primary).await;
     assert!(
         matches!(got, Err(crate::error::AniError::NoResults)),
         "the primary's absence is the verdict the caller sees, unpersisted: {got:?}"
     );
     assert!(
-        asked_the_mode(&anidb),
+        asked_the_mode(&primary),
         "the walk moved past the unreachable provider and the primary answered the mode"
     );
     assert_eq!(
         cached_provider(&state, "580", "dub"),
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the positive row stands until its provider is reachable again"
     );
 }
@@ -890,22 +889,22 @@ async fn a_primarys_absence_persists_once_the_retried_row_provider_denies_the_sh
     // is the verdict, and it persists as the primary's own
     // negative — held back, it would keep a stale positive row
     // and a page enabled for a mode nobody carries.
-    let anidb = Arc::new(one_show(
-        ProviderId::Anidb,
+    let primary = Arc::new(one_show(
+        ProviderId::TestA,
         ("fallback-show-74", "Fallback Show", None),
         &[741, 742],
         true,
         false,
     ));
-    let hianime = stub_hianime_no_results();
+    let fallback = no_results(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
-    write_cache(&state, "584", "dub", true, Some(ProviderId::Hianime));
-    open_breaker(state.providers.gate(ProviderId::Hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
+    write_cache(&state, "584", "dub", true, Some(ProviderId::TestB));
+    open_breaker(state.providers.gate(ProviderId::TestB));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "dub",
@@ -913,17 +912,17 @@ async fn a_primarys_absence_persists_once_the_retried_row_provider_denies_the_sh
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb)
+    let got = check_with(&state, &args, &primary)
         .await
         .expect("the primary's absence is the verdict");
     assert!(!got.available, "nobody carries the dub: {got:?}");
     assert_eq!(
         got.provider,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the absence is the primary's own"
     );
     assert!(
-        !hianime.searched().is_empty(),
+        !fallback.searched().is_empty(),
         "the skipped row provider got its trial"
     );
     let row = meta_cache_get(&state.cache_pool, &cache_key("584", "dub"))
@@ -934,15 +933,16 @@ async fn a_primarys_absence_persists_once_the_retried_row_provider_denies_the_sh
         !row.available,
         "the positive row gave way to the primary's negative: {row:?}"
     );
-    assert_eq!(row.provider, Some(ProviderId::Anidb));
+    assert_eq!(row.provider, Some(ProviderId::TestA));
 }
 
 /// A primary that finds the show and lists two episodes whose rows
 /// it no longer serves — every mode question answers not-found — so
 /// the mode search touches only missing rows.
-fn stub_anidb_with_stale_rows(id: u64) -> Arc<TableProvider> {
+fn stub_stale_rows(provider: ProviderId, id: u64) -> Arc<TableProvider> {
     Arc::new(
         TableProvider::new()
+            .answering_as(provider)
             .search_default(hits(&[(&format!("fallback-show-{id}"), "Fallback Show")]))
             .listing(id, numbered(&[id * 10 + 1, id * 10 + 2])),
     )
@@ -957,14 +957,14 @@ async fn an_inconclusive_primary_moves_the_probe_on_to_a_fallback_that_carries_t
     // carries the show with the mode, answers. Stopping at the
     // primary would fail the check for a title the fallback
     // plays, every time the primary's rows go stale.
-    let anidb = stub_anidb_with_stale_rows(75);
-    let hianime = stub_hianime_sub_only();
+    let primary = stub_stale_rows(ProviderId::TestA, 75);
+    let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -972,17 +972,17 @@ async fn an_inconclusive_primary_moves_the_probe_on_to_a_fallback_that_carries_t
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb)
+    let got = check_with(&state, &args, &primary)
         .await
         .expect("the fallback answered");
     assert!(got.available, "the fallback carries the show: {got:?}");
     assert_eq!(
         got.provider,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the answer is the fallback's"
     );
     assert!(
-        asked_the_mode(&anidb),
+        asked_the_mode(&primary),
         "the primary's rows were asked and answered nothing"
     );
     let row = meta_cache_get(&state.cache_pool, &cache_key("585", "sub"))
@@ -990,7 +990,7 @@ async fn an_inconclusive_primary_moves_the_probe_on_to_a_fallback_that_carries_t
         .expect("persisted");
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert!(row.available);
-    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.provider, Some(ProviderId::TestB));
 }
 
 #[tokio::test]
@@ -999,12 +999,12 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
     // answer for the mode: nobody answered, the verdict is
     // unknown, and no row is written — a stale row costs a
     // re-probe, not a wrong cache row for its whole life.
-    let anidb = stub_anidb_with_stale_rows(76);
+    let primary = stub_stale_rows(ProviderId::TestA, 76);
     // The fallback finds the show too, and every row it is asked about
     // answers not-found.
-    let hianime = Arc::new(
+    let fallback = Arc::new(
         TableProvider::new()
-            .answering_as(ProviderId::Hianime)
+            .answering_as(ProviderId::TestB)
             .search_default(vec![BrowseHit {
                 slug: "fallback-show-7".into(),
                 title: "Fallback Show".into(),
@@ -1016,8 +1016,8 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -1025,12 +1025,12 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb).await;
+    let got = check_with(&state, &args, &primary).await;
     assert!(
         matches!(got, Err(crate::error::AniError::NoResults)),
         "nobody answered for the mode: {got:?}"
     );
-    assert!(asked_the_mode(&hianime), "the fallback was asked too");
+    assert!(asked_the_mode(&fallback), "the fallback was asked too");
     assert!(
         meta_cache_get(&state.cache_pool, &cache_key("586", "sub"))
             .expect("cache read")
@@ -1049,14 +1049,14 @@ async fn an_inconclusive_primary_outranks_the_fallbacks_clean_miss() {
     // unknown, and nothing is written: persisted as the
     // fallback's negative, it would be served while the primary
     // answers and hide a title the primary carries.
-    let anidb = stub_anidb_with_stale_rows(77);
-    let hianime = stub_hianime_no_results();
+    let primary = stub_stale_rows(ProviderId::TestA, 77);
+    let fallback = no_results(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -1064,12 +1064,12 @@ async fn an_inconclusive_primary_outranks_the_fallbacks_clean_miss() {
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb).await;
+    let got = check_with(&state, &args, &primary).await;
     assert!(
         matches!(got, Err(crate::error::AniError::NoResults)),
         "the verdict is unknown, not the fallback's miss: {got:?}"
     );
-    assert!(!hianime.searched().is_empty(), "the fallback was asked");
+    assert!(!fallback.searched().is_empty(), "the fallback was asked");
     assert!(
         meta_cache_get(&state.cache_pool, &cache_key("587", "sub"))
             .expect("cache read")
@@ -1085,14 +1085,14 @@ async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
     // then send the id to the warm; the warm must not take the
     // same row for a fresh one, or the card stays visible until
     // the negative expires.
-    let anidb = no_results(ProviderId::Anidb);
+    let primary = no_results(ProviderId::TestA);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&anidb));
-    write_cache(&state, "590", "sub", false, Some(ProviderId::Hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&primary));
+    write_cache(&state, "590", "sub", false, Some(ProviderId::TestB));
     let state = std::sync::Arc::new(state);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Nowhere Show",
@@ -1103,7 +1103,7 @@ async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
     .expect("args");
     warm(std::sync::Arc::clone(&state), vec![args]).await;
     assert!(
-        !anidb.asked().is_empty(),
+        !primary.asked().is_empty(),
         "the warm re-probed the row nobody stands behind"
     );
     let row = meta_cache_get(&state.cache_pool, &cache_key("590", "sub"))
@@ -1112,7 +1112,7 @@ async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert_eq!(
         row.provider,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the row is the primary's own verdict now"
     );
 }
@@ -1124,7 +1124,7 @@ fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_re
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
     let cases = (
         proptest::bool::ANY,
         proptest::bool::ANY,
@@ -1135,25 +1135,25 @@ fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_re
     proptest::test_runner::TestRunner::default()
         .run(
             &cases,
-            |(anidb_broken, anidb_paused, hianime_broken, hianime_paused, row_provider)| {
-                close_breaker(state.providers.gate(ProviderId::Anidb));
-                close_breaker(state.providers.gate(ProviderId::Hianime));
-                if anidb_broken {
-                    open_breaker(state.providers.gate(ProviderId::Anidb));
+            |(a_broken, a_paused, b_broken, b_paused, row_provider)| {
+                close_breaker(state.providers.gate(ProviderId::TestA));
+                close_breaker(state.providers.gate(ProviderId::TestB));
+                if a_broken {
+                    open_breaker(state.providers.gate(ProviderId::TestA));
                 }
-                if anidb_paused {
-                    pause_provider(state.providers.gate(ProviderId::Anidb));
+                if a_paused {
+                    pause_provider(state.providers.gate(ProviderId::TestA));
                 }
-                if hianime_broken {
-                    open_breaker(state.providers.gate(ProviderId::Hianime));
+                if b_broken {
+                    open_breaker(state.providers.gate(ProviderId::TestB));
                 }
-                if hianime_paused {
-                    pause_provider(state.providers.gate(ProviderId::Hianime));
+                if b_paused {
+                    pause_provider(state.providers.gate(ProviderId::TestB));
                 }
                 let provider = match row_provider {
                     0 => None,
-                    1 => Some(ProviderId::Anidb),
-                    _ => Some(ProviderId::Hianime),
+                    1 => Some(ProviderId::TestA),
+                    _ => Some(ProviderId::TestB),
                 };
                 let row = AvailabilityResponse {
                     available: false,
@@ -1163,11 +1163,12 @@ fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_re
                     gate_refused: false,
                     provider,
                 };
-                let anidb_refusing = anidb_broken || anidb_paused;
-                let hianime_refusing = hianime_broken || hianime_paused;
+                let a_refusing = a_broken || a_paused;
+                let b_refusing = b_broken || b_paused;
                 let expected = match provider {
-                    None | Some(ProviderId::Anidb) => !anidb_refusing,
-                    Some(ProviderId::Hianime) => !hianime_refusing && anidb_refusing,
+                    None | Some(ProviderId::TestA) => !a_refusing,
+                    Some(ProviderId::TestB) => !b_refusing && a_refusing,
+                    Some(other) => unreachable!("the cases draw no {other:?} row"),
                 };
                 proptest::prop_assert_eq!(negative_row_is_backed(&state, &row), expected);
                 Ok(())
@@ -1266,17 +1267,17 @@ async fn a_negative_row_is_not_served_while_its_provider_is_unreachable() {
     // the row's whole lifetime, in the exact outage failover
     // exists for. Unattributed negatives — rows the play path
     // stamped — count as the primary's.
-    let hianime = stub_hianime_sub_only();
+    let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(Arc::clone(&hianime));
-    write_cache(&state, "560", "sub", false, Some(ProviderId::Anidb));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(Arc::clone(&fallback));
+    write_cache(&state, "560", "sub", false, Some(ProviderId::TestA));
     write_cache(&state, "561", "sub", false, None);
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
-        state.providers.gate(ProviderId::Anidb).record(
+        state.providers.gate(ProviderId::TestA).record(
             crate::scraper::gate::ScrapeOutcome::Failure,
             tokio::time::Instant::now(),
         );
@@ -1300,11 +1301,11 @@ async fn a_negative_row_is_not_served_while_its_provider_is_unreachable() {
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &unreachable(ProviderId::Anidb))
+    let got = check_with(&state, &args, &unreachable(ProviderId::TestA))
         .await
         .expect("the probe re-runs and the fallback answers");
     assert!(got.available, "the fallback carries the show");
-    assert_eq!(got.provider, Some(ProviderId::Hianime));
+    assert_eq!(got.provider, Some(ProviderId::TestB));
 }
 
 #[test]

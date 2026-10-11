@@ -127,21 +127,22 @@ impl Attempt for Scripted {
 }
 
 struct Gates {
-    anidb: ScraperGate,
-    hianime: ScraperGate,
+    a: ScraperGate,
+    b: ScraperGate,
 }
 
 impl Gates {
     fn new() -> Self {
         Self {
-            anidb: ScraperGate::new(),
-            hianime: ScraperGate::new(),
+            a: ScraperGate::new(),
+            b: ScraperGate::new(),
         }
     }
     fn of(&self, p: ProviderId) -> &ScraperGate {
         match p {
-            ProviderId::Anidb => &self.anidb,
-            ProviderId::Hianime => &self.hianime,
+            ProviderId::TestA => &self.a,
+            ProviderId::TestB => &self.b,
+            shipped => unreachable!("the matrix runs on the test providers, not {shipped:?}"),
         }
     }
     fn open(&self, p: ProviderId) {
@@ -164,7 +165,7 @@ impl Gates {
     }
 }
 
-const ORDER: [ProviderId; 2] = [ProviderId::Anidb, ProviderId::Hianime];
+const ORDER: [ProviderId; 2] = [ProviderId::TestA, ProviderId::TestB];
 
 fn stub(p: ProviderId) -> crate::error::Result<Box<dyn Provider>> {
     Ok(Box::new(Stub(p)))
@@ -193,17 +194,17 @@ async fn the_fallback_answers_when_the_primary_is_unreachable() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Hianime, Behavior::Answer("from hianime")),
+        (ProviderId::TestB, Behavior::Answer("from b")),
     ]);
     let got = run(&gates, ScrapePriority::Interactive, &mut attempt)
         .await
         .expect("answered");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(got.value, "from hianime");
-    assert_eq!(attempt.asked(), [ProviderId::Anidb, ProviderId::Hianime]);
+    assert_eq!(got.provider, ProviderId::TestB);
+    assert_eq!(got.value, "from b");
+    assert_eq!(attempt.asked(), [ProviderId::TestA, ProviderId::TestB]);
 }
 
 #[tokio::test]
@@ -211,10 +212,10 @@ async fn each_attempts_outcome_lands_on_its_own_gate() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Hianime, Behavior::Answer("ok")),
+        (ProviderId::TestB, Behavior::Answer("ok")),
     ]);
     for _ in 0..FAILURE_THRESHOLD {
         run(&gates, ScrapePriority::Interactive, &mut attempt)
@@ -222,11 +223,11 @@ async fn each_attempts_outcome_lands_on_its_own_gate() {
             .expect("answered");
     }
     assert!(
-        gates.anidb.is_open(),
+        gates.a.is_open(),
         "the primary's failures opened its breaker"
     );
     assert!(
-        !gates.hianime.is_open(),
+        !gates.b.is_open(),
         "the fallback's successes were recorded on the fallback's gate, not the primary's"
     );
 }
@@ -235,8 +236,8 @@ async fn each_attempts_outcome_lands_on_its_own_gate() {
 async fn a_miss_does_not_fail_over() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
-        (ProviderId::Hianime, Behavior::Answer("never asked")),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Answer("never asked")),
     ]);
     let err = run(&gates, ScrapePriority::Interactive, &mut attempt)
         .await
@@ -246,22 +247,22 @@ async fn a_miss_does_not_fail_over() {
         err.clean_miss,
         "the primary answered cleanly; the verdict stands"
     );
-    assert_eq!(attempt.asked(), [ProviderId::Anidb]);
+    assert_eq!(attempt.asked(), [ProviderId::TestA]);
 }
 
 #[tokio::test]
 async fn an_open_breaker_skips_the_primary_while_another_remains() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("must not be asked")),
-        (ProviderId::Hianime, Behavior::Answer("from hianime")),
+        (ProviderId::TestA, Behavior::Answer("must not be asked")),
+        (ProviderId::TestB, Behavior::Answer("from b")),
     ]);
     let got = run(&gates, ScrapePriority::Interactive, &mut attempt)
         .await
         .expect("answered");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(attempt.asked(), [ProviderId::Hianime]);
+    assert_eq!(got.provider, ProviderId::TestB);
+    assert_eq!(attempt.asked(), [ProviderId::TestB]);
 }
 
 /// An advertised rate-limit window is the provider refusing, as an
@@ -273,62 +274,62 @@ async fn an_open_breaker_skips_the_primary_while_another_remains() {
 async fn a_provider_in_a_rate_limit_pause_is_skipped_while_another_remains() {
     for priority in [ScrapePriority::Interactive, ScrapePriority::Background] {
         let gates = Gates::new();
-        gates.pause(ProviderId::Anidb);
+        gates.pause(ProviderId::TestA);
         let mut attempt = Scripted::new(&[
-            (ProviderId::Anidb, Behavior::Answer("must not be asked")),
-            (ProviderId::Hianime, Behavior::Answer("from hianime")),
+            (ProviderId::TestA, Behavior::Answer("must not be asked")),
+            (ProviderId::TestB, Behavior::Answer("from b")),
         ]);
         let got = run(&gates, priority, &mut attempt).await.expect("answered");
-        assert_eq!(got.provider, ProviderId::Hianime, "{priority:?}");
-        assert_eq!(attempt.asked(), [ProviderId::Hianime], "{priority:?}");
+        assert_eq!(got.provider, ProviderId::TestB, "{priority:?}");
+        assert_eq!(attempt.asked(), [ProviderId::TestB], "{priority:?}");
     }
 }
 
 #[tokio::test]
 async fn the_last_provider_is_tried_even_in_a_rate_limit_pause() {
     let gates = Gates::new();
-    gates.pause(ProviderId::Hianime);
+    gates.pause(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Hianime, Behavior::Answer("from hianime")),
+        (ProviderId::TestB, Behavior::Answer("from b")),
     ]);
     let got = run(&gates, ScrapePriority::Interactive, &mut attempt)
         .await
         .expect("the last provider is always tried");
-    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.provider, ProviderId::TestB);
 }
 
 #[tokio::test]
 async fn the_last_provider_is_tried_even_with_an_open_breaker() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestA);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("must not be asked")),
-        (ProviderId::Hianime, Behavior::Answer("tried anyway")),
+        (ProviderId::TestA, Behavior::Answer("must not be asked")),
+        (ProviderId::TestB, Behavior::Answer("tried anyway")),
     ]);
     let got = run(&gates, ScrapePriority::Interactive, &mut attempt)
         .await
         .expect("answered");
     assert_eq!(got.value, "tried anyway");
-    assert_eq!(attempt.asked(), [ProviderId::Hianime]);
+    assert_eq!(attempt.asked(), [ProviderId::TestB]);
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_stalled_primary_yields_to_the_fallback_within_its_budget() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Stall),
-        (ProviderId::Hianime, Behavior::Answer("from hianime")),
+        (ProviderId::TestA, Behavior::Stall),
+        (ProviderId::TestB, Behavior::Answer("from b")),
     ]);
     let started = tokio::time::Instant::now();
     let got = run(&gates, ScrapePriority::Interactive, &mut attempt)
         .await
         .expect("answered");
-    assert_eq!(got.provider, ProviderId::Hianime);
+    assert_eq!(got.provider, ProviderId::TestB);
     let waited = started.elapsed();
     assert!(
         waited >= Duration::from_secs(20) && waited < Duration::from_secs(21),
@@ -343,16 +344,16 @@ async fn a_stalled_primary_yields_to_the_fallback_within_its_budget() {
 #[tokio::test(start_paused = true)]
 async fn a_stalled_fallback_leaves_the_skipped_primary_its_trial() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("from anidb")),
-        (ProviderId::Hianime, Behavior::Stall),
+        (ProviderId::TestA, Behavior::Answer("from a")),
+        (ProviderId::TestB, Behavior::Stall),
     ]);
     let started = tokio::time::Instant::now();
     let got = run(&gates, ScrapePriority::Interactive, &mut attempt)
         .await
         .expect("the recovered primary answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.provider, ProviderId::TestA);
     let waited = started.elapsed();
     assert!(
         waited >= Duration::from_secs(20) && waited < Duration::from_secs(21),
@@ -360,7 +361,7 @@ async fn a_stalled_fallback_leaves_the_skipped_primary_its_trial() {
     );
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "skipped first, retried after the stall"
     );
 }
@@ -370,10 +371,10 @@ async fn a_stalled_fallback_leaves_the_skipped_primary_its_trial() {
 #[tokio::test(start_paused = true)]
 async fn a_background_walk_gives_a_stalled_fallback_the_whole_remainder() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("must not be asked")),
-        (ProviderId::Hianime, Behavior::Stall),
+        (ProviderId::TestA, Behavior::Answer("must not be asked")),
+        (ProviderId::TestB, Behavior::Stall),
     ]);
     let started = tokio::time::Instant::now();
     let err = run(&gates, ScrapePriority::Background, &mut attempt)
@@ -385,7 +386,7 @@ async fn a_background_walk_gives_a_stalled_fallback_the_whole_remainder() {
         waited >= Duration::from_secs(60) && waited < Duration::from_secs(61),
         "the whole remainder went to the fallback: {waited:?}"
     );
-    assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB]);
 }
 
 /// The runner reports the answer as the provider gave it. A clean
@@ -399,10 +400,10 @@ async fn a_fallbacks_clean_miss_after_an_unreachable_primary_stays_its_clean_mis
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Upstream { status: 503 }),
         ),
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
     ]);
     let err = run(&gates, ScrapePriority::Interactive, &mut attempt)
         .await
@@ -419,11 +420,11 @@ async fn when_every_provider_is_unreachable_the_primarys_error_surfaces() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Upstream { status: 503 }),
         ),
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
     ]);
@@ -435,7 +436,7 @@ async fn when_every_provider_is_unreachable_the_primarys_error_surfaces() {
         "the primary's outage is what the user is told about: {:?}",
         err.error
     );
-    assert_eq!(attempt.asked(), [ProviderId::Anidb, ProviderId::Hianime]);
+    assert_eq!(attempt.asked(), [ProviderId::TestA, ProviderId::TestB]);
 }
 
 #[test]
@@ -472,9 +473,26 @@ fn what_fails_over_is_the_provider_being_unreachable_refusing_or_broken() {
 use crate::app::AppState;
 use crate::commands::play_native_resolve::NativeResolveRequest;
 
-/// A state whose providers are all unroutable: every attempt is the
-/// transport failing to connect, the shape that fails over.
+/// A state ordering `order`, every provider in it unreachable: every
+/// attempt is the transport failing to connect, the shape that fails
+/// over.
 fn unroutable_state(td: &tempfile::TempDir, order: &[ProviderId]) -> AppState {
+    let mut state = shipped_state(td);
+    state.providers.set_order(order.to_vec());
+    // Every test provider answers — unreachably — whether or not it is
+    // ordered: one the walk asks by mistake records its failure on its
+    // own gate, where a test can see it.
+    for p in ProviderId::TEST {
+        state.providers.set_stub(std::sync::Arc::new(
+            crate::scraper::table_provider::TableProvider::unreachable().answering_as(*p),
+        ));
+    }
+    state
+}
+
+/// A state walking the shipped providers, each pointed at an
+/// unroutable origin.
+fn shipped_state(td: &tempfile::TempDir) -> AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     AppState {
@@ -486,9 +504,11 @@ fn unroutable_state(td: &tempfile::TempDir, order: &[ProviderId]) -> AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        providers: crate::provider_set::ProviderSet::listing(order.to_vec())
-            .with_origin(ProviderId::Anidb, "http://127.0.0.1:1")
-            .with_origin(ProviderId::Hianime, "http://127.0.0.1:1"),
+        providers: ProviderId::ALL
+            .iter()
+            .fold(crate::provider_set::ProviderSet::shipped(), |set, p| {
+                set.with_origin(*p, "http://127.0.0.1:1")
+            }),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -533,37 +553,44 @@ async fn resolve_unreachable(state: &AppState) -> NativeError {
 }
 
 #[test]
-fn each_provider_gets_a_client_of_its_own_on_its_own_gate() {
+fn each_shipped_provider_gets_a_client_of_its_own_on_its_own_gate() {
     let td = tempfile::tempdir().expect("td");
-    let state = unroutable_state(&td, &ORDER);
-    for p in ORDER {
+    let state = shipped_state(&td);
+    for p in ProviderId::ALL.iter().copied() {
         let client = client_for(&state, p, ScrapePriority::Interactive).expect("a curl on PATH");
         assert_eq!(client.id(), p);
     }
-    assert!(std::ptr::eq(
-        gate_of(&state, ProviderId::Anidb),
-        state.providers.gate(ProviderId::Anidb)
-    ));
-    assert!(std::ptr::eq(
-        gate_of(&state, ProviderId::Hianime),
-        state.providers.gate(ProviderId::Hianime)
-    ));
+}
+
+#[test]
+fn a_test_only_provider_answers_only_from_a_registered_table() {
+    let td = tempfile::tempdir().expect("td");
+    let state = shipped_state(&td);
+    for p in ProviderId::TEST.iter().copied() {
+        assert!(
+            matches!(
+                client_for(&state, p, ScrapePriority::Interactive),
+                Err(AniError::Network)
+            ),
+            "{p:?} is nobody's site"
+        );
+    }
 }
 
 #[tokio::test]
 async fn a_walk_runs_against_the_states_providers_and_each_hears_its_own_outcome() {
     let td = tempfile::tempdir().expect("td");
     let state = unroutable_state(&td, &ORDER);
-    one_short_of_open(state.providers.gate(ProviderId::Anidb));
-    one_short_of_open(state.providers.gate(ProviderId::Hianime));
+    one_short_of_open(state.providers.gate(ProviderId::TestA));
+    one_short_of_open(state.providers.gate(ProviderId::TestB));
     let err = resolve_unreachable(&state).await;
     assert!(fails_over(&err.error), "{:?}", err.error);
     assert!(
-        state.providers.gate(ProviderId::Anidb).is_open(),
+        state.providers.gate(ProviderId::TestA).is_open(),
         "the primary's failure landed on its own breaker"
     );
     assert!(
-        state.providers.gate(ProviderId::Hianime).is_open(),
+        state.providers.gate(ProviderId::TestB).is_open(),
         "the fallback's failure landed on its own breaker"
     );
 }
@@ -571,15 +598,24 @@ async fn a_walk_runs_against_the_states_providers_and_each_hears_its_own_outcome
 #[tokio::test]
 async fn only_the_providers_the_state_orders_are_asked() {
     let td = tempfile::tempdir().expect("td");
-    let state = unroutable_state(&td, &[ProviderId::Anidb]);
-    one_short_of_open(state.providers.gate(ProviderId::Anidb));
-    one_short_of_open(state.providers.gate(ProviderId::Hianime));
+    let state = unroutable_state(&td, &[ProviderId::TestA]);
+    one_short_of_open(state.providers.gate(ProviderId::TestA));
+    one_short_of_open(state.providers.gate(ProviderId::TestB));
     let err = resolve_unreachable(&state).await;
     assert!(fails_over(&err.error), "{:?}", err.error);
-    assert!(state.providers.gate(ProviderId::Anidb).is_open());
+    assert!(state.providers.gate(ProviderId::TestA).is_open());
     assert!(
-        !state.providers.gate(ProviderId::Hianime).is_open(),
+        !state.providers.gate(ProviderId::TestB).is_open(),
         "a provider outside the order is never asked"
+    );
+    assert!(
+        state
+            .providers
+            .stub(ProviderId::TestB)
+            .expect("registered")
+            .asked()
+            .is_empty(),
+        "and its log says so"
     );
 }
 
@@ -608,14 +644,14 @@ impl Attempt for Recording {
 #[test]
 fn a_remembered_provider_leads_the_order_and_a_foreign_one_changes_nothing() {
     assert_eq!(
-        order_with_affinity(&ORDER, Some(ProviderId::Hianime)),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
+        order_with_affinity(&ORDER, Some(ProviderId::TestB)),
+        vec![ProviderId::TestB, ProviderId::TestA]
     );
-    assert_eq!(order_with_affinity(&ORDER, Some(ProviderId::Anidb)), ORDER);
+    assert_eq!(order_with_affinity(&ORDER, Some(ProviderId::TestA)), ORDER);
     assert_eq!(order_with_affinity(&ORDER, None), ORDER);
     assert_eq!(
-        order_with_affinity(&[ProviderId::Anidb], Some(ProviderId::Hianime)),
-        vec![ProviderId::Anidb],
+        order_with_affinity(&[ProviderId::TestA], Some(ProviderId::TestB)),
+        vec![ProviderId::TestA],
         "a provider the state does not list is not asked on a row's say-so"
     );
 }
@@ -627,12 +663,12 @@ async fn a_walk_starts_from_the_remembered_provider() {
     let mut attempt = Recording { asked: Vec::new() };
     let _ = run_from(
         &state,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await;
-    assert_eq!(attempt.asked, vec![ProviderId::Hianime, ProviderId::Anidb]);
+    assert_eq!(attempt.asked, vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 mod failover_props {
@@ -760,7 +796,7 @@ mod affinity_props {
     use proptest::prelude::*;
 
     fn provider() -> impl Strategy<Value = ProviderId> {
-        prop_oneof![Just(ProviderId::Anidb), Just(ProviderId::Hianime)]
+        prop_oneof![Just(ProviderId::TestA), Just(ProviderId::TestB)]
     }
 
     /// Any listing of the known providers, each at most once.
@@ -925,7 +961,7 @@ mod negative_rank_props {
                 return Negative::Unknown(self.by);
             }
             if self.is_answer() {
-                let provider = self.by.unwrap_or(ProviderId::Anidb);
+                let provider = self.by.unwrap_or(ProviderId::TestA);
                 return Negative::Answer(Attempted {
                     provider,
                     value: "absent",
@@ -970,7 +1006,7 @@ mod negative_rank_props {
             if self.is_unknown() {
                 (6, false, self.by)
             } else if self.is_answer() {
-                (5, false, Some(self.by.unwrap_or(ProviderId::Anidb)))
+                (5, false, Some(self.by.unwrap_or(ProviderId::TestA)))
             } else {
                 (
                     self.kind,
@@ -1006,8 +1042,8 @@ mod negative_rank_props {
             "[a-z ]{0,12}",
             any::<bool>(),
             prop::option::of(prop_oneof![
-                Just(ProviderId::Anidb),
-                Just(ProviderId::Hianime)
+                Just(ProviderId::TestA),
+                Just(ProviderId::TestB)
             ]),
         )
             .prop_map(|(kind, status, detail, clean_miss, by)| Shape {
@@ -1023,10 +1059,10 @@ mod negative_rank_props {
     /// either order, one of them, or nobody.
     fn configured() -> impl Strategy<Value = Vec<ProviderId>> {
         prop_oneof![
-            Just(vec![ProviderId::Anidb, ProviderId::Hianime]),
-            Just(vec![ProviderId::Hianime, ProviderId::Anidb]),
-            Just(vec![ProviderId::Anidb]),
-            Just(vec![ProviderId::Hianime]),
+            Just(vec![ProviderId::TestA, ProviderId::TestB]),
+            Just(vec![ProviderId::TestB, ProviderId::TestA]),
+            Just(vec![ProviderId::TestA]),
+            Just(vec![ProviderId::TestB]),
             Just(Vec::new()),
         ]
     }
@@ -1124,7 +1160,7 @@ mod episode_verdict_rank_props {
                     clean_miss: self.clean_miss,
                     failed_at: None,
                 },
-                Some(ProviderId::Hianime),
+                Some(ProviderId::TestB),
             )
         }
     }
@@ -1155,7 +1191,7 @@ mod episode_verdict_rank_props {
             let kept = firmer_negative(
                 earlier.negative(),
                 later.negative(),
-                &[ProviderId::Anidb, ProviderId::Hianime],
+                &[ProviderId::TestA, ProviderId::TestB],
             );
             let kept_is_earlier = if outranks { earlier.episode } else { later.episode };
             prop_assert_eq!(is_episode(&kept), kept_is_earlier);
@@ -1194,40 +1230,37 @@ async fn run_with<'a>(
 async fn a_remembered_providers_answered_miss_yields_to_the_rest() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: false }),
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::TestB, Behavior::Miss { clean: false }),
+        (ProviderId::TestA, Behavior::Answer("a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the rest of the order answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(got.value, "anidb");
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(got.value, "a");
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 #[tokio::test]
 async fn a_remembered_providers_miss_stands_when_the_rest_are_unreachable() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Network),
         ),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -1254,15 +1287,15 @@ async fn a_clean_miss_reached_after_the_remembered_provider_failed_over_surfaces
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -1285,14 +1318,14 @@ async fn a_clean_miss_reached_after_an_unremembered_providers_outage_stands() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &[ProviderId::TestB, ProviderId::TestA],
         None,
         ScrapePriority::Interactive,
         &mut attempt,
@@ -1301,7 +1334,7 @@ async fn a_clean_miss_reached_after_an_unremembered_providers_outage_stands() {
     .expect_err("nobody served it");
     assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
     assert!(err.clean_miss, "no row is at stake; the clean miss stands");
-    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+    assert_eq!(attempt.answered_by, Some(ProviderId::TestA));
 }
 
 /// A remembered provider skipped for refusing is unreachable the
@@ -1313,15 +1346,15 @@ async fn a_clean_miss_reached_after_an_unremembered_providers_outage_stands() {
 async fn a_clean_miss_reached_past_a_skipped_remembered_provider_surfaces_its_refusal_on_a_background_walk(
 ) {
     let gates = Gates::new();
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Answer("hianime")),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Answer("b")),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Background,
         &mut attempt,
     )
@@ -1333,7 +1366,7 @@ async fn a_clean_miss_reached_past_a_skipped_remembered_provider_surfaces_its_re
         err.error
     );
     assert!(!err.clean_miss, "the row's provider was never heard from");
-    assert_eq!(attempt.asked(), vec![ProviderId::Anidb]);
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA]);
     assert_eq!(attempt.answered_by, None, "the verdict is nobody's miss");
 }
 
@@ -1345,18 +1378,18 @@ async fn a_clean_miss_reached_past_a_skipped_remembered_provider_surfaces_its_re
 async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_over_surfaces_its_unavailability(
 ) {
     let gates = Gates::new();
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -1371,10 +1404,7 @@ async fn a_clean_miss_reached_past_a_retried_remembered_provider_that_failed_ove
         !err.clean_miss,
         "the row's provider was tried and unreachable"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
     assert_eq!(attempt.answered_by, None, "the verdict is nobody's miss");
 }
 
@@ -1387,21 +1417,21 @@ async fn an_answer_reached_after_the_remembered_provider_failed_over_says_so() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::TestA, Behavior::Answer("a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the rest of the order answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.provider, ProviderId::TestA);
     assert!(
         got.past_undenied_affinity,
         "the answer came past an unreachable remembered provider"
@@ -1414,21 +1444,21 @@ async fn an_answer_reached_after_an_unremembered_providers_outage_is_not_past_af
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::TestA, Behavior::Answer("a")),
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &[ProviderId::TestB, ProviderId::TestA],
         None,
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the rest of the order answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.provider, ProviderId::TestA);
     assert!(!got.past_undenied_affinity, "no row is at stake");
 }
 
@@ -1437,22 +1467,22 @@ async fn an_answer_reached_after_an_unremembered_providers_outage_is_not_past_af
 #[tokio::test]
 async fn an_answer_reached_past_a_skipped_remembered_provider_says_so_on_a_background_walk() {
     let gates = Gates::new();
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Answer("hianime")),
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::TestB, Behavior::Answer("b")),
+        (ProviderId::TestA, Behavior::Answer("a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Background,
         &mut attempt,
     )
     .await
     .expect("the rest of the order answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(attempt.asked(), vec![ProviderId::Anidb]);
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA]);
     assert!(
         got.past_undenied_affinity,
         "the row's provider was never heard from"
@@ -1465,25 +1495,22 @@ async fn an_answer_reached_past_a_skipped_remembered_provider_says_so_on_a_backg
 #[tokio::test]
 async fn a_retried_remembered_providers_own_answer_is_not_past_affinity() {
     let gates = Gates::new();
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Answer("hianime")),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Answer("b")),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the retried remembered provider answered");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(got.provider, ProviderId::TestB);
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
     assert!(
         !got.past_undenied_affinity,
         "the remembered provider answered for itself"
@@ -1499,15 +1526,15 @@ async fn a_retried_remembered_providers_own_answer_is_not_past_affinity() {
 #[tokio::test]
 async fn a_retried_remembered_providers_own_clean_miss_denies_the_show() {
     let gates = Gates::new();
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -1520,13 +1547,10 @@ async fn a_retried_remembered_providers_own_clean_miss_denies_the_show() {
     );
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the primary's equal miss is the row's, first in the configured order"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 /// A remembered provider that found the show but not the episode has
@@ -1537,13 +1561,13 @@ async fn a_retried_remembered_providers_own_clean_miss_denies_the_show() {
 async fn a_remembered_providers_episode_verdict_outranks_a_later_title_miss() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::MissEpisode),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::MissEpisode),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
-        Some(ProviderId::Hianime),
+        &[ProviderId::TestB, ProviderId::TestA],
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -1556,12 +1580,12 @@ async fn a_remembered_providers_episode_verdict_outranks_a_later_title_miss() {
     );
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "the rest of the order was still asked"
     );
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the kept verdict's provider travels with it"
     );
 }
@@ -1572,10 +1596,10 @@ async fn a_remembered_providers_episode_verdict_outranks_a_later_title_miss() {
 #[tokio::test]
 async fn an_episode_verdict_outranks_a_retried_providers_title_miss() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
-        (ProviderId::Hianime, Behavior::MissEpisode),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::MissEpisode),
     ]);
     let err = run_with(
         &gates,
@@ -1591,13 +1615,10 @@ async fn an_episode_verdict_outranks_a_retried_providers_title_miss() {
         "{:?}",
         err.error
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the episode verdict's provider, not the trial's"
     );
 }
@@ -1609,10 +1630,10 @@ async fn an_episode_verdict_outranks_a_retried_providers_title_miss() {
 #[tokio::test]
 async fn a_skipped_provider_is_retried_when_the_rest_only_missed_on_an_interactive_walk() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Answer("a")),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
     ]);
     let got = run_with(
         &gates,
@@ -1623,10 +1644,10 @@ async fn a_skipped_provider_is_retried_when_the_rest_only_missed_on_an_interacti
     )
     .await
     .expect("the recovered primary answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.provider, ProviderId::TestA);
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "skipped first, asked last"
     );
 }
@@ -1634,10 +1655,10 @@ async fn a_skipped_provider_is_retried_when_the_rest_only_missed_on_an_interacti
 #[tokio::test]
 async fn a_skipped_provider_stays_skipped_on_a_background_walk() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Answer("a")),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
@@ -1649,7 +1670,7 @@ async fn a_skipped_provider_stays_skipped_on_a_background_walk() {
     .await
     .expect_err("background traffic does not trial an open breaker");
     assert!(matches!(err.error, AniError::NoResults));
-    assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB]);
 }
 
 /// The same half-open trial when nothing answered at all: a skipped
@@ -1659,11 +1680,11 @@ async fn a_skipped_provider_stays_skipped_on_a_background_walk() {
 #[tokio::test]
 async fn a_skipped_provider_is_retried_when_the_rest_were_unreachable_on_an_interactive_walk() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::TestA, Behavior::Answer("a")),
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
     ]);
@@ -1676,10 +1697,10 @@ async fn a_skipped_provider_is_retried_when_the_rest_were_unreachable_on_an_inte
     )
     .await
     .expect("the recovered primary answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.provider, ProviderId::TestA);
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "skipped first, asked last"
     );
 }
@@ -1689,11 +1710,11 @@ async fn a_skipped_provider_is_retried_when_the_rest_were_unreachable_on_an_inte
 #[tokio::test]
 async fn a_retried_skipped_providers_miss_is_the_verdict_when_the_rest_were_unreachable() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
     ]);
@@ -1708,20 +1729,17 @@ async fn a_retried_skipped_providers_miss_is_the_verdict_when_the_rest_were_unre
     .expect_err("the primary answered a miss");
     assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
     assert!(err.clean_miss, "the miss stands as the primary gave it");
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 #[tokio::test]
 async fn a_skipped_provider_stays_skipped_when_the_rest_were_unreachable_on_a_background_walk() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::TestA, Behavior::Answer("a")),
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
     ]);
@@ -1735,7 +1753,7 @@ async fn a_skipped_provider_stays_skipped_when_the_rest_were_unreachable_on_a_ba
     .await
     .expect_err("background traffic does not trial an open breaker");
     assert!(matches!(err.error, AniError::Network), "{:?}", err.error);
-    assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB]);
 }
 
 // ── whose miss a verdict is ──────────────────────────────────────────
@@ -1748,13 +1766,13 @@ async fn a_skipped_provider_stays_skipped_when_the_rest_were_unreachable_on_a_ba
 #[tokio::test]
 async fn a_saved_miss_keeps_the_provider_that_produced_it_when_the_retried_one_is_unreachable() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
@@ -1767,13 +1785,10 @@ async fn a_saved_miss_keeps_the_provider_that_produced_it_when_the_retried_one_i
     .expect_err("the fallback's miss stands");
     assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
     assert!(err.clean_miss);
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the miss is the fallback's, not the retried primary's"
     );
 }
@@ -1784,10 +1799,10 @@ async fn a_saved_miss_keeps_the_provider_that_produced_it_when_the_retried_one_i
 #[tokio::test]
 async fn a_retried_providers_own_miss_is_attributed_to_it() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
@@ -1799,11 +1814,8 @@ async fn a_retried_providers_own_miss_is_attributed_to_it() {
     .await
     .expect_err("both missed");
     assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
-    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
+    assert_eq!(attempt.answered_by, Some(ProviderId::TestA));
 }
 
 // ── a negative answer is owed the skipped providers' trial too ────
@@ -1816,10 +1828,10 @@ async fn a_retried_providers_own_miss_is_attributed_to_it() {
 #[tokio::test]
 async fn a_skipped_provider_is_retried_when_the_fallback_answered_absence_on_an_interactive_walk() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::TestA, Behavior::Answer("a")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
     ]);
     let got = run_with(
         &gates,
@@ -1830,11 +1842,11 @@ async fn a_skipped_provider_is_retried_when_the_fallback_answered_absence_on_an_
     )
     .await
     .expect("the recovered primary answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(got.value, "anidb");
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(got.value, "a");
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "skipped first, asked last"
     );
 }
@@ -1849,10 +1861,10 @@ async fn a_skipped_provider_is_retried_when_the_fallback_answered_absence_on_an_
 #[tokio::test]
 async fn a_retried_skipped_providers_own_absence_is_the_verdict() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
     ]);
     let got = run_with(
         &gates,
@@ -1863,12 +1875,9 @@ async fn a_retried_skipped_providers_own_absence_is_the_verdict() {
     )
     .await
     .expect("an absence is an answer");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(got.value, "absent from anidb");
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(got.value, "absent from a");
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 /// A trial's clean miss does not replace the fallback's absence: the
@@ -1881,10 +1890,10 @@ async fn a_retried_skipped_providers_own_absence_is_the_verdict() {
 #[tokio::test]
 async fn a_retried_skipped_providers_clean_miss_takes_the_fallbacks_absences_place() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
     ]);
     let err = run_with(
         &gates,
@@ -1902,12 +1911,12 @@ async fn a_retried_skipped_providers_clean_miss_takes_the_fallbacks_absences_pla
     );
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the row names the primary, first in the configured order"
     );
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "the skipped primary still got its trial"
     );
 }
@@ -1917,13 +1926,13 @@ async fn a_retried_skipped_providers_clean_miss_takes_the_fallbacks_absences_pla
 #[tokio::test]
 async fn a_fallbacks_absence_stands_when_the_retried_skipped_provider_is_still_unreachable() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
     ]);
     let got = run_with(
         &gates,
@@ -1934,12 +1943,9 @@ async fn a_fallbacks_absence_stands_when_the_retried_skipped_provider_is_still_u
     )
     .await
     .expect("the fallback's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(got.value, "absent from hianime");
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(got.provider, ProviderId::TestB);
+    assert_eq!(got.value, "absent from b");
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 /// Background traffic keeps the skip: the fallback's absence is the
@@ -1947,10 +1953,10 @@ async fn a_fallbacks_absence_stands_when_the_retried_skipped_provider_is_still_u
 #[tokio::test]
 async fn a_fallbacks_absence_stands_past_a_skipped_provider_on_a_background_walk() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("must not be asked")),
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::TestA, Behavior::Answer("must not be asked")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
     ]);
     let got = run_with(
         &gates,
@@ -1961,9 +1967,9 @@ async fn a_fallbacks_absence_stands_past_a_skipped_provider_on_a_background_walk
     )
     .await
     .expect("the fallback's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(got.value, "absent from hianime");
-    assert_eq!(attempt.asked(), vec![ProviderId::Hianime]);
+    assert_eq!(got.provider, ProviderId::TestB);
+    assert_eq!(got.value, "absent from b");
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB]);
 }
 
 /// With nothing skipped there is nobody to trial: a provider's
@@ -1972,8 +1978,8 @@ async fn a_fallbacks_absence_stands_past_a_skipped_provider_on_a_background_walk
 async fn an_absence_with_nothing_skipped_is_the_answer_as_before() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
-        (ProviderId::Hianime, Behavior::Answer("must not be asked")),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
+        (ProviderId::TestB, Behavior::Answer("must not be asked")),
     ]);
     let got = run_with(
         &gates,
@@ -1984,9 +1990,9 @@ async fn an_absence_with_nothing_skipped_is_the_answer_as_before() {
     )
     .await
     .expect("an absence is an answer");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(got.value, "absent from anidb");
-    assert_eq!(attempt.asked(), vec![ProviderId::Anidb]);
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(got.value, "absent from a");
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA]);
 }
 
 /// A skipped remembered provider that answers its trial with its own
@@ -1997,15 +2003,15 @@ async fn an_absence_with_nothing_skipped_is_the_answer_as_before() {
 #[tokio::test]
 async fn a_retried_remembered_providers_own_absence_denies_the_mode() {
     let gates = Gates::new();
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -2013,18 +2019,15 @@ async fn a_retried_remembered_providers_own_absence_denies_the_mode() {
     .expect("the remembered provider answered for itself");
     assert_eq!(
         got.provider,
-        ProviderId::Anidb,
+        ProviderId::TestA,
         "the primary's equal absence stands, first in the configured order"
     );
-    assert_eq!(got.value, "absent from anidb");
+    assert_eq!(got.value, "absent from a");
     assert!(
         !got.past_undenied_affinity,
         "the row's own provider was heard from"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 /// When the remembered provider's trial fails over, the rest's
@@ -2033,32 +2036,29 @@ async fn a_retried_remembered_providers_own_absence_denies_the_mode() {
 #[tokio::test]
 async fn a_fallbacks_absence_past_a_retried_remembered_provider_still_down_says_so() {
     let gates = Gates::new();
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Network),
         ),
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the rest's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.provider, ProviderId::TestA);
     assert!(
         got.past_undenied_affinity,
         "the remembered provider was still unreachable"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 /// The held answer says whether it came past an undenied affinity
@@ -2072,30 +2072,27 @@ async fn a_fallbacks_absence_past_a_retried_remembered_provider_still_down_says_
 #[tokio::test]
 async fn a_fallbacks_absence_past_a_retried_remembered_providers_clean_miss_is_its_own() {
     let gates = Gates::new();
-    gates.open(ProviderId::Hianime);
+    gates.open(ProviderId::TestB);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the fallback's absence and the trial's clean miss are peers; the primary's stands");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(got.value, "absent from anidb");
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(got.value, "absent from a");
     assert!(
         !got.past_undenied_affinity,
         "the remembered provider's trial denied the show, so the absence is the fallback's own"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 // ── an inconclusive answer moves the walk on ────────────────────────
@@ -2109,8 +2106,8 @@ async fn a_fallbacks_absence_past_a_retried_remembered_providers_clean_miss_is_i
 async fn an_inconclusive_answer_moves_the_walk_on_to_the_next_provider() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
-        (ProviderId::Hianime, Behavior::Answer("hianime")),
+        (ProviderId::TestA, Behavior::Answer("nothing from a")),
+        (ProviderId::TestB, Behavior::Answer("b")),
     ]);
     let got = run_with(
         &gates,
@@ -2121,12 +2118,9 @@ async fn an_inconclusive_answer_moves_the_walk_on_to_the_next_provider() {
     )
     .await
     .expect("the next provider answered");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(got.value, "hianime");
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(got.provider, ProviderId::TestB);
+    assert_eq!(got.value, "b");
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 /// When every provider is inconclusive, nobody answered: the walk
@@ -2136,11 +2130,8 @@ async fn an_inconclusive_answer_moves_the_walk_on_to_the_next_provider() {
 async fn inconclusive_answers_from_everyone_surface_as_an_unpersistable_miss() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
-        (
-            ProviderId::Hianime,
-            Behavior::Answer("nothing from hianime"),
-        ),
+        (ProviderId::TestA, Behavior::Answer("nothing from a")),
+        (ProviderId::TestB, Behavior::Answer("nothing from b")),
     ]);
     let got = run_with(
         &gates,
@@ -2155,10 +2146,7 @@ async fn inconclusive_answers_from_everyone_surface_as_an_unpersistable_miss() {
         matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
         "the verdict is unknown, not absence: {ne:?}"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 /// A remembered provider that is inconclusive found the show and
@@ -2170,16 +2158,13 @@ async fn inconclusive_answers_from_everyone_surface_as_an_unpersistable_miss() {
 async fn an_absence_past_a_remembered_providers_inconclusive_answer_is_unknown() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (
-            ProviderId::Hianime,
-            Behavior::Answer("nothing from hianime"),
-        ),
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::TestB, Behavior::Answer("nothing from b")),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -2189,10 +2174,7 @@ async fn an_absence_past_a_remembered_providers_inconclusive_answer_is_unknown()
         matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
         "the verdict is unknown, not absence: {ne:?}"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 /// A skipped provider whose trial is inconclusive found the show and
@@ -2202,10 +2184,10 @@ async fn an_absence_past_a_remembered_providers_inconclusive_answer_is_unknown()
 #[tokio::test]
 async fn a_retried_skipped_providers_inconclusive_answer_makes_the_verdict_unknown() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Answer("nothing from a")),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
     ]);
     let got = run_with(
         &gates,
@@ -2220,10 +2202,7 @@ async fn a_retried_skipped_providers_inconclusive_answer_makes_the_verdict_unkno
         matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
         "the trial found the show, so the clean miss is not the verdict: {ne:?}"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 // ── an inconclusive answer outranks any negative ────────────────────
@@ -2237,8 +2216,8 @@ async fn a_retried_skipped_providers_inconclusive_answer_makes_the_verdict_unkno
 async fn an_inconclusive_answer_outranks_a_later_clean_miss() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Answer("nothing from a")),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
     ]);
     let got = run_with(
         &gates,
@@ -2254,10 +2233,7 @@ async fn an_inconclusive_answer_outranks_a_later_clean_miss() {
         "the verdict is unknown, not the clean miss: {ne:?}"
     );
     assert_eq!(attempt.answered_by, None, "an unknown verdict names nobody");
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 /// The same with the next provider answering absence: a show found
@@ -2268,8 +2244,8 @@ async fn an_inconclusive_answer_outranks_a_later_clean_miss() {
 async fn an_inconclusive_answer_outranks_a_later_absence() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::TestA, Behavior::Answer("nothing from a")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
     ]);
     let got = run_with(
         &gates,
@@ -2284,10 +2260,7 @@ async fn an_inconclusive_answer_outranks_a_later_absence() {
         matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
         "the verdict is unknown, not absence: {ne:?}"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 /// The order does not matter: with the fallback first and
@@ -2296,15 +2269,12 @@ async fn an_inconclusive_answer_outranks_a_later_absence() {
 async fn an_inconclusive_fallback_outranks_the_primarys_later_clean_miss() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (
-            ProviderId::Hianime,
-            Behavior::Answer("nothing from hianime"),
-        ),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Answer("nothing from b")),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let got = run_with(
         &gates,
-        &[ProviderId::Hianime, ProviderId::Anidb],
+        &[ProviderId::TestB, ProviderId::TestA],
         None,
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2315,10 +2285,7 @@ async fn an_inconclusive_fallback_outranks_the_primarys_later_clean_miss() {
         matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
         "the verdict is unknown, not the clean miss: {ne:?}"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 /// A remembered provider's own clean miss is set aside so the rest
@@ -2330,13 +2297,13 @@ async fn an_inconclusive_fallback_outranks_the_primarys_later_clean_miss() {
 async fn a_remembered_providers_clean_miss_yields_to_a_later_inconclusive_answer() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
-        (ProviderId::Anidb, Behavior::Answer("nothing from anidb")),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Answer("nothing from a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -2346,10 +2313,7 @@ async fn a_remembered_providers_clean_miss_yields_to_a_later_inconclusive_answer
         matches!(ne.error, AniError::NoResults) && !ne.clean_miss,
         "the verdict is unknown, not the remembered provider's clean miss: {ne:?}"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 // ── an episode miss is not a catalogue miss ─────────────────────────
@@ -2366,13 +2330,13 @@ async fn a_remembered_providers_clean_miss_yields_to_a_later_inconclusive_answer
 async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::MissEpisode),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::MissEpisode),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -2389,13 +2353,10 @@ async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
     );
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the verdict is the remembered provider's own"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 /// Two episode dead ends are misses of equal standing: the one kept
@@ -2405,20 +2366,20 @@ async fn a_remembered_providers_episode_miss_outranks_a_later_clean_miss() {
 async fn equal_episode_misses_past_a_remembered_fallback_keep_the_primarys() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: false }),
-        (ProviderId::Anidb, Behavior::Miss { clean: false }),
+        (ProviderId::TestB, Behavior::Miss { clean: false }),
+        (ProviderId::TestA, Behavior::Miss { clean: false }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect_err("nobody served it");
     assert!(!err.clean_miss);
-    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+    assert_eq!(attempt.answered_by, Some(ProviderId::TestA));
 }
 
 /// Two clean misses are of equal standing too: the remembered
@@ -2429,20 +2390,20 @@ async fn equal_episode_misses_past_a_remembered_fallback_keep_the_primarys() {
 async fn equal_clean_misses_past_a_remembered_fallback_keep_the_primarys() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect_err("nobody served it");
     assert!(err.clean_miss, "both denied the show; the miss persists");
-    assert_eq!(attempt.answered_by, Some(ProviderId::Anidb));
+    assert_eq!(attempt.answered_by, Some(ProviderId::TestA));
 }
 
 /// The remembered provider's episode dead end stands as its own when
@@ -2451,16 +2412,16 @@ async fn equal_clean_misses_past_a_remembered_fallback_keep_the_primarys() {
 async fn a_remembered_providers_episode_miss_stands_when_the_rest_are_unreachable() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: false }),
+        (ProviderId::TestB, Behavior::Miss { clean: false }),
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Network),
         ),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -2468,7 +2429,7 @@ async fn a_remembered_providers_episode_miss_stands_when_the_rest_are_unreachabl
     .expect_err("nobody served it");
     assert!(matches!(err.error, AniError::NoResults), "{:?}", err.error);
     assert!(!err.clean_miss);
-    assert_eq!(attempt.answered_by, Some(ProviderId::Hianime));
+    assert_eq!(attempt.answered_by, Some(ProviderId::TestB));
 }
 
 /// An answer from the rest of the order after the remembered
@@ -2480,19 +2441,19 @@ async fn a_remembered_providers_episode_miss_stands_when_the_rest_are_unreachabl
 async fn an_absence_reached_past_a_remembered_providers_episode_miss_says_so() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: false }),
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::TestB, Behavior::Miss { clean: false }),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the rest's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.provider, ProviderId::TestA);
     assert!(
         got.past_undenied_affinity,
         "the remembered provider found the show and did not deny it"
@@ -2506,19 +2467,19 @@ async fn an_absence_reached_past_a_remembered_providers_episode_miss_says_so() {
 async fn an_absence_reached_past_a_remembered_providers_clean_miss_is_its_own() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the rest's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Anidb);
+    assert_eq!(got.provider, ProviderId::TestA);
     assert!(
         !got.past_undenied_affinity,
         "the remembered provider denied the show for itself"
@@ -2533,14 +2494,14 @@ async fn an_absence_reached_past_a_remembered_providers_clean_miss_is_its_own() 
 #[tokio::test]
 async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
     let gates = Gates::new();
-    gates.open(ProviderId::Anidb);
+    gates.open(ProviderId::TestA);
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
-        (ProviderId::Hianime, Behavior::MissEpisode),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::MissEpisode),
     ]);
     let err = run_with(
         &gates,
-        &[ProviderId::Anidb, ProviderId::Hianime],
+        &[ProviderId::TestA, ProviderId::TestB],
         None,
         ScrapePriority::Interactive,
         &mut attempt,
@@ -2558,12 +2519,12 @@ async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
     );
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the verdict is the provider's that found the show"
     );
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "the skipped primary still got its trial"
     );
 }
@@ -2581,24 +2542,21 @@ async fn a_retried_providers_clean_miss_does_not_replace_an_episode_miss() {
 async fn a_remembered_providers_absence_yields_to_the_rest() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
-        (ProviderId::Anidb, Behavior::Answer("anidb")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
+        (ProviderId::TestA, Behavior::Answer("a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the rest of the order answered");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(got.value, "anidb");
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(got.value, "a");
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 /// A remembered fallback's episode chain answered a status that is
@@ -2613,15 +2571,15 @@ async fn a_remembered_providers_answered_status_outranks_the_rests_clean_miss() 
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
         (
-            ProviderId::Hianime,
+            ProviderId::TestB,
             Behavior::Unreachable(|| AniError::Upstream { status: 401 }),
         ),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -2635,12 +2593,12 @@ async fn a_remembered_providers_answered_status_outranks_the_rests_clean_miss() 
     assert!(!err.clean_miss, "the show was found; nothing persists");
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "attributed to the provider that answered it"
     );
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "the rest of the order was still asked"
     );
 }
@@ -2656,13 +2614,13 @@ async fn a_remembered_providers_answered_status_outranks_the_rests_clean_miss() 
 async fn equal_clean_misses_keep_the_provider_earliest_in_the_configured_order() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
-        (ProviderId::Hianime, Behavior::Miss { clean: true }),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -2675,12 +2633,12 @@ async fn equal_clean_misses_keep_the_provider_earliest_in_the_configured_order()
     );
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime],
+        vec![ProviderId::TestA, ProviderId::TestB],
         "the remembered primary's miss is set aside and the rest asked"
     );
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the row names the provider the read rule can serve it for"
     );
 }
@@ -2692,28 +2650,25 @@ async fn equal_clean_misses_keep_the_provider_earliest_in_the_configured_order()
 async fn equal_absences_keep_the_provider_earliest_in_the_configured_order() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("an absence is an answer");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(got.value, "absent from anidb");
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(got.value, "absent from a");
     assert!(
         !got.past_undenied_affinity,
         "the remembered provider denied the mode for itself"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Anidb, ProviderId::Hianime]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestA, ProviderId::TestB]);
 }
 
 /// Two absences are negatives of equal standing — both found the
@@ -2726,28 +2681,25 @@ async fn equal_absences_keep_the_provider_earliest_in_the_configured_order() {
 async fn equal_absences_past_a_remembered_fallback_keep_the_primarys() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
-        (ProviderId::Anidb, Behavior::Answer("absent from anidb")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
+        (ProviderId::TestA, Behavior::Answer("absent from a")),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("an absence is an answer");
-    assert_eq!(got.provider, ProviderId::Anidb);
-    assert_eq!(got.value, "absent from anidb");
+    assert_eq!(got.provider, ProviderId::TestA);
+    assert_eq!(got.value, "absent from a");
     assert!(
         !got.past_undenied_affinity,
         "the remembered provider denied the mode for itself"
     );
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 /// The remembered provider's absence denied the mode and the
@@ -2759,13 +2711,13 @@ async fn equal_absences_past_a_remembered_fallback_keep_the_primarys() {
 async fn a_remembered_providers_absence_and_the_primarys_clean_miss_are_peers() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
-        (ProviderId::Anidb, Behavior::Miss { clean: true }),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
+        (ProviderId::TestA, Behavior::Miss { clean: true }),
     ]);
     let err = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
@@ -2778,12 +2730,12 @@ async fn a_remembered_providers_absence_and_the_primarys_clean_miss_are_peers() 
     );
     assert_eq!(
         attempt.answered_by,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the row names the primary, first in the configured order"
     );
     assert_eq!(
         attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb],
+        vec![ProviderId::TestB, ProviderId::TestA],
         "the rest of the order was still asked"
     );
 }
@@ -2794,28 +2746,25 @@ async fn a_remembered_providers_absence_and_the_primarys_clean_miss_are_peers() 
 async fn a_remembered_providers_absence_stands_when_the_rest_are_unreachable() {
     let gates = Gates::new();
     let mut attempt = Scripted::new(&[
-        (ProviderId::Hianime, Behavior::Answer("absent from hianime")),
+        (ProviderId::TestB, Behavior::Answer("absent from b")),
         (
-            ProviderId::Anidb,
+            ProviderId::TestA,
             Behavior::Unreachable(|| AniError::Network),
         ),
     ]);
     let got = run_with(
         &gates,
         &ORDER,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         ScrapePriority::Interactive,
         &mut attempt,
     )
     .await
     .expect("the remembered provider's absence is an answer");
-    assert_eq!(got.provider, ProviderId::Hianime);
-    assert_eq!(got.value, "absent from hianime");
+    assert_eq!(got.provider, ProviderId::TestB);
+    assert_eq!(got.value, "absent from b");
     assert!(!got.past_undenied_affinity);
-    assert_eq!(
-        attempt.asked(),
-        vec![ProviderId::Hianime, ProviderId::Anidb]
-    );
+    assert_eq!(attempt.asked(), vec![ProviderId::TestB, ProviderId::TestA]);
 }
 
 /// The remembered provider answered the episode verdict — the show
@@ -2833,7 +2782,7 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
             clean_miss: false,
             failed_at: None,
         },
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
     );
     let dead_end = Negative::<&'static str>::Miss(
         NativeError {
@@ -2841,12 +2790,12 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
             clean_miss: false,
             failed_at: None,
         },
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
     );
     assert!(negative_outranks(&episode, &dead_end));
     let kept = firmer_negative(episode, dead_end, &ORDER);
     assert!(
-        matches!(kept, Negative::Miss(ref ne, Some(ProviderId::Anidb)) if matches!(ne.error, AniError::EpisodeUnavailable)),
+        matches!(kept, Negative::Miss(ref ne, Some(ProviderId::TestA)) if matches!(ne.error, AniError::EpisodeUnavailable)),
         "the episode verdict stands, with its author"
     );
 }
@@ -2899,7 +2848,7 @@ impl Provider for Deadlined {
 async fn the_walk_tells_the_client_the_attempts_deadline() {
     let gates = Gates::new();
     let told = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let mut attempt = Scripted::new(&[(ProviderId::Anidb, Behavior::Answer("anidb"))]);
+    let mut attempt = Scripted::new(&[(ProviderId::TestA, Behavior::Answer("a"))]);
     let started = tokio::time::Instant::now();
     let seen = told.clone();
     with_failover(
@@ -2944,7 +2893,7 @@ async fn the_walk_tells_the_client_the_attempts_deadline() {
 async fn the_walk_clears_the_deadline_before_handing_the_client_back() {
     let gates = Gates::new();
     let told = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let mut attempt = Scripted::new(&[(ProviderId::Anidb, Behavior::Answer("anidb"))]);
+    let mut attempt = Scripted::new(&[(ProviderId::TestA, Behavior::Answer("a"))]);
     let seen = told.clone();
     with_failover(
         &ORDER,

@@ -826,6 +826,10 @@ pub fn client_for<'a>(
             )),
             None => Box::new(crate::scraper::hianime::HianimeClient::new(fetch)),
         },
+        // A test-only provider is nobody's site: it answers from the
+        // table a test registered, or not at all.
+        #[cfg(test)]
+        ProviderId::TestA | ProviderId::TestB => return Err(AniError::Network),
     })
 }
 

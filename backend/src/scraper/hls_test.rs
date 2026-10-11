@@ -80,7 +80,7 @@ async fn quality_selection_joins_the_rendition_to_the_url_the_master_was_served_
     #[async_trait::async_trait]
     impl Provider for Moved {
         fn id(&self) -> ProviderId {
-            ProviderId::Anidb
+            ProviderId::TestA
         }
         async fn search(&self, _q: &str) -> Result<Vec<BrowseHit>> {
             unreachable!()
@@ -146,7 +146,7 @@ async fn quality_selection_fetches_playlists_with_the_sources_referer() {
     #[async_trait::async_trait]
     impl Provider for Recording {
         fn id(&self) -> ProviderId {
-            ProviderId::Anidb
+            ProviderId::TestA
         }
         async fn search(&self, _q: &str) -> Result<Vec<BrowseHit>> {
             unreachable!()

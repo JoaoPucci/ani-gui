@@ -4,8 +4,8 @@
 //! builder and gate helpers.
 
 use super::tests::{
-    cache_only_state, check_with, close_breaker, open_breaker, pause_provider,
-    stub_hianime_sub_only, unreachable,
+    cache_only_state, check_with, close_breaker, open_breaker, pause_provider, stub_sub_only,
+    unreachable,
 };
 use super::*;
 
@@ -41,10 +41,10 @@ async fn a_negative_row_is_backed_by_its_provider_only_once_it_has_recovered() {
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    let primary = negative_row(Some(ProviderId::Anidb));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    let primary = negative_row(Some(ProviderId::TestA));
     let unattributed = negative_row(None);
-    let fallback = negative_row(Some(ProviderId::Hianime));
+    let fallback = negative_row(Some(ProviderId::TestB));
 
     assert!(
         !negative_row_is_backed(&state, &primary),
@@ -54,27 +54,17 @@ async fn a_negative_row_is_backed_by_its_provider_only_once_it_has_recovered() {
         !negative_row_is_backed(&state, &fallback),
         "nor does the fallback's: the primary is not refusing"
     );
-    close_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
+    close_breaker(state.providers.gate(ProviderId::TestA));
     assert!(
         negative_row_is_backed(&state, &primary),
         "once the primary has answered, its row stands"
     );
-    state
-        .providers
-        .gate(crate::scraper::provider::ProviderId::Anidb)
-        .record(
-            crate::scraper::gate::ScrapeOutcome::Failure,
-            tokio::time::Instant::now(),
-        );
+    state.providers.gate(ProviderId::TestA).record(
+        crate::scraper::gate::ScrapeOutcome::Failure,
+        tokio::time::Instant::now(),
+    );
     assert!(
-        !state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb)
-            .is_refusing(),
+        !state.providers.gate(ProviderId::TestA).is_refusing(),
         "one failure opens nothing"
     );
     assert!(
@@ -85,21 +75,13 @@ async fn a_negative_row_is_backed_by_its_provider_only_once_it_has_recovered() {
         !negative_row_is_backed(&state, &fallback),
         "and the fallback's row still yields to a primary that is not refusing"
     );
-    close_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
+    close_breaker(state.providers.gate(ProviderId::TestA));
     assert!(
         negative_row_is_backed(&state, &primary),
         "answering again backs it again"
     );
 
-    open_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
+    open_breaker(state.providers.gate(ProviderId::TestA));
     assert!(
         !negative_row_is_backed(&state, &primary),
         "an open primary stands behind nothing"
@@ -109,11 +91,7 @@ async fn a_negative_row_is_backed_by_its_provider_only_once_it_has_recovered() {
         !negative_row_is_backed(&state, &fallback),
         "nor does a fallback nothing has answered through"
     );
-    close_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Hianime),
-    );
+    close_breaker(state.providers.gate(ProviderId::TestB));
     assert!(
         negative_row_is_backed(&state, &fallback),
         "the fallback's row stands through the outage once the fallback has answered"
@@ -133,22 +111,14 @@ async fn a_negative_row_is_backed_by_its_provider_only_once_it_has_recovered() {
         "and the half-open primary no longer refuses, so the fallback's row yields to the trial"
     );
 
-    close_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
+    close_breaker(state.providers.gate(ProviderId::TestA));
     assert!(
         negative_row_is_backed(&state, &primary),
         "a success is the recovery"
     );
     assert!(!negative_row_is_backed(&state, &fallback));
 
-    pause_provider(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
+    pause_provider(state.providers.gate(ProviderId::TestA));
     assert!(
         !negative_row_is_backed(&state, &primary),
         "a running pause is not answering"
@@ -171,20 +141,16 @@ async fn a_negative_row_is_backed_by_its_provider_only_once_it_has_recovered() {
 #[tokio::test]
 async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_answers() {
     use crate::scraper::provider::ProviderId;
-    let hianime = stub_hianime_sub_only();
+    let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(std::sync::Arc::clone(&hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
     // The primary has been seen answering, so its row can stand.
-    close_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
-    write_cache(&state, "571", "sub", false, Some(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
+    write_cache(&state, "571", "sub", false, Some(ProviderId::TestA));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -202,11 +168,7 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
         "the primary's own negative is served while the primary answers"
     );
 
-    open_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
+    open_breaker(state.providers.gate(ProviderId::TestA));
     tokio::time::pause();
     tokio::time::advance(
         crate::scraper::gate::BREAKER_COOLDOWN + std::time::Duration::from_millis(1),
@@ -217,43 +179,31 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
         !batch_cached(&state, &batch).cached.contains_key("571"),
         "past the cooldown the primary has answered nothing, so its negative is not served"
     );
-    let got = check_with(
-        &state,
-        &args,
-        &unreachable(crate::scraper::provider::ProviderId::Anidb),
-    )
-    .await
-    .expect("the probe ran and the fallback answered");
+    let got = check_with(&state, &args, &unreachable(ProviderId::TestA))
+        .await
+        .expect("the probe ran and the fallback answered");
     assert!(
         got.available,
         "the probe ran past the still-down primary and the fallback carries the show"
     );
-    assert!(!hianime.asked().is_empty(), "the fallback was asked");
+    assert!(!fallback.asked().is_empty(), "the fallback was asked");
 
     // Recovery observed: the primary's negative stands again.
     let td2 = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td2);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(std::sync::Arc::clone(&hianime));
-    write_cache(&state, "572", "sub", false, Some(ProviderId::Anidb));
-    open_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
+    write_cache(&state, "572", "sub", false, Some(ProviderId::TestA));
+    open_breaker(state.providers.gate(ProviderId::TestA));
     tokio::time::pause();
     tokio::time::advance(
         crate::scraper::gate::BREAKER_COOLDOWN + std::time::Duration::from_millis(1),
     )
     .await;
     tokio::time::resume();
-    close_breaker(
-        state
-            .providers
-            .gate(crate::scraper::provider::ProviderId::Anidb),
-    );
+    close_breaker(state.providers.gate(ProviderId::TestA));
     let batch = AvailabilityBatchArgs {
         kitsu_ids: vec!["572".into()],
         mode: "sub".into(),
@@ -263,7 +213,7 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
         Some(&false),
         "a success closed the breaker, and the primary stands behind its row again"
     );
-    let asked_before = hianime.asked().len();
+    let asked_before = fallback.asked().len();
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -271,17 +221,13 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(
-        &state,
-        &args,
-        &unreachable(crate::scraper::provider::ProviderId::Anidb),
-    )
-    .await
-    .expect("served from the row");
+    let got = check_with(&state, &args, &unreachable(ProviderId::TestA))
+        .await
+        .expect("served from the row");
     assert!(!got.available, "the row is the answer");
     assert_eq!(
         asked_before,
-        hianime.asked().len(),
+        fallback.asked().len(),
         "a cache hit asks the fallback nothing"
     );
 }
@@ -300,23 +246,23 @@ async fn a_primarys_persisted_negative_is_not_served_on_a_fresh_gate() {
     use crate::scraper::provider::ProviderId;
     // The primary is down the way an outage looks from here: every
     // request answers 503.
-    let anidb = std::sync::Arc::new(
-        crate::scraper::table_provider::TableProvider::new().search_default(
-            crate::scraper::table_provider::Answer::fails(|| crate::error::AniError::Upstream {
-                status: 503,
-            }),
-        ),
+    let primary = std::sync::Arc::new(
+        crate::scraper::table_provider::TableProvider::new()
+            .answering_as(ProviderId::TestA)
+            .search_default(crate::scraper::table_provider::Answer::fails(|| {
+                crate::error::AniError::Upstream { status: 503 }
+            })),
     );
-    let hianime = stub_hianime_sub_only();
+    let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
-        .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_stub(std::sync::Arc::clone(&hianime));
+        .set_order(vec![ProviderId::TestA, ProviderId::TestB]);
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
     // The row a probe wrote before the restart, while the primary
     // answered and the show was not in its catalogue.
-    write_cache(&state, "586", "sub", false, Some(ProviderId::Anidb));
+    write_cache(&state, "586", "sub", false, Some(ProviderId::TestA));
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
@@ -325,13 +271,13 @@ async fn a_primarys_persisted_negative_is_not_served_on_a_fresh_gate() {
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_with(&state, &args, &anidb)
+    let got = check_with(&state, &args, &primary)
         .await
         .expect("the fallback answered");
     assert!(got.available, "the fallback carries the show: {got:?}");
-    assert_eq!(got.provider, Some(ProviderId::Hianime));
+    assert_eq!(got.provider, Some(ProviderId::TestB));
     assert!(
-        !anidb.asked().is_empty(),
+        !primary.asked().is_empty(),
         "the probe ran rather than serving the row"
     );
 }
