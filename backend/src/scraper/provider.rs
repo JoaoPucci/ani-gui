@@ -64,15 +64,20 @@ impl ProviderId {
     #[cfg(test)]
     pub const TEST: &'static [ProviderId] = &[Self::TestA, Self::TestB];
 
-    /// The provider a label names. Anything that is not a known
-    /// label — an absent one included — is anidb, the default every
-    /// caller from before there were two providers means.
+    /// The provider a label names, when it names a known one. An
+    /// absent or unknown label names none.
     #[must_use]
     pub fn from_label(label: &str) -> Option<Self> {
-        match label {
-            "hianime" => Some(Self::Hianime),
-            _ => Some(Self::Anidb),
-        }
+        Self::known().find(|p| p.label() == label)
+    }
+
+    /// Every provider the build knows: [`Self::ALL`], and in test
+    /// builds [`Self::TEST`] too.
+    fn known() -> impl Iterator<Item = Self> {
+        let known = Self::ALL.iter();
+        #[cfg(test)]
+        let known = known.chain(Self::TEST);
+        known.copied()
     }
 
     /// The label the renderer interpolates into its progress copy
@@ -160,12 +165,14 @@ pub fn slug_words(slug: &str) -> Option<&str> {
 /// A show id that says whose id it is. Every store stamped by a
 /// resolve — history rows, the numbering sidecar, the watched-at
 /// stamps, the reverse mapping, the cache row — keys on this key's
-/// string form. anidb's is the bare slug every existing row already
-/// holds, so nothing migrates; any other provider's carries its label
-/// as a prefix, so the read side can tell them apart.
+/// string form. Every provider's carries its label as a prefix, so the
+/// read side can tell them apart. A bare id names no provider: it is
+/// what every row anidb.app's resolves wrote holds, and the
+/// allanime-era rows before them — nothing migrates, and nothing the
+/// app walks claims them.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ShowKey {
-    /// The provider whose slug this is.
+    /// The provider whose slug this is; `None` for a bare id.
     pub provider: Option<ProviderId>,
     /// The slug as the provider spells it.
     pub slug: String,
@@ -182,14 +189,12 @@ impl ShowKey {
 
     /// The key a stored id names. A prefix the app does not know is
     /// part of the slug: only a known label qualifies an id, and a
-    /// bare id is anidb's — including the allanime-era ids that
-    /// predate slugs, which parse but carry no words.
+    /// bare id names no provider — anidb.app's slugs, and the
+    /// allanime-era ids that predate slugs, which parse but carry no
+    /// words.
     #[must_use]
     pub fn parse(id: &str) -> Self {
-        let known = ProviderId::ALL.iter();
-        #[cfg(test)]
-        let known = known.chain(ProviderId::TEST);
-        for &provider in known.filter(|p| **p != ProviderId::Anidb) {
+        for provider in ProviderId::known() {
             if let Some(slug) = id
                 .strip_prefix(provider.label())
                 .and_then(|r| r.strip_prefix(':'))
@@ -197,7 +202,10 @@ impl ShowKey {
                 return Self::new(provider, slug);
             }
         }
-        Self::new(ProviderId::Anidb, id)
+        Self {
+            provider: None,
+            slug: id.to_string(),
+        }
     }
 
     /// The Kitsu-searchable words the slug carries, when it is
@@ -211,7 +219,7 @@ impl ShowKey {
 impl std::fmt::Display for ShowKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.provider {
-            None | Some(ProviderId::Anidb) => f.write_str(&self.slug),
+            None => f.write_str(&self.slug),
             Some(other) => write!(f, "{}:{}", other.label(), self.slug),
         }
     }

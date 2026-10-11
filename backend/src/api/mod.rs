@@ -346,7 +346,8 @@ async fn get_kitsu_episodes(
 struct TitleMatchQuery {
     title: String,
     cour: u32,
-    /// The provider whose title this is; anidb when absent.
+    /// The provider whose title this is; none when absent — a history
+    /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
 }
@@ -385,7 +386,8 @@ struct TitleMatchBody {
     title: String,
     cour: u32,
     kitsu_id: String,
-    /// The provider whose title this is; anidb when absent.
+    /// The provider whose title this is; none when absent — a history
+    /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
 }
