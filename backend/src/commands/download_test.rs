@@ -7113,3 +7113,40 @@ async fn yt_dlp_is_told_the_episode_is_not_live() {
         "{run}"
     );
 }
+
+/// A run's speed counts from the run's start: the first progress a tool
+/// reports already carries a block, and that block is part of the
+/// speed — but only what this run fetched, not what an earlier run of
+/// the same transfer left for it to resume from.
+mod rate_from_the_runs_start {
+    use crate::commands::download_progress::RateMeter;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    #[test]
+    fn a_fresh_runs_first_block_counts() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(0, start);
+        meter.observe(2_000_000, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - 1_000_000.0).abs() < 1.0, "{rate}");
+    }
+
+    #[test]
+    fn a_resumed_runs_first_count_counts_only_what_it_fetched() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(50_000_000, start);
+        meter.observe(52_000_000, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - 1_000_000.0).abs() < 1.0, "{rate}");
+    }
+
+    #[test]
+    fn what_a_run_resumes_from_is_the_partial_file_ytdlp_keeps() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        assert_eq!(super::super::resumed_bytes(&out), 0, "nothing to resume");
+        std::fs::write(dir.path().join("episode.part.mp4.part"), vec![0u8; 4096]).expect("write");
+        assert_eq!(super::super::resumed_bytes(&out), 4096);
+    }
+}
