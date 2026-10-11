@@ -39,6 +39,10 @@ pub struct ProviderSet {
     order: Vec<ProviderId>,
     gates: HashMap<ProviderId, Arc<ScraperGate>>,
     origins: HashMap<ProviderId, String>,
+    /// Providers a test answers from tables in place of the site's
+    /// client — keyed by the id each answers as.
+    #[cfg(test)]
+    stubs: HashMap<ProviderId, Arc<crate::scraper::table_provider::TableProvider>>,
 }
 
 impl ProviderSet {
@@ -62,6 +66,8 @@ impl ProviderSet {
             order,
             gates,
             origins: HashMap::new(),
+            #[cfg(test)]
+            stubs: HashMap::new(),
         }
     }
 
@@ -113,6 +119,36 @@ impl ProviderSet {
     /// Point `provider`'s client at `base` instead of the real site.
     pub fn set_origin(&mut self, provider: ProviderId, base: impl Into<String>) {
         self.origins.insert(provider, base.into());
+    }
+
+    /// Answer as `table` wherever the walk asks the provider it
+    /// answers as, instead of building that provider's client. The
+    /// state's gate still admits every request to it.
+    #[cfg(test)]
+    pub(crate) fn set_stub(&mut self, table: Arc<crate::scraper::table_provider::TableProvider>) {
+        use crate::scraper::provider::Provider;
+        self.stubs.insert(table.id(), table);
+    }
+
+    /// [`Self::set_stub`], chained.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_stub(
+        mut self,
+        table: Arc<crate::scraper::table_provider::TableProvider>,
+    ) -> Self {
+        self.set_stub(table);
+        self
+    }
+
+    /// The table registered for `provider`, when a test registered one.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn stub(
+        &self,
+        provider: ProviderId,
+    ) -> Option<Arc<crate::scraper::table_provider::TableProvider>> {
+        self.stubs.get(&provider).cloned()
     }
 
     /// [`Self::set_origin`], chained.

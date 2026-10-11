@@ -4,7 +4,8 @@
 //! builder and gate helpers.
 
 use super::tests::{
-    cache_only_state, close_breaker, open_breaker, pause_provider, stub_hianime_sub_only,
+    cache_only_state, check_with, close_breaker, open_breaker, pause_provider,
+    stub_hianime_sub_only, unreachable,
 };
 use super::*;
 
@@ -170,15 +171,13 @@ async fn a_negative_row_is_backed_by_its_provider_only_once_it_has_recovered() {
 #[tokio::test]
 async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_answers() {
     use crate::scraper::provider::ProviderId;
-    let hianime = stub_hianime_sub_only().await;
+    let hianime = stub_hianime_sub_only();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(crate::scraper::provider::ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(std::sync::Arc::clone(&hianime));
     // The primary has been seen answering, so its row can stand.
     close_breaker(
         state
@@ -218,21 +217,18 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
         !batch_cached(&state, &batch).cached.contains_key("571"),
         "past the cooldown the primary has answered nothing, so its negative is not served"
     );
-    let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
-        .await
-        .expect("the probe ran and the fallback answered");
+    let got = check_with(
+        &state,
+        &args,
+        &unreachable(crate::scraper::provider::ProviderId::Anidb),
+    )
+    .await
+    .expect("the probe ran and the fallback answered");
     assert!(
         got.available,
         "the probe ran past the still-down primary and the fallback carries the show"
     );
-    assert!(
-        !hianime
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
-        "the fallback was asked"
-    );
+    assert!(!hianime.asked().is_empty(), "the fallback was asked");
 
     // Recovery observed: the primary's negative stands again.
     let td2 = tempfile::tempdir().expect("td");
@@ -240,9 +236,7 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(crate::scraper::provider::ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(std::sync::Arc::clone(&hianime));
     write_cache(&state, "572", "sub", false, Some(ProviderId::Anidb));
     open_breaker(
         state
@@ -269,7 +263,7 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
         Some(&false),
         "a success closed the breaker, and the primary stands behind its row again"
     );
-    let asked_before = hianime.received_requests().await.expect("recorded").len();
+    let asked_before = hianime.asked().len();
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -277,13 +271,17 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
-        .await
-        .expect("served from the row");
+    let got = check_with(
+        &state,
+        &args,
+        &unreachable(crate::scraper::provider::ProviderId::Anidb),
+    )
+    .await
+    .expect("served from the row");
     assert!(!got.available, "the row is the answer");
     assert_eq!(
         asked_before,
-        hianime.received_requests().await.expect("recorded").len(),
+        hianime.asked().len(),
         "a cache hit asks the fallback nothing"
     );
 }
@@ -300,21 +298,22 @@ async fn a_primary_negative_is_not_served_past_the_cooldown_until_the_primary_an
 #[tokio::test]
 async fn a_primarys_persisted_negative_is_not_served_on_a_fresh_gate() {
     use crate::scraper::provider::ProviderId;
-    use wiremock::matchers::method;
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .respond_with(wiremock::ResponseTemplate::new(503))
-        .mount(&anidb)
-        .await;
-    let hianime = super::tests::stub_hianime_sub_only().await;
+    // The primary is down the way an outage looks from here: every
+    // request answers 503.
+    let anidb = std::sync::Arc::new(
+        crate::scraper::table_provider::TableProvider::new().search_default(
+            crate::scraper::table_provider::Answer::fails(|| crate::error::AniError::Upstream {
+                status: 503,
+            }),
+        ),
+    );
+    let hianime = stub_hianime_sub_only();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(crate::scraper::provider::ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(std::sync::Arc::clone(&hianime));
     // The row a probe wrote before the restart, while the primary
     // answered and the show was not in its catalogue.
     write_cache(&state, "586", "sub", false, Some(ProviderId::Anidb));
@@ -326,17 +325,13 @@ async fn a_primarys_persisted_negative_is_not_served_on_a_fresh_gate() {
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+    let got = check_with(&state, &args, &anidb)
         .await
         .expect("the fallback answered");
     assert!(got.available, "the fallback carries the show: {got:?}");
     assert_eq!(got.provider, Some(ProviderId::Hianime));
     assert!(
-        !anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
+        !anidb.asked().is_empty(),
         "the probe ran rather than serving the row"
     );
 }

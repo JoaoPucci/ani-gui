@@ -127,6 +127,8 @@ pub(crate) struct TableProvider {
     log: Mutex<Vec<(Asked, tokio::time::Instant)>>,
     stamp: Option<tokio::time::Instant>,
     stalls: bool,
+    delay: Option<std::time::Duration>,
+    search_delay: Option<std::time::Duration>,
 }
 
 impl Default for TableProvider {
@@ -156,7 +158,70 @@ impl TableProvider {
             log: Mutex::new(Vec::new()),
             stamp: None,
             stalls: false,
+            delay: None,
+            search_delay: None,
         }
+    }
+
+    /// A provider whose every request dies on transport.
+    pub(crate) fn unreachable() -> Self {
+        Self::failing(|| AniError::Network)
+    }
+
+    /// A provider whose every request answers `status` — except the
+    /// detail year, which a real client reads as a missing page (the
+    /// soft `None`) unless the status is a block.
+    pub(crate) fn refusing(status: u16) -> Self {
+        let mut t = Self::failing(move || AniError::Upstream { status });
+        if !(AniError::Upstream { status }).is_provider_block() {
+            t.years_default = Answer::Ok(None);
+        }
+        t
+    }
+
+    fn failing(make: impl Fn() -> AniError + Send + Sync + Copy + 'static) -> Self {
+        let mut t = Self::new();
+        t.search_default = Answer::fails(make);
+        t.listings_default = Answer::fails(make);
+        t.modes_default = Answer::fails(make);
+        t.streams_default = Answer::fails(make);
+        t.playlists_default = Answer::fails(make);
+        t.years_default = Answer::fails(make);
+        t
+    }
+
+    /// One show a search for `query` finds — `slug`, `title` — whose
+    /// listing is `episodes` as `(id, number)`; each id in `streaming`
+    /// plays in sub from `master`.
+    pub(crate) fn one_show(
+        query: &str,
+        (slug, title): (&str, &str),
+        episodes: &[(u64, u32)],
+        streaming: &[u64],
+        master: &str,
+    ) -> Self {
+        let show = slug_numeric_id(slug).expect("a slug-shaped id");
+        let rows = episodes
+            .iter()
+            .map(|(id, number)| EpisodeRef {
+                id: *id,
+                number: *number,
+                number2: None,
+            })
+            .collect::<Vec<_>>();
+        streaming.iter().fold(
+            Self::new()
+                .hits(
+                    query,
+                    vec![BrowseHit {
+                        slug: slug.to_string(),
+                        title: title.to_string(),
+                        kind: None,
+                    }],
+                )
+                .listing(show, rows),
+            |t, id| t.stream(*id, "sub", master).mode(*id, "sub", true),
+        )
     }
 
     /// Listings of `count` episodes for each `(id, count)`, as
@@ -173,6 +238,13 @@ impl TableProvider {
         shows.iter().fold(Self::new(), |t, (id, count, year)| {
             t.listing(*id, listing_of(*id, *count)).year(*id, *year)
         })
+    }
+
+    /// The provider this table answers as — and the slot a
+    /// [`crate::provider_set::ProviderSet`] registers it in.
+    pub(crate) fn answering_as(mut self, id: ProviderId) -> Self {
+        self.id = id;
+        self
     }
 
     /// What a search whose query contains `needle` answers.
@@ -284,6 +356,20 @@ impl TableProvider {
         self
     }
 
+    /// Every request answers only after `delay` — a provider
+    /// answering near its own per-request timeout.
+    pub(crate) fn delaying(mut self, delay: std::time::Duration) -> Self {
+        self.delay = Some(delay);
+        self
+    }
+
+    /// Searches answer only after `delay`; everything else at once —
+    /// a resolve held on its first request.
+    pub(crate) fn delaying_searches(mut self, delay: std::time::Duration) -> Self {
+        self.search_delay = Some(delay);
+        self
+    }
+
     /// Everything asked so far, in order.
     pub(crate) fn asked(&self) -> Vec<Asked> {
         self.log
@@ -323,6 +409,9 @@ impl TableProvider {
         if self.stalls {
             std::future::pending::<()>().await;
         }
+        if let Some(delay) = self.delay {
+            tokio::time::sleep(delay).await;
+        }
     }
 
     fn by_show<T: Clone>(
@@ -348,6 +437,9 @@ impl Provider for TableProvider {
 
     async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
         self.note(Asked::Search(query.to_string())).await;
+        if let Some(delay) = self.search_delay {
+            tokio::time::sleep(delay).await;
+        }
         self.searches
             .iter()
             .find(|(needle, _)| query.contains(needle.as_str()))
@@ -484,6 +576,62 @@ impl<P: Provider> Provider for Gated<'_, P> {
 
 #[async_trait::async_trait]
 impl<P: Provider + ?Sized> Provider for &P {
+    fn id(&self) -> ProviderId {
+        (**self).id()
+    }
+
+    async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
+        (**self).search(query).await
+    }
+
+    async fn episodes(&self, slug: &str) -> Result<Vec<EpisodeRef>> {
+        (**self).episodes(slug).await
+    }
+
+    async fn has_mode(&self, episode_id: u64, mode: &str) -> Result<bool> {
+        (**self).has_mode(episode_id, mode).await
+    }
+
+    async fn master_playlist_url(&self, episode_id: u64, mode: &str) -> Result<StreamSource> {
+        (**self).master_playlist_url(episode_id, mode).await
+    }
+
+    async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
+        (**self).playlist(url, referer).await
+    }
+
+    async fn playlist_at(&self, url: &str, referer: Option<&str>) -> Result<(String, String)> {
+        (**self).playlist_at(url, referer).await
+    }
+
+    async fn quality_stream_url(&self, source: &StreamSource, quality: &str) -> Result<String> {
+        (**self).quality_stream_url(source, quality).await
+    }
+
+    async fn stream_for(
+        &self,
+        episode_id: u64,
+        mode: &str,
+        quality: &str,
+    ) -> Result<crate::scraper::provider::ResolvedStream> {
+        (**self).stream_for(episode_id, mode, quality).await
+    }
+
+    async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
+        (**self).detail_year(slug).await
+    }
+
+    fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
+        (**self).last_attempt_at()
+    }
+
+    fn bound_attempt(&self, deadline: Option<tokio::time::Instant>) {
+        (**self).bound_attempt(deadline);
+    }
+}
+
+#[async_trait::async_trait]
+impl<P: Provider + ?Sized> Provider for Arc<P> {
     fn id(&self) -> ProviderId {
         (**self).id()
     }

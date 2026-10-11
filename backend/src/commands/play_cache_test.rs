@@ -182,10 +182,9 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        providers: crate::provider_set::ProviderSet::for_tests().with_origin(
-            crate::scraper::provider::ProviderId::Anidb,
-            "http://127.0.0.1:1",
-        ),
+        providers: crate::provider_set::ProviderSet::for_tests().with_stub(std::sync::Arc::new(
+            crate::scraper::table_provider::TableProvider::unreachable(),
+        )),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),

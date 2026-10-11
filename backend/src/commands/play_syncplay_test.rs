@@ -1,51 +1,20 @@
 use super::*;
 use crate::commands::play::PlayArgs;
-use wiremock::matchers::{method, path, query_param};
+use crate::scraper::table_provider::TableProvider;
+use std::sync::Arc;
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// Same one-show provider surface as the play_external tests: browse,
-/// episodes, jpn embed on episode 2, master URL on the embed page.
-async fn stub_provider(mock: &MockServer, query: &str) {
-    Mock::given(method("GET"))
-        .and(path("/browse"))
-        .and(query_param("q", query))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>"),
-        )
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/77/episodes"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2}]}"#),
-        )
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/api/frontend/episode/702/languages"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
-            mock.uri()
-        )))
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/e/x"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            "player.setup({{ file: '{}/x/master.m3u8' }});",
-            mock.uri()
-        )))
-        .mount(mock)
-        .await;
-    // The quality step validates the master before handing it on, so
-    // the stub has to serve it like the CDN would.
-    Mock::given(method("GET"))
-        .and(path("/x/master.m3u8"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
-        .mount(mock)
-        .await;
+/// The same one-show provider as the play_external tests: a
+/// two-episode listing, the second streaming from a master on `mock`.
+fn stub_provider(mock: &MockServer, query: &str) -> TableProvider {
+    TableProvider::one_show(
+        query,
+        ("the-show-77", "The Show"),
+        &[(701, 1), (702, 2)],
+        &[702],
+        &format!("{}/x/master.m3u8", mock.uri()),
+    )
 }
 
 fn stage_recorder(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
@@ -66,7 +35,7 @@ fn stage_recorder(dir: &std::path::Path) -> (std::path::PathBuf, std::path::Path
     (binary, argv_file)
 }
 
-fn state_for(dir: &std::path::Path, provider_base: &str) -> crate::app::AppState {
+fn state_for(dir: &std::path::Path, provider: &Arc<TableProvider>) -> crate::app::AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     crate::app::AppState {
@@ -78,10 +47,7 @@ fn state_for(dir: &std::path::Path, provider_base: &str) -> crate::app::AppState
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: dir.join("history"),
-        providers: crate::provider_set::ProviderSet::for_tests().with_origin(
-            crate::scraper::provider::ProviderId::Anidb,
-            provider_base.to_string(),
-        ),
+        providers: crate::provider_set::ProviderSet::for_tests().with_stub(Arc::clone(provider)),
         image_cache_dir: dir.join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -114,10 +80,10 @@ async fn a_fresh_syncplay_launch_resolves_natively_and_receives_the_master_url()
     // Empty cache forces the fresh path; the provider is unreachable,
     // so success proves the resolution never left the native client.
     let mock = MockServer::start().await;
-    stub_provider(&mock, "the show").await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
     let (binary, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), &mock.uri());
+    let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
         format!("syncplay_binary = \"{}\"\n", binary.display()),
@@ -154,7 +120,7 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
         .await;
     let dir = tempfile::tempdir().expect("tmp");
     let (binary, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
     std::fs::write(
         &state.config_path,
         format!(
@@ -229,7 +195,7 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
         .await;
     let dir = tempfile::tempdir().expect("tmp");
     let (binary, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
     std::fs::write(
         &state.config_path,
         format!(
@@ -289,21 +255,13 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
 #[tokio::test]
 async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
     let mock = MockServer::start().await;
-    // Hold the resolve on its first request, ahead of the plain stub.
-    Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>")
-                .set_delay(std::time::Duration::from_millis(700)),
-        )
-        .with_priority(1)
-        .mount(&mock)
-        .await;
-    stub_provider(&mock, "the show").await;
+    // Hold the resolve on its first request.
+    let provider = Arc::new(
+        stub_provider(&mock, "the show").delaying_searches(std::time::Duration::from_millis(700)),
+    );
     let dir = tempfile::tempdir().expect("tmp");
     let (binary, argv_file) = stage_recorder(dir.path());
-    let state = std::sync::Arc::new(state_for(dir.path(), &mock.uri()));
+    let state = std::sync::Arc::new(state_for(dir.path(), &provider));
     std::fs::write(
         &state.config_path,
         format!("syncplay_binary = \"{}\"\n", binary.display()),
@@ -370,10 +328,10 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
         .respond_with(ResponseTemplate::new(404).set_delay(std::time::Duration::from_millis(700)))
         .mount(&mock)
         .await;
-    stub_provider(&mock, "the show").await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
     let (binary, argv_file) = stage_recorder(dir.path());
-    let state = std::sync::Arc::new(state_for(dir.path(), &mock.uri()));
+    let state = std::sync::Arc::new(state_for(dir.path(), &provider));
     std::fs::write(
         &state.config_path,
         format!(

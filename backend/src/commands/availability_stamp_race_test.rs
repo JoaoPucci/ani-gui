@@ -14,9 +14,10 @@
 //! Mounted by `#[path]` beside the availability tests and borrowing
 //! their state builder.
 
-use super::tests::cache_only_state;
+use super::tests::{cache_only_state, check_with};
 use super::*;
-use crate::scraper::provider::ProviderId;
+use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
+use crate::scraper::table_provider::TableProvider;
 
 /// The show both writers stamp, in the mode a resolve's cap is exact
 /// for.
@@ -238,17 +239,11 @@ async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_i
 /// just proven playable for the negative's whole lifetime.
 #[tokio::test]
 async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#)
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
-        .mount(&anidb)
-        .await;
+    // The primary's search answers a clean miss, slowly enough for a
+    // stamp to land while the probe waits on it.
+    let anidb = std::sync::Arc::new(
+        TableProvider::new().delaying_searches(std::time::Duration::from_millis(300)),
+    );
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state.providers.set_order(vec![ProviderId::Anidb]);
@@ -264,8 +259,8 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
 
     let probe = tokio::spawn({
         let state = state.clone();
-        let base = anidb.uri();
-        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+        let anidb = std::sync::Arc::clone(&anidb);
+        async move { check_with(&state, &args, &anidb).await }
     });
     // The resolve lands while the probe waits on the primary.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -511,17 +506,11 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_sto
 /// row that changed: the row was proven again after the walk began.
 #[tokio::test]
 async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_while_it_was_out() {
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#)
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
-        .mount(&anidb)
-        .await;
+    // The primary's search answers a clean miss, slowly enough for a
+    // stamp to land while the probe waits on it.
+    let anidb = std::sync::Arc::new(
+        TableProvider::new().delaying_searches(std::time::Duration::from_millis(300)),
+    );
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state.providers.set_order(vec![ProviderId::Anidb]);
@@ -539,8 +528,8 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
 
     let probe = tokio::spawn({
         let state = state.clone();
-        let base = anidb.uri();
-        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+        let anidb = std::sync::Arc::clone(&anidb);
+        async move { check_with(&state, &args, &anidb).await }
     });
     // The resolve lands while the probe waits on the primary.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -698,42 +687,30 @@ async fn a_later_native_success_does_not_overwrite_a_positive_row_written_after_
     assert_eq!(row.episode_count, Some(24));
 }
 
-/// One-show anidb stub whose browse answer is delayed, so a stamp
-/// can land while the probe waits on it.
-async fn stub_one_show_slowly(count: u32) -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/probe-show-5"><img alt="Probe Show"/></a>"#)
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
-        .mount(&server)
-        .await;
-    let eps: Vec<String> = (1..=count)
-        .map(|n| format!("{{\"id\":{},\"number\":{}}}", 5000 + n, n))
+/// One show whose search answers late, so a stamp can land while the
+/// probe waits on it: every search finds `probe-show-5`, whose
+/// listing carries `count` episodes.
+fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
+    let rows: Vec<EpisodeRef> = (1..=count)
+        .map(|n| EpisodeRef {
+            id: 5000 + u64::from(n),
+            number: n,
+            number2: None,
+        })
         .collect();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/5/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path(format!(
-            "/api/frontend/episode/{}/languages",
-            5000 + count
-        )))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/p1"}]}"#,
-        ))
-        .mount(&server)
-        .await;
-    server
+    let last = 5000 + u64::from(count);
+    std::sync::Arc::new(
+        TableProvider::new()
+            .search_default(vec![BrowseHit {
+                slug: "probe-show-5".into(),
+                title: "Probe Show".into(),
+                kind: None,
+            }])
+            .listing(5, rows)
+            .mode(last, "sub", true)
+            .mode(last, "dub", false)
+            .delaying_searches(std::time::Duration::from_millis(300)),
+    )
 }
 
 /// The probe's side of the same case: a probe with no row to remember
@@ -746,7 +723,7 @@ async fn stub_one_show_slowly(count: u32) -> wiremock::MockServer {
 /// and stands.
 #[tokio::test]
 async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
-    let anidb = stub_one_show_slowly(7).await;
+    let anidb = stub_one_show_slowly(7);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state.providers.set_order(vec![ProviderId::Anidb]);
@@ -763,8 +740,8 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
 
     let probe = tokio::spawn({
         let state = state.clone();
-        let base = anidb.uri();
-        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+        let anidb = std::sync::Arc::clone(&anidb);
+        async move { check_with(&state, &args, &anidb).await }
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     stamp_after_native(

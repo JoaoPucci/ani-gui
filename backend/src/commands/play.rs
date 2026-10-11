@@ -513,11 +513,8 @@ pub(crate) mod tests {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
         AppState {
-            // Unroutable: the fresh-resolve fallback must fail fast in
-            // tests instead of walking the live provider. Windows
-            // runners ship a system curl.exe, so a None base turns
-            // "the fallback errors" into a real network resolve that
-            // can succeed.
+            // Unreachable: the fresh-resolve fallback must fail fast in
+            // tests instead of walking a live provider.
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -526,9 +523,8 @@ pub(crate) mod tests {
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
-            providers: crate::provider_set::ProviderSet::for_tests().with_origin(
-                crate::scraper::provider::ProviderId::Anidb,
-                "http://127.0.0.1:1",
+            providers: crate::provider_set::ProviderSet::for_tests().with_stub(
+                std::sync::Arc::new(crate::scraper::table_provider::TableProvider::unreachable()),
             ),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
@@ -666,18 +662,11 @@ pub(crate) mod tests {
     /// distress.
     #[tokio::test]
     async fn a_clean_miss_streak_does_not_open_the_breaker() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("GET"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-            )
-            .mount(&server)
-            .await;
         let mut state = state_with_proxy_origin();
-        state
-            .providers
-            .set_origin(crate::scraper::provider::ProviderId::Anidb, server.uri());
+        // A catalogue that answers every search with nothing.
+        state.providers.set_stub(std::sync::Arc::new(
+            crate::scraper::table_provider::TableProvider::new(),
+        ));
         let mk = |title: &str| PlayArgs {
             title: title.into(),
             episode: "1".into(),
@@ -719,53 +708,19 @@ pub(crate) mod tests {
         (td, state)
     }
 
-    /// Mount the full native resolution surface for one show on
-    /// `mock` — browse, a one-episode listing, its jpn languages row,
-    /// the embed page and the master playlist — so `play_with_progress`
-    /// can run a complete successful resolve against wiremock. Mirrors
-    /// `play_external_command_test::stub_provider`, trimmed to one
-    /// episode.
-    async fn stub_provider_one_episode(mock: &wiremock::MockServer, query: &str) {
-        use wiremock::matchers::{method, path, query_param};
-        use wiremock::{Mock, ResponseTemplate};
-        Mock::given(method("GET"))
-            .and(path("/browse"))
-            .and(query_param("q", query))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>"),
-            )
-            .mount(mock)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/api/frontend/anime/77/episodes"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(r#"{"episodes":[{"id":701,"number":1}]}"#),
-            )
-            .mount(mock)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/api/frontend/episode/701/languages"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-                r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
-                mock.uri()
-            )))
-            .mount(mock)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/e/x"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-                "player.setup({{ file: '{}/x/master.m3u8' }});",
-                mock.uri()
-            )))
-            .mount(mock)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/x/master.m3u8"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
-            .mount(mock)
-            .await;
+    /// One show a search for `query` finds, with one episode that
+    /// streams in sub — enough for `play_with_progress` to run a
+    /// complete successful resolve.
+    fn stub_provider_one_episode(
+        query: &str,
+    ) -> std::sync::Arc<crate::scraper::table_provider::TableProvider> {
+        std::sync::Arc::new(crate::scraper::table_provider::TableProvider::one_show(
+            query,
+            ("the-show-77", "The Show"),
+            &[(701, 1)],
+            &[701],
+            "https://cdn.example/x/master.m3u8",
+        ))
     }
 
     fn uncached_args(title: &str) -> PlayArgs {
@@ -871,13 +826,10 @@ pub(crate) mod tests {
     /// must survive the opt-out and only the replay reads are gated.
     #[tokio::test]
     async fn an_uncached_resolve_records_watch_metadata_without_replay() {
-        let mock = wiremock::MockServer::start().await;
-        stub_provider_one_episode(&mock, "the show").await;
+        let provider = stub_provider_one_episode("the show");
         let td = tempfile::tempdir().unwrap();
         let mut state = state_with_proxy_origin();
-        state
-            .providers
-            .set_origin(crate::scraper::provider::ProviderId::Anidb, mock.uri());
+        state.providers.set_stub(provider);
         state.config_path = td.path().join("config.toml");
         state.history_path = td.path().join("history");
         let args = uncached_args("the show");
@@ -964,8 +916,7 @@ pub(crate) mod tests {
     /// next play can serve it.
     #[tokio::test]
     async fn a_fresh_resolve_writes_the_row_when_caching_is_enabled() {
-        let mock = wiremock::MockServer::start().await;
-        stub_provider_one_episode(&mock, "the show").await;
+        let provider = stub_provider_one_episode("the show");
         let td = tempfile::tempdir().unwrap();
         let cfg = td.path().join("config.toml");
         std::fs::write(
@@ -975,9 +926,7 @@ pub(crate) mod tests {
         )
         .unwrap();
         let mut state = state_with_proxy_origin();
-        state
-            .providers
-            .set_origin(crate::scraper::provider::ProviderId::Anidb, mock.uri());
+        state.providers.set_stub(provider);
         state.config_path = cfg;
         state.history_path = td.path().join("history");
         let args = uncached_args("the show");

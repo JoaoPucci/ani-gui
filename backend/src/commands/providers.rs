@@ -800,6 +800,14 @@ pub fn client_for<'a>(
     provider: ProviderId,
     priority: ScrapePriority,
 ) -> crate::error::Result<Box<dyn Provider + 'a>> {
+    #[cfg(test)]
+    if let Some(table) = providers.stub(provider) {
+        return Ok(Box::new(crate::scraper::table_provider::Gated::new(
+            table,
+            Some(gate_of(state, provider)),
+            priority,
+        )));
+    }
     let path_env = std::env::var("PATH").unwrap_or_default();
     let fetch = crate::scraper::fetch::CurlImpersonateFetch::resolve(
         state.bundled_bin.as_deref(),

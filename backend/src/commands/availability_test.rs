@@ -3,7 +3,96 @@
 //! and the batch lookup.
 
 use super::*;
-use crate::scraper::provider::ProviderId;
+use crate::error::AniError;
+use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
+use crate::scraper::table_provider::{Answer, Asked, TableProvider};
+use std::sync::Arc;
+
+// ── providers as tables ─────────────────────────────────────────────
+
+/// The hits a pool of `(slug, title)` pairs names.
+fn hits(entries: &[(&str, &str)]) -> Vec<BrowseHit> {
+    entries
+        .iter()
+        .map(|(slug, title)| BrowseHit {
+            slug: (*slug).to_string(),
+            title: (*title).to_string(),
+            kind: None,
+        })
+        .collect()
+}
+
+/// Rows with these ids, numbered from 1.
+fn numbered(ids: &[u64]) -> Vec<EpisodeRef> {
+    ids.iter()
+        .zip(1..)
+        .map(|(id, number)| EpisodeRef {
+            id: *id,
+            number,
+            number2: None,
+        })
+        .collect()
+}
+
+/// A provider answering as `id` whose every search finds one show,
+/// `(slug, title, badge)`, listing `rows`; each row answers the mode
+/// question with `sub` and `dub`.
+fn one_show(
+    id: ProviderId,
+    (slug, title, kind): (&str, &str, Option<&str>),
+    rows: &[u64],
+    sub: bool,
+    dub: bool,
+) -> TableProvider {
+    let show = crate::scraper::provider::slug_numeric_id(slug).expect("a slug-shaped id");
+    let hit = BrowseHit {
+        slug: slug.to_string(),
+        title: title.to_string(),
+        kind: kind.map(str::to_string),
+    };
+    rows.iter().fold(
+        TableProvider::new()
+            .answering_as(id)
+            .search_default(vec![hit])
+            .listing(show, numbered(rows)),
+        |t, row| t.mode(*row, "sub", sub).mode(*row, "dub", dub),
+    )
+}
+
+/// A provider answering as `id` that answers every search with
+/// nothing.
+pub(super) fn no_results(id: ProviderId) -> Arc<TableProvider> {
+    Arc::new(TableProvider::new().answering_as(id))
+}
+
+/// A provider answering as `id` whose every request dies on
+/// transport.
+pub(super) fn unreachable(id: ProviderId) -> Arc<TableProvider> {
+    Arc::new(TableProvider::unreachable().answering_as(id))
+}
+
+/// A provider answering as `id` whose every request answers `status`.
+fn refusing(id: ProviderId, status: u16) -> Arc<TableProvider> {
+    Arc::new(TableProvider::refusing(status).answering_as(id))
+}
+
+/// Whether `provider` was asked the mode question at all.
+fn asked_the_mode(provider: &TableProvider) -> bool {
+    provider.count(|a| matches!(a, Asked::Mode(..))) > 0
+}
+
+/// [`check_availability`] with `table` answering in the slot of the
+/// provider it answers as: the state's own cache, rows and gates, one
+/// provider's answers swapped for the call.
+pub(super) async fn check_with(
+    state: &AppState,
+    args: &AvailabilityArgs,
+    table: &Arc<TableProvider>,
+) -> Result<AvailabilityResponse> {
+    let mut state = state.clone();
+    state.providers.set_stub(Arc::clone(table));
+    check_availability(&state, args).await
+}
 
 #[test]
 fn warm_backoff_waits_out_the_advertised_rate_limit_window() {
@@ -192,8 +281,7 @@ fn positive_ttl_for_current_returns_24_hour_window() {
 /// that touches Kitsu / the provider / fs would error out (the
 /// `kitsu_base` is unreachable on purpose), but those paths
 /// aren't exercised here.
-/// The state-level the provider override has to reach the public
-/// entry point, not just the `_with_base` one tests call directly.
+/// The state's provider set has to reach the public entry point.
 /// `check_availability` hard-coded `None` the same way
 /// `pick_title_and_index` did, so an `AppState` pointed at a stub
 /// still sent this endpoint's search to the real API — the exact
@@ -201,14 +289,10 @@ fn positive_ttl_for_current_returns_24_hour_window() {
 /// fires on every detail-page mount and every rail warm.
 #[tokio::test]
 async fn check_availability_honours_the_state_level_override() {
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("<p>no results</p>"))
-        .mount(&server)
-        .await;
+    let server = no_results(ProviderId::Anidb);
     let td = tempfile::tempdir().expect("tempdir");
     let mut state = cache_only_state(&td);
-    state.providers.set_origin(ProviderId::Anidb, server.uri());
+    state.providers.set_stub(Arc::clone(&server));
 
     let args = AvailabilityArgs {
         title: "Anything".into(),
@@ -224,50 +308,27 @@ async fn check_availability_honours_the_state_level_override() {
     };
     let _ = check_availability(&state, &args).await;
 
-    let hits = server.received_requests().await.expect("recorded").len();
+    let hits = server.asked().len();
     assert!(
         hits >= 1,
         "the search must reach the state's stub, saw {hits} requests"
     );
 }
 
-/// One-show anidb stub: browse answers with a single slug whose
-/// episodes endpoint lists `count` episodes.
-async fn stub_one_show(count: u32) -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/probe-show-5"><img alt="Probe Show"/></a>"#),
-        )
-        .mount(&server)
-        .await;
-    let eps: Vec<String> = (1..=count)
-        .map(|n| format!("{{\"id\":{},\"number\":{}}}", 5000 + n, n))
-        .collect();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/5/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
-        )
-        .mount(&server)
-        .await;
-    // The mode probe asks the last episode's languages: a
-    // covered last row means the whole listing is covered.
-    wiremock::Mock::given(method("GET"))
-        .and(path(format!(
-            "/api/frontend/episode/{}/languages",
-            5000 + count
-        )))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/p1"}]}"#,
-        ))
-        .mount(&server)
-        .await;
-    server
+/// One show: every search finds `probe-show-5`, whose listing
+/// carries `count` episodes.
+fn stub_one_show(count: u32) -> Arc<TableProvider> {
+    let rows: Vec<u64> = (1..=u64::from(count)).map(|n| 5000 + n).collect();
+    let last = *rows.last().expect("a listed show");
+    Arc::new(
+        TableProvider::new()
+            .search_default(hits(&[("probe-show-5", "Probe Show")]))
+            .listing(5, numbered(&rows))
+            // The mode probe's answer for the listing's last row; the
+            // rest are not served.
+            .mode(last, "sub", true)
+            .mode(last, "dub", false),
+    )
 }
 
 #[tokio::test]
@@ -276,7 +337,7 @@ async fn the_response_names_the_provider_whose_catalogue_answered() {
     // says whose catalogue it describes, in the identifier the
     // renderer's `StreamProvider` uses, and rows written before
     // the field parse as unattributed rather than failing.
-    let server = stub_one_show(7).await;
+    let server = stub_one_show(7);
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -286,7 +347,7 @@ async fn the_response_names_the_provider_whose_catalogue_answered() {
         "episode_count": 7
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+    let got = check_with(&state, &args, &server)
         .await
         .expect("probe succeeds");
     assert_eq!(got.provider, Some(ProviderId::Anidb));
@@ -304,7 +365,7 @@ async fn the_cached_row_keeps_the_provider_that_answered() {
     // behind, or the next lookup — a cache hit — answers as a row
     // from before the field, and nothing can start a play from
     // the provider that proved the show playable.
-    let server = stub_one_show(7).await;
+    let server = stub_one_show(7);
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -314,7 +375,7 @@ async fn the_cached_row_keeps_the_provider_that_answered() {
         "episode_count": 7
     }))
     .expect("args");
-    check_availability_with_base(&state, &args, Some(&server.uri()))
+    check_with(&state, &args, &server)
         .await
         .expect("probe succeeds");
     let row = meta_cache_get(&state.cache_pool, &cache_key("557", "sub"))
@@ -328,58 +389,20 @@ async fn the_cached_row_keeps_the_provider_that_answered() {
     );
 }
 
-/// A hianime stub carrying one show whose episodes offer sub
-/// servers only: search page, episode list, server list.
-pub(super) async fn stub_hianime_sub_only() -> wiremock::MockServer {
-    use base64::Engine as _;
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    let base = server.uri();
-    let search = format!(
-        r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/fallback-show-7" title="Fallback Show" class="dynamic-name">Fallback Show</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
-    );
-    wiremock::Mock::given(method("GET"))
-        .and(path("/search"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(search))
-        .mount(&server)
-        .await;
-    let list = serde_json::json!({
-        "status": true,
-        "html": r#"<a class="ep-item" data-number="1" data-id="7001"></a><a class="ep-item" data-number="2" data-id="7002"></a>"#,
-    })
-    .to_string();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/theme/episode/list/7"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(list))
-        .mount(&server)
-        .await;
-    let hash =
-        base64::engine::general_purpose::STANDARD.encode(format!("{base}/stream/mal/7/1/sub"));
-    let servers = serde_json::json!({
-        "status": true,
-        "html": format!(r#"<div class="server-item" data-type="sub" data-server-name="HD-1" data-hash="{hash}"></div>"#),
-    })
-    .to_string();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/theme/episode/servers"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(servers))
-        .mount(&server)
-        .await;
-    server
+/// A fallback carrying one show whose episodes offer sub only.
+pub(super) fn stub_hianime_sub_only() -> Arc<TableProvider> {
+    Arc::new(one_show(
+        ProviderId::Hianime,
+        ("fallback-show-7", "Fallback Show", Some("TV")),
+        &[7001, 7002],
+        true,
+        false,
+    ))
 }
 
-/// A hianime that answers every search with nothing.
-async fn stub_hianime_no_results() -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/search"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"<html><body><div class="film_list film_list-grid"><p>No animes found.</p></div><div id="main-sidebar"></div></body></html>"#,
-        ))
-        .mount(&server)
-        .await;
-    server
+/// A fallback that answers every search with nothing.
+fn stub_hianime_no_results() -> Arc<TableProvider> {
+    no_results(ProviderId::Hianime)
 }
 
 pub(super) fn open_breaker(gate: &crate::scraper::gate::ScraperGate) {
@@ -418,15 +441,13 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
     // the fallback up, so the outage does not re-walk an absent
     // show on every look, and not once the primary is back, since
     // absence on the fallback proves nothing about it.
-    let hianime = stub_hianime_sub_only().await;
+    let hianime = stub_hianime_sub_only();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "dub",
@@ -434,7 +455,7 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+    let got = check_with(&state, &args, &unreachable(ProviderId::Anidb))
         .await
         .expect("the fallback answered");
     assert!(!got.available, "the fallback carries no dub");
@@ -458,11 +479,11 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
         },
     );
     assert_eq!(listed.cached.get("558"), Some(&false));
-    let asked_before = hianime.received_requests().await.expect("recorded").len();
-    check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+    let asked_before = hianime.asked().len();
+    check_with(&state, &args, &unreachable(ProviderId::Anidb))
         .await
         .expect("served");
-    let asked_after = hianime.received_requests().await.expect("recorded").len();
+    let asked_after = hianime.asked().len();
     assert_eq!(
         asked_before, asked_after,
         "a cache hit asks the fallback nothing"
@@ -486,22 +507,20 @@ async fn a_fallbacks_miss_during_the_primarys_outage_is_the_fallbacks_row_served
 
 #[tokio::test]
 async fn a_fallbacks_clean_miss_during_the_primarys_outage_is_persisted_as_its_own() {
-    let hianime = stub_hianime_no_results().await;
+    let hianime = stub_hianime_no_results();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Nowhere Show",
         "mode": "sub",
         "kitsu_id": "563"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+    let got = check_with(&state, &args, &unreachable(ProviderId::Anidb))
         .await
         .expect("a clean miss on the fallback is an answer");
     assert!(!got.available);
@@ -522,15 +541,13 @@ async fn a_fallbacks_clean_miss_stays_the_fallbacks_when_the_skipped_primary_is_
     // named as the primary's it would be served the moment the
     // breaker closed, for the rest of the negative TTL, hiding a
     // show only the primary carries.
-    let hianime = stub_hianime_no_results().await;
+    let hianime = stub_hianime_no_results();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     open_breaker(state.providers.gate(ProviderId::Anidb));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Nowhere Show",
@@ -538,7 +555,7 @@ async fn a_fallbacks_clean_miss_stays_the_fallbacks_when_the_skipped_primary_is_
         "kitsu_id": "564"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+    let got = check_with(&state, &args, &unreachable(ProviderId::Anidb))
         .await
         .expect("a clean miss on the fallback is an answer");
     assert!(!got.available);
@@ -632,25 +649,14 @@ async fn a_reprobe_of_a_count_less_positive_row_starts_from_the_provider_it_reme
     // instead has to start from the provider that proved the show,
     // or the primary's clean miss ends the walk and overwrites the
     // fallback's proof with a negative that disables Play.
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&anidb)
-        .await;
-    let hianime = stub_hianime_sub_only().await;
+    let anidb = no_results(ProviderId::Anidb);
+    let hianime = stub_hianime_sub_only();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     write_cache(&state, "580", "sub", true, Some(ProviderId::Hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
@@ -658,20 +664,14 @@ async fn a_reprobe_of_a_count_less_positive_row_starts_from_the_provider_it_reme
         "kitsu_id": "580"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
-        .await
-        .expect("answered");
+    let got = check_with(&state, &args, &anidb).await.expect("answered");
     assert!(
         got.available,
         "the provider the row remembers still carries the show"
     );
     assert_eq!(got.provider, Some(ProviderId::Hianime));
     assert!(
-        anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
+        anidb.asked().is_empty(),
         "the remembered provider answered; the primary was not asked"
     );
     assert_eq!(
@@ -691,29 +691,14 @@ async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest
     // nothing persists — the primary's negative would outlive the
     // fallback's recovery and keep a playable title disabled for
     // the negative's whole TTL.
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&anidb)
-        .await;
-    let hianime = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .respond_with(wiremock::ResponseTemplate::new(503))
-        .mount(&hianime)
-        .await;
+    let anidb = no_results(ProviderId::Anidb);
+    let hianime = refusing(ProviderId::Hianime, 503);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     write_cache(&state, "580", "sub", true, Some(ProviderId::Hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
@@ -721,17 +706,13 @@ async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest
         "kitsu_id": "580"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
+    let got = check_with(&state, &args, &anidb).await;
     assert!(
         matches!(&got, Err(e) if crate::commands::providers::fails_over(e)),
         "the fallback's own unavailability is the verdict the caller sees: {got:?}"
     );
     assert!(
-        !anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
+        !anidb.asked().is_empty(),
         "the walk moved past the unreachable provider to the primary"
     );
     assert_eq!(
@@ -752,43 +733,20 @@ async fn a_skipped_primary_gets_its_trial_when_the_fallback_finds_the_show_witho
     // the walk's. Without the trial the row would name the
     // fallback's absence and the page would disable playback for
     // the breaker's whole window on a show the primary dubs.
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"<a href="/anime/fallback-show-72"><img alt="Fallback Show"/></a>"#,
-            ),
-        )
-        .mount(&anidb)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/72/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":721,"number":1},{"id":722,"number":2}]}"#),
-        )
-        .mount(&anidb)
-        .await;
-    for ep in [721, 722] {
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/api/frontend/episode/{ep}/languages")))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/t1"},{"code":"eng","embed_url":"https://embed.example/e/t1d"}]}"#,
-            ))
-            .mount(&anidb)
-            .await;
-    }
-    let hianime = stub_hianime_sub_only().await;
+    let anidb = Arc::new(one_show(
+        ProviderId::Anidb,
+        ("fallback-show-72", "Fallback Show", None),
+        &[721, 722],
+        true,
+        true,
+    ));
+    let hianime = stub_hianime_sub_only();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     open_breaker(state.providers.gate(ProviderId::Anidb));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
@@ -797,7 +755,7 @@ async fn a_skipped_primary_gets_its_trial_when_the_fallback_finds_the_show_witho
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+    let got = check_with(&state, &args, &anidb)
         .await
         .expect("the primary's trial answered");
     assert!(got.available, "the primary carries the dub: {got:?}");
@@ -807,23 +765,10 @@ async fn a_skipped_primary_gets_its_trial_when_the_fallback_finds_the_show_witho
         "the answer is the retried primary's"
     );
     assert!(
-        hianime
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/servers")),
+        asked_the_mode(&hianime),
         "the fallback was asked first and answered absence"
     );
-    assert!(
-        anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/languages")),
-        "the skipped primary got its trial"
-    );
+    assert!(asked_the_mode(&anidb), "the skipped primary got its trial");
     let row = meta_cache_get(&state.cache_pool, &cache_key("581", "dub"))
         .expect("cache read")
         .expect("persisted");
@@ -843,43 +788,20 @@ async fn a_remembered_providers_absence_yields_to_a_primary_that_carries_the_mod
     // fallback's absence would tell the page the title has no
     // dub and disable playback for the row's lifetime on a show
     // the primary dubs.
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"<a href="/anime/fallback-show-73"><img alt="Fallback Show"/></a>"#,
-            ),
-        )
-        .mount(&anidb)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/73/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":731,"number":1},{"id":732,"number":2}]}"#),
-        )
-        .mount(&anidb)
-        .await;
-    for ep in [731, 732] {
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/api/frontend/episode/{ep}/languages")))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/u1"},{"code":"eng","embed_url":"https://embed.example/e/u1d"}]}"#,
-            ))
-            .mount(&anidb)
-            .await;
-    }
-    let hianime = stub_hianime_sub_only().await;
+    let anidb = Arc::new(one_show(
+        ProviderId::Anidb,
+        ("fallback-show-73", "Fallback Show", None),
+        &[731, 732],
+        true,
+        true,
+    ));
+    let hianime = stub_hianime_sub_only();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     write_cache(&state, "582", "dub", true, Some(ProviderId::Hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
@@ -888,7 +810,7 @@ async fn a_remembered_providers_absence_yields_to_a_primary_that_carries_the_mod
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+    let got = check_with(&state, &args, &anidb)
         .await
         .expect("the primary answered the mode");
     assert!(got.available, "the primary carries the dub: {got:?}");
@@ -898,23 +820,10 @@ async fn a_remembered_providers_absence_yields_to_a_primary_that_carries_the_mod
         "the answer is the primary's"
     );
     assert!(
-        hianime
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/servers")),
+        asked_the_mode(&hianime),
         "the remembered provider was asked first and answered absence"
     );
-    assert!(
-        anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/languages")),
-        "the walk went on to the primary"
-    );
+    assert!(asked_the_mode(&anidb), "the walk went on to the primary");
     let row = meta_cache_get(&state.cache_pool, &cache_key("582", "dub"))
         .expect("cache read")
         .expect("persisted");
@@ -933,47 +842,20 @@ async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest
     // persisting it as the primary's negative would stay backed
     // by a healthy primary and keep a playable title disabled
     // long after the fallback recovered.
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"<a href="/anime/fallback-show-71"><img alt="Fallback Show"/></a>"#,
-            ),
-        )
-        .mount(&anidb)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/71/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":711,"number":1},{"id":712,"number":2}]}"#),
-        )
-        .mount(&anidb)
-        .await;
-    for ep in [711, 712] {
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/api/frontend/episode/{ep}/languages")))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
-            ))
-            .mount(&anidb)
-            .await;
-    }
-    let hianime = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .respond_with(wiremock::ResponseTemplate::new(503))
-        .mount(&hianime)
-        .await;
+    let anidb = Arc::new(one_show(
+        ProviderId::Anidb,
+        ("fallback-show-71", "Fallback Show", None),
+        &[711, 712],
+        true,
+        false,
+    ));
+    let hianime = refusing(ProviderId::Hianime, 503);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     write_cache(&state, "580", "dub", true, Some(ProviderId::Hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
@@ -981,18 +863,13 @@ async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest
         "kitsu_id": "580"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
+    let got = check_with(&state, &args, &anidb).await;
     assert!(
         matches!(got, Err(crate::error::AniError::NoResults)),
         "the primary's absence is the verdict the caller sees, unpersisted: {got:?}"
     );
     assert!(
-        anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/languages")),
+        asked_the_mode(&anidb),
         "the walk moved past the unreachable provider and the primary answered the mode"
     );
     assert_eq!(
@@ -1013,43 +890,20 @@ async fn a_primarys_absence_persists_once_the_retried_row_provider_denies_the_sh
     // is the verdict, and it persists as the primary's own
     // negative — held back, it would keep a stale positive row
     // and a page enabled for a mode nobody carries.
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"<a href="/anime/fallback-show-74"><img alt="Fallback Show"/></a>"#,
-            ),
-        )
-        .mount(&anidb)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/74/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":741,"number":1},{"id":742,"number":2}]}"#),
-        )
-        .mount(&anidb)
-        .await;
-    for ep in [741, 742] {
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/api/frontend/episode/{ep}/languages")))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
-            ))
-            .mount(&anidb)
-            .await;
-    }
-    let hianime = stub_hianime_no_results().await;
+    let anidb = Arc::new(one_show(
+        ProviderId::Anidb,
+        ("fallback-show-74", "Fallback Show", None),
+        &[741, 742],
+        true,
+        false,
+    ));
+    let hianime = stub_hianime_no_results();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     write_cache(&state, "584", "dub", true, Some(ProviderId::Hianime));
     open_breaker(state.providers.gate(ProviderId::Hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1059,7 +913,7 @@ async fn a_primarys_absence_persists_once_the_retried_row_provider_denies_the_sh
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+    let got = check_with(&state, &args, &anidb)
         .await
         .expect("the primary's absence is the verdict");
     assert!(!got.available, "nobody carries the dub: {got:?}");
@@ -1069,12 +923,7 @@ async fn a_primarys_absence_persists_once_the_retried_row_provider_denies_the_sh
         "the absence is the primary's own"
     );
     assert!(
-        hianime
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/search")),
+        !hianime.searched().is_empty(),
         "the skipped row provider got its trial"
     );
     let row = meta_cache_get(&state.cache_pool, &cache_key("584", "dub"))
@@ -1088,35 +937,15 @@ async fn a_primarys_absence_persists_once_the_retried_row_provider_denies_the_sh
     assert_eq!(row.provider, Some(ProviderId::Anidb));
 }
 
-/// An anidb.app that finds the show and lists two episodes whose
-/// language rows the provider no longer serves — every row
-/// answers 404 — so the mode search touches only missing rows.
-async fn stub_anidb_with_stale_rows(id: u32) -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(format!(
-                r#"<a href="/anime/fallback-show-{id}"><img alt="Fallback Show"/></a>"#
-            )),
-        )
-        .mount(&anidb)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path(format!("/api/frontend/anime/{id}/episodes")))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(format!(
-                r#"{{"episodes":[{{"id":{id}1,"number":1}},{{"id":{id}2,"number":2}}]}}"#
-            )),
-        )
-        .mount(&anidb)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .respond_with(wiremock::ResponseTemplate::new(404))
-        .mount(&anidb)
-        .await;
-    anidb
+/// A primary that finds the show and lists two episodes whose rows
+/// it no longer serves — every mode question answers not-found — so
+/// the mode search touches only missing rows.
+fn stub_anidb_with_stale_rows(id: u64) -> Arc<TableProvider> {
+    Arc::new(
+        TableProvider::new()
+            .search_default(hits(&[(&format!("fallback-show-{id}"), "Fallback Show")]))
+            .listing(id, numbered(&[id * 10 + 1, id * 10 + 2])),
+    )
 }
 
 #[tokio::test]
@@ -1128,16 +957,14 @@ async fn an_inconclusive_primary_moves_the_probe_on_to_a_fallback_that_carries_t
     // carries the show with the mode, answers. Stopping at the
     // primary would fail the check for a title the fallback
     // plays, every time the primary's rows go stale.
-    let anidb = stub_anidb_with_stale_rows(75).await;
-    let hianime = stub_hianime_sub_only().await;
+    let anidb = stub_anidb_with_stale_rows(75);
+    let hianime = stub_hianime_sub_only();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -1145,7 +972,7 @@ async fn an_inconclusive_primary_moves_the_probe_on_to_a_fallback_that_carries_t
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri()))
+    let got = check_with(&state, &args, &anidb)
         .await
         .expect("the fallback answered");
     assert!(got.available, "the fallback carries the show: {got:?}");
@@ -1155,12 +982,7 @@ async fn an_inconclusive_primary_moves_the_probe_on_to_a_fallback_that_carries_t
         "the answer is the fallback's"
     );
     assert!(
-        anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/languages")),
+        asked_the_mode(&anidb),
         "the primary's rows were asked and answered nothing"
     );
     let row = meta_cache_get(&state.cache_pool, &cache_key("585", "sub"))
@@ -1177,40 +999,25 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
     // answer for the mode: nobody answered, the verdict is
     // unknown, and no row is written — a stale row costs a
     // re-probe, not a wrong cache row for its whole life.
-    use wiremock::matchers::{method, path};
-    let anidb = stub_anidb_with_stale_rows(76).await;
-    let hianime = wiremock::MockServer::start().await;
-    let base = hianime.uri();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/search"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(format!(
-            r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/fallback-show-7" title="Fallback Show" class="dynamic-name">Fallback Show</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
-        )))
-        .mount(&hianime)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/theme/episode/list/7"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            serde_json::json!({
-                "status": true,
-                "html": r#"<a class="ep-item" data-number="1" data-id="7001"></a><a class="ep-item" data-number="2" data-id="7002"></a>"#,
-            })
-            .to_string(),
-        ))
-        .mount(&hianime)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .respond_with(wiremock::ResponseTemplate::new(404))
-        .mount(&hianime)
-        .await;
+    let anidb = stub_anidb_with_stale_rows(76);
+    // The fallback finds the show too, and every row it is asked about
+    // answers not-found.
+    let hianime = Arc::new(
+        TableProvider::new()
+            .answering_as(ProviderId::Hianime)
+            .search_default(vec![BrowseHit {
+                slug: "fallback-show-7".into(),
+                title: "Fallback Show".into(),
+                kind: Some("TV".into()),
+            }])
+            .listing(7, numbered(&[7001, 7002])),
+    );
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -1218,20 +1025,12 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
+    let got = check_with(&state, &args, &anidb).await;
     assert!(
         matches!(got, Err(crate::error::AniError::NoResults)),
         "nobody answered for the mode: {got:?}"
     );
-    assert!(
-        hianime
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/servers")),
-        "the fallback was asked too"
-    );
+    assert!(asked_the_mode(&hianime), "the fallback was asked too");
     assert!(
         meta_cache_get(&state.cache_pool, &cache_key("586", "sub"))
             .expect("cache read")
@@ -1250,16 +1049,14 @@ async fn an_inconclusive_primary_outranks_the_fallbacks_clean_miss() {
     // unknown, and nothing is written: persisted as the
     // fallback's negative, it would be served while the primary
     // answers and hide a title the primary carries.
-    let anidb = stub_anidb_with_stale_rows(77).await;
-    let hianime = stub_hianime_no_results().await;
+    let anidb = stub_anidb_with_stale_rows(77);
+    let hianime = stub_hianime_no_results();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Fallback Show",
         "mode": "sub",
@@ -1267,20 +1064,12 @@ async fn an_inconclusive_primary_outranks_the_fallbacks_clean_miss() {
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&anidb.uri())).await;
+    let got = check_with(&state, &args, &anidb).await;
     assert!(
         matches!(got, Err(crate::error::AniError::NoResults)),
         "the verdict is unknown, not the fallback's miss: {got:?}"
     );
-    assert!(
-        hianime
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path() == "/search"),
-        "the fallback was asked"
-    );
+    assert!(!hianime.searched().is_empty(), "the fallback was asked");
     assert!(
         meta_cache_get(&state.cache_pool, &cache_key("587", "sub"))
             .expect("cache read")
@@ -1296,22 +1085,13 @@ async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
     // then send the id to the warm; the warm must not take the
     // same row for a fresh one, or the card stays visible until
     // the negative expires.
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&anidb)
-        .await;
+    let anidb = no_results(ProviderId::Anidb);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state.providers.set_origin(ProviderId::Anidb, anidb.uri());
+    state.providers.set_stub(Arc::clone(&anidb));
     write_cache(&state, "590", "sub", false, Some(ProviderId::Hianime));
     let state = std::sync::Arc::new(state);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1323,11 +1103,7 @@ async fn the_warm_reprobes_a_negative_row_nobody_stands_behind() {
     .expect("args");
     warm(std::sync::Arc::clone(&state), vec![args]).await;
     assert!(
-        !anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
+        !anidb.asked().is_empty(),
         "the warm re-probed the row nobody stands behind"
     );
     let row = meta_cache_get(&state.cache_pool, &cache_key("590", "sub"))
@@ -1446,20 +1222,10 @@ fn the_remembered_provider_is_read_off_a_positive_row_alone() {
     );
 }
 
-/// An anidb whose browse answers a completed search with nothing
-/// in it — the one shape that proves absence.
-async fn stub_no_results() -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string("<html><body><p>No results</p></body></html>"),
-        )
-        .mount(&server)
-        .await;
-    server
+/// A primary whose search answers with nothing — the one answer
+/// that proves absence.
+fn stub_no_results() -> Arc<TableProvider> {
+    no_results(ProviderId::Anidb)
 }
 
 #[tokio::test]
@@ -1467,7 +1233,7 @@ async fn a_clean_miss_row_names_the_provider_that_answered_it() {
     // A negative row is one provider's verdict — a miss does not
     // fail over — so the row says whose, and the read side can
     // ask whether that provider is still there to stand behind it.
-    let server = stub_no_results().await;
+    let server = stub_no_results();
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1476,7 +1242,7 @@ async fn a_clean_miss_row_names_the_provider_that_answered_it() {
         "kitsu_id": "559"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+    let got = check_with(&state, &args, &server)
         .await
         .expect("a clean miss is an answer");
     assert!(!got.available);
@@ -1500,15 +1266,13 @@ async fn a_negative_row_is_not_served_while_its_provider_is_unreachable() {
     // the row's whole lifetime, in the exact outage failover
     // exists for. Unattributed negatives — rows the play path
     // stamped — count as the primary's.
-    let hianime = stub_hianime_sub_only().await;
+    let hianime = stub_hianime_sub_only();
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
     state
         .providers
         .set_order(vec![ProviderId::Anidb, ProviderId::Hianime]);
-    state
-        .providers
-        .set_origin(ProviderId::Hianime, hianime.uri());
+    state.providers.set_stub(Arc::clone(&hianime));
     write_cache(&state, "560", "sub", false, Some(ProviderId::Anidb));
     write_cache(&state, "561", "sub", false, None);
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
@@ -1536,7 +1300,7 @@ async fn a_negative_row_is_not_served_while_its_provider_is_unreachable() {
         "episode_count": 2
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some("http://127.0.0.1:1"))
+    let got = check_with(&state, &args, &unreachable(ProviderId::Anidb))
         .await
         .expect("the probe re-runs and the fallback answers");
     assert!(got.available, "the fallback carries the show");
@@ -1568,7 +1332,7 @@ async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
     // exact and free: no approximate flag, no gate-refused
     // degradation — the mechanisms those flags existed for are
     // gone from this path.
-    let server = stub_one_show(7).await;
+    let server = stub_one_show(7);
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1578,7 +1342,7 @@ async fn a_native_probe_reports_the_exact_count_with_no_second_fetch() {
         "episode_count": 7
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+    let got = check_with(&state, &args, &server)
         .await
         .expect("probe succeeds");
     assert!(got.available);
@@ -1606,31 +1370,37 @@ async fn a_native_probe_reports_the_listings_fractional_extras() {
     // other writer happens to overwrite the row. The listing is
     // paid for — the extras ride the same response and cache row
     // as the cap.
-    use wiremock::matchers::{method, path, query_param};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .and(query_param("q", "Recap Show"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/recap-show-31"><img alt="Recap Show"/></a>"#),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/31/episodes"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"episodes":[{"id":311,"number":1},{"id":312,"number":2},{"id":313,"number":3,"number2":2.5},{"id":314,"number":4,"number2":3}]}"#,
-        ))
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/episode/314/languages"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/r1"}]}"#,
-        ))
-        .mount(&server)
-        .await;
+    let server = Arc::new(
+        TableProvider::new()
+            .hits("Recap Show", hits(&[("recap-show-31", "Recap Show")]))
+            .listing(
+                31,
+                vec![
+                    EpisodeRef {
+                        id: 311,
+                        number: 1,
+                        number2: None,
+                    },
+                    EpisodeRef {
+                        id: 312,
+                        number: 2,
+                        number2: None,
+                    },
+                    EpisodeRef {
+                        id: 313,
+                        number: 3,
+                        number2: Some("2.5".into()),
+                    },
+                    EpisodeRef {
+                        id: 314,
+                        number: 4,
+                        number2: Some("3".into()),
+                    },
+                ],
+            )
+            .mode(314, "sub", true)
+            .mode(314, "dub", false),
+    );
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1639,7 +1409,7 @@ async fn a_native_probe_reports_the_listings_fractional_extras() {
         "kitsu_id": "558"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+    let got = check_with(&state, &args, &server)
         .await
         .expect("probe succeeds");
     assert!(got.available);
@@ -1665,32 +1435,14 @@ async fn one_probe_leaves_the_breaker_one_outcome() {
     // one and the breaker never opens — background warmers keep
     // hammering a failing endpoint forever. One request must
     // contribute one final outcome.
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"<a href="/anime/breaker-show-3"><img alt="Breaker Show"/></a>"#,
-            ),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/3/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":31,"number":1},{"id":32,"number":2}]}"#),
-        )
-        .mount(&server)
-        .await;
-    // The languages endpoint — reached only by the mode probe —
-    // answers with a block-shaped status.
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/episode/32/languages"))
-        .respond_with(wiremock::ResponseTemplate::new(503))
-        .mount(&server)
-        .await;
+    let server = Arc::new(
+        TableProvider::new()
+            .search_default(hits(&[("breaker-show-3", "Breaker Show")]))
+            .listing(3, numbered(&[31, 32]))
+            // The mode question — asked only by the mode probe — answers
+            // with a block-shaped status.
+            .mode(32, "sub", Answer::fails(|| AniError::Upstream { status: 503 })),
+    );
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     // One short of open, so a single recorded failure opens it
@@ -1706,7 +1458,7 @@ async fn one_probe_leaves_the_breaker_one_outcome() {
         "mode": "sub",
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+    let got = check_with(&state, &args, &server).await;
     assert!(got.is_err(), "the mode probe's failure surfaces");
     assert!(
         state
@@ -1725,16 +1477,7 @@ async fn the_whole_probe_stops_at_the_resolution_deadline() {
     // per-request timeout. With several aliases the walk alone
     // can outrun the resolver's ceiling before the mode probe
     // starts, so the ceiling has to cover the whole probe.
-    use wiremock::matchers::method;
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_delay(std::time::Duration::from_secs(19))
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&server)
-        .await;
+    let server = Arc::new(TableProvider::new().delaying(std::time::Duration::from_secs(19)));
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1744,7 +1487,7 @@ async fn the_whole_probe_stops_at_the_resolution_deadline() {
     }))
     .expect("args");
     let started = tokio::time::Instant::now();
-    let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+    let got = check_with(&state, &args, &server).await;
     assert!(
         matches!(got, Err(crate::error::AniError::Timeout)),
         "a stalled probe ends as a timeout: {got:?}"
@@ -1764,44 +1507,22 @@ async fn a_partially_dubbed_show_reports_the_mode_as_present() {
     // the full mode-independent cap under the dub key and enable
     // episodes that fail at playback — the cap must describe the
     // rows the requested mode actually has.
-    use wiremock::matchers::{method, path, query_param};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .and(query_param("q", "Partial Dub Show"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"<a href="/anime/partial-dub-81"><img alt="Partial Dub Show"/></a>"#,
-        ))
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/81/episodes"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"episodes":[{"id":811,"number":1},{"id":812,"number":2},{"id":813,"number":3},{"id":814,"number":4}]}"#,
-        ))
-        .mount(&server)
-        .await;
-    for (ep, langs) in [
-        (
-            811,
-            r#"[{"code":"jpn","embed_url":"https://e/1"},{"code":"eng","embed_url":"https://e/1d"}]"#,
-        ),
-        (
-            812,
-            r#"[{"code":"jpn","embed_url":"https://e/2"},{"code":"eng","embed_url":"https://e/2d"}]"#,
-        ),
-        (813, r#"[{"code":"jpn","embed_url":"https://e/3"}]"#),
-        (814, r#"[{"code":"jpn","embed_url":"https://e/4"}]"#),
-    ] {
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/api/frontend/episode/{ep}/languages")))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_string(format!(r#"{{"languages":{langs}}}"#)),
+    let server = Arc::new(
+        TableProvider::new()
+            .hits(
+                "Partial Dub Show",
+                hits(&[("partial-dub-81", "Partial Dub Show")]),
             )
-            .mount(&server)
-            .await;
-    }
+            .listing(81, numbered(&[811, 812, 813, 814]))
+            .mode(811, "sub", true)
+            .mode(811, "dub", true)
+            .mode(812, "sub", true)
+            .mode(812, "dub", true)
+            .mode(813, "sub", true)
+            .mode(813, "dub", false)
+            .mode(814, "sub", true)
+            .mode(814, "dub", false),
+    );
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1810,7 +1531,7 @@ async fn a_partially_dubbed_show_reports_the_mode_as_present() {
         "kitsu_id": "559"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+    let got = check_with(&state, &args, &server)
         .await
         .expect("probe succeeds");
     assert!(got.available, "two dubbed episodes exist");
@@ -1828,7 +1549,7 @@ async fn a_partially_dubbed_show_reports_the_mode_as_present() {
         "kitsu_id": "559"
     }))
     .expect("args");
-    let sub = check_availability_with_base(&state, &sub_args, Some(&server.uri()))
+    let sub = check_with(&state, &sub_args, &server)
         .await
         .expect("probe succeeds");
     assert!(sub.available);
@@ -1843,37 +1564,13 @@ async fn a_sub_only_show_probed_for_dub_caches_unavailable() {
     // available: the dub CTA it would enable fails at playback.
     // The provider ANSWERED absence for this mode, so the
     // negative verdict is cacheable — like the clean search miss.
-    use wiremock::matchers::{method, path, query_param};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .and(query_param("q", "Sub Only Show"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/sub-only-71"><img alt="Sub Only Show"/></a>"#),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/71/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":711,"number":1},{"id":712,"number":2}]}"#),
-        )
-        .mount(&server)
-        .await;
-    // Both rows are sub-only: the mode probe asks the last row
-    // first (a covered last row means a covered listing), then
-    // the first.
-    for ep in [711, 712] {
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/api/frontend/episode/{ep}/languages")))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/s1"}]}"#,
-            ))
-            .mount(&server)
-            .await;
-    }
+    let server = Arc::new(one_show(
+        ProviderId::Anidb,
+        ("sub-only-71", "Sub Only Show", None),
+        &[711, 712],
+        true,
+        false,
+    ));
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1882,7 +1579,7 @@ async fn a_sub_only_show_probed_for_dub_caches_unavailable() {
         "kitsu_id": "557"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+    let got = check_with(&state, &args, &server)
         .await
         .expect("the provider answered; the verdict is a verdict");
     assert!(!got.available, "no eng row means no dub to enable");
@@ -1904,32 +1601,27 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
     // fourth part lists 41 and 42). The cap the frontend gates the
     // strip with must speak Kitsu's per-entry numbering: 2 aired,
     // not a raw 42 that unlocks episodes that don't exist.
-    use wiremock::matchers::{method, path, query_param};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .and(query_param("q", "Sequel Show"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/sequel-show-9"><img alt="Sequel Show"/></a>"#),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/9/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":941,"number":41},{"id":942,"number":42}]}"#),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/episode/942/languages"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/q1"}]}"#,
-        ))
-        .mount(&server)
-        .await;
+    let server = Arc::new(
+        TableProvider::new()
+            .hits("Sequel Show", hits(&[("sequel-show-9", "Sequel Show")]))
+            .listing(
+                9,
+                vec![
+                    EpisodeRef {
+                        id: 941,
+                        number: 41,
+                        number2: None,
+                    },
+                    EpisodeRef {
+                        id: 942,
+                        number: 42,
+                        number2: None,
+                    },
+                ],
+            )
+            .mode(942, "sub", true)
+            .mode(942, "dub", false),
+    );
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1937,7 +1629,7 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
         "mode": "sub",
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri()))
+    let got = check_with(&state, &args, &server)
         .await
         .expect("probe succeeds");
     assert!(got.available);
@@ -1946,12 +1638,7 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
 
 #[tokio::test]
 async fn a_transient_provider_failure_surfaces_network_and_writes_nothing() {
-    use wiremock::matchers::method;
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .respond_with(wiremock::ResponseTemplate::new(500))
-        .mount(&server)
-        .await;
+    let server = refusing(ProviderId::Anidb, 500);
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1960,7 +1647,7 @@ async fn a_transient_provider_failure_surfaces_network_and_writes_nothing() {
         "kitsu_id": "556"
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+    let got = check_with(&state, &args, &server).await;
     assert!(matches!(
         got,
         Err(crate::error::AniError::Network | crate::error::AniError::Upstream { .. })
@@ -2379,7 +2066,7 @@ fn batch_cached_returns_playable_episode_counts() {
 /// for everything else that reads it.
 #[tokio::test]
 async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
-    let server = wiremock::MockServer::start().await;
+    let server = Arc::new(TableProvider::new());
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
 
@@ -2406,18 +2093,14 @@ async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
         "kitsu_id": "777"
     }))
     .expect("args");
-    let served = check_availability_with_base(&state, &cached, Some(&server.uri())).await;
+    let served = check_with(&state, &cached, &server).await;
     assert_eq!(
         served.expect("cached row is served").episode_count,
         Some(4),
         "without the flag the stored snapshot answers"
     );
     assert!(
-        server
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
+        server.asked().is_empty(),
         "a usable row must not reach the network"
     );
 
@@ -2428,13 +2111,9 @@ async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
         "bypass_cache": true
     }))
     .expect("args");
-    let _ = check_availability_with_base(&state, &fresh, Some(&server.uri())).await;
+    let _ = check_with(&state, &fresh, &server).await;
     assert!(
-        !server
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
+        !server.asked().is_empty(),
         "bypass_cache must reach the provider rather than replay the stored count"
     );
 }
@@ -2446,15 +2125,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
     // the generation is captured INSIDE the call — the refresh has
     // to land while this one is still out for the guard to mean
     // anything.
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_delay(std::time::Duration::from_millis(300))
-                .set_body_string("<p>no results</p>"),
-        )
-        .mount(&server)
-        .await;
+    let server = Arc::new(TableProvider::new().delaying(std::time::Duration::from_millis(300)));
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let row = cache_key("888", "sub");
@@ -2467,11 +2138,11 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
         "kitsu_id": "888"
     }))
     .expect("args");
-    let base = server.uri();
     let bg = {
         let state = state.clone();
+        let server = Arc::clone(&server);
         tokio::spawn(async move {
-            let _ = check_availability_with_base(&state, &stale, Some(&base)).await;
+            let _ = check_with(&state, &stale, &server).await;
         })
     };
 
@@ -2513,11 +2184,7 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
     // the reading has to be taken and used under the same lock, and
     // that is what this pins: while the row is held, a lookup that
     // has already got its answer must still be waiting.
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("<p>no results</p>"))
-        .mount(&server)
-        .await;
+    let server = Arc::new(TableProvider::new());
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let row = cache_key("889", "sub");
@@ -2533,11 +2200,11 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
         "kitsu_id": "889"
     }))
     .expect("args");
-    let base = server.uri();
     let bg = {
         let state = state.clone();
+        let server = Arc::clone(&server);
         tokio::spawn(async move {
-            let _ = check_availability_with_base(&state, &args, Some(&base)).await;
+            let _ = check_with(&state, &args, &server).await;
         })
     };
 
@@ -2586,10 +2253,11 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
 #[tokio::test]
 async fn background_probe_skips_the_network_while_the_breaker_is_open() {
     // Once the breaker is open, a background probe must not touch
-    // the provider at all — the gated transport refuses before
-    // any request, the typed refusal surfaces, and the row stays
-    // unwritten.
-    let server = wiremock::MockServer::start().await;
+    // the provider at all — the provider's gate refuses before any
+    // request, the typed refusal surfaces, and the row stays
+    // unwritten. (That a real client is wired to that gate is
+    // `providers_test`'s to pin.)
+    let server = Arc::new(TableProvider::new());
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
@@ -2605,14 +2273,10 @@ async fn background_probe_skips_the_network_while_the_breaker_is_open() {
         "background": true
     }))
     .expect("args");
-    let got = check_availability_with_base(&state, &args, Some(&server.uri())).await;
+    let got = check_with(&state, &args, &server).await;
     assert!(matches!(got, Err(crate::error::AniError::GateRefused)));
     assert!(
-        server
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
+        server.asked().is_empty(),
         "an open breaker must produce zero provider requests"
     );
 }
