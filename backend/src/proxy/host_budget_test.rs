@@ -1274,3 +1274,20 @@ proptest! {
         }
     }
 }
+
+/// A normal segment ends a run of short ones: the next short segment
+/// after it is a lone one again, and is not counted.
+#[test]
+fn a_normal_segment_ends_a_short_run() {
+    let now = Instant::now();
+    let mut demand = Demand::default();
+    demand.note(Stream::Main, Duration::from_millis(400), now);
+    demand.note(Stream::Main, Duration::from_millis(400), now);
+    demand.note(Stream::Main, Duration::from_secs(5), now);
+    demand.note(Stream::Main, Duration::from_millis(400), now);
+    let need = demand.per_second(now);
+    assert!(
+        (need - 0.2).abs() < 1e-9,
+        "the lone short one is not counted: {need}"
+    );
+}

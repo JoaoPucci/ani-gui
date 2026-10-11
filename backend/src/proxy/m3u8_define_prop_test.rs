@@ -49,7 +49,7 @@ proptest! {
     fn spelling_leaves_plain_text_alone_and_reads_no_value_twice(
         text in "[ -#%-z|~]{0,32}",
         name in "[a-z]{1,6}",
-        value in "[ -~]{0,16}",
+        value in prop_oneof!["[ -~]{0,16}", "0[xX][0-9a-fA-F]{1,12}", "0[xX][0-9a-fA-F]{0,4}[g-z ,]{1,4}"],
     ) {
         let vars = Variables::from([(name.clone(), value.clone())]);
         prop_assert_eq!(spell(&text, &vars), text.clone());
