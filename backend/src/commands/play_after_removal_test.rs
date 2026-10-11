@@ -736,7 +736,7 @@ fn a_delete_takes_the_title_match_stored_under_the_rows_old_title() {
     let old = format!(
         "{}1",
         crate::commands::kitsu::title_match_prefix(
-            crate::scraper::provider::ProviderId::Hianime,
+            Some(crate::scraper::provider::ProviderId::Hianime),
             "The Show"
         )
     );

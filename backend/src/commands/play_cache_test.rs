@@ -492,7 +492,7 @@ mod row_provider_props {
             slug in "[a-z0-9-]{1,20}",
         ) {
             let id = format!("{}{slug}", prefix.unwrap_or(""));
-            prop_assert_eq!(cached_row_provider(&row(&id)), Some(ShowKey::parse(&id).provider));
+            prop_assert_eq!(cached_row_provider(&row(&id)), ShowKey::parse(&id).provider);
             prop_assert_eq!(
                 cached_row_provider(&row(&id)),
                 Some(if prefix.is_some() { ProviderId::Hianime } else { ProviderId::Anidb })

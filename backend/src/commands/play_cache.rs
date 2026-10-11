@@ -48,7 +48,7 @@ pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderI
     if cached.show_id.is_empty() {
         return None;
     }
-    Some(ShowKey::parse(&cached.show_id).provider)
+    ShowKey::parse(&cached.show_id).provider
 }
 
 /// Refresh the availability row a served replay stands on with the

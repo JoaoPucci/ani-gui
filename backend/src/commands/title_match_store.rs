@@ -20,7 +20,7 @@ use crate::scraper::provider::{ProviderId, ShowKey};
 /// History read and cache write failures propagate.
 pub(crate) fn store_title_match(
     state: &AppState,
-    provider: ProviderId,
+    provider: Option<ProviderId>,
     title: &str,
     cour: u32,
     kitsu_id: &str,
@@ -39,7 +39,7 @@ pub(crate) fn store_title_match(
 /// Whether Continue Watching searches `title` for the row `entry`: the
 /// row's title as listed or less a legacy episode tail, on the row's
 /// provider, compared the way the cache key folds a title.
-fn searches(entry: &HistoryEntry, provider: ProviderId, title: &str) -> bool {
+fn searches(entry: &HistoryEntry, provider: Option<ProviderId>, title: &str) -> bool {
     let wanted = title.trim().to_lowercase();
     ShowKey::parse(&entry.id).provider == provider
         && [entry.title.as_str(), without_episode_tail(&entry.title)]

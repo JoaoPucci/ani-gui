@@ -1024,6 +1024,13 @@ describe('kitsuTitleMatchGet', () => {
 		expect(got).toBe('kitsu-id-42');
 	});
 
+	it('asks without a provider for a row whose key names none', async () => {
+		const fetchMock = mockFetchOnce(null);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		await kitsuTitleMatchGet('Stone Ocean Part 2', 2, null);
+		expect(lastCall(fetchMock).url).toBe(`${BASE}/api/title-match?title=Stone+Ocean+Part+2&cour=2`);
+	});
+
 	it('returns null on cache miss', async () => {
 		globalThis.fetch = mockFetchOnce(null) as unknown as typeof fetch;
 		const got = await kitsuTitleMatchGet('Whatever', 1, 'hianime');

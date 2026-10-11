@@ -68,10 +68,10 @@ impl ProviderId {
     /// label — an absent one included — is anidb, the default every
     /// caller from before there were two providers means.
     #[must_use]
-    pub fn from_label(label: &str) -> Self {
+    pub fn from_label(label: &str) -> Option<Self> {
         match label {
-            "hianime" => Self::Hianime,
-            _ => Self::Anidb,
+            "hianime" => Some(Self::Hianime),
+            _ => Some(Self::Anidb),
         }
     }
 
@@ -166,7 +166,7 @@ pub fn slug_words(slug: &str) -> Option<&str> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ShowKey {
     /// The provider whose slug this is.
-    pub provider: ProviderId,
+    pub provider: Option<ProviderId>,
     /// The slug as the provider spells it.
     pub slug: String,
 }
@@ -175,7 +175,7 @@ impl ShowKey {
     /// A key for `slug` on `provider`.
     pub fn new(provider: ProviderId, slug: impl Into<String>) -> Self {
         Self {
-            provider,
+            provider: Some(provider),
             slug: slug.into(),
         }
     }
@@ -186,7 +186,10 @@ impl ShowKey {
     /// predate slugs, which parse but carry no words.
     #[must_use]
     pub fn parse(id: &str) -> Self {
-        for provider in [ProviderId::Hianime] {
+        let known = ProviderId::ALL.iter();
+        #[cfg(test)]
+        let known = known.chain(ProviderId::TEST);
+        for &provider in known.filter(|p| **p != ProviderId::Anidb) {
             if let Some(slug) = id
                 .strip_prefix(provider.label())
                 .and_then(|r| r.strip_prefix(':'))
@@ -208,8 +211,8 @@ impl ShowKey {
 impl std::fmt::Display for ShowKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.provider {
-            ProviderId::Anidb => f.write_str(&self.slug),
-            other => write!(f, "{}:{}", other.label(), self.slug),
+            None | Some(ProviderId::Anidb) => f.write_str(&self.slug),
+            Some(other) => write!(f, "{}:{}", other.label(), self.slug),
         }
     }
 }

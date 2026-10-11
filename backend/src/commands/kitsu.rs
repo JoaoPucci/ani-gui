@@ -440,30 +440,35 @@ pub async fn kitsu_anime_by_slug(state: &AppState, slug: &str) -> Result<Option<
 pub(crate) const TITLE_MATCH_VERSION: u32 = 3;
 
 fn title_match_key(
-    provider: crate::scraper::provider::ProviderId,
+    provider: Option<crate::scraper::provider::ProviderId>,
     title: &str,
     cour: u32,
 ) -> String {
     format!("{}{cour}", title_match_prefix(provider, title))
 }
 
-/// The key every cour of `title`'s title-match rows starts with.
+/// The key every cour of `title`'s title-match rows starts with. The
+/// segment after the version names the provider whose title it is:
+/// its label, or [`LEGACY_TITLE_MATCH_SEGMENT`] for a history row whose
+/// key names no provider.
 pub(crate) fn title_match_prefix(
-    provider: crate::scraper::provider::ProviderId,
+    provider: Option<crate::scraper::provider::ProviderId>,
     title: &str,
 ) -> String {
     let normalized = title.trim().to_lowercase();
-    format!(
-        "title-match:v{TITLE_MATCH_VERSION}:{}:{normalized}:c",
-        provider.label()
-    )
+    let segment = provider.map_or(LEGACY_TITLE_MATCH_SEGMENT, |p| p.label());
+    format!("title-match:v{TITLE_MATCH_VERSION}:{segment}:{normalized}:c")
 }
+
+/// The provider segment of a title match for a history row whose key
+/// names no provider — a row from a provider the app no longer ships.
+pub(crate) const LEGACY_TITLE_MATCH_SEGMENT: &str = "legacy";
 
 /// Read the cached `(title, cour) → kitsu_id` mapping. Returns `None`
 /// on miss; errors propagate the SQLite read failure.
 pub fn title_match_get(
     state: &AppState,
-    provider: crate::scraper::provider::ProviderId,
+    provider: Option<crate::scraper::provider::ProviderId>,
     title: &str,
     cour: u32,
 ) -> Result<Option<String>> {
@@ -475,7 +480,7 @@ pub fn title_match_get(
 /// behaviour the picker wants when Kitsu re-catalogues an entry.
 pub fn title_match_put(
     state: &AppState,
-    provider: crate::scraper::provider::ProviderId,
+    provider: Option<crate::scraper::provider::ProviderId>,
     title: &str,
     cour: u32,
     kitsu_id: &str,
@@ -1519,7 +1524,7 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         title_match_put(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "Stone Ocean Part 2",
             2,
             "kitsu-id-42",
@@ -1527,7 +1532,7 @@ mod tests {
         .expect("put ok");
         let got = title_match_get(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "Stone Ocean Part 2",
             2,
         )
@@ -1544,7 +1549,7 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         title_match_put(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "Stone Ocean",
             1,
             "id-1",
@@ -1552,14 +1557,14 @@ mod tests {
         .expect("put");
         let got_lc = title_match_get(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "stone ocean",
             1,
         )
         .expect("get lowercased");
         let got_padded = title_match_get(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "  STONE OCEAN  ",
             1,
         )
@@ -1575,7 +1580,7 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         title_match_put(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "Stone Ocean",
             1,
             "id-part1",
@@ -1583,7 +1588,7 @@ mod tests {
         .expect("put p1");
         title_match_put(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "Stone Ocean",
             2,
             "id-part2",
@@ -1592,7 +1597,7 @@ mod tests {
         assert_eq!(
             title_match_get(
                 &state,
-                crate::scraper::provider::ProviderId::Anidb,
+                Some(crate::scraper::provider::ProviderId::Anidb),
                 "Stone Ocean",
                 1
             )
@@ -1602,7 +1607,7 @@ mod tests {
         assert_eq!(
             title_match_get(
                 &state,
-                crate::scraper::provider::ProviderId::Anidb,
+                Some(crate::scraper::provider::ProviderId::Anidb),
                 "Stone Ocean",
                 2
             )
@@ -1617,7 +1622,7 @@ mod tests {
         assert_eq!(
             title_match_get(
                 &state,
-                crate::scraper::provider::ProviderId::Anidb,
+                Some(crate::scraper::provider::ProviderId::Anidb),
                 "Nothing here",
                 1
             )
@@ -1633,7 +1638,7 @@ mod tests {
         let state = state_with_kitsu_at("http://unused");
         title_match_put(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "Demon Slayer",
             1,
             "old",
@@ -1641,7 +1646,7 @@ mod tests {
         .expect("put old");
         title_match_put(
             &state,
-            crate::scraper::provider::ProviderId::Anidb,
+            Some(crate::scraper::provider::ProviderId::Anidb),
             "Demon Slayer",
             1,
             "new",
@@ -1650,7 +1655,7 @@ mod tests {
         assert_eq!(
             title_match_get(
                 &state,
-                crate::scraper::provider::ProviderId::Anidb,
+                Some(crate::scraper::provider::ProviderId::Anidb),
                 "Demon Slayer",
                 1
             )

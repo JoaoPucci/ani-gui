@@ -21,7 +21,7 @@ fn an_unknown_prefix_is_part_of_an_anidb_slug() {
     // Only a label the app knows is a prefix; anything else is the
     // bare id it always was, colon and all.
     let key = ShowKey::parse("weird:thing-12");
-    assert_eq!(key.provider, ProviderId::Anidb);
+    assert_eq!(key.provider, Some(ProviderId::Anidb));
     assert_eq!(key.slug, "weird:thing-12");
 }
 
@@ -46,14 +46,17 @@ fn the_search_term_is_the_slugs_words_for_either_provider() {
 
 #[test]
 fn a_label_parses_back_to_its_provider_and_anything_else_is_anidb() {
-    assert_eq!(ProviderId::from_label("hianime"), ProviderId::Hianime);
-    assert_eq!(ProviderId::from_label("anidb.app"), ProviderId::Anidb);
+    assert_eq!(ProviderId::from_label("hianime"), Some(ProviderId::Hianime));
+    assert_eq!(ProviderId::from_label("anidb.app"), Some(ProviderId::Anidb));
     assert_eq!(
         ProviderId::from_label(""),
-        ProviderId::Anidb,
+        Some(ProviderId::Anidb),
         "an absent label is the default every existing caller means"
     );
-    assert_eq!(ProviderId::from_label("something else"), ProviderId::Anidb);
+    assert_eq!(
+        ProviderId::from_label("something else"),
+        Some(ProviderId::Anidb)
+    );
 }
 
 proptest::proptest! {
