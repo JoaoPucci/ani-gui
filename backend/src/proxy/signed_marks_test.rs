@@ -285,11 +285,18 @@ proptest::proptest! {
 /// fetched, so the host is not asked for what cannot be rewritten.
 #[tokio::test]
 async fn a_playlist_uri_whose_variables_do_not_read_is_refused() {
-    let (router, id) = proxy_over("https://cdn.example/master.m3u8");
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/v.m3u8"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let (router, id) = proxy_over(&format!("{}/master.m3u8", server.uri()));
     let secret = AppSecret::from_bytes([9u8; 32]);
-    let playlist = "https://cdn.example/v.m3u8";
+    let playlist = format!("{}/v.m3u8", server.uri());
     let marks = "k=pl&s=main&v=bm90LWpzb24";
-    let token = sign_marked(&secret, id, playlist, marks);
+    let token = sign_marked(&secret, id, &playlist, marks);
     let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(playlist.as_bytes());
     let uri = format!("/s/{}/seg?u={encoded}&t={token}&{marks}", id.as_string());
     assert_eq!(fetch(&router, &uri).await.0, StatusCode::BAD_REQUEST);
@@ -343,4 +350,45 @@ fn a_sessions_master_variables_leave_with_it() {
         None,
         "nothing kept for a session that is gone"
     );
+}
+
+proptest::proptest! {
+    /// Whatever URI the rewrite writes, folding one of its marks into
+    /// the value before it — the separator percent-encoded — is refused:
+    /// no mark can be smuggled into or out of another's value.
+    #[test]
+    fn a_mark_folded_into_another_is_refused(
+        millis in 0u32..20_000,
+        audio in proptest::bool::ANY,
+        pick in 0usize..16,
+    ) {
+        let secret = AppSecret::from_bytes([5u8; 32]);
+        let id = SessionId::new();
+        let origin = ProxyOrigin::new("127.0.0.1", 1);
+        let seconds = f64::from(millis) / 1000.0;
+        let media = format!(
+            "#EXTM3U\n#EXT-X-TARGETDURATION:20\n#EXTINF:{seconds:.3},\ns0.ts\n#EXT-X-ENDLIST\n"
+        );
+        let media_url = url::Url::parse("https://cdn.example/x/v.m3u8").expect("url");
+        let stream = if audio { Stream::Audio } else { Stream::Main };
+        let master = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8\n";
+        let master_url = url::Url::parse("https://cdn.example/x/master.m3u8").expect("url");
+        let out = rewrite_master_naming(master.as_bytes(), &master_url, &origin, id, &secret, "key0").expect("master")
+            + &rewrite_media_as(media.as_bytes(), &media_url, &origin, id, &secret, stream).expect("media");
+        let uris: Vec<&str> = out.lines().filter(|l| l.contains("/seg?u=")).collect();
+        let uri = uris[pick % uris.len()];
+        let (head, marks) = uri.split_once("&k=").expect("marked");
+        let marks = format!("k={marks}");
+        let joints: Vec<usize> = marks.match_indices('&').map(|(i, _)| i).collect();
+        proptest::prop_assume!(!joints.is_empty());
+        let at = joints[pick % joints.len()];
+        let rest = &marks[at + 1..];
+        let folded = format!("{}%26{}", &marks[..at], rest.replacen('=', "%3D", 1));
+        let q = query_of(&format!("{head}&{folded}"));
+        let upstream = decode_seg_url(&q.u).expect("upstream");
+        proptest::prop_assert!(
+            verify_marked(&secret, id, upstream.as_str(), &marks_of(&q), &q.t).is_err(),
+            "{folded}"
+        );
+    }
 }
