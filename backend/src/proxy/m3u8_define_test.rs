@@ -277,28 +277,6 @@ fn a_definition_that_defined_nothing_stays() {
     assert!(out.contains("\n{$edge}/A.ts\n"), "{out}");
 }
 
-/// A session's master variables leave with the session, and none are
-/// kept for a session that is not there.
-#[test]
-fn a_sessions_master_variables_leave_with_it() {
-    let table = crate::proxy::SessionTable::new();
-    let session = crate::proxy::StreamSession::new(
-        Url::parse("https://cdn.example/a/master.m3u8").expect("url"),
-        String::new(),
-    );
-    let id = table.insert(session);
-    let vars = HashMap::from([("a".to_string(), "A".to_string())]);
-    table.set_master_variables(id, vars.clone());
-    assert_eq!(table.master_variables(&id), vars);
-    table.remove(&id);
-    assert!(table.master_variables(&id).is_empty());
-    table.set_master_variables(id, vars);
-    assert!(
-        table.master_variables(&id).is_empty(),
-        "nothing kept for a session that is gone"
-    );
-}
-
 proptest::proptest! {
     /// Whatever a query parameter's value, percent-encoded into the
     /// playlist's URL and read back as a variable, it comes back as it

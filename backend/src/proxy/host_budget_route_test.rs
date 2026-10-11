@@ -490,6 +490,15 @@ async fn get_drained(router: Router, uri: &str) -> StatusCode {
     status
 }
 
+/// The segment route's URI for `upstream` carrying `marks` — the
+/// query pairs the rewrite writes after the token — signed with them,
+/// as the rewrite signs what it writes.
+fn marked_uri(secret: &AppSecret, id: SessionId, upstream: &str, marks: &str) -> String {
+    let token = sign_marked(secret, id, upstream, marks);
+    let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(upstream.as_bytes());
+    format!("/s/{}/seg?u={encoded}&t={token}&{marks}", id.as_string())
+}
+
 fn seg_uri(secret: &AppSecret, id: SessionId, upstream: &str) -> String {
     let token = sign_segment(secret, id, upstream);
     let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(upstream.as_bytes());
@@ -610,7 +619,7 @@ async fn a_players_segment_fetch_notes_its_rendition_and_a_downloads_does_not() 
 
     let player_budget = host_budget::HostBudget::fresh();
     let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", player_budget.clone());
-    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
+    let uri = marked_uri(&secret, id, &seg, "r=main&d=5000");
     assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
     assert!(
         (player_budget.player_demand(&host) - 0.2).abs() < 1e-9,
@@ -620,7 +629,7 @@ async fn a_players_segment_fetch_notes_its_rendition_and_a_downloads_does_not() 
     let download_budget = host_budget::HostBudget::fresh();
     let (router, _sessions, id, secret) =
         background_proxy("https://cdn.example/master.m3u8", download_budget.clone());
-    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
+    let uri = marked_uri(&secret, id, &seg, "r=main&d=5000");
     assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
     assert_eq!(download_budget.player_demand(&host), 0.0);
 }
@@ -648,7 +657,7 @@ async fn a_redirected_segment_notes_the_players_need_at_the_host_it_lands_on() {
     let budget = host_budget::HostBudget::fresh();
     let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", budget.clone());
     let seg = format!("{}/seg.ts", origin.uri());
-    let uri = format!("{}&r=main&d=5000", seg_uri(&secret, id, &seg));
+    let uri = marked_uri(&secret, id, &seg, "r=main&d=5000");
     assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
     let edge_host = host_budget::host_key(&url::Url::parse(&edge.uri()).expect("edge url"));
     assert!(
@@ -672,7 +681,7 @@ async fn a_rendition_playlist_names_its_segments_by_the_stream_the_master_gave_i
         .await;
     let (router, id, secret) = proxy_on("https://cdn.example/master.m3u8");
     let playlist = format!("{}/a/en.m3u8", server.uri());
-    let uri = format!("{}&k=pl&s=audio", seg_uri(&secret, id, &playlist));
+    let uri = marked_uri(&secret, id, &playlist, "k=pl&s=audio");
     let resp = router
         .oneshot(
             axum::http::Request::builder()
@@ -747,7 +756,7 @@ async fn a_players_playlist_fetch_notes_its_need() {
     let budget = host_budget::HostBudget::fresh();
     let (router, id, secret) = proxy_with("https://cdn.example/master.m3u8", budget.clone());
     let playlist = format!("{}/v/index.m3u8", server.uri());
-    let uri = format!("{}&k=pl&s=main", seg_uri(&secret, id, &playlist));
+    let uri = marked_uri(&secret, id, &playlist, "k=pl&s=main");
     assert_eq!(get_drained(router, &uri).await, StatusCode::OK);
     assert!(budget.player_demand(&host) > 0.0);
 }

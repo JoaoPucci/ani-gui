@@ -639,6 +639,10 @@ mod seg_referer_tests;
 mod media_activity_tests;
 
 #[cfg(test)]
+#[path = "signed_marks_test.rs"]
+mod signed_marks_tests;
+
+#[cfg(test)]
 #[path = "host_budget_route_test.rs"]
 mod host_budget_route_tests;
 
