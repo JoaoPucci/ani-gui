@@ -1696,7 +1696,7 @@ mod tests {
             },
         );
         // A later resolve moved the display stamp to its own row.
-        crate::commands::anidb_offset::put_display(&state, "the-show-77", 0, 7, "6");
+        crate::commands::numbering_offset::put_display(&state, "the-show-77", 0, 7, "6");
         let router = build_api_router(Arc::new(state));
 
         let response = router
@@ -1749,7 +1749,7 @@ mod tests {
             },
         );
         // The stamp names display 4 as slot 5.
-        crate::commands::anidb_offset::put_display(&state, "the-show-77", 0, 5, "4");
+        crate::commands::numbering_offset::put_display(&state, "the-show-77", 0, 5, "4");
         let router = build_api_router(Arc::new(state));
 
         let response = router

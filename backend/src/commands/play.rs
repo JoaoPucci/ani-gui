@@ -130,13 +130,13 @@ fn write_history_on_cache_hit(
     }
     // the history file speaks the provider's numbering; the offset was
     // stamped by the fresh resolve that wrote this cache row.
-    let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
+    let offset = crate::commands::numbering_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
         // The row's own slot when it carries one; older rows fall
         // back to the stamp-aware translation.
         ep_no: cached.resolved_slot.map_or_else(
             || {
-                crate::commands::anidb_offset::write_ep_no(
+                crate::commands::numbering_offset::write_ep_no(
                     state,
                     &cached.show_id,
                     &args.episode,
@@ -996,7 +996,7 @@ pub(crate) mod tests {
         );
         cached.show_id = "the-sequel-88".into();
         cached.show_title = "The Sequel".into();
-        crate::commands::anidb_offset::put(&state, "the-sequel-88", 40);
+        crate::commands::numbering_offset::put(&state, "the-sequel-88", 40);
         let args = PlayArgs {
             title: "The Sequel".into(),
             episode: "1".into(),

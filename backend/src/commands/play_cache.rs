@@ -256,8 +256,8 @@ pub(crate) fn cached_watch(
 ) -> super::play_native_record::Watch {
     let ep_no = cached.resolved_slot.map_or_else(
         || {
-            let offset = super::anidb_offset::get(state, &cached.show_id);
-            super::anidb_offset::write_ep_no(state, &cached.show_id, episode, offset)
+            let offset = super::numbering_offset::get(state, &cached.show_id);
+            super::numbering_offset::write_ep_no(state, &cached.show_id, episode, offset)
         },
         |slot| slot.to_string(),
     );

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::app::AppState;
 
-#[path = "anidb_offset_store_format.rs"]
+#[path = "numbering_offset_store_format.rs"]
 mod format;
 pub(super) use format::parse;
 use format::serialize;

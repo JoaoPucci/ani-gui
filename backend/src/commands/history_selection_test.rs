@@ -143,7 +143,7 @@ fn two_rows_on_different_numberings(s: &AppState, path: &std::path::Path) {
     .unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(s, "the-show-77", "1001").unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(s, "hianime:the-show-9", "1001").unwrap();
-    crate::commands::anidb_offset::put(s, "the-show-77", 40);
+    crate::commands::numbering_offset::put(s, "the-show-77", 40);
 }
 
 /// Progress is compared in the entry's numbering, the one the strip
@@ -204,7 +204,7 @@ fn a_row_without_an_offset_compares_by_its_own_number() {
     .unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "1001").unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "1001").unwrap();
-    crate::commands::anidb_offset::put(&s, "the-show-77", 40);
+    crate::commands::numbering_offset::put(&s, "the-show-77", 40);
     let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "the-show-77", "episode 5 is further than episode 3");
     assert_eq!(
