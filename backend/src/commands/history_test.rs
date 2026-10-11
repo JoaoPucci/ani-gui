@@ -559,6 +559,30 @@ fn delete_keeps_a_title_match_a_remaining_row_searches_less_its_episode_tail() {
     assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
 }
 
+/// A bare row's title matches were written under anidb.app's label
+/// while the app shipped it. They are no longer read, but they are
+/// still the show's, and removing the row takes them — found by the
+/// row's title under that label, since nothing else names them.
+#[test]
+fn delete_takes_a_bare_rows_title_matches_under_anidbs_label_too() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("naruto-20", "Naruto")]).unwrap();
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    // The skip times found through that match are the show's too.
+    put(&s, "aniskip:v2:11:21:1", "[]");
+
+    assert!(history_delete(&s, "naruto-20").unwrap());
+
+    assert_eq!(cached(&s, "title-match:v3:anidb.app:naruto:c1"), None);
+    assert_eq!(
+        cached(&s, "aniskip:v2:11:21:1"),
+        None,
+        "the skip times of the id the match named"
+    );
+}
+
 #[test]
 fn delete_takes_its_own_title_match_beside_one_a_remaining_row_searches() {
     let tmp = tempfile::tempdir().unwrap();
