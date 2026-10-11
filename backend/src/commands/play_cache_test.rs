@@ -243,6 +243,37 @@ async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_
     );
 }
 
+/// The liveness check is the player's startup, and the host counts its
+/// requests like any other: each waits for its host's token as
+/// background traffic, so a check made while another episode plays
+/// takes nothing the playing player is waiting for, and with the
+/// host's tokens spent the check sends nothing before its deadline —
+/// the row reads as not live and a fresh resolve takes its place.
+#[tokio::test]
+async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let cached = cached_blank(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    let state = state_with_proxy_origin();
+    let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
+        state.host_budget.admit(&host).await;
+    }
+    let live =
+        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_millis(300))
+            .await;
+    assert!(!live, "nothing reached the host before the deadline");
+}
+
 mod webvtt_prefix_props {
     use crate::commands::play_cache_tracks::webvtt_prefix;
     use crate::proxy::is_webvtt;

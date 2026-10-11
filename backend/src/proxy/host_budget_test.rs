@@ -247,17 +247,6 @@ async fn the_players_first_request_is_admitted_beside_any_number_of_unpaced_down
         .expect("the first request is admitted");
 }
 
-/// A request the app makes without waiting for a token — a cached
-/// row's liveness check — is spent from the host's budget all the same.
-#[test]
-fn a_request_the_budget_does_not_pace_is_spent_from_it() {
-    let budget = HostBudget::fresh();
-    budget.spend("cdn.example:443", 3);
-    assert_eq!(budget.on_hand("cdn.example:443"), Some(17.0));
-    budget.spend("cdn.example:443", 40);
-    assert_eq!(budget.on_hand("cdn.example:443"), Some(0.0));
-}
-
 /// An unpaced download's fragments go wherever its playlists send
 /// them — a segment host, an edge a redirect lands on — which the app
 /// does not see. So the hold covers every host the player fetches
@@ -324,18 +313,6 @@ async fn a_host_fetched_from_before_an_unpaced_download_is_held_when_it_ends() {
     drop(budget.unpaced_run(16));
     let left = budget.on_hand("cdn.example:443").expect("fetched from");
     assert!((left - 4.0).abs() < 1e-6, "{left}");
-}
-
-/// A request spent without waiting while an unpaced download runs
-/// stays spent: the hold applies first, and the spend comes off what
-/// it leaves.
-#[test]
-fn a_spend_beside_an_unpaced_download_comes_off_what_the_hold_leaves() {
-    let budget = HostBudget::fresh();
-    let _run = budget.unpaced_run(16);
-    budget.spend("cdn.example:443", 2);
-    let left = budget.on_hand("cdn.example:443").expect("spent");
-    assert!((left - 2.0).abs() < 1e-3, "{left}");
 }
 
 /// Two unpaced downloads running together hold every host to what
