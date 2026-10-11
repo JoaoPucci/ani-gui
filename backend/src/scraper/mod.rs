@@ -23,6 +23,7 @@ pub mod hls;
 pub mod outcome;
 pub mod provider;
 mod reservation;
+mod show_key;
 #[cfg(test)]
 #[path = "table_provider_test.rs"]
 pub(crate) mod table_provider;
