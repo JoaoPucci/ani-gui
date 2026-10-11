@@ -430,3 +430,126 @@ async fn run_play_assertion(state: Arc<AppState>) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// A Continue Watching row from anidb.app's days — its bare slug, the
+/// Kitsu id the play recorded, a numbering stamp in the sidecar — plays
+/// on hianime, the provider the app walks, and loses nothing: the play
+/// writes hianime's row beside it, the old row keeps its place and its
+/// episode, and the show resumes from the row the user watched last.
+#[tokio::test]
+async fn a_history_row_from_anidb_plays_on_hianime_and_keeps_its_place() {
+    let tmp = TempDir::new().expect("tempdir");
+    std::fs::create_dir_all(tmp.path().join("hist")).expect("mkdir hist");
+    let hianime = stub_hianime().await;
+    let mut state = build_state(tmp.path(), "http://127.0.0.1:1", Some(&hianime.uri()));
+    state.providers.set_order(vec![ProviderId::Hianime]);
+    let history_path = tmp.path().join("hist/history");
+    // The legacy row: a continuation anidb numbered cumulatively, its
+    // episode 43 the entry's third, translated by the sidecar's stamp.
+    ani_gui::history::write_atomic(
+        &history_path,
+        &[ani_gui::history::HistoryEntry {
+            ep_no: "43".into(),
+            id: "test-show-1".into(),
+            title: "test".into(),
+            watched_at: Some(1_700_000_000_000),
+            kitsu_id: Some("777".into()),
+        }],
+    )
+    .expect("seed history");
+    std::fs::write(tmp.path().join("hist/ani-gui-offsets"), "test-show-1\t40\n")
+        .expect("seed numbering");
+    let state = Arc::new(state);
+
+    let router = build_api_router(state.clone());
+    let body = r#"{"title":"test","episode":"4","mode":"sub","quality":"best","episode_count":12,"kitsu_id":"777"}"#;
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/play")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(response.status(), StatusCode::OK, "the play resolves");
+    // The renderer stamps the watch once the play resolves, with the
+    // Kitsu id of the page it came from.
+    let marked = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/play/mark-watched")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert!(marked.status().is_success(), "{}", marked.status());
+    assert!(
+        hianime
+            .received_requests()
+            .await
+            .expect("recorded")
+            .iter()
+            .any(|r| r.url.path() == "/search"),
+        "it resolved on hianime"
+    );
+
+    let rows = ani_gui::history::read_all(&history_path).expect("history");
+    let legacy = rows
+        .iter()
+        .find(|r| r.id == "test-show-1")
+        .expect("the legacy row is kept");
+    assert_eq!(legacy.ep_no, "43", "untouched");
+    assert_eq!(legacy.kitsu_id.as_deref(), Some("777"));
+    let played = rows
+        .iter()
+        .find(|r| r.id == "hianime:test-show-1")
+        .expect("hianime's row is written beside it");
+    assert_eq!(played.kitsu_id.as_deref(), Some("777"));
+
+    // The list still reads the legacy row in the entry's numbering.
+    let listed = get_json(&router, "/api/history").await;
+    let legacy_listed = listed
+        .as_array()
+        .expect("a list")
+        .iter()
+        .find(|r| r["id"] == "test-show-1")
+        .expect("listed");
+    assert_eq!(
+        legacy_listed["ep_no"], "3",
+        "the sidecar still translates it"
+    );
+
+    // And the show resumes from the row watched last: hianime's.
+    let resumed = get_json(&router, "/api/history/by-kitsu/777").await;
+    assert_eq!(resumed["id"], "hianime:test-show-1");
+}
+
+async fn get_json(router: &axum::Router, uri: &str) -> serde_json::Value {
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(uri)
+                .body(Body::empty())
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert_eq!(response.status(), StatusCode::OK, "{uri}");
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body")
+        .to_bytes();
+    serde_json::from_slice(&bytes).expect("json")
+}
