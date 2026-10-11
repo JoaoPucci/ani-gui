@@ -1441,7 +1441,7 @@ where
                 run_deadline,
                 on_line,
                 &mut repackage_failed,
-                resumed_bytes(&scratch.path),
+                resumed_partials(&scratch.path),
                 pacing.until_live_changes(live),
             )
             .await;
@@ -1887,7 +1887,7 @@ fn ytdlp_command(
         .arg("--newline")
         .arg("--progress-template")
         .arg(format!(
-            "download:{} %(progress.downloaded_bytes)s",
+            "download:{} %(info.format_id)s %(progress.downloaded_bytes)s",
             super::download_progress::YTDLP_PROGRESS_MARK
         ))
         .arg("--no-skip-unavailable-fragments")
@@ -1948,31 +1948,41 @@ enum ToolEnd {
 }
 
 /// What a yt-dlp run writing to `output` resumes from: the partial
-/// files yt-dlp keeps beside it — `<output>.part`, or one per format,
-/// `<stem>.f<id>.<ext>.part`, for a stream it fetches video and audio
-/// apart — whose sizes it reports as downloaded from its first progress
-/// on; zero when there are none. A fragment's own partial
-/// (`….part-Frag<n>.part`) is not one. With formats apart this is their
-/// sum, at least the first format's count, so that count reads as
-/// nothing gained rather than as the bytes resumed.
-fn resumed_bytes(output: &std::path::Path) -> u64 {
-    let (Some(dir), Some(stem)) = (output.parent(), output.file_stem()) else {
-        return 0;
+/// files yt-dlp keeps beside it — `<output>.part` for a single format,
+/// or one per format, `<stem>.f<id>.<ext>.part`, for a stream it fetches
+/// video and audio apart — whose sizes it reports as downloaded when it
+/// starts each; nothing when there are none. A fragment's own partial
+/// (`….part-Frag<n>.part`) is not one.
+fn resumed_partials(output: &std::path::Path) -> super::download_progress::Resumed {
+    let mut resumed = super::download_progress::Resumed::default();
+    let (Some(dir), Some(stem), Some(name)) =
+        (output.parent(), output.file_stem(), output.file_name())
+    else {
+        return resumed;
     };
-    let prefix = format!("{}.", stem.to_string_lossy());
+    let whole = format!("{}.part", name.to_string_lossy());
+    let prefix = format!("{}.f", stem.to_string_lossy());
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return 0;
+        return resumed;
     };
-    entries
-        .filter_map(std::result::Result::ok)
-        .filter(|entry| {
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            name.starts_with(&prefix) && name.ends_with(".part") && !name.contains(".part-Frag")
-        })
-        .filter_map(|entry| entry.metadata().ok())
-        .map(|meta| meta.len())
-        .sum()
+    for entry in entries.filter_map(std::result::Result::ok) {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let Some(len) = entry.metadata().ok().map(|m| m.len()) else {
+            continue;
+        };
+        if *name == whole {
+            resumed.whole = len;
+        } else if let Some(format) = name
+            .strip_prefix(&prefix)
+            .filter(|rest| rest.ends_with(".part") && !rest.contains(".part-Frag"))
+            .and_then(|rest| rest.split_once('.'))
+            .map(|(format, _)| format.to_owned())
+        {
+            resumed.formats.insert(format, len);
+        }
+    }
+    resumed
 }
 
 /// Run one download tool to completion, streaming its stderr lines and
@@ -1996,7 +2006,7 @@ where
         on_line,
         repackage_failed,
         // An ffmpeg run starts its output afresh.
-        0,
+        super::download_progress::Resumed::default(),
         std::future::pending(),
     )
     .await?;
@@ -2026,7 +2036,7 @@ async fn run_tool_until<F>(
     deadline: tokio::time::Instant,
     on_line: &mut F,
     repackage_failed: &mut bool,
-    resumed: u64,
+    resumed: super::download_progress::Resumed,
     stop: impl std::future::Future<Output = ()>,
 ) -> Result<ToolRun>
 where

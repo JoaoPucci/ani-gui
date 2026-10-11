@@ -7,7 +7,7 @@
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{ChildStderr, ChildStdout};
 
-use super::download_progress::{progress_bytes, rate_report, RateMeter, RATE_REPORT_EVERY};
+use super::download_progress::{rate_report, RateMeter, Resumed, RATE_REPORT_EVERY};
 use crate::error::{AniError, Result};
 
 /// Read the tool's stderr and stdout until both close. A stderr line is
@@ -26,7 +26,7 @@ pub(crate) async fn read_tool_output<F>(
     on_line: &mut F,
     repackage_failed: &mut bool,
     measured: &std::sync::atomic::AtomicBool,
-    resumed: u64,
+    resumed: Resumed,
 ) -> Result<()>
 where
     F: FnMut(&str) + Send,
@@ -36,7 +36,7 @@ where
     let (mut lines_open, mut progress_open) = (true, true);
     // The run's speed, reported to the dock once a second from the
     // first progress the tool gives, counted from the run's start.
-    let mut meter = RateMeter::starting_from(resumed, tokio::time::Instant::now());
+    let mut meter = RateMeter::starting_from_partials(resumed, tokio::time::Instant::now());
     let mut report = tokio::time::interval(RATE_REPORT_EVERY);
     report.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     report.tick().await;
@@ -73,8 +73,8 @@ where
                 // Progress is the meter's, not the dock's text;
                 // anything else on stdout is the tool's chatter.
                 let line = crate::spawn::strip_ansi(raw.as_bytes());
-                if let Some(bytes) = progress_bytes(&line) {
-                    meter.observe(bytes, tokio::time::Instant::now());
+                if let Some((format, bytes)) = super::download_progress::progress(&line) {
+                    meter.observe_format(format.as_deref(), bytes, tokio::time::Instant::now());
                     measured.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
             }
