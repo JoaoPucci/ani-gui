@@ -804,7 +804,7 @@ pub(crate) mod tests {
         play_resolution_cache::put(
             &state.cache_pool,
             &setting_cache_key(&args),
-            &cached_blank(
+            &cached_walked(
                 format!("{}/x/master.m3u8", upstream.uri()),
                 upstream.uri(),
                 MediaKind::Hls,
@@ -894,7 +894,7 @@ pub(crate) mod tests {
         play_resolution_cache::put(
             &state.cache_pool,
             &setting_cache_key(&args),
-            &cached_blank(
+            &cached_walked(
                 format!("{}/x/master.m3u8", upstream.uri()),
                 upstream.uri(),
                 MediaKind::Hls,
@@ -956,6 +956,23 @@ pub(crate) mod tests {
             resolved_slot: None,
             subtitles: Vec::new(),
             kitsu_id: None,
+        }
+    }
+
+    /// [`cached_blank`] resolved through the provider the test state
+    /// walks — a row a replay may serve.
+    pub(crate) fn cached_walked(
+        upstream_url: String,
+        referer: String,
+        kind: MediaKind,
+    ) -> CachedResolution {
+        CachedResolution {
+            show_id: crate::scraper::provider::ShowKey::new(
+                crate::provider_set::ProviderSet::TEST_DEFAULT,
+                "cached-show-1",
+            )
+            .to_string(),
+            ..cached_blank(upstream_url, referer, kind)
         }
     }
 
@@ -1025,7 +1042,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let cached = cached_blank(
+        let cached = cached_walked(
             format!("{}/video.mp4", server.uri()),
             String::new(),
             MediaKind::Mp4,
@@ -1075,7 +1092,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let cached = cached_blank(
+        let cached = cached_walked(
             format!("{}/sub/1", server.uri()),
             "https://allmanga.to".into(),
             MediaKind::Mp4,
@@ -1195,7 +1212,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let mut cached = cached_blank(
+        let mut cached = cached_walked(
             format!("{}/video.mp4", server.uri()),
             "https://embed.example/".into(),
             MediaKind::Mp4,
@@ -1446,7 +1463,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The cached play is hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = PlayArgs {
             kitsu_id: Some("K9".into()),
             ..external_args("Remembered Show", "3")
@@ -1538,7 +1559,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The cached play is hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = external_args("Anonymous Show", "1");
         seed_play_cache_from(
             &state,
