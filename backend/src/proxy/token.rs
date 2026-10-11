@@ -410,8 +410,9 @@ impl SessionTable {
         for id in to_remove {
             self.remove(&id);
         }
-        // Whatever a removal raced past: no variables outlive their
-        // session.
+        // A backstop, for when a sweep runs: a keep checks for its
+        // session while it holds the variables, so none should be left
+        // without one.
         self.variables.retain(|id, _| self.inner.contains_key(id));
         n
     }

@@ -24,8 +24,7 @@
 //!   session keeps the master's variables under — and `k=md` when it
 //!   names media — a master's session key or session data, anything a
 //!   media playlist names, a segment with the stream it feeds and the
-//!   playback it buys. The token signs the
-//!   marks with the upstream.
+//!   playback it buys. The token signs the marks with the upstream.
 //! - [`names_a_playlist`] — whether the segment route is fetching a
 //!   playlist: by that mark, or for an unmarked URL by a lowercase
 //!   `.m3u8` path.

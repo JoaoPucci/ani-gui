@@ -1,8 +1,8 @@
 //! What a rewritten URI says about what it points at — playlist or
 //! media, the stream it carries or feeds, the playback it buys, the key
-//! the session keeps its master's variables under — is signed with it: the proxy acts on
-//! those marks, so a URI whose marks were changed is refused like one
-//! whose upstream was.
+//! the session keeps its master's variables under — is signed with it:
+//! the proxy acts on those marks, so a URI whose marks were changed is
+//! refused like one whose upstream was.
 
 use super::*;
 use tower::ServiceExt as _;
