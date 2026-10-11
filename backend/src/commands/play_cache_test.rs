@@ -271,44 +271,92 @@ async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
     assert!(!live, "nothing reached the host before the deadline");
 }
 
-/// The check is the player's first request: it takes its place in the
-/// host's line in the order it arrived, rather than yielding to a
-/// player already asking there — which, filling its buffer, asks without
-/// pause — so it is served within its deadline once the tokens ahead of
-/// it are.
-#[tokio::test]
-async fn a_cached_rows_check_takes_its_turn_beside_a_playing_player() {
-    let server = MockServer::start().await;
+/// A row with a stream and `tracks` subtitle tracks, all on `server`
+/// and all live.
+async fn row_with_tracks(server: &MockServer, tracks: usize) -> CachedResolution {
     Mock::given(method("HEAD"))
         .and(path("/video.mp4"))
         .respond_with(ResponseTemplate::new(200))
-        .mount(&server)
+        .mount(server)
         .await;
-    let cached = cached_blank(
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/\d+\.vtt$"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
+        .mount(server)
+        .await;
+    let mut cached = cached_blank(
         format!("{}/video.mp4", server.uri()),
         String::new(),
         MediaKind::Mp4,
     );
+    cached.subtitles = (0..tracks)
+        .map(|i| {
+            track(
+                &format!("l{i}"),
+                i == 0,
+                &format!("{}/subs/{i}.vtt", server.uri()),
+            )
+        })
+        .collect();
+    cached
+}
+
+/// A row's check never queues ahead of an episode already playing from
+/// the host: with the host's tokens spent and a whole row's probes
+/// waiting, the playing player's next segment is served at the next
+/// token, not after the row.
+#[tokio::test]
+async fn a_cached_rows_check_never_queues_ahead_of_a_playing_players_segment() {
+    let server = MockServer::start().await;
+    let cached = row_with_tracks(&server, 4).await;
+    let state = std::sync::Arc::new(state_with_proxy_origin());
+    let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
+        state.host_budget.admit(&host).await;
+    }
+    let checking = {
+        let state = std::sync::Arc::clone(&state);
+        tokio::spawn(async move {
+            super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(10))
+                .await
+        })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let start = std::time::Instant::now();
+    state.host_budget.admit(&host).await;
+    let waited = start.elapsed();
+    checking.abort();
+    assert!(
+        waited < crate::proxy::host_budget::SEGMENT_REFILL + std::time::Duration::from_millis(700),
+        "the playing player's segment waited {waited:?} behind the check"
+    );
+}
+
+/// A row's check is not starved by downloads: beside background traffic
+/// asking without pause, its probes are served ahead of it, within the
+/// check's deadline.
+#[tokio::test]
+async fn a_cached_rows_check_is_served_beside_background_downloads() {
+    let server = MockServer::start().await;
+    let cached = row_with_tracks(&server, 1).await;
     let state = state_with_proxy_origin();
     let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
     for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
         state.host_budget.admit(&host).await;
     }
-    // A player filling its buffer: always a request in the line.
     let budget = std::sync::Arc::clone(&state.host_budget);
-    let player_host = host.clone();
-    let player = tokio::spawn(async move {
+    let download_host = host.clone();
+    let download = tokio::spawn(async move {
         loop {
-            budget.admit(&player_host).await;
+            budget.admit_background(&download_host).await;
         }
     });
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    // Its turns come at a refill and two; the deadline leaves room for a
-    // slow runner, and a check that yielded would never get one.
+    // Its two tokens come at a refill and two; room for a slow runner.
     let live =
         super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8)).await;
-    player.abort();
-    assert!(live, "served in its turn within the deadline");
+    download.abort();
+    assert!(live, "served ahead of the downloads within the deadline");
 }
 
 mod webvtt_prefix_props {
