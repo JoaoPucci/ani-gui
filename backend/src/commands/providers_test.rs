@@ -562,6 +562,85 @@ fn each_shipped_provider_gets_a_client_of_its_own_on_its_own_gate() {
     }
 }
 
+/// A walk over the real arm of `client_for`: the shipped client, over
+/// the real transport, against a local origin. Background traffic
+/// through an open breaker is refused before any request leaves; with
+/// the breaker closed, the same walk reaches the origin — so the
+/// silence is the gate's doing, not an origin nobody could reach.
+#[tokio::test]
+async fn a_shipped_clients_requests_are_admitted_through_its_providers_gate() {
+    use wiremock::matchers::method;
+    let origin = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .respond_with(wiremock::ResponseTemplate::new(404))
+        .mount(&origin)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = shipped_state(&td);
+    state.providers.set_order(vec![ProviderId::Hianime]);
+    state
+        .providers
+        .set_origin(ProviderId::Hianime, origin.uri());
+
+    let walk = |state: &AppState| {
+        let state = state.clone();
+        async move {
+            let mut attempt = ResolveAttempt {
+                request: NativeResolveRequest {
+                    title: "Gated Show",
+                    alt_titles: &[],
+                    episode: "1",
+                    mode: "sub",
+                    quality: "best",
+                    expected_count: None,
+                    year: None,
+                    subtype: None,
+                },
+                on_progress: &mut |_| {},
+                answered_by: None,
+            };
+            super::run(&state, ScrapePriority::Background, &mut attempt)
+                .await
+                .map(|_| ())
+        }
+    };
+
+    for _ in 0..FAILURE_THRESHOLD {
+        state.providers.gate(ProviderId::Hianime).record(
+            crate::scraper::gate::ScrapeOutcome::Failure,
+            tokio::time::Instant::now(),
+        );
+    }
+    let refused = walk(&state).await.expect_err("an open breaker refuses");
+    assert!(
+        matches!(refused.error, AniError::GateRefused),
+        "{:?}",
+        refused.error
+    );
+    assert!(
+        origin
+            .received_requests()
+            .await
+            .expect("recorded")
+            .is_empty(),
+        "nothing left for the origin while the breaker was open"
+    );
+
+    state.providers.gate(ProviderId::Hianime).record(
+        crate::scraper::gate::ScrapeOutcome::Success,
+        tokio::time::Instant::now(),
+    );
+    let _ = walk(&state).await;
+    assert!(
+        !origin
+            .received_requests()
+            .await
+            .expect("recorded")
+            .is_empty(),
+        "with the breaker closed the same walk reaches the origin"
+    );
+}
+
 #[test]
 fn a_test_only_provider_answers_only_from_a_registered_table() {
     let td = tempfile::tempdir().expect("td");
