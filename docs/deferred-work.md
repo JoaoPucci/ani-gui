@@ -226,16 +226,6 @@ starting it, and delete it when you find it done.
   provider's site rather than the CDN. It is one or two requests
   against a burst of twenty.
 
-- **A master's variables ride in every playlist URI it names.** What
-  a master defines with `EXT-X-DEFINE` travels, signed, in the URI of
-  each playlist it names, so the playlist imports from that response
-  and no other. Nothing bounds its size: a master defining tens of
-  kilobytes of variables would push its playlists' URIs past what the
-  proxy's server accepts, and every rendition would fail. It waits
-  because masters define a few short values, and the alternative —
-  versioned variables kept per session and named in the URI — brings
-  back the state the signed mark removed.
-
 - **A download running past the budget is held, not counted.** While
   yt-dlp runs free, or an ffmpeg fallback reads the host directly,
   every host is held to what the tool's requests in flight leave of
