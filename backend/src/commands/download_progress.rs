@@ -51,13 +51,17 @@ pub(crate) fn ytdlp_progress_bytes(line: &str) -> Option<u64> {
 /// The format yt-dlp is fetching and the bytes it has of it, from a line
 /// its progress template printed — the format's id ahead of the count,
 /// or the count alone; `None` for any other line, or before yt-dlp knows.
+/// The count is the last word, and the id everything between the mark
+/// and it, so an id is read whole whatever it holds — yt-dlp replaces an
+/// id's whitespace today, and the reading does not depend on it.
 #[must_use]
 pub(crate) fn ytdlp_progress(line: &str) -> Option<(Option<String>, u64)> {
-    let rest = line.trim().strip_prefix(YTDLP_PROGRESS_MARK)?;
-    let mut words = rest.split_whitespace().rev();
-    let bytes = words.next()?.parse().ok()?;
-    let format = words.next().map(str::to_owned);
-    words.next().is_none().then_some((format, bytes))
+    let rest = line.trim().strip_prefix(YTDLP_PROGRESS_MARK)?.trim();
+    let (format, count) = rest
+        .rsplit_once(' ')
+        .map_or((None, rest), |(id, count)| (Some(id.trim()), count));
+    let bytes = count.parse().ok()?;
+    Some((format.filter(|id| !id.is_empty()).map(str::to_owned), bytes))
 }
 
 /// The bytes ffmpeg has written, from its `total_size=` progress line;
