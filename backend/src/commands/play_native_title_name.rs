@@ -10,13 +10,15 @@ use super::*;
 /// however each is numbered. "Show", "Show 2", "Show 2nd Season Part
 /// 2" and "Show II Part 2: Arc" are all named "Show"; "Other Show
 /// Season 2" is named "Other Show"; "ショー２" and "ショー第2期" are
-/// named "ショー". A title that opens on a division ("86") is named by
-/// its stem.
+/// named "ショー". A word ordinal standing alone with more than
+/// divisions after it is a word of the name ([`inside_the_name`]):
+/// "The Seventh Son" is named "The Seventh Son". A title that opens on
+/// a division ("86") is named by its stem.
 pub(crate) fn name(title: &str) -> Vec<String> {
     let words = words(title);
     let mut out = Vec::new();
     for (i, w) in words.iter().enumerate() {
-        if division_at(&words, i).is_none() {
+        if division_at(&words, i).is_none() || inside_the_name(&words, i) {
             out.push(w.clone());
             continue;
         }
@@ -60,4 +62,30 @@ pub(crate) fn opens_on_a_first_division(title: &str, wide: &str) -> bool {
 /// Season 2" and "Showtime 2" do not.
 pub(crate) fn names_past_stem(title: &str, wide: &str) -> bool {
     past_stem(title, wide).is_some_and(|(rest, _)| !scan(&words(&rest), true).is_empty())
+}
+
+/// Whether the division at `words[i]` is a word ordinal standing alone
+/// ("Seventh", not "Seventh Season", "VII" or "7th") with something
+/// other than divisions after it — a word of the name, as in "The
+/// Seventh Son", not the title's division.
+fn inside_the_name(words: &[String], i: usize) -> bool {
+    let w = &words[i];
+    let word_ordinal = spelled_ordinal(w).is_some()
+        && w.chars().all(|c| c.is_ascii_alphabetic())
+        && !w.chars().all(|c| "ivx".contains(c));
+    let standing_alone = division_at(words, i).is_some_and(|(_, taken)| taken == 1);
+    word_ordinal && standing_alone && !divisions_only(&words[i + 1..])
+}
+
+/// Whether `words` are divisions and nothing else, each read by
+/// `division_at`.
+fn divisions_only(words: &[String]) -> bool {
+    let mut j = 0;
+    while j < words.len() {
+        match division_at(words, j) {
+            Some((_, taken)) => j += taken,
+            None => return false,
+        }
+    }
+    true
 }
