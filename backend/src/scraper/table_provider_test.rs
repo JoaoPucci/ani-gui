@@ -232,6 +232,18 @@ impl TableProvider {
         })
     }
 
+    /// What fetching the playlist at `url` answers.
+    pub(crate) fn playlist(mut self, url: &str, answer: impl Into<Answer<String>>) -> Self {
+        self.playlists.insert(url.to_string(), answer.into());
+        self
+    }
+
+    /// What every unlisted playlist URL answers.
+    pub(crate) fn playlists_default(mut self, answer: impl Into<Answer<String>>) -> Self {
+        self.playlists_default = answer.into();
+        self
+    }
+
     /// [`Self::counted`], each show with the premiere year its detail
     /// page names — `None` for a page without one.
     pub(crate) fn counted_with_years(shows: &[(u64, u32, Option<u32>)]) -> Self {
