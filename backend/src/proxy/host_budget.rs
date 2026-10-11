@@ -33,11 +33,17 @@
 //! download takes the rest. The bucket is per host: a download from a
 //! different host than the player's has a bucket of its own, and the
 //! two meet only if the host counts them together — or while a
-//! download tool runs free, whose hold is on every host. What reaches the
-//! host past the budget counts against it too: a cached resolution's
-//! liveness check spends a token per request without waiting, at each
-//! host a redirect reaches — it runs before the player starts, under a
-//! deadline of seconds — and while download tools run, every host's
+//! download tool runs free, whose hold is on every host. A cached
+//! resolution's liveness check — the next episode's first requests,
+//! made while another may still be playing from the host — is a class
+//! of its own between the two: it takes a token only while no player
+//! request waits in the host's line, so a playing player's next segment
+//! is never queued behind it, and from the reserve, which is kept for
+//! the player's next requests; background traffic yields to it while it
+//! waits, turns and all, so downloads never starve it. It waits so hop
+//! by hop, at each host a redirect reaches, under a deadline of seconds
+//! that a spent budget lets elapse — the row then reads as dead. What
+//! reaches the host past the budget counts against it too: while download tools run, every host's
 //! tokens are held to what their requests in flight leave of the burst,
 //! never below one: their fragments go wherever their playlists send
 //! them, which the app does not see. That is a hold, not a count: what
