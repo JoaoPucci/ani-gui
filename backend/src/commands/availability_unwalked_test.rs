@@ -174,3 +174,32 @@ fn a_walked_providers_own_rows_still_serve() {
     assert_eq!(listed.cached.get("910"), Some(&false));
     assert_eq!(listed.playable_episode_counts.get("909"), Some(&12));
 }
+
+/// A replay reaches a show whose positive row a provider no longer
+/// walked wrote, or that names none. That row is never served, so it
+/// is not one the replay can be counted against: the replay writes the
+/// walked provider's own row, count-less, as it would where no row
+/// stood. Left in place, the unwalked row would keep the strip from
+/// reading a verdict for the show however often it played.
+#[tokio::test]
+async fn a_replay_over_a_positive_row_nobody_walked_writes_the_walked_providers_row() {
+    for (id, body) in [("911", UNWALKED_POSITIVE), ("912", UNATTRIBUTED_POSITIVE)] {
+        let td = tempfile::tempdir().expect("td");
+        let state = state_walking_hianime(&td);
+        seed(&state, id, body);
+        let at_start = RowAtStart::read(&state, Some(id), "sub").await;
+
+        stamp_after_cache_hit(&state, Some(id), "sub", &at_start, ProviderId::Hianime).await;
+
+        let stored = meta_cache_get(&state.cache_pool, &cache_key(id, "sub"))
+            .expect("read")
+            .expect("a row");
+        let row: AvailabilityResponse = serde_json::from_str(&stored).expect("row");
+        assert_eq!(row.provider, Some(ProviderId::Hianime), "{body}");
+        assert!(row.available, "{body}");
+        assert_eq!(
+            row.episode_count, None,
+            "{body}: not the other catalogue's cap"
+        );
+    }
+}
