@@ -11,7 +11,7 @@ use super::{Bucket, HostBudget};
 
 /// Tops the bucket up at `now`, as a take does, and holds it to `most`
 /// tokens.
-fn hold_to(bucket: &mut Bucket, now: Instant, burst: u32, refill: Duration, most: u32) {
+pub(super) fn hold_to(bucket: &mut Bucket, now: Instant, burst: u32, refill: Duration, most: u32) {
     let elapsed = now.saturating_duration_since(bucket.refilled_at);
     let refilled = elapsed.as_secs_f64() / refill.as_secs_f64();
     bucket.tokens = (bucket.tokens + refilled)
@@ -91,7 +91,7 @@ impl HostBudget {
     /// The tokens a host is held to beside `in_flight` requests that
     /// pass the budget: what they leave of the burst, never below one,
     /// so the hold alone never empties a bucket.
-    fn held_to(&self, in_flight: u32) -> u32 {
+    pub(super) fn held_to(&self, in_flight: u32) -> u32 {
         self.burst.saturating_sub(in_flight).max(1)
     }
 
