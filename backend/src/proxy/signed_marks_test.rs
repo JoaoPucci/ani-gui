@@ -301,7 +301,7 @@ proptest::proptest! {
 /// with a 400, though its token is good — before the playlist is
 /// fetched, so the host is not asked for what cannot be rewritten.
 #[tokio::test]
-async fn a_playlist_uri_whose_variables_do_not_read_is_refused() {
+async fn a_playlist_uri_naming_variables_the_session_does_not_keep_is_refused() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(wm_path("/v.m3u8"))
