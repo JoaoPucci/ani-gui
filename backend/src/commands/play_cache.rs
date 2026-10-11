@@ -137,8 +137,8 @@ pub(crate) async fn cached_row_is_live_within(
         track_urls.push(url);
     }
     // The host counts the check's requests, so each hop waits for a
-    // token at the host it reaches, as background traffic: a player
-    // already playing there goes first. The proxy's client follows no
+    // token at the host it reaches, in the host's line as the player's
+    // first request. The proxy's client follows no
     // redirect on its own, so every hop is seen; a check its tokens
     // keep past the deadline reads as not live, and a fresh resolve
     // takes its place.

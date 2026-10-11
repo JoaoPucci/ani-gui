@@ -9,10 +9,11 @@ use crate::proxy::upstream::{redirect_target, REDIRECT_HOP_CAP};
 
 /// Sends `method` to `url` with the `referer`, following redirects hop
 /// by hop on a `client` that follows none on its own, each hop admitted
-/// first at its host's budget as background traffic: the host counts
-/// the check's requests wherever they land — an edge a redirect sends
-/// the ping to is the host the player fetches from next — and a player
-/// already playing there is served first. The first response that
+/// first at its host's budget in the host's line, as the player's own
+/// first request: the host counts the check's requests wherever they
+/// land — an edge a redirect sends the ping to is the host the player
+/// fetches from next — and each waits its turn with whatever else the
+/// player asks there. The first response that
 /// is not a redirect, or nothing once the request fails or
 /// [`REDIRECT_HOP_CAP`] hops have all redirected.
 async fn send_admitted(
@@ -24,7 +25,7 @@ async fn send_admitted(
 ) -> Option<reqwest::Response> {
     let mut url = url.clone();
     for _ in 0..=REDIRECT_HOP_CAP {
-        budget.admit_background(&host_key(&url)).await;
+        budget.admit(&host_key(&url)).await;
         let mut req = client.request(method.clone(), url.as_str());
         if !referer.is_empty() {
             req = req.header(reqwest::header::REFERER, referer);
