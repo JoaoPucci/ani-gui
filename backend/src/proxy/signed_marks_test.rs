@@ -1,6 +1,6 @@
 //! What a rewritten URI says about what it points at — playlist or
-//! media, the stream it carries or feeds, the playback it buys, the
-//! variables its master defined — is signed with it: the proxy acts on
+//! media, the stream it carries or feeds, the playback it buys, the key
+//! the session keeps its master's variables under — is signed with it: the proxy acts on
 //! those marks, so a URI whose marks were changed is refused like one
 //! whose upstream was.
 
@@ -180,6 +180,22 @@ async fn a_media_playlist_imports_from_the_master_response_that_named_it() {
             .expect("a segment"),
     );
     assert_eq!(upstream_of(&segment), format!("{}/one/s0.ts", server.uri()));
+    // And the second response's playlists import the second's.
+    let variant = proxied(
+        second
+            .lines()
+            .find(|l| l.contains("/seg?u="))
+            .expect("a variant"),
+    );
+    let (status, media) = fetch(&router, &variant).await;
+    assert_eq!(status, StatusCode::OK, "{media}");
+    let segment = proxied(
+        media
+            .lines()
+            .find(|l| l.contains("/seg?u="))
+            .expect("a segment"),
+    );
+    assert_eq!(upstream_of(&segment), format!("{}/two/s0.ts", server.uri()));
 }
 
 /// A mark's value cannot carry another mark: separators encoded into a
@@ -253,7 +269,8 @@ proptest::proptest! {
              #EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO=\"a\"\nv.m3u8\n"
         );
         let master_url = url::Url::parse("https://cdn.example/x/master.m3u8").expect("url");
-        let out = rewrite_master(master.as_bytes(), &master_url, &origin, id, &secret).expect("master");
+        let key = if edge.is_empty() { "" } else { "key0" };
+        let out = rewrite_master_naming(master.as_bytes(), &master_url, &origin, id, &secret, key).expect("master");
         let seconds = f64::from(millis) / 1000.0;
         let media = format!(
             "#EXTM3U\n#EXT-X-TARGETDURATION:20\n#EXT-X-KEY:METHOD=AES-128,URI=\"k.key\"\n\
@@ -280,7 +297,7 @@ proptest::proptest! {
         }
     }
 }
-/// A playlist URI whose variables do not read as variables is refused
+/// A playlist URI naming variables the session does not keep is refused
 /// with a 400, though its token is good — before the playlist is
 /// fetched, so the host is not asked for what cannot be rewritten.
 #[tokio::test]
@@ -360,7 +377,6 @@ proptest::proptest! {
     fn a_mark_folded_into_another_is_refused(
         millis in 0u32..20_000,
         audio in proptest::bool::ANY,
-        pick in 0usize..16,
     ) {
         let secret = AppSecret::from_bytes([5u8; 32]);
         let id = SessionId::new();
@@ -376,20 +392,24 @@ proptest::proptest! {
         let out = rewrite_master_naming(master.as_bytes(), &master_url, &origin, id, &secret, "key0").expect("master")
             + &rewrite_media_as(media.as_bytes(), &media_url, &origin, id, &secret, stream).expect("media");
         let uris: Vec<&str> = out.lines().filter(|l| l.contains("/seg?u=")).collect();
-        let uri = uris[pick % uris.len()];
-        let (head, marks) = uri.split_once("&k=").expect("marked");
-        let marks = format!("k={marks}");
-        let joints: Vec<usize> = marks.match_indices('&').map(|(i, _)| i).collect();
-        proptest::prop_assume!(!joints.is_empty());
-        let at = joints[pick % joints.len()];
-        let rest = &marks[at + 1..];
-        let folded = format!("{}%26{}", &marks[..at], rest.replacen('=', "%3D", 1));
-        let q = query_of(&format!("{head}&{folded}"));
-        let upstream = decode_seg_url(&q.u).expect("upstream");
-        proptest::prop_assert!(
-            verify_marked(&secret, id, upstream.as_str(), &marks_of(&q), &q.t).is_err(),
-            "{folded}"
-        );
+        let mut folds = 0;
+        for uri in uris {
+            let (head, marks) = uri.split_once("&k=").expect("marked");
+            let marks = format!("k={marks}");
+            for (at, _) in marks.match_indices('&') {
+                let rest = &marks[at + 1..];
+                let folded = format!("{}%26{}", &marks[..at], rest.replacen('=', "%3D", 1));
+                let q = query_of(&format!("{head}&{folded}"));
+                let upstream = decode_seg_url(&q.u).expect("upstream");
+                proptest::prop_assert!(
+                    verify_marked(&secret, id, upstream.as_str(), &marks_of(&q), &q.t).is_err(),
+                    "{folded}"
+                );
+                folds += 1;
+            }
+        }
+        // k|s and s|v on the playlist, k|r and r|d on the segment.
+        proptest::prop_assert_eq!(folds, 4);
     }
 }
 
@@ -416,4 +436,24 @@ fn a_masters_variables_named_again_are_kept_as_the_latest() {
     );
     table.keep_master_variables(id, vars(100));
     assert_eq!(table.master_variables(&id, &first), Some(vars(0)));
+}
+
+proptest::proptest! {
+    /// Two masters' different variables are kept under two keys, and
+    /// each comes back under its own.
+    #[test]
+    fn different_variables_are_kept_apart(
+        a in proptest::collection::hash_map("[a-z]{1,4}", "[a-z]{0,6}", 1..4),
+        b in proptest::collection::hash_map("[a-z]{1,4}", "[a-z]{0,6}", 1..4),
+    ) {
+        proptest::prop_assume!(a != b);
+        let table = SessionTable::new();
+        let session = StreamSession::new(url::Url::parse("https://cdn.example/m.m3u8").expect("url"), String::new());
+        let id = table.insert(session);
+        let ka = table.keep_master_variables(id, a.clone()).expect("a key");
+        let kb = table.keep_master_variables(id, b.clone()).expect("a key");
+        proptest::prop_assert_ne!(&ka, &kb);
+        proptest::prop_assert_eq!(table.master_variables(&id, &ka), Some(a));
+        proptest::prop_assert_eq!(table.master_variables(&id, &kb), Some(b));
+    }
 }
