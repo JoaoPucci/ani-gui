@@ -31,7 +31,8 @@ pub(crate) fn progress(line: &str) -> Option<(Option<String>, u64)> {
     ytdlp_progress(line).or_else(|| ffmpeg_progress_bytes(line).map(|bytes| (None, bytes)))
 }
 
-/// What yt-dlp's progress template prints ahead of the byte count.
+/// What yt-dlp's progress template prints ahead of the format's id and
+/// the byte count.
 pub(crate) const YTDLP_PROGRESS_MARK: &str = "ani-gui-progress";
 
 /// How far back the speed looks: long enough to smooth over a fragment
