@@ -264,6 +264,11 @@ impl StreamSession {
     }
 }
 
+/// How many master responses' variables a session keeps: a player
+/// asks for its master once, and again only to recover, so a few cover
+/// every playlist still being fetched.
+pub const MASTER_VARIABLES_KEPT: usize = 8;
+
 /// Concurrent table of live stream sessions. Cheap to clone (`Arc` inside).
 ///
 /// The table also records when the proxy last served media for any
@@ -271,11 +276,7 @@ impl StreamSession {
 /// segments or mp4 ranges, chunk by chunk as their bodies stream — so
 /// that a download running beside a playing stream can yield to it
 /// ([`SessionTable::playback_live`]).
-/// How many master responses' variables a session keeps: a player
-/// asks for its master once, and again only to recover, so a few cover
-/// every playlist still being fetched.
-pub const MASTER_VARIABLES_KEPT: usize = 8;
-
+///
 /// The app state and the proxy state hold clones of one table, so the
 /// proxy's note is the download command's answer.
 #[derive(Clone, Default)]

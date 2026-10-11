@@ -4,7 +4,7 @@
 //!
 //! - `GET /healthz` — liveness probe used by the frontend bootstrap.
 //! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master.
-//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>[&v=<variables>]]`
+//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>[&v=<variables key>]]`
 //!   — fetch + rewrite + return a rendition playlist when the master
 //!   marked it `k=pl` (with its kind of stream, `s=`, and the key the
 //!   session keeps that master response's variables under, `v=`, which
@@ -518,9 +518,10 @@ async fn handle_seg(
                 .and_then(Stream::from_slot)
                 .unwrap_or(Stream::Main);
         // The variables of the master response that named this
-        // playlist, signed into its URI with the rest of its marks —
-        // read before the playlist is fetched, so one that cannot be
-        // read costs the host nothing.
+        // playlist, kept by the session under the key its URI carries
+        // signed with the rest of its marks — looked up before the
+        // playlist is fetched, so a key the session does not keep costs
+        // the host nothing.
         let imported = match q.v.as_deref() {
             None => m3u8_define::Variables::new(),
             Some(key) => match state.sessions.master_variables(&session, key) {

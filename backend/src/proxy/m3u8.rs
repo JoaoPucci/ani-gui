@@ -21,9 +21,10 @@
 //! - `build_proxy_uri` (private) — resolve a relative URI against a base,
 //!   then build a proxy URL with HMAC token, marked `k=pl` when a master
 //!   names it as a playlist — with its kind of stream and the key the
-//!   session keeps the master's variables under — and `k=md` when it names media — a master's session key
-//!   or session data, anything a media playlist names, a segment with
-//!   the stream it feeds and the playback it buys. The token signs the
+//!   session keeps the master's variables under — and `k=md` when it
+//!   names media — a master's session key or session data, anything a
+//!   media playlist names, a segment with the stream it feeds and the
+//!   playback it buys. The token signs the
 //!   marks with the upstream.
 //! - [`names_a_playlist`] — whether the segment route is fetching a
 //!   playlist: by that mark, or for an unmarked URL by a lowercase
@@ -48,7 +49,7 @@ use crate::proxy::token::{sign_marked, AppSecret, SessionId};
 
 /// How the proxy should render rewritten URIs back into the manifest.
 /// Path style: `/s/<session>/seg?u=<base64-url-encoded-original>&t=<hmac>`,
-/// with `&k=pl&s=<stream>[&v=<variables>]` on a URI a master names as a
+/// with `&k=pl&s=<stream>[&v=<variables key>]` on a URI a master names as a
 /// playlist and `&k=md[&r=<stream>&d=<ms>]` on one that names media — a
 /// master's session key or session data, anything a media playlist
 /// names — every mark signed with the upstream by the token.
@@ -165,7 +166,7 @@ pub fn rewrite_master(
 }
 
 /// [`rewrite_master`] for a master whose variables the session keeps
-/// under `vars`: the key travels, signed, in the URI of every playlist
+/// under the key `vars`: the key travels, signed, in the URI of every playlist
 /// it names, for that playlist to import this response's variables, not
 /// whatever the master says when next served.
 ///
