@@ -1291,3 +1291,37 @@ fn a_normal_segment_ends_a_short_run() {
         "the lone short one is not counted: {need}"
     );
 }
+
+/// A cached row's probe waiting beside a player filling its buffer and a
+/// download taking turns with it holds up neither: the download takes
+/// the turn the player owes it though a probe waits, so the player's
+/// line moves on, and the player is never kept waiting past a few
+/// refills.
+#[tokio::test(start_paused = true)]
+async fn a_waiting_probe_does_not_stall_a_player_taking_turns_with_a_download() {
+    let budget = HostBudget::fresh();
+    let host = "cdn.example:443";
+    for _ in 0..SEGMENT_BURST {
+        budget.admit(host).await;
+    }
+    let download = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move {
+            loop {
+                budget.admit_background(host).await;
+            }
+        })
+    };
+    let probe = {
+        let budget = Arc::clone(&budget);
+        tokio::spawn(async move { budget.admit_probe(host).await })
+    };
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    for _ in 0..12 {
+        tokio::time::timeout(SEGMENT_REFILL * 4, budget.admit(host))
+            .await
+            .expect("the player is not held up behind the probe and the download");
+    }
+    download.abort();
+    probe.abort();
+}
