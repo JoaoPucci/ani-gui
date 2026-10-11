@@ -26,6 +26,7 @@ pub(crate) async fn read_tool_output<F>(
     on_line: &mut F,
     repackage_failed: &mut bool,
     measured: &std::sync::atomic::AtomicBool,
+    resumed: u64,
 ) -> Result<()>
 where
     F: FnMut(&str) + Send,
@@ -34,8 +35,8 @@ where
     let mut progress = BufReader::new(stdout).lines();
     let (mut lines_open, mut progress_open) = (true, true);
     // The run's speed, reported to the dock once a second from the
-    // first progress the tool gives.
-    let mut meter = RateMeter::default();
+    // first progress the tool gives, counted from the run's start.
+    let mut meter = RateMeter::starting_from(resumed, tokio::time::Instant::now());
     let mut report = tokio::time::interval(RATE_REPORT_EVERY);
     report.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     report.tick().await;

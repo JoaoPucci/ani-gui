@@ -71,6 +71,20 @@ pub(crate) struct RateMeter {
 }
 
 impl RateMeter {
+    /// A meter for a run that starts at `at` with `resumed` bytes
+    /// already counted — what an earlier run of the same transfer left
+    /// for it to resume from, which the tool reports as downloaded, or
+    /// zero. The run's first count is measured against that, so the
+    /// first block it fetches is part of its speed and the resumed bytes
+    /// are not.
+    pub(crate) fn starting_from(resumed: u64, at: Instant) -> Self {
+        Self {
+            samples: VecDeque::from([(at, 0)]),
+            last_count: Some(resumed),
+            gained: 0,
+        }
+    }
+
     /// Record that the tool had `bytes` at `at`.
     pub(crate) fn observe(&mut self, bytes: u64, at: Instant) {
         // A count that steps back — yt-dlp counting a retried

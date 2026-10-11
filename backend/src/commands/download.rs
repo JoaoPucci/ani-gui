@@ -1441,6 +1441,7 @@ where
                 run_deadline,
                 on_line,
                 &mut repackage_failed,
+                resumed_bytes(&scratch.path),
                 pacing.until_live_changes(live),
             )
             .await;
@@ -1946,6 +1947,15 @@ enum ToolEnd {
     Outlived,
 }
 
+/// What a yt-dlp run writing to `output` resumes from: the size of the
+/// partial file yt-dlp keeps beside it, which it reports as downloaded
+/// from its first progress on; zero when there is none.
+fn resumed_bytes(output: &std::path::Path) -> u64 {
+    let mut partial = output.as_os_str().to_owned();
+    partial.push(".part");
+    std::fs::metadata(partial).map_or(0, |m| m.len())
+}
+
 /// Run one download tool to completion, streaming its stderr lines and
 /// its speed.
 ///
@@ -1966,6 +1976,8 @@ where
         deadline,
         on_line,
         repackage_failed,
+        // An ffmpeg run starts its output afresh.
+        0,
         std::future::pending(),
     )
     .await?;
@@ -1987,12 +1999,15 @@ where
 /// another run on the same resume state, start the ffmpeg retry
 /// beside it, or sweep what it wrote, and none of those is safe
 /// beside a tool that has only been asked to die, or beside a helper
-/// a failed tool left running.
+/// a failed tool left running. `resumed` is what the tool reports as
+/// already downloaded when it starts — what it resumes from — which
+/// the run's speed does not count.
 async fn run_tool_until<F>(
     mut cmd: tokio::process::Command,
     deadline: tokio::time::Instant,
     on_line: &mut F,
     repackage_failed: &mut bool,
+    resumed: u64,
     stop: impl std::future::Future<Output = ()>,
 ) -> Result<ToolRun>
 where
@@ -2050,6 +2065,7 @@ where
             on_line,
             repackage_failed,
             &measured,
+            resumed,
         )
         .await?;
         child.wait().await.map_err(|_| AniError::Io)
