@@ -126,9 +126,8 @@ async fn a_cached_track_whose_get_is_a_track_keeps_the_row_live() {
 }
 
 /// A cached row's liveness check pings the stream and reads each
-/// track without waiting for the host's budget — it runs before the
-/// player starts, under a deadline of seconds — but the host counts
-/// those requests, so they are spent from its budget.
+/// track, and the host counts those requests: each takes a token from
+/// its budget.
 #[tokio::test]
 async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
     let server = MockServer::start().await;
@@ -141,7 +140,7 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
     assert!(try_serve_cached(&state, &cached).await.is_some());
     let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
     let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
-    // Two spends a moment apart: the second tops up by the moment.
+    // Two tokens taken a moment apart: the second tops up by the moment.
     let left = state.host_budget.on_hand(&host).expect("spent");
     assert!(
         (left - (burst - 2.0)).abs() < 0.01,
@@ -149,7 +148,7 @@ async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
     );
 }
 
-/// The liveness check's requests are spent where they land: a ping
+/// The liveness check's requests take their tokens where they land: a ping
 /// the stream's host redirects to an edge is a request to each, so
 /// the edge — the host the player will fetch from — is charged too.
 #[tokio::test]
@@ -244,11 +243,9 @@ async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_
 }
 
 /// The liveness check is the player's startup, and the host counts its
-/// requests like any other: each waits for its host's token as
-/// background traffic, so a check made while another episode plays
-/// takes nothing the playing player is waiting for, and with the
-/// host's tokens spent the check sends nothing before its deadline —
-/// the row reads as not live and a fresh resolve takes its place.
+/// requests like any other: each waits for its host's token, so with
+/// the host's tokens spent the check sends nothing before its deadline
+/// — the row reads as not live and a fresh resolve takes its place.
 #[tokio::test]
 async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
     let server = MockServer::start().await;
@@ -306,8 +303,10 @@ async fn a_cached_rows_check_takes_its_turn_beside_a_playing_player() {
         }
     });
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // Its turns come at a refill and two; the deadline leaves room for a
+    // slow runner, and a check that yielded would never get one.
     let live =
-        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(4)).await;
+        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8)).await;
     player.abort();
     assert!(live, "served in its turn within the deadline");
 }
