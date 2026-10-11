@@ -515,13 +515,16 @@ pub async fn stamp_after_cache_hit(
 }
 
 /// Whether a positive row stands for the key — one within its
-/// lifetime that says the show is carried.
+/// lifetime that says the show is carried, on the word of a walked
+/// provider ([`row_is_walked`]). A row nobody walked is never served,
+/// so nothing is weighed against it.
 fn positive_row_stands(state: &AppState, row: &str) -> bool {
     meta_cache_get(&state.cache_pool, row)
         .ok()
         .flatten()
         .is_some_and(|body| {
-            serde_json::from_str::<AvailabilityResponse>(&body).is_ok_and(|parsed| parsed.available)
+            serde_json::from_str::<AvailabilityResponse>(&body)
+                .is_ok_and(|parsed| parsed.available && row_is_walked(state, &parsed))
         })
 }
 
