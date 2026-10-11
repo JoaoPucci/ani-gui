@@ -3,9 +3,11 @@
 use super::*;
 
 #[test]
-fn the_shipped_set_orders_every_known_provider() {
+fn the_shipped_set_walks_hianime_alone() {
+    // anidb.app redirects every page to an unrelated site; asked, it
+    // can only fail over. The walk asks hianime and nothing else.
     let set = ProviderSet::shipped();
-    assert_eq!(set.order(), ProviderId::ALL);
+    assert_eq!(set.order(), &[ProviderId::Hianime]);
 }
 
 /// Whether `id` ships — written as a match with no wildcard, so a
