@@ -727,17 +727,20 @@ starting it, and delete it when you find it done.
 A survey, on 2026-10-12, of fields the metadata sources answer that the
 app does not show, kept so features can be derived from it. It records
 what each source was seen to return, not a design; whoever picks one up
-checks the source again. The app already uses two AniList fields, each
-only to fill a gap Kitsu leaves: the banner stands in for a detail
-page's cover when Kitsu has none, and per-episode thumbnails fill
-episodes Kitsu has no thumbnail for.
+checks the source again. Not listed is what the app already reads from
+AniList: the airing status and schedule (`status`, `episodes`,
+`nextAiringEpisode`, `airingSchedule`) that gate and date episode
+tiles, the account list sync, and two artwork fields used only to fill
+gaps Kitsu leaves: the banner stands in for a detail page's cover when
+Kitsu has none, and per-episode thumbnails fill episodes Kitsu has no
+thumbnail for.
 
-- **Accent colour.** AniList `coverImage.color` gives each show a
-  colour in CSS form. The backend already fetches it, but nothing in the
-  renderer reads it: `accentFor()` in
-  `frontend/src/lib/design/accent.ts` hashes the Kitsu id into a fixed
+- **Accent colour.** AniList `coverImage.color` gives a show's colour in
+  CSS form where AniList has one; the field is nullable. The backend
+  already fetches it, but nothing in the renderer reads it: `accentFor()`
+  in `frontend/src/lib/design/accent.ts` hashes the Kitsu id into a fixed
   eight-colour palette, and its TODO says to replace that with this
-  colour.
+  colour. The palette stays as the fallback for shows without one.
 
 - **Title logos for the home banner.** Neither Kitsu nor AniList has
   logos. TMDB (`/tv/{id}/images`, `/movie/{id}/images`) returns
@@ -762,7 +765,9 @@ episodes Kitsu has no thumbnail for.
   titles" strip and a comment waiting for it.
 - **Official links.** AniList `externalLinks` lists the official site,
   social accounts and legitimate streaming services (Crunchyroll,
-  Netflix, Hulu, Prime Video), each with a type, icon and colour.
+  Netflix, Hulu, Prime Video). A link's type, icon and colour are each
+  optional (Frieren's official-site link has neither icon nor colour),
+  so a link without them still needs a way to be shown.
 - **Openings and endings.** AnimeThemes answers a show's OP and ED
   videos by MAL id; see the openings mode under "Three listening and
   watching modes" below.
