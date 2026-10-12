@@ -438,6 +438,22 @@ async fn client_resolves_the_master_playlist_for_sub_and_dies_clean_without_embe
     assert!(client.master_playlist_url(9002, "sub").await.is_err());
 }
 
+#[tokio::test]
+async fn client_has_mode_reads_the_languages_row() {
+    // The availability probe's mode check reads the episode's
+    // languages row. The fixture's row carries a jpn and an eng embed,
+    // so both modes are present.
+    let client = AnidbClient::new(FixtureFetch);
+    assert!(client.has_mode(9001, "sub").await.expect("answered"));
+    assert!(client.has_mode(9001, "dub").await.expect("answered"));
+    // A row the provider does not serve is its answered not-found,
+    // which the probe steps over — an error, never a verdict.
+    assert!(matches!(
+        client.has_mode(9002, "sub").await,
+        Err(AniError::Upstream { status: 404 })
+    ));
+}
+
 // ── fixture manifest ────────────────────────────────────────────────
 
 /// The manifest pins every fixture byte-for-byte, in both directions:

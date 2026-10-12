@@ -35,9 +35,19 @@ export default ts.config(
 		plugins: { local },
 		rules: {
 			// Custom rule — see tools/eslint-rules/no-hardcoded-strings.js.
-			// Only applied to .svelte files since plain .ts/.js modules
-			// (api wrappers, format helpers, etc.) need string literals
-			// for non-UI work like backend keys / debug labels.
+			// Plain .ts modules under src/ get it from the block below.
+			'local/no-hardcoded-strings': 'error'
+		}
+	},
+	{
+		// Plain TypeScript modules carry copy too: a label table or a
+		// credits entry a component only renders. In these files only
+		// the rule's JavaScript-literal check can fire (there is no
+		// template). Tests are left out — their strings are fixtures.
+		files: ['src/**/*.ts'],
+		ignores: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
+		plugins: { local },
+		rules: {
 			'local/no-hardcoded-strings': 'error'
 		}
 	},

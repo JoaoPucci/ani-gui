@@ -5,11 +5,9 @@ use crate::app::AppState;
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use crate::scraper::provider::ProviderId;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 fn state() -> AppState {
     AppState {
-        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -19,10 +17,7 @@ fn state() -> AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: PathBuf::from("/tmp/ani-gui-history-never-read"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),

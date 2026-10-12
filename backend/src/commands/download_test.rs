@@ -1,4 +1,5 @@
 use super::*;
+use crate::scraper::table_provider::TableProvider;
 
 /// A directory `find_tool` accepts as holding an installed yt-dlp.
 ///
@@ -243,12 +244,13 @@ async fn tool_spawn_with_no_tools_is_a_config_error() {
     assert!(matches!(got, Err(AniError::FfmpegMissing)));
 }
 
-fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::AppState {
+fn native_test_state(
+    td: &tempfile::TempDir,
+    provider: &std::sync::Arc<TableProvider>,
+) -> crate::app::AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     crate::app::AppState {
-        anidb_base: Some(anidb_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -258,10 +260,8 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests()
+            .with_stub(std::sync::Arc::clone(provider)),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -274,57 +274,22 @@ fn native_test_state(td: &tempfile::TempDir, anidb_base: &str) -> crate::app::Ap
     }
 }
 
-/// Provider fixture for the range tests: one show, two episodes,
-/// jpn embeds, validating masters. Unix-gated with the stub-tool
+/// Provider fixture for the range tests: one show every search finds,
+/// two episodes, each streaming in sub from a master that validates. Unix-gated with the stub-tool
 /// tests that drive it.
 #[cfg(unix)]
-async fn stub_range_show() -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/range-show-21"><img alt="Range Show"/></a>"#),
+fn stub_range_show() -> std::sync::Arc<TableProvider> {
+    std::sync::Arc::new(
+        TableProvider::one_show(
+            "",
+            ("range-show-21", "Range Show"),
+            &[(2101, 1), (2102, 2)],
+            &[],
+            "",
         )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/21/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":2101,"number":1},{"id":2102,"number":2}]}"#),
-        )
-        .mount(&server)
-        .await;
-    for ep in [2101u64, 2102] {
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/api/frontend/episode/{ep}/languages")))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_string(format!(
-                    r#"{{"languages":[{{"code":"jpn","embed_url":"{}/embed/{ep}"}}]}}"#,
-                    server.uri()
-                )),
-            )
-            .mount(&server)
-            .await;
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/embed/{ep}")))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200).set_body_string(format!(
-                    "player.setup({{ file: '{}/m/{ep}/master.m3u8' }});",
-                    server.uri()
-                )),
-            )
-            .mount(&server)
-            .await;
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/m/{ep}/master.m3u8")))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
-            .mount(&server)
-            .await;
-    }
-    server
+        .stream(2101, "sub", "https://cdn.example/m/2101/master.m3u8")
+        .stream(2102, "sub", "https://cdn.example/m/2102/master.m3u8"),
+    )
 }
 
 #[cfg(unix)]
@@ -336,9 +301,9 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
     // resolution and one tool run per episode — not hand the
     // whole range to the episode resolver, which matches a single
     // tag and dies with NoResults before any transfer starts.
-    let server = stub_range_show().await;
+    let server = stub_range_show();
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let log = dest.path().join("calls.log");
@@ -391,9 +356,9 @@ async fn a_range_download_stops_at_the_first_failing_episode() {
     // "1-3" on a two-episode listing: episodes 1 and 2 transfer,
     // episode 3 resolves to the typed dead end and the loop stops
     // there — the script's own loop dies mid-range the same way.
-    let server = stub_range_show().await;
+    let server = stub_range_show();
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let log = dest.path().join("calls.log");
@@ -434,9 +399,9 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
     // search ahead of PATH, exactly as the subprocess path prepended
     // it through its options and the curl resolver ranks its
     // bundled directory first.
-    let server = stub_range_show().await;
+    let server = stub_range_show();
     let td = tempfile::tempdir().expect("td");
-    let mut state = native_test_state(&td, &server.uri());
+    let mut state = native_test_state(&td, &server);
     let bundle = tempfile::tempdir().expect("bundle");
     let dest = tempfile::tempdir().expect("dest");
     let log = dest.path().join("calls.log");
@@ -479,17 +444,10 @@ async fn a_range_downloads_pick_stops_at_the_resolution_deadline() {
     // transfer starts — past the gate's half-open trial lifetime.
     // The pick carries the same outer deadline the play path does;
     // the per-episode transfer deadlines are separate and stay.
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_delay(std::time::Duration::from_secs(19))
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&server)
-        .await;
+    let server =
+        std::sync::Arc::new(TableProvider::new().delaying(std::time::Duration::from_secs(19)));
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let dest = tempfile::tempdir().expect("dest");
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
         "title": "Slow Show",
@@ -697,9 +655,9 @@ async fn a_mislabeled_ytdlp_success_is_discarded_and_typed() {
     // deleted the mislabeled file and surfaced FfmpegMissing; the
     // direct runner must not launder the same run into a success
     // that leaves a corrupt download in the dock as completed.
-    let server = stub_range_show().await;
+    let server = stub_range_show();
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Range Show Episode 1.mp4");
@@ -738,18 +696,10 @@ async fn a_mislabeled_ytdlp_success_is_discarded_and_typed() {
 async fn a_range_download_surfaces_the_walks_clean_miss() {
     // The walk's own verdicts pass through untranslated: an
     // all-clean no-match is the typed NoResults, and no tool runs.
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&server)
-        .await;
+    // A catalogue that answers every search with nothing.
+    let server = std::sync::Arc::new(TableProvider::new());
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let dest = tempfile::tempdir().expect("dest");
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
         "title": "Ghost Show",
@@ -915,13 +865,11 @@ async fn a_missing_tool_refuses_before_the_provider_is_touched() {
     // first thing that happens, not the thing that happens after a
     // walk — or instead of the walk's own failure, which is worse
     // still: a network error then hides the real cause.
-    // A bare server with nothing mounted: the assertion is that it was
-    // never asked, so a fixture that answers would only add a way for
-    // the case to be about something else. wiremock records unmatched
-    // requests too, which is what makes the empty log mean anything.
-    let server = wiremock::MockServer::start().await;
+    // A provider that knows nothing: the assertion is that it was
+    // never asked, and its log records every request it receives.
+    let server = std::sync::Arc::new(TableProvider::new());
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -939,10 +887,7 @@ async fn a_missing_tool_refuses_before_the_provider_is_touched() {
         matches!(err, AniError::FfmpegMissing),
         "the absent tool is what the user is told about: {err:?}"
     );
-    let hits = server
-        .received_requests()
-        .await
-        .expect("the mock server records requests");
+    let hits = server.asked();
     assert!(
         hits.is_empty(),
         "the provider was walked before the tool check: {} request(s)",
@@ -961,9 +906,9 @@ async fn a_repackage_failure_retries_through_an_installed_ffmpeg() {
     //
     // The mislabeled file still goes: whatever ffmpeg writes must not
     // land on top of half a transfer in the wrong container.
-    let server = stub_range_show().await;
+    let server = stub_range_show();
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Range Show Episode 1.mp4");
@@ -1018,9 +963,9 @@ async fn the_ffmpeg_retry_never_meets_what_ytdlp_left() {
     // condemns it, and the retry gets a fresh one. The case pins that:
     // the two tools are handed different paths, and neither is the
     // user's.
-    let server = stub_range_show().await;
+    let server = stub_range_show();
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Range Show Episode 1.mp4");
@@ -1149,9 +1094,9 @@ async fn the_repackage_retry_may_replace_the_file_it_condemned() {
     // reported it unusable, so the retry owns that path — and the
     // removal ahead of it is best-effort, which is why the flag has to
     // carry the case where the file could not be unlinked.
-    let server = stub_range_show().await;
+    let server = stub_range_show();
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let target = dest.path().join("Range Show Episode 1.mp4");
@@ -3665,112 +3610,47 @@ impl SidecarClaim {
     }
 }
 
-/// The embed page's payload as hianime ships it: the player JSON
-/// XOR'd under its versioned key, then base64'd.
+/// A primary whose catalogue answers but whose stream chain is
+/// broken: every stream answers a block. Search and listing are the
+/// range stub's.
 #[cfg(unix)]
-fn hianime_embed_blob(payload: &str) -> String {
-    use base64::Engine as _;
-    const KEY: &[u8] = b"otaku-embed-v1";
-    let xored: Vec<u8> = payload
-        .bytes()
-        .zip(KEY.iter().cycle())
-        .map(|(b, k)| b ^ k)
-        .collect();
-    base64::engine::general_purpose::STANDARD.encode(xored)
+fn stub_range_show_with_a_broken_stream_chain(
+    provider: crate::scraper::provider::ProviderId,
+) -> std::sync::Arc<TableProvider> {
+    let blocked =
+        || crate::scraper::table_provider::Answer::fails(|| AniError::Upstream { status: 503 });
+    std::sync::Arc::new(
+        TableProvider::one_show(
+            "",
+            ("range-show-21", "Range Show"),
+            &[(2101, 1), (2102, 2)],
+            &[],
+            "",
+        )
+        .answering_as(provider)
+        .stream_from(2101, "sub", blocked())
+        .stream_from(2102, "sub", blocked()),
+    )
 }
 
-/// An anidb whose catalogue pages answer but whose stream chain is
-/// broken: the languages endpoint blocks. Search and episodes are
-/// the range stub's.
+/// A fallback carrying the same two-episode show, each episode
+/// streaming in sub.
 #[cfg(unix)]
-async fn stub_range_show_with_a_broken_stream_chain() -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/range-show-21"><img alt="Range Show"/></a>"#),
+fn stub_fallback_range_show(
+    provider: crate::scraper::provider::ProviderId,
+) -> std::sync::Arc<TableProvider> {
+    std::sync::Arc::new(
+        TableProvider::one_show(
+            "",
+            ("range-show-21", "Range Show"),
+            &[(9101, 1), (9102, 2)],
+            &[],
+            "",
         )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/21/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":2101,"number":1},{"id":2102,"number":2}]}"#),
-        )
-        .mount(&server)
-        .await;
-    for ep in [2101u64, 2102] {
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/api/frontend/episode/{ep}/languages")))
-            .respond_with(wiremock::ResponseTemplate::new(503))
-            .mount(&server)
-            .await;
-    }
-    server
-}
-
-/// A hianime carrying the same two-episode show through its whole
-/// chain: search page, episode list, server list, embed page, master.
-#[cfg(unix)]
-async fn stub_hianime_range_show() -> wiremock::MockServer {
-    use base64::Engine as _;
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    let base = server.uri();
-    let search = format!(
-        r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/range-show-21" title="Range Show" class="dynamic-name">Range Show</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
-    );
-    wiremock::Mock::given(method("GET"))
-        .and(path("/search"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(search))
-        .mount(&server)
-        .await;
-    let list = serde_json::json!({
-        "status": true,
-        "html": r#"<a class="ep-item" data-number="1" data-id="9101"></a><a class="ep-item" data-number="2" data-id="9102"></a>"#,
-    })
-    .to_string();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/theme/episode/list/21"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(list))
-        .mount(&server)
-        .await;
-    for ep in [9101u64, 9102] {
-        let hash = base64::engine::general_purpose::STANDARD
-            .encode(format!("{base}/stream/mal/21/{ep}/sub"));
-        let servers = serde_json::json!({
-            "status": true,
-            "html": format!(r#"<div class="server-item" data-type="sub" data-server-name="HD-1" data-hash="{hash}"></div>"#),
-        })
-        .to_string();
-        wiremock::Mock::given(method("GET"))
-            .and(path("/api/theme/episode/servers"))
-            .and(wiremock::matchers::query_param("episodeId", ep.to_string()))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(servers))
-            .mount(&server)
-            .await;
-        let payload =
-            serde_json::json!({ "src": format!("{base}/h/{ep}/master.m3u8"), "subtitles": [] })
-                .to_string();
-        let embed = format!(
-            r#"<html><body><script>window.__P="{}"</script></body></html>"#,
-            hianime_embed_blob(&payload)
-        );
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/stream/mal/21/{ep}/sub")))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(embed))
-            .mount(&server)
-            .await;
-        wiremock::Mock::given(method("GET"))
-            .and(path(format!("/h/{ep}/master.m3u8")))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
-            .mount(&server)
-            .await;
-    }
-    server
+        .answering_as(provider)
+        .stream(9101, "sub", "https://cdn.example/h/9101/master.m3u8")
+        .stream(9102, "sub", "https://cdn.example/h/9102/master.m3u8"),
+    )
 }
 
 /// A range commits to a provider only once that provider has served
@@ -3781,15 +3661,16 @@ async fn stub_hianime_range_show() -> wiremock::MockServer {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_range_download_fails_over_when_the_primarys_stream_chain_is_broken() {
-    let anidb = stub_range_show_with_a_broken_stream_chain().await;
-    let hianime = stub_hianime_range_show().await;
+    let primary =
+        stub_range_show_with_a_broken_stream_chain(crate::scraper::provider::ProviderId::TestA);
+    let fallback = stub_fallback_range_show(crate::scraper::provider::ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
-    let mut state = native_test_state(&td, &anidb.uri());
-    state.provider_order = vec![
-        crate::scraper::provider::ProviderId::Anidb,
-        crate::scraper::provider::ProviderId::Hianime,
-    ];
-    state.hianime_base = Some(hianime.uri());
+    let mut state = native_test_state(&td, &primary);
+    state.providers.set_order(vec![
+        crate::scraper::provider::ProviderId::TestA,
+        crate::scraper::provider::ProviderId::TestB,
+    ]);
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     let log = dest.path().join("calls.log");
@@ -3833,9 +3714,9 @@ async fn a_range_download_fails_over_when_the_primarys_stream_chain_is_broken() 
 #[cfg(unix)]
 #[tokio::test]
 async fn a_download_remembers_the_provider_that_served_it() {
-    let server = stub_range_show().await;
+    let server = stub_range_show();
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(
@@ -3870,15 +3751,16 @@ async fn a_download_remembers_the_provider_that_served_it() {
 #[cfg(unix)]
 #[tokio::test]
 async fn a_range_download_through_the_fallback_remembers_the_fallback() {
-    let anidb = stub_range_show_with_a_broken_stream_chain().await;
-    let hianime = stub_hianime_range_show().await;
+    let primary =
+        stub_range_show_with_a_broken_stream_chain(crate::scraper::provider::ProviderId::TestA);
+    let fallback = stub_fallback_range_show(crate::scraper::provider::ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
-    let mut state = native_test_state(&td, &anidb.uri());
-    state.provider_order = vec![
-        crate::scraper::provider::ProviderId::Anidb,
-        crate::scraper::provider::ProviderId::Hianime,
-    ];
-    state.hianime_base = Some(hianime.uri());
+    let mut state = native_test_state(&td, &primary);
+    state.providers.set_order(vec![
+        crate::scraper::provider::ProviderId::TestA,
+        crate::scraper::provider::ProviderId::TestB,
+    ]);
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(
@@ -3900,7 +3782,7 @@ async fn a_range_download_through_the_fallback_remembers_the_fallback() {
         .expect("the range completes through the fallback");
     assert_eq!(
         crate::commands::availability::cached_provider(&state, "3821", "sub"),
-        Some(crate::scraper::provider::ProviderId::Hianime),
+        Some(crate::scraper::provider::ProviderId::TestB),
         "the fallback that served the range is remembered"
     );
 }
@@ -3912,18 +3794,10 @@ async fn a_range_download_through_the_fallback_remembers_the_fallback() {
 /// re-probing a show the provider searched and has not got.
 #[tokio::test]
 async fn a_download_stamps_the_walks_clean_miss_as_the_providers_negative_row() {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&server)
-        .await;
+    // A catalogue that answers every search with nothing.
+    let server = std::sync::Arc::new(TableProvider::new());
     let td = tempfile::tempdir().expect("td");
-    let state = native_test_state(&td, &server.uri());
+    let state = native_test_state(&td, &server);
     let dest = tempfile::tempdir().expect("dest");
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
         "title": "Ghost Show",
@@ -4092,30 +3966,24 @@ fn the_rename_install_fails_plainly_where_it_cannot_claim_and_keeps_no_claim_wit
 #[cfg(unix)]
 #[tokio::test]
 async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_and_the_row() {
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&anidb)
-        .await;
-    let hianime = stub_hianime_range_show().await;
+    // A catalogue that answers every search with nothing.
+    let primary = std::sync::Arc::new(
+        TableProvider::new().answering_as(crate::scraper::provider::ProviderId::TestA),
+    );
+    let fallback = stub_fallback_range_show(crate::scraper::provider::ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
-    let mut state = native_test_state(&td, &anidb.uri());
-    state.provider_order = vec![
-        crate::scraper::provider::ProviderId::Anidb,
-        crate::scraper::provider::ProviderId::Hianime,
-    ];
-    state.hianime_base = Some(hianime.uri());
+    let mut state = native_test_state(&td, &primary);
+    state.providers.set_order(vec![
+        crate::scraper::provider::ProviderId::TestA,
+        crate::scraper::provider::ProviderId::TestB,
+    ]);
+    state.providers.set_stub(std::sync::Arc::clone(&fallback));
     crate::commands::availability::write_cache(
         &state,
         "3821",
         "sub",
         true,
-        Some(crate::scraper::provider::ProviderId::Hianime),
+        Some(crate::scraper::provider::ProviderId::TestB),
     );
     let dest = tempfile::tempdir().expect("dest");
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -4133,7 +4001,7 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
     assert!(matches!(err, AniError::EpisodeUnavailable), "{err:?}");
     assert_eq!(
         crate::commands::availability::cached_provider(&state, "3821", "sub"),
-        Some(crate::scraper::provider::ProviderId::Hianime),
+        Some(crate::scraper::provider::ProviderId::TestB),
         "the row that remembered the provider stands; an episode verdict writes no absence"
     );
 }
@@ -5596,9 +5464,9 @@ async fn the_download_command_paces_on_the_proxys_record_of_playback() {
     // command's transfer spawns paced; with nothing noted it spawns
     // at full speed.
     for (live, want) in [(true, "1"), (false, "16")] {
-        let server = stub_range_show().await;
+        let server = stub_range_show();
         let td = tempfile::tempdir().expect("td");
-        let state = native_test_state(&td, &server.uri());
+        let state = native_test_state(&td, &server);
         if live {
             state.sessions.note_media_fetch();
         }
@@ -5916,5 +5784,29 @@ async fn a_sidecar_fetch_queued_first_still_waits_behind_the_player() {
     assert!(
         player_admitted < sidecar_done,
         "the player's request, arriving later, was admitted before the track was fetched"
+    );
+}
+
+/// A download tool that cannot be started at all — not on disk where it
+/// was found, not executable, refused by the OS — is the download
+/// tool failing, not the network. The dock words a `network` payload
+/// as "check your connection", which sends the user after a connection
+/// that is fine. The program path below does not exist on any
+/// platform, so `spawn` fails the same way on Linux and Windows.
+#[tokio::test]
+async fn a_tool_that_cannot_be_started_is_the_tool_failing_not_the_network() {
+    let missing = tempfile::tempdir()
+        .expect("dir")
+        .path()
+        .join("no-such-download-tool");
+    let cmd = tokio::process::Command::new(&missing);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    let got = run_tool(cmd, deadline, &mut |_: &str| {}, &mut false).await;
+    assert!(
+        matches!(
+            got,
+            Err(AniError::Scraper { key }) if key == "error.download.tool_spawn_failed"
+        ),
+        "a spawn failure must be the tool failing with its own key, got {got:?}"
     );
 }

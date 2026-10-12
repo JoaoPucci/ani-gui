@@ -18,6 +18,8 @@
 		type ExternalPlayerKind
 	} from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
+	import { describeError } from '$lib/play/error-copy';
+	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { setLocale as paraglideSetLocale } from '$lib/paraglide/runtime';
 	import { applyLocale } from '$lib/settings/apply-locale';
 
@@ -31,17 +33,24 @@
 	let clearingImages = $state(false);
 	let imagesCleared = $state(false);
 
-	const QUALITIES: Array<{ key: string; label: string }> = [
-		{ key: 'best', label: 'Best' },
-		{ key: '1080', label: '1080' },
-		{ key: '720', label: '720' },
-		{ key: '480', label: '480' },
-		{ key: 'worst', label: 'Worst' }
+	// Labels are message functions, called at render, so a locale
+	// switch relabels the buttons without rebuilding the table.
+	const QUALITIES: Array<{ key: string; label: () => string }> = [
+		{ key: 'best', label: m.app_quality_best },
+		{ key: '1080', label: () => '1080' },
+		{ key: '720', label: () => '720' },
+		{ key: '480', label: () => '480' },
+		{ key: 'worst', label: m.app_quality_worst }
 	];
 
+	// Each locale is named in its own language (an autonym), the same
+	// in every UI locale, so these labels are not translated.
 	const LOCALES: Array<{ key: string; label: string; available: boolean }> = [
+		// i18n-ignore: autonym
 		{ key: 'en', label: 'English', available: true },
+		// i18n-ignore: autonym
 		{ key: 'pt-BR', label: 'Português (Brasil)', available: true },
+		// i18n-ignore: autonym
 		{ key: 'es-419', label: 'Español (Latinoamérica)', available: true },
 		{ key: 'ru', label: 'Русский', available: true }
 	];
@@ -49,22 +58,13 @@
 	onMount(() => {
 		void settingsGet()
 			.then((c) => (cfg = c))
-			.catch((e) => (loadError = describeError(e)));
+			.catch((e) => (loadError = describeSettingsFailure(e)));
 		void appInfo()
 			.then((i) => (info = i))
 			.catch(() => {
 				/* about section gracefully degrades if app info fails */
 			});
 	});
-
-	function describeError(e: unknown): string {
-		if (typeof e === 'object' && e !== null) {
-			const obj = e as Record<string, unknown>;
-			if (typeof obj.detail === 'string') return obj.detail;
-			if (typeof obj.kind === 'string') return obj.kind;
-		}
-		return String(e);
-	}
 
 	let debounceHandle: ReturnType<typeof setTimeout> | null = null;
 	async function persist(next: Config) {
@@ -84,7 +84,7 @@
 			savedAt = Date.now();
 			saveError = null;
 		} catch (e) {
-			saveError = describeError(e);
+			saveError = describeSettingsFailure(e);
 		}
 	}
 	function persistDebounced(next: Config) {
@@ -148,10 +148,10 @@
 		const isWin = typeof navigator !== 'undefined' && /Win/i.test(navigator.platform);
 		const filters = isWin
 			? [
-					{ name: 'Executables', extensions: ['exe'] },
-					{ name: 'All files', extensions: ['*'] }
+					{ name: m.settings_file_filter_executables(), extensions: ['exe'] },
+					{ name: m.settings_file_filter_all_files(), extensions: ['*'] }
 				]
-			: [{ name: 'All files', extensions: ['*'] }];
+			: [{ name: m.settings_file_filter_all_files(), extensions: ['*'] }];
 		const picked = await picker({
 			title: m.settings_field_external_player_browse_dialog_title(),
 			defaultPath: cfg.external_player || undefined,
@@ -175,10 +175,10 @@
 		const isWin = typeof navigator !== 'undefined' && /Win/i.test(navigator.platform);
 		const filters = isWin
 			? [
-					{ name: 'Executables', extensions: ['exe'] },
-					{ name: 'All files', extensions: ['*'] }
+					{ name: m.settings_file_filter_executables(), extensions: ['exe'] },
+					{ name: m.settings_file_filter_all_files(), extensions: ['*'] }
 				]
-			: [{ name: 'All files', extensions: ['*'] }];
+			: [{ name: m.settings_file_filter_all_files(), extensions: ['*'] }];
 		const picked = await picker({
 			title: m.settings_field_syncplay_binary_browse_dialog_title(),
 			defaultPath: cfg.syncplay_binary || undefined,
@@ -331,7 +331,7 @@
 							aria-pressed={cfg.quality === q.key}
 							onclick={() => setQuality(q.key)}
 						>
-							{q.label}
+							{q.label()}
 						</button>
 					{/each}
 				</div>

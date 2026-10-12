@@ -14,7 +14,6 @@
 //! [`ProxyState`] instead.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::account::InternalSecret;
 use crate::cache::SqlitePool;
@@ -37,7 +36,7 @@ pub struct AppState {
     /// The per-host request budget the proxy's fetches on the player's
     /// behalf and a download's subtitle tracks are charged to. One per
     /// app state, since the host counts both against the one address.
-    pub host_budget: Arc<crate::proxy::host_budget::HostBudget>,
+    pub host_budget: std::sync::Arc<crate::proxy::host_budget::HostBudget>,
     /// Outbound HTTP client for metadata calls (Kitsu, AniList,
     /// images, GitHub release polls). Separate from
     /// `proxy_http` so these calls carry tight timeouts: the proxy
@@ -63,24 +62,14 @@ pub struct AppState {
     pub legacy_sweep: crate::legacy_script::SweepReport,
     /// Path of the app's watch-history file.
     pub history_path: PathBuf,
-    /// Test override for the anidb provider origin the native play
-    /// resolution scrapes. `None` in production (the real site).
-    pub anidb_base: Option<String>,
-    /// Admission gate for anidb traffic: paces background probes
-    /// and breaks the circuit on consecutive failures so cold caches
-    /// can't rate-limit the IP out from under a user's click.
-    pub anidb_gate: Arc<crate::scraper::gate::ScraperGate>,
-    /// Test override for the hianime origin. `None` in production.
-    pub hianime_base: Option<String>,
-    /// hianime's own admission gate. One breaker per provider: an
-    /// outage on one must not pace or refuse traffic to the other.
-    pub hianime_gate: Arc<crate::scraper::gate::ScraperGate>,
-    /// The providers a walk runs against, in order — the next is
-    /// asked only when the one before it was unreachable, refusing
-    /// or broken (see `commands::providers`). Production lists them
-    /// all; a test lists the ones it stubs, so a stubbed outage
-    /// cannot fall through to a real site.
-    pub provider_order: Vec<crate::scraper::provider::ProviderId>,
+    /// The providers a walk runs against — their order, one
+    /// admission gate each (pacing background probes, breaking the
+    /// circuit on consecutive failures so cold caches can't
+    /// rate-limit the IP out from under a user's click), and the
+    /// origin a test points each one at. Production ships them all;
+    /// a test lists the ones it stubs, so a stubbed outage cannot
+    /// fall through to a real site.
+    pub providers: crate::provider_set::ProviderSet,
     /// On-disk image-cache directory served by the `/api/image` route.
     pub image_cache_dir: PathBuf,
     /// Connection pool for the SQLite metadata cache.
@@ -178,14 +167,7 @@ impl AppState {
             bundled_bin,
             legacy_sweep,
             history_path,
-            anidb_base: None,
-            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            hianime_base: None,
-            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            provider_order: vec![
-                crate::scraper::provider::ProviderId::Anidb,
-                crate::scraper::provider::ProviderId::Hianime,
-            ],
+            providers: crate::provider_set::ProviderSet::shipped(),
             image_cache_dir,
             cache_pool,
             kitsu,
