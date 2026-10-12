@@ -1,0 +1,23 @@
+{
+	"error_account_unsupported_pkce": "Sign-in couldn't start: the account service doesn't accept the sign-in method the app asked for. Update the app and try again.",
+	"error_cache_generic": "The app's local database failed. Restart the app and try again.",
+	"error_config_parse": "The settings file couldn't be read or saved. Restart the app, or fix the file by hand if you edited it.",
+	"error_download_ffmpeg_missing": "This download needs ffmpeg, and it isn't installed.",
+	"error_download_tool_failed": "The downloader stopped with an error before the file was finished. Try again later.",
+	"error_download_tool_spawn_failed": "The downloader couldn't be started. If you installed yt-dlp or ffmpeg yourself, check that it runs; otherwise reinstall ani-gui.",
+	"error_io_generic": "A file on this computer couldn't be read or written. Check free space and permissions, then try again.",
+	"error_metadata_source": "The account service couldn't complete this request. Try again, or reconnect the account in Settings.",
+	"error_network_rate_limited": "The service is busy right now. Wait a few seconds and try again.",
+	"error_network_unreachable": "Couldn't reach the service. Check your connection and try again.",
+	"error_network_upstream": "The service answered with an error (HTTP {status}). Try again later.",
+	"error_play_episode_unavailable": "The source lists this show but has no stream for this episode in the chosen audio.",
+	"error_player_spawn_failed": "Couldn't start {binary}. Check the external player in Settings.",
+	"error_request_invalid_body": "The app sent a request that couldn't be read. Restart the app and try again.",
+	"error_request_invalid_kitsu_id": "The app asked for an anime by an id that isn't valid. Go back and open it again.",
+	"error_request_invalid_search_offset": "The app asked for a page of search results that doesn't exist. Search again.",
+	"error_scraper_parse_failed": "The service sent an answer the app couldn't read. Try again later.",
+	"error_scraper_timeout": "The service took too long to answer. Try again in a moment.",
+	"error_search_no_results": "Couldn't find this title on the streaming source.",
+	"error_stream_invalid_token": "This session is no longer valid: a stream link expired, or an account's sign-in was refused. Start the episode again, or reconnect the account in Settings.",
+	"error_syncplay_spawn_failed": "Couldn't start Syncplay ({binary}). Check that it's installed and its path in Settings."
+}

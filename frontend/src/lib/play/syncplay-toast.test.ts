@@ -56,7 +56,7 @@ describe('describeSyncplayLaunchFailure', () => {
 		// spawns, the user should see the same polished message as
 		// the embedded play path — not a debug-y "Syncplay failed:
 		// scraper" string.
-		const scraperErr = { kind: 'scraper', key: 'error.scraper.parse_failed' };
+		const scraperErr = { kind: 'scraper', key: 'error.download.tool_failed' };
 		const got = describeSyncplayLaunchFailure(scraperErr);
 		// describePlayFailure's scraper branch fires on "scraper" in
 		// the flattened error string; pin that the helper hits that
@@ -116,7 +116,7 @@ describe('isSyncplaySpawnFailure', () => {
 	});
 
 	it('returns false for scraper / resolve-step errors', () => {
-		expect(isSyncplaySpawnFailure({ kind: 'scraper', key: 'error.scraper.parse_failed' })).toBe(
+		expect(isSyncplaySpawnFailure({ kind: 'scraper', key: 'error.download.tool_failed' })).toBe(
 			false
 		);
 		expect(isSyncplaySpawnFailure({ kind: 'timeout' })).toBe(false);

@@ -24,7 +24,7 @@ import { mergedWatchLater } from './watch-later';
 import { AccountApiError } from './api';
 
 /** The backend's error envelope when an AccountApiError carries one as
- *  its body, so a caller can word the failure by its `kind`; anything
+ *  its body, so a caller can word the failure by its `key` and `kind`; anything
  *  else is returned as it was thrown. */
 function envelopeOf(e: unknown): unknown {
 	if (!(e instanceof AccountApiError)) return e;
@@ -78,7 +78,7 @@ export interface WatchLaterDeps {
  * the caller surfaces a retry state for it instead of "nothing
  * planned" (Codex P2 #3415603155). The rejection is the first
  * provider failure, as the backend's error envelope when its body
- * carried one, so the caller can word it by `kind`.
+ * carried one, so the caller can word it by its `key` and `kind`.
  */
 export async function loadWatchLater(deps: WatchLaterDeps): Promise<KitsuAnimeRef[]> {
 	const providers = Object.keys(deps.credentials) as Provider[];

@@ -6,70 +6,8 @@
 use axum::response::IntoResponse;
 use http_body_util::BodyExt;
 
+use crate::error::variants::every_variant;
 use crate::error::AniError;
-
-/// One of each variant. The match below has no wildcard, so a new
-/// variant fails to compile here until it is named in the match; the
-/// list above it sits beside the match so the two are kept together.
-fn every_variant() -> Vec<AniError> {
-    let all = vec![
-        AniError::Scraper {
-            key: "error.scraper.custom_test_key",
-        },
-        AniError::Timeout,
-        AniError::NoResults,
-        AniError::EpisodeUnavailable,
-        AniError::RateLimited {
-            retry_after_secs: Some(9),
-        },
-        AniError::ParseFailed { detail: "x".into() },
-        AniError::FfmpegMissing,
-        AniError::Upstream { status: 503 },
-        AniError::Network,
-        AniError::GateRefused,
-        AniError::PlayerSpawnFailed {
-            binary: "vlc".into(),
-        },
-        AniError::SyncplaySpawnFailed {
-            binary: "syncplay".into(),
-        },
-        AniError::Cache,
-        AniError::Io,
-        AniError::Config,
-        AniError::Metadata,
-        AniError::UnsupportedPkce,
-        AniError::InvalidKitsuId,
-        AniError::InvalidSearchOffset,
-        AniError::InvalidRequestBody,
-        AniError::InvalidToken,
-    ];
-    for e in &all {
-        match e {
-            AniError::Scraper { .. }
-            | AniError::Timeout
-            | AniError::NoResults
-            | AniError::EpisodeUnavailable
-            | AniError::RateLimited { .. }
-            | AniError::ParseFailed { .. }
-            | AniError::FfmpegMissing
-            | AniError::Upstream { .. }
-            | AniError::Network
-            | AniError::GateRefused
-            | AniError::PlayerSpawnFailed { .. }
-            | AniError::SyncplaySpawnFailed { .. }
-            | AniError::Cache
-            | AniError::Io
-            | AniError::Config
-            | AniError::Metadata
-            | AniError::UnsupportedPkce
-            | AniError::InvalidKitsuId
-            | AniError::InvalidSearchOffset
-            | AniError::InvalidRequestBody
-            | AniError::InvalidToken => {}
-        }
-    }
-    all
-}
 
 #[tokio::test]
 async fn every_http_error_carries_its_kind_and_stable_key() {

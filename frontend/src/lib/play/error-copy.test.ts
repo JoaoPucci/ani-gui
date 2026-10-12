@@ -29,7 +29,9 @@ describe('describeRateLimit', () => {
 });
 
 describe('describeError', () => {
-	// User-facing copy: a localized sentence chosen by the error's kind.
+	// User-facing copy: a localized sentence chosen by the error's kind
+	// when the envelope carries no key (key-first resolution has its
+	// own cases in describe-error.test.ts).
 	// `detail` is the backend's free text for logs (ParseFailed carries
 	// serde's message, a URL that failed validation, …) and must never
 	// reach the screen, nor may a raw `kind` token or a thrown Error's

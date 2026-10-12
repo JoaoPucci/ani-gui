@@ -3,7 +3,10 @@
 //!
 //! Every variant maps to a stable i18n key returned to the frontend.
 //! Localized strings are resolved by the frontend (Paraglide), never by the
-//! backend. See [`crate::i18n`] for the canonical key list.
+//! backend. [`crate::i18n`] holds the key constants; `backend/error-keys.json`
+//! publishes the key of every variant for the renderer's catalogues, and
+//! `error_test.rs` holds that file to the variant list in
+//! `error_variants_test.rs`.
 
 use serde::Serialize;
 use thiserror::Error;
@@ -19,19 +22,17 @@ pub type Result<T, E = AniError> = std::result::Result<T, E>;
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AniError {
-    /// A download tool failed: yt-dlp or ffmpeg exited non-zero (key
-    /// `error.scraper.parse_failed`), or was found but could not be
-    /// started (key `error.download.tool_spawn_failed`). The only thing
-    /// that raises this is `spawn_download_tool`, in ways that are not a
-    /// missing tool and not a timeout — provider resolution has its own
-    /// variants and constructs none of these. The name is older than
-    /// that narrowing.
+    /// A download tool failed: yt-dlp or ffmpeg exited non-zero, or was
+    /// found but could not be started. The only thing that raises this
+    /// is `spawn_download_tool`, in ways that are not a missing tool and
+    /// not a timeout — provider resolution has its own variants and
+    /// constructs none of these. The name is older than that narrowing.
     #[error("scraper error")]
     Scraper {
-        /// i18n key: `error.scraper.parse_failed` for a tool that ran
-        /// and failed, `error.download.tool_spawn_failed` for one that
-        /// could not be started.
-        key: &'static str,
+        /// Which way the tool failed; each has its own key. Not
+        /// serialized: the envelope's `key` already says which.
+        #[serde(skip)]
+        failure: DownloadToolFailure,
     },
 
     /// A deadline elapsed. The shared one: a bounded resolve and an
@@ -41,7 +42,8 @@ pub enum AniError {
     #[error("deadline exceeded")]
     Timeout,
 
-    /// Search returned zero results.
+    /// The streaming source has no match for the title: raised while
+    /// resolving a play or a download, not by the catalogue search.
     #[error("no results")]
     NoResults,
 
@@ -154,7 +156,11 @@ pub enum AniError {
     #[error("config error")]
     Config,
 
-    /// Metadata source (Kitsu or AniList) returned malformed data.
+    /// An account request the backend could not carry out: an unknown
+    /// or unconfigured list provider, a PKCE request it cannot convert,
+    /// AniList's absent refresh flow or a delete it reported as not
+    /// done, a Watch Later bridge asking for too many ids. The name is
+    /// older than that use; malformed bodies are `ParseFailed`.
     #[error("metadata source")]
     Metadata,
 
@@ -189,9 +195,26 @@ pub enum AniError {
     #[error("invalid request body")]
     InvalidRequestBody,
 
-    /// Stream session token was missing, expired, or signature-invalid.
+    /// A token or secret the request carried is missing, expired or
+    /// forged: a stream session's token at the proxy, an account's
+    /// bearer at the account routes, AniList or MAL answering 401, the
+    /// internal secret the Watch Later bridge checks. The `stream` in
+    /// its key is older than the account uses.
     #[error("invalid stream token")]
     InvalidToken,
+}
+
+/// How a download tool failed, for [`AniError::Scraper`]. A closed set,
+/// so the keys the backend can answer with are too: each value has one
+/// key, chosen in [`AniError::key`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadToolFailure {
+    /// The tool ran and exited non-zero.
+    Exited,
+    /// The tool was found but could not be started: gone since it was
+    /// found, not executable, or refused by the OS.
+    NotStarted,
 }
 
 impl AniError {
@@ -201,7 +224,12 @@ impl AniError {
     #[must_use]
     pub fn key(&self) -> &'static str {
         match self {
-            Self::Scraper { key } => key,
+            Self::Scraper {
+                failure: DownloadToolFailure::Exited,
+            } => crate::i18n::keys::DOWNLOAD_TOOL_FAILED,
+            Self::Scraper {
+                failure: DownloadToolFailure::NotStarted,
+            } => crate::i18n::keys::DOWNLOAD_TOOL_SPAWN_FAILED,
             Self::Timeout => "error.scraper.timeout",
             Self::NoResults => "error.search.no_results",
             Self::EpisodeUnavailable => crate::i18n::keys::PLAY_EPISODE_UNAVAILABLE,
@@ -325,3 +353,7 @@ impl From<toml::de::Error> for AniError {
 #[cfg(test)]
 #[path = "error_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "error_variants_test.rs"]
+pub(crate) mod variants;
