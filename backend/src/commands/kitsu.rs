@@ -147,6 +147,9 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
         Ok(v) if !v.is_empty() => bridge_anilist_to_kitsu(state, v).await,
         _ => Vec::new(),
     };
+    // Only AniList's own answer says anything about a banner; Kitsu's
+    // fallback list below never carries one.
+    super::anilist_banner_memo::remember(&state.cache_pool, &bridged);
 
     // AniList errored or every entry failed to bridge — fall back
     // so home still has SOMETHING to render.
@@ -159,7 +162,6 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     // Bridged refs come from lookup_by_mal_id (single-resource parse), not
     // the list parser, so sanitize music here too.
     let hits = drop_music(hits);
-    super::anilist_banner_memo::remember(&state.cache_pool, &hits);
     if let Ok(body) = serde_json::to_string(&hits) {
         let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
         warm_signed_image_urls(state, &body);
@@ -1214,6 +1216,7 @@ async fn anime_detail_read(
             None => anilist_banner_for(state, id, anilist_base).await,
         };
         if let Some(banner) = banner {
+            detail.anilist_banner = Some(banner.clone());
             detail.cover_image = Some(KitsuCoverImage {
                 tiny: None,
                 small: None,
