@@ -1779,11 +1779,12 @@ async fn an_unnumbered_sequel_name_is_not_the_entry_before() {
     }
 }
 
-/// A pool rejected after the titles scored out a candidate that fit
-/// the count — the season before the broad listing — is never the
-/// clean miss the availability cache persists.
+/// A pool rejected after the titles scored out another entry of the
+/// same show — the season before the broad listing, or the entry
+/// before this one, with a count or without — is the clean miss it
+/// would be without it, as one after the sequel guard's drop is.
 #[tokio::test]
-async fn a_title_inference_is_never_a_clean_miss() {
+async fn another_entry_of_the_same_show_leaves_a_clean_miss() {
     let site = pool_of(
         &["Show Season 3 Part 1"],
         Some(12),
@@ -1795,8 +1796,15 @@ async fn a_title_inference_is_never_a_clean_miss() {
         ],
     );
     match walk_over(site).await {
-        Err(e) => assert!(!e.clean_miss, "persisted: {e:?}"),
+        Err(e) => assert!(e.clean_miss, "season before W: {e:?}"),
         Ok(p) => panic!("picked {}", p.hit.slug),
+    }
+    for count in [Some(12), None] {
+        let site = pool_of(&["Show 2"], count, 2020, "Show 2", &[("x", "Show", 12)]);
+        match walk_over(site).await {
+            Err(e) => assert!(e.clean_miss, "entry before, {count:?}: {e:?}"),
+            Ok(p) => panic!("{count:?}: picked {}", p.hit.slug),
+        }
     }
 }
 
