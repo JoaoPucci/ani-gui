@@ -130,7 +130,7 @@ pub(crate) fn read_page_request(body: &[u8]) -> Result<(String, u32)> {
 }
 
 /// The order a search-page request body asks for (`"sort"`), Kitsu's
-/// relevance when it names none.
+/// own ranking when it names none.
 ///
 /// # Errors
 /// [`AniError::InvalidRequestBody`] when the body is not JSON or its
