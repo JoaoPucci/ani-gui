@@ -1,6 +1,7 @@
 //! Reading a download tool's output while it runs: its stderr lines go
 //! to the dock as they come, and its progress on stdout feeds the run's
-//! meter, whose speed is reported to the dock once a second. Split out
+//! meter, whose speed is reported to the dock once a second, and once
+//! more as the output closes if a count arrived since. Split out
 //! of the tool runner so the runner keeps to spawning, stopping and
 //! the deadline.
 
@@ -15,8 +16,10 @@ use crate::error::{AniError, Result};
 /// MPEG-TS under the .mp4 name, which sets `repackage_failed` and ends
 /// the read. Progress on stdout feeds the meter, and once a second,
 /// from the first progress the tool gives, the run's speed is handed to
-/// `on_line` as a rate report; `measured` records that it did, so the
-/// runner can report zero when the run ends.
+/// `on_line` as a rate report; when both streams close with a count the
+/// last report has not covered — a run shorter than a second — the
+/// speed is reported once more. `measured` records that a speed was
+/// reported, so the runner can report zero when the run ends.
 ///
 /// # Errors
 /// [`AniError::FfmpegMissing`] when yt-dlp reports the repackage failed.
