@@ -236,18 +236,15 @@ async fn post_kitsu_search(
     Ok(Json(kitsu_inner::kitsu_search(&state, &body.query).await?))
 }
 
-#[derive(Deserialize)]
-struct SearchPageBody {
-    query: String,
-    offset: u32,
-}
-
+/// Reads its own body, so a malformed one answers the app's keyed
+/// envelope rather than the framework's plain-text rejection.
 async fn post_kitsu_search_page(
     State(state): State<Arc<AppState>>,
-    Json(body): Json<SearchPageBody>,
+    body: axum::body::Bytes,
 ) -> Result<Json<KitsuSearchPage>, AniError> {
+    let (query, offset) = crate::commands::kitsu_search::read_page_request(&body)?;
     Ok(Json(
-        crate::commands::kitsu_search::kitsu_search_page(&state, &body.query, body.offset).await?,
+        crate::commands::kitsu_search::kitsu_search_page(&state, &query, offset).await?,
     ))
 }
 

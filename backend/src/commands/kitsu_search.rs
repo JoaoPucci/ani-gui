@@ -88,8 +88,19 @@ pub async fn kitsu_search_page(
 /// - [`AniError::InvalidSearchOffset`] when `offset` is missing or is
 ///   not a whole number a page offset can be.
 pub(crate) fn read_page_request(body: &[u8]) -> Result<(String, u32)> {
-    let _ = body;
-    todo!("read_page_request")
+    #[derive(serde::Deserialize)]
+    struct Body {
+        query: String,
+        #[serde(default)]
+        offset: serde_json::Value,
+    }
+    let parsed: Body = serde_json::from_slice(body).map_err(|_| AniError::InvalidRequestBody)?;
+    let offset = parsed
+        .offset
+        .as_u64()
+        .and_then(|o| u32::try_from(o).ok())
+        .ok_or(AniError::InvalidSearchOffset)?;
+    Ok((parsed.query, offset))
 }
 
 /// Lowercase + collapse internal whitespace + trim. Stable cache key
