@@ -25,7 +25,7 @@ pub(crate) fn divisions_beside(sibling: &str, wide: &str) -> Option<(Vec<Marker>
 
 /// The divisions `words` open with, up to the first word that names
 /// none, leaving out any in `wide_markers`. An ordinal standing alone
-/// after one of `wide`'s own seasons — apart, or glued to it in
+/// right after one of `wide`'s own seasons — apart, or glued to it in
 /// Japanese — divides that season and is read as a part: "Season 3
 /// Second Half" beside "Season 3" names part 2, not a season 2. After
 /// a part of `wide`'s it stays as it is read.
@@ -40,7 +40,7 @@ fn own_divisions(words: &[String], wide_markers: &[Marker]) -> Vec<Marker> {
                 kind: Kind::Part,
                 ordinals: vec![n],
             });
-            after_season = true;
+            after_season = false;
             i += 1;
             continue;
         }
@@ -53,14 +53,16 @@ fn own_divisions(words: &[String], wide_markers: &[Marker]) -> Vec<Marker> {
         };
         i += taken.max(1);
         for m in found {
-            if after_season && taken == 1 && m.kind == Kind::Season {
+            let divides = after_season && taken == 1 && m.kind == Kind::Season;
+            // Only the division right before an ordinal decides
+            // whether it divides W's season.
+            after_season = !divides && wide_season(&m);
+            if divides {
                 named.push(Marker {
                     kind: Kind::Part,
                     ordinals: m.ordinals,
                 });
-            } else if wide_markers.contains(&m) {
-                after_season |= m.kind == Kind::Season;
-            } else {
+            } else if !wide_markers.contains(&m) {
                 named.push(m);
             }
         }
@@ -68,11 +70,11 @@ fn own_divisions(words: &[String], wide_markers: &[Marker]) -> Vec<Marker> {
     named
 }
 
-/// The number glued after one of `wide`'s own seasons written in
-/// Japanese, in one word: the ２ of "第3期２" beside "ショー第3期".
+/// The number glued right after one of `wide`'s own seasons written
+/// in Japanese, in one word, with no other division between: the ２ of "第3期２" beside "ショー第3期".
 fn number_after_wide_season(word: &str, wide_season: &impl Fn(&Marker) -> bool) -> Option<u32> {
     let head = word.trim_end_matches(|c: char| c.is_ascii_digit());
     let n = small_number(&word[head.len()..])?;
     let (glued, _) = glued_divisions(head)?;
-    glued.iter().any(wide_season).then_some(n)
+    glued.last().is_some_and(wide_season).then_some(n)
 }
