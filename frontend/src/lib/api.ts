@@ -375,6 +375,10 @@ export interface KitsuAnimeRef {
 	popularity_rank: number | null;
 	poster_image: KitsuPosterImage | null;
 	cover_image: KitsuCoverImage | null;
+	/** AniList's `bannerImage` for the same show, when a request the
+	 *  backend already made carried one (the trending feed). Absent
+	 *  otherwise; never fetched for its own sake. */
+	anilist_banner?: string | null;
 }
 
 /**
