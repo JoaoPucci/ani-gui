@@ -1738,3 +1738,19 @@ async fn the_entry_before_carries_the_entry_s_name() {
         assert_eq!(picked.hit.slug, "x");
     }
 }
+
+/// A candidate carrying a number one of the entry's titles carries, as
+/// that title does, is never the entry before it: "Show20" for an entry
+/// also known as "Show 20".
+#[tokio::test]
+async fn a_carried_number_is_not_the_entry_before() {
+    let site = pool_of(
+        &["Show 2", "Show 20"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[("x", "Show20", 12)],
+    );
+    let picked = walk_over(site).await.expect("the entry's own number");
+    assert_eq!(picked.hit.slug, "x");
+}
