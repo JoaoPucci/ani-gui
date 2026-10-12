@@ -722,6 +722,49 @@ starting it, and delete it when you find it done.
   that path, and the diagnostic route's pasted URL exercises neither
   the proxy nor the event stream.
 
+## Metadata the app does not use yet
+
+A survey, on 2026-10-12, of fields the metadata sources answer that the
+app does not show, kept so features can be derived from it. It records
+what each source was seen to return, not a design; whoever picks one up
+checks the source again. The app already uses AniList's banner,
+trailer, per-episode thumbnails, accent colour, relations and
+characters, so those are not listed.
+
+- **Title logos for the home banner.** Neither Kitsu nor AniList has
+  logos. TMDB (`/tv/{id}/images`, `/movie/{id}/images`) returns
+  transparent title logos, often in Japanese and English, and
+  fanart.tv has clear-logo art. Both answer 401 without an API key, so
+  how many anime carry a logo was not measured. Kitsu maps to TVDB
+  only for older shows; the community mapping at
+  `github.com/Fribb/anime-lists` (`anime-list-mini.json`, about 39,600
+  entries) links Kitsu, MAL and AniList ids to TMDB and TVDB ids
+  (Frieren: Kitsu 46474, TMDB tv 209867, TVDB 424536). Open questions:
+  a key shipped inside an open-source app can be read out of it, the
+  alternative being a key the user supplies in Settings; TMDB requires
+  visible attribution; TMDB groups seasons under one show, so a later
+  season gets the series logo; titles without a logo keep the text.
+- **Studio.** AniList `studios(isMain: true)` names the main studio
+  ("MADHOUSE" for Frieren).
+- **Rankings.** AniList `rankings` gives entries such as "#1 highest
+  rated all time" and "#51 most popular all time", with a context
+  string and whether the ranking is all-time or seasonal.
+- **Recommendations.** AniList `recommendations` lists related shows
+  readers recommend. The detail page already has a placeholder "Similar
+  titles" strip and a comment waiting for it.
+- **Official links.** AniList `externalLinks` lists the official site,
+  social accounts and legitimate streaming services (Crunchyroll,
+  Netflix, Hulu, Prime Video), each with a type, icon and colour.
+- **Openings and endings.** AnimeThemes answers a show's OP and ED
+  videos by MAL id; see the openings mode under "Three listening and
+  watching modes" below.
+- **Runtime.** Kitsu `episodeLength` and `totalLength` give minutes per
+  episode and the whole show.
+- **Spoiler-safe tags.** AniList `tags` carry a relevance rank and an
+  `isMediaSpoiler` flag, enough to show the top tags without spoilers.
+- **Rating breakdown and counts.** Kitsu `ratingFrequencies`,
+  `favoritesCount` and `userCount`, and AniList's score distribution.
+
 ## Three listening and watching modes: openings, soundtracks, reactions
 
 Three ideas for what the app could offer beyond episodes, each still
