@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 pub enum ProgressLine {
     /// The resolver started searching a provider.
     Searching {
-        /// Provider label (`anidb.app`).
+        /// Provider label (`hianime`).
         provider: String,
     },
     /// The resolver picked a show out of the search results.
@@ -30,7 +30,7 @@ pub enum ProgressLine {
     /// The resolver has the episode's embeds in hand and is about to
     /// extract a playable URL from them.
     LinksFetched {
-        /// Provider label (`anidb.app`).
+        /// Provider label (`hianime`).
         provider: String,
     },
 }

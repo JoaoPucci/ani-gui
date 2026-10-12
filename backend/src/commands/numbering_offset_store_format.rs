@@ -4,7 +4,7 @@
 
 use super::*;
 
-pub(in crate::commands::anidb_offset) fn parse(body: &str) -> Vec<Row> {
+pub(in crate::commands::numbering_offset) fn parse(body: &str) -> Vec<Row> {
     body.lines()
         .filter_map(|line| {
             let mut cols = line.split('\t');

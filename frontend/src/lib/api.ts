@@ -1053,9 +1053,11 @@ export function kitsuEpisodes(
 export function kitsuTitleMatchGet(
 	title: string,
 	cour: number,
-	provider: string
+	provider: StreamProvider | null
 ): Promise<string | null> {
-	const qs = new URLSearchParams({ title, cour: String(cour), provider });
+	const qs = new URLSearchParams({ title, cour: String(cour) });
+	// A history row whose key names no provider asks without one.
+	if (provider !== null) qs.set('provider', provider);
 	return getJson<string | null>(`/api/title-match?${qs.toString()}`);
 }
 
@@ -1070,7 +1072,7 @@ export function kitsuTitleMatchPut(
 	title: string,
 	cour: number,
 	kitsuId: string,
-	provider: string
+	provider: StreamProvider | null
 ): Promise<void> {
 	return putJson<void>('/api/title-match', { title, cour, kitsu_id: kitsuId, provider });
 }

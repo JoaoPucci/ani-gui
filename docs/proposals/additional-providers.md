@@ -17,6 +17,15 @@ install time), and handed off to an external player, all through
 hianime. The candidate survey describes a landscape that rots
 quickly — re-verify every claim in it before building on one.
 
+In October 2026 anidb.app began redirecting every page to an
+unrelated site, and it was removed: the "primary" this proposal
+describes is gone, and hianime is the one provider that ships. The
+seam, the per-provider gates and the orchestrator it asked for remain,
+written for several providers, so the next one is a client and not a
+redesign. Where its operator's site appears to live now, and why
+supporting it would be a new scraper, is in
+[`deferred-work.md`](../deferred-work.md#a-second-provider-and-what-it-would-allow).
+
 ## Why this matters
 
 All stream resolution rides a single provider, anidb.app, and inside
@@ -207,7 +216,8 @@ ever the pick, this is its own investigation first.
 ## How a second provider slots in
 
 - **The code seam.** The scraper module is already split into a
-  client (`backend/src/scraper/anidb/`) and provider-agnostic policy
+  client (`backend/src/scraper/anidb/`, removed with anidb.app) and
+  provider-agnostic policy
   (`gate`, `outcome`, `reservation` — "nothing here decides
   policy"). What is missing is the trait boundary: the play,
   availability and download commands import the concrete client and
@@ -287,7 +297,8 @@ ever the pick, this is its own investigation first.
   last-watched stamp wins, or one row per Kitsu entry carrying the
   provider as an attribute); the numbering-offsets sidecar beside
   the history file
-  (`backend/src/commands/anidb_offset_store.rs`), one row per bare
+  (`backend/src/commands/anidb_offset_store.rs`, since renamed
+  `numbering_offset_store.rs`), one row per bare
   slug carrying a show's numbering offset and last-watch display
   stamp — it outlives SQLite cache clears and is consulted on every
   history read and write, so a second provider's slugs landing in it

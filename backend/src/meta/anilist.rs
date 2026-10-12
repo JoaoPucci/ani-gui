@@ -177,7 +177,7 @@ pub(crate) async fn post_graphql_public(
 
 /// Fetch the AniList trending feed, top `limit` entries.
 ///
-/// `base_override` mirrors the convention in `scraper::anidb` —
+/// `base_override` mirrors the convention in `scraper::hianime` —
 /// `None` in prod (hits the real GraphQL endpoint), `Some(uri)` in
 /// tests pointing at wiremock.
 ///

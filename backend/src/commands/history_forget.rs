@@ -170,7 +170,7 @@ pub(crate) fn forget_all(state: &AppState) -> Result<()> {
 /// through it.
 pub(crate) fn sweep_offsets(state: &AppState, removed: &[&str]) {
     let removed = removed.iter().copied().collect();
-    if let Err(e) = crate::commands::anidb_offset::forget(state, &removed) {
+    if let Err(e) = crate::commands::numbering_offset::forget(state, &removed) {
         tracing::warn!(error = ?e, "offsets removal failed after a history removal");
     }
 }

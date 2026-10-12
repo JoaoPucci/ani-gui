@@ -26,6 +26,7 @@ mod markup;
 pub mod megaplay;
 pub mod megaplay_cipher;
 pub mod megaplay_sources;
+mod origin;
 pub mod parse;
 pub use ajax::{
     chain_reserve, chain_worth, parse_episode_list, parse_server_listing, parse_servers,
@@ -175,8 +176,15 @@ impl<F: Fetch> HianimeClient<F> {
     /// The site's AJAX endpoints answer only to a request that says
     /// it is one.
     fn ajax(&self, path: &str) -> FetchRequest {
-        FetchRequest::get(format!("{}{path}", self.base))
+        self.on_origin(path)
             .header("X-Requested-With", "XMLHttpRequest")
+    }
+
+    /// A request for `path` on the client's origin, held to it: it
+    /// follows only the redirects that stay there, and an answer from
+    /// anywhere else is refused ([`origin::refuse_foreign`]).
+    fn on_origin(&self, path: &str) -> FetchRequest {
+        FetchRequest::get(format!("{}{path}", self.base)).held_to_origin()
     }
 
     /// Perform `req` and hand back the page with the URL it came
@@ -184,6 +192,7 @@ impl<F: Fetch> HianimeClient<F> {
     /// typed upstream errors.
     async fn page(&self, req: &FetchRequest) -> Result<Page> {
         let resp = self.fetch.fetch(req).await?;
+        origin::refuse_foreign(&self.base, req, &resp)?;
         if is_cloudflare_interstitial(&resp.body) {
             let status = if resp.status >= 400 { resp.status } else { 403 };
             return Err(AniError::Upstream { status });
@@ -332,8 +341,8 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     async fn search(&self, query: &str) -> Result<Vec<BrowseHit>> {
-        let url = format!("{}/search?keyword={}", self.base, encode_query(query));
-        let body = self.content(&FetchRequest::get(url)).await?;
+        let req = self.on_origin(&format!("/search?keyword={}", encode_query(query)));
+        let body = self.content(&req).await?;
         parse_search(&body)
     }
 
@@ -594,8 +603,7 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
-        let url = format!("{}/{slug}", self.base);
-        match self.content(&FetchRequest::get(url)).await {
+        match self.content(&self.on_origin(&format!("/{slug}"))).await {
             Ok(body) => Ok(parse_detail_year(&body)),
             Err(AniError::Upstream { status })
                 if !AniError::Upstream { status }.is_provider_block() =>
@@ -716,6 +724,10 @@ fn weather_rank(weather: &AniError) -> u8 {
 #[cfg(test)]
 #[path = "hianime_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "hianime_origin_test.rs"]
+mod origin_tests;
 
 #[cfg(test)]
 #[path = "hianime_prop_test.rs"]

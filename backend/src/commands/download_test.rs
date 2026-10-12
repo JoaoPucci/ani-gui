@@ -3743,7 +3743,7 @@ async fn a_download_remembers_the_provider_that_served_it() {
         .expect("the download completes");
     assert_eq!(
         crate::commands::availability::cached_provider(&state, "3821", "sub"),
-        Some(crate::scraper::provider::ProviderId::Anidb),
+        Some(crate::scraper::provider::ProviderId::TestA),
         "the provider that served the stream is remembered"
     );
 }

@@ -168,7 +168,13 @@ pub struct AvailabilityResponse {
 /// A negative row is usable while the provider whose verdict it is
 /// can stand behind it — see [`negative_row_is_backed`]; its
 /// `episode_count` is meaningless when there is no candidate.
+///
+/// Either way a row is served only on the word of a provider the
+/// state walks ([`row_is_walked`]).
 fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool {
+    if !row_is_walked(state, parsed) {
+        return false;
+    }
     if !parsed.available {
         return negative_row_is_backed(state, parsed);
     }
@@ -195,19 +201,33 @@ fn cache_hit_is_usable(state: &AppState, parsed: &AvailabilityResponse) -> bool 
 /// breaker or a running rate-limit pause, either of which sends a
 /// walk asked now to the next provider — so a half-open primary lets
 /// the fallback's row yield to the trial. Otherwise the row is not
-/// served and the probe runs again. An unattributed negative counts
-/// as the primary's; one naming a provider the state no longer lists
-/// has nobody to stand behind it.
+/// served and the probe runs again. A negative that names no
+/// provider, or one the state no longer walks, has nobody to stand
+/// behind it ([`row_is_walked`]).
 fn negative_row_is_backed(state: &AppState, parsed: &AvailabilityResponse) -> bool {
     let order = state.providers.order();
-    let Some(provider) = parsed.provider.or_else(|| order.first().copied()) else {
-        return true;
+    let Some(provider) = parsed.provider else {
+        return false;
     };
     let Some(position) = order.iter().position(|p| *p == provider) else {
         return false;
     };
     let gate = |p: &crate::scraper::provider::ProviderId| state.providers.gate(*p);
     gate(&provider).is_recovered() && order[..position].iter().all(|p| gate(p).is_refusing())
+}
+
+/// Whether a row is the verdict of a provider the state walks. A row
+/// is one provider's word on its own catalogue — its cap counted in
+/// its numbering, its miss a search of its listing — and a provider
+/// the app no longer walks stands behind none of it: its negative
+/// would hide a show the walked providers carry, its positive would
+/// gate the strip with another catalogue's cap. A row that names no
+/// provider predates attribution and is nobody's verdict. Neither is
+/// served; the probe runs again.
+fn row_is_walked(state: &AppState, parsed: &AvailabilityResponse) -> bool {
+    parsed
+        .provider
+        .is_some_and(|p| state.providers.order().contains(&p))
 }
 
 /// What a native resolve learned about a show, for its availability
@@ -495,13 +515,16 @@ pub async fn stamp_after_cache_hit(
 }
 
 /// Whether a positive row stands for the key — one within its
-/// lifetime that says the show is carried.
+/// lifetime that says the show is carried, on the word of a walked
+/// provider ([`row_is_walked`]). A row nobody walked is never served,
+/// so nothing is weighed against it.
 fn positive_row_stands(state: &AppState, row: &str) -> bool {
     meta_cache_get(&state.cache_pool, row)
         .ok()
         .flatten()
         .is_some_and(|body| {
-            serde_json::from_str::<AvailabilityResponse>(&body).is_ok_and(|parsed| parsed.available)
+            serde_json::from_str::<AvailabilityResponse>(&body)
+                .is_ok_and(|parsed| parsed.available && row_is_walked(state, &parsed))
         })
 }
 
@@ -1182,9 +1205,12 @@ pub fn batch_cached(state: &AppState, args: &AvailabilityBatchArgs) -> Availabil
         let key = cache_key(id, mode);
         if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
             if let Ok(parsed) = serde_json::from_str::<AvailabilityResponse>(&body) {
-                // A negative nobody can stand behind is not served:
-                // the card renders, and the page's probe re-asks.
-                if !parsed.available && !negative_row_is_backed(state, &parsed) {
+                // A row nobody walked stands behind, or a negative its
+                // provider cannot back now, is not served: the card
+                // renders, and the page's probe re-asks.
+                if !row_is_walked(state, &parsed)
+                    || (!parsed.available && !negative_row_is_backed(state, &parsed))
+                {
                     continue;
                 }
                 cached.insert(id.clone(), parsed.available);
@@ -1338,3 +1364,7 @@ mod tests;
 #[cfg(test)]
 #[path = "availability_subtype_args_test.rs"]
 mod subtype_args_tests;
+
+#[cfg(test)]
+#[path = "availability_unwalked_test.rs"]
+mod unwalked_tests;
