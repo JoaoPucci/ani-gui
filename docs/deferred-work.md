@@ -728,8 +728,8 @@ A survey, on 2026-10-12, of fields the metadata sources answer that the
 app does not show, kept so features can be derived from it. It records
 what each source was seen to return, not a design; whoever picks one up
 checks the source again. Not listed is what the app already reads from
-AniList: the weekly trending order behind the home hero and Trending
-strip; the `id` and `idMal` lookups that bridge AniList entries to
+AniList: the current trending order (AniList's `trending` counts
+activity over the past hour) behind the home hero and Trending strip; the `id` and `idMal` lookups that bridge AniList entries to
 Kitsu and resolve tracker ids; the airing status and schedule
 (`status`, `episodes`, `nextAiringEpisode`, `airingSchedule`) that gate
 and date episode tiles; the signed-in account's profile (name, avatar,
