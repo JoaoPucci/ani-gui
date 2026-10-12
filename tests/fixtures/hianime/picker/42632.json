@@ -1,0 +1,54 @@
+{
+ "kitsu": {
+  "id": "42632",
+  "name": "Kaguya 2",
+  "canonical": "Kaguya-sama wa Kokurasetai?: Tensaitachi no Renai Zunousen",
+  "alt_titles": ["かぐや様は告らせたい？～天才たちの恋愛頭脳戦～", "Kaguya-sama: Love is War?", "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen 2", "Kaguya-sama: Love is War Season 2", "辉夜大小姐想让我告白～天才们的恋爱头脑战～第二季", "辉夜大小姐想让我告白～天才们的恋爱头脑战～ 2", "Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen", "สารภาพรักกับคุณคางุยะซะดีๆ ~สงครามประสาทความรักของเหล่าอัจฉริยะ~ ภาค 2"],
+  "episode_count": 12,
+  "year": 2020,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Kaguya-sama wa Kokurasetai?: Tensaitachi no Renai Zunousen": [
+    ["kaguya-sama-love-is-war-1-437", "Kaguya-sama: Love is War", "TV"],
+    ["kaguya-sama-love-is-war-416", "Kaguya-sama: Love is War Season 2", "TV"],
+    ["kaguya-sama-love-is-war-ultra-romantic-418", "Kaguya-sama Love is War: Ultra Romantic", "TV"],
+    ["kaguya-sama-love-is-war-ova-556", "Kaguya-sama: Love is War OVA", "OVA"]
+  ]
+ },
+ "episodes": {
+  "kaguya-sama-love-is-war-1-437": [
+    [8677, 1, null],
+    [8678, 2, null],
+    [8679, 3, null],
+    [8680, 4, null],
+    [8681, 5, null],
+    [8682, 6, null],
+    [8683, 7, null],
+    [8684, 8, null],
+    [8685, 9, null],
+    [8686, 10, null],
+    [8687, 11, null],
+    [8688, 12, null]
+  ],
+  "kaguya-sama-love-is-war-416": [
+    [8264, 1, null],
+    [8265, 2, null],
+    [8266, 3, null],
+    [8267, 4, null],
+    [8268, 5, null],
+    [8269, 6, null],
+    [8270, 7, null],
+    [8271, 8, null],
+    [8272, 9, null],
+    [8273, 10, null],
+    [8274, 11, null],
+    [8275, 12, null]
+  ]
+ },
+ "years": {
+  "kaguya-sama-love-is-war-1-437": 2019,
+  "kaguya-sama-love-is-war-416": 2020,
+  "kaguya-sama-love-is-war-ultra-romantic-418": 2022
+ }
+}

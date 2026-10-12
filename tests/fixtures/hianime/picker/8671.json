@@ -1,0 +1,40 @@
+{
+ "kitsu": {
+  "id": "8671",
+  "name": "AoT S2",
+  "canonical": "Attack on Titan Season 2",
+  "alt_titles": ["Shingeki no Kyojin Season 2", "進撃の巨人 Season 2"],
+  "episode_count": 12,
+  "year": 2017,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Attack on Titan Season 2": [
+    ["attack-on-titan-season-2-865", "Attack on Titan Season 2", "TV"],
+    ["attack-on-titan-final-season-part-2-868", "Attack on Titan: Final Season, Part 2", "TV"],
+    ["attack-on-titan-season-3-part-2-1895", "Attack on Titan Season 3 Part 2", "TV"],
+    ["attack-on-titan-the-roar-of-awakening-2027", "Attack on Titan: The Roar of Awakening", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "attack-on-titan-season-2-865": [
+    [14500, 1, null],
+    [14501, 2, null],
+    [14502, 3, null],
+    [14503, 4, null],
+    [14504, 5, null],
+    [14505, 6, null],
+    [14506, 7, null],
+    [14507, 8, null],
+    [14508, 9, null],
+    [14509, 10, null],
+    [14510, 11, null],
+    [14511, 12, null]
+  ]
+ },
+ "years": {
+  "attack-on-titan-final-season-part-2-868": 2022,
+  "attack-on-titan-season-2-865": 2017,
+  "attack-on-titan-season-3-part-2-1895": 2019
+ }
+}

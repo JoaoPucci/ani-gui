@@ -1,0 +1,36 @@
+{
+ "kitsu": {
+  "id": "45619",
+  "name": "SxF P2",
+  "canonical": "SPY x FAMILY Part 2",
+  "alt_titles": ["SPY×FAMILY 2クール", "SxF", "Spy x Family", "스파이 패밀리", "间谍过家家"],
+  "episode_count": 13,
+  "year": 2022,
+  "subtype": "TV"
+ },
+ "searches": {
+  "SPY x FAMILY Part 2": [
+    ["anime-14-256", "Spy x Family, Part 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "anime-14-256": [
+    [4641, 1, null],
+    [4642, 2, null],
+    [4643, 3, null],
+    [4644, 4, null],
+    [4645, 5, null],
+    [4646, 6, null],
+    [4647, 7, null],
+    [4648, 8, null],
+    [4649, 9, null],
+    [4650, 10, null],
+    [4651, 11, null],
+    [4652, 12, null],
+    [4653, 13, null]
+  ]
+ },
+ "years": {
+  "anime-14-256": 2022
+ }
+}

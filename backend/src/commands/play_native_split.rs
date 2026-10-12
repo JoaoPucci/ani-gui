@@ -35,6 +35,16 @@ pub(crate) struct PartCandidate<'a> {
     ///
     /// [`numbering_offset`]: super::play_native_numbering::numbering_offset
     pub offset: u32,
+    /// The entry's titles admit the candidate. One they refuse may be
+    /// a later part of a chain, never its lead — the lead is the show
+    /// picked.
+    pub admitted: bool,
+    /// The part the candidate's title ends on agrees with the entry's
+    /// ([`EntryTitles::part_agrees`]): of two chains that fit equally
+    /// well, the one so led is stitched.
+    ///
+    /// [`EntryTitles::part_agrees`]: super::play_native_title_marker::EntryTitles::part_agrees
+    pub agrees: bool,
 }
 
 /// The parts that follow candidate `lead`, in order, while each next

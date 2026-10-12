@@ -1,0 +1,61 @@
+{
+ "kitsu": {
+  "id": "11209",
+  "name": "ReZero",
+  "canonical": "Re:Zero kara Hajimeru Isekai Seikatsu",
+  "alt_titles": ["Re：ゼロから始める異世界生活", "Re:ZERO -Starting Life in Another World-", "Re: Life in a different world from zero", "ReZero"],
+  "episode_count": 25,
+  "year": 2016,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Re:Zero kara Hajimeru Isekai Seikatsu": [
+    ["rezero-starting-life-in-another-world-1387", "Re:ZERO -Starting Life in Another World-", "TV"],
+    ["rezero-starting-life-in-another-world-memory-snow-4096", "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow", "MOVIE"],
+    ["rezero-starting-life-in-another-world-season-4-4587", "Re:ZERO -Starting Life in Another World- Season 4", "TV"],
+    ["rezero-starting-life-in-another-world-season-2-858", "Re:ZERO -Starting Life in Another World- Season 2", "TV"],
+    ["rezero-starting-life-in-another-world-season-2-part-2-859", "Re:Zero - Starting Life in Another World 2nd Season (Part 2)", "TV"],
+    ["rezero-starting-life-in-another-world-season-3-2551", "Re:ZERO -Starting Life in Another World- Season 3", "TV"],
+    ["rezero-starting-life-in-another-world-the-frozen-bond-4168", "Re:ZERO -Starting Life in Another World- The Frozen Bond", "MOVIE"],
+    ["rezero-starting-life-in-another-world-memory-snow-manner-movie-5780", "Re:ZERO -Starting Life in Another World- Memory Snow: Manner Movie", "MOVIE"],
+    ["rezero-starting-life-in-another-world-the-frozen-bond-manner-movie-6012", "Re:ZERO -Starting Life in Another World- The Frozen Bond: Manner Movie", "MOVIE"],
+    ["re-zero-petit-8179", "Re:ZERO PETIT", "SPECIAL"]
+  ]
+ },
+ "episodes": {
+  "rezero-starting-life-in-another-world-1387": [
+    [24245, 1, null],
+    [24246, 2, null],
+    [24247, 3, null],
+    [24248, 4, null],
+    [24249, 5, null],
+    [24250, 6, null],
+    [24251, 7, null],
+    [24252, 8, null],
+    [24253, 9, null],
+    [24254, 10, null],
+    [24255, 11, null],
+    [24256, 12, null],
+    [24257, 13, null],
+    [24258, 14, null],
+    [24259, 15, null],
+    [24260, 16, null],
+    [24261, 17, null],
+    [24262, 18, null],
+    [24263, 19, null],
+    [24264, 20, null],
+    [24265, 21, null],
+    [24266, 22, null],
+    [24267, 23, null],
+    [24268, 24, null],
+    [24269, 25, null]
+  ]
+ },
+ "years": {
+  "rezero-starting-life-in-another-world-1387": 2016,
+  "rezero-starting-life-in-another-world-season-2-858": 2020,
+  "rezero-starting-life-in-another-world-season-2-part-2-859": 2021,
+  "rezero-starting-life-in-another-world-season-3-2551": 2024,
+  "rezero-starting-life-in-another-world-season-4-4587": 2026
+ }
+}

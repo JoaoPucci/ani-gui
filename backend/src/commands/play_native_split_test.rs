@@ -25,6 +25,8 @@ fn cand(title: &str, count: u32, confirmed: bool) -> PartCandidate<'_> {
         count,
         confirmed,
         offset: 0,
+        admitted: true,
+        agrees: true,
     }
 }
 
@@ -383,6 +385,8 @@ proptest::proptest! {
                 count: *count,
                 confirmed: *confirmed,
                 offset: *offset,
+                admitted: true,
+                agrees: true,
             })
             .collect();
         let best_single = cands
@@ -458,4 +462,30 @@ proptest::proptest! {
             }
         }
     }
+}
+
+#[test]
+fn a_chain_is_never_led_by_a_candidate_the_entry_s_titles_refuse() {
+    // Asked for a bare "X" whose own listing the search left out, the
+    // pool holds only its sequel's two cours. Every candidate is
+    // refused by the entry's titles and scored out, so the best single
+    // distance is unbounded and any chain fits better — but a chain
+    // headed by "X Season 2" picks a title the entry is not.
+    use crate::commands::play_native_wide_listing::UNFIT;
+    use crate::scraper::provider::BrowseHit;
+    let hit = |slug: &str, title: &str| BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some("TV".into()),
+    };
+    let (s2, s2p2) = (
+        hit("x-s2-1", "X Season 2"),
+        hit("x-s2p2-2", "X Season 2 Part 2"),
+    );
+    let probed = vec![
+        (&s2, listing(100, 12), UNFIT, true),
+        (&s2p2, listing(200, 12), UNFIT, true),
+    ];
+    let entry = crate::commands::play_native_title_marker::EntryTitles::bare("X");
+    assert!(stitched(&probed, 24, UNFIT, entry).is_none());
 }

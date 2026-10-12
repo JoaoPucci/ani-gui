@@ -15,7 +15,10 @@ use super::*;
 /// accepted where it fits the expected count within the picker's
 /// tolerance, or falls short of it — an airing entry, which has not
 /// aired everything Kitsu counts.
-/// A lead must also pass [`lead_may_stitch`].
+/// A lead must also be admitted by the entry's titles and pass
+/// [`lead_may_stitch`]. Of chains that fit equally well, one led by a
+/// candidate whose part agrees with the entry's wins, then the first
+/// lead in provider order.
 #[must_use]
 pub(crate) fn split_chain(
     cands: &[PartCandidate<'_>],
@@ -24,10 +27,13 @@ pub(crate) fn split_chain(
 ) -> Option<Vec<usize>> {
     let tolerance = crate::commands::play_native::ep_count_threshold(expected);
     let single_fits = best_single <= tolerance;
-    let mut best: Option<(u32, Vec<usize>)> = None;
+    let mut best: Option<((u32, bool), Vec<usize>)> = None;
     let leads = (0..cands.len()).filter(|&i| {
         let c = &cands[i];
-        c.confirmed && c.count > 0 && lead_may_stitch(c, expected, tolerance, single_fits)
+        c.admitted
+            && c.confirmed
+            && c.count > 0
+            && lead_may_stitch(c, expected, tolerance, single_fits)
     });
     for lead in leads {
         let chain = chain_from(cands, lead);
@@ -37,9 +43,9 @@ pub(crate) fn split_chain(
             let fits = dist <= tolerance || sum < expected;
             let stands =
                 stands_over_single(cands, &chain[1..len], expected, best_single, single_fits);
-            if fits && stands && dist < best_single && best.as_ref().is_none_or(|(d, _)| dist < *d)
-            {
-                best = Some((dist, chain[..len].to_vec()));
+            let key = (dist, !cands[lead].agrees);
+            if fits && stands && dist < best_single && best.as_ref().is_none_or(|(k, _)| key < *k) {
+                best = Some((key, chain[..len].to_vec()));
             }
         }
     }
@@ -58,14 +64,17 @@ pub(crate) fn stitched(
     )],
     expected: u32,
     best_single: u32,
+    entry: crate::commands::play_native_title_marker::EntryTitles<'_>,
 ) -> Option<crate::commands::play_native::PickedShow> {
     let cands: Vec<PartCandidate<'_>> = probed
         .iter()
-        .map(|(h, eps, _, confirmed)| PartCandidate {
+        .map(|(h, eps, distance, confirmed)| PartCandidate {
             title: &h.title,
             count: crate::commands::play_native_numbering::regular_episode_count(eps),
             confirmed: *confirmed,
             offset: crate::commands::play_native_numbering::numbering_offset(eps),
+            admitted: *distance != crate::commands::play_native_wide_listing::UNFIT,
+            agrees: entry.part_agrees(&h.title),
         })
         .collect();
     let chain = split_chain(&cands, expected, best_single)?;

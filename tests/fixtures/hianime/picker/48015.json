@@ -1,0 +1,37 @@
+{
+ "kitsu": {
+  "id": "48015",
+  "name": "Bleach TYBW 3",
+  "canonical": "BLEACH: Sennen Kessen-hen - Soukoku-tan",
+  "alt_titles": ["BLEACH 千年血戦篇-相剋譚-", "BLEACH: Thousand-Year Blood War Part 3 - The Conflict", "BLEACH: Thousand-Year Blood War - The Conflict -", "BLEACH: Thousand-Year Blood War Part 3", "BLEACH 千年血戦篇 3クール"],
+  "episode_count": 14,
+  "year": 2024,
+  "subtype": "TV"
+ },
+ "searches": {
+  "BLEACH: Sennen Kessen-hen - Soukoku-tan": [
+    ["bleach-thousand-year-blood-war-the-conflict-3859", "Bleach: Thousand-Year Blood War - The Conflict", "TV"]
+  ]
+ },
+ "episodes": {
+  "bleach-thousand-year-blood-war-the-conflict-3859": [
+    [50228, 1, null],
+    [50229, 2, null],
+    [50230, 3, null],
+    [50231, 4, null],
+    [50232, 5, null],
+    [50233, 6, null],
+    [50234, 7, null],
+    [50235, 8, null],
+    [50236, 9, null],
+    [50237, 10, null],
+    [50238, 11, null],
+    [50239, 12, null],
+    [50240, 13, null],
+    [50241, 14, null]
+  ]
+ },
+ "years": {
+  "bleach-thousand-year-blood-war-the-conflict-3859": 2024
+ }
+}

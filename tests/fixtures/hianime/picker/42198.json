@@ -1,0 +1,52 @@
+{
+ "kitsu": {
+  "id": "42198",
+  "name": "ReZero 2",
+  "canonical": "Re:Zero kara Hajimeru Isekai Seikatsu 2",
+  "alt_titles": ["Re:ゼロから始める異世界生活２", "Re:ZERO -Starting Life in Another World- Season 2"],
+  "episode_count": 13,
+  "year": 2020,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Re:Zero kara Hajimeru Isekai Seikatsu 2": [
+    ["rezero-starting-life-in-another-world-season-2-part-2-859", "Re:Zero - Starting Life in Another World 2nd Season (Part 2)", "TV"],
+    ["rezero-starting-life-in-another-world-season-2-858", "Re:ZERO -Starting Life in Another World- Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "rezero-starting-life-in-another-world-season-2-858": [
+    [14412, 1, null],
+    [14413, 2, null],
+    [14414, 3, null],
+    [14415, 4, null],
+    [14416, 5, null],
+    [14417, 6, null],
+    [14418, 7, null],
+    [14419, 8, null],
+    [14420, 9, null],
+    [14421, 10, null],
+    [14422, 11, null],
+    [14423, 12, null],
+    [14424, 13, null]
+  ],
+  "rezero-starting-life-in-another-world-season-2-part-2-859": [
+    [14449, 1, null],
+    [14450, 2, null],
+    [14451, 3, null],
+    [14452, 4, null],
+    [14453, 5, null],
+    [14454, 6, null],
+    [14455, 7, null],
+    [14456, 8, null],
+    [14457, 9, null],
+    [14458, 10, null],
+    [14459, 11, null],
+    [14460, 12, null]
+  ]
+ },
+ "years": {
+  "rezero-starting-life-in-another-world-season-2-858": 2020,
+  "rezero-starting-life-in-another-world-season-2-part-2-859": 2021
+ }
+}

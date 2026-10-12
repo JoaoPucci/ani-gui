@@ -1,0 +1,36 @@
+{
+ "kitsu": {
+  "id": "45556",
+  "name": "Golden Kamuy 4",
+  "canonical": "Golden Kamuy 4th Season",
+  "alt_titles": ["ゴールデンカムイ 第四期", "Golden Kamuy Season 4"],
+  "episode_count": 13,
+  "year": 2022,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Golden Kamuy 4th Season": [
+    ["golden-kamuy-season-4-2598", "Golden Kamuy Season 4", "TV"]
+  ]
+ },
+ "episodes": {
+  "golden-kamuy-season-4-2598": [
+    [34821, 1, null],
+    [34822, 2, null],
+    [34823, 3, null],
+    [34824, 4, null],
+    [34825, 5, null],
+    [34826, 6, null],
+    [34827, 7, null],
+    [34828, 8, null],
+    [34829, 9, null],
+    [34830, 10, null],
+    [34831, 11, null],
+    [34832, 12, null],
+    [34833, 13, null]
+  ]
+ },
+ "years": {
+  "golden-kamuy-season-4-2598": 2022
+ }
+}

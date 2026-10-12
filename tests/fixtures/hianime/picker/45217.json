@@ -1,0 +1,55 @@
+{
+ "kitsu": {
+  "id": "45217",
+  "name": "Witch from Mercury S1",
+  "canonical": "Kidou Senshi Gundam: Suisei no Majo",
+  "alt_titles": ["機動戦士ガンダム 水星の魔女", "Mobile Suit Gundam: THE WITCH FROM MERCURY"],
+  "episode_count": 12,
+  "year": 2022,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Kidou Senshi Gundam: Suisei no Majo": [
+    ["mobile-suit-gundam-the-witch-from-mercury-season-2-5101", "Mobile Suit Gundam: The Witch from Mercury Season 2", "TV"]
+  ],
+  "機動戦士ガンダム 水星の魔女": [
+    ["mobile-suit-gundam-the-witch-from-mercury-3596", "Mobile Suit Gundam: The Witch from Mercury", "TV"],
+    ["mobile-suit-gundam-the-witch-from-mercury-season-2-5101", "Mobile Suit Gundam: The Witch from Mercury Season 2", "TV"],
+    ["mobile-suit-gundam-the-witch-from-mercury-prologue-6715", "Mobile Suit Gundam: The Witch from Mercury - Prologue", "SPECIAL"]
+  ]
+ },
+ "episodes": {
+  "mobile-suit-gundam-the-witch-from-mercury-3596": [
+    [47044, 1, null],
+    [47045, 2, null],
+    [47046, 3, null],
+    [47047, 4, null],
+    [47048, 5, null],
+    [47049, 6, null],
+    [47050, 7, null],
+    [47051, 8, null],
+    [47052, 9, null],
+    [47053, 10, null],
+    [47054, 11, null],
+    [47055, 12, null]
+  ],
+  "mobile-suit-gundam-the-witch-from-mercury-season-2-5101": [
+    [67021, 1, null],
+    [67022, 2, null],
+    [67023, 3, null],
+    [67024, 4, null],
+    [67025, 5, null],
+    [67026, 6, null],
+    [67027, 7, null],
+    [67028, 8, null],
+    [67029, 9, null],
+    [67030, 10, null],
+    [67031, 11, null],
+    [67032, 12, null]
+  ]
+ },
+ "years": {
+  "mobile-suit-gundam-the-witch-from-mercury-3596": 2022,
+  "mobile-suit-gundam-the-witch-from-mercury-season-2-5101": 2023
+ }
+}

@@ -3,6 +3,7 @@
 //! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
 use super::*;
+use crate::commands::play_native_title_grammar::normalized;
 
 /// [`pick_candidate`] told every title the requested entry goes by —
 /// the canonical title and its fallbacks, not only the one searched —
@@ -25,7 +26,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // from probes that failed below.
         return Err(crate::error::AniError::NoResults);
     }
-    let needle = search_title.trim().to_lowercase();
+    let entry = EntryTitles::new(entry_titles);
+    let needle = normalized(search_title);
     // Format disproof in both directions, over the RAW list — the
     // badge is free, so incompatible formats never crowd the bounded
     // probe head (see play_native_format).
@@ -34,14 +36,23 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // the pick would use it: alone, rescued as airing, or heading a
     // stitched chain.
     hits.retain(|h| !precedes_entry(&h.title, entry_titles));
-    let (head, year_excluded_any) = year_filtered(client, &hits, year).await?;
+    // The bounded head, by the entry's titles (see
+    // play_native_title_verdict::probe_head).
+    let (hits, refused_dropped) = probe_head(hits, expected.is_some(), entry)?;
+    let filtered = year_filtered(client, &hits, year).await;
+    let Some(expected) = expected else {
+        let picked = match filtered {
+            Ok((head, year_excluded_any)) => {
+                pick_without_count(client, &head, &needle, year_excluded_any, entry).await
+            }
+            Err(e) => Err(e),
+        };
+        return countless_miss(picked, refused_dropped);
+    };
+    let (head, _) = filtered?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
-
-    let Some(expected) = expected else {
-        return pick_without_count(client, &head, &needle, year_excluded_any).await;
-    };
 
     // Probe the surviving head; a failing probe removes the
     // candidate, never the pick. Each survivor keeps whether its
@@ -49,7 +60,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     let mut probed_ok: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = Vec::new();
     let mut any_transport_failure = false;
     // Identity carried by transport-DEAD candidates
-    // ([`identity_rank`]), with their provider position: a dead
+    // ([`entry_rank`]), with their provider position: a dead
     // candidate that outranks the eventual winner — or ties an
     // identity-bearing rank from an earlier position, where provider
     // order would have decided for it — makes the whole pick
@@ -82,16 +93,19 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                 }
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
-                    let failed =
-                        identity_rank(h.title.trim().to_lowercase() == needle, year_confirmed);
-                    if best_failed.is_none_or(|best| (failed, pos) < best) {
-                        best_failed = Some((failed, pos));
-                    }
+                    best_failed =
+                        strongest_dead(best_failed, entry, &h.title, &needle, year_confirmed, pos);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
         }
     }
+    // The entry's own titles over what the probes heard: a sibling
+    // named for another season or part is scored out, and a listing
+    // that spans this entry and the next is cut to this one's
+    // episodes (see play_native_wide_listing). Before the split
+    // stitching below, which still sees every part.
+    let refused_a_fit = fit_to_entry(&mut probed_ok, expected, entry);
     // An empty pool splits by what killed the probes: any transport
     // death means nothing was learned (the transient Network), while
     // all-answered not-found means the pool is dead but the provider
@@ -113,7 +127,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // candidate heard — a dead probe may have been one of the parts.
     if !any_transport_failure {
         if let Some(picked) =
-            crate::commands::play_native_split::stitched(&probed_ok, expected, best_dist)
+            crate::commands::play_native_split::stitched(&probed_ok, expected, best_dist, entry)
         {
             return Ok(picked);
         }
@@ -127,18 +141,22 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         if let Some(idx) = probed_ok
             .iter()
             .enumerate()
-            .filter(|(_, (_, eps, _, confirmed))| {
-                *confirmed && regular_episode_count(eps) < expected
+            .filter(|(_, row)| rescuable(row, expected))
+            // Distance first, then the user's own words and the
+            // entry's part — the dominance winner selection keeps —
+            // with provider order as the final tie (min_by_key keeps
+            // the first of equals).
+            .min_by_key(|(_, (h, _, d, _))| {
+                (
+                    *d,
+                    normalized(&h.title) != needle,
+                    !entry.part_agrees(&h.title),
+                )
             })
-            // Distance first, then the user's own words — the same
-            // dominance winner selection keeps — with provider order
-            // as the final tie (min_by_key keeps the first of
-            // equals).
-            .min_by_key(|(_, (h, _, d, _))| (*d, h.title.trim().to_lowercase() != needle))
             .map(|(i, _)| i)
         {
             let (h, _, _, c) = &probed_ok[idx];
-            let rescue_rank = identity_rank(h.title.trim().to_lowercase() == needle, *c);
+            let rescue_rank = entry_rank(entry, &h.title, &needle, *c);
             if dead_outranks(best_failed, rescue_rank, positions[idx]) {
                 // An identity-bearing candidate died unheard; the
                 // rescue must not outrank it on weather.
@@ -154,12 +172,9 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // got to answer: a transiently dead probe may have hidden
         // the right show, and NoResults rides the walk into a
         // persistable clean miss. Weather stays weather.
-        if any_transport_failure {
-            return Err(crate::error::AniError::Network);
-        }
-        return Err(crate::error::AniError::NoResults);
+        return Err(rejection(any_transport_failure, refused_a_fit));
     }
-    let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle);
+    let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
     if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {
         return Err(crate::error::AniError::Network);
     }

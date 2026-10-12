@@ -1973,8 +1973,8 @@ fn batch_cached_skips_empty_ids_in_input() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v14:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v14:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v15:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v15:kid-1:dub");
 }
 
 #[test]
