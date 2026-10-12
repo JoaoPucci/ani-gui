@@ -404,4 +404,37 @@ describe('/search infinite scroll', () => {
 			'the end line to arrive in that same region'
 		);
 	});
+
+	it('a new search does not pull focus to the paging line the reader never used', async () => {
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { query } = (await request.json()) as { query: string };
+				if (query === 'dragon ball') {
+					return HttpResponse.json({
+						hits: [
+							{ ...ref('1', 'Dragon Ball Z'), subtype: 'TV' },
+							{ ...ref('2', 'Dragon Ball: Path to Power'), subtype: 'movie' }
+						],
+						next_offset: 20
+					});
+				}
+				return HttpResponse.json({ hits: [ref('9', 'Monster')], next_offset: null });
+			})
+		);
+
+		setQuery('dragon ball');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Dragon Ball Z'), 'the first page');
+		buttonNamed(subtypeLabel('movie'))!.click();
+		await until(() => buttonNamed(m.search_paging_load_more()) !== null, 'the Load more button');
+		(document.activeElement as HTMLElement | null)?.blur();
+		expect(document.activeElement).toBe(document.body);
+
+		// Back/forward or a link changing the query: Load more leaves
+		// without ever having been focused.
+		setQuery('monster');
+		await until(() => buttonNamed(m.search_paging_load_more()) === null, 'Load more to leave');
+		expect(document.activeElement).toBe(document.body);
+	});
 });
