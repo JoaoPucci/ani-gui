@@ -180,7 +180,9 @@ pub enum AniError {
     InvalidSearchOffset,
 
     /// A request body that is not the shape its route takes: not JSON,
-    /// or missing a field it requires. 400: the caller sent it. Routes
+    /// or missing a field it requires, other than the fields with a key
+    /// of their own (a search page's offset answers
+    /// [`Self::InvalidSearchOffset`]). 400: the caller sent it. Routes
     /// that read their body themselves answer this instead of the
     /// framework's plain-text rejection, so the renderer gets the same
     /// keyed envelope as for every other error.
