@@ -4,6 +4,8 @@
  *
  *   - `current`: master's rendering (cover, anchored near the top, heavy fades)
  *   - `contain`: never crop — the whole image over a blurred copy of itself
+ *   - `pillar`:  fill the height — the whole upload, pillarboxed over its
+ *                blurred copy when narrow, cropped at the sides when wide
  *   - `focus`:   cover anchored at the centre, fades only behind text
  *
  * and of the image source: Kitsu's cover, or AniList's banner first with
@@ -22,7 +24,7 @@ export interface HeroExperiment {
 export const HERO_EXPERIMENT_DEFAULT: HeroExperiment = { framing: 'current', source: 'kitsu' };
 export const HERO_EXPERIMENT_STORAGE_KEY = 'ani-gui:dev:hero-experiment';
 
-const FRAMINGS: readonly HeroFraming[] = ['current', 'contain', 'focus'];
+const FRAMINGS: readonly HeroFraming[] = ['current', 'contain', 'pillar', 'focus'];
 const SOURCES: readonly HeroSource[] = ['kitsu', 'anilist'];
 
 function framingOr(v: unknown, fallback: HeroFraming): HeroFraming {
@@ -131,7 +133,7 @@ const POSTER_ORDER: Record<'home' | 'detail', readonly Slot[]> = {
 
 /**
  * The image a hero renders. `surface` keeps each page's existing slot
- * order for the `current` and `focus` framings; `contain` prefers the
+ * order for the `current` and `focus` framings; `contain` and `pillar` prefer the
  * cover's `original`, the whole upload, since Kitsu's sized covers are
  * themselves centre crops of it.
  */
@@ -145,7 +147,7 @@ export function pickHeroImage(
 	}
 	const cover = firstOf(
 		d.cover_image,
-		exp.framing === 'contain' ? COVER_WHOLE : COVER_ORDER[surface]
+		exp.framing === 'contain' || exp.framing === 'pillar' ? COVER_WHOLE : COVER_ORDER[surface]
 	);
 	if (cover) return { url: cover, isCover: true, origin: 'kitsu' };
 	const poster = firstOf(d.poster_image, POSTER_ORDER[surface]);

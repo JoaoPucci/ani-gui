@@ -15,7 +15,7 @@
 
 	let { exp, origin }: { exp: HeroExperiment; origin: HeroOrigin | null } = $props();
 
-	const framings: HeroFraming[] = ['current', 'contain', 'focus'];
+	const framings: HeroFraming[] = ['current', 'contain', 'pillar', 'focus'];
 	const sources: HeroSource[] = ['kitsu', 'anilist'];
 	// Dev-only tool: not translated.
 	const groupLabel = 'hero framing experiment';

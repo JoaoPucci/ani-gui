@@ -794,6 +794,7 @@
 <section
 	class="hero"
 	class:framing-contain={heroExp.framing === 'contain'}
+	class:framing-pillar={heroExp.framing === 'pillar'}
 	class:framing-focus={heroExp.framing === 'focus'}
 	style:--accent={featuredAccent}
 	aria-label={m.home_hero_aria_label()}
@@ -807,7 +808,7 @@
 			{@const hero = heroFor(featured)}
 			{@const synopsis = snippetOf(featured.synopsis)}
 			<div class="hero-layer" in:fade={{ duration: 480 }} out:fade={{ duration: 480 }}>
-				{#if hero.url && hero.isCover && heroExp.framing === 'contain'}
+				{#if hero.url && hero.isCover && (heroExp.framing === 'contain' || heroExp.framing === 'pillar')}
 					<img
 						class="hero-backdrop"
 						src={hero.url}
@@ -1390,6 +1391,7 @@
 	   the copy at the lower left, a thin band under the topbar, and a
 	   short hand-off into the page at the bottom edge. */
 	.framing-contain .hero-scrim,
+	.framing-pillar .hero-scrim,
 	.framing-focus .hero-scrim {
 		background:
 			linear-gradient(
@@ -1418,7 +1420,8 @@
 	}
 	/* Never crop: the whole image, centred, over a blurred, dimmed
 	   copy of itself that carries its colour to the band's edges. */
-	.framing-contain .hero-layer {
+	.framing-contain .hero-layer,
+	.framing-pillar .hero-layer {
 		container-type: size;
 	}
 	.hero-backdrop {
@@ -1429,6 +1432,19 @@
 		object-fit: cover;
 		filter: blur(44px) brightness(0.28) saturate(1.1);
 		animation: hero-in var(--dur-slow) var(--ease-out-soft) both;
+	}
+	/* Fill the height: the whole upload at the band's full height,
+	   centred — pillarboxed over its backdrop when narrower than the
+	   band, cropped at the sides only when wider. */
+	.framing-pillar .hero-img:not(.fallback) {
+		--ratio: 4.2;
+		inset-block: 0;
+		inset-inline-start: calc(50% - 100cqb * var(--ratio) / 2);
+		block-size: 100cqb;
+		inline-size: calc(100cqb * var(--ratio));
+		max-inline-size: none;
+		object-fit: cover;
+		mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
 	}
 	.framing-contain .hero-img:not(.fallback) {
 		inset: 0;

@@ -1440,9 +1440,10 @@
 			class="hero"
 			class:hero-fallback={!hero.isCover}
 			class:framing-contain={heroExp.framing === 'contain'}
+			class:framing-pillar={heroExp.framing === 'pillar'}
 			class:framing-focus={heroExp.framing === 'focus'}
 		>
-			{#if hero.url && hero.isCover && heroExp.framing === 'contain'}
+			{#if hero.url && hero.isCover && (heroExp.framing === 'contain' || heroExp.framing === 'pillar')}
 				<img
 					class="hero-backdrop"
 					src={hero.url}
@@ -2190,12 +2191,14 @@
 	   and the darkening keeps to that strip plus a thin band under the
 	   topbar. */
 	.hero.framing-contain,
+	.hero.framing-pillar,
 	.hero.framing-focus {
 		mask-image: linear-gradient(180deg, #000 0%, #000 84%, transparent 100%);
 		-webkit-mask-image: linear-gradient(180deg, #000 0%, #000 84%, transparent 100%);
 		container-type: size;
 	}
 	.framing-contain .hero-scrim,
+	.framing-pillar .hero-scrim,
 	.framing-focus .hero-scrim {
 		background:
 			linear-gradient(
@@ -2220,6 +2223,19 @@
 		object-fit: cover;
 		filter: blur(44px) brightness(0.28) saturate(1.1);
 		animation: hero-in var(--dur-slow) var(--ease-out-soft) both;
+	}
+	/* Fill the height: the whole upload at the band's full height,
+	   centred — pillarboxed over its backdrop when narrower than the
+	   band, cropped at the sides only when wider. */
+	.hero.framing-pillar:not(.hero-fallback) .hero-img {
+		--ratio: 4.2;
+		inset-block: 0;
+		inset-inline-start: calc(50% - 100cqb * var(--ratio) / 2);
+		block-size: 100cqb;
+		inline-size: calc(100cqb * var(--ratio));
+		max-inline-size: none;
+		object-fit: cover;
+		mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
 	}
 	.hero.framing-contain:not(.hero-fallback) .hero-img {
 		inset: 0;
