@@ -43,7 +43,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     let Some(expected) = expected else {
         let picked = match filtered {
             Ok((head, year_excluded_any)) => {
-                pick_without_count(client, &head, &needle, year_excluded_any, entry).await
+                let evidence = YearEvidence::of(year, year_excluded_any);
+                pick_without_count(client, &head, &needle, evidence, entry).await
             }
             Err(e) => Err(e),
         };

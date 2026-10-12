@@ -70,13 +70,17 @@ pub(super) fn strongest_dead(
 /// movie left standing). A pool the year disproved nothing about
 /// keeps the positional fallback — candidates without a matched year,
 /// in the provider's order within each tier — so pages without season
-/// links stay resolvable. The single probe still runs so the caller gets
-/// the episode list it needs.
+/// links stay resolvable. An entry with no year either has nothing to
+/// vouch for a hit but its name: the fallback then takes only a hit the
+/// entry heads ([`EntryTitles::heads`]) — named and read as one of the
+/// entry's titles — so an announced sequel the provider does not list
+/// yet is not handed the series its searches answer with. The single
+/// probe still runs so the caller gets the episode list it needs.
 pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     client: &P,
     head: &[(&BrowseHit, bool)],
     needle: &str,
-    year_excluded_any: bool,
+    year: YearEvidence,
     entry: EntryTitles<'_>,
 ) -> Result<PickedShow> {
     let exact = head
@@ -92,9 +96,10 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     let tier = move |agrees: bool, confirmed: bool| {
         head.iter()
             .filter(move |(h, c)| *c == confirmed && entry.part_agrees(&h.title) == agrees)
+            .filter(move |(h, _)| year != YearEvidence::Unknown || entry.heads(&h.title))
             .map(|(h, _)| *h)
     };
-    let positional_ok = !year_excluded_any;
+    let positional_ok = year != YearEvidence::DisprovedSome;
     let positional = tier(true, true)
         .chain(tier(true, false).filter(move |_| positional_ok))
         .chain(tier(false, true))
@@ -123,6 +128,31 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
         }
     }
     Err(crate::error::AniError::NoResults)
+}
+
+/// What the entry's year said about a countless pool: nothing, for an
+/// entry with no year; that some hit premiered too far from it; or
+/// that it disproved none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum YearEvidence {
+    /// The entry has no year: no hit can be vouched for by one.
+    Unknown,
+    /// The year disproved part of the pool.
+    DisprovedSome,
+    /// The year disproved nothing.
+    DisprovedNone,
+}
+
+impl YearEvidence {
+    /// The evidence for an entry's `year`, given whether the year
+    /// filter excluded any hit.
+    pub(super) fn of(year: Option<u32>, excluded_any: bool) -> Self {
+        match (year, excluded_any) {
+            (None, _) => Self::Unknown,
+            (Some(_), true) => Self::DisprovedSome,
+            (Some(_), false) => Self::DisprovedNone,
+        }
+    }
 }
 
 /// The winner among best-distance candidates, plus its rank
