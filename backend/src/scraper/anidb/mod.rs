@@ -71,13 +71,6 @@ impl<F: Fetch> AnidbClient<F> {
         }
     }
 
-    /// The transport this client fetches through. The orchestrator
-    /// reads the gated transport's per-attempt stamp off it when
-    /// recording breaker outcomes ([`GatedFetch::last_attempt_at`]).
-    pub fn transport(&self) -> &F {
-        &self.fetch
-    }
-
     /// Fetch `url` and hand back content, refusing challenge pages
     /// and non-success statuses as typed upstream errors.
     async fn content(&self, url: &str) -> Result<String> {

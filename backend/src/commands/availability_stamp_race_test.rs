@@ -14,9 +14,10 @@
 //! Mounted by `#[path]` beside the availability tests and borrowing
 //! their state builder.
 
-use super::tests::cache_only_state;
+use super::tests::{cache_only_state, check_with};
 use super::*;
-use crate::scraper::provider::ProviderId;
+use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
+use crate::scraper::table_provider::TableProvider;
 
 /// The show both writers stamp, in the mode a resolve's cap is exact
 /// for.
@@ -139,13 +140,13 @@ async fn a_resolve_writes_while_the_replay_waits_for_the_row(
 async fn a_replay_keeps_the_cap_a_resolve_wrote_while_it_waited_for_the_row() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Anidb, 12);
+    seed_standing_row(&state, ProviderId::TestA, 12);
 
     a_resolve_writes_while_the_replay_waits_for_the_row(
         &state,
-        ProviderId::Anidb,
+        ProviderId::TestA,
         24,
-        ProviderId::Anidb,
+        ProviderId::TestA,
     )
     .await;
 
@@ -156,7 +157,7 @@ async fn a_replay_keeps_the_cap_a_resolve_wrote_while_it_waited_for_the_row() {
         Some(24),
         "the resolve's exact cap stands through the replay's refresh"
     );
-    assert_eq!(row.provider, Some(ProviderId::Anidb));
+    assert_eq!(row.provider, Some(ProviderId::TestA));
 }
 
 /// The same ordering where the resolve failed over: the standing row
@@ -171,20 +172,20 @@ async fn a_replay_keeps_the_cap_a_resolve_wrote_while_it_waited_for_the_row() {
 async fn a_replay_keeps_the_row_a_failed_over_resolve_wrote_while_it_waited() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Anidb, 12);
+    seed_standing_row(&state, ProviderId::TestA, 12);
 
     a_resolve_writes_while_the_replay_waits_for_the_row(
         &state,
-        ProviderId::Hianime,
+        ProviderId::TestB,
         24,
-        ProviderId::Hianime,
+        ProviderId::TestB,
     )
     .await;
 
     let row = row_now(&state);
     assert_eq!(
         row.provider,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the fallback's affinity stands"
     );
     assert_eq!(
@@ -195,28 +196,29 @@ async fn a_replay_keeps_the_row_a_failed_over_resolve_wrote_while_it_waited() {
 }
 
 /// No race at all, only a replay through a provider other than the
-/// one the standing row names: the show failed over to hianime, its
-/// positive row carries hianime's exact cap, and the user replays an
-/// episode the resolution cache still holds from anidb.app's days.
-/// A served replay proves nothing about anidb.app's listing or its
-/// health now — the CDN answered for a URL resolved long ago — so
-/// the row it refreshes is the one that stands, hianime's, cap and
-/// affinity kept. Writing a cap-less anidb.app row over it would
+/// one the standing row names: the show failed over to the fallback,
+/// its positive row carries the fallback's exact cap, and the user
+/// replays an episode the resolution cache still holds from the
+/// primary's days. A served replay proves nothing about the primary's
+/// listing or its health now — the CDN answered for a URL resolved
+/// long ago — so the row it refreshes is the one that stands, the
+/// fallback's, cap and affinity kept. Writing a cap-less row for the
+/// primary over it would
 /// send the next uncached episode back to the provider that failed
 /// over and lose the cap the fallback's listing paid for.
 #[tokio::test]
 async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_it_is() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Hianime, 24);
+    seed_standing_row(&state, ProviderId::TestB, 24);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Anidb).await;
+    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::TestA).await;
 
     let row = row_now(&state);
     assert_eq!(
         row.provider,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the standing row's affinity is not moved by a replay through another provider"
     );
     assert_eq!(
@@ -229,29 +231,25 @@ async fn a_replay_through_another_provider_leaves_the_standing_positive_row_as_i
 /// A probe that set out with no positive row to remember runs the
 /// primary alone, and the primary answers a clean miss. While it
 /// was out, a resolve reached the show through the fallback and
-/// stamped hianime's positive row with its exact cap. The probe's
-/// miss is older than that row and proves nothing against it —
-/// anidb.app never had the show — so the row it finds standing when
+/// stamped the fallback's positive row with its exact cap. The
+/// probe's miss is older than that row and proves nothing against it
+/// — the primary never had the show — so the row it finds standing when
 /// it takes the lock is the one that stands: the miss is the
 /// verdict the caller sees, and nothing is persisted over the row.
 /// Written as the primary's negative, the row would hide a stream
 /// just proven playable for the negative's whole lifetime.
 #[tokio::test]
 async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#)
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
-        .mount(&anidb)
-        .await;
+    // The primary's search answers a clean miss, slowly enough for a
+    // stamp to land while the probe waits on it.
+    let primary = std::sync::Arc::new(
+        TableProvider::new()
+            .answering_as(ProviderId::TestA)
+            .delaying_searches(std::time::Duration::from_millis(300)),
+    );
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
-    state.provider_order = vec![ProviderId::Anidb];
+    state.providers.set_order(vec![ProviderId::TestA]);
     let state = std::sync::Arc::new(state);
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -264,8 +262,8 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
 
     let probe = tokio::spawn({
         let state = state.clone();
-        let base = anidb.uri();
-        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+        let primary = std::sync::Arc::clone(&primary);
+        async move { check_with(&state, &args, &primary).await }
     });
     // The resolve lands while the probe waits on the primary.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -274,7 +272,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+        ResolveVerdict::served(ProviderId::TestB, Some(24), &[]),
     )
     .await;
     let got = probe.await.expect("the probe finishes");
@@ -285,7 +283,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
     );
     let row = row_now(&state);
     assert!(row.available, "the fallback's positive row stands");
-    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.provider, Some(ProviderId::TestB));
     assert_eq!(
         row.episode_count,
         Some(24),
@@ -304,12 +302,12 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
 async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Hianime, 24);
+    seed_standing_row(&state, ProviderId::TestB, 24);
     age_row(&state, 3600);
     let stamped_at = written_at(&state);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Hianime).await;
+    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::TestB).await;
 
     assert_eq!(
         written_at(&state),
@@ -317,14 +315,14 @@ async fn a_replay_leaves_a_standing_positive_row_its_own_lifetime() {
         "the standing row keeps the moment it was written, and with it the lifetime it had left"
     );
     let row = row_now(&state);
-    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.provider, Some(ProviderId::TestB));
     assert_eq!(row.episode_count, Some(24));
 }
 
 /// Two resolves for the same show set out together with no positive
 /// row to remember, so both run the primary first. One finds it
 /// unreachable, fails over, and stamps the fallback's success —
-/// hianime's row, exact cap and all. The other is answered late by
+/// the fallback's row, exact cap and all. The other is answered late by
 /// the primary with a clean miss. That miss was earned without the
 /// fallback's proof: it says the primary never had the show, which
 /// the fallback's row does not dispute, and written over that row
@@ -343,7 +341,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_ou
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+        ResolveVerdict::served(ProviderId::TestB, Some(24), &[]),
     )
     .await;
     stamp_after_native(
@@ -351,13 +349,13 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_ou
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::missed(Some(ProviderId::Anidb)),
+        ResolveVerdict::missed(Some(ProviderId::TestA)),
     )
     .await;
 
     let row = row_now(&state);
     assert!(row.available, "the fallback's success stands: {row:?}");
-    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.provider, Some(ProviderId::TestB));
     assert_eq!(
         row.episode_count,
         Some(24),
@@ -375,7 +373,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_stamped_after_it_set_ou
 async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set_out() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Anidb, 12);
+    seed_standing_row(&state, ProviderId::TestA, 12);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
@@ -383,7 +381,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+        ResolveVerdict::served(ProviderId::TestB, Some(24), &[]),
     )
     .await;
     stamp_after_native(
@@ -391,13 +389,13 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::missed(Some(ProviderId::Anidb)),
+        ResolveVerdict::missed(Some(ProviderId::TestA)),
     )
     .await;
 
     let row = row_now(&state);
     assert!(row.available, "the fallback's success stands: {row:?}");
-    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.provider, Some(ProviderId::TestB));
     assert_eq!(row.episode_count, Some(24));
 }
 
@@ -411,7 +409,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_that_moved_after_it_set
 async fn a_replay_past_the_rows_lifetime_writes_the_providers_positive_row_again() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Hianime, 24);
+    seed_standing_row(&state, ProviderId::TestB, 24);
     age_row(
         &state,
         i64::try_from(AVAILABILITY_TTL_ONGOING_SECS).expect("fits") + 1,
@@ -424,13 +422,13 @@ async fn a_replay_past_the_rows_lifetime_writes_the_providers_positive_row_again
     );
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Hianime).await;
+    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::TestB).await;
 
     let row = row_now(&state);
     assert!(row.available);
     assert_eq!(
         row.provider,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the affinity is written again"
     );
     assert_eq!(
@@ -448,7 +446,7 @@ async fn a_replay_past_the_rows_lifetime_writes_the_providers_positive_row_again
 async fn a_native_miss_over_the_row_it_set_out_from_writes_the_negative() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Hianime, 24);
+    seed_standing_row(&state, ProviderId::TestB, 24);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
@@ -456,13 +454,13 @@ async fn a_native_miss_over_the_row_it_set_out_from_writes_the_negative() {
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::missed(Some(ProviderId::Hianime)),
+        ResolveVerdict::missed(Some(ProviderId::TestB)),
     )
     .await;
 
     let row = row_now(&state);
     assert!(!row.available, "the miss is written: {row:?}");
-    assert_eq!(row.provider, Some(ProviderId::Hianime));
+    assert_eq!(row.provider, Some(ProviderId::TestB));
 }
 
 /// The primary's positive row stood when both resolves set out. One
@@ -478,7 +476,7 @@ async fn a_native_miss_over_the_row_it_set_out_from_writes_the_negative() {
 async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_stood() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Anidb, 12);
+    seed_standing_row(&state, ProviderId::TestA, 12);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
     stamp_after_native(
@@ -486,7 +484,7 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_sto
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::served(ProviderId::Anidb, Some(12), &[]),
+        ResolveVerdict::served(ProviderId::TestA, Some(12), &[]),
     )
     .await;
     stamp_after_native(
@@ -494,13 +492,13 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_sto
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::missed(Some(ProviderId::Anidb)),
+        ResolveVerdict::missed(Some(ProviderId::TestA)),
     )
     .await;
 
     let row = row_now(&state);
     assert!(row.available, "the row written again stands: {row:?}");
-    assert_eq!(row.provider, Some(ProviderId::Anidb));
+    assert_eq!(row.provider, Some(ProviderId::TestA));
     assert_eq!(row.episode_count, Some(12));
 }
 
@@ -511,22 +509,18 @@ async fn a_native_miss_does_not_overwrite_a_positive_row_written_again_as_it_sto
 /// row that changed: the row was proven again after the walk began.
 #[tokio::test]
 async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_while_it_was_out() {
-    use wiremock::matchers::{method, path};
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#)
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
-        .mount(&anidb)
-        .await;
+    // The primary's search answers a clean miss, slowly enough for a
+    // stamp to land while the probe waits on it.
+    let primary = std::sync::Arc::new(
+        TableProvider::new()
+            .answering_as(ProviderId::TestA)
+            .delaying_searches(std::time::Duration::from_millis(300)),
+    );
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
-    state.provider_order = vec![ProviderId::Anidb];
+    state.providers.set_order(vec![ProviderId::TestA]);
     let state = std::sync::Arc::new(state);
-    seed_standing_row(&state, ProviderId::Anidb, 12);
+    seed_standing_row(&state, ProviderId::TestA, 12);
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Standing Show",
@@ -539,8 +533,8 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
 
     let probe = tokio::spawn({
         let state = state.clone();
-        let base = anidb.uri();
-        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+        let primary = std::sync::Arc::clone(&primary);
+        async move { check_with(&state, &args, &primary).await }
     });
     // The resolve lands while the probe waits on the primary.
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -549,7 +543,7 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::served(ProviderId::Anidb, Some(12), &[]),
+        ResolveVerdict::served(ProviderId::TestA, Some(12), &[]),
     )
     .await;
     let got = probe.await.expect("the probe finishes");
@@ -589,7 +583,7 @@ async fn a_resolve_setting_out_during_a_positive_stamp_reads_the_finished_stamp(
         .for_row(&key)
         .lock_owned()
         .await;
-    let body = serde_json::to_string(&positive_row(ProviderId::Hianime, Some(24)))
+    let body = serde_json::to_string(&positive_row(ProviderId::TestB, Some(24)))
         .expect("the row serialises");
     crate::cache::db::meta_cache_put(&state.cache_pool, &key, &body, 3600).expect("the row lands");
 
@@ -612,7 +606,7 @@ async fn a_resolve_setting_out_during_a_positive_stamp_reads_the_finished_stamp(
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::missed(Some(ProviderId::Hianime)),
+        ResolveVerdict::missed(Some(ProviderId::TestB)),
     )
     .await;
 
@@ -634,16 +628,16 @@ async fn a_resolve_setting_out_during_a_positive_stamp_reads_the_finished_stamp(
 async fn a_replay_over_a_standing_row_counts_as_a_positive_for_a_miss_that_set_out_before_it() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    seed_standing_row(&state, ProviderId::Hianime, 24);
+    seed_standing_row(&state, ProviderId::TestB, 24);
     let at_start = RowAtStart::read(&state, Some(ID), MODE).await;
 
-    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::Hianime).await;
+    stamp_after_cache_hit(&state, Some(ID), MODE, &at_start, ProviderId::TestB).await;
     stamp_after_native(
         &state,
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::missed(Some(ProviderId::Hianime)),
+        ResolveVerdict::missed(Some(ProviderId::TestB)),
     )
     .await;
 
@@ -656,7 +650,7 @@ async fn a_replay_over_a_standing_row_counts_as_a_positive_for_a_miss_that_set_o
 }
 
 /// Two resolves set out from the same snapshot. One fails over and
-/// stamps the fallback's success — hianime's row, with the larger
+/// stamps the fallback's success — the fallback's row, with the larger
 /// cap its listing paid for — and the other, slower, then succeeds
 /// through the primary with the smaller cap it listed. The later
 /// success is as real as the earlier one, but it is older evidence
@@ -677,7 +671,7 @@ async fn a_later_native_success_does_not_overwrite_a_positive_row_written_after_
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+        ResolveVerdict::served(ProviderId::TestB, Some(24), &[]),
     )
     .await;
     stamp_after_native(
@@ -685,71 +679,60 @@ async fn a_later_native_success_does_not_overwrite_a_positive_row_written_after_
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::served(ProviderId::Anidb, Some(12), &[]),
+        ResolveVerdict::served(ProviderId::TestA, Some(12), &[]),
     )
     .await;
 
     let row = row_now(&state);
     assert_eq!(
         row.provider,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the fallback's row, written first, stands: {row:?}"
     );
     assert_eq!(row.episode_count, Some(24));
 }
 
-/// One-show anidb stub whose browse answer is delayed, so a stamp
-/// can land while the probe waits on it.
-async fn stub_one_show_slowly(count: u32) -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<a href="/anime/probe-show-5"><img alt="Probe Show"/></a>"#)
-                .set_delay(std::time::Duration::from_millis(300)),
-        )
-        .mount(&server)
-        .await;
-    let eps: Vec<String> = (1..=count)
-        .map(|n| format!("{{\"id\":{},\"number\":{}}}", 5000 + n, n))
+/// One show whose search answers late, so a stamp can land while the
+/// probe waits on it: every search finds `probe-show-5`, whose
+/// listing carries `count` episodes.
+fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
+    let rows: Vec<EpisodeRef> = (1..=count)
+        .map(|n| EpisodeRef {
+            id: 5000 + u64::from(n),
+            number: n,
+            number2: None,
+        })
         .collect();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/5/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(format!("{{\"episodes\":[{}]}}", eps.join(","))),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path(format!(
-            "/api/frontend/episode/{}/languages",
-            5000 + count
-        )))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"languages":[{"code":"jpn","embed_url":"https://embed.example/e/p1"}]}"#,
-        ))
-        .mount(&server)
-        .await;
-    server
+    let last = 5000 + u64::from(count);
+    std::sync::Arc::new(
+        TableProvider::new()
+            .answering_as(ProviderId::TestA)
+            .search_default(vec![BrowseHit {
+                slug: "probe-show-5".into(),
+                title: "Probe Show".into(),
+                kind: None,
+            }])
+            .listing(5, rows)
+            .mode(last, "sub", true)
+            .mode(last, "dub", false)
+            .delaying_searches(std::time::Duration::from_millis(300)),
+    )
 }
 
 /// The probe's side of the same case: a probe with no row to remember
 /// walks the primary, and while it waits on the primary's answer a
-/// resolve reaches the show through the fallback and stamps hianime's
-/// row with its cap. The primary then answers the probe with the show
+/// resolve reaches the show through the fallback and stamps the
+/// fallback's row with its cap. The primary then answers the probe with the show
 /// and a smaller cap. The probe's answer is the caller's — it is what
 /// the primary said — but the row it finds standing when it takes the
 /// lock was written after it set out, on evidence it did not weigh,
 /// and stands.
 #[tokio::test]
 async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_it_was_out() {
-    let anidb = stub_one_show_slowly(7).await;
+    let primary = stub_one_show_slowly(7);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
-    state.provider_order = vec![ProviderId::Anidb];
+    state.providers.set_order(vec![ProviderId::TestA]);
     let state = std::sync::Arc::new(state);
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -763,8 +746,8 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
 
     let probe = tokio::spawn({
         let state = state.clone();
-        let base = anidb.uri();
-        async move { check_availability_with_base(&state, &args, Some(&base)).await }
+        let primary = std::sync::Arc::clone(&primary);
+        async move { check_with(&state, &args, &primary).await }
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     stamp_after_native(
@@ -772,7 +755,7 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
         Some(ID),
         MODE,
         &at_start,
-        ResolveVerdict::served(ProviderId::Hianime, Some(24), &[]),
+        ResolveVerdict::served(ProviderId::TestB, Some(24), &[]),
     )
     .await;
     let got = probe
@@ -785,7 +768,7 @@ async fn a_probes_later_success_does_not_overwrite_a_positive_row_stamped_while_
     let row = row_now(&state);
     assert_eq!(
         row.provider,
-        Some(ProviderId::Hianime),
+        Some(ProviderId::TestB),
         "the fallback's row, stamped while the probe was out, stands: {row:?}"
     );
     assert_eq!(row.episode_count, Some(24));

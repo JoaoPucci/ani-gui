@@ -3,17 +3,17 @@
 
 use super::*;
 use crate::commands::availability::{cached_provider, write_cache};
-use crate::scraper::provider::ProviderId;
+use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
+use crate::scraper::table_provider::{Asked, TableProvider};
+use std::sync::Arc;
 
-/// An `AppState` over an in-memory cache with both providers pointed
-/// at the given mocks. Mirrors the play tests' own builder, which is
+/// An `AppState` over an in-memory cache with both providers answered
+/// by the given tables. Mirrors the play tests' own builder, which is
 /// private to their module.
-fn state_over(anidb: &wiremock::MockServer, hianime: &wiremock::MockServer) -> AppState {
+fn state_over(primary: &Arc<TableProvider>, fallback: &Arc<TableProvider>) -> AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     AppState {
-        anidb_base: Some(anidb.uri()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -22,10 +22,12 @@ fn state_over(anidb: &wiremock::MockServer, hianime: &wiremock::MockServer) -> A
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: Some(hianime.uri()),
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![ProviderId::Anidb, ProviderId::Hianime],
+        providers: crate::provider_set::ProviderSet::listing(vec![
+            ProviderId::TestA,
+            ProviderId::TestB,
+        ])
+        .with_stub(Arc::clone(primary))
+        .with_stub(Arc::clone(fallback)),
         image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -38,54 +40,44 @@ fn state_over(anidb: &wiremock::MockServer, hianime: &wiremock::MockServer) -> A
     }
 }
 
-/// A hianime that lists the show with one episode, so a play of its
+/// A fallback that lists the show with one episode, so a play of its
 /// second episode is an episode dead end: the show found, the
 /// episode not served.
-async fn hianime_with_one_episode() -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    let base = server.uri();
-    let search = format!(
-        r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="{base}/the-show-7" title="The Show" class="dynamic-name">The Show</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#
-    );
-    wiremock::Mock::given(method("GET"))
-        .and(path("/search"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(search))
-        .mount(&server)
-        .await;
-    let list = serde_json::json!({
-        "status": true,
-        "html": r#"<a class="ep-item" data-number="1" data-id="7001"></a>"#,
-    })
-    .to_string();
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/theme/episode/list/7"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(list))
-        .mount(&server)
-        .await;
-    server
+fn fallback_with_one_episode() -> Arc<TableProvider> {
+    Arc::new(
+        TableProvider::new()
+            .answering_as(ProviderId::TestB)
+            .search_default(vec![BrowseHit {
+                slug: "the-show-7".into(),
+                title: "The Show".into(),
+                kind: Some("TV".into()),
+            }])
+            .listing(
+                7,
+                vec![EpisodeRef {
+                    id: 7001,
+                    number: 1,
+                    number2: None,
+                }],
+            ),
+    )
 }
 
-/// The positive row remembers hianime, which listed the show; a play
-/// of an episode hianime does not serve moves on to anidb.app, which
-/// has never heard of the show. That clean miss used to be the walk's
-/// verdict, and the play persisted it: a negative row named after a
-/// healthy primary, backed for its whole lifetime, hiding a title
-/// hianime plays but for one episode. The remembered provider found
+/// The positive row remembers the fallback, which listed the show; a
+/// play of an episode the fallback does not serve moves on to the
+/// primary, which has never heard of the show. That clean miss used to
+/// be the walk's verdict, and the play persisted it: a negative row
+/// named after a healthy primary, backed for its whole lifetime, hiding
+/// a title the fallback plays but for one episode. The remembered provider found
 /// the show, so its own dead end is the verdict and the row stands.
 #[tokio::test]
-async fn an_episode_hianime_does_not_serve_does_not_write_anidbs_catalogue_miss_over_its_row() {
-    let anidb = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("GET"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&anidb)
-        .await;
-    let hianime = hianime_with_one_episode().await;
-    let state = state_over(&anidb, &hianime);
-    write_cache(&state, "580", "sub", true, Some(ProviderId::Hianime));
+async fn an_episode_the_remembered_fallback_does_not_serve_does_not_write_the_primarys_miss_over_its_row(
+) {
+    // A primary that answers every search with nothing.
+    let primary = Arc::new(TableProvider::new().answering_as(ProviderId::TestA));
+    let fallback = fallback_with_one_episode();
+    let state = state_over(&primary, &fallback);
+    write_cache(&state, "580", "sub", true, Some(ProviderId::TestB));
     let args = PlayArgs {
         title: "The Show".into(),
         episode: "2".into(),
@@ -104,25 +96,16 @@ async fn an_episode_hianime_does_not_serve_does_not_write_anidbs_catalogue_miss_
         "the episode is nowhere, and that is the episode's own verdict: {got:?}"
     );
     assert!(
-        hianime
-            .received_requests()
-            .await
-            .expect("recorded")
-            .iter()
-            .any(|r| r.url.path().ends_with("/episode/list/7")),
-        "hianime found the show and listed its episodes"
+        fallback.count(|a| matches!(a, Asked::Episodes(_))) > 0,
+        "the fallback found the show and listed its episodes"
     );
     assert!(
-        !anidb
-            .received_requests()
-            .await
-            .expect("recorded")
-            .is_empty(),
-        "the walk moved on to anidb.app after the dead end"
+        !primary.asked().is_empty(),
+        "the walk moved on to the primary after the dead end"
     );
     assert_eq!(
         cached_provider(&state, "580", "sub"),
-        Some(ProviderId::Hianime),
-        "the positive row stands: hianime found the show"
+        Some(ProviderId::TestB),
+        "the positive row stands: the fallback found the show"
     );
 }

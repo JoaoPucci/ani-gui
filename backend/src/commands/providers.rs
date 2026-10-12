@@ -773,53 +773,36 @@ where
     }
 }
 
-/// Where each provider's client points: the state's overrides, or a
-/// caller's own (the availability command's test seam).
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Origins<'a> {
-    /// The anidb origin, when not the real site.
-    pub anidb: Option<&'a str>,
-    /// The hianime origin, when not the real site.
-    pub hianime: Option<&'a str>,
-}
-
-impl<'a> Origins<'a> {
-    /// The state's overrides — `None` for both in production.
-    #[must_use]
-    pub fn of(state: &'a AppState) -> Self {
-        Self {
-            anidb: state.anidb_base.as_deref(),
-            hianime: state.hianime_base.as_deref(),
-        }
-    }
-}
-
 /// The gate `provider`'s traffic is admitted through.
 #[must_use]
 pub fn gate_of(state: &AppState, provider: ProviderId) -> &ScraperGate {
-    match provider {
-        ProviderId::Anidb => &state.anidb_gate,
-        ProviderId::Hianime => &state.hianime_gate,
-    }
+    state.providers.gate(provider)
 }
 
 /// The production client for `provider`: the curl-impersonate
 /// transport resolved through the bundled directory then PATH,
-/// pointed at the site (or its override in `origins`), with every
-/// request admitted through the provider's own gate at `priority` —
-/// the walk fans out into candidate probes and the episode chain,
-/// and each of those is a provider request the pacing contract
-/// covers, not just the search.
+/// pointed at the site (or the origin the state's provider set points
+/// it at, in tests), with every request admitted through the
+/// provider's own gate at `priority` — the walk fans out into
+/// candidate probes and the episode chain, and each of those is a
+/// provider request the pacing contract covers, not just the search.
 ///
 /// # Errors
 /// [`AniError::Network`] when no curl binary resolves at all — the
 /// host cannot reach any provider by any transport.
 pub fn client_for<'a>(
     state: &'a AppState,
-    origins: Origins<'_>,
     provider: ProviderId,
     priority: ScrapePriority,
 ) -> crate::error::Result<Box<dyn Provider + 'a>> {
+    #[cfg(test)]
+    if let Some(table) = state.providers.stub(provider) {
+        return Ok(Box::new(crate::scraper::table_provider::Gated::new(
+            table,
+            Some(gate_of(state, provider)),
+            priority,
+        )));
+    }
     let path_env = std::env::var("PATH").unwrap_or_default();
     let fetch = crate::scraper::fetch::CurlImpersonateFetch::resolve(
         state.bundled_bin.as_deref(),
@@ -831,17 +814,22 @@ pub fn client_for<'a>(
     })?;
     let fetch =
         crate::scraper::gated::GatedFetch::new(fetch, Some(gate_of(state, provider)), priority);
+    let origin = state.providers.origin(provider);
     Ok(match provider {
-        ProviderId::Anidb => match origins.anidb {
+        ProviderId::Anidb => match origin {
             Some(base) => Box::new(crate::scraper::anidb::AnidbClient::with_base(fetch, base)),
             None => Box::new(crate::scraper::anidb::AnidbClient::new(fetch)),
         },
-        ProviderId::Hianime => match origins.hianime {
+        ProviderId::Hianime => match origin {
             Some(base) => Box::new(crate::scraper::hianime::HianimeClient::with_base(
                 fetch, base,
             )),
             None => Box::new(crate::scraper::hianime::HianimeClient::new(fetch)),
         },
+        // A test-only provider is nobody's site: it answers from the
+        // table a test registered, or not at all.
+        #[cfg(test)]
+        ProviderId::TestA | ProviderId::TestB => return Err(AniError::Network),
     })
 }
 
@@ -855,15 +843,7 @@ pub async fn run<'a, A: Attempt>(
     priority: ScrapePriority,
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
-    run_at(
-        state,
-        Origins::of(state),
-        &state.provider_order,
-        None,
-        priority,
-        attempt,
-    )
-    .await
+    run_from(state, None, priority, attempt).await
 }
 
 /// [`run`] starting from `remembered` — the provider a positive
@@ -880,12 +860,14 @@ pub async fn run_from<'a, A: Attempt>(
     priority: ScrapePriority,
     attempt: &mut A,
 ) -> Result<Attempted<'a, A::Output>, NativeError> {
-    run_at(
-        state,
-        Origins::of(state),
-        &state.provider_order,
+    with_failover(
+        state.providers.order(),
         remembered,
         priority,
+        RESOLVE_DEADLINE,
+        PRIMARY_ATTEMPT_BUDGET,
+        |provider| client_for(state, provider, priority),
+        |provider| gate_of(state, provider),
         attempt,
     )
     .await
@@ -905,33 +887,6 @@ pub fn order_with_affinity(
             .collect(),
         _ => order.to_vec(),
     }
-}
-
-/// [`run`] with the providers' origins and configured order named by
-/// the caller, and the provider a positive row put first, when one
-/// did; the walk starts from it when the order lists it.
-///
-/// # Errors
-/// As [`with_failover`].
-pub async fn run_at<'a, A: Attempt>(
-    state: &'a AppState,
-    origins: Origins<'_>,
-    order: &[ProviderId],
-    remembered: Option<ProviderId>,
-    priority: ScrapePriority,
-    attempt: &mut A,
-) -> Result<Attempted<'a, A::Output>, NativeError> {
-    with_failover(
-        order,
-        remembered,
-        priority,
-        RESOLVE_DEADLINE,
-        PRIMARY_ATTEMPT_BUDGET,
-        |provider| client_for(state, origins, provider, priority),
-        |provider| gate_of(state, provider),
-        attempt,
-    )
-    .await
 }
 
 /// The play resolve as an attempt: alias walk, bounded probing,

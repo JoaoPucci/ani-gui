@@ -9,14 +9,12 @@
 use super::*;
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use wiremock::MockServer;
 
 const NOT_IDS: [&str; 4] = ["../49877", "49877/x", "12:21", "kid-1"];
 
 fn state_at(dir: &Path, kitsu_uri: &str) -> AppState {
     AppState {
-        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -25,10 +23,7 @@ fn state_at(dir: &Path, kitsu_uri: &str) -> AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: dir.join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),

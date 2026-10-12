@@ -173,9 +173,7 @@ mod webvtt_prefix_props {
 fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     crate::app::AppState {
-        anidb_base: Some("http://127.0.0.1:1".into()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -184,10 +182,9 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests().with_stub(std::sync::Arc::new(
+            crate::scraper::table_provider::TableProvider::unreachable(),
+        )),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),

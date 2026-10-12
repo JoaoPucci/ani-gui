@@ -13,7 +13,6 @@ use crate::history::{write_atomic, HistoryEntry};
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use crate::scraper::provider::ShowKey;
 use std::path::PathBuf;
-use std::sync::Arc;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -25,7 +24,6 @@ const TITLE: &str = "Cowboy Bebop";
 
 fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
     AppState {
-        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -34,10 +32,7 @@ fn state_at(history_path: PathBuf, kitsu_base: &str) -> AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path,
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_base),

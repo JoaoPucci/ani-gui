@@ -13,7 +13,6 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
     use std::path::PathBuf;
     use std::sync::Arc;
     Arc::new(crate::app::AppState {
-        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -22,10 +21,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> std::sync::Arc<crate::app::AppState> {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: PathBuf::from("/tmp/ani-gui/history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),
@@ -936,7 +932,6 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
     use std::path::PathBuf;
     use std::sync::Arc;
     let state = Arc::new(crate::app::AppState {
-        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -945,10 +940,7 @@ fn provider_for_kind_dispatches_anilist_and_mal_but_not_inhouse() {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: PathBuf::from("/tmp/ani-gui/history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
