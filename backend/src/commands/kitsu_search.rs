@@ -1,7 +1,9 @@
 //! Kitsu text search, cached through the SQLite `meta_cache` table.
 //!
-//! Each page is cached under its own offset (`kitsu:v3:search:<offset>:
-//! <normalized-query>`); the plain search is the first page. Pages live
+//! Each page is cached under its own offset (`kitsu:v4:search:<offset>:
+//! <normalized-query>`); the plain search is the first page. `v4`
+//! entries were fetched by page number; a `v3` entry was fetched by
+//! offset, which Kitsu answered a page late, so it is not read. Pages live
 //! under `DISCOVERY_TTL` (6h): popular anime is stable, but trending
 //! changes within a day, and that is the right tradeoff between
 //! responsiveness and Kitsu API volume.
@@ -19,8 +21,8 @@ use crate::error::{AniError, Result};
 use crate::meta::kitsu::KitsuAnimeRef;
 use crate::meta::kitsu_page::KitsuSearchPage;
 
-/// The search page size we ask Kitsu for. Kitsu's anime search caps
-/// `page[limit]` at 20.
+/// The search page size we ask Kitsu for. Kitsu's anime search caps a
+/// page at 20 hits.
 pub(crate) const SEARCH_PAGE_LIMIT: u8 = 20;
 
 /// Search Kitsu for anime by free-text: the first page of
@@ -32,7 +34,7 @@ pub async fn kitsu_search(state: &AppState, query: &str) -> Result<Vec<KitsuAnim
     Ok(kitsu_search_page(state, query, 0).await?.hits)
 }
 
-/// The deepest `page[offset]` a search walks to: the fifty-first page,
+/// The deepest offset a search walks to: the fifty-first page,
 /// offsets 0 through 1000 in steps of [`SEARCH_PAGE_LIMIT`]. A text
 /// search ranked by popularity has long stopped being about the query
 /// by then, and the bound keeps a caller from walking Kitsu's whole
@@ -54,7 +56,7 @@ pub async fn kitsu_search_page(
     if offset % u32::from(SEARCH_PAGE_LIMIT) != 0 || offset > MAX_SEARCH_OFFSET {
         return Err(AniError::InvalidSearchOffset);
     }
-    let key = format!("kitsu:v3:search:{offset}:{}", normalize_query(query));
+    let key = format!("kitsu:v4:search:{offset}:{}", normalize_query(query));
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(page) = serde_json::from_str::<KitsuSearchPage>(&body) {
             // Warm-on-hit: idempotent. get_or_fetch returns from

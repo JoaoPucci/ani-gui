@@ -1,7 +1,7 @@
 //! One page of a Kitsu anime text search.
 //!
-//! Kitsu's anime search ranks by popularity and caps `page[limit]` at
-//! 20, so a broad query buries new or minor shows several pages deep.
+//! Kitsu's anime search ranks by popularity and caps a page at 20 hits,
+//! so a broad query buries new or minor shows several pages deep.
 //! A page carries where the next one starts, so the caller can walk
 //! on without knowing the page size.
 
@@ -14,8 +14,9 @@ use super::kitsu::KitsuAnimeRef;
 pub struct KitsuSearchPage {
     /// The page's hits, music videos already dropped.
     pub hits: Vec<KitsuAnimeRef>,
-    /// `page[offset]` of the next page, `None` on the last one. Counted
-    /// in Kitsu's own rows, before any hit was dropped here.
+    /// Where the next page starts, `None` on the last one: the app's row
+    /// cursor, which the client turns into Kitsu's `page[number]`.
+    /// Counted in Kitsu's own rows, before any hit was dropped here.
     pub next_offset: Option<u32>,
 }
 

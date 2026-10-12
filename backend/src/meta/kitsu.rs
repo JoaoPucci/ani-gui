@@ -564,7 +564,7 @@ impl KitsuClient {
         }
     }
 
-    /// Search for anime by free-text. `limit` caps `page[limit]`.
+    /// Search for anime by free-text. `limit` caps `page[size]`.
     ///
     /// # Errors
     /// - [`AniError::Upstream`] on non-2xx HTTP response.
@@ -574,7 +574,12 @@ impl KitsuClient {
         Ok(self.search_page(query, limit, 0).await?.hits)
     }
 
-    /// One page of a free-text search, starting at `offset`.
+    /// One page of a free-text search: the page of `limit` hits that
+    /// starts at `offset`, or the one `offset` falls in.
+    ///
+    /// Kitsu is asked by `page[number]`, not `page[offset]`: its text
+    /// search reads an offset a page late (0 and 20 both answer the
+    /// first page), so the last page of a query was never reached.
     ///
     /// # Errors
     /// Same as [`Self::search`].
@@ -584,14 +589,17 @@ impl KitsuClient {
         limit: u8,
         offset: u32,
     ) -> Result<KitsuSearchPage> {
+        let limit = limit.max(1);
+        let size = u32::from(limit);
+        let index = offset / size;
         let resp = self
             .http
             .get(format!("{}/anime", self.base))
             .header(reqwest::header::ACCEPT, "application/vnd.api+json")
             .query(&[
                 ("filter[text]", query.to_string()),
-                ("page[limit]", limit.to_string()),
-                ("page[offset]", offset.to_string()),
+                ("page[size]", size.to_string()),
+                ("page[number]", (index + 1).to_string()),
                 ("fields[anime]", ANIME_FIELDS.to_string()),
             ])
             .send()
@@ -603,7 +611,7 @@ impl KitsuClient {
             });
         }
         let body = resp.bytes().await.map_err(|_| AniError::Network)?;
-        parse_search_page(&body, offset, limit)
+        parse_search_page(&body, index * size, limit)
     }
 
     /// Currently-airing anime sorted by user count descending — a usable
