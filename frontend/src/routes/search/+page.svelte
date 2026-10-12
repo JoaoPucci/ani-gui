@@ -4,7 +4,7 @@
   The motifs are restraint: serif voice, mono numerals, hairline rules.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -25,8 +25,15 @@
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { createSearchRunner } from '$lib/search/run-search';
-	import { measured, shouldAutoLoad, type PagingPhase } from '$lib/search/paging';
-	import { watchSentinel } from '$lib/search/sentinel';
+	import {
+		measured,
+		shouldAutoLoad,
+		spent,
+		UNMEASURED,
+		type PagingPhase,
+		type Reach
+	} from '$lib/search/paging';
+	import { watchSentinel, type SentinelWatch } from '$lib/search/sentinel';
 	import { staggerSlots } from '$lib/search/stagger';
 	import { keepFocus } from '$lib/search/keep-focus';
 	import { subtypeLabel } from '$lib/search/subtype-label';
@@ -37,10 +44,21 @@
 	let results = $state<KitsuAnimeRef[] | null>(null);
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let busy = $state(false);
-	// Infinite scroll: the runner's paging phase, and whether the
-	// marker under the grid is within reach of the viewport.
+	// Infinite scroll: the runner's paging phase, and what the latest
+	// measurement of the marker under the grid said — whether it is in
+	// reach, and whether that is still news ($lib/search/paging.ts).
 	let phase = $state<PagingPhase>({ kind: 'loading' });
-	let bottomInReach = $state(false);
+	let reach = $state<Reach>(UNMEASURED);
+	let sentinelWatch: SentinelWatch | null = null;
+
+	// The grid just changed shape — a page settled, a type filter came
+	// on or off — so the last measurement describes a layout that is
+	// gone: spend it, and — once the new layout is in the DOM — ask the
+	// observer for a measurement of it.
+	function gridChanged() {
+		reach = spent(reach);
+		void tick().then(() => sentinelWatch?.remeasure());
+	}
 
 	// Discovery rows for the empty state — same data as the home page so
 	// users have something to browse when they arrive without a query.
@@ -72,6 +90,7 @@
 	function toggleSubtype(s: string) {
 		if (activeSubtypes.has(s)) activeSubtypes.delete(s);
 		else activeSubtypes.add(s);
+		gridChanged();
 	}
 
 	const displayed = $derived.by(() => {
@@ -118,8 +137,11 @@
 	const slotOf = $derived.by(() => (slots = staggerSlots(slots, displayed ?? [])));
 
 	$effect(() => {
-		if (shouldAutoLoad(phase, measured(bottomInReach), activeSubtypes.size > 0))
+		// One measurement, one page: the load spends it.
+		if (shouldAutoLoad(phase, reach, activeSubtypes.size > 0)) {
+			reach = spent(reach);
 			searchRunner.loadMore();
+		}
 	});
 
 	// Focus handed on by a leaving paging button lands here: a silent
@@ -134,11 +156,13 @@
 	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => focusAnchor);
 
 	function sentinel(node: HTMLElement) {
-		const { stop } = watchSentinel(node, (inReach) => (bottomInReach = inReach));
+		const watch = watchSentinel(node, (inReach) => (reach = measured(inReach)));
+		sentinelWatch = watch;
 		return {
 			destroy() {
-				stop();
-				bottomInReach = false;
+				watch.stop();
+				if (sentinelWatch === watch) sentinelWatch = null;
+				reach = UNMEASURED;
 			}
 		};
 	}
@@ -210,6 +234,10 @@
 		},
 		onPhase: (p) => {
 			phase = p;
+			// A page settled: the grid grew (or a retry, Keep looking or
+			// Load more brought it back to idle). Only a measurement of
+			// the grid as it now stands may load the next page.
+			if (p.kind === 'idle') gridChanged();
 		}
 	});
 
@@ -219,7 +247,7 @@
 		// The marker's last report belongs to the previous results; it
 		// unmounts while this search's first page loads, and the
 		// observer made when it mounts again reports its initial state.
-		bottomInReach = false;
+		reach = UNMEASURED;
 		await searchRunner.run(q);
 	}
 
@@ -333,7 +361,10 @@
 						<button
 							type="button"
 							class="chip chip-clear"
-							onclick={() => activeSubtypes.clear()}
+							onclick={() => {
+								activeSubtypes.clear();
+								gridChanged();
+							}}
 							aria-label={m.search_chips_clear_button_aria_label()}
 						>
 							{m.search_chips_clear_button_aria_label()}

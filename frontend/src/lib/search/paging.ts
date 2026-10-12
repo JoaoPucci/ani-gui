@@ -93,7 +93,7 @@ export function measured(inReach: boolean): Reach {
  *  settling, which moves the marker the measurement was taken at. The
  *  next load by itself waits for a measurement taken after that. */
 export function spent(reach: Reach): Reach {
-	return reach;
+	return { inReach: reach.inReach, fresh: false };
 }
 
 /** Whether the bottom of the grid coming into view loads the next page
@@ -106,5 +106,5 @@ export function spent(reach: Reach): Reach {
  *  fresh measurement: one taken before the last page settled says
  *  where the marker was, not where it is. */
 export function shouldAutoLoad(phase: PagingPhase, reach: Reach, narrowed: boolean): boolean {
-	return !narrowed && reach.inReach && phase.kind === 'idle';
+	return !narrowed && reach.inReach && reach.fresh && phase.kind === 'idle';
 }

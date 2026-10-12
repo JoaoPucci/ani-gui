@@ -43,5 +43,11 @@ export function watchSentinel(
 		{ root: null, rootMargin: SENTINEL_MARGIN }
 	);
 	observer.observe(node);
-	return { stop: () => observer.disconnect(), remeasure: () => {} };
+	return {
+		stop: () => observer.disconnect(),
+		remeasure: () => {
+			observer.unobserve(node);
+			observer.observe(node);
+		}
+	};
 }
