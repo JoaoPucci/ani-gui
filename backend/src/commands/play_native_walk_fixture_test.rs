@@ -1925,3 +1925,25 @@ async fn a_season_before_the_entry_s_own_is_never_picked() {
     );
     assert_eq!(walk_over(site).await.expect("picked").hit.slug, "x");
 }
+
+/// Hits that are another entry of the same show are never charged to
+/// the probe head's five: five spellings of the entry before "Show 2"
+/// ahead of it do not crowd "Show 2" out.
+#[tokio::test]
+async fn another_entry_is_never_charged_to_the_probe_head() {
+    let site = pool_of(
+        &["Show 2"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[
+            ("a", "Show", 12),
+            ("b", "Show Season 1", 12),
+            ("c", "Show Part 1", 12),
+            ("d", "Show First Season", 12),
+            ("e", "Show First Half", 12),
+            ("own", "Show 2", 12),
+        ],
+    );
+    assert_eq!(walk_over(site).await.expect("picked").hit.slug, "own");
+}
