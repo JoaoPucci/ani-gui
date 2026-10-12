@@ -44,7 +44,7 @@ pub(super) struct Span {
 /// W is admitted, carries the entry's own year, lists more than the
 /// entry has and has a stem; it is read only when a sibling completes
 /// it — one listing exactly the remainder, naming right after W's stem
-/// a later part than the entry's ([`EntryTitles::names_later_part`]),
+/// a division later than W ([`EntryTitles::names_later_part`]),
 /// and no own listing that fits — nor, beside a W the entry does not
 /// head, the entry's own by title — or an own listing fits beside it,
 /// or, the entry not being its head, a listing opens past its stem on
