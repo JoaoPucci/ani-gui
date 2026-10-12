@@ -1,13 +1,14 @@
-//! Property coverage for the marks a title is written with and the
-//! release years it is tagged with.
+//! Property coverage for the marks that tell two titles of one name
+//! apart — primes and release years — and for the drift that does not.
 
-use super::title_marks;
+use super::{marks_agree, title_marks};
 use proptest::prelude::*;
 
 const WORDS: [&str; 5] = ["Show", "Gintama", "Kaiju", "No", "Arc"];
 const SPACING: [&str; 7] = [" ", ": ", " - ", " ~ ", ", ", "・", "："];
 const PRIMES: [&str; 5] = ["'", "’", "′", "‘", "＇"];
 const FORMATS: [&str; 4] = [" (TV)", " [OVA]", " （ＯＮＡ）", " [OAD]"];
+const DRIFT: [&str; 10] = ["!", "!!", "?", "☆", "△", ".", ";", "〜", "\u{201C}", "/"];
 
 fn words() -> impl Strategy<Value = Vec<&'static str>> {
     proptest::collection::vec(proptest::sample::select(WORDS.to_vec()), 1..4)
@@ -60,5 +61,46 @@ proptest! {
         let title = words.join(" ");
         prop_assert_eq!(title_marks(&format!("{title} {written}")), (String::new(), vec![year.to_string()]));
         prop_assert_eq!(title_marks(&format!("{title}{format}")), (String::new(), Vec::new()));
+    }
+
+    /// Marks catalogues drift on — sentence and decorative marks, a
+    /// period, quotes, slashes, a wave dash — are no part of a title's
+    /// marks, wherever they stand.
+    #[test]
+    fn drift_marks_are_no_marks(
+        words in words(),
+        drift in proptest::collection::vec(proptest::sample::select(DRIFT.to_vec()), 1..4),
+    ) {
+        let mut title = words.join(" ");
+        for d in &drift {
+            title.push_str(d);
+        }
+        prop_assert_eq!(title_marks(&title), (String::new(), Vec::new()));
+    }
+
+    /// Two titles' marks agree exactly when their primes are the same
+    /// and their release years do not conflict: equal, or one side
+    /// carrying none.
+    #[test]
+    fn marks_agree_on_primes_and_unconflicting_years(
+        words in words(),
+        primes in (0usize..3, 0usize..3),
+        years in (proptest::option::of(2010u32..2013), proptest::option::of(2010u32..2013)),
+    ) {
+        let written = |n: usize, y: Option<u32>| {
+            let mut t = format!("{}{}", words.join(" "), "'".repeat(n));
+            if let Some(y) = y {
+                t.push_str(&format!(" ({y})"));
+            }
+            title_marks(&t)
+        };
+        let (a, b) = (written(primes.0, years.0), written(primes.1, years.1));
+        let want = primes.0 == primes.1
+            && match years {
+                (Some(x), Some(y)) => x == y,
+                _ => true,
+            };
+        prop_assert_eq!(marks_agree(&a, &b), want);
+        prop_assert_eq!(marks_agree(&b, &a), want);
     }
 }
