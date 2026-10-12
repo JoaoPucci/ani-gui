@@ -8,6 +8,7 @@ use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
 use super::play_native::PickedShow;
+use super::play_native_title_grammar::normalized;
 use super::play_native_title_marker::EntryTitles;
 
 /// Identity a candidate carries: 0 = exact title, 1 = year-confirmed,
@@ -29,7 +30,7 @@ pub(super) fn identity_rank(title_matches: bool, confirmed: bool) -> u8 {
 /// without; then 3 and 4 the same way for one naming another part.
 /// An exact title or a matched year is identity — ranks 0 and odd.
 pub(super) fn entry_rank(entry: EntryTitles<'_>, title: &str, needle: &str, confirmed: bool) -> u8 {
-    let rank = identity_rank(title.trim().to_lowercase() == needle, confirmed);
+    let rank = identity_rank(normalized(title) == needle, confirmed);
     if rank == 0 || entry.part_agrees(title) {
         rank
     } else {
@@ -81,7 +82,7 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     let exact = head
         .iter()
         .map(|(h, _)| *h)
-        .filter(|h| h.title.trim().to_lowercase() == needle);
+        .filter(|h| normalized(&h.title) == needle);
     // Below an exact title, a candidate whose part agrees with the
     // entry's comes before one naming another part, as in winner
     // selection; within each, a matched year before the provider's
@@ -143,7 +144,7 @@ pub(super) fn select_winner(
         .filter(|(_, (_, _, d, _))| *d == best_dist)
         .min_by_key(|(_, (h, _, _, confirmed))| {
             (
-                h.title.trim().to_lowercase() != needle,
+                normalized(&h.title) != needle,
                 !entry.part_agrees(&h.title),
                 !*confirmed,
             )

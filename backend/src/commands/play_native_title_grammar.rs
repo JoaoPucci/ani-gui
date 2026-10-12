@@ -144,17 +144,23 @@ pub(crate) fn stem(title: &str) -> Vec<String> {
 
 /// A title as written, for comparing two: lowercased, its whitespace
 /// runs collapsed, its catalogue tags kept — a tag is what tells a
-/// remake from its original ("Hunter x Hunter (2011)").
+/// remake from its original ("Hunter x Hunter (2011)") — and read
+/// wherever they stand ([`split_tags`]): "Show (2011) Season 2" and
+/// "Show Season 2 (2011)" are one title as written.
 pub(crate) fn normalized(title: &str) -> String {
-    title
-        .split_whitespace()
+    let (text, tags) = split_tags(title);
+    std::iter::once(text.as_str())
+        .chain(tags.iter().map(String::as_str))
+        .flat_map(str::split_whitespace)
         .collect::<Vec<_>>()
         .join(" ")
-        .to_lowercase()
 }
 
 /// A title as its structure is read: [`normalized`] without its
 /// catalogue tags ([`untagged`]).
 pub(crate) fn untagged_normalized(title: &str) -> String {
-    normalized(&untagged(title))
+    untagged(title)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }

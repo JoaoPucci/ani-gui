@@ -3,6 +3,7 @@
 //! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
 use super::*;
+use crate::commands::play_native_title_grammar::normalized;
 
 /// [`pick_candidate`] told every title the requested entry goes by —
 /// the canonical title and its fallbacks, not only the one searched —
@@ -26,7 +27,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         return Err(crate::error::AniError::NoResults);
     }
     let entry = EntryTitles::new(entry_titles);
-    let needle = search_title.trim().to_lowercase();
+    let needle = normalized(search_title);
     // Format disproof in both directions, over the RAW list — the
     // badge is free, so incompatible formats never crowd the bounded
     // probe head (see play_native_format).
@@ -148,7 +149,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
             .min_by_key(|(_, (h, _, d, _))| {
                 (
                     *d,
-                    h.title.trim().to_lowercase() != needle,
+                    normalized(&h.title) != needle,
                     !entry.part_agrees(&h.title),
                 )
             })

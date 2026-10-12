@@ -82,7 +82,8 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   carry it.
 /// - With `expected = Some(n)`: best episode-count distance wins,
 ///   rejected when the best distance exceeds [`ep_count_threshold`];
-///   ties prefer an exact (case-insensitive, trimmed) title match on
+///   ties prefer an exact title match, compared as written (case
+///   and spacing aside, catalogue tags wherever they stand), on
 ///   `search_title`. When no survivor sits within the threshold, a
 ///   survivor whose own year positively matched and whose episode
 ///   list is shorter than expected still wins — an airing part has

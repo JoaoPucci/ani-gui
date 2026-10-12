@@ -10,32 +10,44 @@
 /// brackets and tag alike ASCII or full-width ("（ＴＶ）"). Other
 /// bracketed words are left as they are.
 pub(crate) fn untagged(title: &str) -> String {
+    split_tags(title).0
+}
+
+/// `title` lowercased and split into its text without catalogue tags
+/// ([`untagged`]) and the tags it carries, each read in its ASCII form
+/// ("2011", "tv"), sorted: what a comparison of two titles as written
+/// reads, wherever the tags stand.
+pub(crate) fn split_tags(title: &str) -> (String, Vec<String>) {
     let text = title.to_lowercase();
     let mut out = String::new();
+    let mut tags = Vec::new();
     let mut rest = text.as_str();
     while let Some(open) = rest.find(['(', '[', '（', '【']) {
         let after = &rest[open..];
         let inner_start = after.chars().next().map_or(1, char::len_utf8);
-        let tag_end = after.find([')', ']', '）', '】']).filter(|&close| {
+        let tag = after.find([')', ']', '）', '】']).and_then(|close| {
             let inner: String = after[inner_start..close]
                 .trim()
                 .chars()
                 .map(ascii_form)
                 .collect();
-            (inner.len() == 4 && inner.chars().all(|c| c.is_ascii_digit()))
-                || ["tv", "ona", "ova", "oad"].contains(&inner.as_str())
+            let is_tag = (inner.len() == 4 && inner.chars().all(|c| c.is_ascii_digit()))
+                || ["tv", "ona", "ova", "oad"].contains(&inner.as_str());
+            is_tag.then_some((close, inner))
         });
-        let Some(close) = tag_end else {
+        let Some((close, inner)) = tag else {
             out.push_str(&rest[..open + inner_start]);
             rest = &rest[open + inner_start..];
             continue;
         };
         out.push_str(&rest[..open]);
+        tags.push(inner);
         let closer = after[close..].chars().next().map_or(1, char::len_utf8);
         rest = &after[close + closer..];
     }
     out.push_str(rest);
-    out
+    tags.sort();
+    (out, tags)
 }
 
 /// A full-width form's ASCII letter, digit or mark, lowercased; any

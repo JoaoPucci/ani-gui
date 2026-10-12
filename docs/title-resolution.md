@@ -59,7 +59,7 @@ Empty / whitespace-only titles are skipped and exact-string duplicates are dedup
 
 ## Disambiguation by episode count
 
-The picker probes at most the first few browse hits the entry's titles admit via the episodes endpoint — with a count, plus the refused ones among the first few, as evidence (see the decision tables below) — and scores each by the distance between its episode count and Kitsu's authoritative `episode_count`. The best distance wins, rejected outright when it exceeds the tolerance (`max(3, expected / 10)` — long-running shows get proportional slack, short shows a hard floor); ties prefer an exact case-insensitive title match on the search term. The same picker is used by:
+The picker probes at most the first few browse hits the entry's titles admit via the episodes endpoint — with a count, plus the refused ones among the first few, as evidence (see the decision tables below) — and scores each by the distance between its episode count and Kitsu's authoritative `episode_count`. The best distance wins, rejected outright when it exceeds the tolerance (`max(3, expected / 10)` — long-running shows get proportional slack, short shows a hard floor); ties prefer an exact title match on the search term, compared as written (case and spacing aside, catalogue tags wherever they stand). The same picker is used by:
 
 - **The play path** — so clicking "play" lands on the right show even when the provider ranks a movie or side story first.
 - **The availability probe** — so the home / detail page's "is this in the catalogue?" gate matches what the play path would do.
