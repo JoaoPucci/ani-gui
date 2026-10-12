@@ -20,12 +20,12 @@
  * pure rule in `paging.ts`.
  */
 
-import type { Config, KitsuAnimeRef, KitsuSearchPage } from '$lib/api';
+import type { Config, KitsuAnimeRef, KitsuSearchPage, SearchOrder } from '$lib/api';
 import { afterPage, canLoadMore, freshHits, type PagingPhase } from './paging';
 
 export interface SearchRunnerDeps {
-	/** One page of the Kitsu search, starting at `offset`. */
-	searchPage: (q: string, offset: number) => Promise<KitsuSearchPage>;
+	/** One page of the Kitsu search in `order`, starting at `offset`. */
+	searchPage: (q: string, offset: number, order: SearchOrder) => Promise<KitsuSearchPage>;
 	/** Settings fetch; rejections fall back to a null config (the
 	 *  mode picker defaults to 'sub'), never to the error state. */
 	getConfig: () => Promise<Config | null>;
@@ -47,6 +47,7 @@ export interface SearchRunnerDeps {
 /** One run's search: the pages it has shown and where it goes next. */
 interface Search {
 	q: string;
+	order: SearchOrder;
 	mode: 'sub' | 'dub';
 	/** Each page's visible hits, in page order. */
 	pages: KitsuAnimeRef[][];
@@ -58,7 +59,8 @@ interface Search {
 }
 
 export function createSearchRunner(deps: SearchRunnerDeps): {
-	run: (q: string) => Promise<void>;
+	/** Start a search for `q` in `order` (Kitsu's ranking by default). */
+	run: (q: string, order?: SearchOrder) => Promise<void>;
 	/** Load the next page: when idle, retrying a failed page, or
 	 *  continuing a held search. Does nothing in any other phase. */
 	loadMore: () => void;
@@ -99,7 +101,7 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 	/** Fetch `s`'s next page and run it through the filter. Rejects
 	 *  only when the page itself could not be fetched. */
 	const fetchPage = async (s: Search) => {
-		const page = await deps.searchPage(s.q, s.next ?? 0);
+		const page = await deps.searchPage(s.q, s.next ?? 0, s.order);
 		// A superseded search still runs its page through the filter,
 		// as it always has; its emissions are what the guard drops.
 		s.next = page.next_offset;
@@ -133,7 +135,7 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		}
 	};
 
-	const run = async (q: string) => {
+	const run = async (q: string, order: SearchOrder = 'relevance') => {
 		const gen = ++generation;
 		const current = () => gen === generation;
 		search = null;
@@ -143,6 +145,7 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 			if (!configLoaded) await loadConfigOnce();
 			const s: Search = {
 				q,
+				order,
 				mode: deps.pickMode(config),
 				pages: [],
 				seen: new Set(),

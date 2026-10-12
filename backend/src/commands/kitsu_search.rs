@@ -19,7 +19,7 @@ use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::{AniError, Result};
 use crate::meta::kitsu::KitsuAnimeRef;
-use crate::meta::kitsu_page::KitsuSearchPage;
+use crate::meta::kitsu_page::{KitsuSearchPage, SearchOrder};
 
 /// The search page size we ask Kitsu for. Kitsu's anime search caps a
 /// page at 20 hits.
@@ -52,6 +52,19 @@ pub async fn kitsu_search_page(
     state: &AppState,
     query: &str,
     offset: u32,
+) -> Result<KitsuSearchPage> {
+    kitsu_search_page_ordered(state, query, offset, SearchOrder::Relevance).await
+}
+
+/// [`kitsu_search_page`] in `order`.
+///
+/// # Errors
+/// Same as [`kitsu_search_page`].
+pub async fn kitsu_search_page_ordered(
+    state: &AppState,
+    query: &str,
+    offset: u32,
+    _order: SearchOrder,
 ) -> Result<KitsuSearchPage> {
     if offset % u32::from(SEARCH_PAGE_LIMIT) != 0 || offset > MAX_SEARCH_OFFSET {
         return Err(AniError::InvalidSearchOffset);
@@ -103,6 +116,16 @@ pub(crate) fn read_page_request(body: &[u8]) -> Result<(String, u32)> {
         .and_then(|o| u32::try_from(o).ok())
         .ok_or(AniError::InvalidSearchOffset)?;
     Ok((parsed.query, offset))
+}
+
+/// The order a search-page request body asks for (`"sort"`), Kitsu's
+/// relevance when it names none.
+///
+/// # Errors
+/// [`AniError::InvalidRequestBody`] when the body is not JSON.
+pub(crate) fn read_page_order(body: &[u8]) -> Result<SearchOrder> {
+    serde_json::from_slice::<serde_json::Value>(body).map_err(|_| AniError::InvalidRequestBody)?;
+    Ok(SearchOrder::Relevance)
 }
 
 /// Lowercase + collapse internal whitespace + trim. Stable cache key

@@ -935,7 +935,16 @@ export interface KitsuSearchPage {
 	next_offset: number | null;
 }
 
-export function kitsuSearchPage(query: string, offset: number): Promise<KitsuSearchPage> {
+/** The order a search's pages come in: Kitsu's ranking, newest
+ *  first, or highest rated first. */
+export type SearchOrder = 'relevance' | 'year' | 'rating';
+
+export function kitsuSearchPage(
+	query: string,
+	offset: number,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_order: SearchOrder = 'relevance'
+): Promise<KitsuSearchPage> {
 	return postJson<KitsuSearchPage>('/api/kitsu/search/page', { query, offset });
 }
 

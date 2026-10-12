@@ -244,8 +244,10 @@ async fn post_kitsu_search_page(
     body: axum::body::Bytes,
 ) -> Result<Json<KitsuSearchPage>, AniError> {
     let (query, offset) = crate::commands::kitsu_search::read_page_request(&body)?;
+    let order = crate::commands::kitsu_search::read_page_order(&body)?;
     Ok(Json(
-        crate::commands::kitsu_search::kitsu_search_page(&state, &query, offset).await?,
+        crate::commands::kitsu_search::kitsu_search_page_ordered(&state, &query, offset, order)
+            .await?,
     ))
 }
 

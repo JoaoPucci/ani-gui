@@ -91,7 +91,7 @@ describe('createSearchRunner paging', () => {
 
 		h.runner.loadMore();
 		await drain();
-		expect(h.searchPage).toHaveBeenLastCalledWith('dragon ball', 20);
+		expect(h.searchPage).toHaveBeenLastCalledWith('dragon ball', 20, 'relevance');
 		expect(h.phases.map((p) => p.kind)).toEqual(['loading', 'idle', 'loading-more', 'idle']);
 		expect(h.latest()).toEqual(['1', '2', '3']);
 	});
@@ -122,7 +122,7 @@ describe('createSearchRunner paging', () => {
 		pages[20] = page(['2'], null);
 		h.runner.loadMore();
 		await drain();
-		expect(h.searchPage).toHaveBeenLastCalledWith('q', 20);
+		expect(h.searchPage).toHaveBeenLastCalledWith('q', 20, 'relevance');
 		expect(h.phase()).toBe('end');
 		expect(h.latest()).toEqual(['1', '2']);
 	});
@@ -228,7 +228,7 @@ describe('createSearchRunner paging', () => {
 		// And b pages from its own start, not from where a stopped.
 		h.runner.loadMore();
 		await drain();
-		expect(searchPage).toHaveBeenLastCalledWith('b', 20);
+		expect(searchPage).toHaveBeenLastCalledWith('b', 20, 'relevance');
 	});
 
 	it('a stale page failure does not mark the new query failed', async () => {

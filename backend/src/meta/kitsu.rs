@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AniError, Result};
 
-use super::kitsu_page::{next_offset, KitsuSearchPage};
+use super::kitsu_page::{next_offset, KitsuSearchPage, SearchOrder};
 
 /// Kitsu API base URL. Override in tests via [`KitsuClient::with_base`].
 pub const KITSU_BASE: &str = "https://kitsu.io/api/edge";
@@ -588,6 +588,21 @@ impl KitsuClient {
         query: &str,
         limit: u8,
         offset: u32,
+    ) -> Result<KitsuSearchPage> {
+        self.search_page_ordered(query, limit, offset, SearchOrder::Relevance)
+            .await
+    }
+
+    /// [`Self::search_page`] in `order`.
+    ///
+    /// # Errors
+    /// Same as [`Self::search`].
+    pub async fn search_page_ordered(
+        &self,
+        query: &str,
+        limit: u8,
+        offset: u32,
+        _order: SearchOrder,
     ) -> Result<KitsuSearchPage> {
         let limit = limit.max(1);
         let size = u32::from(limit);
