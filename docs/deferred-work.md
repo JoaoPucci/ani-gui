@@ -226,6 +226,21 @@ starting it, and delete it when you find it done.
   provider's site rather than the CDN. It is one or two requests
   against a burst of twenty.
 
+- **A resumed download's late fragment partials read as speed.** The
+  speed indicator holds what a resumed yt-dlp run starts from — its
+  partial and the partials of fragments that were in flight — for five
+  seconds from each format's first count, so resumed bytes do not read as
+  speed. yt-dlp reports a fragment's partial only when that fragment
+  starts, and a run restarted at fewer fragments in flight than the
+  one it resumes (playback starting under a free run: sixteen in
+  flight, then one, or four through the relay) starts some of them
+  after the five seconds, as can a run whose fragments wait their turn
+  at the relay or a fragment whose first connection hangs; their bytes then read as speed once, up to
+  the partials' size. Telling them apart needs yt-dlp to report per
+  fragment, which its progress line does not. It waits because the
+  effect is on the indicator only, bounded by the partials' size, and
+  over once the last of those fragments has started.
+
 - **A download running past the budget is held, not counted.** While
   yt-dlp runs free, or an ffmpeg fallback reads the host directly,
   every host is held to what the tool's requests in flight leave of

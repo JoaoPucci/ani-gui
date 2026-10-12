@@ -127,11 +127,15 @@ impl RateMeter {
         // still arriving — a fragment in flight reports its own partial
         // when its thread first does — and gains nothing, nor lowers
         // the point gains are measured from.
-        // Held at most a window from the format's start: every fragment
-        // in flight starts with it and reports its resumed bytes with its
-        // first count, so a point still unreached then holds bytes that
-        // will never be reported, and gains count from where the count
-        // stands.
+        // Held at most a window from the format's first count: the
+        // fragments that start with it — as many as the run keeps in
+        // flight — report their resumed bytes with their first counts,
+        // so a point still unreached then holds bytes that may never be
+        // reported, and gains count from where the count stands. A
+        // fragment partial whose fragment starts later — behind a run
+        // that keeps fewer in flight than the one it resumes, the
+        // relay's turns, or a first connection that hangs — reports
+        // after the window and reads as speed once (deferred-work.md).
         let held = self
             .floor
             .filter(|&(_, since)| at.saturating_duration_since(since) < RATE_WINDOW);
