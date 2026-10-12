@@ -226,12 +226,12 @@ Not decided by this rule: what follows the divisions a title opens with is read 
 
 So a numbered spinoff ("Show Side Story 2") or a recap of W's own season ("Show Season 3 Recap") never completes a span, and a spinoff never stops one.
 
-**Choosing among candidates** — part agreement sits in every selector's order, below an exact title where the selector reads one, and the provider's order breaks only a full tie:
+**Choosing among candidates** — part agreement sits in every selector's order, below an exact title where the selector reads one, and the provider's order breaks only a full tie. Every selector chooses only among candidates that could be picked: a candidate the entry's titles refuse, or another entry of the same show (the entry before this one, or the season before it), is in none of them — never a winner, never rescued, never a chain's lead, never the countless pick, and its probe dying blocks no winner, though it still leaves the pool unheard:
 
 | Selector | Order |
 |---|---|
 | Winner (candidates at the best distance) | exact title, part agreement, matched year |
-| A dead candidate's rank | the same |
+| A dead candidate's rank | the same, among candidates that could be picked |
 | Airing rescue (confirmed, short of E) | distance, exact title, part agreement |
 | Countless pick | exact title, then part agreement, then matched year |
 | Stitched chain | fit to E, then a lead whose part agrees |
