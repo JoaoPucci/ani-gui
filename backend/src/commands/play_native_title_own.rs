@@ -1,33 +1,22 @@
 //! Which listing beside a broad one is the entry's own: the entry
-//! heading a broad listing, a title reading as the entry, a broad
-//! listing's first half — split from `play_native_title_marker` for
-//! the per-file complexity bar.
+//! naming a hit or heading a broad listing, a title reading as the
+//! entry, a broad listing's first half — split from
+//! `play_native_title_marker` for the per-file complexity bar.
 
 use super::*;
 
 impl EntryTitles<'_> {
-    /// Whether the broad listing `wide` has the entry for its head: it
-    /// carries the name one of the entry's titles carries ([`name`])
-    /// and reads as that title does ([`reading`]) — the one reader the
-    /// spanning cut compares titles with. "Show 2" and "Show Second
-    /// Cour" are headed by "Show 2nd Season"; "Other Show Season 2",
-    /// which reads alike, is another show.
+    /// Whether the entry names `title` — heads it, when `title` is a
+    /// broad listing: one of its titles carries the name `title` does
+    /// ([`name`]), reads as it does ([`reading`]), and carries the same
+    /// words past that name outside its divisions ([`undivided_rest`]).
+    /// "Show Season 2" and "Show Second Cour" are named by "Show 2nd
+    /// Season"; "Other Show Season 2", which reads alike, is another
+    /// show, and so are "Show 2nd Season: Extra Arc" and, for "Show 2:
+    /// The Movie", "Show 2".
     ///
     /// [`name`]: super::play_native_title_reading::name
     /// [`reading`]: super::play_native_title_reading::reading
-    pub(crate) fn heads(&self, wide: &str) -> bool {
-        let (theirs, called) = (reading(wide), name(wide));
-        self.all()
-            .any(|t| reading(t) == theirs && name(t) == called)
-    }
-
-    /// Whether the entry names `title`: one of its titles carries the
-    /// name `title` does, reads as it does ([`Self::heads`]), and
-    /// carries the same words past that name outside its divisions
-    /// ([`undivided_rest`]). "Show Season 2" is named by "Show 2nd
-    /// Season"; "Show 2nd Season: Extra Arc" is not, nor is "Show 2" by
-    /// "Show 2: The Movie".
-    ///
     /// [`undivided_rest`]: super::play_native_title_reading::undivided_rest
     pub(crate) fn names(&self, title: &str) -> bool {
         let (theirs, called, rest) = (reading(title), name(title), undivided_rest(title));
