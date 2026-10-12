@@ -142,7 +142,7 @@ impl TableProvider {
     /// unknown, everything else is not found.
     pub(crate) fn new() -> Self {
         Self {
-            id: ProviderId::Anidb,
+            id: crate::provider_set::ProviderSet::TEST_DEFAULT,
             searches: Vec::new(),
             search_default: Answer::Ok(Vec::new()),
             listings: HashMap::new(),
@@ -230,6 +230,18 @@ impl TableProvider {
         shows.iter().fold(Self::new(), |t, (id, count)| {
             t.listing(*id, listing_of(*id, *count))
         })
+    }
+
+    /// What fetching the playlist at `url` answers.
+    pub(crate) fn playlist(mut self, url: &str, answer: impl Into<Answer<String>>) -> Self {
+        self.playlists.insert(url.to_string(), answer.into());
+        self
+    }
+
+    /// What every unlisted playlist URL answers.
+    pub(crate) fn playlists_default(mut self, answer: impl Into<Answer<String>>) -> Self {
+        self.playlists_default = answer.into();
+        self
     }
 
     /// [`Self::counted`], each show with the premiere year its detail

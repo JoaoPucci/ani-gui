@@ -6,15 +6,15 @@ describe('progressLabel', () => {
 	it('annotates the provider name with a checkmark for links_fetched', () => {
 		// `links_fetched` fires once the episode's embeds are in hand;
 		// the ✓ tells the user "the provider answered, moving on."
-		expect(progressLabel({ kind: 'links_fetched', provider: 'anidb.app' })).toBe('anidb.app ✓');
+		expect(progressLabel({ kind: 'links_fetched', provider: 'hianime' })).toBe('hianime ✓');
 	});
 
 	it('renders the searching and matched kinds through Paraglide', () => {
 		// The resolver runs in the backend, which never returns
 		// localized strings: these arrive as a kind plus interpolation
 		// data, and every locale renders its own message.
-		expect(progressLabel({ kind: 'searching', provider: 'anidb.app' })).toBe(
-			m.play_progress_searching({ provider: 'anidb.app' })
+		expect(progressLabel({ kind: 'searching', provider: 'hianime' })).toBe(
+			m.play_progress_searching({ provider: 'hianime' })
 		);
 		expect(progressLabel({ kind: 'matched', title: 'The Show' })).toBe(
 			m.play_progress_matched({ title: 'The Show' })

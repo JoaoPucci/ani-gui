@@ -1,18 +1,18 @@
 //! The playlist helpers' own tests: variant parsing, the quality
-//! arms, and the marker that tells a playlist from a page. The
-//! selection flow over a provider is exercised through the anidb
-//! client's tests.
+//! arms, the marker that tells a playlist from a page, and the
+//! selection flow over stub providers. hianime's client runs the same
+//! flow inside its walk of the servers, under its own tests.
 
 use super::*;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId};
 
-/// The master playlist captured from a provider — an HLS master is
-/// the same document whichever site served it.
+/// A master playlist fixture — an HLS master is the same document
+/// whichever site served it.
 fn fixture(name: &str) -> String {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("repo root")
-        .join("tests/fixtures/anidb")
+        .join("tests/fixtures/hls")
         .join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
@@ -201,5 +201,167 @@ async fn quality_selection_fetches_playlists_with_the_sources_referer() {
             ),
         ],
         "the master and the rendition both carry the source's referer"
+    );
+}
+
+// ── quality selection over a provider's playlists ───────────────────
+
+const MASTER: &str = "https://cdn.example/op/master.m3u8";
+const RENDITION_720: &str = "https://cdn.example/op/720/index.m3u8";
+
+fn source(master_url: &str) -> crate::scraper::provider::StreamSource {
+    crate::scraper::provider::StreamSource {
+        master_url: master_url.to_string(),
+        referer: None,
+        subtitles: Vec::new(),
+    }
+}
+
+/// A CDN serving the master and its 720 rendition; every other URL is
+/// not found.
+fn master_cdn() -> crate::scraper::table_provider::TableProvider {
+    crate::scraper::table_provider::TableProvider::new()
+        .playlist(MASTER, fixture("master_op.m3u8"))
+        .playlist(RENDITION_720, "#EXTM3U\n".to_string())
+}
+
+fn playlist_fetches(provider: &crate::scraper::table_provider::TableProvider) -> usize {
+    provider.count(|a| matches!(a, crate::scraper::table_provider::Asked::Playlist(_)))
+}
+
+#[tokio::test]
+async fn quality_selection_returns_the_matching_variant() {
+    let cdn = master_cdn();
+    let url = cdn
+        .quality_stream_url(&source(MASTER), "720")
+        .await
+        .expect("served master");
+    assert_eq!(url, RENDITION_720);
+    // Master and the selected rendition each validated once: a
+    // rendition returned unfetched can be dead while the master is
+    // healthy, and the resolver would record success and cache a
+    // session the proxy cannot load.
+    assert_eq!(playlist_fetches(&cdn), 2);
+}
+
+#[tokio::test]
+async fn a_dead_rendition_falls_back_to_the_served_master() {
+    // 1080 is listed in the master but the CDN serves only the 720
+    // rendition: the selected 1080 URL 404s. The master itself was
+    // served, so playback stays adaptive on the master instead of
+    // reporting success with a dead rendition — or failing a play
+    // the adaptive stream could carry.
+    let url = master_cdn()
+        .quality_stream_url(&source(MASTER), "1080")
+        .await
+        .expect("the served master carries the play");
+    assert_eq!(url, MASTER);
+}
+
+#[tokio::test]
+async fn a_blocked_rendition_propagates_instead_of_masking() {
+    // The soft fallback exists for an answered miss — a rendition
+    // the CDN says isn't there. A 429 (or any refusal) on the
+    // rendition is the upstream blocking this client, and falling
+    // back to the master would record breaker success and stamp
+    // availability, history, and a cached session while hls.js is
+    // about to request renditions through the same blocked front.
+    let cdn = crate::scraper::table_provider::TableProvider::new()
+        .playlist(MASTER, fixture("master_op.m3u8"))
+        .playlists_default(crate::scraper::table_provider::Answer::fails(|| {
+            crate::error::AniError::Upstream { status: 429 }
+        }));
+    let err = cdn
+        .quality_stream_url(&source(MASTER), "720")
+        .await
+        .expect_err("a blocked rendition must keep its identity");
+    assert!(
+        matches!(err, crate::error::AniError::Upstream { status: 429 }),
+        "expected the refusal verbatim, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_masters_html_answer_is_not_a_playlist() {
+    // 200 with an HTML body — the shape a CDN serves when the playlist
+    // path is wrong or expired — passes every status check, so
+    // best-quality would report success for a stream hls.js cannot
+    // load. A master must actually be an HLS playlist.
+    let cdn = crate::scraper::table_provider::TableProvider::new()
+        .playlists_default("<html><body>Not here.</body></html>".to_string());
+    let err = cdn
+        .quality_stream_url(&source(MASTER), "best")
+        .await
+        .expect_err("an HTML page is not a playlist");
+    assert!(
+        matches!(err, crate::error::AniError::ParseFailed { .. }),
+        "expected the parse verdict, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_renditions_html_answer_falls_back_to_the_served_master() {
+    // The rendition answered, but with a page, not a playlist — an
+    // answered miss like a 404: the validated adaptive master
+    // carries the play.
+    let cdn = crate::scraper::table_provider::TableProvider::new()
+        .playlist(MASTER, fixture("master_op.m3u8"))
+        .playlists_default("<html><body>Not here.</body></html>".to_string());
+    let url = cdn
+        .quality_stream_url(&source(MASTER), "720")
+        .await
+        .expect("the served master carries the play");
+    assert_eq!(url, MASTER);
+}
+
+#[tokio::test]
+async fn best_quality_keeps_the_adaptive_master_it_validated() {
+    // best fetches the master once like every other quality and keeps
+    // the adaptive URL only when the playlist was actually served: a
+    // dead master returned unfetched would record breaker success,
+    // stamp availability and history, and cache a session that fails
+    // the moment the proxy loads it.
+    let cdn = master_cdn();
+    let url = cdn
+        .quality_stream_url(&source(MASTER), "best")
+        .await
+        .expect("served master");
+    assert_eq!(url, MASTER);
+    assert_eq!(playlist_fetches(&cdn), 1);
+    let err = cdn
+        .quality_stream_url(&source("https://cdn.example/op/missing.m3u8"), "best")
+        .await
+        .expect_err("a dead master cannot report success");
+    assert!(matches!(
+        err,
+        crate::error::AniError::Upstream { status: 404 }
+    ));
+}
+
+#[tokio::test]
+async fn an_unserved_quality_falls_back_to_the_fetched_master() {
+    // Served master, unserved height → adaptive master, not a guess.
+    let url = master_cdn()
+        .quality_stream_url(&source(MASTER), "480")
+        .await
+        .expect("the playlist itself was served");
+    assert_eq!(url, MASTER);
+}
+
+#[tokio::test]
+async fn a_failed_master_fetch_propagates_instead_of_reporting_success() {
+    // The soft fallback exists for a SERVED playlist that lacks the
+    // requested height. Extending it to a failed fetch returns the
+    // URL that just failed: the resolver then reports success,
+    // stamps availability and history, and caches a session the
+    // player cannot load — and a swallowed 429 records breaker
+    // health instead of opening the rate-limit pause.
+    let err = master_cdn()
+        .quality_stream_url(&source("https://cdn.example/op/missing.m3u8"), "720")
+        .await
+        .expect_err("the playlist fetch itself failed");
+    assert!(
+        matches!(err, crate::error::AniError::Upstream { status: 404 }),
+        "got {err:?}"
     );
 }

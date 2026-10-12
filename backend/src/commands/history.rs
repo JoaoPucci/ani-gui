@@ -20,7 +20,7 @@ pub use super::history_remove::{history_clear, history_delete};
 /// unchanged: that is the no-shift case, and the pre-stamp behavior
 /// for shows the GUI never resolved.
 fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> HistoryEntry {
-    entry.ep_no = crate::commands::anidb_offset::read_ep_no(state, &entry.id, &entry.ep_no);
+    entry.ep_no = crate::commands::numbering_offset::read_ep_no(state, &entry.id, &entry.ep_no);
     entry
 }
 

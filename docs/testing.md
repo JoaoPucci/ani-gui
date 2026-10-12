@@ -33,10 +33,9 @@ tests/
 │   ├── helpers/           # loader, vendored-bats runner
 │   └── arch/              # drives tests/arch/ through its cases
 ├── fixtures/              # shared goldens (bash + rust + ts)
-│   ├── anidb/             # synthesized anidb.app response shapes
 │   ├── kitsu/             # JSON:API responses
 │   ├── history/           # watch-history samples
-│   ├── hls/               # synthesized transport streams, as base64 text
+│   ├── hls/               # transport streams as base64 text, a master playlist
 │   └── arch/              # stand-in checks the bats harness drives
 └── arch/                  # cross-cutting architectural invariants
     ├── i18n.sh

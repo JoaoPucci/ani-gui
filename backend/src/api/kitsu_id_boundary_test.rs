@@ -283,7 +283,7 @@ async fn a_stored_value_that_is_not_an_id_reaches_neither_the_renderer_nor_kitsu
     let td = TempDir::new().expect("tempdir");
     let s = state(&td, &kitsu);
     k::allmanga_kitsu_put(&s, "show-a", "../49877").expect("seed");
-    k::title_match_put(&s, ProviderId::Anidb, "Naruto", 1, "12:21").expect("seed");
+    k::title_match_put(&s, Some(ProviderId::TestA), "Naruto", 1, "12:21").expect("seed");
 
     let (status, text) = send(s.clone(), "GET", "/api/allmanga-kitsu-map/show-a", "").await;
     assert_eq!((status, text.as_str()), (StatusCode::OK, "null"));

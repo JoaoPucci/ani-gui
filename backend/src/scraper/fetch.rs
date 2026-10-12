@@ -71,14 +71,19 @@ pub const CURL_FAILOVER: &[TransportCandidate] = &[
 /// challenge page without transport details leaking upward.
 #[derive(Debug, Clone)]
 pub struct FetchResponse {
-    /// HTTP status of the final response after redirects.
+    /// HTTP status of the final response after redirects — for a
+    /// request held to its origin, of the redirect off it that was not
+    /// followed, when that is where it ended.
     pub status: u16,
     /// Response body, lossily decoded.
     pub body: String,
     /// The URL the response came from: the last one fetched after
     /// every redirect the transport followed, and the request's own
     /// when nothing redirected. The production transport follows
-    /// redirects (`-L`), so a page can arrive from a host other than
+    /// redirects (`-L`) — a request held to its origin
+    /// ([`FetchRequest::held_to_origin`]) only those that stay on it,
+    /// and one that leaves comes back from the URL that answered with
+    /// it — so a page can arrive from a host other than
     /// the one asked for, and anything a caller keys on the serving
     /// host — the origin a CDN checks as `Referer`, a rule about
     /// which hosts it can read — belongs on this rather than on the
@@ -97,6 +102,10 @@ pub struct FetchRequest {
     pub url: String,
     /// `(name, value)` pairs, sent in this order.
     pub headers: Vec<(String, String)>,
+    /// Follow a redirect only while it stays on the request's own
+    /// origin ([`Self::held_to_origin`]). Off, every redirect is
+    /// followed wherever it goes.
+    pub held_to_origin: bool,
 }
 
 impl FetchRequest {
@@ -105,7 +114,19 @@ impl FetchRequest {
         Self {
             url: url.into(),
             headers: Vec::new(),
+            held_to_origin: false,
         }
+    }
+
+    /// The same request, following a redirect only while it stays on
+    /// the request's own origin. A redirect anywhere else is not
+    /// followed: the site it names never receives the request, and the
+    /// response is the redirect itself — its 3xx status, from the URL
+    /// that answered with it — for the caller to refuse.
+    #[must_use]
+    pub fn held_to_origin(mut self) -> Self {
+        self.held_to_origin = true;
+        self
     }
 
     /// The same request with `name: value` appended to its headers.
@@ -347,9 +368,9 @@ pub(crate) fn split_trailer(text: &str) -> (&str, &str, &str) {
 /// assertable without spawning anything.
 ///
 /// `-w` appends the status and the effective URL after the body; the
-/// last line is split back off ([`split_trailer`]). Mirrors the
-/// script's anidb_curl flags, plus the impersonation target when the
-/// resolved binary needs one.
+/// last line is split back off ([`split_trailer`]). The flag set began
+/// as the retired ani-cli script's own curl invocation, plus the
+/// impersonation target when the resolved binary needs one.
 pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<String> {
     let url = req.url.as_str();
     let mut args: Vec<String> = Vec::with_capacity(12 + 2 * req.headers.len());
@@ -358,7 +379,11 @@ pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<S
     args.push("-q".into());
     // -S keeps curl's error line on stderr despite -s, so the
     // failure log below has text to capture, not just an exit code.
-    args.push("-sSL".into());
+    //
+    // A request held to its origin drops -L: the transport follows its
+    // redirects itself, one hop at a time, and only while they stay on
+    // the origin ([`crate::scraper::redirect::same_origin_hop`]).
+    args.push(if req.held_to_origin { "-sS" } else { "-sSL" }.into());
     // No URL globbing: the client never builds {}/[] sequences, and
     // a stray bracket would otherwise make curl echo the whole
     // operand — signed query included — into the captured stderr.
@@ -393,16 +418,75 @@ pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<S
     // status is digits and an effective URL carries no space, so the
     // one space between them splits the trailer back apart whatever
     // either turns out to be.
-    args.push("\n%{http_code} %{url_effective}".into());
+    //
+    // Without -L the URL the transfer ended on is the request's own,
+    // and the field carries the redirect's target instead — what a
+    // held request's next hop is judged by.
+    args.push(
+        if req.held_to_origin {
+            "\n%{http_code} %{redirect_url}"
+        } else {
+            "\n%{http_code} %{url_effective}"
+        }
+        .into(),
+    );
     // The URL stays last: curl reads it as the operand, and a flag
     // appended after it would be parsed for the next transfer.
     args.push(url.into());
     args
 }
 
+/// How many same-origin redirects a held request follows before the
+/// transport gives up on it, as curl's own `-L` would at its limit.
+const MAX_SAME_ORIGIN_HOPS: usize = 10;
+
 #[async_trait::async_trait]
 impl Fetch for CurlImpersonateFetch {
+    /// A held request is fetched a hop at a time: a redirect that
+    /// stays on its origin is followed, anything else is the answer.
+    /// The hops share the transport's one deadline, so a chain ends
+    /// there however many hops it takes; each hop is also bounded by
+    /// curl's own `--max-time`, which bounded a whole `-L` chain.
+    /// A request that is not held is one transfer, curl's own `-L`
+    /// chain, and never enters the hop loop.
     async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse> {
+        let transfer = async {
+            if req.held_to_origin {
+                self.follow_on_origin(req).await
+            } else {
+                self.fetch_once(req).await.map(|(resp, _)| resp)
+            }
+        };
+        tokio::time::timeout(self.deadline, transfer)
+            .await
+            .unwrap_or(Err(AniError::Timeout))
+    }
+}
+
+impl CurlImpersonateFetch {
+    /// Each hop of `req`, while a redirect stays on its origin.
+    async fn follow_on_origin(&self, req: &FetchRequest) -> Result<FetchResponse> {
+        let mut hop = req.clone();
+        for _ in 0..=MAX_SAME_ORIGIN_HOPS {
+            let (resp, target) = self.fetch_once(&hop).await?;
+            match crate::scraper::redirect::same_origin_hop(
+                &hop.url,
+                resp.status,
+                target.as_deref(),
+            ) {
+                Some(next) => hop.url = next,
+                None => return Ok(resp),
+            }
+        }
+        tracing::debug!(url = %redacted_url(&req.url), "too many same-origin redirects");
+        Err(AniError::Network)
+    }
+}
+
+impl CurlImpersonateFetch {
+    /// One transfer: the response, and for a held request the target
+    /// of the redirect it answered with, if it did.
+    async fn fetch_once(&self, req: &FetchRequest) -> Result<(FetchResponse, Option<String>)> {
         let url = req.url.as_str();
         // Timed so a debug run shows what each leg of the resolve
         // walk costs — the number the resolution cache's TTL-versus-
@@ -475,18 +559,26 @@ impl Fetch for CurlImpersonateFetch {
             bytes = body.len(),
             "transport fetch"
         );
-        Ok(FetchResponse {
-            status,
-            body: body.to_string(),
-            // A transport that reported no effective URL ended on the
-            // one it was given; nothing redirected that this code can
-            // see, and the request's URL is the honest answer.
-            url: if url_field.is_empty() {
-                url.to_string()
-            } else {
-                url_field.to_string()
+        // A held request's field is the redirect's target, and the
+        // response came from the URL asked. Otherwise it is the URL
+        // the transfer ended on; a transport that reported none ended
+        // on the one it was given — nothing redirected that this code
+        // can see, and the request's URL is the honest answer.
+        let (landed, target) = if req.held_to_origin {
+            (url, Some(url_field).filter(|t| !t.is_empty()))
+        } else if url_field.is_empty() {
+            (url, None)
+        } else {
+            (url_field, None)
+        };
+        Ok((
+            FetchResponse {
+                status,
+                body: body.to_string(),
+                url: landed.to_string(),
             },
-        })
+            target.map(str::to_string),
+        ))
     }
 }
 

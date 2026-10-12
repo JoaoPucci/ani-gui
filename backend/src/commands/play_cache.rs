@@ -41,14 +41,14 @@ use crate::commands::session::{
 use crate::scraper::provider::{ProviderId, ShowKey};
 
 /// The provider a cached row was resolved through: the one its show
-/// key names — a qualified key for any provider but anidb, whose
-/// keys are bare. A row from before the field carries an empty key
-/// and names no provider.
+/// key names. A bare key — anidb.app's, written before its removal —
+/// names none, and so does the empty key of a row from before the
+/// field.
 pub(crate) fn cached_row_provider(cached: &CachedResolution) -> Option<ProviderId> {
     if cached.show_id.is_empty() {
         return None;
     }
-    Some(ShowKey::parse(&cached.show_id).provider)
+    ShowKey::parse(&cached.show_id).provider
 }
 
 /// Refresh the availability row a served replay stands on with the
@@ -116,8 +116,23 @@ pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
 /// together under [`CACHED_ROW_CHECK_DEADLINE`]; the first dead URL
 /// ends the check, a URL that does not parse is dead, and a deadline
 /// that elapses is a row that is not live.
+///
+/// Before any of that, the row has to come from a provider the state
+/// walks ([`cached_row_is_walked`]). The checks ask whether URLs
+/// answer, and an answer is not the stream: a redirect counts as live,
+/// and a provider that has left can redirect every URL it ever served
+/// to another site, whose page the player would then be handed.
 pub(crate) async fn cached_row_is_live(state: &AppState, cached: &CachedResolution) -> bool {
-    cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE).await
+    cached_row_is_walked(state, cached)
+        && cached_row_is_live_within(state, cached, CACHED_ROW_CHECK_DEADLINE).await
+}
+
+/// Whether a cached row was resolved through a provider the state
+/// walks. A row naming another provider, or none — a row from before
+/// the field — is not replayed: the play resolves afresh and the
+/// fresh row replaces it.
+pub(crate) fn cached_row_is_walked(state: &AppState, cached: &CachedResolution) -> bool {
+    cached_row_provider(cached).is_some_and(|p| state.providers.order().contains(&p))
 }
 
 /// [`cached_row_is_live`] under a caller's deadline.
@@ -160,9 +175,10 @@ pub(crate) async fn cached_row_is_live_within(
 }
 
 /// Serve a cached row as a fresh CreateSessionResponse when the row
-/// is live ([`cached_row_is_live`]), or `None` when its stream or one
-/// of its tracks is dead, unreachable or answers an error status —
-/// the caller falls through to a fresh resolve.
+/// is live ([`cached_row_is_live`]), or `None` when its provider is
+/// no longer walked, or its stream or one of its tracks is dead,
+/// unreachable or answers an error status — the caller falls through
+/// to a fresh resolve.
 pub(crate) async fn try_serve_cached(
     state: &AppState,
     cached: &CachedResolution,
@@ -186,9 +202,9 @@ pub(crate) async fn try_serve_cached(
 /// Cache-hit branch of `play_external` and `play_syncplay`: returns
 /// ready-to-launch `LaunchArgs` when the play_resolution_cache has a
 /// live row ([`cached_row_is_live`]), otherwise `None` (caller falls
-/// through to a fresh resolve). A dead stream or a dead track evicts
-/// the row before returning None so the next attempt isn't bitten by
-/// the same dead URL.
+/// through to a fresh resolve). A row from a provider no longer
+/// walked, a dead stream or a dead track evicts the row before
+/// returning None so the next attempt isn't bitten by the same row.
 pub(crate) async fn try_launch_args_from_cache(
     state: &AppState,
     args: &super::play::PlayArgs,
@@ -219,7 +235,7 @@ pub(crate) async fn try_launch_args_from_cache(
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play_external: cache row not live (the stream's HEAD or a track's read failed, or the check timed out), evicted, resolving afresh",
+            "play_external: cache row unservable (provider not walked, or the stream's HEAD or a track's read failed, or the check timed out), evicted, resolving afresh",
         );
         return None;
     }
@@ -248,8 +264,8 @@ pub(crate) fn cached_watch(
 ) -> super::play_native_record::Watch {
     let ep_no = cached.resolved_slot.map_or_else(
         || {
-            let offset = super::anidb_offset::get(state, &cached.show_id);
-            super::anidb_offset::write_ep_no(state, &cached.show_id, episode, offset)
+            let offset = super::numbering_offset::get(state, &cached.show_id);
+            super::numbering_offset::write_ep_no(state, &cached.show_id, episode, offset)
         },
         |slot| slot.to_string(),
     );

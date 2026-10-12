@@ -1,14 +1,15 @@
 //! Provider-numbering offset store — the bridge between the two
 //! numbering spaces the history file has to span.
 //!
-//! anidb.app carries a franchise's cumulative episode count into
-//! continuation cours (TYBW's fourth part lists 41 and 42), and
-//! a resume looks the stored `ep_no` up in that provider list — so
-//! the history file speaks PROVIDER numbering. Every GUI surface
-//! counts per-entry like Kitsu. The
-//! resolver computes the shift once per show; this module persists it
-//! keyed by slug so the history writers can add it and the read
-//! boundary can subtract it.
+//! A provider can carry a franchise's cumulative episode count into
+//! continuation cours — anidb.app listed TYBW's fourth part as 41 and
+//! 42 — and a resume looks the stored `ep_no` up in that provider's
+//! list, so the history file speaks PROVIDER numbering. Every GUI
+//! surface counts per-entry like Kitsu. The resolver computes the shift
+//! once per show; this module persists it keyed by show key so the
+//! history writers can add it and the read boundary can subtract it.
+//! The rows anidb.app's resolves stamped stay: they are what keeps the
+//! history rows from its days readable.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
 //! which is exactly today's behavior.
 //!
@@ -19,9 +20,9 @@
 
 use crate::app::AppState;
 
-#[path = "anidb_offset_store.rs"]
-mod anidb_offset_store;
-use anidb_offset_store::{merge_row, parse, remove_rows, store_path};
+#[path = "numbering_offset_store.rs"]
+mod numbering_offset_store;
+use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
 
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
@@ -124,5 +125,5 @@ pub fn kitsu_ep_no(ep_no: &str, offset: u32) -> String {
 }
 
 #[cfg(test)]
-#[path = "anidb_offset_test.rs"]
+#[path = "numbering_offset_test.rs"]
 mod tests;
