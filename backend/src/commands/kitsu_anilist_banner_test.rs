@@ -324,3 +324,91 @@ async fn a_banner_anilist_no_longer_has_is_forgotten_at_the_next_trending_fetch(
 
     assert_eq!(detail.anilist_banner, None);
 }
+
+#[tokio::test]
+async fn a_rate_limited_trending_fetch_keeps_the_remembered_banners() {
+    // The fallback list is Kitsu's own, whose refs never carry an
+    // AniList banner; that is no answer about any banner.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "0"))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [{
+                "id": "12",
+                "type": "anime",
+                "attributes": { "canonicalTitle": "Show 12", "titles": {}, "subtype": "TV" },
+            }],
+        })))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(DETAIL_FIXTURE),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("first trending");
+    crate::cache::meta_cache_delete(&state.cache_pool, "kitsu:v6:trending_anilist")
+        .expect("expire trending");
+    let fallback = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("fallback trending");
+    assert!(
+        fallback.iter().any(|r| r.id == "12"),
+        "the fallback lists the show"
+    );
+
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+
+    assert_eq!(detail.anilist_banner.as_deref(), Some(BANNER));
+}
+
+#[tokio::test]
+async fn a_null_cover_backfilled_from_anilist_names_the_banner_as_anilists() {
+    // A show the trending row never listed: the backfill asks AniList,
+    // and the banner it brings is AniList's whichever slot shows it.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Media": { "bannerImage": BANNER } }
+        })))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_null_cover_detail(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+
+    assert_eq!(
+        detail.cover_image.and_then(|c| c.large).as_deref(),
+        Some(BANNER)
+    );
+    assert_eq!(detail.anilist_banner.as_deref(), Some(BANNER));
+    anilist.verify().await;
+}
