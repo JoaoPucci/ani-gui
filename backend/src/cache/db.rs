@@ -17,9 +17,9 @@
 //! Calls are synchronous. From async contexts, wrap in
 //! `tokio::task::spawn_blocking` to avoid stalling the runtime.
 //!
-//! Each pool does its background work (opening connections, retiring
-//! old ones) on helper threads. Every pool shares one set of them; see
-//! [`helper_threads`].
+//! Each pool opens its connections on helper threads. Every pool shares
+//! one set of them and retires no connections; see [`helper_threads`]
+//! and [`builder`].
 
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
