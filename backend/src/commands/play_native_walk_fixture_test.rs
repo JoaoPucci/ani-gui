@@ -892,7 +892,7 @@ async fn a_title_s_marks_and_release_year_are_part_of_what_names_it() {
 /// year where both titles carry one and they differ. Catalogues drift
 /// on the rest — an exclamation or question mark, a decorative symbol,
 /// a wave dash written one way or the other, a release year one side
-/// leaves off — and a broad listing written without them is still the
+/// leaves off, quotes single or double, an elided apostrophe — and a broad listing written without them is still the
 /// one the entry heads, as an entry with no count or year still takes
 /// a hit written without them.
 #[tokio::test]
@@ -942,6 +942,26 @@ async fn marks_catalogues_drift_on_do_not_part_a_title_from_the_entry() {
                 )],
             ),
             "dungeon-1",
+        ),
+        (
+            inline_pool(
+                &["'Tis Time for \"Torture,\" Princess"],
+                None,
+                None,
+                "TV",
+                &[("tis-1", "Tis Time for Torture Princess", 12, None)],
+            ),
+            "tis-1",
+        ),
+        (
+            inline_pool(
+                &["Show 'Arc'"],
+                None,
+                None,
+                "TV",
+                &[("arc-1", "Show \"Arc\"", 12, None)],
+            ),
+            "arc-1",
         ),
     ];
     let mut wrong = Vec::new();
