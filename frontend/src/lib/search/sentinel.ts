@@ -41,8 +41,12 @@ export function watchSentinel(
 	// Entries measured before the last remeasure describe a layout that
 	// has since changed; `unobserve` does not drop ones already queued.
 	let since = -Infinity;
+	// `disconnect` does not drop entries already queued either, so a
+	// stopped watch drops whatever still arrives.
+	let stopped = false;
 	const observer = new Observer(
 		(entries) => {
+			if (stopped) return;
 			// Entries arrive oldest first, so the last current one is the
 			// newest measurement. Written as "not older than" so that,
 			// before any remeasure, every entry counts.
@@ -53,7 +57,10 @@ export function watchSentinel(
 	);
 	observer.observe(node);
 	return {
-		stop: () => observer.disconnect(),
+		stop: () => {
+			stopped = true;
+			observer.disconnect();
+		},
 		remeasure: () => {
 			since = now();
 			observer.unobserve(node);
