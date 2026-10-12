@@ -17,6 +17,10 @@ pub(crate) use title_past::*;
 mod title_name;
 pub(crate) use title_name::*;
 
+#[path = "play_native_title_entry_before.rs"]
+mod title_entry_before;
+pub(crate) use title_entry_before::*;
+
 #[path = "play_native_title_beside.rs"]
 mod title_beside;
 pub(crate) use title_beside::*;
