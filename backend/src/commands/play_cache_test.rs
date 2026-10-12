@@ -3,7 +3,7 @@
 //! live only when its tracks read as tracks.
 
 use super::{cached_launch_args, try_serve_cached};
-use crate::commands::play::tests::{cached_blank, state_with_proxy_origin, track};
+use crate::commands::play::tests::{cached_walked, state_with_proxy_origin, track};
 use crate::commands::play_resolution_cache::CachedResolution;
 use crate::proxy::MediaKind;
 use crate::scraper::provider::SubtitleTrack;
@@ -68,7 +68,7 @@ async fn row_with_track(server: &MockServer, track_response: ResponseTemplate) -
         .respond_with(track_response)
         .mount(server)
         .await;
-    let mut cached = cached_blank(
+    let mut cached = cached_walked(
         format!("{}/video.mp4", server.uri()),
         String::new(),
         MediaKind::Mp4,
@@ -168,7 +168,7 @@ async fn a_cached_rows_check_is_spent_at_every_host_a_redirect_reaches() {
         .respond_with(ResponseTemplate::new(200))
         .mount(&edge)
         .await;
-    let cached = cached_blank(
+    let cached = cached_walked(
         format!("{}/video.mp4", origin.uri()),
         String::new(),
         MediaKind::Mp4,
@@ -222,7 +222,7 @@ async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_
         .await;
     let mut state = state_with_proxy_origin();
     state.proxy_http = crate::proxy::upstream::build_client().expect("client");
-    let landed = cached_blank(
+    let landed = cached_walked(
         format!("{}/video.mp4", origin.uri()),
         "https://site.example/".into(),
         MediaKind::Mp4,
@@ -231,7 +231,7 @@ async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_
         try_serve_cached(&state, &landed).await.is_some(),
         "the referer reached the edge"
     );
-    let looping = cached_blank(
+    let looping = cached_walked(
         format!("{}/loop.mp4", origin.uri()),
         String::new(),
         MediaKind::Mp4,
@@ -255,7 +255,7 @@ async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
         .expect(0)
         .mount(&server)
         .await;
-    let cached = cached_blank(
+    let cached = cached_walked(
         format!("{}/video.mp4", server.uri()),
         String::new(),
         MediaKind::Mp4,
@@ -284,7 +284,7 @@ async fn row_with_tracks(server: &MockServer, tracks: usize) -> CachedResolution
         .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
         .mount(server)
         .await;
-    let mut cached = cached_blank(
+    let mut cached = cached_walked(
         format!("{}/video.mp4", server.uri()),
         String::new(),
         MediaKind::Mp4,
@@ -417,9 +417,13 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        providers: crate::provider_set::ProviderSet::for_tests().with_stub(std::sync::Arc::new(
-            crate::scraper::table_provider::TableProvider::unreachable(),
-        )),
+        providers: // The rows this file seeds are hianime's, and so is the walk;
+        // a resolve that falls through finds it unreachable.
+        crate::provider_set::ProviderSet::listing(vec![crate::scraper::provider::ProviderId::Hianime])
+            .with_stub(std::sync::Arc::new(
+                crate::scraper::table_provider::TableProvider::unreachable()
+                    .answering_as(crate::scraper::provider::ProviderId::Hianime),
+            )),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -551,7 +555,7 @@ fn refresh_verdict() -> crate::commands::availability::AvailabilityResponse {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        provider: Some(crate::scraper::provider::ProviderId::Anidb),
+        provider: Some(crate::scraper::provider::ProviderId::Hianime),
     }
 }
 
@@ -589,7 +593,7 @@ fn seed_cached_row(
 fn refresh_verdict_stands(state: &crate::app::AppState, what: &str) {
     assert_eq!(
         crate::commands::availability::cached_provider(state, "12", "sub"),
-        Some(crate::scraper::provider::ProviderId::Anidb),
+        Some(crate::scraper::provider::ProviderId::Hianime),
         "{what}: the refresh's provider stands"
     );
     let cached = crate::commands::availability::batch_cached(
@@ -715,20 +719,138 @@ mod row_provider_props {
 
     proptest! {
         /// A row's provider is the one its show key names — the
-        /// qualified prefix, or anidb for a bare key — and a row from
-        /// before the field, with an empty key, names none.
+        /// qualified prefix — and a bare key, anidb.app's or a row's
+        /// from before the field, names none.
         #[test]
         fn the_rows_provider_is_the_one_its_show_key_names(
             prefix in proptest::option::of(Just("hianime:")),
             slug in "[a-z0-9-]{1,20}",
         ) {
             let id = format!("{}{slug}", prefix.unwrap_or(""));
-            prop_assert_eq!(cached_row_provider(&row(&id)), Some(ShowKey::parse(&id).provider));
+            prop_assert_eq!(cached_row_provider(&row(&id)), ShowKey::parse(&id).provider);
             prop_assert_eq!(
                 cached_row_provider(&row(&id)),
-                Some(if prefix.is_some() { ProviderId::Hianime } else { ProviderId::Anidb })
+                prefix.map(|_| ProviderId::Hianime)
             );
             prop_assert_eq!(cached_row_provider(&row("")), None);
         }
     }
+}
+
+// ── a row only a walked provider's resolve may replay ──────────────
+
+/// A row the resolution cache holds from `show_id`'s provider, its
+/// stream on a CDN that redirects every URL to another site, which
+/// answers — as anidb.app now sends everything it served to an
+/// unrelated site. The liveness check follows the redirect and reads
+/// the other site's answer as the stream's.
+async fn row_redirecting_elsewhere(
+    state: &crate::app::AppState,
+    args: &crate::commands::play::PlayArgs,
+    show_id: &str,
+) -> (wiremock::MockServer, wiremock::MockServer) {
+    let elsewhere = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("HEAD"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&elsewhere)
+        .await;
+    let mock = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("HEAD"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("Location", format!("{}/", elsewhere.uri())),
+        )
+        .mount(&mock)
+        .await;
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: show_id.into(),
+            show_title: "Show".into(),
+            resolved_slot: Some(1),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+        },
+    );
+    (mock, elsewhere)
+}
+
+fn cached_args() -> crate::commands::play::PlayArgs {
+    serde_json::from_value(serde_json::json!({ "title": "Show", "episode": "1", "mode": "sub" }))
+        .expect("args")
+}
+
+fn row_of(
+    state: &crate::app::AppState,
+    args: &crate::commands::play::PlayArgs,
+) -> Option<CachedResolution> {
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::get(&state.cache_pool, &key).expect("cache read")
+}
+
+/// anidb.app's rows keep the bare slug every row from its days holds;
+/// a row from before the field holds no key at all. Neither names the
+/// provider the state walks, and neither is replayed — though each
+/// row's CDN answers, with a redirect the liveness check reads as
+/// alive. The handoff path evicts the row, as for any row it cannot
+/// serve.
+#[tokio::test]
+async fn a_cached_row_no_walked_provider_resolved_is_not_replayed() {
+    for show_id in ["the-show-77", ""] {
+        let td = tempfile::tempdir().expect("td");
+        let state = state_in(&td);
+        let args = cached_args();
+        let _cdn = row_redirecting_elsewhere(&state, &args, show_id).await;
+        let cached = row_of(&state, &args).expect("seeded");
+        assert!(
+            try_serve_cached(&state, &cached).await.is_none(),
+            "{show_id:?}: the embedded player is not handed the row"
+        );
+        let cfg = crate::config::Config {
+            cache_resolutions: true,
+            ..Default::default()
+        };
+        assert!(
+            super::try_launch_args_from_cache(&state, &args, &cfg)
+                .await
+                .is_none(),
+            "{show_id:?}: no handoff launches from it"
+        );
+        assert!(
+            row_of(&state, &args).is_none(),
+            "{show_id:?}: and the row is evicted for the fresh resolve to replace"
+        );
+    }
+}
+
+/// The same row from the walked provider is served: what the rule
+/// turns on is whose row it is, not the redirect.
+#[tokio::test]
+async fn the_walked_providers_row_still_replays() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state_in(&td);
+    let args = cached_args();
+    let _cdn = row_redirecting_elsewhere(&state, &args, "hianime:the-show-77").await;
+    let cached = row_of(&state, &args).expect("seeded");
+    assert!(try_serve_cached(&state, &cached).await.is_some());
 }

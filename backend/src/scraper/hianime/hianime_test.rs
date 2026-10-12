@@ -4196,3 +4196,47 @@ async fn every_server_stalling_surfaces_a_timeout() {
         .expect_err("no server answered in time");
     assert!(matches!(err, AniError::Timeout), "{err:?}");
 }
+
+/// Exactly the requests built from the client's origin are held to
+/// it: the search, the show page, the episode list and the servers
+/// listing. The embed host, its sources endpoint and the CDN's
+/// playlists are other origins, reached by design, and follow their
+/// redirects as before.
+#[tokio::test]
+async fn only_the_requests_built_from_the_origin_are_held_to_it() {
+    let c = client();
+    c.search("cowboy bebop").await.expect("hits");
+    c.episodes("cowboy-bebop-1281").await.expect("listing");
+    c.detail_year("cowboy-bebop-1281").await.expect("year");
+    c.master_playlist_url(21418, "sub").await.expect("resolved");
+    let requests = c.transport().requests();
+    let (held, free): (Vec<_>, Vec<_>) = requests.iter().partition(|r| r.held_to_origin);
+    assert!(
+        held.iter().all(|r| r.url.starts_with(BASE)),
+        "held off the origin: {held:?}"
+    );
+    assert!(
+        free.iter().all(|r| !r.url.starts_with(BASE)),
+        "an origin request went out unheld: {free:?}"
+    );
+    for asked in [
+        "/search?keyword=",
+        "/api/theme/episode/list/",
+        "/cowboy-bebop-1281",
+        "/api/theme/episode/servers?episodeId=21418",
+    ] {
+        assert!(
+            held.iter()
+                .any(|r| r.url.starts_with(&format!("{BASE}{asked}"))),
+            "{asked} was not held"
+        );
+    }
+    assert!(
+        free.iter().any(|r| r.url.contains("zokoanime.video")),
+        "the embed page is asked unheld"
+    );
+    assert!(
+        free.iter().any(|r| r.url.contains("hls.example")),
+        "the CDN's playlists are asked unheld"
+    );
+}

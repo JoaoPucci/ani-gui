@@ -27,7 +27,7 @@ use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, number
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeResolved {
     /// The show key's string — the id history and caches key on:
-    /// anidb's bare slug, another provider's slug under its label.
+    /// the provider's slug under its label.
     pub slug: String,
     /// The provider that answered.
     pub provider: ProviderId,

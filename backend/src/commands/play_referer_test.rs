@@ -15,7 +15,7 @@ fn native(referer: Option<&str>) -> NativeResolved {
         extra_tags: Vec::new(),
         resolved_slot: 1,
         resolved_tag: None,
-        provider: crate::scraper::provider::ProviderId::Anidb,
+        provider: crate::scraper::provider::ProviderId::TestA,
         referer: referer.map(str::to_string),
         subtitles: vec![crate::scraper::provider::SubtitleTrack {
             lang: "en".into(),

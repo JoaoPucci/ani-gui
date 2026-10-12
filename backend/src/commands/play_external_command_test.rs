@@ -1,4 +1,5 @@
 use super::*;
+use crate::commands::play::tests::walked_key;
 use crate::commands::play::PlayArgs;
 use crate::scraper::provider::{BrowseHit, EpisodeRef};
 use crate::scraper::table_provider::TableProvider;
@@ -245,7 +246,8 @@ async fn a_failed_spawn_records_no_watch() {
         "no history row for a watch that never began"
     );
     assert_eq!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77"))
+            .expect("stamp read"),
         None
     );
 }
@@ -290,7 +292,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "cached-show-9".into(),
+            show_id: walked_key("cached-show-9"),
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -316,7 +318,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
         hsts.contains("cached-show-9"),
         "the row keys on the cached show id: {hsts}"
     );
-    let stamp = crate::commands::kitsu::watched_at_get(&state, "cached-show-9")
+    let stamp = crate::commands::kitsu::watched_at_get(&state, &walked_key("cached-show-9"))
         .expect("stamp read")
         .expect("the watch is stamped once the player started");
     assert!(stamp >= before);
@@ -349,14 +351,15 @@ async fn an_external_play_persists_the_shows_kitsu_mapping() {
     wait_for(&argv_file).await;
 
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("the-show-77"))
+            .expect("mapping read"),
         Some("42".into()),
         "the spawn persists the show's reverse mapping"
     );
     let resumed = crate::commands::history::history_by_kitsu(&state, "42")
         .expect("history read")
         .expect("the row is found by its Kitsu id");
-    assert_eq!(resumed.id, "the-show-77");
+    assert_eq!(resumed.id, walked_key("the-show-77"));
 }
 
 #[tokio::test]
@@ -398,7 +401,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "cached-show-9".into(),
+            show_id: walked_key("cached-show-9"),
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -412,7 +415,8 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
     wait_for(&argv_file).await;
 
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "cached-show-9").expect("mapping read"),
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("cached-show-9"))
+            .expect("mapping read"),
         Some("42".into()),
         "a cached handoff persists the mapping too"
     );
@@ -430,18 +434,20 @@ async fn a_watch_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
     let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
     std::fs::create_dir_all(&state.history_path).expect("a directory where the file should be");
     let watch = crate::commands::play_native_record::Watch {
-        show_id: "the-show-77".into(),
+        show_id: walked_key("the-show-77"),
         title: "The Show".into(),
         ep_no: "3".into(),
     };
     crate::commands::play_native_record::record_watch(&state, &watch, Some("42")).await;
     assert_eq!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77"))
+            .expect("stamp read"),
         None,
         "a watch that never reached the file must not be stamped"
     );
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("the-show-77"))
+            .expect("mapping read"),
         None,
         "nor mapped"
     );
@@ -454,7 +460,7 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
     let dir = tempfile::tempdir().expect("tmp");
     let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
     let watch = crate::commands::play_native_record::Watch {
-        show_id: "the-show-77".into(),
+        show_id: walked_key("the-show-77"),
         title: "The Show".into(),
         ep_no: "3".into(),
     };
@@ -462,13 +468,13 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
     let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
     assert!(hsts.contains("the-show-77"), "{hsts}");
     assert!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77")
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77"))
             .expect("stamp read")
             .is_some(),
         "the persisted watch is stamped"
     );
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77")
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("the-show-77"))
             .expect("mapping read")
             .as_deref(),
         Some("42")
@@ -498,7 +504,7 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
         &state.history_path,
         crate::history::HistoryEntry {
             ep_no: "1".into(),
-            id: "the-show-77".into(),
+            id: walked_key("the-show-77"),
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
@@ -511,7 +517,10 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
         tokio::spawn(async move { play_external(&state, &play_args()).await })
     };
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    assert!(
+        crate::commands::history::history_delete(&state, &walked_key("the-show-77"))
+            .expect("delete")
+    );
     play.await.expect("join").expect("plays");
     wait_for(&argv_file).await;
 
@@ -522,7 +531,7 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
         "the removed show has no row"
     );
     assert_eq!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp"),
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77")).expect("stamp"),
         None
     );
     let offsets = std::fs::read_to_string(dir.path().join("ani-gui-offsets")).unwrap_or_default();
@@ -571,7 +580,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "the-show-77".into(),
+            show_id: walked_key("the-show-77"),
             show_title: "The Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -582,7 +591,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
         &state.history_path,
         crate::history::HistoryEntry {
             ep_no: "1".into(),
-            id: "the-show-77".into(),
+            id: walked_key("the-show-77"),
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
@@ -595,7 +604,10 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
         tokio::spawn(async move { play_external(&state, &play_args()).await })
     };
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    assert!(
+        crate::commands::history::history_delete(&state, &walked_key("the-show-77"))
+            .expect("delete")
+    );
     play.await.expect("join").expect("plays");
     let argv = wait_for(&argv_file).await;
 

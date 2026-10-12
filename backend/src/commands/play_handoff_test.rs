@@ -103,7 +103,7 @@ async fn a_handoff_resolve_remembers_the_provider_that_served_it() {
         .expect("the native walk resolves the stream");
     assert_eq!(
         crate::commands::availability::cached_provider(&state, "hs-7", "sub"),
-        Some(crate::scraper::provider::ProviderId::Anidb),
+        Some(crate::scraper::provider::ProviderId::TestA),
         "the provider that served the handoff is remembered"
     );
 }
@@ -134,7 +134,7 @@ async fn a_handoff_miss_surfaces_the_walks_verdict() {
     assert!(!row.available);
     assert_eq!(
         row.provider,
-        Some(crate::scraper::provider::ProviderId::Anidb),
+        Some(crate::scraper::provider::ProviderId::TestA),
         "named as the provider's whose miss it is"
     );
 }
@@ -157,7 +157,7 @@ fn launch_args_carry_the_resolves_sidecar_tracks() {
         extra_tags: Vec::new(),
         resolved_slot: 1,
         resolved_tag: None,
-        provider: crate::scraper::provider::ProviderId::Anidb,
+        provider: crate::scraper::provider::ProviderId::TestA,
         referer: Some("https://embed.example/".into()),
         subtitles: vec![crate::scraper::provider::SubtitleTrack {
             lang: "en".into(),
@@ -185,7 +185,7 @@ fn launch_args_carry_the_resolves_referer() {
         extra_tags: Vec::new(),
         resolved_slot: 1,
         resolved_tag: None,
-        provider: crate::scraper::provider::ProviderId::Anidb,
+        provider: crate::scraper::provider::ProviderId::TestA,
         referer: referer.map(str::to_string),
         subtitles: Vec::new(),
     };
@@ -215,7 +215,7 @@ fn launch_args_lead_with_the_providers_default_track() {
     let cfg = crate::config::Config::default();
     let native = crate::commands::play_native_resolve::NativeResolved {
         slug: "show-1".into(),
-        provider: crate::scraper::provider::ProviderId::Anidb,
+        provider: crate::scraper::provider::ProviderId::TestA,
         title: "Show".into(),
         master_url: "https://cdn.example/x/master.m3u8".into(),
         episode_cap: None,
