@@ -14,9 +14,8 @@
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
-use super::play_native_choice::{
-    entry_rank, pick_without_count, select_winner, strongest_dead, YearEvidence,
-};
+use super::play_native_choice::{entry_rank, select_winner, strongest_dead};
+use super::play_native_countless::{pick_without_count, YearEvidence};
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
