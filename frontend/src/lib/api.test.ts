@@ -974,6 +974,19 @@ describe('kitsuSearchPage', () => {
 		expect(JSON.parse(init?.body as string)).toEqual({ query: 'dragon ball', offset: 20 });
 		expect(page).toEqual({ hits: [], next_offset: 40 });
 	});
+	it('sends the order a sorted search asks Kitsu for', async () => {
+		for (const order of ['year', 'rating'] as const) {
+			const fetchMock = mockFetchOnce({ hits: [], next_offset: null });
+			globalThis.fetch = fetchMock as unknown as typeof fetch;
+			await kitsuSearchPage('dragon ball', 0, order);
+			const { init } = lastCall(fetchMock);
+			expect(JSON.parse(init?.body as string)).toEqual({
+				query: 'dragon ball',
+				offset: 0,
+				sort: order
+			});
+		}
+	});
 });
 
 describe('kitsuAnimeDetail', () => {
