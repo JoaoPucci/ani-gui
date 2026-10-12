@@ -1693,3 +1693,35 @@ async fn only_an_ordinal_right_after_w_s_season_divides_it() {
         }
     }
 }
+
+/// An entry every title of which names a later division refuses a
+/// candidate naming none — the entry before it — unless that candidate
+/// is one of its titles; an entry with any title naming none takes it.
+#[tokio::test]
+async fn an_entry_naming_only_later_divisions_refuses_the_one_before() {
+    for (titles, listing) in [
+        (&["Show 2"][..], "Show"),
+        (&["Show Part 2"][..], "Show Season 1"),
+    ] {
+        let site = pool_of(titles, Some(12), 2020, titles[0], &[("x", listing, 12)]);
+        if let Ok(p) = walk_over(site).await {
+            panic!("{titles:?}: picked {}", p.hit.slug);
+        }
+    }
+    let site = pool_of(
+        &["Show 2", "Show (2020)"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[("x", "Show", 12)],
+    );
+    assert_eq!(walk_over(site).await.expect("picked").hit.slug, "x");
+    let site = pool_of(
+        &["Show 2"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[("s1", "Show", 12), ("own", "Show 2", 12)],
+    );
+    assert_eq!(walk_over(site).await.expect("picked").hit.slug, "own");
+}
