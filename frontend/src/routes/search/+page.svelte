@@ -311,11 +311,12 @@
 		{/if}
 	</section>
 
-	<!-- Mounted for as long as the search has answered, shows or not:
-	     a reorder can open on a page the availability filter empties,
-	     and a search can end with nothing, and either way the chip the
-	     reader pressed stays in place with its focus. -->
-	{#if submitted && results !== null}
+	<!-- Mounted for as long as the search has answered, with shows,
+	     with nothing, or with a failure: a reorder can open on a page
+	     the availability filter empties, a search can end with nothing,
+	     and a reorder's first page can fail, and in each case the chip
+	     the reader pressed stays in place with its focus. -->
+	{#if submitted && (results !== null || error !== null)}
 		<section class="controls" aria-label={m.search_controls_aria_label()}>
 			<div class="control-group">
 				<span class="control-label">{m.search_control_sort_label()}</span>
