@@ -16,7 +16,7 @@ use super::play_native_wide_listing::{Probed, UNFIT};
 /// candidate that carries no identity beyond its count: not the title
 /// searched, not named as one of the entry's titles
 /// ([`EntryTitles::heads`]), and without its own year matching the
-/// entry's. A pool with no count other than one is left as it is.
+/// entry's. An entry whose count is not one is left as it is.
 ///
 /// Returns whether a candidate the count alone would have accepted
 /// was scored out: the refusal is an inference from how the candidate
