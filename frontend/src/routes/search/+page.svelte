@@ -4,18 +4,19 @@
   The motifs are restraint: serif voice, mono numerals, hairline rules.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import {
 		imageProxyUrl,
-		kitsuSearch,
+		kitsuSearchPage,
 		kitsuTopRated,
 		kitsuTrending,
 		settingsGet,
 		type Config,
-		type KitsuAnimeRef
+		type KitsuAnimeRef,
+		type SearchOrder
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import PosterCard from '$lib/components/PosterCard.svelte';
@@ -25,7 +26,19 @@
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { createSearchRunner } from '$lib/search/run-search';
+	import {
+		measured,
+		shouldAutoLoad,
+		spent,
+		UNMEASURED,
+		type PagingPhase,
+		type Reach
+	} from '$lib/search/paging';
+	import { watchSentinel, type SentinelWatch } from '$lib/search/sentinel';
+	import { staggerSlots } from '$lib/search/stagger';
+	import { keepFocus } from '$lib/search/keep-focus';
 	import { subtypeLabel } from '$lib/search/subtype-label';
+	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -33,6 +46,21 @@
 	let results = $state<KitsuAnimeRef[] | null>(null);
 	let error = $state<{ headline: string; detail: string | null } | null>(null);
 	let busy = $state(false);
+	// Infinite scroll: the runner's paging phase, and what the latest
+	// measurement of the marker under the grid said — whether it is in
+	// reach, and whether that is still news ($lib/search/paging.ts).
+	let phase = $state<PagingPhase>({ kind: 'loading' });
+	let reach = $state<Reach>(UNMEASURED);
+	let sentinelWatch: SentinelWatch | null = null;
+
+	// The grid just changed shape — a page settled, a type filter came
+	// on or off — so the last measurement describes a layout that is
+	// gone: spend it, and — once the new layout is in the DOM — ask the
+	// observer for a measurement of it.
+	function gridChanged() {
+		reach = spent(reach);
+		void tick().then(() => sentinelWatch?.remeasure());
+	}
 
 	// Discovery rows for the empty state — same data as the home page so
 	// users have something to browse when they arrive without a query.
@@ -46,14 +74,16 @@
 	// pages get picked up.
 	let config = $state<Config | null>(null);
 
-	// Client-side sort + filter on the result set. Kitsu returns up
-	// to ~20 hits per query; sorting/filtering is cheap to do here
-	// rather than re-querying.
-	type SortKey = 'relevance' | 'title' | 'year' | 'rating';
+	// The order comes from Kitsu: choosing one starts the search over
+	// in it, and each page that loads continues it below what is shown.
+	// Sorting only the loaded pages here would re-sort the whole grid
+	// as every page landed. Kitsu cannot sort a text search by title,
+	// so there is no title order. The type filter stays here: it hides
+	// cards, it does not move them.
+	type SortKey = SearchOrder;
 	// Message functions, called at render so a locale switch relabels.
 	const SORT_LABELS: Record<SortKey, () => string> = {
 		relevance: m.search_sort_relevance,
-		title: m.search_sort_title,
 		year: m.search_sort_year,
 		rating: m.search_sort_rating
 	};
@@ -64,6 +94,7 @@
 	function toggleSubtype(s: string) {
 		if (activeSubtypes.has(s)) activeSubtypes.delete(s);
 		else activeSubtypes.add(s);
+		gridChanged();
 	}
 
 	const displayed = $derived.by(() => {
@@ -72,26 +103,58 @@
 		if (activeSubtypes.size > 0) {
 			list = list.filter((h) => activeSubtypes.has(h.subtype ?? 'TV'));
 		}
-		if (sortKey === 'title') {
-			list.sort((a, b) =>
-				a.canonical_title.localeCompare(b.canonical_title, undefined, { sensitivity: 'base' })
-			);
-		} else if (sortKey === 'year') {
-			// Empty start_date sorts last regardless of direction.
-			list.sort((a, b) => {
-				const aY = a.start_date ?? '';
-				const bY = b.start_date ?? '';
-				if (!aY && bY) return 1;
-				if (aY && !bY) return -1;
-				return bY.localeCompare(aY);
-			});
-		} else if (sortKey === 'rating') {
-			list.sort((a, b) => (b.average_rating ?? -1) - (a.average_rating ?? -1));
-		}
 		return list;
 	});
 
 	const count = $derived(displayed?.length ?? 0);
+
+	// The grid is empty but the runner is already looking a page
+	// deeper — reads as searching, not as "nothing matched".
+	const searching = $derived(busy || (results?.length === 0 && phase.kind === 'loading-more'));
+	const shown = $derived((results?.length ?? 0) > 0);
+	const moreToCome = $derived(
+		phase.kind === 'idle' ||
+			phase.kind === 'loading-more' ||
+			phase.kind === 'failed' ||
+			phase.kind === 'held'
+	);
+	const counter = $derived(resultCount(count, moreToCome));
+
+	// Each card rises from the slot it arrived in, so an appended
+	// page staggers from its own first card ($lib/search/stagger.ts).
+	let slots = new Map<string, number>();
+	const slotOf = $derived.by(() => (slots = staggerSlots(slots, displayed ?? [])));
+
+	$effect(() => {
+		// One measurement, one page: the load spends it.
+		if (shouldAutoLoad(phase, reach, activeSubtypes.size > 0)) {
+			reach = spent(reach);
+			searchRunner.loadMore();
+		}
+	});
+
+	// Focus handed on by a leaving paging button lands here: a silent
+	// spot at the head of the folio, outside its live region, so the
+	// status line is announced once — by the live region — not again
+	// on focus.
+	let focusAnchor = $state<HTMLElement | null>(null);
+	// A paging button leaves when the phase it belongs to does — Try
+	// again as its page loads, Load more at the end. If it held focus,
+	// focus moves to the folio's anchor rather than falling to the page
+	// body ($lib/search/keep-focus.ts).
+	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => focusAnchor);
+
+	function sentinel(node: HTMLElement) {
+		const watch = watchSentinel(node, (inReach) => (reach = measured(inReach)));
+		sentinelWatch = watch;
+		return {
+			destroy() {
+				watch.stop();
+				if (sentinelWatch === watch) sentinelWatch = null;
+				reach = UNMEASURED;
+			}
+		};
+	}
 
 	onMount(async () => {
 		// Resolve settings before kicking off the discovery requests
@@ -137,7 +200,7 @@
 	// The closures below are the page-side adapter, one Svelte
 	// reassignment each.
 	const searchRunner = createSearchRunner({
-		kitsuSearch,
+		searchPage: kitsuSearchPage,
 		getConfig: async () => {
 			// Same race as onMount: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
@@ -157,13 +220,32 @@
 		},
 		onBusy: (b) => {
 			busy = b;
+		},
+		onPhase: (p) => {
+			phase = p;
+			// A page settled: the grid grew (or a retry, Keep looking or
+			// Load more brought it back to idle). Only a measurement of
+			// the grid as it now stands may load the next page.
+			if (p.kind === 'idle') gridChanged();
 		}
 	});
 
 	async function runSearch(q: string) {
 		error = null;
 		submitted = q;
-		await searchRunner.run(q);
+		// The marker's last report belongs to the previous results; it
+		// unmounts while this search's first page loads, and the
+		// observer made when it mounts again reports its initial state.
+		reach = UNMEASURED;
+		await searchRunner.run(q, sortKey);
+	}
+
+	/** Choose the order the results come in: the search starts over,
+	 *  with Kitsu sorting it. */
+	function chooseOrder(key: SortKey) {
+		if (key === sortKey) return;
+		sortKey = key;
+		if (submitted) void runSearch(submitted);
 	}
 
 	function posterFor(hit: KitsuAnimeRef): string | null {
@@ -210,12 +292,12 @@
 				<span class="eyebrow-rule" aria-hidden="true"></span>
 				<span class="eyebrow-value">{submitted}</span>
 				<span class="eyebrow-sep" aria-hidden="true">·</span>
-				{#if busy}
+				{#if searching}
 					<span class="eyebrow-count">{m.search_status_searching()}</span>
 				{:else}
 					<span class="eyebrow-count">
-						<span class="num">{count}</span>
-						<span class="word">{m.search_count_word({ count })}</span>
+						<span class="num">{counter.num}</span>
+						<span class="word">{counter.word}</span>
 					</span>
 				{/if}
 			</p>
@@ -229,7 +311,12 @@
 		{/if}
 	</section>
 
-	{#if submitted && results !== null && results.length > 0}
+	<!-- Mounted for as long as the search has answered, with shows,
+	     with nothing, or with a failure: a reorder can open on a page
+	     the availability filter empties, a search can end with nothing,
+	     and a reorder's first page can fail, and in each case the chip
+	     the reader pressed stays in place with its focus. -->
+	{#if submitted && (results !== null || error !== null)}
 		<section class="controls" aria-label={m.search_controls_aria_label()}>
 			<div class="control-group">
 				<span class="control-label">{m.search_control_sort_label()}</span>
@@ -243,7 +330,7 @@
 							class:active={sortKey === key}
 							role="radio"
 							aria-checked={sortKey === key}
-							onclick={() => (sortKey = key as SortKey)}
+							onclick={() => chooseOrder(key as SortKey)}
 						>
 							{label()}
 						</button>
@@ -268,7 +355,10 @@
 						<button
 							type="button"
 							class="chip chip-clear"
-							onclick={() => activeSubtypes.clear()}
+							onclick={() => {
+								activeSubtypes.clear();
+								gridChanged();
+							}}
 							aria-label={m.search_chips_clear_button_aria_label()}
 						>
 							{m.search_chips_clear_button_aria_label()}
@@ -284,7 +374,7 @@
 			<p class="state-headline">{error.headline}</p>
 			{#if error.detail}<p class="state-detail">{error.detail}</p>{/if}
 		</div>
-	{:else if busy && !results}
+	{:else if (busy && !results) || (results?.length === 0 && phase.kind === 'loading-more')}
 		<ul class="grid" aria-busy="true" aria-label={m.search_skeleton_aria_label()}>
 			{#each Array.from({ length: 12 }, (_, k) => k) as i (i)}
 				<li class="card card-skeleton" style="--i: {i}">
@@ -294,7 +384,7 @@
 				</li>
 			{/each}
 		</ul>
-	{:else if results !== null && results.length === 0}
+	{:else if results !== null && results.length === 0 && !moreToCome}
 		<div class="state state-empty">
 			<p class="state-headline">
 				{m.search_empty_headline_prefix()}<em>{submitted ?? ''}</em
@@ -331,7 +421,7 @@
 			<p class="state-headline">{m.search_filtered_empty_headline()}</p>
 			<p class="state-detail">{m.search_filtered_empty_detail()}</p>
 		</div>
-	{:else if displayed !== null}
+	{:else if displayed !== null && displayed.length > 0}
 		<ul class="grid">
 			{#each displayed as hit, i (hit.id)}
 				{@const poster = posterFor(hit)}
@@ -339,7 +429,7 @@
 				{@const accent = accentFor(hit.id)}
 				{@const year = yearOf(hit)}
 				{@const rating = ratingOf(hit)}
-				<li class="card" style="--i: {i}; --accent: {accent};">
+				<li class="card" style="--i: {slotOf.get(hit.id) ?? i}; --accent: {accent};">
 					<a href={resolve('/anime/[id]', { id: hit.id })} class="card-link">
 						<span class="poster">
 							{#if poster}
@@ -384,6 +474,97 @@
 				</li>
 			{/each}
 		</ul>
+		{#if phase.kind === 'loading-more'}
+			<!-- One row of the next page's slots, held open below the
+			     grid where its cards will land. The row is as wide as the
+			     grid's columns: extra slots fall into rows clipped to zero. -->
+			<ul class="grid grid-ghost" aria-hidden="true">
+				{#each Array.from({ length: 12 }, (_, k) => k) as k (k)}
+					<li class="card card-skeleton" style="--i: {k}">
+						<div class="poster poster-skeleton"></div>
+						<div class="line line-skeleton" style="inline-size: 70%"></div>
+						<div class="line line-skeleton line-thin" style="inline-size: 40%"></div>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	{/if}
+
+	<!-- Mounted once each search's first page has settled, and
+	     unmounted while the next search's first page loads: every search
+	     gets a fresh observer, which reports its initial state (an
+	     observer reports only changes, and a grid short for two searches
+	     in a row gives it none), measured against this search's grid,
+	     not the previous one still on screen. -->
+	{#if submitted && results !== null && !error && phase.kind !== 'loading'}
+		<div class="sentinel" use:sentinel aria-hidden="true"></div>
+	{/if}
+	{#if submitted}
+		<div class="folio" data-phase={phase.kind} data-settled={results !== null}>
+			<span class="folio-anchor" tabindex="-1" bind:this={focusAnchor}></span>
+			<!-- Once a first page is shown: one rule, always in place, so a
+			     state change recolours it instead of moving what is below.
+			     Before that the folio is the bare live region. -->
+			{#if results !== null}
+				<span
+					data-testid="search-paging-rule"
+					class="folio-rule"
+					class:folio-rule-drawing={phase.kind === 'loading-more' && shown}
+					class:folio-rule-closed={phase.kind === 'end' && shown}
+					class:folio-rule-failed={phase.kind === 'failed'}
+					class:folio-rule-held={phase.kind === 'held'}
+					aria-hidden="true"
+				></span>
+			{/if}
+			<!-- The one live region of the paging, mounted with the query
+			     so a screen reader hears each change; buttons stay outside. -->
+			<p class="folio-line" data-testid="search-paging" aria-live="polite" aria-atomic="true">
+				{#if phase.kind === 'loading-more' && shown}
+					{m.search_paging_loading()}
+				{:else if phase.kind === 'end' && shown}
+					{m.search_paging_end({ query: submitted })}
+				{:else if phase.kind === 'failed'}
+					{m.search_paging_failed()}
+					{#if describeError(phase.error)}
+						<span class="folio-detail">{describeError(phase.error)}</span>
+					{/if}
+				{:else if phase.kind === 'held'}
+					{m.search_paging_held()}
+				{/if}
+			</p>
+			{#if phase.kind === 'failed'}
+				<button
+					type="button"
+					class="folio-action"
+					use:keepFocusInFolio
+					onclick={() => searchRunner.loadMore()}
+				>
+					{m.search_paging_retry()}
+				</button>
+			{:else if (phase.kind === 'idle' || phase.kind === 'loading-more') && activeSubtypes.size > 0}
+				<!-- A type filter turns the auto-load off (see shouldAutoLoad);
+				     the next page is the reader's to ask for. The button stays
+				     mounted while that page loads, so focus stays on it. -->
+				<button
+					type="button"
+					class="folio-action"
+					aria-disabled={phase.kind === 'loading-more'}
+					use:keepFocusInFolio
+					onclick={() => searchRunner.loadMore()}
+				>
+					{m.search_paging_load_more()}
+				</button>
+			{:else if phase.kind === 'held'}
+				<button
+					type="button"
+					class="folio-action"
+					use:keepFocusInFolio
+					onclick={() => searchRunner.loadMore()}
+				>
+					{m.search_paging_keep_looking()}
+				</button>
+			{/if}
+		</div>
 	{/if}
 </div>
 
@@ -620,6 +801,172 @@
 		}
 		50% {
 			opacity: 0.55;
+		}
+	}
+
+	/* — Paging folio: the line under the grid. One rule carries the
+	   state — drawn in persimmon while the next page loads, closed
+	   with the manga-page double rule at the end, oxblood on a
+	   failure — and one line of copy says it. */
+	.sentinel {
+		block-size: 1px;
+	}
+	.folio {
+		position: relative;
+		display: grid;
+		justify-items: start;
+		gap: var(--space-3);
+		margin-block-start: var(--space-6);
+		padding-block-end: var(--space-6);
+	}
+	/* Mounted with the query so its live region is in place before the
+	   first page lands. Until a first page has been shown (and under a
+	   failed first search) it is the empty live region alone and takes
+	   no room; from then on its room is fixed, so a second search does
+	   not move the bottom of the page. */
+	.folio:not([data-settled='true']) {
+		margin-block-start: 0;
+		padding-block-end: 0;
+	}
+	/* Out of the grid's flow: a focus target, not a row. */
+	.folio-anchor {
+		position: absolute;
+		inset-block-start: 0;
+		inset-inline-start: 0;
+	}
+	.folio-anchor:focus {
+		outline: none;
+	}
+	/* The rule is a fixed 5px band: a line at its head whose weight and
+	   colour carry the state, and, at the end, a second hairline at its
+	   foot. Nothing about it changes size between states. */
+	.folio-rule {
+		--rule-weight: 1px;
+		--rule-color: transparent;
+		position: relative;
+		display: block;
+		inline-size: 100%;
+		block-size: 5px;
+		overflow: hidden;
+	}
+	.folio-rule::before,
+	.folio-rule::after {
+		content: '';
+		position: absolute;
+		inset-inline: 0;
+	}
+	.folio-rule::before {
+		inset-block-start: 0;
+		block-size: var(--rule-weight);
+		background: var(--rule-color);
+	}
+	/* The two states that ask something of the reader — wait, or act —
+	   carry a heavier rule than the settled ones. */
+	.folio-rule-drawing {
+		--rule-weight: 2px;
+		--rule-color: var(--ink-200);
+	}
+	/* Drawn from the start of the line: the origin follows the
+	   writing direction. */
+	.folio-rule-drawing::after {
+		inset-block-start: 0;
+		block-size: 2px;
+		background: var(--accent-persimmon);
+		transform-origin: left center;
+		animation: folio-draw 1.6s var(--ease-in-out) infinite;
+	}
+	.folio-rule-drawing:dir(rtl)::after {
+		transform-origin: right center;
+	}
+	@keyframes folio-draw {
+		0% {
+			transform: scaleX(0);
+			opacity: 1;
+		}
+		70% {
+			transform: scaleX(1);
+			opacity: 1;
+		}
+		100% {
+			transform: scaleX(1);
+			opacity: 0;
+		}
+	}
+	/* The manga-page double rule closes the list: two hairlines,
+	   3px apart. */
+	.folio-rule-closed {
+		--rule-color: var(--ink-300);
+	}
+	.folio-rule-closed::after {
+		inset-block-end: 0;
+		block-size: 1px;
+		background: var(--ink-300);
+	}
+	.folio-rule-failed {
+		--rule-weight: 2px;
+		--rule-color: var(--accent-oxblood);
+	}
+	.folio-rule-held {
+		--rule-color: var(--bone-400);
+	}
+	.folio-line {
+		margin: 0;
+		max-inline-size: 60ch;
+		font-family: var(--font-body);
+		font-size: var(--type-meta);
+		line-height: var(--leading-prose);
+		color: var(--bone-300);
+	}
+	/* One line's room even while empty, once a first page is shown, so
+	   copy arriving or leaving does not move what is below. */
+	.folio[data-settled='true'] .folio-line {
+		min-block-size: calc(1em * var(--leading-prose));
+	}
+	.folio-detail {
+		color: var(--bone-400);
+	}
+	.folio-action {
+		padding: 6px var(--space-4);
+		background: transparent;
+		border: 1px solid var(--ink-300);
+		border-radius: var(--radius-pill);
+		font-family: var(--font-body);
+		font-size: var(--type-meta);
+		font-weight: 500;
+		color: var(--bone-100);
+		cursor: pointer;
+		transition:
+			border-color var(--dur-fast) var(--ease-out-soft),
+			background var(--dur-fast) var(--ease-out-soft);
+	}
+	.folio-action[aria-disabled='true'] {
+		color: var(--bone-400);
+		cursor: progress;
+	}
+	.folio-action:hover {
+		border-color: var(--bone-300);
+	}
+	.folio-action:focus-visible {
+		outline: none;
+		box-shadow: 0 0 0 2px var(--bone-100);
+	}
+	.grid-ghost {
+		margin-block-start: var(--space-6);
+		grid-template-rows: auto;
+		grid-auto-rows: 0;
+		row-gap: 0;
+		overflow: hidden;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.card,
+		.card-skeleton .poster-skeleton,
+		.line {
+			animation: none;
+		}
+		.folio-rule-drawing::after {
+			animation: none;
+			opacity: 0.6;
 		}
 	}
 

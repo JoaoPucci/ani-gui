@@ -7,9 +7,7 @@
 //! and stored under the same key, and only then returned.
 //!
 //! Cache TTLs come from [`crate::cache::ttl`]:
-//! - Search results: `DISCOVERY_TTL` (6h) — popular anime is stable, but
-//!   trending changes within a day; this is the right tradeoff between
-//!   responsiveness and Kitsu API volume.
+//! - Search results: see [`super::kitsu_search`], which owns them.
 //! - Anime detail: `ANIME_DETAIL_TTL` (7d) for a finished show, a day
 //!   otherwise (`anime_detail_ttl`) — synopsis / titles / posters
 //!   change rarely.
@@ -24,48 +22,15 @@ use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::Result;
 use crate::meta::kitsu::{drop_music, KitsuAnimeRef, KitsuCoverImage, KitsuEpisode};
 
+pub use super::kitsu_search::kitsu_search;
+use super::kitsu_search::SEARCH_PAGE_LIMIT;
+
 // Schema version is encoded in the cache key prefix (`kitsu:v2:`).
 // Bump when KitsuAnimeRef gains a field consumers depend on — v2 was
 // the bump that added the `titles` map; v1 payloads have no titles
 // map and would silently break the play flow's alt_titles fallback.
 // Old un-versioned keys become misses on first access and the data
 // re-fetches with the new schema.
-
-/// Max search result page size we ask Kitsu for. Keeping this conservative
-/// because the UI only renders a handful of cards before scrolling needs
-/// pagination (which we don't support yet).
-const SEARCH_PAGE_LIMIT: u8 = 20;
-
-/// Search Kitsu for anime by free-text. Cache key:
-/// `kitsu:search:<normalized-query>`. Returns at most
-/// [`SEARCH_PAGE_LIMIT`] hits.
-///
-/// # Errors
-/// Inherits from [`crate::meta::kitsu::KitsuClient::search`] on cache miss.
-pub async fn kitsu_search(state: &AppState, query: &str) -> Result<Vec<KitsuAnimeRef>> {
-    let key = format!("kitsu:v2:search:{}", normalize_query(query));
-    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
-        if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
-            // Warm-on-hit: idempotent. get_or_fetch returns from
-            // disk on bytes-cache hit (no network), so this is cheap.
-            // Catches the case where meta_cache outlives the image
-            // cache (LRU evicted the bytes, response still warm).
-            warm_signed_image_urls(state, &body);
-            // Sanitize music on read so caches written before the music
-            // filter existed don't keep serving MVs.
-            return Ok(drop_music(hits));
-        }
-        // Cached body deserialized as something else — treat as miss and
-        // rebuild rather than hand the frontend bad data.
-    }
-    let hits = state.kitsu.search(query, SEARCH_PAGE_LIMIT).await?;
-    if let Ok(body) = serde_json::to_string(&hits) {
-        // TTL conversion can't fail in practice; clamp via try_from.
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, DISCOVERY_TTL.as_secs());
-        warm_signed_image_urls(state, &body);
-    }
-    Ok(hits)
-}
 
 /// Currently-airing anime ranked by user count — a usable proxy for
 /// "trending" until the AniList client lands. Cache key: `kitsu:trending`,
@@ -86,9 +51,10 @@ pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
 
 /// AniList-backed trending — the hero / Trending strip on home use
 /// this in preference to [`kitsu_trending`] because AniList's
-/// `TRENDING_DESC` is recency-weighted (last few days of viewer
-/// activity), which keeps evergreens like One Piece from anchoring
-/// the top of the row regardless of what's actually hot this week.
+/// `TRENDING_DESC` is recency-weighted (its `trending` value counts
+/// viewer activity over the past hour), which keeps evergreens like
+/// One Piece from anchoring the top of the row regardless of what is
+/// hot now.
 ///
 /// Pipeline:
 ///   1. Fetch AniList trending (top N).
@@ -1210,16 +1176,6 @@ async fn anilist_banner_for(
         .flatten()
 }
 
-/// Lowercase + collapse internal whitespace + trim. Stable cache key
-/// regardless of how the user types the query.
-fn normalize_query(s: &str) -> String {
-    s.trim()
-        .to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 #[cfg(test)]
 #[path = "kitsu_detail_ttl_test.rs"]
 mod detail_ttl_tests;
@@ -1274,57 +1230,6 @@ mod tests {
             availability_refreshes:
                 crate::commands::availability_refresh::AvailabilityRefreshes::new(),
         }
-    }
-
-    #[test]
-    fn normalize_query_collapses_whitespace_and_lowercases() {
-        assert_eq!(normalize_query("One Piece"), "one piece");
-        assert_eq!(normalize_query("  ONE   PIECE  "), "one piece");
-        assert_eq!(normalize_query("\tone\npiece"), "one piece");
-    }
-
-    #[tokio::test]
-    async fn kitsu_search_caches_after_first_call() {
-        let mock = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/anime"))
-            .and(query_param("filter[text]", "one piece"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/vnd.api+json")
-                    .set_body_bytes(SEARCH_FIXTURE.to_vec()),
-            )
-            .expect(1) // <-- must only hit upstream once
-            .mount(&mock)
-            .await;
-
-        let state = state_with_kitsu_at(&mock.uri());
-        let first = kitsu_search(&state, "one piece").await.expect("ok");
-        let second = kitsu_search(&state, "one piece").await.expect("ok");
-        assert_eq!(first.len(), 5);
-        assert_eq!(first, second, "cache hit returns identical body");
-    }
-
-    #[tokio::test]
-    async fn kitsu_search_normalizes_query_for_cache_key() {
-        // Two queries that normalize to the same key should share the
-        // same cached entry — upstream sees one request total.
-        let mock = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/anime"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("content-type", "application/vnd.api+json")
-                    .set_body_bytes(SEARCH_FIXTURE.to_vec()),
-            )
-            .expect(1)
-            .mount(&mock)
-            .await;
-
-        let state = state_with_kitsu_at(&mock.uri());
-        let _ = kitsu_search(&state, "  One   Piece  ").await.unwrap();
-        let _ = kitsu_search(&state, "ONE PIECE").await.unwrap();
-        // mock.expect(1) does the assertion when the harness drops.
     }
 
     #[tokio::test]
@@ -1466,21 +1371,6 @@ mod tests {
         let state = state_with_kitsu_at(&mock.uri());
         let _ = kitsu_episodes(&state, "12", 2).await.expect("ok");
         // Asserted by mock.expect(1) — offset 20 hit exactly once.
-    }
-
-    #[tokio::test]
-    async fn kitsu_search_propagates_upstream_errors_and_does_not_cache() {
-        let mock = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/anime"))
-            .respond_with(ResponseTemplate::new(503))
-            .expect(2) // <-- both calls hit upstream because errors are not cached
-            .mount(&mock)
-            .await;
-
-        let state = state_with_kitsu_at(&mock.uri());
-        assert!(kitsu_search(&state, "anything").await.is_err());
-        assert!(kitsu_search(&state, "anything").await.is_err());
     }
 
     // — Slug lookup ——————————————————————————————————————————————————
