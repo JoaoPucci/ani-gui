@@ -54,7 +54,7 @@ One instance runs per profile. The desktop shell takes a single-instance lock be
 ## Data flow: searching and playing an episode
 
 1. The user types a query into the search bar.
-2. The renderer calls `POST /api/kitsu/search`. The backend hits Kitsu and returns matches.
+2. The search page calls `POST /api/kitsu/search/page` with an offset of 0. The backend hits Kitsu and returns a page of matches — Kitsu serves at most 20 a page, in its own ranking, by popularity, unless the user chose an order — with the offset the next page starts at. As the user scrolls to the end of the results, the page asks for the next offset and appends what comes back. Choosing Year or Rating starts the search over with the order in the request (`sort`), and Kitsu sorts the pages, so a page that lands continues the order below what is shown. (The search bar's live dropdown calls `POST /api/kitsu/search`, which is the first page alone.)
 3. The user picks a result; the renderer fetches detail and episode list via `GET /api/kitsu/anime/:id` and `GET /api/kitsu/episodes/:id`.
 4. The user clicks an episode. The renderer calls `POST /api/sessions` with the chosen anime + episode. The backend resolves the stream natively against [hianime](https://hianime.at): it searches the site for the title (falling back through every alias), probes candidates' per-entry episode lists to pick the right show, fetches the episode's server list, and reads the master-playlist URL and any sidecar subtitle tracks off the chosen server's embed page. Requests go through a `curl-impersonate` subprocess — the site sits behind TLS-fingerprinting protection that rejects plain HTTP clients. See [Providers and failover](#providers-and-failover).
 5. The backend creates a `StreamSession` (UUID, upstream URL, referer, expiry), stores it in memory, and returns a token to the renderer.
@@ -119,7 +119,7 @@ Catalogue caches shared with browsing — Kitsu details, artwork, episode lists,
 
 The landing page shows four rows: **Trending Now**, **Popular This Season**, **Top Rated**, **Recently Released**.
 
-- **Trending Now** is fetched from AniList's GraphQL endpoint (`Page.media(sort: TRENDING_DESC)`). AniList's trending sort tracks current weekly popularity, which Kitsu's `userCount` cannot match.
+- **Trending Now** is fetched from AniList's GraphQL endpoint (`Page.media(sort: TRENDING_DESC)`). AniList's trending sort follows recent activity (its `trending` value counts the past hour), which Kitsu's cumulative `userCount` cannot match.
 - **Popular This Season**, **Top Rated**, and **Recently Released** are fetched from Kitsu (REST/JSON:API). Kitsu's posters and banners (sizes verified at build time) are sufficient for these views.
 - Both APIs are hit only when cache misses; cache is SQLite (`$XDG_CACHE_HOME/ani-gui/meta.db`) with TTLs from 1 hour (trending) up to 30 days (title-match cache).
 

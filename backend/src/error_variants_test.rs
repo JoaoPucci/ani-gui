@@ -66,6 +66,8 @@ fn pairs() -> Vec<Pair> {
         AniError::Metadata => AniError::Metadata,
         AniError::UnsupportedPkce => AniError::UnsupportedPkce,
         AniError::InvalidKitsuId => AniError::InvalidKitsuId,
+        AniError::InvalidSearchOffset => AniError::InvalidSearchOffset,
+        AniError::InvalidRequestBody => AniError::InvalidRequestBody,
         AniError::InvalidToken => AniError::InvalidToken,
     }
 }
