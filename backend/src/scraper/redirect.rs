@@ -13,3 +13,7 @@ pub fn same_origin_hop(from: &str, status: u16, target: Option<&str>) -> Option<
     let next = from.join(target?).ok()?;
     (next.origin() == from.origin()).then(|| next.to_string())
 }
+
+#[cfg(test)]
+#[path = "redirect_test.rs"]
+mod tests;
