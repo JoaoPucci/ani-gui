@@ -273,7 +273,15 @@ proptest::proptest! {
     /// Only the three orders the route offers are read; any other
     /// `sort` string is refused rather than read as relevance.
     #[test]
-    fn only_an_offered_order_is_read(sort in "[a-z_]{0,12}") {
+    fn only_an_offered_order_is_read(sort in proptest::prop_oneof![
+        proptest::strategy::Just("relevance".to_owned()),
+        proptest::strategy::Just("year".to_owned()),
+        proptest::strategy::Just("rating".to_owned()),
+        proptest::strategy::Just("Year".to_owned()),
+        proptest::strategy::Just("years".to_owned()),
+        proptest::strategy::Just("title".to_owned()),
+        "[a-zA-Z_]{0,12}",
+    ]) {
         use crate::meta::kitsu_page::SearchOrder;
         let body = format!(r#"{{"query":"q","offset":0,"sort":"{sort}"}}"#);
         let want = match sort.as_str() {
