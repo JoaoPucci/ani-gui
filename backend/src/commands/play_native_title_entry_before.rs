@@ -13,13 +13,43 @@ use super::*;
 /// 2", "Kaguya-sama wa Kokurasetai 2" and "Steins;Gate 0" are not —
 /// each adds a mark or a word to the name.
 pub(crate) fn is_name_and_first_divisions(candidate: &str, title: &str) -> bool {
-    let (candidate, title) = (normalized(candidate), normalized(title));
+    let (candidate, title) = (without_tags(candidate), without_tags(title));
     let named = name(&title);
     let (Some(c), Some(t)) = (name_end(&candidate, &named), name_end(&title, &named)) else {
         return false;
     };
     marks_after(&candidate, c) == marks_after(&title, t)
         && first_divisions_only(&words(&candidate[c..]))
+}
+
+/// `title` normalized ([`normalized`]) without the bracketed release
+/// years and format tags the provider adds to a title — a four-digit
+/// year ("Gintama (2011)") or TV, ONA, OVA or OAD ("JoJo no Kimyou na
+/// Bouken (TV)", "[OVA]") in round, square or lenticular brackets,
+/// ASCII or full-width. Other bracketed words are left as they are.
+fn without_tags(title: &str) -> String {
+    let text = normalized(title);
+    let mut out = String::new();
+    let mut rest = text.as_str();
+    while let Some(open) = rest.find(['(', '[', '（', '【']) {
+        let after = &rest[open..];
+        let inner_start = after.chars().next().map_or(1, char::len_utf8);
+        let tag_end = after.find([')', ']', '）', '】']).filter(|&close| {
+            let inner = after[inner_start..close].trim();
+            (inner.len() == 4 && inner.chars().all(|c| c.is_ascii_digit()))
+                || ["tv", "ona", "ova", "oad"].contains(&inner)
+        });
+        let Some(close) = tag_end else {
+            out.push_str(&rest[..open + inner_start]);
+            rest = &rest[open + inner_start..];
+            continue;
+        };
+        out.push_str(&rest[..open]);
+        let closer = after[close..].chars().next().map_or(1, char::len_utf8);
+        rest = &after[close + closer..];
+    }
+    out.push_str(rest);
+    normalized(&out)
 }
 
 /// Where `named` ends at the start of `text`: the shortest prefix whose
