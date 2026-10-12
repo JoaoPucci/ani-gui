@@ -96,6 +96,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// - A candidate the searched title names a later part of ("X" when
 ///   asked for "X Season 2") is the season before, and never picked;
 ///   [`pick_candidate_titled`] reads every title the entry goes by.
+///   So is the entry before this one ("Show" for "Show 2"). Each is
+///   another entry of the same show, so a pool rejected after it is
+///   still a clean miss.
 /// - A candidate the entry's titles do not admit — named for a
 ///   season or part the entry is not — is never picked (with a
 ///   count it is still probed); a pool rejected for that alone is
@@ -107,7 +110,10 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///
 /// # Errors
 /// [`crate::error::AniError::NoResults`] when `hits` is empty or no
-/// candidate survives the threshold.
+/// candidate survives the threshold; the answered dead end
+/// `Upstream { status: 404 }` when the titles refused a candidate the
+/// count accepted, or without a count refused a hit and nothing else
+/// was picked.
 pub async fn pick_candidate<P: Provider + ?Sized>(
     client: &P,
     hits: &[BrowseHit],
