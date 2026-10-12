@@ -727,8 +727,17 @@ starting it, and delete it when you find it done.
 A survey, on 2026-10-12, of fields the metadata sources answer that the
 app does not show, kept so features can be derived from it. It records
 what each source was seen to return, not a design; whoever picks one up
-checks the source again. The app already uses AniList's banner,
-per-episode thumbnails and accent colour, so those are not listed.
+checks the source again. The app already uses two AniList fields, each
+only to fill a gap Kitsu leaves: the banner stands in for a detail
+page's cover when Kitsu has none, and per-episode thumbnails fill
+episodes Kitsu has no thumbnail for.
+
+- **Accent colour.** AniList `coverImage.color` gives each show a
+  colour in CSS form. The backend already fetches it, but nothing in the
+  renderer reads it: `accentFor()` in
+  `frontend/src/lib/design/accent.ts` hashes the Kitsu id into a fixed
+  eight-colour palette, and its TODO says to replace that with this
+  colour.
 
 - **Title logos for the home banner.** Neither Kitsu nor AniList has
   logos. TMDB (`/tv/{id}/images`, `/movie/{id}/images`) returns
@@ -767,9 +776,11 @@ per-episode thumbnails and accent colour, so those are not listed.
 - **Relations.** AniList `relations` names prequels, sequels, side
   stories and adaptations, each typed; a base for the franchise and
   season grouping listed under Interface.
-- **Spoiler-safe tags.** AniList `tags` carry a relevance rank and an
-  `isMediaSpoiler` flag, enough to show the top tags without spoilers;
-  related to the spoiler-free mode entry above.
+- **Spoiler-safe tags.** AniList `tags` carry a relevance rank and two
+  spoiler flags: `isMediaSpoiler` (spoils this show) and
+  `isGeneralSpoiler` (spoils any show it is on). Showing tags without
+  spoilers means leaving out a tag that sets either. Related to the
+  spoiler-free mode entry above.
 - **Rating breakdown and counts.** Kitsu `ratingFrequencies`,
   `favoritesCount` and `userCount`, and AniList's score distribution.
 
