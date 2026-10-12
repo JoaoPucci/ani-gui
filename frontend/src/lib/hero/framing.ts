@@ -11,7 +11,7 @@
  * branches that read it before any real change ships.
  */
 
-export type HeroFraming = 'current' | 'contain' | 'focus';
+export type HeroFraming = 'current' | 'contain' | 'pillar' | 'focus';
 export type HeroSource = 'kitsu' | 'anilist';
 
 export interface HeroExperiment {

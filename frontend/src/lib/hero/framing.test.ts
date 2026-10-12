@@ -82,6 +82,12 @@ describe('heroExperimentFromQuery', () => {
 			exp('current', 'kitsu')
 		);
 	});
+	it('names the fill-height framing', () => {
+		expect(heroExperimentFromQuery('?hero=pillar', base)).toEqual(exp('pillar', 'anilist'));
+		expect(parseHeroExperiment('{"framing":"pillar","source":"kitsu"}')).toEqual(
+			exp('pillar', 'kitsu')
+		);
+	});
 	it('ignores an unknown value for that field', () => {
 		expect(heroExperimentFromQuery('?hero=zoom&heroSrc=anilist', base)).toEqual(base);
 	});
@@ -133,6 +139,10 @@ describe('pickHeroImage', () => {
 			expect(pickHeroImage(noLarge, exp(f, 'kitsu'), 'home').url).toBe(cover.original);
 			expect(pickHeroImage(noLarge, exp(f, 'kitsu'), 'detail').url).toBe(cover.small);
 		}
+	});
+	it('prefers the whole upload when filling the height', () => {
+		expect(pickHeroImage(show(), exp('pillar', 'kitsu'), 'home').url).toBe(cover.original);
+		expect(pickHeroImage(show(), exp('pillar', 'anilist'), 'detail').url).toBe(banner);
 	});
 	it('prefers the whole upload when never cropping', () => {
 		expect(pickHeroImage(show(), exp('contain', 'kitsu'), 'detail').url).toBe(cover.original);

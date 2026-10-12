@@ -92,6 +92,20 @@ describe('home hero framing experiment', () => {
 		expect(backdrop?.getAttribute('src')).toBe(img.getAttribute('src'));
 	});
 
+	it('fills the height: the whole upload over a blurred copy, cropped at the sides only', async () => {
+		localStorage.setItem(
+			HERO_EXPERIMENT_STORAGE_KEY,
+			JSON.stringify({ framing: 'pillar', source: 'kitsu' })
+		);
+		app = mount(HomePage, { target });
+		const img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(COVER_WHOLE));
+		expect(target.querySelector('section.hero')?.classList.contains('framing-pillar')).toBe(true);
+		expect(target.querySelector('.hero-backdrop')?.getAttribute('src')).toBe(
+			img.getAttribute('src')
+		);
+	});
+
 	it('takes AniList’s banner first under the AniList source', async () => {
 		localStorage.setItem(
 			HERO_EXPERIMENT_STORAGE_KEY,
