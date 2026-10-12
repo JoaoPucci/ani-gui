@@ -193,3 +193,26 @@ async fn the_client_asks_kitsu_to_sort_the_search_in_the_order_given() {
         assert_eq!(page.hits[0].id, id, "{order:?}");
     }
 }
+
+/// A ranked search adds no parameter in place of the sort it leaves
+/// out: every query parameter it sends has a name.
+#[tokio::test]
+async fn a_ranked_search_sends_no_nameless_parameter() {
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(body(&[anime("1", "TV")], false, Some(1))),
+        )
+        .mount(&mock)
+        .await;
+    let client = KitsuClient::with_base(reqwest::Client::new(), mock.uri());
+    client.search_page("dragon ball", 20, 0).await.expect("ok");
+    let requests = mock.received_requests().await.expect("recorded");
+    let query = requests[0].url.query().unwrap_or_default().to_string();
+    for pair in query.split('&') {
+        assert!(!pair.starts_with('='), "nameless parameter in {query}");
+    }
+}
