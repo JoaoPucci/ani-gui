@@ -40,6 +40,9 @@ where
     let mut report = tokio::time::interval(RATE_REPORT_EVERY);
     report.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     report.tick().await;
+    // A count the dock has not had a speed from since it arrived: a run
+    // that ends before the next report is read once more as it ends.
+    let mut unreported = false;
     while lines_open || progress_open {
         tokio::select! {
             next = lines.next_line(), if lines_open => {
@@ -75,15 +78,20 @@ where
                 let line = crate::spawn::strip_ansi(raw.as_bytes());
                 if let Some((format, bytes)) = super::download_progress::progress(&line) {
                     meter.observe_format(format.as_deref(), bytes, tokio::time::Instant::now());
+                    unreported = true;
                     measured.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
             }
             _ = report.tick() => {
                 if measured.load(std::sync::atomic::Ordering::Relaxed) {
                     on_line(&rate_report(meter.rate_at(tokio::time::Instant::now())));
+                    unreported = false;
                 }
             }
         }
+    }
+    if unreported {
+        on_line(&rate_report(meter.rate_at(tokio::time::Instant::now())));
     }
     Ok(())
 }
