@@ -45,6 +45,7 @@ use crate::config::Config;
 use crate::error::AniError;
 use crate::history::HistoryEntry;
 use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
+use crate::meta::kitsu_page::KitsuSearchPage;
 
 /// Map every `AniError` variant to the closest matching HTTP status.
 /// The body is the envelope [`ani_error_payload`] builds — the
@@ -98,6 +99,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
         .route("/api/kitsu/search", post(post_kitsu_search))
+        .route("/api/kitsu/search/page", post(post_kitsu_search_page))
         .route("/api/kitsu/anime/:id", get(get_kitsu_anime_detail))
         .route(
             "/api/kitsu/anime-by-slug/:slug",
@@ -232,6 +234,20 @@ async fn post_kitsu_search(
     Json(body): Json<SearchBody>,
 ) -> Result<Json<Vec<KitsuAnimeRef>>, AniError> {
     Ok(Json(kitsu_inner::kitsu_search(&state, &body.query).await?))
+}
+
+#[derive(Deserialize)]
+struct SearchPageBody {
+    query: String,
+    offset: u32,
+}
+
+async fn post_kitsu_search_page(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<SearchPageBody>,
+) -> Result<Json<KitsuSearchPage>, AniError> {
+    let _ = (state, body);
+    todo!("post_kitsu_search_page")
 }
 
 async fn get_kitsu_anime_detail(
@@ -819,6 +835,10 @@ mod kitsu_id_boundary_test;
 #[cfg(test)]
 #[path = "error_envelope_test.rs"]
 mod error_envelope_test;
+
+#[cfg(test)]
+#[path = "kitsu_search_page_test.rs"]
+mod kitsu_search_page_test;
 
 #[cfg(test)]
 mod tests {

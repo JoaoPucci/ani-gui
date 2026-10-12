@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AniError, Result};
 
+use super::kitsu_page::KitsuSearchPage;
+
 /// Kitsu API base URL. Override in tests via [`KitsuClient::with_base`].
 pub const KITSU_BASE: &str = "https://kitsu.io/api/edge";
 
@@ -302,6 +304,17 @@ fn into_ref(r: AnimeResource) -> KitsuAnimeRef {
 
 // --- Pure parsers --------------------------------------------------------
 
+/// Parse one page of a search, keeping where the next page starts.
+/// `offset` and `limit` are the ones the page was requested with.
+///
+/// # Errors
+/// Returns [`AniError::ParseFailed`] if the body isn't valid JSON:API for
+/// an anime collection.
+pub fn parse_search_page(body: &[u8], offset: u32, limit: u8) -> Result<KitsuSearchPage> {
+    let _ = (body, offset, limit);
+    todo!("parse_search_page")
+}
+
 /// Parse `{ "data": [...] }` into a list of refs. Used for search.
 ///
 /// # Errors
@@ -555,6 +568,20 @@ impl KitsuClient {
         }
         let body = resp.bytes().await.map_err(|_| AniError::Network)?;
         parse_search_response(&body)
+    }
+
+    /// One page of a free-text search, starting at `offset`.
+    ///
+    /// # Errors
+    /// Same as [`Self::search`].
+    pub async fn search_page(
+        &self,
+        query: &str,
+        limit: u8,
+        offset: u32,
+    ) -> Result<KitsuSearchPage> {
+        let _ = (query, limit, offset);
+        todo!("search_page")
     }
 
     /// Currently-airing anime sorted by user count descending — a usable

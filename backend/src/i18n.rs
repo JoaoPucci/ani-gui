@@ -67,6 +67,9 @@ pub mod keys {
     /// The renderer named a Kitsu id that is not one — not digits once
     /// trimmed. `AniError::InvalidKitsuId` maps here.
     pub const REQUEST_INVALID_KITSU_ID: &str = "error.request.invalid_kitsu_id";
+    /// The renderer asked for a search page off a page boundary or past
+    /// the deepest one. `AniError::InvalidSearchOffset` maps here.
+    pub const REQUEST_INVALID_SEARCH_OFFSET: &str = "error.request.invalid_search_offset";
 
     // --- error.scraper.* ---
     /// Something the app read did not have the shape it expected.

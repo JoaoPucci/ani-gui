@@ -10,6 +10,7 @@ use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::kitsu_warm::warm_signed_image_urls;
 use crate::error::Result;
 use crate::meta::kitsu::{drop_music, KitsuAnimeRef};
+use crate::meta::kitsu_page::KitsuSearchPage;
 
 /// The search page size we ask Kitsu for. Kitsu's anime search caps
 /// `page[limit]` at 20.
@@ -43,6 +44,28 @@ pub async fn kitsu_search(state: &AppState, query: &str) -> Result<Vec<KitsuAnim
         warm_signed_image_urls(state, &body);
     }
     Ok(hits)
+}
+
+/// The deepest `page[offset]` a search walks to: fifty pages. A text
+/// search ranked by popularity has long stopped being about the query
+/// by then, and the bound keeps a caller from walking Kitsu's whole
+/// catalogue one page at a time.
+pub(crate) const MAX_SEARCH_OFFSET: u32 = 1000;
+
+/// One page of a Kitsu text search, starting at `offset`.
+///
+/// # Errors
+/// - [`crate::error::AniError::InvalidSearchOffset`] when `offset` is
+///   not a page boundary within [`MAX_SEARCH_OFFSET`].
+/// - Inherits from [`crate::meta::kitsu::KitsuClient::search_page`] on
+///   cache miss.
+pub async fn kitsu_search_page(
+    state: &AppState,
+    query: &str,
+    offset: u32,
+) -> Result<KitsuSearchPage> {
+    let _ = (state, query, offset);
+    todo!("kitsu_search_page")
 }
 
 /// Lowercase + collapse internal whitespace + trim. Stable cache key

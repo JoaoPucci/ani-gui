@@ -173,6 +173,12 @@ pub enum AniError {
     #[error("invalid kitsu id")]
     InvalidKitsuId,
 
+    /// The renderer asked for a search page that is not one: an offset
+    /// off a page boundary or past the deepest page a search walks to.
+    /// 400, like [`Self::InvalidKitsuId`]: the caller sent the bad value.
+    #[error("invalid search offset")]
+    InvalidSearchOffset,
+
     /// Stream session token was missing, expired, or signature-invalid.
     #[error("invalid stream token")]
     InvalidToken,
@@ -206,6 +212,7 @@ impl AniError {
             Self::Metadata => "error.metadata.source",
             Self::UnsupportedPkce => "error.account.unsupported_pkce",
             Self::InvalidKitsuId => crate::i18n::keys::REQUEST_INVALID_KITSU_ID,
+            Self::InvalidSearchOffset => crate::i18n::keys::REQUEST_INVALID_SEARCH_OFFSET,
             Self::InvalidToken => "error.stream.invalid_token",
         }
     }
@@ -255,7 +262,7 @@ impl AniError {
             Self::Network => 503,
             Self::GateRefused => 503,
             Self::Timeout => 504,
-            Self::UnsupportedPkce | Self::InvalidKitsuId => 400,
+            Self::UnsupportedPkce | Self::InvalidKitsuId | Self::InvalidSearchOffset => 400,
             Self::ParseFailed { .. }
             | Self::FfmpegMissing
             | Self::PlayerSpawnFailed { .. }
