@@ -116,7 +116,7 @@
 	const slotOf = $derived.by(() => (slots = staggerSlots(slots, displayed ?? [])));
 
 	$effect(() => {
-		if (shouldAutoLoad(phase, bottomInReach, false)) searchRunner.loadMore();
+		if (shouldAutoLoad(phase, bottomInReach, activeSubtypes.size > 0)) searchRunner.loadMore();
 	});
 
 	let folio = $state<HTMLElement | null>(null);
@@ -478,6 +478,12 @@
 			{#if phase.kind === 'failed'}
 				<button type="button" class="folio-action" onclick={resume}>
 					{m.search_paging_retry()}
+				</button>
+			{:else if phase.kind === 'idle' && activeSubtypes.size > 0}
+				<!-- A type filter turns the auto-load off (see shouldAutoLoad);
+				     the next page is the reader's to ask for. -->
+				<button type="button" class="folio-action" onclick={resume}>
+					{m.search_paging_load_more()}
 				</button>
 			{:else if phase.kind === 'held'}
 				<button type="button" class="folio-action" onclick={resume}>
