@@ -34,20 +34,28 @@ export function watchSentinel(
 	Observer: ObserverCtor | undefined = globalThis.IntersectionObserver,
 	now: () => number = () => performance.now()
 ): SentinelWatch {
-	void now;
 	if (!Observer) {
 		onChange(false);
 		return { stop: () => {}, remeasure: () => {} };
 	}
+	// Entries measured before the last remeasure describe a layout that
+	// has since changed; `unobserve` does not drop ones already queued.
+	let since = -Infinity;
 	const observer = new Observer(
-		// Entries arrive oldest first; a batch is never empty.
-		(entries) => onChange(entries[entries.length - 1].isIntersecting),
+		(entries) => {
+			// Entries arrive oldest first, so the last current one is the
+			// newest measurement. Written as "not older than" so that,
+			// before any remeasure, every entry counts.
+			const current = entries.filter((e) => !(e.time < since));
+			if (current.length > 0) onChange(current[current.length - 1].isIntersecting);
+		},
 		{ root: null, rootMargin: SENTINEL_MARGIN }
 	);
 	observer.observe(node);
 	return {
 		stop: () => observer.disconnect(),
 		remeasure: () => {
+			since = now();
 			observer.unobserve(node);
 			observer.observe(node);
 		}
