@@ -126,8 +126,7 @@
 		max-width: 30rem;
 		background: color-mix(in oklab, var(--alarm) 5%, var(--ink-100, #181814));
 		color: var(--bone-100, #f3eee5);
-		border: 1px solid
-			color-mix(in oklab, var(--alarm) 30%, var(--bone-500, rgba(255, 255, 255, 0.12)));
+		border: 1px solid color-mix(in oklab, var(--alarm) 30%, var(--ink-300));
 		border-radius: var(--radius-card, 8px);
 		padding: var(--space-5, 1.5rem) var(--space-6, 2rem) var(--space-5, 1.5rem);
 		display: flex;

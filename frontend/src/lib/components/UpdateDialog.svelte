@@ -124,7 +124,7 @@
 		padding: var(--space-5);
 		background: var(--ink-050);
 		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-md);
+		border-radius: var(--radius-card);
 		box-shadow:
 			0 24px 48px -16px rgb(0 0 0 / 0.55),
 			0 0 0 1px color-mix(in oklab, var(--brand) 14%, transparent);
@@ -134,7 +134,7 @@
 	.update-dialog-head h2 {
 		margin: 0 0 var(--space-2);
 		font-family: var(--font-display, var(--font-body));
-		font-size: var(--type-display-s, 1.5rem);
+		font-size: var(--type-display-m);
 		letter-spacing: var(--tracking-display);
 	}
 	.update-dialog-head p {
@@ -154,7 +154,7 @@
 		gap: var(--space-1);
 		padding: var(--space-3);
 		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 	}
 	.update-dialog-versions dt {
 		font-family: var(--font-mono);
@@ -178,7 +178,7 @@
 		padding: var(--space-3);
 		background: color-mix(in oklab, var(--ink-000) 50%, transparent);
 		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		font-family: var(--font-mono);
 		font-size: var(--type-meta);
 		line-height: 1.55;
@@ -198,9 +198,9 @@
 		align-items: center;
 		gap: var(--space-2);
 		padding: var(--space-2) var(--space-4);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		font-weight: 500;
 		border: 1px solid var(--ink-200);
 		background: var(--ink-100);

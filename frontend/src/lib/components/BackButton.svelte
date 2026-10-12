@@ -59,10 +59,9 @@
 		padding: 0.5rem 0.95rem 0.5rem 0.7rem;
 		margin-inline-start: calc(-1 * var(--space-2));
 		font-family: var(--font-mono);
-		/* Bumped from --type-meta (12px) to --type-body-s (14px) so
-		   "Back" reads at a comfortable size in the topbar — matches
-		   the breadcrumb bump. */
-		font-size: var(--type-body-s);
+		/* --type-meta (14px) so "Back" reads at a comfortable size in
+		   the topbar — matches the breadcrumb. */
+		font-size: var(--type-meta);
 		font-weight: 600;
 		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;

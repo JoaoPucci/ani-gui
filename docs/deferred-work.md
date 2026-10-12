@@ -283,17 +283,6 @@ starting it, and delete it when you find it done.
   are written into `electron/oauth-server.js`; the main process has a
   message table in every shipped locale for its dialogs
   (`electron/lib/main-messages.cjs`), and they belong in it.
-- **Counted nouns ignore plural rules.** The message catalogue has no
-  plural forms, so a message that puts a noun after `{count}`, `{max}`
-  or a similar number reads wrong for some numbers: English "1 episodes"
-  where the count can be 1, and in Russian almost everywhere, since
-  "эпизодов" only fits 5–20 and their like (1 эпизод, 2 эпизода) —
-  `download.json`'s `dock_active_label` and `hint_range`, and
-  `detail.json` / `play.json`'s `episodes_range_all`, for example.
-  Some English strings hedge with "download(s)". Paraglide's message
-  format supports plural variants; adopting them means touching every
-  such key in all four locales. The two busy-wait messages sidestep it
-  with the unit's abbreviation, which does not inflect.
 - **Adopt the `documentPictureInPicture` browser API** for the player's
   pop-out window. Not a request to write documentation — "Document
   Picture-in-Picture" is the W3C API's name.

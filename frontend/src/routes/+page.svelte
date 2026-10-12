@@ -1153,9 +1153,7 @@
 <ConfirmDialog
 	open={clearConfirmOpen}
 	eyebrow={m.home_clear_confirm_eyebrow()}
-	title={(history?.length ?? 0) === 1
-		? m.home_clear_confirm_title_one()
-		: m.home_clear_confirm_title_other({ count: history?.length ?? 0 })}
+	title={m.home_clear_confirm_title({ count: history?.length ?? 0 })}
 	body={m.home_clear_confirm_body()}
 	confirmLabel={m.home_clear_confirm_button()}
 	destructive
@@ -1749,7 +1747,7 @@
 		background: transparent;
 		color: var(--bone-200);
 		font: inherit;
-		font-size: var(--type-small);
+		font-size: var(--type-meta);
 		cursor: pointer;
 		transition:
 			background var(--dur-fast) var(--ease-out-soft),
@@ -1854,7 +1852,7 @@
 		block-size: 100%;
 		font-family: var(--font-body);
 		font-weight: 600;
-		font-size: var(--type-display-s);
+		font-size: var(--type-display-m);
 		color: var(--bone-300);
 		background: linear-gradient(
 			135deg,

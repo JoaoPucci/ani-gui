@@ -1,7 +1,16 @@
 {
 	"eyebrow_key": "Download",
 	"eyebrow_value_this": "episódio {episode}",
-	"eyebrow_value_all": "todos os {count} episódios",
+	"eyebrow_value_all": [
+		{
+			"declarations": ["input count"],
+			"selectors": ["count"],
+			"match": {
+				"count=1": "{count} episódio",
+				"count=*": "todos os {count} episódios"
+			}
+		}
+	],
 	"eyebrow_value_range": "{start}–{end}",
 	"label_episodes": "Episódios",
 	"mode_this_episode": "Este episódio",
@@ -12,17 +21,64 @@
 	"range_to_aria_label": "Até o episódio",
 	"range_separator": "–",
 	"range_of": "de {total}",
-	"range_announced_suffix": " · {count} anunciados",
+	"range_announced_suffix": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": " · {count} anunciados",
+				"count=*, countPlural=one": " · {count} anunciado",
+				"count=*, countPlural=*": " · {count} anunciados"
+			}
+		}
+	],
 	"range_max_prefix": "máx. {max}",
 	"range_unknown_suffix": " · número de episódios desconhecido",
 	"hint_this": "Baixa apenas o episódio {episode}.",
-	"hint_all_prefix_total": "Baixa todos os {count}",
-	"hint_all_aired": " exibidos",
-	"hint_all_episodes_suffix": " episódios em sequência",
-	"hint_all_gap_suffix": " — {announced} foram anunciados, mas só {available} foram lançados até agora.",
+	"hint_all_total": [
+		{
+			"declarations": ["input count"],
+			"selectors": ["count"],
+			"match": {
+				"count=1": "Baixa {count} episódio",
+				"count=*": "Baixa todos os {count} episódios em sequência"
+			}
+		}
+	],
+	"hint_all_total_aired": [
+		{
+			"declarations": ["input count"],
+			"selectors": ["count"],
+			"match": {
+				"count=1": "Baixa {count} episódio exibido",
+				"count=*": "Baixa todos os {count} episódios exibidos em sequência"
+			}
+		}
+	],
+	"hint_all_gap_suffix": [
+		{
+			"declarations": ["input available", "local availablePlural = available: plural"],
+			"selectors": ["available", "availablePlural"],
+			"match": {
+				"available=0, availablePlural=*": " — {announced} foram anunciados, mas só {available} foram lançados até agora.",
+				"available=*, availablePlural=one": " — {announced} foram anunciados, mas só {available} foi lançado até agora.",
+				"available=*, availablePlural=*": " — {announced} foram anunciados, mas só {available} foram lançados até agora."
+			}
+		}
+	],
 	"hint_all_nogap_suffix": ".",
 	"hint_all_unknown": "Número de episódios desconhecido — use Intervalo para especificar.",
-	"hint_range": "Baixa {count} episódios em sequência.",
+	"hint_range": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "Baixa {count} episódios em sequência.",
+				"count=*, countPlural=one": "Baixa {count} episódio.",
+				"count=*, countPlural=*": "Baixa {count} episódios em sequência."
+			}
+		}
+	],
 	"label_directory": "Salvar em",
 	"button_browse": "Procurar…",
 	"hint_filename_prefix": "Os arquivos chegam como ",
@@ -35,13 +91,53 @@
 	"bar_ep_label_range_progress": "Ep {current} de {total}",
 	"bar_ep_label_range_static": "Eps {episode}",
 	"bar_ep_label_single": "Ep {episode}",
-	"bar_label_multi": "Baixando {count} episódios",
+	"bar_label_multi": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "Baixando {count} episódios",
+				"count=*, countPlural=one": "Baixando {count} episódio",
+				"count=*, countPlural=*": "Baixando {count} episódios"
+			}
+		}
+	],
 	"bar_cancel_all_aria_label": "Cancelar todos os downloads",
 	"bar_cancel_all_title": "Cancelar todos os downloads",
 	"bar_cancel_confirm_single": "Cancelar o download de \"{title}\"?",
-	"bar_cancel_confirm_multi": "Cancelar {count} downloads ativos?",
-	"dock_active_speed_label": "{count} download(s) em andamento, {speed}",
-	"dock_unseen_label": "{count} download(s) concluído(s)",
+	"bar_cancel_confirm_multi": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "Cancelar {count} downloads ativos?",
+				"count=*, countPlural=one": "Cancelar {count} download ativo?",
+				"count=*, countPlural=*": "Cancelar {count} downloads ativos?"
+			}
+		}
+	],
+	"dock_active_speed_label": [
+		{
+			"declarations": ["input count", "input speed", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "{count} downloads em andamento, {speed}",
+				"count=*, countPlural=one": "{count} download em andamento, {speed}",
+				"count=*, countPlural=*": "{count} downloads em andamento, {speed}"
+			}
+		}
+	],
+	"dock_unseen_label": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "{count} downloads concluídos",
+				"count=*, countPlural=one": "{count} download concluído",
+				"count=*, countPlural=*": "{count} downloads concluídos"
+			}
+		}
+	],
 	"dock_idle_label": "Downloads",
 	"dock_title": "Downloads",
 	"dock_empty": "Nenhum download ainda.",
@@ -68,7 +164,17 @@
 	"range_error_below_one": "A numeração dos episódios começa em 1.",
 	"range_error_start_over_max": "O primeiro episódio não pode passar de {max}, o último disponível.",
 	"range_error_end_over_max": "O último episódio não pode passar de {max}, o último disponível.",
-	"range_error_over_cap": "Não é possível baixar mais de {max} episódios deste título.",
+	"range_error_over_cap": [
+		{
+			"declarations": ["input max", "local maxPlural = max: plural"],
+			"selectors": ["max", "maxPlural"],
+			"match": {
+				"max=0, maxPlural=*": "Não é possível baixar mais de {max} episódios deste título.",
+				"max=*, maxPlural=one": "Não é possível baixar mais de {max} episódio deste título.",
+				"max=*, maxPlural=*": "Não é possível baixar mais de {max} episódios deste título."
+			}
+		}
+	],
 	"range_error_end_before_start": "O último episódio não pode vir antes do primeiro.",
 	"browse_dialog_title": "Escolha a pasta de download",
 	"failure_timeout": "O download demorou demais e foi interrompido. Tente novamente mais tarde.",
