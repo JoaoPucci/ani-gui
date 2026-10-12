@@ -36,6 +36,7 @@
 		current = null,
 		airing = false,
 		disabled = false,
+		notice = null,
 		onReconcile = () => {}
 	}: {
 		kitsuId: string;
@@ -49,6 +50,9 @@
 		/** The show hasn't finished airing — Completed/Rewatching are hidden. */
 		airing?: boolean;
 		disabled?: boolean;
+		/** Why the control is disabled, when there is something to say — the
+		 *  tracker's rate limit and its wait. Shown beside the trigger. */
+		notice?: string | null;
 		/** Re-read the live entry from the trackers after a write settles. The
 		 *  button is optimistic for instant feedback, but this reconcile is the
 		 *  source of truth — it overwrites the optimistic value with what the
@@ -326,6 +330,9 @@
 		<span aria-hidden="true">{view.onList ? '✓' : '＋'}</span>
 		<span>{buttonLabel}</span>
 	</button>
+	{#if notice}
+		<p class="le-notice" role="status">{notice}</p>
+	{/if}
 
 	{#if open}
 		<div id="list-entry-pop" class="le-pop" role="dialog" aria-label={m.detail_list_editor_aria()}>
@@ -412,6 +419,16 @@
 	.list-entry {
 		position: relative;
 		display: inline-flex;
+		align-items: center;
+		gap: var(--space-3);
+	}
+	/* The reason a disabled trigger is disabled, in the row's meta voice:
+	   quiet, one line, no box of its own. */
+	.le-notice {
+		margin: 0;
+		font-size: var(--type-meta);
+		color: var(--bone-300);
+		text-wrap: balance;
 	}
 	/* Matches the detail action row's .btn-outline: frosted outline,
 	   mono meta type, uppercase tracking. */

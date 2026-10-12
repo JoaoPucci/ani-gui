@@ -74,7 +74,7 @@
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
-	import { readEntryWithRetry } from '$lib/account/list-entry-read';
+	import { readEntryWithRetry, readFailureNotice } from '$lib/account/list-entry-read';
 	import { freshBearerFor } from '$lib/account/fresh-bearer';
 	import ListEntryEditor from '$lib/components/ListEntryEditor.svelte';
 	import type { EntryView } from '$lib/account/types';
@@ -762,6 +762,10 @@
 	// provider failing trips this — a partial read could miss the very tracker
 	// whose progress a Save would otherwise clobber.
 	let listEntryError = $state(false);
+	// Why the control is disabled, when the read ended on something worth
+	// saying: the tracker's rate limit and the wait it asked for. Null for
+	// a plain failure, which disables the control as before.
+	let listEntryNotice = $state<string | null>(null);
 	// Bumped on every read so a newer read (navigation or a post-write
 	// reconcile) supersedes any in-flight one — including one waiting
 	// out a retry, which checks the sequence again when its wait ends.
@@ -784,6 +788,7 @@
 			// linger while the async read is in flight or if it fails.
 			listEntry = null;
 			listEntryError = false;
+			listEntryNotice = null;
 		}
 		if (!kitsuId || connected.length === 0) {
 			if (!quiet) listEntryLoading = false;
@@ -810,15 +815,18 @@
 			if (outcome.kind === 'ok') {
 				listEntry = outcome.entry;
 				listEntryError = false;
+				listEntryNotice = null;
 				listEntryLoading = false;
 				return;
 			}
 			// Out of retries. On a fresh read: unknown entry, not absent — the
-			// editor stays disabled rather than offering a stale Add. Quiet:
-			// give up silently, keep whatever the editor optimistically set;
-			// the write itself already reported success/failure.
+			// editor stays disabled rather than offering a stale Add, and says
+			// why when the tracker's rate limit is the reason. Quiet: give up
+			// silently, keep whatever the editor optimistically set; the write
+			// itself already reported success/failure.
 			if (!quiet) {
 				listEntryError = true;
+				listEntryNotice = readFailureNotice(outcome);
 				listEntryLoading = false;
 			}
 		});
@@ -1509,6 +1517,7 @@
 									current={listEntry}
 									airing={detail.status != null && detail.status !== 'finished'}
 									disabled={listEntryLoading || listEntryError}
+									notice={listEntryNotice}
 									onReconcile={() => readListEntry(true)}
 								/>
 							{/if}

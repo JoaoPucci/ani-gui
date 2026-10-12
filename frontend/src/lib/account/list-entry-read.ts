@@ -5,6 +5,8 @@
 // plan the next attempt, wait, check the read is still wanted — lives
 // here where it can be run against fakes.
 
+import { describeError } from '$lib/play/describe-error';
+import { m } from '$lib/paraglide/messages';
 import { pickSeedEntry } from './list-entry-view';
 import { classifyReadFailure, planReadRetry, type ReadFailure } from './read-retry';
 import type { EntryView } from './types';
@@ -27,6 +29,20 @@ export interface ReadDeps {
 	isCurrent: () => boolean;
 	/** Wait `ms` before the next attempt. */
 	sleep: (ms: number) => Promise<void>;
+}
+
+/**
+ * What the list control says beside itself when a read ends: the
+ * tracker's rate limit, in the backend envelope's words — "busy, try
+ * again in about N s" when it named a wait — or the generic
+ * rate-limit sentence when the body carried no envelope to read.
+ * Nothing for any other outcome: a plain failure disables the control
+ * as before, an answer needs no caption.
+ */
+export function readFailureNotice(outcome: ReadOutcome): string | null {
+	if (outcome.kind !== 'failed' || !outcome.last.rateLimited) return null;
+	const { envelope } = outcome.last;
+	return envelope === null ? m.detail_list_rate_limited() : describeError(envelope);
 }
 
 /** Run the read to an outcome, retrying on the plan in `read-retry`. */

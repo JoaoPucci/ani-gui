@@ -4,11 +4,26 @@
 // self-heals, and gives up (null) after a few attempts so it settles
 // into an error state rather than spinning indefinitely. The driver
 // that runs the plan is `list-entry-read.ts`.
+//
+// A rate limit is planned differently. AniList allows this machine 30
+// requests a minute and answers a 429 with the seconds left in the
+// window; the backend passes that on as `retry_after_secs`. Retrying
+// at 1, 2, 4 and 8 seconds spends four more of the next minute's
+// budget to be told the same thing, so a rate-limited failure gets one
+// more attempt after the advertised wait, and a second rate limit ends
+// the read.
 
 import type { AccountApiError } from './api';
 import { isRateLimit } from './set-entry-outcome';
 
 const MAX_READ_RETRIES = 4;
+
+/** The wait assumed when a 429 names none — half AniList's window. */
+const RATE_LIMIT_DEFAULT_WAIT_MS = 30_000;
+/** The band an advertised wait is honoured within: never a tight loop,
+ *  never longer than the page is worth waiting on. */
+const RATE_LIMIT_MIN_WAIT_MS = 1_000;
+const RATE_LIMIT_MAX_WAIT_MS = 60_000;
 
 /** One failed attempt, as the plan sees it. */
 export interface ReadFailure {
@@ -50,11 +65,25 @@ export function classifyReadFailure(e: unknown): ReadFailure {
 
 /**
  * Delay (ms) before the next attempt given every failure so far, the
- * latest last, or `null` once the read should give up: 1 s, 2 s, 4 s,
- * 8 s, then stop.
+ * latest last, or `null` once the read should give up.
+ *
+ * A plain failure follows the schedule over the plain failures so far:
+ * 1 s, 2 s, 4 s, 8 s, then stop. A rate-limited failure waits what the
+ * tracker advertised, clamped to one second to one minute (thirty
+ * seconds when it named none), for one more attempt; a second rate
+ * limit, wherever it falls, ends the read.
  */
 export function planReadRetry(failures: readonly ReadFailure[]): number | null {
-	const attempt = failures.length - 1;
-	if (attempt >= MAX_READ_RETRIES) return null;
-	return 1000 * 2 ** attempt;
+	const last = failures.at(-1);
+	if (last === undefined) return RATE_LIMIT_MIN_WAIT_MS;
+	if (last.rateLimited) {
+		const earlierLimits = failures.slice(0, -1).some((f) => f.rateLimited);
+		if (earlierLimits) return null;
+		const advertised =
+			last.retryAfterSecs === null ? RATE_LIMIT_DEFAULT_WAIT_MS : last.retryAfterSecs * 1000;
+		return Math.min(RATE_LIMIT_MAX_WAIT_MS, Math.max(RATE_LIMIT_MIN_WAIT_MS, advertised));
+	}
+	const plainAttempt = failures.filter((f) => !f.rateLimited).length - 1;
+	if (plainAttempt >= MAX_READ_RETRIES) return null;
+	return 1000 * 2 ** plainAttempt;
 }
