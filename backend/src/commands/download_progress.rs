@@ -91,6 +91,9 @@ pub(crate) struct RateMeter {
     resumed: Resumed,
     /// The format the last count was for, once one has been.
     format: Option<Option<String>>,
+    /// What the current format resumes from, until its count passes it:
+    /// counts below it are resumed bytes arriving, not a fall.
+    floor: Option<u64>,
 }
 
 /// What a yt-dlp run resumes from: the partial file it keeps beside its
@@ -128,6 +131,7 @@ impl RateMeter {
         Self {
             samples: VecDeque::from([(at, 0)]),
             last_count: Some(resumed.whole),
+            floor: Some(resumed.whole),
             resumed,
             ..Self::default()
         }
@@ -143,7 +147,9 @@ impl RateMeter {
                 .and_then(|f| self.resumed.formats.get(f))
                 .copied();
             let first = self.format.is_none();
-            self.last_count = Some(own.unwrap_or(if first { self.resumed.whole } else { 0 }));
+            let from = own.unwrap_or(if first { self.resumed.whole } else { 0 });
+            self.last_count = Some(from);
+            self.floor = Some(from);
             self.format = Some(format);
         }
         self.observe(bytes, at);
@@ -151,13 +157,22 @@ impl RateMeter {
 
     /// Record that the tool had `bytes` at `at`.
     pub(crate) fn observe(&mut self, bytes: u64, at: Instant) {
-        // A count that steps back — yt-dlp counting a retried
-        // fragment again — gains nothing, and the next rise is gained
-        // from it.
-        if let Some(last) = self.last_count {
-            self.gained += bytes.saturating_sub(last);
+        // Below what the run resumes from, a count is resumed bytes
+        // still arriving — a fragment in flight reports its own partial
+        // when its thread first does — and gains nothing, nor lowers
+        // the point gains are measured from.
+        if self.floor.is_some_and(|floor| bytes < floor) {
+            // Held: nothing gained, the point gains count from kept.
+        } else {
+            self.floor = None;
+            // A count that steps back — yt-dlp counting a retried
+            // fragment again — gains nothing, and the next rise is
+            // gained from it.
+            if let Some(last) = self.last_count {
+                self.gained += bytes.saturating_sub(last);
+            }
+            self.last_count = Some(bytes);
         }
-        self.last_count = Some(bytes);
         self.samples.push_back((at, self.gained));
         // Keep the window, and the newest count before it as the
         // baseline a stall is measured from.

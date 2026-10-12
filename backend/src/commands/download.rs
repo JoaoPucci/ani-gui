@@ -1951,8 +1951,10 @@ enum ToolEnd {
 /// files yt-dlp keeps beside it — `<output>.part` for a single format,
 /// or one per format, `<stem>.f<id>.<ext>.part`, for a stream it fetches
 /// video and audio apart — whose sizes it reports as downloaded when it
-/// starts each; nothing when there are none. A fragment's own partial
-/// (`….part-Frag<n>.part`) is not one.
+/// starts each; nothing when there are none. A fragment that was in
+/// flight keeps a partial of its own beside the one it belongs to
+/// (`<partial>-Frag<n>.part`), which yt-dlp resumes and reports as
+/// downloaded too, and which counts toward that partial's.
 fn resumed_partials(output: &std::path::Path) -> super::download_progress::Resumed {
     let mut resumed = super::download_progress::Resumed::default();
     let (Some(dir), Some(stem), Some(name)) =
@@ -1971,17 +1973,23 @@ fn resumed_partials(output: &std::path::Path) -> super::download_progress::Resum
         let Some(len) = entry.metadata().ok().map(|m| m.len()) else {
             continue;
         };
-        if *name == whole {
-            resumed.whole = len;
-        } else if let Some(format) = name
+        // A fragment in flight keeps its own partial beside the one it
+        // belongs to, `<partial>-Frag<n>.part`, and counts with it.
+        let partial = match name.find(".part-Frag") {
+            Some(at) if name.ends_with(".part") => &name[..at + ".part".len()],
+            Some(_) => continue,
+            None => &name[..],
+        };
+        if partial == whole {
+            resumed.whole += len;
+        } else if let Some(format) = partial
             .strip_prefix(&prefix)
-            .filter(|rest| !rest.contains(".part-Frag"))
             .and_then(|rest| rest.strip_suffix(".part"))
             // The id runs up to the extension: it may carry dots itself.
             .and_then(|rest| rest.rsplit_once('.'))
             .map(|(format, _)| format.to_owned())
         {
-            resumed.formats.insert(format, len);
+            *resumed.formats.entry(format).or_default() += len;
         }
     }
     resumed
