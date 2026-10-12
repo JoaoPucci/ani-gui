@@ -7068,9 +7068,10 @@ mod rate_from_the_runs_start {
 
     /// A stream whose video and audio yt-dlp fetches apart keeps a
     /// partial file per format, named for the format beside the
-    /// output's stem; what the run resumes from is each of them by its
-    /// format, and not the fragment files a download in flight keeps,
-    /// nor another output's.
+    /// output's stem, and a partial per fragment that was in flight
+    /// beside it; what the run resumes from is, by format, its partial
+    /// and its fragments' partials together — yt-dlp reports both as
+    /// downloaded — and nothing of another output's.
     #[test]
     fn what_a_run_resumes_from_is_each_format_it_keeps_apart() {
         let dir = tempfile::tempdir().expect("dir");
@@ -7086,8 +7087,43 @@ mod rate_from_the_runs_start {
         assert_eq!(resumed.whole, 0);
         assert_eq!(
             resumed.formats,
-            std::collections::HashMap::from([("137".to_string(), 4096), ("140".to_string(), 1024)])
+            std::collections::HashMap::from([("137".to_string(), 4608), ("140".to_string(), 1024)])
         );
+    }
+
+    /// A single format's fragments in flight leave partials beside its
+    /// own, and those count toward what the run resumes from as well.
+    #[test]
+    fn what_a_run_resumes_from_counts_its_fragments_in_flight() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(dir.path().join("episode.part.mp4.part"), vec![0u8; 8000]).expect("write");
+        std::fs::write(
+            dir.path().join("episode.part.mp4.part-Frag7.part"),
+            vec![0u8; 1500],
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path().join("episode.part.mp4.part-Frag8.part"),
+            vec![0u8; 500],
+        )
+        .expect("write");
+        assert_eq!(super::super::resumed_partials(&out).whole, 10_000);
+    }
+
+    /// yt-dlp reports a resumed fragment's partial as downloaded when
+    /// that fragment's thread first reports, which with fragments in
+    /// flight is not all at once: counts below what the run resumes from
+    /// are the resumed bytes arriving, not a fall to measure from, and
+    /// only what passes it is the run's.
+    #[test]
+    fn counts_below_what_a_run_resumes_from_gain_nothing_and_do_not_lower_it() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(10_000, start);
+        meter.observe(8_500, start + Duration::from_millis(500));
+        meter.observe(10_500, start + Duration::from_secs(1));
+        let rate = meter.rate_at(start + Duration::from_secs(1));
+        assert!((rate - 500.0).abs() < 1.0, "{rate}");
     }
 
     /// A format's id is read whole whatever it holds: the count is the
