@@ -24,7 +24,11 @@
 	function choose(next: HeroExperiment) {
 		localStorage.setItem(HERO_EXPERIMENT_STORAGE_KEY, JSON.stringify(next));
 		// Reload without `?hero=` / `?heroSrc=`, which would override it.
-		location.replace(withoutExperimentQuery(location.href));
+		// With neither present, replacing a URL that has a fragment by
+		// itself would not reload, so reload in place.
+		const href = withoutExperimentQuery(location.href);
+		if (href === location.href) location.reload();
+		else location.replace(href);
 	}
 </script>
 
