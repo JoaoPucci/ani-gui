@@ -36,5 +36,6 @@
 	"paging_retry": "Volver a intentar",
 	"paging_held": "Las últimas páginas no tenían nada que puedas ver.",
 	"paging_keep_looking": "Seguir buscando",
-	"paging_load_more": "Cargar más resultados"
+	"paging_load_more": "Cargar más resultados",
+	"count_more": "{count}+"
 }

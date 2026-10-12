@@ -36,5 +36,6 @@
 	"paging_retry": "Try again",
 	"paging_held": "The last few pages had nothing you can play.",
 	"paging_keep_looking": "Keep looking",
-	"paging_load_more": "Load more results"
+	"paging_load_more": "Load more results",
+	"count_more": "{count}+"
 }

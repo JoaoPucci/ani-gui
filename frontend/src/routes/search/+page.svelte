@@ -103,6 +103,7 @@
 	// The grid is empty but the runner is already looking a page
 	// deeper — reads as searching, not as "nothing matched".
 	const searching = $derived(busy || (results?.length === 0 && phase.kind === 'loading-more'));
+	const shown = $derived((results?.length ?? 0) > 0);
 	const moreToCome = $derived(
 		phase.kind === 'idle' ||
 			phase.kind === 'loading-more' ||
@@ -120,10 +121,22 @@
 	});
 
 	let folio = $state<HTMLElement | null>(null);
-	function resume() {
-		folio?.focus();
-		searchRunner.loadMore();
+	// A paging button leaves when the phase it belongs to does — Try
+	// again as its page loads, Load more at the end. If it held focus,
+	// focus moves to the folio rather than falling to the page body.
+	function keepFocusInFolio(node: HTMLElement) {
+		return {
+			destroy() {
+				const active = document.activeElement;
+				if (active === node || active === document.body || active === null) folio?.focus();
+			}
+		};
 	}
+
+	// Bumped per search so the marker under the grid is observed
+	// afresh: an observer reports only changes, and a grid short both
+	// times never takes the marker out of reach to report one.
+	let searchCount = $state(0);
 
 	function sentinel(node: HTMLElement) {
 		return { destroy: watchSentinel(node, (inReach) => (bottomInReach = inReach)) };
@@ -202,9 +215,10 @@
 	async function runSearch(q: string) {
 		error = null;
 		submitted = q;
-		// The marker's last report belongs to the previous results;
-		// the observer reports afresh once the new grid lays out.
+		// The marker's last report belongs to the previous results; the
+		// observer made for this search reports its initial state.
 		bottomInReach = false;
+		searchCount += 1;
 		await searchRunner.run(q);
 	}
 
@@ -258,7 +272,9 @@
 					<span class="eyebrow-count">
 						<!-- "+" while Kitsu has more pages: the count is what
 						     is shown so far, not the whole catalogue. -->
-						<span class="num">{count}{moreToCome && count > 0 ? '+' : ''}</span>
+						<span class="num"
+							>{moreToCome && count > 0 ? m.search_count_more({ count }) : count}</span
+						>
 						<span class="word"
 							>{count === 1 && !moreToCome
 								? m.search_count_singular()
@@ -446,25 +462,28 @@
 	{/if}
 
 	{#if submitted && results !== null && !error}
-		<div class="sentinel" use:sentinel aria-hidden="true"></div>
-		<!-- tabindex -1: pressing Try again / Keep looking unmounts the
-		     button, so focus moves here instead of falling to the body. -->
+		{#key searchCount}
+			<div class="sentinel" use:sentinel aria-hidden="true"></div>
+		{/key}
+	{/if}
+	{#if submitted}
+		<!-- tabindex -1: where focus goes when a paging button leaves. -->
 		<div class="folio" data-phase={phase.kind} tabindex="-1" bind:this={folio}>
-			{#if phase.kind === 'loading-more' && results.length > 0}
+			{#if phase.kind === 'loading-more' && shown}
 				<span class="folio-rule folio-rule-drawing" aria-hidden="true"></span>
-			{:else if phase.kind === 'end' && results.length > 0}
+			{:else if phase.kind === 'end' && shown}
 				<span class="folio-rule folio-rule-closed" aria-hidden="true"></span>
 			{:else if phase.kind === 'failed'}
 				<span class="folio-rule folio-rule-failed" aria-hidden="true"></span>
 			{:else if phase.kind === 'held'}
 				<span class="folio-rule folio-rule-held" aria-hidden="true"></span>
 			{/if}
-			<!-- The one live region of the paging: always mounted so a
-			     screen reader hears each change, buttons kept outside it. -->
+			<!-- The one live region of the paging, mounted with the query
+			     so a screen reader hears each change; buttons stay outside. -->
 			<p class="folio-line" data-testid="search-paging" aria-live="polite" aria-atomic="true">
-				{#if phase.kind === 'loading-more' && results.length > 0}
+				{#if phase.kind === 'loading-more' && shown}
 					{m.search_paging_loading()}
-				{:else if phase.kind === 'end' && results.length > 0}
+				{:else if phase.kind === 'end' && shown}
 					{m.search_paging_end({ query: submitted })}
 				{:else if phase.kind === 'failed'}
 					{m.search_paging_failed()}
@@ -476,7 +495,12 @@
 				{/if}
 			</p>
 			{#if phase.kind === 'failed'}
-				<button type="button" class="folio-action" onclick={resume}>
+				<button
+					type="button"
+					class="folio-action"
+					use:keepFocusInFolio
+					onclick={() => searchRunner.loadMore()}
+				>
 					{m.search_paging_retry()}
 				</button>
 			{:else if (phase.kind === 'idle' || phase.kind === 'loading-more') && activeSubtypes.size > 0}
@@ -487,12 +511,18 @@
 					type="button"
 					class="folio-action"
 					aria-disabled={phase.kind === 'loading-more'}
+					use:keepFocusInFolio
 					onclick={() => searchRunner.loadMore()}
 				>
 					{m.search_paging_load_more()}
 				</button>
 			{:else if phase.kind === 'held'}
-				<button type="button" class="folio-action" onclick={resume}>
+				<button
+					type="button"
+					class="folio-action"
+					use:keepFocusInFolio
+					onclick={() => searchRunner.loadMore()}
+				>
 					{m.search_paging_keep_looking()}
 				</button>
 			{/if}

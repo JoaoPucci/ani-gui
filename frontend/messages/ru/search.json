@@ -36,5 +36,6 @@
 	"paging_retry": "Повторить",
 	"paging_held": "На последних страницах не нашлось ничего, что можно посмотреть.",
 	"paging_keep_looking": "Искать дальше",
-	"paging_load_more": "Загрузить ещё результаты"
+	"paging_load_more": "Загрузить ещё результаты",
+	"count_more": "{count}+"
 }
