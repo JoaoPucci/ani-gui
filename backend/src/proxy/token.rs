@@ -27,7 +27,7 @@
 //!   property-test.
 
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use dashmap::DashMap;
@@ -228,9 +228,32 @@ impl StreamSession {
 }
 
 /// Concurrent table of live stream sessions. Cheap to clone (`Arc` inside).
+///
+/// The table also records when the proxy last served media for any
+/// session — the master a starting player asks for first, then the
+/// segments or mp4 ranges, chunk by chunk as their bodies stream — so
+/// that a download running beside a playing stream can yield to it
+/// ([`SessionTable::playback_live`]).
+/// The app state and the proxy state hold clones of one table, so the
+/// proxy's note is the download command's answer.
 #[derive(Clone, Default)]
 pub struct SessionTable {
     inner: Arc<DashMap<SessionId, Arc<StreamSession>>>,
+    media_activity: Arc<std::sync::Mutex<Option<Instant>>>,
+    /// Woken each time a media fetch is noted, so a download waiting
+    /// on the record learns of playback at once rather than at its
+    /// next look.
+    media_noted: Arc<tokio::sync::Notify>,
+}
+
+/// Whether playback is live at `now`: some media was fetched, no more
+/// than `window` ago. The player fetches a segment every few seconds
+/// while it plays and stops once its buffer is full or it is paused,
+/// so a window of silence is the player standing still. Pure, so the
+/// rule can be stated by a property.
+#[must_use]
+pub(crate) fn live_at(last: Option<Instant>, now: Instant, window: Duration) -> bool {
+    last.is_some_and(|last| now.saturating_duration_since(last) <= window)
 }
 
 impl SessionTable {
@@ -238,6 +261,12 @@ impl SessionTable {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// What wakes each time a media fetch is noted.
+    #[must_use]
+    pub fn media_noted(&self) -> &tokio::sync::Notify {
+        &self.media_noted
     }
 
     /// Insert a session. Returns its id for the caller to embed in URLs.
@@ -278,6 +307,35 @@ impl SessionTable {
             self.inner.remove(&id);
         }
         n
+    }
+
+    /// The proxy served media for a session just now.
+    pub fn note_media_fetch(&self) {
+        self.note_media_fetch_at(Instant::now());
+    }
+
+    /// [`Self::note_media_fetch`] at an explicit instant. The latest
+    /// note is the one that counts.
+    pub fn note_media_fetch_at(&self, at: Instant) {
+        {
+            let mut last = self.media_activity.lock().expect("media activity lock");
+            *last = Some(last.map_or(at, |prev| prev.max(at)));
+        }
+        self.media_noted.notify_waiters();
+    }
+
+    /// Whether playback is live: media was fetched within `window`
+    /// ([`live_at`]).
+    #[must_use]
+    pub fn playback_live(&self, window: Duration) -> bool {
+        self.playback_live_at(Instant::now(), window)
+    }
+
+    /// [`Self::playback_live`] at an explicit instant.
+    #[must_use]
+    pub fn playback_live_at(&self, now: Instant, window: Duration) -> bool {
+        let last = *self.media_activity.lock().expect("media activity lock");
+        live_at(last, now, window)
     }
 
     /// Number of sessions currently held (including any not yet GC'd).
@@ -351,6 +409,10 @@ pub fn seconds_until_expiry(session: &StreamSession) -> u64 {
         .map(|(exp, now)| exp.saturating_sub(now).as_secs())
         .unwrap_or(0)
 }
+
+#[cfg(test)]
+#[path = "token_activity_test.rs"]
+mod activity_tests;
 
 #[cfg(test)]
 mod tests {

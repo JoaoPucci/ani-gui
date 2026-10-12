@@ -12,6 +12,7 @@ fn state_for(td: &tempfile::TempDir, provider: &std::sync::Arc<TableProvider>) -
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
+        host_budget: crate::proxy::host_budget::HostBudget::fresh(),
         meta_http: reqwest::Client::new(),
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,

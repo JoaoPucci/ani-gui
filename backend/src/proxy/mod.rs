@@ -12,6 +12,7 @@
 //! header. Segment URLs in rewritten manifests carry an HMAC signature
 //! the proxy verifies before issuing the upstream fetch.
 
+pub mod host_budget;
 pub mod m3u8;
 pub mod token;
 pub mod upstream;
@@ -50,6 +51,11 @@ pub struct ProxyState {
     /// How rewritten URIs are formatted back into manifests. Set after the
     /// proxy actually binds to a port.
     pub origin: ProxyOrigin,
+    /// The per-host budget every fetch to a host on the player's behalf
+    /// is charged to, hop by hop, by the fetch itself
+    /// ([`upstream::send_paced_as`]): media as the player's traffic,
+    /// subtitle tracks as background traffic behind it.
+    pub host_budget: Arc<host_budget::HostBudget>,
 }
 
 /// Build the axum router. The router is generic over its state, so callers
@@ -103,7 +109,6 @@ async fn handle_master(
     let Some(sess) = state.sessions.get(&session) else {
         return error_response(StatusCode::NOT_FOUND, "session not found or expired");
     };
-
     // The HLS rewrite path only makes sense for .m3u8 sessions; an MP4
     // would otherwise be buffered (hundreds of MB) and fail to parse.
     // 415 tells the renderer to use /file.mp4 instead.
@@ -114,19 +119,29 @@ async fn handle_master(
         );
     }
 
+    // The master is the first thing a starting player asks for: a
+    // download running beside it yields from here, not after the
+    // first segment has already competed with it.
+    state.sessions.note_media_fetch();
     // The manifest's relative URIs resolve against where it was served
     // from, which a redirect can move away from the session's URL.
-    let (body, served_from) =
-        match upstream::fetch_text(&state.client, &sess.upstream_url, &sess.referer).await {
-            Ok((bytes, _ct, from)) => (bytes, from),
-            Err(AniError::Upstream { status }) => {
-                return error_response(
-                    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
-                    "upstream error",
-                );
-            }
-            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-        };
+    let (body, served_from) = match upstream::fetch_text(
+        &state.client,
+        &state.host_budget,
+        &sess.upstream_url,
+        &sess.referer,
+    )
+    .await
+    {
+        Ok((bytes, _ct, from)) => (bytes, from),
+        Err(AniError::Upstream { status }) => {
+            return error_response(
+                StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                "upstream error",
+            );
+        }
+        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+    };
 
     let rewritten = match rewrite_master(&body, &served_from, &state.origin, session, &state.secret)
     {
@@ -210,7 +225,14 @@ async fn handle_subtitle(
     // Read only up to the subtitle cap: a track URL can point at
     // something far larger than a subtitle file, and the player asks
     // for every attached track on its own.
-    let body = match upstream::fetch_subtitle(&state.client, &upstream_url, &sess.referer).await {
+    let body = match upstream::fetch_subtitle(
+        &state.client,
+        &state.host_budget,
+        &upstream_url,
+        &sess.referer,
+    )
+    .await
+    {
         Ok(upstream::CappedBody::Whole(bytes)) => bytes,
         Ok(upstream::CappedBody::Oversized) => {
             return error_response(
@@ -279,24 +301,30 @@ async fn handle_mp4(
             "session media is not MP4 — use /master.m3u8",
         );
     }
+    state.sessions.note_media_fetch();
 
     let range = headers_in
         .get(axum::http::header::RANGE)
         .and_then(|v| v.to_str().ok());
 
-    let upstream_resp =
-        match upstream::fetch_streaming(&state.client, &sess.upstream_url, &sess.referer, range)
-            .await
-        {
-            Ok(r) => r,
-            Err(AniError::Upstream { status }) => {
-                return error_response(
-                    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
-                    "upstream error",
-                );
-            }
-            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-        };
+    let upstream_resp = match upstream::fetch_streaming(
+        &state.client,
+        &state.host_budget,
+        &sess.upstream_url,
+        &sess.referer,
+        range,
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(AniError::Upstream { status }) => {
+            return error_response(
+                StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                "upstream error",
+            );
+        }
+        Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+    };
 
     // Echo back the upstream status (200 for full, 206 for partial)
     // and the headers a video element needs: content-type tells the
@@ -327,7 +355,10 @@ async fn handle_mp4(
         HeaderValue::from_static("no-store"),
     );
 
-    let body = Body::from_stream(upstream_resp.bytes_stream());
+    let body = Body::from_stream(noting_media(
+        upstream_resp.bytes_stream(),
+        state.sessions.clone(),
+    ));
     (status, out_headers, body).into_response()
 }
 
@@ -352,7 +383,6 @@ async fn handle_seg(
     let Some(sess) = state.sessions.get(&session) else {
         return error_response(StatusCode::NOT_FOUND, "session not found");
     };
-
     let upstream_url = match decode_seg_url(&q.u) {
         Ok(u) => u,
         Err(_) => return error_response(StatusCode::BAD_REQUEST, "bad segment url encoding"),
@@ -367,18 +397,28 @@ async fn handle_seg(
     let path = upstream_url.path();
     let is_manifest = path.ends_with(".m3u8");
 
+    // Media playlists and segments alike: both are the player
+    // fetching, and a segment every few seconds is what a download
+    // must leave room for.
+    state.sessions.note_media_fetch();
     if is_manifest {
-        let (body, served_from) =
-            match upstream::fetch_text(&state.client, &upstream_url, &sess.referer).await {
-                Ok((b, _ct, from)) => (b, from),
-                Err(AniError::Upstream { status }) => {
-                    return error_response(
-                        StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
-                        "upstream",
-                    );
-                }
-                Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
-            };
+        let (body, served_from) = match upstream::fetch_text(
+            &state.client,
+            &state.host_budget,
+            &upstream_url,
+            &sess.referer,
+        )
+        .await
+        {
+            Ok((b, _ct, from)) => (b, from),
+            Err(AniError::Upstream { status }) => {
+                return error_response(
+                    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
+                    "upstream",
+                );
+            }
+            Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
+        };
         let rewritten =
             match rewrite_media(&body, &served_from, &state.origin, session, &state.secret) {
                 Ok(s) => s,
@@ -409,22 +449,31 @@ async fn handle_seg(
     // `upstream::` fetches use: a stored referer that is empty, or
     // that cannot become a header value, sends no header at all
     // rather than an empty one or some other origin's name.
-    let mut req = state.client.get(upstream_url.as_str());
+    let mut headers = HeaderMap::new();
     if let Some(referer) = upstream::referer_header(&sess.referer) {
-        req = req.header(reqwest::header::REFERER, referer);
+        headers.insert(reqwest::header::REFERER, referer);
     }
     if let Some(range) = headers_in.get("range") {
-        if let Ok(rstr) = range.to_str() {
-            req = req.header("Range", rstr);
-        }
+        headers.insert(reqwest::header::RANGE, range.clone());
     }
-    let resp = match req.send().await {
+    let resp = match upstream::send_paced(
+        &state.client,
+        &state.host_budget,
+        reqwest::Method::GET,
+        &upstream_url,
+        headers,
+    )
+    .await
+    {
         Ok(r) => r,
         Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
     };
     let status = resp.status();
+    if !status.is_success() {
+        tracing::warn!(url = %upstream_url, %status, "proxy: upstream answered a segment with an error");
+    }
     let headers = clone_passthrough_headers(resp.headers());
-    let stream = resp.bytes_stream();
+    let stream = noting_media(resp.bytes_stream(), state.sessions.clone());
     (
         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK),
         headers,
@@ -439,6 +488,27 @@ fn decode_seg_url(b64: &str) -> crate::Result<Url> {
         .map_err(|_| AniError::InvalidToken)?;
     let s = std::str::from_utf8(&bytes).map_err(|_| AniError::InvalidToken)?;
     Url::parse(s).map_err(|_| AniError::InvalidToken)
+}
+
+/// A media body whose chunks keep the session table's record of
+/// playback fresh as they flow. The note at the request's admission
+/// covers a segment, gone in seconds; an mp4 range request streams
+/// for minutes, and a download beside it must not be let back to full
+/// speed while its bytes are still moving. An error in the stream is
+/// passed through and is not media served.
+fn noting_media<S, E>(
+    stream: S,
+    sessions: SessionTable,
+) -> impl futures_util::Stream<Item = std::result::Result<bytes::Bytes, E>>
+where
+    S: futures_util::Stream<Item = std::result::Result<bytes::Bytes, E>>,
+{
+    use futures_util::StreamExt as _;
+    stream.inspect(move |chunk| {
+        if chunk.is_ok() {
+            sessions.note_media_fetch();
+        }
+    })
 }
 
 fn error_response(status: StatusCode, body: &'static str) -> Response {
@@ -481,6 +551,14 @@ mod subtitle_tests;
 #[cfg(test)]
 #[path = "seg_referer_test.rs"]
 mod seg_referer_tests;
+
+#[cfg(test)]
+#[path = "media_activity_test.rs"]
+mod media_activity_tests;
+
+#[cfg(test)]
+#[path = "host_budget_route_test.rs"]
+mod host_budget_route_tests;
 
 #[cfg(test)]
 mod tests {
