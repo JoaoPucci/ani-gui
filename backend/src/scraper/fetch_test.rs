@@ -751,3 +751,47 @@ async fn a_held_request_gives_up_on_a_same_origin_redirect_loop() {
         "bounded, one transfer per hop"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_held_requests_hops_share_one_deadline() {
+    // curl's own -L bounded a whole redirect chain by one transfer's
+    // deadline. Followed a hop at a time, each hop is its own
+    // transfer: the chain as a whole must still end at the request's
+    // deadline, not at one deadline per hop.
+    use wiremock::matchers::{method, path};
+    let Some(curl) =
+        CurlImpersonateFetch::resolve(None, &std::env::var("PATH").unwrap_or_default())
+    else {
+        eprintln!("no curl on PATH; skipping");
+        return;
+    };
+    let curl = curl.with_deadline(std::time::Duration::from_millis(600));
+    let server = wiremock::MockServer::start().await;
+    let hop = std::time::Duration::from_millis(250);
+    for n in 0..6 {
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/hop{n}")))
+            .respond_with(
+                wiremock::ResponseTemplate::new(302)
+                    .insert_header("location", format!("/hop{}", n + 1).as_str())
+                    .set_delay(hop),
+            )
+            .mount(&server)
+            .await;
+    }
+    wiremock::Mock::given(method("GET"))
+        .and(path("/hop6"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("arrived"))
+        .mount(&server)
+        .await;
+    let req = FetchRequest::get(format!("{}/hop0", server.uri())).held_to_origin();
+    let started = std::time::Instant::now();
+    let got = curl.fetch(&req).await;
+    assert!(matches!(got, Err(AniError::Timeout)), "{got:?}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(1200),
+        "ended at the request's deadline: {:?}",
+        started.elapsed()
+    );
+}
