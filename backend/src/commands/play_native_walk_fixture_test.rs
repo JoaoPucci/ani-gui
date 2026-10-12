@@ -1857,3 +1857,30 @@ async fn a_season_before_w_disqualifies_a_sibling_whatever_its_part() {
         }
     }
 }
+
+/// A bracketed release year or format tag is neither a word nor a mark
+/// to the entry before: each of these is the entry before "Show 2". Any
+/// other bracketed words are words, so "Show (Shin Series)" plays.
+#[tokio::test]
+async fn a_year_or_format_tag_does_not_hide_the_entry_before() {
+    for listing in [
+        "Show Season 1 (2020)",
+        "Show (TV)",
+        "Show [OVA]",
+        "Show (2020) Season 1",
+        "Show （ONA）",
+    ] {
+        let site = pool_of(&["Show 2"], Some(12), 2020, "Show 2", &[("x", listing, 12)]);
+        if let Ok(p) = walk_over(site).await {
+            panic!("{listing}: picked {}", p.hit.slug);
+        }
+    }
+    let site = pool_of(
+        &["Show 2"],
+        Some(12),
+        2020,
+        "Show 2",
+        &[("x", "Show (Shin Series)", 12)],
+    );
+    assert_eq!(walk_over(site).await.expect("picked").hit.slug, "x");
+}
