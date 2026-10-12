@@ -166,8 +166,10 @@ impl AniListProvider {
     /// Shared POST helper for the GraphQL endpoint. Handles the
     /// Bearer header + user-agent + the AniList-specific status
     /// mapping: 401 → [`AniError::InvalidToken`] (revoked / expired
-    /// token; route layer surfaces "Sign in again"), any other
-    /// non-2xx → [`AniError::Upstream`].
+    /// token; route layer surfaces "Sign in again"), 429 →
+    /// [`AniError::RateLimited`] with the advertised wait
+    /// ([`super::rate_limit`]), any other non-2xx →
+    /// [`AniError::Upstream`].
     async fn post_graphql(
         &self,
         tokens: &Tokens,
@@ -187,6 +189,9 @@ impl AniListProvider {
         let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(AniError::InvalidToken);
+        }
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(super::rate_limit::rate_limited("anilist", &resp));
         }
         if !status.is_success() {
             return Err(AniError::Upstream {
@@ -247,6 +252,10 @@ impl UserListProvider for AniListProvider {
             .await
             .map_err(|_| AniError::Network)?;
         let status = resp.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            // The token endpoint is the same host under the same limit.
+            return Err(super::rate_limit::rate_limited("anilist", &resp));
+        }
         if !status.is_success() {
             return Err(AniError::Upstream {
                 status: status.as_u16(),

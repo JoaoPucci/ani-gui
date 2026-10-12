@@ -54,15 +54,18 @@ pub enum AniError {
     #[error("episode unavailable")]
     EpisodeUnavailable,
 
-    /// The provider answered HTTP 200 with an in-band "Too many
-    /// requests" error — an application-level rate limit. Distinct
-    /// from [`AniError::Upstream`] with 429: the status line says
-    /// nothing, only the payload does.
+    /// An upstream is refusing this client for a while. Two ways in:
+    /// the streaming provider answering HTTP 200 with an in-band "Too
+    /// many requests" payload — an application-level rate limit the
+    /// status line says nothing about — and a tracker (AniList, MAL)
+    /// answering HTTP 429 (`meta::rate_limit`). The streaming
+    /// provider's own HTTP 429 stays [`AniError::Upstream`]; the
+    /// scraper gate reads both as the same pause.
     #[error("rate limited by upstream")]
     RateLimited {
-        /// Seconds the upstream asked us to wait ("please try again
-        /// in N seconds"); `None` when the message carried no
-        /// parseable number.
+        /// Seconds the upstream asked us to wait — "please try again
+        /// in N seconds", or a numeric `Retry-After`; `None` when it
+        /// carried no parseable number.
         retry_after_secs: Option<u64>,
     },
 
