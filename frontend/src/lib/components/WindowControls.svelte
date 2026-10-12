@@ -113,7 +113,7 @@
 		padding: 0;
 		border: none;
 		background: transparent;
-		color: var(--text-2, currentColor);
+		color: var(--bone-200);
 		cursor: pointer;
 	}
 	/* The click target spans the full (tall) bar height so the corner stays
@@ -127,7 +127,7 @@
 		translate: -50% -50%;
 		inline-size: 2.25rem;
 		block-size: 2.25rem;
-		border-radius: var(--radius-sm, 6px);
+		border-radius: var(--radius-control);
 		background: transparent;
 		transition: background 0.12s ease;
 	}
@@ -135,7 +135,7 @@
 		position: relative;
 	}
 	.winctl-btn:hover {
-		color: var(--text-1, currentColor);
+		color: var(--bone-100);
 	}
 	.winctl-btn:hover::before {
 		background: color-mix(in srgb, currentColor 16%, transparent);

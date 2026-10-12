@@ -689,12 +689,12 @@
 	.chip {
 		padding: 6px var(--space-3);
 		background: transparent;
-		/* Stronger inactive border (ink-400) so chips read clearly
+		/* ink-300, the subdued-border token, so chips read clearly
 		   against the page's ink-000 surface. */
-		border: 1px solid var(--ink-400);
+		border: 1px solid var(--ink-300);
 		border-radius: var(--radius-pill);
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		font-weight: 500;
 		color: var(--bone-200);
 		cursor: pointer;

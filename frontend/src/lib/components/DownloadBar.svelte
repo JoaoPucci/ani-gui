@@ -202,7 +202,7 @@
 		block-size: 1.5rem;
 		padding: 0;
 		border: 0;
-		border-radius: var(--radius-2, 0.4rem);
+		border-radius: var(--radius-control);
 		background: transparent;
 		color: var(--bone-300);
 		cursor: pointer;

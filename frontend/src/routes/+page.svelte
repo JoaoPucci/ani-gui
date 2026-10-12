@@ -1747,7 +1747,7 @@
 		background: transparent;
 		color: var(--bone-200);
 		font: inherit;
-		font-size: var(--type-small);
+		font-size: var(--type-meta);
 		cursor: pointer;
 		transition:
 			background var(--dur-fast) var(--ease-out-soft),
@@ -1852,7 +1852,7 @@
 		block-size: 100%;
 		font-family: var(--font-body);
 		font-weight: 600;
-		font-size: var(--type-display-s);
+		font-size: var(--type-display-m);
 		color: var(--bone-300);
 		background: linear-gradient(
 			135deg,

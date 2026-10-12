@@ -423,7 +423,7 @@
 		padding-inline: var(--space-5);
 		font-family: var(--font-mono);
 		font-size: var(--type-meta);
-		letter-spacing: var(--tracking-wide);
+		letter-spacing: var(--tracking-micro);
 		text-transform: uppercase;
 		color: var(--bone-100);
 		background: transparent;

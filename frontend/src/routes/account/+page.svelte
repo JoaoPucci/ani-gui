@@ -401,7 +401,7 @@
 	   - mono micro eyebrow with brand-colored "key" word
 	   - display title in bone-100
 	   - body subtitle in bone-200
-	   - cards layered on ink-100 with bone-500 hairline + brand-tinted
+	   - cards layered on ink-100 with ink-300 hairline + brand-tinted
 	     border lifts on focus / state
 	   The original styling here referenced --surface-* / --ink-3xx /
 	   --radius-N tokens that don't exist in tokens.css, which is why
@@ -435,7 +435,7 @@
 	.display {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: var(--type-display-s, 2rem);
+		font-size: clamp(2rem, 4vw, var(--type-display-l));
 		font-weight: 700;
 		line-height: 1.1;
 		letter-spacing: -0.01em;
@@ -456,22 +456,22 @@
 		flex-direction: column;
 		gap: var(--space-4);
 		background: var(--ink-100);
-		border: 1px solid var(--bone-500, var(--ink-200));
+		border: 1px solid var(--ink-300);
 		border-radius: var(--radius-card, 8px);
 		padding: var(--space-5) var(--space-6);
 		transition: border-color var(--dur-fast) var(--ease-out-soft);
 	}
 
 	.provider-card[data-state='connected'] {
-		border-color: color-mix(in oklab, var(--accent-jade) 40%, var(--bone-500, var(--ink-200)));
+		border-color: color-mix(in oklab, var(--accent-jade) 40%, var(--ink-300));
 	}
 
 	.provider-card[data-state='expired'] {
-		border-color: color-mix(in oklab, var(--accent-ochre) 40%, var(--bone-500, var(--ink-200)));
+		border-color: color-mix(in oklab, var(--accent-ochre) 40%, var(--ink-300));
 	}
 
 	.provider-card[data-state='error'] {
-		border-color: color-mix(in oklab, var(--accent-oxblood) 40%, var(--bone-500, var(--ink-200)));
+		border-color: color-mix(in oklab, var(--accent-oxblood) 40%, var(--ink-300));
 	}
 
 	.provider-head {
@@ -480,7 +480,7 @@
 		justify-content: space-between;
 		gap: var(--space-3);
 		padding-block-end: var(--space-3);
-		border-block-end: 1px solid var(--bone-600, var(--ink-200));
+		border-block-end: 1px solid var(--ink-200);
 	}
 
 	.provider-name {
@@ -503,24 +503,24 @@
 		border-radius: var(--radius-pill);
 		background: var(--ink-050);
 		color: var(--bone-300);
-		border: 1px solid var(--bone-600, var(--ink-200));
+		border: 1px solid var(--ink-200);
 	}
 
 	.state-badge-connected {
 		background: color-mix(in oklab, var(--accent-jade) 14%, var(--ink-050));
-		border-color: color-mix(in oklab, var(--accent-jade) 35%, var(--bone-600, var(--ink-200)));
+		border-color: color-mix(in oklab, var(--accent-jade) 35%, var(--ink-200));
 		color: var(--accent-jade);
 	}
 
 	.state-badge-expired {
 		background: color-mix(in oklab, var(--accent-ochre) 14%, var(--ink-050));
-		border-color: color-mix(in oklab, var(--accent-ochre) 35%, var(--bone-600, var(--ink-200)));
+		border-color: color-mix(in oklab, var(--accent-ochre) 35%, var(--ink-200));
 		color: var(--accent-ochre);
 	}
 
 	.state-badge-error {
 		background: color-mix(in oklab, var(--accent-oxblood) 14%, var(--ink-050));
-		border-color: color-mix(in oklab, var(--accent-oxblood) 35%, var(--bone-600, var(--ink-200)));
+		border-color: color-mix(in oklab, var(--accent-oxblood) 35%, var(--ink-200));
 		color: var(--accent-oxblood);
 	}
 
@@ -539,7 +539,7 @@
 		border-radius: var(--radius-card, 8px);
 		object-fit: cover;
 		flex-shrink: 0;
-		border: 1px solid var(--bone-600, var(--ink-200));
+		border: 1px solid var(--ink-200);
 	}
 
 	.user-meta {
@@ -583,7 +583,7 @@
 		text-transform: uppercase;
 		color: var(--bone-200);
 		background: transparent;
-		border: 1px solid var(--bone-500, var(--ink-200));
+		border: 1px solid var(--ink-300);
 		border-radius: var(--radius-control, 6px);
 		cursor: pointer;
 		transition:
@@ -640,7 +640,7 @@
 		padding: var(--space-1) var(--space-3);
 		border-radius: var(--radius-pill);
 		background: color-mix(in oklab, var(--brand) 16%, var(--ink-050));
-		border: 1px solid color-mix(in oklab, var(--brand) 45%, var(--bone-600, var(--ink-200)));
+		border: 1px solid color-mix(in oklab, var(--brand) 45%, var(--ink-200));
 		color: var(--brand);
 	}
 
@@ -650,7 +650,7 @@
 		gap: var(--space-4);
 		flex-wrap: wrap;
 		padding-block-start: var(--space-5);
-		border-block-start: 1px solid var(--bone-600, var(--ink-200));
+		border-block-start: 1px solid var(--ink-200);
 	}
 
 	.privacy-line {
