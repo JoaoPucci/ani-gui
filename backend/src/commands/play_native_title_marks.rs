@@ -5,9 +5,11 @@
 //!
 //! Only these count. Catalogues write one show with and without an
 //! exclamation or question mark, a decorative symbol, quotes single or
-//! double, an elided apostrophe or a wave dash in one form or another,
-//! and with or without its release year; none of that drift names
-//! another show.
+//! double, an elision that opens a word ("'Tis"), a possessive inside
+//! one ("JoJo's") or a wave dash in one form or another, and with or
+//! without its release year; none of that drift names another show. An
+//! apostrophe that ends a word is a prime whatever it means there, so
+//! a plural possessive ("Girls' Last Tour") reads as one.
 
 use super::play_native_title_grammar::split_tags;
 

@@ -892,9 +892,10 @@ async fn a_title_s_marks_and_release_year_are_part_of_what_names_it() {
 /// year where both titles carry one and they differ. Catalogues drift
 /// on the rest — an exclamation or question mark, a decorative symbol,
 /// a wave dash written one way or the other, a release year one side
-/// leaves off, quotes single or double, an elided apostrophe — and a broad listing written without them is still the
-/// one the entry heads, as an entry with no count or year still takes
-/// a hit written without them.
+/// leaves off, quotes single or double, an elision opening a word —
+/// and a broad listing written without them is still the one the entry
+/// heads, as an entry with no count or year still takes a hit written
+/// without them.
 #[tokio::test]
 async fn marks_catalogues_drift_on_do_not_part_a_title_from_the_entry() {
     let spanning = |entry: &str, wide: &str| {
