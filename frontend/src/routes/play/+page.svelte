@@ -37,7 +37,7 @@
 				h.loadSource(target);
 				h.on(Hls.Events.ERROR, (_ev, data) => {
 					if (data.fatal) {
-						error = `HLS fatal: ${data.type} / ${data.details}`;
+						error = m.play_test_error_hls_fatal({ detail: `${data.type} / ${data.details}` });
 					}
 				});
 				hls = h;
@@ -45,10 +45,10 @@
 				videoEl.src = target;
 			}
 			void videoEl.play().catch((e) => {
-				error = `Play failed: ${(e as Error).message}`;
+				error = m.play_test_error_play_failed({ detail: (e as Error).message });
 			});
 		} catch (e) {
-			error = `Setup failed: ${(e as Error).message}`;
+			error = m.play_test_error_setup_failed({ detail: (e as Error).message });
 		}
 	}
 

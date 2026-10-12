@@ -268,7 +268,7 @@
 			if (t.kind !== 'subtitles' && t.kind !== 'captions') continue;
 			out.push({
 				index: i,
-				label: t.label || t.language || `Track ${i + 1}`,
+				label: t.label || t.language || m.play_track_fallback_label({ number: String(i + 1) }),
 				showing: t.mode === 'showing'
 			});
 		}
@@ -1620,7 +1620,7 @@
 			}
 			playerError =
 				exhaustedStallOverlayMessage({ source: 'video', code }, hasAutoRetried) ??
-				`Playback error: ${reason}`;
+				m.play_error_playback_technical({ detail: reason });
 		};
 		const errorTarget = videoEl;
 		errorTarget.addEventListener('error', onVideoError);
@@ -1726,12 +1726,12 @@
 				}
 				playerError =
 					exhaustedStallOverlayMessage(err, hasAutoRetried) ??
-					`Playback error: ${data.type} / ${data.details}`;
+					m.play_error_playback_technical({ detail: `${data.type} / ${data.details}` });
 			});
 		} else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
 			videoEl.src = mediaUrl;
 		} else {
-			playerError = 'HLS playback is not supported in this webview.';
+			playerError = m.play_error_hls_unsupported();
 			sourceAttached = false;
 		}
 
@@ -1756,7 +1756,7 @@
 	});
 
 	// describeError / describePlayFailure live in $lib/play/error-copy
-	// so the four message branches can be unit-tested directly.
+	// so the message branches can be unit-tested directly.
 
 	/** Hard-failure overlay state — distinct from `playerError` (which
 	 *  shows in the player area when the video element / hls.js errors
@@ -1781,7 +1781,7 @@
 
 	onMount(() => {
 		if (!id) {
-			detailError = 'Missing show id in URL.';
+			detailError = m.play_error_no_show_id();
 			return;
 		}
 		void kitsuAnimeDetail(id)
@@ -1801,7 +1801,7 @@
 				}
 			})
 			.catch((e) => {
-				detailError = describeError(e);
+				detailError = m.play_error_load_failed({ reason: describeError(e) });
 			});
 
 		// Open the ep grid at the page containing the current episode
@@ -1826,7 +1826,7 @@
 		breadcrumb.set([
 			{ label: m.breadcrumb_home(), href: '/' },
 			{ label: title ?? m.breadcrumb_anime(), href: resolve('/anime/[id]', { id }) },
-			{ label: `EP ${episodeNum}` }
+			{ label: m.play_head_title_episode_prefix({ episode: String(episodeNum) }) }
 		]);
 	});
 
@@ -3486,7 +3486,7 @@
 						{/each}
 					</ol>
 				{:else if episodesError}
-					<p class="ep-list-empty">{m.play_episodes_error_message({ detail: episodesError })}</p>
+					<p class="ep-list-empty">{m.play_episodes_error_message({ reason: episodesError })}</p>
 				{:else}
 					<p class="ep-list-empty">{m.play_episodes_loading_message()}</p>
 				{/if}

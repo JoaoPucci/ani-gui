@@ -1719,8 +1719,10 @@ fn a_download_tool_exists(path_env: &str) -> bool {
 /// Run one download tool to completion, streaming stderr lines.
 ///
 /// # Errors
-/// [`AniError::Timeout`] past the deadline, [`AniError::Network`] on
-/// spawn failure, [`AniError::Scraper`] on a non-zero exit.
+/// [`AniError::Timeout`] past the deadline; [`AniError::Scraper`] on a
+/// non-zero exit, and with the `DOWNLOAD_TOOL_SPAWN_FAILED` key when the
+/// tool cannot be started at all (a tool that will not start is the
+/// tool failing, not the network).
 async fn run_tool<F>(
     mut cmd: tokio::process::Command,
     deadline: tokio::time::Instant,
@@ -1762,7 +1764,11 @@ where
             Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
-            Err(_) => return Err(AniError::Network),
+            Err(_) => {
+                return Err(AniError::Scraper {
+                    key: crate::i18n::keys::DOWNLOAD_TOOL_SPAWN_FAILED,
+                })
+            }
         }
     };
     // Dropped unreaped — the dock's Cancel aborting the SSE task, or

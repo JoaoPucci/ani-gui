@@ -76,7 +76,7 @@
 	"episode_card_num": "EP {episode}",
 	"episode_card_title_fallback": "Episodio {num}",
 	"episode_card_length_minutes": "{minutes} min",
-	"episodes_error_message": "No se pudieron cargar los episodios ({detail}).",
+	"episodes_error_message": "No se pudieron cargar los episodios. {reason}",
 	"episodes_loading_message": "Cargando episodios…",
 	"similar_strip_eyebrow": "Más como esto",
 	"error_play_headline": "No se pudo reproducir el episodio {episode}",
@@ -99,7 +99,7 @@
 	"play_failure_timeout": "La fuente de streaming tardó demasiado en responder. Vuelve a intentarlo en unos minutos.",
 	"play_failure_network": "Problemas de red al conectar con la fuente de streaming. Revisa tu conexión y vuelve a intentarlo.",
 	"play_failure_rate_limited": "La fuente de streaming está ocupada en este momento. Espera unos segundos y vuelve a intentarlo.",
-	"play_failure_rate_limited_wait": "La fuente de streaming está ocupada en este momento. Vuelve a intentarlo en unos {seconds} segundos.",
+	"play_failure_rate_limited_wait": "La fuente de streaming está ocupada en este momento. Vuelve a intentarlo en unos {seconds} s.",
 	"play_failure_generic": "No se pudo iniciar este episodio ahora mismo. Vuelve a intentarlo en unos minutos.",
 	"progress_searching": "Buscando en {provider}…",
 	"progress_matched": "Encontrado: {title}",
@@ -108,5 +108,14 @@
 	"error_host_slow": "El servidor de video está respondiendo lento en este momento. Suele ser un problema del proveedor — reintentar más tarde normalmente lo soluciona.",
 	"error_fragment_loop": "El servidor de video envió un stream que el reproductor no puede almacenar — las partes llegan pero nunca se reproducen. La reproducción se detuvo en lugar de seguir pidiéndole la misma parte al servidor.",
 	"stall_toast_nudge": "La transmisión se detuvo — el servidor de video está lento. Reintentando…",
-	"play_failure_source_down": "La fuente de streaming está caída o en mantenimiento en este momento. No hay ningún problema de tu lado — inténtalo más tarde."
+	"play_failure_source_down": "La fuente de streaming está caída o en mantenimiento en este momento. No hay ningún problema de tu lado — inténtalo más tarde.",
+	"track_fallback_label": "Pista {number}",
+	"error_playback_technical": "Error de reproducción: {detail}",
+	"error_hls_unsupported": "Este webview no reproduce HLS.",
+	"error_no_show_id": "A la dirección le falta el id del título.",
+	"test_error_hls_fatal": "Error fatal de HLS: {detail}",
+	"test_error_play_failed": "Falló la reproducción: {detail}",
+	"test_error_setup_failed": "Falló la configuración: {detail}",
+	"error_load_failed": "No se pudo cargar este título. {reason}",
+	"play_failure_source_error": "La fuente de streaming respondió con un error. Inténtalo más tarde."
 }

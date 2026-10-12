@@ -60,9 +60,11 @@ impl IntoResponse for AniError {
     }
 }
 
-/// Convert an [`AniError`] into the JSON envelope every error answer
-/// carries: the HTTP error bodies and the play- and download-stream
-/// SSE error events alike
+/// Convert an [`AniError`] into the JSON envelope every error the app
+/// raises carries: the HTTP error bodies and the play- and download-stream
+/// SSE error events alike. Answers the router or an extractor gives
+/// before a handler runs, and `get_image`'s plain-text refusal, are not
+/// `AniError`s and carry no envelope
 /// (`{"kind": "<snake>", "key": "error.<scope>.<name>", ...}`)
 /// — the frontend matches on `kind` to render error-specific UI (the
 /// ffmpeg-missing modal, the rate-limit and upstream copy, the
@@ -1268,9 +1270,8 @@ mod tests {
 
     #[tokio::test]
     async fn ani_error_no_results_serializes_with_kind() {
-        // Spot-check the IntoResponse impl — the body has the same JSON
-        // shape Tauri used to deliver as the rejection payload, so the
-        // frontend's error parser can keep the same structure.
+        // Spot-check the IntoResponse impl — the body carries the `kind`
+        // discriminator the frontend's error copy is chosen from.
         let resp = AniError::NoResults.into_response();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         let body = body_string(resp).await;
