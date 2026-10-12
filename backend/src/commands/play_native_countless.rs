@@ -23,8 +23,8 @@ use super::play_native_title_marker::EntryTitles;
 /// in the provider's order within each tier — so pages without season
 /// links stay resolvable. An entry with no year either has nothing to
 /// vouch for a hit but its name: the fallback then takes only a hit the
-/// entry heads ([`EntryTitles::heads`]) — named and read as one of the
-/// entry's titles — so an announced sequel the provider does not list
+/// entry names ([`EntryTitles::names`]) — named, read and subtitled as
+/// one of the entry's titles — so an announced sequel the provider does not list
 /// yet is not handed the series its searches answer with. The single
 /// probe still runs so the caller gets the episode list it needs.
 pub(super) async fn pick_without_count<P: Provider + ?Sized>(
@@ -47,7 +47,7 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     let tier = move |agrees: bool, confirmed: bool| {
         head.iter()
             .filter(move |(h, c)| *c == confirmed && entry.part_agrees(&h.title) == agrees)
-            .filter(move |(h, _)| year != YearEvidence::Unknown || entry.heads(&h.title))
+            .filter(move |(h, _)| year != YearEvidence::Unknown || entry.names(&h.title))
             .map(|(h, _)| *h)
     };
     let positional_ok = year != YearEvidence::DisprovedSome;

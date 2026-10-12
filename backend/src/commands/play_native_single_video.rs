@@ -15,7 +15,7 @@ use super::play_native_wide_listing::{Probed, UNFIT};
 /// For an entry one video long, scores [`UNFIT`] every probed
 /// candidate that carries no identity beyond its count: not the title
 /// searched, not named as one of the entry's titles
-/// ([`EntryTitles::heads`]), and without its own year matching the
+/// ([`EntryTitles::names`]), and without its own year matching the
 /// entry's. An entry whose count is not one is left as it is.
 ///
 /// Returns whether a candidate the count alone would have accepted
@@ -35,7 +35,7 @@ pub(super) fn unvouched_single_videos(
     let tolerance = ep_count_threshold(expected);
     let mut refused_a_fit = false;
     for (h, _, distance, confirmed) in probed.iter_mut() {
-        let vouched = *confirmed || normalized(&h.title) == needle || entry.heads(&h.title);
+        let vouched = *confirmed || normalized(&h.title) == needle || entry.names(&h.title);
         if vouched || *distance == UNFIT {
             continue;
         }

@@ -21,6 +21,20 @@ impl EntryTitles<'_> {
             .any(|t| reading(t) == theirs && name(t) == called)
     }
 
+    /// Whether the entry names `title`: one of its titles carries the
+    /// name `title` does, reads as it does ([`Self::heads`]), and
+    /// carries the same words past that name outside its divisions
+    /// ([`undivided_rest`]). "Show Season 2" is named by "Show 2nd
+    /// Season"; "Show 2nd Season: Extra Arc" is not, nor is "Show 2" by
+    /// "Show 2: The Movie".
+    ///
+    /// [`undivided_rest`]: super::play_native_title_reading::undivided_rest
+    pub(crate) fn names(&self, title: &str) -> bool {
+        let (theirs, called, rest) = (reading(title), name(title), undivided_rest(title));
+        self.all()
+            .any(|t| reading(t) == theirs && name(t) == called && undivided_rest(t) == rest)
+    }
+
     /// Whether `title` reads as one of the entry's titles does and
     /// starts with that title's name ([`starts_with_name_of`]): "Show
     /// 2nd Season" and "Show Part 2" for "Show 2", but not "Other Show

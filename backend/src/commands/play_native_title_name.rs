@@ -38,6 +38,34 @@ pub(crate) fn name(title: &str) -> Vec<String> {
     }
 }
 
+/// The words `title` carries past its name ([`name`]) that name no
+/// division: "Extra Arc" in "Show 2nd Season: Extra Arc" and "The
+/// Movie" in "Show 2: The Movie", nothing in "Show 2nd Season" or
+/// "Show". A word ordinal inside the name stays in the name, as
+/// [`name`] reads it.
+pub(crate) fn undivided_rest(title: &str) -> Vec<String> {
+    let words = words(title);
+    let start = (0..words.len())
+        .find(|&i| division_at(&words, i).is_some() && !inside_the_name(&words, i))
+        .unwrap_or(words.len());
+    let mut rest = Vec::new();
+    let mut i = start;
+    while i < words.len() {
+        if glued_divisions(&words[i]).is_some() {
+            i += 1;
+            continue;
+        }
+        match division_at(&words, i) {
+            Some((_, taken)) => i += taken,
+            None => {
+                rest.push(words[i].clone());
+                i += 1;
+            }
+        }
+    }
+    rest
+}
+
 /// Whether `title` starts with `other`'s name ([`name`]), on the terms
 /// of [`past_stem`]: "Show 2nd Season" and "Show Final Arc 2nd Season"
 /// start with the name of "Show Part 2"; "Other Show 2nd Season" and
