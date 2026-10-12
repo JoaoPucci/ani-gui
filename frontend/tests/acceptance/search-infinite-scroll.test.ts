@@ -645,4 +645,83 @@ describe('/search infinite scroll', () => {
 		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
 		expect(offsets).toEqual([0, 20]);
 	});
+
+	// Sorting what is loaded re-sorts the whole grid as each page lands,
+	// so a newer show on a later page jumps above what the reader is
+	// looking at. Kitsu sorts the search instead: choosing an order
+	// starts the search over in it, and every later page continues it.
+	it('a chosen order comes from Kitsu, so loading more never reshuffles the top', async () => {
+		const asked: { offset: number; sort: string | undefined }[] = [];
+		const dated = (id: string, title: string, date: string) => ({
+			...ref(id, title),
+			start_date: date
+		});
+		const OLD = dated('1', 'Dragon Ball', '1986-02-26');
+		const MID = dated('2', 'Dragon Ball Super', '2015-07-05');
+		const NEW = dated('3', 'Dragon Ball DAIMA', '2024-10-11');
+		const NEWEST = dated('4', 'Dragon Ball Super: Beerus', '2026-10-11');
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset, sort } = (await request.json()) as { offset: number; sort?: string };
+				asked.push({ offset, sort });
+				if (sort === 'year') {
+					return offset === 0
+						? HttpResponse.json({ hits: [NEWEST, NEW], next_offset: 20 })
+						: HttpResponse.json({ hits: [MID, OLD], next_offset: null });
+				}
+				return offset === 0
+					? HttpResponse.json({ hits: [MID, OLD], next_offset: 20 })
+					: HttpResponse.json({ hits: [NEWEST, NEW], next_offset: null });
+			})
+		);
+		const cards = () =>
+			[...target.querySelectorAll('.card-title')].map((el) => el.textContent?.trim());
+
+		setQuery('dragon ball');
+		app = mount(SearchPage, { target });
+		await until(() => cards().length === 2, 'the first ranked page');
+
+		buttonNamed(m.search_sort_year())!.click();
+		await until(() => cards()[0] === 'Dragon Ball Super: Beerus', 'the first page by year');
+		expect(asked.at(-1)).toEqual({ offset: 0, sort: 'year' });
+		expect(cards()).toEqual(['Dragon Ball Super: Beerus', 'Dragon Ball DAIMA']);
+
+		reachBottom();
+		await until(() => cards().length === 4, 'the next page by year');
+		expect(asked.at(-1)).toEqual({ offset: 20, sort: 'year' });
+		// The page that landed went below what was shown, in order.
+		expect(cards()).toEqual([
+			'Dragon Ball Super: Beerus',
+			'Dragon Ball DAIMA',
+			'Dragon Ball Super',
+			'Dragon Ball'
+		]);
+	});
+
+	// Kitsu cannot sort a text search by title, and sorting only what is
+	// loaded reshuffles the grid as pages land, so the page offers the
+	// three orders Kitsu sorts: its ranking, year and rating.
+	it('offers only the orders Kitsu can sort', async () => {
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, () =>
+				HttpResponse.json({ hits: [ref('1', 'Trigun')], next_offset: null })
+			)
+		);
+		setQuery('trigun');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Trigun'), 'the results');
+		const group = target.querySelector(
+			`[role="radiogroup"][aria-label="${m.search_chips_sort_aria_label()}"]`
+		);
+		const offered = [...(group?.querySelectorAll('button') ?? [])].map((b) =>
+			b.textContent?.trim()
+		);
+		expect(offered).toEqual([
+			m.search_sort_relevance(),
+			m.search_sort_year(),
+			m.search_sort_rating()
+		]);
+	});
 });
