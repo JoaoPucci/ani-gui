@@ -480,6 +480,7 @@
 			<!-- One rule, always in place, so a state change recolours it
 			     instead of moving what is below. -->
 			<span
+				data-testid="search-paging-rule"
 				class="folio-rule"
 				class:folio-rule-drawing={phase.kind === 'loading-more' && shown}
 				class:folio-rule-closed={phase.kind === 'end' && shown}

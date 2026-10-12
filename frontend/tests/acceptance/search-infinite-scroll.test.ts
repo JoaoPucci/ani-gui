@@ -417,7 +417,15 @@ describe('/search infinite scroll', () => {
 			() => target.querySelector('[aria-live="polite"][data-testid="search-paging"]') !== null,
 			'the status line to mount while the first page is in flight'
 		);
+		// Until a first page is shown the folio is the bare live region:
+		// no rule, so it adds nothing under the loading skeleton or a
+		// failed first search.
+		expect(target.querySelector('[data-testid="search-paging-rule"]')).toBeNull();
 		release();
+		await until(
+			() => target.querySelector('[data-testid="search-paging-rule"]') !== null,
+			'the rule once the first page is shown'
+		);
 		await until(
 			() =>
 				target
