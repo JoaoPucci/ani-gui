@@ -21,6 +21,7 @@ use super::play_native::pick_candidate_titled;
 pub use super::play_native_episode::resolve_episode;
 use super::play_native_episode::{classify_chain_failure, ChainOutcome};
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
+use super::play_native_transient::{attempt_at, Transients, WalkStage};
 
 /// A fully resolved native play: what the orchestrator needs to open
 /// a session, stamp caches, and write history.
@@ -182,20 +183,16 @@ where
     let entry_titles: Vec<&str> = std::iter::once(req.title)
         .chain(req.alt_titles.iter().map(String::as_str))
         .collect();
-    let mut any_search_succeeded = false;
-    let mut any_search_errored = false;
-    // A non-blocking status an episode chain answered, kept for the
-    // exhausted walk to surface as itself.
-    let mut chain_status: Option<AniError> = None;
+    // The transient failures met along the way — none ends the walk,
+    // and the exhausted walk surfaces one of them.
+    let mut transients = Transients::default();
     let mut any_answered_dead_end = false;
     // A show was picked and its episode chain answered a dead end —
     // the episode's verdict, distinct from a pool that matched nothing.
     let mut any_episode_dead_end = false;
-    let mut last_failure_at: Option<tokio::time::Instant> = None;
     for t in std::iter::once(req.title).chain(req.alt_titles.iter().map(String::as_str)) {
         match client.search(t).await {
             Ok(hits) => {
-                any_search_succeeded = true;
                 if hits.is_empty() {
                     continue;
                 }
@@ -232,21 +229,7 @@ where
                                     continue;
                                 }
                                 ChainOutcome::Transient(ne) => {
-                                    any_search_errored = true;
-                                    last_failure_at = Some(
-                                        client
-                                            .last_attempt_at()
-                                            .unwrap_or_else(tokio::time::Instant::now),
-                                    );
-                                    // An answered status is kept for
-                                    // the exhausted walk to surface as
-                                    // itself: the breaker reads it as
-                                    // the provider answering, where the
-                                    // transport failure substituted for
-                                    // it would read as distress.
-                                    if matches!(ne.error, AniError::Upstream { .. }) {
-                                        chain_status = Some(ne.error);
-                                    }
+                                    transients.note(WalkStage::Chain, ne.error, attempt_at(client));
                                     continue;
                                 }
                             },
@@ -296,12 +279,7 @@ where
                     }
                     Err(e) => {
                         tracing::debug!(error = ?e, "walk: pick failed transiently");
-                        any_search_errored = true;
-                        last_failure_at = Some(
-                            client
-                                .last_attempt_at()
-                                .unwrap_or_else(tokio::time::Instant::now),
-                        );
+                        transients.note(WalkStage::Pick, e, attempt_at(client));
                     }
                 }
             }
@@ -325,24 +303,15 @@ where
             }
             Err(e) => {
                 tracing::debug!(error = ?e, "walk: search failed transiently");
-                any_search_errored = true;
-                last_failure_at = Some(
-                    client
-                        .last_attempt_at()
-                        .unwrap_or_else(tokio::time::Instant::now),
-                );
+                transients.note(WalkStage::Search, e, attempt_at(client));
             }
         }
     }
-    if !any_search_succeeded || any_search_errored {
-        // The transient verdict: a transport failure, unless an
-        // episode chain answered a non-blocking status, which stands
-        // as itself so the breaker hears the provider answering.
-        return Err(NativeError {
-            error: chain_status.unwrap_or(AniError::Network),
-            clean_miss: false,
-            failed_at: last_failure_at,
-        });
+    // The transient verdict, when a failure the walk did not stop on
+    // was met — a search that never answered among them: no title
+    // means a search that neither answered nor failed.
+    if let Some(ne) = transients.verdict() {
+        return Err(ne);
     }
     if any_answered_dead_end {
         // Answered dead ends prove nothing about the show — never
