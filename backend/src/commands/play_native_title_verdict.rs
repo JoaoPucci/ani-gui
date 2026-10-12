@@ -44,7 +44,9 @@ pub(super) fn probe_head(
         .into_iter()
         .enumerate()
         .filter(|(pos, h)| {
-            if entry.admits(&h.title) {
+            // Without a count, the entry before this one is dropped
+            // with the refused ([`EntryTitles::before_entry`]).
+            if entry.admits(&h.title) && (counted || !entry.before_entry(&h.title)) {
                 admitted += 1;
                 admitted <= MAX_PROBED_CANDIDATES
             } else {

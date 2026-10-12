@@ -59,13 +59,21 @@ pub(super) fn fit_to_entry(
         .iter()
         .map(|(h, _, _, _)| entry.admits(&h.title))
         .collect();
+    // Pickable: admitted, and not the entry before this one
+    // ([`EntryTitles::before_entry`]) — which still counts as admitted
+    // when the pool is read for a broad listing.
+    let pickable: Vec<bool> = probed
+        .iter()
+        .zip(&admitted)
+        .map(|((h, _, _, _), ok)| *ok && !entry.before_entry(&h.title))
+        .collect();
     let tolerance = super::play_native::ep_count_threshold(expected);
     let refused_a_fit = probed
         .iter()
-        .zip(&admitted)
+        .zip(&pickable)
         .any(|(row, ok)| !ok && row.2 <= tolerance);
     let span = spanning(probed, expected, &admitted, entry);
-    for (row, ok) in probed.iter_mut().zip(&admitted) {
+    for (row, ok) in probed.iter_mut().zip(&pickable) {
         if !ok {
             row.2 = UNFIT;
         }

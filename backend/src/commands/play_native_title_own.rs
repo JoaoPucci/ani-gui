@@ -60,4 +60,19 @@ impl EntryTitles<'_> {
             || (self.reads_as_entry(listing)
                 && (stem(listing) == stem(wide) || names_past_stem(listing, wide)))
     }
+
+    /// Whether every title of the entry reads as naming a division
+    /// beyond the first ([`reading`]) while `candidate` reads as naming
+    /// none and is not one of the entry's titles: the entry before this
+    /// one ("Show" or "Show Season 1" for "Show 2"), never picked. An
+    /// entry with any title naming no later division never refuses on
+    /// this, so a provider's own unnumbered name for a sequel stands.
+    ///
+    /// [`reading`]: super::play_native_title_reading::reading
+    pub(crate) fn before_entry(&self, candidate: &str) -> bool {
+        let exact = normalized(candidate);
+        reading(candidate).is_empty()
+            && self.all().all(|t| !reading(t).is_empty())
+            && !self.all().any(|t| normalized(t) == exact)
+    }
 }
