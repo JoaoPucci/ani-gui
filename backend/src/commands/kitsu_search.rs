@@ -1,7 +1,9 @@
 //! Kitsu text search, cached through the SQLite `meta_cache` table.
 //!
 //! Each page is cached under its own offset (`kitsu:v4:search:<offset>:
-//! <normalized-query>`); the plain search is the first page. `v4`
+//! <normalized-query>`, and `kitsu:v4:search:<order>:<offset>:
+//! <normalized-query>` for a year or rating search); the plain search is
+//! the first page of the ranked one. `v4`
 //! entries were fetched by page number; a `v3` entry was fetched by
 //! offset, which Kitsu answered a page late, so it is not read. Pages live
 //! under `DISCOVERY_TTL` (6h): popular anime is stable, but trending
@@ -131,8 +133,9 @@ pub(crate) fn read_page_request(body: &[u8]) -> Result<(String, u32)> {
 /// relevance when it names none.
 ///
 /// # Errors
-/// [`AniError::InvalidRequestBody`] when the body is not JSON or names
-/// an order the route does not offer.
+/// [`AniError::InvalidRequestBody`] when the body is not JSON or its
+/// `sort` is anything but one of the offered orders (another string,
+/// `null`, a number). Only a missing `sort` reads as relevance.
 pub(crate) fn read_page_order(body: &[u8]) -> Result<SearchOrder> {
     #[derive(serde::Deserialize)]
     struct Body {

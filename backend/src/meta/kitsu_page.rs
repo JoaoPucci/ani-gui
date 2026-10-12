@@ -19,7 +19,9 @@ pub enum SearchOrder {
     Relevance,
     /// Newest first by start date.
     Year,
-    /// Highest average rating first.
+    /// Highest average rating first, as Kitsu ranks it. Kitsu sorts on a
+    /// stored rating that can lag the `averageRating` it returns, so
+    /// neighbouring cards may show small inversions.
     Rating,
 }
 
