@@ -70,9 +70,7 @@ fn landed_elsewhere(body: &'static str) -> HianimeClient<Landed> {
 fn parse_failure<T: std::fmt::Debug>(got: crate::error::Result<T>, what: &str) {
     match got {
         Err(AniError::ParseFailed { .. }) => {}
-        other => panic!(
-            "{what}: an answer from elsewhere is a failure the walk moves past, got {other:?}"
-        ),
+        other => panic!("{what}: expected a parse failure the walk moves past, got {other:?}"),
     }
 }
 
@@ -221,4 +219,71 @@ async fn the_transport_follows_a_redirect_within_the_origin_and_no_other() {
             .is_empty(),
         "the other origin never hears the request"
     );
+}
+
+/// Answers the servers listing with one sub row per hash in `hashes`
+/// and records every request; anything else is refused.
+struct Listing {
+    hashes: Vec<&'static str>,
+    asked: std::sync::Mutex<Vec<String>>,
+}
+
+#[async_trait::async_trait]
+impl Fetch for Listing {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        self.asked.lock().expect("log").push(req.url.clone());
+        if !req.url.contains("/api/theme/episode/servers") {
+            return Ok(FetchResponse {
+                status: 404,
+                body: String::new(),
+                url: req.url.clone(),
+            });
+        }
+        let rows: String = self
+            .hashes
+            .iter()
+            .map(|h| {
+                format!(
+                    r#"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"{h}\"></div>"#
+                )
+            })
+            .collect();
+        Ok(FetchResponse {
+            status: 200,
+            body: format!(r#"{{"status":true,"html":"{rows}"}}"#),
+            url: req.url.clone(),
+        })
+    }
+}
+
+#[tokio::test]
+async fn an_embed_url_that_names_no_origin_is_never_requested() {
+    // An embed URL that does not parse as absolute — protocol-relative,
+    // a bare path, a host without a scheme — names no origin. A
+    // request for it would be resolved against whatever the transport
+    // makes of it and follow its redirects anywhere; it is never sent.
+    // The mode stays uncertain: the row may have been the playable
+    // server, so this is a parse failure, never the mode's absence.
+    for hash in [
+        "Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvMS9zdWI=",
+        "L3N0cmVhbS9tYWwvMS8xL3N1Yg==",
+        "bWVnYXBsYXkuYnV6ei9zdHJlYW0vcy0yLzEvc3Vi",
+    ] {
+        let client = HianimeClient::with_base(
+            Listing {
+                hashes: vec![hash],
+                asked: std::sync::Mutex::new(Vec::new()),
+            },
+            BASE,
+        );
+        parse_failure(client.has_mode(21418, "sub").await, hash);
+        parse_failure(client.master_playlist_url(21418, "sub").await, hash);
+        let asked = client.transport().asked.lock().expect("log").clone();
+        assert!(
+            asked
+                .iter()
+                .all(|u| u.starts_with(&format!("{BASE}/api/theme/episode/servers"))),
+            "{hash}: only the listing is asked, never the embed: {asked:?}"
+        );
+    }
 }
