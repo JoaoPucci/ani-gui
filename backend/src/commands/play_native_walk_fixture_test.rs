@@ -2098,3 +2098,28 @@ async fn a_catalogue_tag_tells_a_remake_from_its_original() {
         }
     }
 }
+
+/// A title compared as written carries its catalogue tags wherever
+/// they stand: "Show Season 2 (2011)" is the entry "Show (2011) Season
+/// 2" exactly, and wins over the original's "Show Season 2" listed
+/// first, with a count and without.
+#[tokio::test]
+async fn a_title_as_written_carries_its_tags_wherever_they_stand() {
+    for count in [Some(12), None] {
+        let site = pool_of(
+            &["Show (2011) Season 2"],
+            count,
+            2020,
+            "Show (2011) Season 2",
+            &[
+                ("orig", "Show Season 2", 12),
+                ("own", "Show Season 2 (2011)", 12),
+            ],
+        );
+        assert_eq!(
+            walk_over(site).await.expect("picked").hit.slug,
+            "own",
+            "{count:?}"
+        );
+    }
+}
