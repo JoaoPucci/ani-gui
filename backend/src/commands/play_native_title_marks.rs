@@ -40,3 +40,7 @@ fn ascii_mark(c: char) -> char {
         _ => c,
     }
 }
+
+#[cfg(test)]
+#[path = "play_native_title_marks_test.rs"]
+mod tests;
