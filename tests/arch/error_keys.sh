@@ -33,11 +33,6 @@ set -eu
 REPO_ROOT="${ARCH_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$REPO_ROOT"
 
-if [ ! -f backend/error-keys.json ]; then
-    printf 'arch/error_keys: backend/error-keys.json not present — skipping\n'
-    exit 0
-fi
-
 node - <<'EOF'
 const fs = require('node:fs');
 const path = require('node:path');
