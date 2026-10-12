@@ -91,9 +91,10 @@ pub(crate) struct RateMeter {
     resumed: Resumed,
     /// The format the last count was for, once one has been.
     format: Option<Option<String>>,
-    /// What the current format resumes from, until its count passes it:
-    /// counts below it are resumed bytes arriving, not a fall.
-    floor: Option<u64>,
+    /// What the current format resumes from, and since when, until its
+    /// count passes it or [`RATE_WINDOW`] has gone by: counts below it
+    /// are resumed bytes arriving, not a fall.
+    floor: Option<(u64, Instant)>,
 }
 
 /// What a yt-dlp run resumes from: the partial file it keeps beside its
@@ -131,7 +132,7 @@ impl RateMeter {
         Self {
             samples: VecDeque::from([(at, 0)]),
             last_count: Some(resumed.whole),
-            floor: Some(resumed.whole),
+            floor: Some((resumed.whole, at)),
             resumed,
             ..Self::default()
         }
@@ -149,7 +150,7 @@ impl RateMeter {
             let first = self.format.is_none();
             let from = own.unwrap_or(if first { self.resumed.whole } else { 0 });
             self.last_count = Some(from);
-            self.floor = Some(from);
+            self.floor = Some((from, at));
             self.format = Some(format);
         }
         self.observe(bytes, at);
@@ -161,8 +162,19 @@ impl RateMeter {
         // still arriving — a fragment in flight reports its own partial
         // when its thread first does — and gains nothing, nor lowers
         // the point gains are measured from.
-        if self.floor.is_some_and(|floor| bytes < floor) {
+        // Held at most a window from the format's start: every fragment
+        // in flight starts with it and reports its resumed bytes with its
+        // first count, so a point still unreached then holds bytes that
+        // will never be reported, and gains count from where the count
+        // stands.
+        let held = self
+            .floor
+            .filter(|&(_, since)| at.saturating_duration_since(since) < RATE_WINDOW);
+        if held.is_some_and(|(floor, _)| bytes < floor) {
             // Held: nothing gained, the point gains count from kept.
+        } else if self.floor.is_some_and(|(floor, _)| bytes < floor) {
+            self.floor = None;
+            self.last_count = Some(bytes);
         } else {
             self.floor = None;
             // A count that steps back — yt-dlp counting a retried
