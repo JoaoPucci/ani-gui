@@ -13,7 +13,6 @@
 -->
 <script lang="ts">
 	import {
-		HERO_PREFS_DEFAULT,
 		browserStorage,
 		loadHeroPrefs,
 		naturalRatio,
@@ -1099,8 +1098,8 @@
 		return sharedDescribePlayFailure(e, { noResults: m.detail_error_play_no_results });
 	}
 
-	// Hero framing preferences — see $lib/hero/framing. Dev builds only for now.
-	const heroPrefs = import.meta.env.DEV ? loadHeroPrefs(browserStorage()) : HERO_PREFS_DEFAULT;
+	// Hero framing preferences — see $lib/hero/framing.
+	const heroPrefs = loadHeroPrefs(browserStorage());
 
 	function heroFor(d: KitsuAnimeRef): {
 		url: string | null;
@@ -1456,8 +1455,8 @@
 					src={hero.url}
 					alt=""
 					style:transform={heroTransform(scrollY, hero.isCover)}
-					style:--ratio={import.meta.env.DEV ? heroRatios[heroId] : undefined}
-					onload={import.meta.env.DEV ? (e) => onHeroLoad(heroId, e) : undefined}
+					style:--ratio={heroRatios[heroId]}
+					onload={(e) => onHeroLoad(heroId, e)}
 				/>
 			{/if}
 			<div class="hero-scrim" aria-hidden="true"></div>
@@ -2187,7 +2186,7 @@
 			);
 		pointer-events: none;
 	}
-	/* DEV-ONLY banner framing experiment ($lib/hero/framing). The
+	/* Under the framings beyond the top crop ($lib/hero/framing) the
 	   band's fade shortens to the strip the masthead's text sits on,
 	   and the darkening keeps to that strip plus a thin band under the
 	   topbar. */

@@ -95,7 +95,6 @@
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import {
-		HERO_PREFS_DEFAULT,
 		browserStorage,
 		loadHeroPrefs,
 		naturalRatio,
@@ -739,8 +738,8 @@
 		}
 	});
 
-	// Hero framing preferences — see $lib/hero/framing. Dev builds only for now.
-	const heroPrefs = import.meta.env.DEV ? loadHeroPrefs(browserStorage()) : HERO_PREFS_DEFAULT;
+	// Hero framing preferences — see $lib/hero/framing.
+	const heroPrefs = loadHeroPrefs(browserStorage());
 
 	function heroFor(d: KitsuAnimeRef): {
 		url: string | null;
@@ -826,8 +825,8 @@
 						src={hero.url}
 						alt=""
 						style:transform={heroTransform(scrollY, hero.isCover)}
-						style:--ratio={import.meta.env.DEV ? heroRatios[featured.id] : undefined}
-						onload={import.meta.env.DEV ? (e) => onHeroLoad(featured.id, e) : undefined}
+						style:--ratio={heroRatios[featured.id]}
+						onload={(e) => onHeroLoad(featured.id, e)}
 					/>
 				{/if}
 				<div class="hero-scrim" aria-hidden="true"></div>
@@ -1391,10 +1390,10 @@
 		mix-blend-mode: overlay;
 	}
 
-	/* DEV-ONLY banner framing experiment ($lib/hero/framing). Both
-	   variants keep the darkening to where text sits: a field under
-	   the copy at the lower left, a thin band under the topbar, and a
-	   short hand-off into the page at the bottom edge. */
+	/* The framings beyond the top crop ($lib/hero/framing) keep the
+	   darkening to where text sits: a field under the copy at the
+	   lower left, a thin band under the topbar, and a short hand-off
+	   into the page at the bottom edge. */
 	.framing-contain .hero-scrim,
 	.framing-pillar .hero-scrim,
 	.framing-focus .hero-scrim {

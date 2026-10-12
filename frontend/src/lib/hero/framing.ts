@@ -11,9 +11,14 @@
  *   - `focus`:   cover anchored at the centre, fades only behind text
  *
  * and which image comes first: Kitsu's cover, or AniList's banner with
- * Kitsu's cover as the fallback. `controls` says whether the on-page
- * switch that changes these is shown; the diagnostics page owns it.
- * The three are kept together per machine, in local storage.
+ * Kitsu's cover as the fallback. The heroes' default is `pillar` with
+ * `anilist`: the detail band is always 4.8:1 and the home band changes
+ * shape with the window, so a cover cropped to fill either loses a
+ * third of its height at every size; filling the height shows the
+ * whole image, and AniList's banners are drawn for a band that shape.
+ * `controls` says whether the on-page switch that changes these is
+ * shown; the diagnostics page owns it. The three are kept together
+ * per machine, in local storage.
  */
 
 export type HeroFraming = 'top' | 'contain' | 'pillar' | 'focus';
@@ -25,8 +30,12 @@ export interface HeroPrefs {
 	controls: boolean;
 }
 
-export const HERO_PREFS_DEFAULT: HeroPrefs = { framing: 'top', source: 'kitsu', controls: false };
-export const HERO_PREFS_STORAGE_KEY = 'ani-gui:dev:hero-experiment';
+export const HERO_PREFS_DEFAULT: HeroPrefs = {
+	framing: 'pillar',
+	source: 'anilist',
+	controls: false
+};
+export const HERO_PREFS_STORAGE_KEY = 'ani-gui:hero-framing';
 
 export const HERO_FRAMINGS: readonly HeroFraming[] = ['top', 'contain', 'pillar', 'focus'];
 export const HERO_SOURCES: readonly HeroSource[] = ['kitsu', 'anilist'];
