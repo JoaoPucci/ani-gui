@@ -534,7 +534,13 @@ pub fn title_match_put(
 ///   "Second Half War" to Shirogane no Tamashii-hen — where the
 ///   sibling's title carries no cour marker the guard could refuse
 ///   it on; re-keying lets the next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 4;
+/// - v5: names vouch for a countless or single-video pick. A v4 row
+///   can bind another show's key to the entry the user asked for —
+///   Dragon Ball Super's to Dragon Ball Super: Ginga Patrol, picked
+///   for an entry with no count or year — where the title carries no
+///   cour marker the guard could refuse it on; re-keying lets the
+///   next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 5;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")

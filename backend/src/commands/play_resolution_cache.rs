@@ -140,7 +140,12 @@ use crate::proxy::MediaKind;
 // other. A v15 row can hold a sibling's stream under the entry's key
 // (Attack on Titan Season 3's episode 1 cached as Season 3 Part 2's);
 // bumping re-resolves.
-const SCHEMA: &str = "v16";
+// v17: names vouch for a countless or single-video pick — an entry
+// with no count or year takes only a hit named as it, and a single
+// video only one named as the entry or from its year. A v16 row can
+// hold another show's stream under the entry's key (Dragon Ball
+// Super's episode 1 cached as Ginga Patrol's); bumping re-resolves.
+const SCHEMA: &str = "v17";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

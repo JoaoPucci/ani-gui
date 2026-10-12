@@ -570,6 +570,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v16: names vouch for a countless or single-video pick. An
+    //      entry with no count or year took the provider's first hit,
+    //      and a single video was picked on its count of one: a v15
+    //      row can be a positive for a show the provider does not
+    //      list, capped at another show's count (Dragon Ball Super:
+    //      Ginga Patrol holding Dragon Ball Super's 131); re-keying
+    //      re-probes.
     // v15: the entry's titles rule the pick. A v14 row can be a
     //      clean miss persisted for a show the picker now finds
     //      (Stone Ocean, TV on Kitsu and ONA on hianime), or a
@@ -656,7 +663,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v15:{kitsu_id}:{m}")
+    format!("availability:v16:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
