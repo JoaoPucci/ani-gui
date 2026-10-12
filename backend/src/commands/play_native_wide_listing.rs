@@ -81,7 +81,10 @@ pub(super) fn fit_to_entry(
             row.2 = UNFIT;
         }
     }
-    if let Some(span) = span {
+    if let Some(mut span) = span {
+        // A cut W is a pick like any other: never another entry. Its
+        // siblings are still read as the table reads them.
+        span.cut &= pickable[span.wide];
         apply_span(probed, expected, &span);
     }
     refused_a_fit
