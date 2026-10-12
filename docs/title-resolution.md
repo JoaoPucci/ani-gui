@@ -161,6 +161,7 @@ The pools each row answers, E = 12:
 | Show Seventh Season | "Show" 12 | no W; "Show" is the season before | nothing |
 | Spy x Family | "Spy x Family" 12 | no W; x is no numeral | Spy x Family |
 | Show Season 3 | "Show Season 3" 24, "Show Season 2" 12 | no L — season 2 is before W's season 3 | nothing |
+| Show Season 3, Show 2nd Season | "Show Second Season" 24, "Show Second Season Part 2" 12 | the entry heads W through its alias, but W names a season before the entry's 3: another entry, never cut | nothing |
 | Show Season 3 | "Show Season 3" 24, "Show Season 2 Part 2" 12 | no L — a P, whatever its part: season 2 is before W's season 3 | nothing |
 | ショー 第3期 | "ショー第3期" 24, "ショー第二期第2部" 12 | the same, in kanji, glued | nothing |
 | Show Season 3 | "Show Season 3" 24, "Show Season 3 Second Half" 12 | cut — "Second" after W's own season 3 divides it: a part 2 | the span, cut |
@@ -226,7 +227,7 @@ Not decided by this rule: what follows the divisions a title opens with is read 
 
 So a numbered spinoff ("Show Side Story 2") or a recap of W's own season ("Show Season 3 Recap") never completes a span, and a spinoff never stops one.
 
-**Choosing among candidates** — part agreement sits in every selector's order, below an exact title where the selector reads one, and the provider's order breaks only a full tie. Every selector chooses only among candidates that could be picked: a candidate the entry's titles refuse, or another entry of the same show (the entry before this one, or the season before it), is in none of them — never a winner, never rescued, never a chain's lead, never the countless pick, and its probe dying blocks no winner, though it still leaves the pool unheard:
+**Choosing among candidates** — part agreement sits in every selector's order, below an exact title where the selector reads one, and the provider's order breaks only a full tie. Every selector chooses only among candidates that could be picked — a broad listing cut to the entry's episodes included, so a W that is another entry of the same show is never cut: a candidate the entry's titles refuse, or another entry of the same show (the entry before this one, or the season before it), is in none of them — never a winner, never rescued, never a chain's lead, never the countless pick, and its probe dying blocks no winner, though it still leaves the pool unheard:
 
 | Selector | Order |
 |---|---|
