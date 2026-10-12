@@ -24,5 +24,13 @@
 	"nav_primary_aria_label": "Navegación principal",
 	"nav_breadcrumb_aria_label": "Ruta",
 	"about_link_aria": "Acerca de ani-gui",
-	"about_link_title": "Acerca de ani-gui — versión, licencias, dependencias"
+	"about_link_title": "Acerca de ani-gui — versión, licencias, dependencias",
+	"quality_best": "Mejor",
+	"quality_worst": "Peor",
+	"subtype_tv": "TV",
+	"subtype_movie": "Película",
+	"subtype_special": "Especial",
+	"subtype_ova": "OVA",
+	"subtype_ona": "ONA",
+	"subtype_music": "Música"
 }

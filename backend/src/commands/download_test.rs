@@ -4134,3 +4134,27 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
         "the row that remembered the provider stands; an episode verdict writes no absence"
     );
 }
+
+/// A download tool that cannot be started at all — not on disk where it
+/// was found, not executable, refused by the OS — is the download
+/// tool failing, not the network. The dock words a `network` payload
+/// as "check your connection", which sends the user after a connection
+/// that is fine. The program path below does not exist on any
+/// platform, so `spawn` fails the same way on Linux and Windows.
+#[tokio::test]
+async fn a_tool_that_cannot_be_started_is_the_tool_failing_not_the_network() {
+    let missing = tempfile::tempdir()
+        .expect("dir")
+        .path()
+        .join("no-such-download-tool");
+    let cmd = tokio::process::Command::new(&missing);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    let got = run_tool(cmd, deadline, &mut |_: &str| {}, &mut false).await;
+    assert!(
+        matches!(
+            got,
+            Err(AniError::Scraper { key }) if key == "error.download.tool_spawn_failed"
+        ),
+        "a spawn failure must be the tool failing with its own key, got {got:?}"
+    );
+}
