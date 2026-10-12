@@ -22,6 +22,7 @@ pub mod hianime;
 pub mod hls;
 pub mod outcome;
 pub mod provider;
+pub mod redirect;
 mod reservation;
 mod show_key;
 #[cfg(test)]
