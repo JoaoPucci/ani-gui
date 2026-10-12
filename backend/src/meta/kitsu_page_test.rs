@@ -146,3 +146,50 @@ async fn a_failed_page_is_an_upstream_error() {
         crate::error::AniError::Upstream { status: 503 }
     ));
 }
+
+/// Kitsu sorts a text search itself when asked: `-startDate` for
+/// newest first, `-averageRating` for best rated first, and pages a
+/// sorted search as consistently as a ranked one. Its own ranking is
+/// asked for by sending no sort at all.
+#[tokio::test]
+async fn the_client_asks_kitsu_to_sort_the_search_in_the_order_given() {
+    use crate::meta::kitsu_page::SearchOrder;
+    let mock = MockServer::start().await;
+    for (sort, id) in [("-startDate", "year"), ("-averageRating", "rating")] {
+        Mock::given(method("GET"))
+            .and(path("/anime"))
+            .and(query_param("sort", sort))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(body(&[anime(id, "TV")], false, Some(1))),
+            )
+            .expect(1)
+            .mount(&mock)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .and(query_param_is_missing("sort"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(body(&[anime("relevance", "TV")], false, Some(1))),
+        )
+        .expect(1)
+        .mount(&mock)
+        .await;
+
+    let client = KitsuClient::with_base(reqwest::Client::new(), mock.uri());
+    for (order, id) in [
+        (SearchOrder::Year, "year"),
+        (SearchOrder::Rating, "rating"),
+        (SearchOrder::Relevance, "relevance"),
+    ] {
+        let page = client
+            .search_page_ordered("dragon ball", 20, 0, order)
+            .await
+            .expect("ok");
+        assert_eq!(page.hits[0].id, id, "{order:?}");
+    }
+}

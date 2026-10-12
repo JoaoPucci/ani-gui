@@ -309,3 +309,74 @@ async fn a_page_cached_from_an_offset_request_is_fetched_again() {
         .expect("ok");
     assert_eq!(page.hits[0].id, "21");
 }
+
+/// Each order is its own search: a page of one is never served as the
+/// same page of another.
+#[tokio::test]
+async fn each_order_is_fetched_and_cached_on_its_own() {
+    use crate::meta::kitsu_page::SearchOrder;
+    let mock = MockServer::start().await;
+    for (sort, id) in [("-startDate", "new"), ("-averageRating", "best")] {
+        Mock::given(method("GET"))
+            .and(path("/anime"))
+            .and(query_param("sort", sort))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/vnd.api+json")
+                    .set_body_bytes(page_body(&[id], false)),
+            )
+            .expect(1)
+            .mount(&mock)
+            .await;
+    }
+    mount_page(&mock, "0", &["ranked"], false, 1).await;
+
+    let state = state_with_kitsu_at(&mock.uri());
+    for _ in 0..2 {
+        for (order, id) in [
+            (SearchOrder::Relevance, "ranked"),
+            (SearchOrder::Year, "new"),
+            (SearchOrder::Rating, "best"),
+        ] {
+            let page = kitsu_search_page_ordered(&state, "dragon ball", 0, order)
+                .await
+                .expect("ok");
+            assert_eq!(page.hits[0].id, id, "{order:?}");
+        }
+    }
+}
+
+#[test]
+fn a_page_request_reads_its_order() {
+    use crate::meta::kitsu_page::SearchOrder;
+    for (body, order) in [
+        (&br#"{"query":"q","offset":0}"#[..], SearchOrder::Relevance),
+        (
+            br#"{"query":"q","offset":0,"sort":"relevance"}"#,
+            SearchOrder::Relevance,
+        ),
+        (
+            br#"{"query":"q","offset":0,"sort":"year"}"#,
+            SearchOrder::Year,
+        ),
+        (
+            br#"{"query":"q","offset":0,"sort":"rating"}"#,
+            SearchOrder::Rating,
+        ),
+    ] {
+        assert_eq!(read_page_order(body).expect("ok"), order);
+    }
+}
+
+/// An order the route does not offer is a malformed request, not a
+/// silent fallback to relevance: the renderer only sends the three.
+#[test]
+fn an_order_the_route_does_not_offer_is_an_invalid_body() {
+    for body in [
+        &br#"{"query":"q","offset":0,"sort":"title"}"#[..],
+        br#"{"query":"q","offset":0,"sort":7}"#,
+    ] {
+        let err = read_page_order(body).expect_err("refused");
+        assert!(matches!(err, AniError::InvalidRequestBody), "{err:?}");
+    }
+}
