@@ -1,5 +1,5 @@
 {
-  "$comment": "Synthesized HLS fixtures: an MPEG-TS sample for the player's demuxer regression tests, and a hand-written master playlist for the quality-selection tests. Not recordings: each is produced by the ffmpeg command in its entry, so `make fixtures-refresh` does not apply. Committed as base64 text (.b64) so a reviewer can diff them; a test decodes the text. Byte-identical regeneration needs the same x264 build (its version is embedded in the stream's SEI); what a test relies on is the shape the entry describes, not the bytes.",
+  "$comment": "Synthesized HLS fixtures, not recordings, so `make fixtures-refresh` does not apply to either. The MPEG-TS sample, for the player's demuxer regression tests, is produced by the ffmpeg command in its entry and committed as base64 text (.b64) so a reviewer can diff it; a test decodes the text. Byte-identical regeneration needs the same x264 build (its version is embedded in the stream's SEI); what a test relies on is the shape the entry describes, not the bytes. The master playlist, for the quality-selection tests, is plain playlist text written by hand and read as it is; its entry says where it came from.",
   "captured_at": "2026-09-28",
   "fixtures": {
     "video-before-audio.mpegts.b64": {
@@ -10,7 +10,7 @@
       "notes": "One program: H.264 (Constrained Baseline, 64x36 @ 12 fps, IDR first) from 0.184 s, AAC-LC 48 kHz mono from 1.163 s, 2.42 s long. The provider's shape — video under one second, audio after it — that hls.js 1.6.16 misread as a 33-bit rollover, dropping the first segment's video. `encoding` says the file is base64 text, so `size` and `sha256` are of the decoded stream."
     },
     "master_op.m3u8": {
-      "source": "hand-written: a master playlist listing a 1080p and a 720p rendition by absolute URI",
+      "source": "synthesized by hand in the shape of an anidb.app master playlist (added under tests/fixtures/anidb/ in 0c1cbc060, 2026-08-03) and moved here unchanged when the anidb.app client was removed: a master listing a 1080p and a 720p rendition by absolute URI",
       "size": 234,
       "sha256": "1224c9b6620cb1bef9beb616d87cfc0837dc792467a68c80106d9c4054afed1d",
       "notes": "Read by backend/src/scraper/hls_test.rs. An HLS master is the same document whichever site served it."
