@@ -17,32 +17,15 @@ pub(crate) use title_past::*;
 mod title_name;
 pub(crate) use title_name::*;
 
-/// The ordinals `sibling` names as divisions of its own right after
-/// `wide`'s stem, leaving out any division `wide` itself ends on:
-/// "Attack on Titan Season 3 Part 2" beside "Attack on Titan Season
-/// 3" names part 2; "Gintama.: Silver Soul Arc - Second Half War"
-/// beside "Gintama.: Silver Soul Arc" names 2; "Show Season 3 Recap"
-/// beside "Show Season 3" and "Show Side Story 2" beside "Show" name
-/// nothing. Empty when `sibling` does not start with the stem.
-pub(super) fn later_divisions(sibling: &str, wide: &str) -> Vec<u32> {
-    later_division_markers(sibling, wide)
-        .into_iter()
-        .flat_map(|m| m.ordinals)
-        .collect()
-}
-
-/// The divisions behind [`later_divisions`], with their kinds: those
-/// [`divisions`] reads at the start of what follows `wide`'s stem
-/// ([`past_stem`]), up to the first word that names none, leaving out
-/// any `wide` itself ends on. The one reader every title goes through.
+/// The divisions `sibling` names as its own right after `wide`'s stem
+/// ([`divisions_beside`]), with their kinds: "Attack on Titan Season 3
+/// Part 2" beside "Attack on Titan Season 3" names part 2;
+/// "Gintama.: Silver Soul Arc - Second Half War" beside "Gintama.:
+/// Silver Soul Arc" names 2; "Show Season 3 Recap" beside "Show Season
+/// 3" and "Show Side Story 2" beside "Show" name nothing. Empty when
+/// `sibling` does not start with the stem.
 pub(super) fn later_division_markers(sibling: &str, wide: &str) -> Vec<Marker> {
-    let Some((rest, wide_markers)) = past_stem(sibling, wide) else {
-        return Vec::new();
-    };
-    scan(&words(&rest), true)
-        .into_iter()
-        .filter(|m| !wide_markers.contains(m))
-        .collect()
+    divisions_beside(sibling, wide).map_or_else(Vec::new, |(named, _)| named)
 }
 
 /// Every division `words` name, first word to last: a marker pair, a

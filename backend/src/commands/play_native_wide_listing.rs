@@ -83,7 +83,7 @@ pub(super) fn fit_to_entry(
 /// behind it — an unrelated title or a spinoff sharing the franchise
 /// name ("Show Side Story") is a fallback, never ahead on order.
 fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span) {
-    for &j in span.later.iter().chain(&span.firsts) {
+    for &j in span.later.iter().chain(&span.firsts).chain(&span.earlier) {
         probed[j].2 = UNFIT;
     }
     if !span.own_fits.is_empty() || span.cut {

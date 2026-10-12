@@ -41,7 +41,10 @@ pub(super) fn beside(
     let firsts: Vec<usize> = (0..probed.len())
         .filter(|&k| !head && k != m && entry.first_part_of(&probed[k].0.title, &h.title))
         .collect();
-    if later.is_empty() && own_fits.is_empty() && firsts.is_empty() {
+    let earlier: Vec<usize> = (0..probed.len())
+        .filter(|&k| k != m && !own(k) && entry.names_earlier_season(&probed[k].0.title, &h.title))
+        .collect();
+    if later.is_empty() && own_fits.is_empty() && firsts.is_empty() && earlier.is_empty() {
         return None;
     }
     let cut = head && !later.is_empty() && own_fits.is_empty();
@@ -49,6 +52,7 @@ pub(super) fn beside(
         wide: m,
         later,
         firsts,
+        earlier,
         own_fits,
         cut,
     };

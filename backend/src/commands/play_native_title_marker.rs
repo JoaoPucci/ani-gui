@@ -11,14 +11,16 @@ use std::collections::BTreeSet;
 
 use super::play_native_title_grammar::normalized;
 pub(crate) use super::play_native_title_grammar::stem;
+use super::play_native_title_grammar::Kind;
+#[cfg(test)]
+use super::play_native_title_grammar::Marker;
 use super::play_native_title_grammar::{
     named_ordinals, part_ordinals, stem_number, trailing_markers,
 };
-#[cfg(test)]
-use super::play_native_title_grammar::{Kind, Marker};
 use super::play_native_title_number::{carries_number_of, continues_number_of};
 use super::play_native_title_reading::{
-    later_divisions, name, names_past_stem, opens_on_a_first_division, reading, starts_with_name_of,
+    divisions_beside, name, names_past_stem, opens_on_a_first_division, reading,
+    starts_with_name_of,
 };
 
 /// Every title the entry goes by: its canonical title, then the
@@ -132,13 +134,34 @@ impl EntryTitles<'_> {
 
     /// Whether `sibling` is a later part of this entry beside the
     /// listing `wide` that would span both: right after `wide`'s stem
-    /// it names a division of its own ([`later_divisions`]) beyond the
-    /// part the entry's titles end on — part 1 when they end on none.
+    /// it names a division of its own ([`divisions_beside`]) later than
+    /// `wide` — a season above the one `wide` carries, or a part above
+    /// the one the entry's titles end on (part 1 when they end on
+    /// none). An earlier season is never one.
     ///
-    /// [`later_divisions`]: super::play_native_title_reading::later_divisions
+    /// [`divisions_beside`]: super::play_native_title_reading::divisions_beside
     pub(crate) fn names_later_part(&self, sibling: &str, wide: &str) -> bool {
         let own = self.own_part();
-        later_divisions(sibling, wide).iter().any(|n| *n > own)
+        divisions_beside(sibling, wide).is_some_and(|(named, season)| {
+            named.iter().any(|m| {
+                let bar = if m.kind == Kind::Season { season } else { own };
+                m.ordinals.iter().any(|n| *n > bar)
+            })
+        })
+    }
+
+    /// Whether `sibling` names, right after `wide`'s stem, a season
+    /// before the one `wide` carries ([`divisions_beside`]): "Show
+    /// Season 2" beside "Show Season 3", "Show Season 1" beside "Show
+    /// 2" — the season before `wide`, never this entry's listing.
+    ///
+    /// [`divisions_beside`]: super::play_native_title_reading::divisions_beside
+    pub(crate) fn names_earlier_season(&self, sibling: &str, wide: &str) -> bool {
+        divisions_beside(sibling, wide).is_some_and(|(named, season)| {
+            named
+                .iter()
+                .any(|m| m.kind == Kind::Season && m.ordinals.iter().any(|n| *n < season))
+        })
     }
 
     /// The part the entry's titles end on — the highest, part 1 when

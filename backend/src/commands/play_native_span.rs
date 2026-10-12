@@ -25,6 +25,10 @@ pub(super) struct Span {
     /// past W's stem on a first division alone — W's first half, never
     /// the entry ([`EntryTitles::first_part_of`]).
     pub(super) firsts: Vec<usize>,
+    /// The listings that name a season before the one W carries — the
+    /// season before W ([`EntryTitles::names_earlier_season`]), never
+    /// the entry.
+    pub(super) earlier: Vec<usize>,
     /// Every candidate that is the entry's own beside W
     /// ([`EntryTitles::names_own_part`]) and fits exactly.
     pub(super) own_fits: Vec<usize>,
