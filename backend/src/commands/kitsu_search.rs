@@ -64,12 +64,21 @@ pub async fn kitsu_search_page_ordered(
     state: &AppState,
     query: &str,
     offset: u32,
-    _order: SearchOrder,
+    order: SearchOrder,
 ) -> Result<KitsuSearchPage> {
     if offset % u32::from(SEARCH_PAGE_LIMIT) != 0 || offset > MAX_SEARCH_OFFSET {
         return Err(AniError::InvalidSearchOffset);
     }
-    let key = format!("kitsu:v4:search:{offset}:{}", normalize_query(query));
+    // Kitsu's ranking keeps the key it always had; a sorted search is
+    // its own search, so its pages are kept apart.
+    let key = match order {
+        SearchOrder::Relevance => format!("kitsu:v4:search:{offset}:{}", normalize_query(query)),
+        _ => format!(
+            "kitsu:v4:search:{}:{offset}:{}",
+            order.as_str(),
+            normalize_query(query)
+        ),
+    };
     if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
         if let Ok(page) = serde_json::from_str::<KitsuSearchPage>(&body) {
             // Warm-on-hit: idempotent. get_or_fetch returns from
@@ -84,7 +93,7 @@ pub async fn kitsu_search_page_ordered(
     }
     let mut page = state
         .kitsu
-        .search_page(query, SEARCH_PAGE_LIMIT, offset)
+        .search_page_ordered(query, SEARCH_PAGE_LIMIT, offset, order)
         .await?;
     // Never advertise a page this function would refuse.
     page.next_offset = page.next_offset.filter(|n| *n <= MAX_SEARCH_OFFSET);
@@ -122,10 +131,17 @@ pub(crate) fn read_page_request(body: &[u8]) -> Result<(String, u32)> {
 /// relevance when it names none.
 ///
 /// # Errors
-/// [`AniError::InvalidRequestBody`] when the body is not JSON.
+/// [`AniError::InvalidRequestBody`] when the body is not JSON or names
+/// an order the route does not offer.
 pub(crate) fn read_page_order(body: &[u8]) -> Result<SearchOrder> {
-    serde_json::from_slice::<serde_json::Value>(body).map_err(|_| AniError::InvalidRequestBody)?;
-    Ok(SearchOrder::Relevance)
+    #[derive(serde::Deserialize)]
+    struct Body {
+        #[serde(default)]
+        sort: SearchOrder,
+    }
+    serde_json::from_slice::<Body>(body)
+        .map(|b| b.sort)
+        .map_err(|_| AniError::InvalidRequestBody)
 }
 
 /// Lowercase + collapse internal whitespace + trim. Stable cache key

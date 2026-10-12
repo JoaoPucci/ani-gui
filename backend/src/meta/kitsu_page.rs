@@ -24,6 +24,16 @@ pub enum SearchOrder {
 }
 
 impl SearchOrder {
+    /// Kitsu's `sort` for this order; `None` asks for its own ranking.
+    #[must_use]
+    pub fn kitsu_sort(self) -> Option<&'static str> {
+        match self {
+            Self::Relevance => None,
+            Self::Year => Some("-startDate"),
+            Self::Rating => Some("-averageRating"),
+        }
+    }
+
     /// The name this order goes by in a cache key.
     #[must_use]
     pub fn as_str(self) -> &'static str {

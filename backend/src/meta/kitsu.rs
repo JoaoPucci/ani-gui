@@ -602,7 +602,7 @@ impl KitsuClient {
         query: &str,
         limit: u8,
         offset: u32,
-        _order: SearchOrder,
+        order: SearchOrder,
     ) -> Result<KitsuSearchPage> {
         let limit = limit.max(1);
         let size = u32::from(limit);
@@ -617,6 +617,12 @@ impl KitsuClient {
                 ("page[number]", (index + 1).to_string()),
                 ("fields[anime]", ANIME_FIELDS.to_string()),
             ])
+            .query(
+                &order
+                    .kitsu_sort()
+                    .map(|s| vec![("sort", s)])
+                    .unwrap_or_default(),
+            )
             .send()
             .await
             .map_err(|_| AniError::Network)?;
