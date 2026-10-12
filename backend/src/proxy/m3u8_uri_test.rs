@@ -1,8 +1,10 @@
-//! Every URI a manifest carries comes back on the proxy, or not at
-//! all: a player or a relayed download reads the rewritten manifest,
-//! and a URI left pointing upstream is fetched without the session's
-//! referer and outside the host's budget, and a relative one resolves
-//! against the proxy and reaches nothing.
+//! Every network URI a manifest carries comes back on the proxy, or
+//! not at all: a player or a relayed download reads the rewritten
+//! manifest, and a URI left pointing upstream is fetched without the
+//! session's referer and outside the host's budget, and a relative one
+//! resolves against the proxy and reaches nothing. A URI whose scheme
+//! is not the network's — an inline `data:` key or init segment — is
+//! no fetch at all, and passes through as written.
 
 use super::*;
 
@@ -203,4 +205,65 @@ proptest::proptest! {
             .expect("rewrite");
         proptest::prop_assert!(all_proxied(&out), "{}", out);
     }
+}
+
+/// A URI that is not a network URI is not the proxy's to fetch: an
+/// inline `data:` session key, key or init segment, and a key named by a
+/// scheme a player resolves on its own, come back as written, wherever
+/// in the manifest they sit, while the network URIs beside them are
+/// proxied.
+#[test]
+fn a_uri_that_is_not_a_network_uri_passes_through_as_written() {
+    let inline = "data:text/plain;base64,AAECAwQFBgcICQoLDA0ODw==";
+    let master = format!(
+        "#EXTM3U\n\
+         #EXT-X-SESSION-KEY:METHOD=AES-128,URI=\"{inline}\"\n\
+         #EXT-X-STREAM-INF:BANDWIDTH=1\n\
+         v.m3u8\n"
+    );
+    let master_url = Url::parse("https://cdn.example/a/master.m3u8").expect("url");
+    let out = rewrite_master(
+        master.as_bytes(),
+        &master_url,
+        &origin(),
+        SessionId::new(),
+        &AppSecret::random(),
+    )
+    .expect("master");
+    assert!(out.contains(&format!("URI=\"{inline}\"")), "{out}");
+    assert!(
+        uris(&out).iter().any(|u| u.starts_with(&origin().base)),
+        "{out}"
+    );
+    let media = format!(
+        "#EXTM3U\n#EXT-X-TARGETDURATION:5\n\
+         #EXT-X-KEY:METHOD=AES-128,URI=\"{inline}\"\n\
+         #EXT-X-MAP:URI=\"{inline}\"\n\
+         #EXTINF:5.0,\ns0.ts\n\
+         #EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"skd://key-id\",KEYFORMAT=\"com.apple.streamingkeydelivery\"\n\
+         #EXTINF:5.0,\ns1.ts\n#EXT-X-ENDLIST\n"
+    );
+    let media_url = Url::parse("https://cdn.example/a/v.m3u8").expect("url");
+    let out = rewrite_media(
+        media.as_bytes(),
+        &media_url,
+        &origin(),
+        SessionId::new(),
+        &AppSecret::random(),
+    )
+    .expect("media");
+    assert_eq!(
+        out.matches(&format!("URI=\"{inline}\"")).count(),
+        2,
+        "{out}"
+    );
+    assert!(out.contains("URI=\"skd://key-id\""), "{out}");
+    let segments: Vec<&str> = out
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.is_empty())
+        .collect();
+    assert!(
+        segments.iter().all(|s| s.starts_with(&origin().base)),
+        "{out}"
+    );
 }

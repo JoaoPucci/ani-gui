@@ -18,7 +18,10 @@
 //!   manifest.
 //! - [`rewrite_media`] — parse a media playlist, rewrite each segment
 //!   URI, key URI, and init-segment URI.
-//! - `build_proxy_uri` (private) — resolve a relative URI against a base,
+//! - `build_proxy_uri` (private) — leave a URI that is not a network one
+//!   (an inline `data:` key or init segment, a key a player resolves by
+//!   its own scheme) as written, and otherwise resolve a relative URI
+//!   against a base,
 //!   then build a proxy URL with HMAC token, marked `k=pl` when a master
 //!   names it as a playlist — with its kind of stream and the key the
 //!   session keeps the master's variables under — and `k=md` when it
@@ -383,7 +386,11 @@ fn resolve(base: &Url, uri: &str) -> Result<Url> {
 }
 
 /// If the URI already points at our proxy origin, leave it alone
-/// (idempotent rewrite). Otherwise build a fresh proxy URL with token.
+/// (idempotent rewrite); a URI that is not a network URI — anything but
+/// `http` and `https`, such as an inline `data:` key or init segment, or
+/// a key a player resolves by a scheme of its own — is no fetch for the
+/// proxy and is left as written. Otherwise build a fresh proxy URL with
+/// token.
 fn build_proxy_uri(
     upstream: &Url,
     origin: &ProxyOrigin,
@@ -392,7 +399,7 @@ fn build_proxy_uri(
     kind: Kind<'_>,
 ) -> String {
     let upstream_str = upstream.as_str();
-    if upstream_str.starts_with(&origin.base) {
+    if upstream_str.starts_with(&origin.base) || !matches!(upstream.scheme(), "http" | "https") {
         return upstream_str.to_string();
     }
     let marks = marks(kind);
