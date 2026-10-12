@@ -132,6 +132,22 @@ describe('home hero framing', () => {
 		expect(target.querySelector('.hero-backdrop')).toBeNull();
 	});
 
+	it('shows no framing switch until the diagnostics page turns it on', async () => {
+		app = mount(HomePage, { target });
+		await heroImage();
+		expect(target.querySelector('.hero-framing-switch')).toBeNull();
+	});
+
+	it('shows the framing switch once the diagnostics page has turned it on', async () => {
+		localStorage.setItem(
+			HERO_PREFS_STORAGE_KEY,
+			JSON.stringify({ framing: 'pillar', source: 'anilist', controls: true })
+		);
+		app = mount(HomePage, { target });
+		await heroImage();
+		expect(target.querySelector('.hero-framing-switch')).not.toBeNull();
+	});
+
 	it('takes AniList’s banner first under the AniList source', async () => {
 		localStorage.setItem(
 			HERO_PREFS_STORAGE_KEY,

@@ -25,7 +25,7 @@
 </script>
 
 {#if import.meta.env.DEV}
-	<div class="switch" role="group" aria-label={groupLabel}>
+	<div class="hero-framing-switch" role="group" aria-label={groupLabel}>
 		{#each HERO_FRAMINGS as f (f)}
 			<button
 				type="button"
@@ -47,7 +47,7 @@
 {/if}
 
 <style>
-	.switch {
+	.hero-framing-switch {
 		position: fixed;
 		inset-block-end: var(--space-4);
 		inset-inline-end: var(--space-4);

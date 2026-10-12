@@ -26,5 +26,8 @@
 	"cache_clear_success": "Cache de metadados limpo.",
 	"cache_clear_error": "Não foi possível limpar o cache.",
 	"section_legacy_sweep": "Removido na atualização",
-	"legacy_sweep_description": "Estes arquivos não são mais usados, então foram excluídos:"
+	"legacy_sweep_description": "Estes arquivos não são mais usados, então foram excluídos:",
+	"section_banner_framing": "Enquadramento do banner",
+	"banner_framing_description": "Mostra um pequeno controle na página inicial e na página de cada anime para escolher como o banner é enquadrado e qual imagem ele usa primeiro. A escolha fica salva neste computador e continua valendo depois que os controles são ocultados de novo.",
+	"banner_framing_toggle_label": "Mostrar os controles de enquadramento do banner"
 }

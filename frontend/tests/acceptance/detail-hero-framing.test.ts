@@ -93,8 +93,8 @@ function useShow(withCover: boolean) {
 	);
 }
 
-function choose(framing: string, source: string) {
-	localStorage.setItem(HERO_PREFS_STORAGE_KEY, JSON.stringify({ framing, source }));
+function choose(framing: string, source: string, controls = false) {
+	localStorage.setItem(HERO_PREFS_STORAGE_KEY, JSON.stringify({ framing, source, controls }));
 }
 
 async function heroImage(): Promise<HTMLImageElement> {
@@ -136,6 +136,21 @@ describe('detail hero framing', () => {
 		app = mount(DetailPage, { target });
 		expect((await heroImage()).getAttribute('src')).toContain(proxied(COVER_WHOLE));
 		expect(framingClasses()).toEqual(['framing-contain']);
+	});
+
+	it('shows no framing switch until the diagnostics page turns it on', async () => {
+		useShow(true);
+		app = mount(DetailPage, { target });
+		await heroImage();
+		expect(target.querySelector('.hero-framing-switch')).toBeNull();
+	});
+
+	it('shows the framing switch once the diagnostics page has turned it on', async () => {
+		useShow(true);
+		choose('pillar', 'anilist', true);
+		app = mount(DetailPage, { target });
+		await heroImage();
+		expect(target.querySelector('.hero-framing-switch')).not.toBeNull();
 	});
 
 	it('keeps the blurred poster for a show with no cover', async () => {
