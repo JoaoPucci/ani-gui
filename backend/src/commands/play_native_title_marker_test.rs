@@ -365,3 +365,28 @@ fn japanese_divisions_glued_one_after_another_are_each_read() {
     assert!(!e.reads_as_entry("ショー第2期第2部"));
     assert!(e.reads_as_entry("ショー第2期"));
 }
+
+proptest::proptest! {
+    /// A sibling that repeats the broad listing's own season and goes on
+    /// with an ordinal standing alone is never the season before it, and
+    /// is a later part whenever that ordinal is above the first.
+    #[test]
+    fn an_ordinal_after_w_s_season_is_a_part_of_it(
+        season in 1u32..=20,
+        form in 0usize..3,
+        ordinal in 1u32..=6,
+    ) {
+        const SPELLED: [&str; 6] = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth"];
+        let wide = format!("Show Season {season}");
+        let after = match form {
+            0 => SPELLED[ordinal as usize - 1].to_string(),
+            1 => format!("{ordinal}{}", if ordinal == 1 { "st" } else if ordinal == 2 { "nd" } else if ordinal == 3 { "rd" } else { "th" }),
+            _ => format!("Part {ordinal}"),
+        };
+        let sibling = format!("{wide} {after} Half");
+        let titles = [wide.as_str()];
+        let e = entry(&titles);
+        proptest::prop_assert!(!e.names_earlier_season(&sibling, &wide), "{sibling}");
+        proptest::prop_assert_eq!(e.names_later_part(&sibling, &wide), ordinal > 1, "{}", sibling);
+    }
+}

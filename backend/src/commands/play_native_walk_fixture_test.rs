@@ -1597,3 +1597,45 @@ async fn an_earlier_season_never_completes_a_broad_listing() {
         }
     }
 }
+
+/// An ordinal standing alone after the broad listing's own season, in
+/// the sibling, divides that season: "Show Season 3 Second Half"
+/// completes "Show Season 3" as its part 2, and "Show 2nd Season Second
+/// Half" completes "Show 2nd Season" though its "Second" equals W's 2.
+#[tokio::test]
+async fn an_ordinal_after_w_s_own_season_divides_it() {
+    for (entry, w, l) in [
+        (
+            "Show Season 3",
+            "Show Season 3",
+            "Show Season 3 Second Half",
+        ),
+        ("Show Season 3", "Show Season 3", "Show Season 3: 2nd Half"),
+        (
+            "Show Season 3",
+            "Show 3rd Season",
+            "Show 3rd Season Second Half",
+        ),
+        (
+            "Show 2nd Season",
+            "Show 2nd Season",
+            "Show 2nd Season Second Half",
+        ),
+    ] {
+        let site = pool_of(
+            &[entry],
+            Some(12),
+            2020,
+            entry,
+            &[("w", w, 24), ("l", l, 12)],
+        );
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{w} + {l}: {e:?}"));
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            ("w", 12),
+            "{w} + {l}"
+        );
+    }
+}
