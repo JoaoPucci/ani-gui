@@ -410,6 +410,15 @@ async fn entries_named_for_a_series_pick_their_own_listings() {
     .await;
 }
 
+/// Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai is a 2017
+/// one-episode special hianime does not list: its searches answer with
+/// the series, its films, and the Bardock and Trunks specials, which
+/// premiered decades before it. The walk refuses every pool.
+#[tokio::test]
+async fn a_special_the_catalogue_does_not_list_is_refused() {
+    assert_picks(&[("44661", None)]).await;
+}
+
 /// Dragon Ball Super: Ginga Patrol is announced: Kitsu has no count
 /// and no premiere date for it, and hianime does not list it yet. Every
 /// search for it answers with Dragon Ball Super's pool, and the
