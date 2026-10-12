@@ -40,8 +40,9 @@ describe('no user-visible string names the retired CLI', () => {
 				if (!file.endsWith('.json')) continue;
 				const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
 				for (const [key, value] of Object.entries(data)) {
-					if (typeof value !== 'string') continue;
-					if (/ani-cli|pystardust/i.test(value)) offenders.push(`${file}:${key}`);
+					// A message with plural variants is an array of objects, not
+					// a string; serialising it sweeps every variant's text.
+					if (/ani-cli|pystardust/i.test(JSON.stringify(value))) offenders.push(`${file}:${key}`);
 				}
 			}
 			expect(offenders, `strings naming the retired script: ${offenders.join(', ')}`).toEqual([]);
