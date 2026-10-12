@@ -1,0 +1,21 @@
+{
+	"error_account_unsupported_pkce": "Não foi possível iniciar o login: o serviço da conta não aceita o método de login que o app pediu. Atualize o app e tente novamente.",
+	"error_cache_generic": "O banco de dados local do app falhou. Reinicie o app e tente novamente.",
+	"error_config_parse": "O arquivo de configurações não pôde ser lido ou salvo. Reinicie o app ou, se você o editou, corrija o arquivo manualmente.",
+	"error_download_ffmpeg_missing": "Este download precisa do ffmpeg, e ele não está instalado.",
+	"error_download_tool_failed": "O programa de download parou com um erro antes de concluir o arquivo. Tente novamente mais tarde.",
+	"error_download_tool_spawn_failed": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele executa; caso contrário, reinstale o ani-gui.",
+	"error_io_generic": "Um arquivo neste computador não pôde ser lido ou gravado. Verifique o espaço livre e as permissões e tente novamente.",
+	"error_metadata_source": "O serviço da conta não conseguiu concluir este pedido. Tente novamente ou reconecte a conta em Ajustes.",
+	"error_network_rate_limited": "O serviço está ocupado agora. Aguarde alguns segundos e tente novamente.",
+	"error_network_unreachable": "Não foi possível acessar o serviço. Verifique sua conexão e tente novamente.",
+	"error_network_upstream": "O serviço respondeu com um erro (HTTP {status}). Tente novamente mais tarde.",
+	"error_play_episode_unavailable": "A fonte lista este título, mas não tem stream deste episódio no áudio escolhido.",
+	"error_player_spawn_failed": "Não foi possível iniciar {binary}. Verifique o player externo em Ajustes.",
+	"error_request_invalid_kitsu_id": "O app pediu um anime por um id inválido. Volte e abra-o novamente.",
+	"error_scraper_parse_failed": "O serviço enviou uma resposta que o app não conseguiu ler. Tente novamente mais tarde.",
+	"error_scraper_timeout": "O serviço demorou demais para responder. Tente novamente em instantes.",
+	"error_search_no_results": "Não foi possível encontrar este título na fonte de streaming.",
+	"error_stream_invalid_token": "Esta sessão não é mais válida: um link de stream expirou ou o login de uma conta foi recusado. Inicie o episódio novamente ou reconecte a conta em Ajustes.",
+	"error_syncplay_spawn_failed": "Não foi possível iniciar o Syncplay ({binary}). Verifique se ele está instalado e o caminho dele em Ajustes."
+}
