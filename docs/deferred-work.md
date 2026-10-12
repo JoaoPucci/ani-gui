@@ -131,6 +131,19 @@ starting it, and delete it when you find it done.
   (`electron/lib/backend-handshake.cjs` has the measurement). Whatever
   bounds the wait has to be sized for "never", not for "slow".
 
+- **A broad listing completed by a sibling in another script is never
+  cut.** The spanning cut finds the sibling that completes a broad
+  listing by the broad listing's stem, so a sibling written in another
+  script cannot complete it: for an entry known only as "怪獣８号", a
+  24-episode "怪獣８号" beside "Kaiju No. 8 Season 2" (12) is not cut,
+  and any other listing of the entry's length plays instead. It needs a
+  way to tell that two titles in different scripts name one show, which
+  the title rules do not have; the provider's catalogue is in Latin
+  script, so the shape has not been seen in a real pool. A dedicated
+  listing in the other script competes on count like any exact fit.
+  Repro: entry ["怪獣８号"], count 12, a pool of "怪獣８号" (24), "Kaiju
+  No. 8 Season 2" (12) and "Kaiju No. 8 Recap" (12), picks the recap.
+
 ## Testing and CI
 
 - **The CRAP ratchet can disagree between CI and local.** Coverage
@@ -486,8 +499,9 @@ starting it, and delete it when you find it done.
   show one catalogue lacks plays from the other instead of being
   hidden. An answered miss ends the walk today, and the measurement
   that gates the union was never made: a miss costs a full walk —
-  every alias searched, up to five candidates probed per alias — so
-  the union makes every genuinely absent show cost one walk per
+  every alias searched, up to five candidates the entry's titles
+  admit probed per alias, and with a count up to five refused ones
+  besides — so the union makes every genuinely absent show cost one walk per
   provider, and what a provider tolerates at that rate is unknown; in
   September 2026 hianime carried every request as the only working
   provider without visible pushback, and a breaker learns after the

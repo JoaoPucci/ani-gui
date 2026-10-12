@@ -1,0 +1,72 @@
+{
+ "kitsu": {
+  "id": "45398",
+  "name": "SxF",
+  "canonical": "SPY×FAMILY",
+  "alt_titles": ["SPY x FAMILY", "SxF, 스파이 패밀리", "SPY×FAMILY: WJ Special Extra Mission!!", "间谍过家家"],
+  "episode_count": 12,
+  "year": 2022,
+  "subtype": "TV"
+ },
+ "searches": {
+  "SPY×FAMILY": [
+    ["spy-x-family-639", "Spy x Family", "TV"],
+    ["anime-14-256", "Spy x Family, Part 2", "TV"],
+    ["anime-13-255", "Spy x Family Season 2", "TV"],
+    ["spy-x-family-season-3-60", "Spy x Family Season 3", "TV"],
+    ["spy-x-family-code-white-1990", "Spy x Family Code: White", "MOVIE"],
+    ["spy-x-family-movie-code-white-manner-movie-6028", "Spy x Family Movie: Code: White Manner Movie", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "anime-13-255": [
+    [4654, 1, null],
+    [4655, 2, null],
+    [4656, 3, null],
+    [4657, 4, null],
+    [4658, 5, null],
+    [4659, 6, null],
+    [4660, 7, null],
+    [4661, 8, null],
+    [4662, 9, null],
+    [4663, 10, null],
+    [4664, 11, null],
+    [4665, 12, null]
+  ],
+  "anime-14-256": [
+    [4641, 1, null],
+    [4642, 2, null],
+    [4643, 3, null],
+    [4644, 4, null],
+    [4645, 5, null],
+    [4646, 6, null],
+    [4647, 7, null],
+    [4648, 8, null],
+    [4649, 9, null],
+    [4650, 10, null],
+    [4651, 11, null],
+    [4652, 12, null],
+    [4653, 13, null]
+  ],
+  "spy-x-family-639": [
+    [11447, 1, null],
+    [11448, 2, null],
+    [11449, 3, null],
+    [11450, 4, null],
+    [11451, 5, null],
+    [11452, 6, null],
+    [11453, 7, null],
+    [11454, 8, null],
+    [11455, 9, null],
+    [11456, 10, null],
+    [11457, 11, null],
+    [11458, 12, null]
+  ]
+ },
+ "years": {
+  "anime-13-255": 2023,
+  "anime-14-256": 2022,
+  "spy-x-family-639": 2022,
+  "spy-x-family-season-3-60": 2025
+ }
+}

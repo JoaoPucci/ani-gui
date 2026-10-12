@@ -1,0 +1,81 @@
+{
+ "kitsu": {
+  "id": "42068",
+  "name": "Fire Force",
+  "canonical": "Enen no Shouboutai",
+  "alt_titles": ["炎炎ノ消防隊", "Fire Force", "Fire Brigade of Flames"],
+  "episode_count": 24,
+  "year": 2019,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Enen no Shouboutai": [
+    ["fire-force-1107", "Fire Force", "TV"],
+    ["fire-force-season-2-364", "Fire Force Season 2", "TV"],
+    ["fire-force-season-3-352", "Fire Force Season 3", "TV"],
+    ["fire-force-season-3-part-2-2563", "Fire Force Season 3 Part 2", "TV"],
+    ["fire-force-mini-anime-5438", "Fire Force Mini Anime", "ONA"]
+  ]
+ },
+ "episodes": {
+  "fire-force-1107": [
+    [18490, 1, null],
+    [18491, 2, null],
+    [18492, 3, null],
+    [18493, 4, null],
+    [18494, 5, null],
+    [18495, 6, null],
+    [18496, 7, null],
+    [18497, 8, null],
+    [18498, 9, null],
+    [18499, 10, null],
+    [18500, 11, null],
+    [18501, 12, null],
+    [18502, 13, null],
+    [18503, 14, null],
+    [18504, 15, null],
+    [18505, 16, null],
+    [18506, 17, null],
+    [18507, 18, null],
+    [18508, 19, null],
+    [18509, 20, null],
+    [18510, 21, null],
+    [18511, 22, null],
+    [18512, 23, null],
+    [18513, 24, null]
+  ],
+  "fire-force-season-2-364": [
+    [7532, 1, null],
+    [7533, 2, null],
+    [7534, 3, null],
+    [7535, 4, null],
+    [7536, 5, null],
+    [7537, 6, null],
+    [7538, 7, null],
+    [7539, 8, null],
+    [7540, 9, null],
+    [7541, 10, null],
+    [7542, 11, null],
+    [7543, 12, null],
+    [7544, 13, null],
+    [7545, 14, null],
+    [7546, 15, null],
+    [7547, 16, null],
+    [7548, 17, null],
+    [7549, 18, null],
+    [7550, 19, null],
+    [7551, 20, null],
+    [7552, 21, null],
+    [7553, 22, null],
+    [7554, 23, null],
+    [7555, 24, null]
+  ]
+ },
+ "years": {
+  "fire-force-1107": 2019,
+  "fire-force-mini-anime-5438": 2021,
+  "fire-force-season-2-364": 2020,
+  "fire-force-season-3-352": 2025,
+  "fire-force-season-3-part-2-2563": 2026
+ }
+}

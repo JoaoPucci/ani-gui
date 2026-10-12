@@ -133,7 +133,14 @@ use crate::proxy::MediaKind;
 // key names — Kitsu's episode 1 cached as the 2nd Stage's first — and
 // nothing in a row says whether its pick was split; bumping
 // re-resolves.
-const SCHEMA: &str = "v15";
+// v16: the entry's titles rule the pick — a candidate named for a
+// season or part the entry is not is never picked, a listing that
+// spans two entries is cut to the first's episodes, a part marker
+// that agrees breaks a tie, and TV and ONA no longer disprove each
+// other. A v15 row can hold a sibling's stream under the entry's key
+// (Attack on Titan Season 3's episode 1 cached as Season 3 Part 2's);
+// bumping re-resolves.
+const SCHEMA: &str = "v16";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

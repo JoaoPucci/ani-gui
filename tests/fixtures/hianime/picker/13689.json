@@ -1,0 +1,61 @@
+{
+ "kitsu": {
+  "id": "13689",
+  "name": "Golden Kamuy",
+  "canonical": "Golden Kamuy",
+  "alt_titles": ["ゴールデンカムイ"],
+  "episode_count": 12,
+  "year": 2018,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Golden Kamuy": [
+    ["golden-kamuy-2595", "Golden Kamuy", "TV"],
+    ["golden-kamuy-season-2-2596", "Golden Kamuy: Season 2", "TV"],
+    ["golden-kamuy-season-3-2597", "Golden Kamuy Season 3", "TV"],
+    ["golden-kamuy-season-4-2598", "Golden Kamuy Season 4", "TV"],
+    ["golden-kamuy-final-season-2599", "Golden Kamuy Final Season", "TV"],
+    ["golden-kamuy-the-bodyguards-of-baratoterror-the-mysterious-giant-bird-3162", "Golden Kamuy OVA", "OVA"],
+    ["golden-kamuy-2nd-season-ova-3161", "Golden Kamuy 2nd Season OVA", "OVA"],
+    ["golden-kamuy-inazuma-goutou-to-mamushi-no-oginshimaenaga-4694", "Golden Kamuy: Inazuma Goutou to Mamushi no Ogin/Shimaenaga", "OVA"],
+    ["golden-kamuy-sapporo-beer-koujou-hen-5184", "Golden Kamuy: Sapporo Beer Koujou-hen", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "golden-kamuy-2595": [
+    [34785, 1, null],
+    [34786, 2, null],
+    [34787, 3, null],
+    [34788, 4, null],
+    [34789, 5, null],
+    [34790, 6, null],
+    [34791, 7, null],
+    [34792, 8, null],
+    [34793, 9, null],
+    [34794, 10, null],
+    [34795, 11, null],
+    [34796, 12, null]
+  ],
+  "golden-kamuy-season-2-2596": [
+    [34797, 1, null],
+    [34798, 2, null],
+    [34799, 3, null],
+    [34800, 4, null],
+    [34801, 5, null],
+    [34802, 6, null],
+    [34803, 7, null],
+    [34804, 8, null],
+    [34805, 9, null],
+    [34806, 10, null],
+    [34807, 11, null],
+    [34808, 12, null]
+  ]
+ },
+ "years": {
+  "golden-kamuy-2595": 2018,
+  "golden-kamuy-final-season-2599": 2026,
+  "golden-kamuy-season-2-2596": 2018,
+  "golden-kamuy-season-3-2597": 2020,
+  "golden-kamuy-season-4-2598": 2022
+ }
+}

@@ -1,15 +1,22 @@
 //! Mark the reverse mappings a play stored before plays marked them.
 //!
 //! A play stores the `show key → kitsu id` mapping
-//! (`allmanga2kitsu:v3:<show>`) with a mark beside it naming the id it
-//! stored (`allmanga2kitsu:played:v1:<show>`); a mapping is the play's
-//! while the mark names it ([`crate::commands::kitsu_played`]). Earlier
-//! builds left no mark, and read a mapping as the play's when it was
-//! written from a second before to ten seconds after the show's watch
-//! stamp (`watched-at:v1:<show>`, epoch milliseconds), both rows
-//! unexpired. Opening the cache marks every mapping that rule read as
-//! played, so a play stored before the upgrade keeps its standing. The
-//! mark takes the mapping's moment and lifetime, and expires with it.
+//! (`allmanga2kitsu:v<N>:<show>`, at
+//! [`crate::commands::kitsu::ALLMANGA_KITSU_VERSION`]) with a mark
+//! beside it naming the id it stored
+//! (`allmanga2kitsu:played:v1:<show>`); a mapping is the play's while
+//! the mark names it ([`crate::commands::kitsu_played`]). Earlier
+//! builds left no mark: they stored mappings at v3, the version this
+//! pass reads, and read a mapping as the play's when it was written
+//! from a second before to ten seconds after the show's watch stamp
+//! (`watched-at:v1:<show>`, epoch milliseconds), both rows unexpired.
+//! Opening the cache marks every mapping that rule read as played, so
+//! a play stored before the upgrade keeps its standing while its
+//! mapping is read. The mark takes the mapping's moment and lifetime,
+//! and expires with it. The v4 re-key, made when the entry's titles
+//! came to rule the pick, retires the v3 mappings: their marks then
+//! name rows nothing reads, until they expire, and the next play of a
+//! show stores a fresh mapping and mark.
 //!
 //! It runs once per cache file, gated by SQLite's `user_version`, which
 //! clearing the cache's rows leaves standing: a rerun would read the

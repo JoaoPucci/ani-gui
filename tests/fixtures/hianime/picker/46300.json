@@ -1,0 +1,54 @@
+{
+ "kitsu": {
+  "id": "46300",
+  "name": "Kaiju",
+  "canonical": "Kaijuu 8-gou",
+  "alt_titles": ["怪獣８号", "Kaiju No. 8", "Monster #8", "KAIJU No. EIGHT", "8Kaijuu"],
+  "episode_count": 12,
+  "year": 2024,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Kaijuu 8-gou": [
+    ["kaiju-no-8-257", "Kaiju No. 8", "TV"],
+    ["kaiju-no-8-season-2-144", "Kaiju No. 8 Season 2", "TV"],
+    ["kaiju-no-8-hoshinas-day-off-341", "Hoshina's Day Off", "SPECIAL"],
+    ["kaiju-no-8-mission-recon-3654", "Kaiju No. 8 Movie", "MOVIE"],
+    ["kaiju-no-8-narumis-week-at-work-3090", "Kaiju No. 8: Narumi's Week at Work", "ONA"]
+  ]
+ },
+ "episodes": {
+  "kaiju-no-8-257": [
+    [4666, 1, null],
+    [4667, 2, null],
+    [4668, 3, null],
+    [4669, 4, null],
+    [4670, 5, null],
+    [4671, 6, null],
+    [4672, 7, null],
+    [4673, 8, null],
+    [4674, 9, null],
+    [4675, 10, null],
+    [4676, 11, null],
+    [4677, 12, null]
+  ],
+  "kaiju-no-8-season-2-144": [
+    [3349, 1, null],
+    [3350, 2, null],
+    [3351, 3, null],
+    [3352, 4, null],
+    [3353, 5, null],
+    [3354, 6, null],
+    [3355, 7, null],
+    [3356, 8, null],
+    [3357, 9, null],
+    [3358, 10, null],
+    [3359, 11, null]
+  ]
+ },
+ "years": {
+  "kaiju-no-8-257": 2024,
+  "kaiju-no-8-narumis-week-at-work-3090": 2026,
+  "kaiju-no-8-season-2-144": 2025
+ }
+}

@@ -1,0 +1,36 @@
+{
+ "kitsu": {
+  "id": "47659",
+  "name": "Oshi no Ko S2",
+  "canonical": "[Oshi no Ko] Season 2",
+  "alt_titles": ["【推しの子】第2期", "Oshi no Ko Season 2"],
+  "episode_count": 13,
+  "year": 2024,
+  "subtype": "TV"
+ },
+ "searches": {
+  "[Oshi no Ko] Season 2": [
+    ["oshi-no-ko-season-2-682", "My Star: Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+  "oshi-no-ko-season-2-682": [
+    [12169, 1, null],
+    [12170, 2, null],
+    [12171, 3, null],
+    [12172, 4, null],
+    [12173, 5, null],
+    [12174, 6, null],
+    [12175, 7, null],
+    [12176, 8, null],
+    [12177, 9, null],
+    [12178, 10, null],
+    [12179, 11, null],
+    [12180, 12, null],
+    [12181, 13, null]
+  ]
+ },
+ "years": {
+  "oshi-no-ko-season-2-682": 2024
+ }
+}
