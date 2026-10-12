@@ -24,6 +24,7 @@ vi.mock('$app/state', () => ({
 import SearchPage from '../../src/routes/search/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
+import { subtypeLabel } from '../../src/lib/search/subtype-label';
 
 function ref(id: string, title: string) {
 	return {
@@ -243,5 +244,48 @@ describe('/search infinite scroll', () => {
 		retry!.click();
 		await until(() => screen().includes('Cowboy Bebop: The Movie'), 'the retried page');
 		expect(screen()).not.toContain(m.search_paging_failed());
+	});
+
+	it('with a type filter on, loads more only when asked', async () => {
+		// The filter keeps the grid short, so the bottom stays in reach;
+		// loading by itself there would walk the whole search.
+		const offsets: number[] = [];
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset } = (await request.json()) as { offset: number };
+				offsets.push(offset);
+				if (offset === 0) {
+					return HttpResponse.json({
+						hits: [
+							{ ...ref('1', 'Dragon Ball Z'), subtype: 'TV' },
+							{ ...ref('2', 'Dragon Ball: Path to Power'), subtype: 'movie' }
+						],
+						next_offset: 20
+					});
+				}
+				return HttpResponse.json({
+					hits: [{ ...ref('3', 'Dragon Ball Super: Broly'), subtype: 'movie' }],
+					next_offset: null
+				});
+			})
+		);
+
+		setQuery('dragon ball');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Dragon Ball Z'), 'the first page');
+		buttonNamed(subtypeLabel('movie'))!.click();
+		await until(() => !screen().includes('Dragon Ball Z'), 'the movie filter to apply');
+
+		reachBottom();
+		// Let any effect the report sets off run, and its request leave.
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(offsets).toEqual([0]);
+
+		const loadMore = buttonNamed(m.search_paging_load_more());
+		expect(loadMore).not.toBeNull();
+		loadMore!.click();
+		await until(() => screen().includes('Dragon Ball Super: Broly'), 'the asked-for page');
+		expect(offsets).toEqual([0, 20]);
 	});
 });

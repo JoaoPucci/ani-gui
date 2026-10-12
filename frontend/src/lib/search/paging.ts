@@ -74,7 +74,14 @@ export function canLoadMore(phase: PagingPhase): boolean {
 
 /** Whether the bottom of the grid coming into view loads the next page
  *  by itself. Only an idle search does: a failed or held one waits for
- *  the user's own action, so a page that keeps failing cannot spin. */
-export function shouldAutoLoad(phase: PagingPhase, sentinelVisible: boolean): boolean {
+ *  the user's own action, so a page that keeps failing cannot spin.
+ *  `narrowed` is whether a filter on the page hides part of what was
+ *  loaded. */
+export function shouldAutoLoad(
+	phase: PagingPhase,
+	sentinelVisible: boolean,
+	narrowed: boolean
+): boolean {
+	void narrowed;
 	return sentinelVisible && phase.kind === 'idle';
 }

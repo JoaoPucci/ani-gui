@@ -116,7 +116,7 @@
 	const slotOf = $derived.by(() => (slots = staggerSlots(slots, displayed ?? [])));
 
 	$effect(() => {
-		if (shouldAutoLoad(phase, bottomInReach)) searchRunner.loadMore();
+		if (shouldAutoLoad(phase, bottomInReach, false)) searchRunner.loadMore();
 	});
 
 	let folio = $state<HTMLElement | null>(null);

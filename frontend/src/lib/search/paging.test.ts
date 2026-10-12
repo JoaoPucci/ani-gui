@@ -102,8 +102,16 @@ describe('canLoadMore', () => {
 
 describe('shouldAutoLoad', () => {
 	it('loads by itself only when idle with the bottom of the grid in view', () => {
-		const auto = PHASES.filter((p) => shouldAutoLoad(p, true)).map((p) => p.kind);
+		const auto = PHASES.filter((p) => shouldAutoLoad(p, true, false)).map((p) => p.kind);
 		expect(auto).toEqual(['idle']);
-		expect(PHASES.some((p) => shouldAutoLoad(p, false))).toBe(false);
+		expect(PHASES.some((p) => shouldAutoLoad(p, false, false))).toBe(false);
+	});
+
+	it('never loads by itself while a type filter narrows the grid', () => {
+		// A narrowed grid stays short, so the bottom stays in reach and
+		// every settled page would fetch the next: a crawl through the
+		// whole search, unbounded by the empty-page hold because the
+		// pages are not empty, only filtered out of view.
+		expect(PHASES.some((p) => shouldAutoLoad(p, true, true))).toBe(false);
 	});
 });
