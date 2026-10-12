@@ -254,6 +254,7 @@ fn native_test_state(
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
+        host_budget: crate::proxy::host_budget::HostBudget::fresh(),
         meta_http: reqwest::Client::new(),
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,
@@ -3577,6 +3578,8 @@ async fn write_sidecar_subtitles_with(
 ) -> Vec<PathBuf> {
     let staged = stage_sidecar_subtitles_with(
         client,
+        &crate::proxy::host_budget::HostBudget::fresh(),
+        &crate::commands::download_pacing::SidecarGate::never(),
         tracks,
         referer,
         dest,
@@ -4001,6 +4004,3313 @@ async fn a_range_start_the_remembered_provider_lacks_keeps_the_episode_verdict_a
         Some(crate::scraper::provider::ProviderId::TestB),
         "the row that remembered the provider stands; an episode verdict writes no absence"
     );
+}
+
+// ── a download yields to live playback ──────────────────────────────
+
+/// A yt-dlp stub that logs its pid and arguments, then waits for
+/// `go` before writing its output and logging that it finished — so a
+/// test can watch which spawn ran with which concurrency, release the
+/// one it wants to finish, and tell a spawn that was killed (it never
+/// logs `done`) from one that ran to the end.
+#[cfg(unix)]
+fn stage_waiting_ytdlp(bin: &std::path::Path, log: &std::path::Path, go: &std::path::Path) {
+    stage_tool(
+        bin,
+        "yt-dlp",
+        &format!(
+            "echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\n{write}\necho \"done $$\" >> '{log}'\nexit 0",
+            log = log.display(),
+            go = go.display(),
+            write = writes_its_output("video"),
+        ),
+    );
+}
+
+/// Polls `log` until `cond` holds over its lines, within a bound.
+#[cfg(unix)]
+async fn until_log(
+    log: &std::path::Path,
+    what: &str,
+    cond: impl Fn(&[String]) -> bool,
+) -> Vec<String> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let lines: Vec<String> = std::fs::read_to_string(log)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        if cond(&lines) {
+            return lines;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}: {lines:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+/// The byte-rate limit a logged spawn carries, if any.
+#[cfg(unix)]
+fn rate_limit_of(line: &str) -> Option<&str> {
+    let mut parts = line.split_whitespace();
+    while let Some(p) = parts.next() {
+        if p == "--limit-rate" {
+            return parts.next();
+        }
+    }
+    None
+}
+
+#[cfg(unix)]
+fn concurrency_of(line: &str) -> Option<&str> {
+    let mut parts = line.split_whitespace();
+    while let Some(p) = parts.next() {
+        if p == "-N" {
+            return parts.next();
+        }
+    }
+    None
+}
+
+/// A download running unpaced sends its fragments past the host's
+/// budget; once it ends, a host the player then fetches from starts
+/// where the download's requests in flight left it — for yt-dlp's
+/// sixteen, four of the burst — not full.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_unpaced_download_is_charged_to_the_hosts_budget() {
+    // The fallback's case runs the failed yt-dlp first; the hold that
+    // matters is its sixteen.
+    for ytdlp in [true, false] {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        if ytdlp {
+            stage_tool(
+                bin.path(),
+                "yt-dlp",
+                &format!("{}\nexit 0", writes_its_output("video")),
+            );
+        } else {
+            stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+            stage_tool(
+                bin.path(),
+                "ffmpeg",
+                "last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            );
+        }
+        let budget = crate::proxy::host_budget::HostBudget::fresh();
+        let is_live = || false;
+        let lane = tokio::sync::Semaphore::new(1);
+        let pacing = crate::commands::download_pacing::Pacing::new(
+            &is_live,
+            std::time::Duration::from_millis(50),
+            &lane,
+        )
+        .charged_to(&budget);
+        let started = std::time::Instant::now();
+        spawn_download_tool_paced(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_secs(10),
+            &mut |_l: &str| {},
+            &pacing,
+        )
+        .await
+        .expect("the transfer completes");
+        let mut admitted = 0;
+        while tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            budget.admit("seg.example:443"),
+        )
+        .await
+        .is_ok()
+        {
+            admitted += 1;
+            assert!(admitted <= 20, "ytdlp={ytdlp}: nothing held");
+        }
+        // Four, and one more for every refill that matured since the
+        // hold first applied, which was after `started`: the clock is
+        // real, so a slow runner sees more.
+        let refills = started.elapsed().as_secs_f64()
+            / crate::proxy::host_budget::SEGMENT_REFILL.as_secs_f64();
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let most = 4 + refills.ceil() as usize;
+        assert!(
+            (4..=most.min(19)).contains(&admitted),
+            "ytdlp={ytdlp}: {admitted}, at most {most}"
+        );
+    }
+}
+
+/// While a download's tool runs, every host's tokens are held to what
+/// its requests in flight leave: sixteen for a free run, one for a run
+/// paced while playback is live.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_running_download_holds_the_budget_to_what_its_tool_leaves() {
+    for (playing, left) in [(false, 4usize), (true, 19usize)] {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        let log = dest.path().join("calls.log");
+        let go = dest.path().join("go");
+        stage_waiting_ytdlp(bin.path(), &log, &go);
+        let budget = crate::proxy::host_budget::HostBudget::fresh();
+        let live = std::sync::atomic::AtomicBool::new(playing);
+        let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+        let lane = tokio::sync::Semaphore::new(1);
+        let pacing = crate::commands::download_pacing::Pacing::new(
+            &is_live,
+            std::time::Duration::from_millis(50),
+            &lane,
+        )
+        .charged_to(&budget);
+        let path_env = bin.path().display().to_string();
+        let mut on_line = |_l: &str| {};
+        let source = StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        };
+        let transfer = spawn_download_tool_paced(
+            &source,
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(10),
+            &mut on_line,
+            &pacing,
+        );
+        let drive = async {
+            until_log(&log, "the run", |l| !l.is_empty()).await;
+            for i in 0..left {
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(200),
+                    budget.admit("seg.example:443"),
+                )
+                .await
+                .unwrap_or_else(|_| panic!("playing={playing}: request {i} within what is left"));
+            }
+            assert!(
+                tokio::time::timeout(
+                    std::time::Duration::from_millis(300),
+                    budget.admit("seg.example:443"),
+                )
+                .await
+                .is_err(),
+                "playing={playing}: the next waits"
+            );
+            std::fs::write(&go, b"").expect("go");
+        };
+        let (got, ()) = tokio::join!(transfer, drive);
+        got.expect("the transfer completes");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_started_while_playback_is_live_runs_paced() {
+    // Sixteen fragments in flight against the host the player is
+    // streaming from starve the player's next segment; a download
+    // that starts while segments are flowing asks for one.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    let go = dest.path().join("go");
+    std::fs::write(&go, b"").expect("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let mut lines = Vec::new();
+    let got = spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 3",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the paced transfer completes");
+    assert_eq!(got, Transferred::Episode);
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    let spawns: Vec<&str> = calls.lines().filter(|l| !l.starts_with("done")).collect();
+    assert_eq!(spawns.len(), 1, "one spawn: {calls}");
+    assert_eq!(
+        concurrency_of(spawns[0]),
+        Some("1"),
+        "paced while playback is live: {calls}"
+    );
+    assert!(dest.path().join("Show Episode 3.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_running_download_yields_when_playback_starts_and_resumes_paced() {
+    // The download was running sixteen wide with nothing playing;
+    // the user starts an episode. yt-dlp cannot change its
+    // concurrency mid-run, so the supervisor takes it down and
+    // starts it again paced, on the same output: yt-dlp resumes from
+    // the fragments it already has, and the killed run never
+    // finishes anything.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    let go = dest.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let mut lines = Vec::new();
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut on_line = |l: &str| lines.push(l.to_string());
+    let transfer = spawn_download_tool_paced(
+        &source,
+        dest.path(),
+        "Show Episode 4",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line,
+        &pacing,
+    );
+    let drive = async {
+        let first = until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        assert_eq!(
+            concurrency_of(&first[0]),
+            Some("16"),
+            "nothing playing: full speed"
+        );
+        live.store(true, std::sync::atomic::Ordering::Relaxed);
+        let second = until_log(&log, "the paced respawn", |l| l.len() == 2).await;
+        assert_eq!(
+            concurrency_of(&second[1]),
+            Some("1"),
+            "playback started: paced"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (got, ()) = tokio::join!(transfer, drive);
+    assert_eq!(
+        got.expect("the resumed transfer completes"),
+        Transferred::Episode
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    let done: Vec<&str> = calls.lines().filter(|l| l.starts_with("done")).collect();
+    let second_pid = calls
+        .lines()
+        .nth(1)
+        .and_then(|l| l.split_whitespace().next());
+    assert_eq!(
+        done.len(),
+        1,
+        "only the respawn finished; the first was taken down: {calls}"
+    );
+    assert_eq!(
+        done[0].split_whitespace().nth(1),
+        second_pid,
+        "the run that finished is the paced one: {calls}"
+    );
+    assert!(dest.path().join("Show Episode 4.mp4").exists());
+}
+
+/// A tree kill that lands late: the teardown's command returns at
+/// once and the process group dies a moment later, as a real kill
+/// does — a kill only asks, and a process exits when the kernel gets
+/// to it. Stretching that moment is what lets a case
+/// see whether the supervisor waited for the exit or only for the
+/// request. Holds the probe's scope for as long as it is registered.
+#[cfg(unix)]
+struct SlowTreeKill {
+    _scope: tokio::sync::MutexGuard<'static, ()>,
+    _dir: tempfile::TempDir,
+}
+
+#[cfg(unix)]
+impl SlowTreeKill {
+    async fn register(delay: &str) -> Self {
+        Self::register_script(&format!(
+            "( sleep {delay}; kill -s KILL -- -\"$1\" ) >/dev/null 2>&1 &\nexit 0"
+        ))
+        .await
+    }
+
+    /// The late kill for the trees of the tools staged in `bin` only —
+    /// a group with a process whose command line names `bin`, the tool
+    /// itself or a helper that names it; any other tree is killed at
+    /// once. For a delay past the teardown's
+    /// ceiling, which would fail any other test's teardown that the
+    /// probe happened to serve.
+    async fn register_for(delay: &str, bin: &std::path::Path) -> Self {
+        Self::register_script(&format!(
+            "if pgrep -g \"$1\" -f '{bin}' >/dev/null; then\n\
+             ( sleep {delay}; kill -s KILL -- -\"$1\" ) >/dev/null 2>&1 &\n\
+             else kill -s KILL -- -\"$1\"; fi\nexit 0",
+            bin = bin.display()
+        ))
+        .await
+    }
+
+    async fn register_script(script: &str) -> Self {
+        let scope = crate::spawn::TREE_KILL_PROBE_SCOPE.lock().await;
+        let dir = tempfile::tempdir().expect("probe dir");
+        stage_tool(dir.path(), "slow-kill", script);
+        *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") =
+            Some(dir.path().join("slow-kill"));
+        Self {
+            _scope: scope,
+            _dir: dir,
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for SlowTreeKill {
+    fn drop(&mut self) {
+        *crate::spawn::TREE_KILL_PROBE.lock().expect("probe lock") = None;
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_respawn_at_the_other_pace_waits_for_the_old_tree_to_exit() {
+    // The respawn resumes from the fragments and resume state the
+    // run it replaces left behind, at the same path. Asking for the
+    // old tree's death is not its death: a replacement started on the
+    // request has two yt-dlps writing one `.part` and one `.ytdl`
+    // until the old one is gone. The replacement starts only once the
+    // old tree has exited.
+    let _slow = SlowTreeKill::register("0.4").await;
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    let go = dest.path().join("go");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "for p in $(cut -d' ' -f1 '{log}' 2>/dev/null); do case \"$p\" in *[!0-9]*) ;; *) kill -s 0 -- -\"$p\" 2>/dev/null && echo \"overlap $p\" >> '{log}';; esac; done\n\
+             sleep 3 >/dev/null 2>&1 &\n\
+             echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\n{write}\necho \"done $$\" >> '{log}'\nexit 0",
+            log = log.display(),
+            go = go.display(),
+            write = writes_its_output("video"),
+        ),
+    );
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut on_line = |_l: &str| {};
+    let transfer = spawn_download_tool_paced(
+        &source,
+        dest.path(),
+        "Show Episode 5",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line,
+        &pacing,
+    );
+    let spawns = |l: &[String]| {
+        l.iter()
+            .filter(|l| !l.starts_with("done") && !l.starts_with("overlap"))
+            .count()
+    };
+    let drive = async {
+        until_log(&log, "the first spawn", |l| spawns(l) == 1).await;
+        live.store(true, std::sync::atomic::Ordering::Relaxed);
+        until_log(&log, "the paced respawn", |l| spawns(l) == 2).await;
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (got, ()) = tokio::join!(transfer, drive);
+    assert_eq!(
+        got.expect("the resumed transfer completes"),
+        Transferred::Episode
+    );
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    assert!(
+        !calls.contains("overlap"),
+        "the respawn started while the run it replaces was still alive: {calls}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_ffmpeg_retry_waits_for_the_condemned_ytdlp_to_exit() {
+    // A run condemned by its own report is taken down and the retry
+    // goes to ffmpeg. Until the old tree has exited it is still a
+    // connection to the host and a writer in the destination, so the
+    // fallback starts only once it is gone.
+    let _slow = SlowTreeKill::register("0.4").await;
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let pidf = bin.path().join("ytdlp.pid");
+    let seen = bin.path().join("overlap");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "sleep 30 &\necho $! > '{pidf}'\n\
+             echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+             wait",
+            pidf = pidf.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "kill -0 \"$(cat '{pidf}')\" 2>/dev/null && echo overlap > '{seen}'\n\
+             last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            pidf = pidf.display(),
+            seen = seen.display()
+        ),
+    );
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 6",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert_eq!(got.expect("the retry publishes"), Transferred::Episode);
+    assert!(
+        !seen.exists(),
+        "ffmpeg started while the condemned yt-dlp was still alive"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_cancelled_download_leaves_nothing_its_dying_tool_wrote() {
+    // Cancel drops the transfer: the tool's tree is taken down and the
+    // scratch files are swept. A sweep that runs between the kill and
+    // the exit misses whatever the tool writes in that moment, and
+    // nothing will ever know to remove it. The sweep comes after the
+    // exit.
+    let _slow = SlowTreeKill::register("0.4").await;
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let started = bin.path().join("started");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "out=\"\"\nprev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then out=\"$a\"; fi; prev=\"$a\"; done\n\
+             touch '{started}'\n\
+             ( while :; do printf x >> \"$out.part\"; sleep 0.02; done ) &\nwait",
+            started = started.display()
+        ),
+    );
+    let path_env = bin.path().display().to_string();
+    let dest_dir = dest.path().to_path_buf();
+    let task = tokio::spawn(async move {
+        let _ = spawn_download_tool(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            &dest_dir,
+            "Show Episode 7",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(60),
+            &mut |_l: &str| {},
+        )
+        .await;
+    });
+    let mut waited_ms = 0u32;
+    while !started.exists() {
+        assert!(waited_ms < 5_000, "the tool never started");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        waited_ms += 20;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    task.abort();
+    let _ = task.await;
+    // Past the slow kill: whatever the tool could write, it has.
+    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+    let left: Vec<_> = std::fs::read_dir(dest.path())
+        .expect("dest")
+        .filter_map(|e| e.ok().map(|e| e.file_name()))
+        .filter(|n| n != ".ani-gui-locks")
+        .collect();
+    assert!(left.is_empty(), "the cancelled run left {left:?} behind");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_tree_that_outlives_its_teardown_gets_no_retry_beside_it() {
+    // The wait for a taken-down tree is bounded. A tree still running
+    // past it is still a writer in the destination and a connection
+    // to the host, so the download ends there: no ffmpeg retry is
+    // started beside it, as none would be beside a tree still alive
+    // for any other reason.
+    let bin = tempfile::tempdir().expect("bin");
+    let _slow = SlowTreeKill::register_for("3", bin.path()).await;
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = bin.path().join("ffmpeg-ran");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "sleep 30 >/dev/null 2>&1 &\n\
+         echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
+         wait",
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "touch '{ran}'\nlast=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            ran = ran.display()
+        ),
+    );
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 8",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    assert!(got.is_err(), "the download ends: {got:?}");
+    assert!(
+        !ran.exists(),
+        "ffmpeg was started beside a tree that had not exited"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_failed_tools_helpers_are_gone_before_the_retry_starts() {
+    // yt-dlp can fail with a helper of its own still running — the
+    // ffmpeg it spawned for a merge, outliving a crash. The tool's
+    // exit is not its tree's: the retry starts only once the rest of
+    // the group is gone too.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let pidf = bin.path().join("helper.pid");
+    let seen = bin.path().join("overlap");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "sleep 30 >/dev/null 2>&1 &\necho $! > '{pidf}'\nexit 1",
+            pidf = pidf.display()
+        ),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!(
+            "kill -0 \"$(cat '{pidf}')\" 2>/dev/null && echo overlap > '{seen}'\n\
+             last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            pidf = pidf.display(),
+            seen = seen.display()
+        ),
+    );
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 9",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |_l: &str| {},
+    )
+    .await;
+    let helper = std::fs::read_to_string(&pidf).unwrap_or_default();
+    let _ = std::process::Command::new("kill")
+        .args(["-9", helper.trim()])
+        .status();
+    assert_eq!(got.expect("the retry publishes"), Transferred::Episode);
+    assert!(
+        !seen.exists(),
+        "ffmpeg started while the failed yt-dlp's helper was still running"
+    );
+}
+
+/// Two transfers over one stub, told apart in the log by the
+/// destination each spawn's output path sits in.
+#[cfg(unix)]
+fn spawn_into<'a>(lines: &'a [String], dest: &std::path::Path) -> Option<&'a String> {
+    let needle = format!("-o {}/", dest.display());
+    lines
+        .iter()
+        .find(|l| !l.starts_with("done") && l.contains(&needle))
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn paced_downloads_take_the_lane_one_at_a_time() {
+    // Two episodes downloading while one plays: each yt-dlp on its
+    // own would keep one fragment in flight, and two beside the
+    // player is the load that lost its segment request. The paced
+    // lane is one per app — the second download's yt-dlp does not
+    // spawn until the first's has finished.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 6",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let second = spawn_download_tool_paced(
+        &source,
+        dest_b.path(),
+        "Show Episode 7",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_b,
+        &pacing,
+    );
+    let drive = async {
+        let one = until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        assert_eq!(concurrency_of(&one[0]), Some("1"), "paced: {one:?}");
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let still = std::fs::read_to_string(&log).expect("log");
+        assert_eq!(
+            still.lines().count(),
+            1,
+            "the second download waits for the lane: {still}"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, b, ()) = tokio::join!(first, second, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    assert_eq!(
+        b.expect("the second transfer completes"),
+        Transferred::Episode
+    );
+    let calls: Vec<String> = std::fs::read_to_string(&log)
+        .expect("log")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(calls.len(), 4, "two spawns, two exits: {calls:?}");
+    assert!(
+        calls[1].starts_with("done"),
+        "the first run finished before the second spawned: {calls:?}"
+    );
+    assert_eq!(
+        concurrency_of(&calls[2]),
+        Some("1"),
+        "the second is paced too: {calls:?}"
+    );
+    assert!(dest_a.path().join("Show Episode 6.mp4").exists());
+    assert!(dest_b.path().join("Show Episode 7.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_waiting_for_the_lane_runs_free_once_playback_stops() {
+    // The second download is queued behind the first's paced run
+    // when playback stops. Nothing is left to yield to, so it spawns
+    // at full speed without waiting for the lane.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 8",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let second = spawn_download_tool_paced(
+        &source,
+        dest_b.path(),
+        "Show Episode 9",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_b,
+        &pacing,
+    );
+    let drive = async {
+        // Whichever download took the lane first is running; the
+        // other is the one queued behind it.
+        let first = until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        let queued_dest = if spawn_into(&first, dest_a.path()).is_some() {
+            dest_b.path()
+        } else {
+            dest_a.path()
+        };
+        live.store(false, std::sync::atomic::Ordering::Relaxed);
+        let lines = until_log(&log, "the queued download spawning", |l| {
+            spawn_into(l, queued_dest).is_some()
+        })
+        .await;
+        let queued = spawn_into(&lines, queued_dest).expect("its spawn");
+        assert_eq!(concurrency_of(queued), Some("16"), "free: {lines:?}");
+        assert!(
+            !lines.iter().any(|l| l.starts_with("done")),
+            "it spawned while the first was still running: {lines:?}"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, b, ()) = tokio::join!(first, second, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    assert_eq!(
+        b.expect("the second transfer completes"),
+        Transferred::Episode
+    );
+}
+
+/// An ffmpeg stub that logs its pid and arguments, waits for `go`,
+/// then writes its output — ffmpeg's is its last argument — and logs
+/// that it finished.
+#[cfg(unix)]
+fn stage_waiting_ffmpeg(bin: &std::path::Path, log: &std::path::Path, go: &std::path::Path) {
+    stage_tool(
+        bin,
+        "ffmpeg",
+        &format!(
+            "echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'video' > \"$last\"\necho \"done $$\" >> '{log}'\nexit 0",
+            log = log.display(),
+            go = go.display(),
+        ),
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn ffmpeg_fallbacks_take_the_paced_lane_one_at_a_time() {
+    // No yt-dlp on this install: the transfer is ffmpeg's alone. One
+    // connection is the paced allowance itself, and the allowance is
+    // one beside the player for the whole app — so while playback is
+    // live the second fallback waits for the first's ffmpeg to finish
+    // before it spawns its own.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ffmpeg(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 10",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let second = spawn_download_tool_paced(
+        &source,
+        dest_b.path(),
+        "Show Episode 11",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_b,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let still = std::fs::read_to_string(&log).expect("log");
+        assert_eq!(
+            still.lines().count(),
+            1,
+            "the second fallback waits for the lane: {still}"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, b, ()) = tokio::join!(first, second, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    assert_eq!(
+        b.expect("the second transfer completes"),
+        Transferred::Episode
+    );
+    let calls: Vec<String> = std::fs::read_to_string(&log)
+        .expect("log")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(calls.len(), 4, "two runs, two exits: {calls:?}");
+    assert!(
+        calls[1].starts_with("done"),
+        "the first run finished before the second spawned: {calls:?}"
+    );
+    assert!(dest_a.path().join("Show Episode 10.mp4").exists());
+    assert!(dest_b.path().join("Show Episode 11.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_started_while_idle_holds_the_lane_when_playback_starts() {
+    // The live-start variant of the idle case: ffmpeg started with
+    // nothing playing, the user starts an episode, and a second
+    // download begins during playback. The fallback keeps running —
+    // it cannot resume, and one connection is the allowance — and it
+    // holds the lane from its start, so the second download waits for
+    // it whether it begins during playback, as here, or before.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ffmpeg(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 12",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the free ffmpeg", |l| l.len() == 1).await;
+        live.store(true, std::sync::atomic::Ordering::Relaxed);
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let second = spawn_download_tool_paced(
+            &source,
+            dest_b.path(),
+            "Show Episode 13",
+            None,
+            &path_env,
+            std::time::Duration::from_secs(10),
+            &mut on_line_b,
+            &pacing,
+        );
+        let release = async {
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            let still = std::fs::read_to_string(&log).expect("log");
+            assert_eq!(
+                still.lines().count(),
+                1,
+                "the second download waits behind the running fallback: {still}"
+            );
+            std::fs::write(&go, b"").expect("go");
+        };
+        let (b, ()) = tokio::join!(second, release);
+        assert_eq!(
+            b.expect("the second transfer completes"),
+            Transferred::Episode
+        );
+    };
+    let (a, ()) = tokio::join!(first, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    let calls: Vec<String> = std::fs::read_to_string(&log)
+        .expect("log")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(calls.len(), 4, "two runs, two exits: {calls:?}");
+    assert!(
+        calls[1].starts_with("done"),
+        "the fallback finished before the second spawned: {calls:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn ffmpeg_fallbacks_run_one_at_a_time_even_with_nothing_playing() {
+    // Two fallbacks running free when an episode starts would be two
+    // connections beside the player, and neither can change its rate
+    // mid-run or be taken down and resumed. So a fallback holds the
+    // lane from its start whether or not anything plays: fallbacks
+    // run one
+    // after the other, and whichever is running when playback starts
+    // is already the one connection the allowance grants.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ffmpeg(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 14",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let second = spawn_download_tool_paced(
+        &source,
+        dest_b.path(),
+        "Show Episode 15",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_b,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let still = std::fs::read_to_string(&log).expect("log");
+        assert_eq!(
+            still.lines().count(),
+            1,
+            "the second fallback waits for the first: {still}"
+        );
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, b, ()) = tokio::join!(first, second, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+    assert_eq!(
+        b.expect("the second transfer completes"),
+        Transferred::Episode
+    );
+    let calls: Vec<String> = std::fs::read_to_string(&log)
+        .expect("log")
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(calls.len(), 4, "two runs, two exits: {calls:?}");
+    assert!(
+        calls[1].starts_with("done"),
+        "the first run finished before the second spawned: {calls:?}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_paced_download_also_limits_its_byte_rate() {
+    // The host counts requests per address. One fragment at a time
+    // still asks for one as fast as the host answers, which with
+    // small segments is several a second — so the paced run also
+    // limits its byte rate, which spaces its requests out, and the
+    // free run does neither.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    std::fs::write(&go, b"").expect("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    for (live, stem) in [(true, "Show Episode 16"), (false, "Show Episode 17")] {
+        let flag = std::sync::atomic::AtomicBool::new(live);
+        let is_live = || flag.load(std::sync::atomic::Ordering::Relaxed);
+        let lane = tokio::sync::Semaphore::new(1);
+        let pacing = crate::commands::download_pacing::Pacing::new(
+            &is_live,
+            std::time::Duration::from_millis(50),
+            &lane,
+        );
+        let mut lines = Vec::new();
+        let mut on_line = |l: &str| lines.push(l.to_string());
+        spawn_download_tool_paced(
+            &source,
+            dest.path(),
+            stem,
+            None,
+            &path_env,
+            std::time::Duration::from_secs(10),
+            &mut on_line,
+            &pacing,
+        )
+        .await
+        .expect("the transfer completes");
+    }
+    let calls = std::fs::read_to_string(&log).expect("the tool ran");
+    let spawns: Vec<&str> = calls.lines().filter(|l| !l.starts_with("done")).collect();
+    assert_eq!(spawns.len(), 2, "one spawn each: {calls}");
+    assert_eq!(
+        rate_limit_of(spawns[0]),
+        Some(crate::commands::download_pacing::PACED_RATE_LIMIT),
+        "paced: the byte rate is limited: {calls}"
+    );
+    assert_eq!(
+        rate_limit_of(spawns[1]),
+        None,
+        "free: no byte-rate limit: {calls}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_waiting_for_the_lane_during_playback_outlives_its_ceiling() {
+    // The transfer's ceiling guards a hung tool. Waiting for the lane
+    // while playback is live is the same kind of time as a paced run —
+    // it lasts as long as playback does and ends the moment playback
+    // stops — so the ceiling does not run against it either: a
+    // download queued behind another's paced run past its own deadline
+    // still runs once the lane opens.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 18",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        let second = spawn_download_tool_paced(
+            &source,
+            dest_b.path(),
+            "Show Episode 19",
+            None,
+            &path_env,
+            std::time::Duration::from_millis(400),
+            &mut on_line_b,
+            &pacing,
+        );
+        let release = async {
+            tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+            std::fs::write(&go, b"").expect("go");
+        };
+        let (b, ()) = tokio::join!(second, release);
+        assert_eq!(
+            b.expect("the queued download completes once the lane opens"),
+            Transferred::Episode
+        );
+    };
+    let (a, ()) = tokio::join!(first, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_waiting_for_the_lane_fails_at_its_deadline() {
+    // The same ceiling for the fallback: one ffmpeg holds the lane
+    // for as long as it runs, and a second whose deadline passes while
+    // it waits fails there.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest_a = tempfile::tempdir().expect("dest a");
+    let dest_b = tempfile::tempdir().expect("dest b");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ffmpeg(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(false);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines_a = Vec::new();
+    let mut lines_b = Vec::new();
+    let mut on_line_a = |l: &str| lines_a.push(l.to_string());
+    let mut on_line_b = |l: &str| lines_b.push(l.to_string());
+    let first = spawn_download_tool_paced(
+        &source,
+        dest_a.path(),
+        "Show Episode 20",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line_a,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the first ffmpeg", |l| l.len() == 1).await;
+        let started = tokio::time::Instant::now();
+        let second = spawn_download_tool_paced(
+            &source,
+            dest_b.path(),
+            "Show Episode 21",
+            None,
+            &path_env,
+            std::time::Duration::from_millis(400),
+            &mut on_line_b,
+            &pacing,
+        )
+        .await;
+        assert!(
+            matches!(second, Err(AniError::Timeout)),
+            "the queued fallback fails at its own deadline: {second:?}"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (a, ()) = tokio::join!(first, drive);
+    assert_eq!(
+        a.expect("the first transfer completes"),
+        Transferred::Episode
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_paced_run_outlives_the_transfers_ceiling() {
+    // The transfer's ceiling guards a hung tool. A paced run is slow
+    // by design — one fragment at a limited rate for as long as the
+    // user watches — and ends the moment playback stops, so the
+    // ceiling does not apply to it: a transfer whose paced run takes
+    // longer than the ceiling still completes.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = bin.path().join("calls.log");
+    let go = bin.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut lines = Vec::new();
+    let mut on_line = |l: &str| lines.push(l.to_string());
+    let transfer = spawn_download_tool_paced(
+        &source,
+        dest.path(),
+        "Show Episode 22",
+        None,
+        &path_env,
+        std::time::Duration::from_millis(400),
+        &mut on_line,
+        &pacing,
+    );
+    let drive = async {
+        until_log(&log, "the paced spawn", |l| l.len() == 1).await;
+        tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (got, ()) = tokio::join!(transfer, drive);
+    assert_eq!(
+        got.expect("the paced transfer completes past the ceiling"),
+        Transferred::Episode
+    );
+    assert!(dest.path().join("Show Episode 22.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_paced_download_runs_free_again_once_playback_stops() {
+    // The player paused or the episode ended: after the window of
+    // silence the download is taken down and started again at full
+    // speed, resuming where it was.
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let log = dest.path().join("calls.log");
+    let go = dest.path().join("go");
+    stage_waiting_ytdlp(bin.path(), &log, &go);
+    let live = std::sync::atomic::AtomicBool::new(true);
+    let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let mut lines = Vec::new();
+    let source = StreamSource {
+        master_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: None,
+        subtitles: Vec::new(),
+    };
+    let path_env = bin.path().display().to_string();
+    let mut on_line = |l: &str| lines.push(l.to_string());
+    let transfer = spawn_download_tool_paced(
+        &source,
+        dest.path(),
+        "Show Episode 5",
+        None,
+        &path_env,
+        std::time::Duration::from_secs(10),
+        &mut on_line,
+        &pacing,
+    );
+    let drive = async {
+        let first = until_log(&log, "the first spawn", |l| l.len() == 1).await;
+        assert_eq!(concurrency_of(&first[0]), Some("1"));
+        live.store(false, std::sync::atomic::Ordering::Relaxed);
+        let second = until_log(&log, "the full-speed respawn", |l| l.len() == 2).await;
+        assert_eq!(concurrency_of(&second[1]), Some("16"));
+        std::fs::write(&go, b"").expect("go");
+    };
+    let (got, ()) = tokio::join!(transfer, drive);
+    assert_eq!(
+        got.expect("the resumed transfer completes"),
+        Transferred::Episode
+    );
+    assert!(dest.path().join("Show Episode 5.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_download_command_paces_on_the_proxys_record_of_playback() {
+    // End to end: the proxy noted a media fetch moments ago, so the
+    // command's transfer spawns through the relay, on the app's proxy,
+    // with the relayed fragments in flight; with nothing noted it
+    // spawns against the host at full speed.
+    for (live, want) in [(true, "4"), (false, "16")] {
+        let server = stub_range_show();
+        let td = tempfile::tempdir().expect("td");
+        let state = native_test_state(&td, &server);
+        if live {
+            state.sessions.note_media_fetch();
+        }
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        let log = dest.path().join("calls.log");
+        stage_tool(
+            bin.path(),
+            "yt-dlp",
+            &format!(
+                "echo \"$*\" >> '{}'\n{}\nexit 0",
+                log.display(),
+                writes_its_output("video")
+            ),
+        );
+        let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+            "title": "Range Show",
+            "episode": "1",
+            "mode": "sub",
+            "download_dir": dest.path().to_string_lossy(),
+        }))
+        .expect("args");
+        download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+            .await
+            .expect("the episode downloads");
+        let calls = std::fs::read_to_string(&log).expect("the tool ran");
+        let spawn = calls.lines().next().expect("one spawn");
+        assert_eq!(concurrency_of(spawn), Some(want), "live={live}: {calls}");
+        assert_eq!(
+            spawn.contains(&format!("{}/s/", state.proxy_origin.base)),
+            live,
+            "through the relay exactly when live: {calls}"
+        );
+    }
+}
+
+/// The subtitle tracks a download stages beside its transfer reach
+/// the host from the address the player fetches from, and the host
+/// counts them with the player's requests: each is charged to the
+/// host's budget.
+#[tokio::test]
+async fn sidecar_fetches_spend_the_hosts_budget() {
+    use crate::proxy::host_budget::{host_key, HostBudget, SEGMENT_BURST};
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    for lang in ["en", "es"] {
+        Mock::given(method("GET"))
+            .and(wm_path(format!("/subs/{lang}.vtt")))
+            .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
+            .mount(&server)
+            .await;
+    }
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks: Vec<_> = ["en", "es"]
+        .into_iter()
+        .map(|lang| SubtitleTrack {
+            lang: lang.into(),
+            label: lang.into(),
+            default: lang == "en",
+            url: format!("{}/subs/{lang}.vtt", server.uri()),
+        })
+        .collect();
+    let budget = HostBudget::fresh();
+    let staged = stage_sidecar_subtitles_with(
+        &reqwest::Client::new(),
+        &budget,
+        &crate::commands::download_pacing::SidecarGate::never(),
+        &tracks,
+        Some("https://embed.example/"),
+        dest.path(),
+        "Show Episode 2",
+        SIDECAR_PHASE_DEADLINE,
+        SIDECAR_FETCH_CONCURRENCY,
+    )
+    .await;
+    assert_eq!(staged.len(), 2, "both tracks staged");
+    let key = host_key(&url::Url::parse(&server.uri()).expect("server url"));
+    let on_hand = budget.on_hand(&key).expect("the host was fetched from");
+    assert!(
+        on_hand < f64::from(SEGMENT_BURST) - 1.0,
+        "two tracks spent two tokens: {on_hand}"
+    );
+}
+
+/// A sidecar fetched for a stream whose CDN wants no referer sends
+/// none — not an empty one — as every other fetch the app makes.
+#[tokio::test]
+async fn a_sidecar_fetch_without_a_referer_sends_no_referer_header() {
+    use crate::proxy::host_budget::HostBudget;
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
+        .mount(&server)
+        .await;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/subs/en.vtt", server.uri()),
+    }];
+    let staged = stage_sidecar_subtitles_with(
+        &reqwest::Client::new(),
+        &HostBudget::fresh(),
+        &crate::commands::download_pacing::SidecarGate::never(),
+        &tracks,
+        Some(""),
+        dest.path(),
+        "Show Episode 2",
+        SIDECAR_PHASE_DEADLINE,
+        SIDECAR_FETCH_CONCURRENCY,
+    )
+    .await;
+    assert_eq!(staged.len(), 1, "the track staged");
+    let requests = server.received_requests().await.expect("requests recorded");
+    assert!(
+        requests.iter().all(|r| !r.headers.contains_key("referer")),
+        "an empty referer was announced instead of none"
+    );
+}
+
+/// A fallback started while playback is live reads its input at the
+/// stream's own rate — one segment per segment's duration, the rate
+/// the player consumes it at — rather than as fast as the host
+/// answers: holding the lane keeps a second downloader out, and this
+/// keeps the fallback's own requests from spending the host's
+/// allowance.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_started_while_playback_is_live_reads_at_the_streams_rate() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let is_live = || true;
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("ffmpeg fallback succeeds");
+    let ffmpeg = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    assert!(
+        ffmpeg.contains(" -re "),
+        "the fallback reads at the stream's rate: {ffmpeg}"
+    );
+}
+
+/// One started while nothing plays reads as fast as the host answers,
+/// as before.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_started_while_nothing_plays_reads_at_full_speed() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("ffmpeg fallback succeeds");
+    let ffmpeg = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    assert!(
+        !ffmpeg.contains(" -re "),
+        "the fallback reads at full speed: {ffmpeg}"
+    );
+}
+
+/// A fallback reading at the stream's rate takes as long as the
+/// stream plays, which the transfer's ceiling — sized for a tool
+/// running free — does not allow for. Like a paced run, it has a
+/// ceiling of its own: a fallback started while playback is live
+/// whose run takes longer than the transfer's ceiling still completes.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_started_while_playback_is_live_outlives_the_transfers_ceiling() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "sleep 0.7; exit 0");
+    let is_live = || true;
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    );
+    let got = spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_millis(400),
+        &mut |_| {},
+        &pacing,
+    )
+    .await;
+    assert!(
+        got.is_ok(),
+        "the fallback completed under its own ceiling: {got:?}"
+    );
+}
+
+mod ffmpeg_pace_props {
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The fallback's rate argument follows liveness alone: the
+        /// native-rate flag when playback is live, nothing otherwise,
+        /// and never anything else.
+        #[test]
+        fn the_pace_argument_is_the_native_rate_flag_exactly_when_live(live in proptest::bool::ANY) {
+            let args = super::ffmpeg_pace_args(live);
+            prop_assert_eq!(args.is_empty(), !live);
+            if live {
+                prop_assert_eq!(args, vec!["-re"]);
+            }
+        }
+    }
+}
+
+/// A subtitle track a download stages waits behind the player: queued
+/// first, with the budget spent, it still reaches the host after a
+/// player's request that arrived later has had its token.
+#[tokio::test]
+async fn a_sidecar_fetch_queued_first_still_waits_behind_the_player() {
+    use crate::proxy::host_budget::HostBudget;
+    use crate::scraper::provider::SubtitleTrack;
+    use wiremock::matchers::{method, path as wm_path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(wm_path("/subs/en.vtt"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("WEBVTT\n\n"))
+        .mount(&server)
+        .await;
+    let key = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    let budget = HostBudget::new(1, std::time::Duration::from_millis(500));
+    budget.admit(&key).await;
+    let dest = tempfile::tempdir().expect("dest");
+    let tracks = vec![SubtitleTrack {
+        lang: "en".into(),
+        label: "English".into(),
+        default: true,
+        url: format!("{}/subs/en.vtt", server.uri()),
+    }];
+    let client = reqwest::Client::new();
+    let gate = crate::commands::download_pacing::SidecarGate::never();
+    let sidecar = async {
+        let staged = stage_sidecar_subtitles_with(
+            &client,
+            &budget,
+            &gate,
+            &tracks,
+            None,
+            dest.path(),
+            "Show Episode 2",
+            SIDECAR_PHASE_DEADLINE,
+            SIDECAR_FETCH_CONCURRENCY,
+        )
+        .await;
+        (staged, std::time::Instant::now())
+    };
+    let player = async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        budget.admit(&key).await;
+        std::time::Instant::now()
+    };
+    let ((staged, sidecar_done), player_admitted) = tokio::join!(sidecar, player);
+    assert_eq!(staged.len(), 1, "the track staged");
+    assert!(
+        player_admitted < sidecar_done,
+        "the player's request, arriving later, was admitted before the track was fetched"
+    );
+}
+
+/// Newer ffmpeg builds' hls demuxer refuses segments whose names do
+/// not end in an extension it expects, which the providers' do not,
+/// so the fallback turns that check off. A build without the check —
+/// Ubuntu 24.04's 6.1, which the `.deb` recommends — has no such
+/// option, and rejects the whole command for it: such a build gets
+/// the command again without the option.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_that_rejects_the_extension_option_gets_the_command_without_it() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2\nfor a in \"$@\"; do if [ \"$a\" = \"-extension_picky\" ]; then echo \"Unrecognized option 'extension_picky'.\" >&2; echo \"Error splitting the argument list: Option not found\" >&2; exit 8; fi; done\nexit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the fallback succeeds on the second command");
+    let runs: Vec<&String> = lines.iter().filter(|l| l.starts_with("ffmpeg ")).collect();
+    assert_eq!(
+        runs.len(),
+        2,
+        "one run with the option, one without: {lines:?}"
+    );
+    assert!(
+        runs[0].contains("-extension_picky 0"),
+        "the first run turns the check off"
+    );
+    assert!(
+        !runs[1].contains("-extension_picky"),
+        "the second run carries no option the build does not know: {}",
+        runs[1]
+    );
+}
+
+/// A build that rejects the option and leaves a helper behind that
+/// outlives the teardown gets no second run beside it: the second
+/// command writes the same scratch file and reads the same host, and
+/// an outlived tree ends the download as it does anywhere else.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_that_rejects_the_option_and_outlives_its_teardown_is_not_run_again() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    let _slow = SlowTreeKill::register_for("3", bin.path()).await;
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2\nd=$(dirname \"$0\")\nsh -c \"sleep 30; : '$d'\" >/dev/null 2>&1 &\necho \"Unrecognized option 'extension_picky'.\" >&2\nexit 8",
+    );
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 3",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "the download ends: {got:?}");
+    let runs = lines.iter().filter(|l| l.starts_with("ffmpeg ")).count();
+    assert_eq!(runs, 1, "no second run beside the outlived tree: {lines:?}");
+}
+
+/// A build that takes the option runs once.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_that_takes_the_extension_option_runs_once() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the fallback succeeds");
+    assert_eq!(
+        lines.iter().filter(|l| l.starts_with("ffmpeg ")).count(),
+        1,
+        "one run: {lines:?}"
+    );
+}
+
+/// An ffmpeg that fails for any other reason is not run again: only
+/// the line naming the option as unknown is the older build's.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_that_fails_otherwise_is_not_run_again() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2; echo \"Server returned 403 Forbidden\" >&2; exit 1",
+    );
+    let mut lines = Vec::new();
+    let got = spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await;
+    assert!(got.is_err(), "the failure surfaces");
+    assert_eq!(
+        lines.iter().filter(|l| l.starts_with("ffmpeg ")).count(),
+        1,
+        "one run: {lines:?}"
+    );
+}
+
+#[test]
+fn the_older_builds_rejection_is_the_line_naming_the_option_as_unknown() {
+    use crate::commands::download_tool::ffmpeg_rejected_extension_picky;
+    assert!(ffmpeg_rejected_extension_picky(
+        "Unrecognized option 'extension_picky'."
+    ));
+    assert!(!ffmpeg_rejected_extension_picky(
+        "Error splitting the argument list: Option not found"
+    ));
+    assert!(!ffmpeg_rejected_extension_picky(
+        "Unrecognized option 'readrate'."
+    ));
+    assert!(!ffmpeg_rejected_extension_picky(
+        "[hls @ 0x1] Filename extension of 'seg.jpg' is not a common multimedia extension, blocked for security reasons."
+    ));
+}
+
+mod extension_option_props {
+    use proptest::prelude::*;
+
+    proptest! {
+    /// Any line naming the option as unknown is the rejection, and
+    /// no line without that phrase is — whatever else the line says.
+    #[test]
+    fn the_rejection_is_decided_by_the_phrase_alone(
+        before in "[ -~]{0,40}",
+        after in "[ -~]{0,40}",
+        other in "[ -~]{0,80}",
+    ) {
+        use crate::commands::download_tool::ffmpeg_rejected_extension_picky;
+        let phrase = "Unrecognized option 'extension_picky'";
+        let with_phrase = format!("{before}{phrase}{after}");
+        prop_assert!(ffmpeg_rejected_extension_picky(&with_phrase));
+        prop_assume!(!other.contains(phrase));
+        prop_assert!(!ffmpeg_rejected_extension_picky(&other));
+    }
+    }
+}
+
+/// Only the Unix-only transfer cases hand a pacing this relay.
+#[cfg(unix)]
+const RELAY: &str = "http://127.0.0.1:9/s/relay/master.m3u8";
+
+/// A paced download spent a byte-rate cap on the host's allowance. With
+/// a relay — the app's proxy, which charges the download's requests to
+/// the host's budget in turn with the player's — it fetches through the
+/// relay instead: no byte-rate cap, the referer left to the proxy, and
+/// the patience to wait its turns beside a player filling its buffer.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_paced_download_with_a_relay_fetches_through_it() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_secs(3600),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("yt-dlp ran");
+    assert!(run.contains(RELAY), "fetches through the relay: {run}");
+    assert!(!run.contains("cdn.example"), "not the host directly: {run}");
+    assert!(!run.contains("--limit-rate"), "no byte-rate cap: {run}");
+    assert!(
+        !run.contains("--referer"),
+        "the proxy sends the referer: {run}"
+    );
+    assert!(
+        run.contains(&format!(
+            "--socket-timeout {}",
+            crate::commands::download_pacing::RELAYED_SOCKET_TIMEOUT_S
+        )),
+        "waits its turns beside the player without giving up: {run}"
+    );
+    assert!(
+        run.contains(&format!(
+            "-N {}",
+            crate::commands::download_pacing::RELAYED_FRAGMENTS
+        )),
+        "{run}"
+    );
+}
+
+/// With nothing playing the relay is not asked: the download goes to
+/// the host directly, at full speed.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_with_nothing_playing_does_not_use_the_relay() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    let is_live = || false;
+    let asked = std::sync::atomic::AtomicBool::new(false);
+    let relay = || {
+        asked.store(true, std::sync::atomic::Ordering::Relaxed);
+        Some(RELAY.to_string())
+    };
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_secs(3600),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(run.contains("https://cdn.example/x/master.m3u8"), "{run}");
+    assert!(
+        !asked.load(std::sync::atomic::Ordering::Relaxed),
+        "the relay was not asked"
+    );
+}
+
+/// On an install with ffmpeg alone, a fallback started while playback
+/// is live reads through the relay too, at whatever pace the budget
+/// leaves it rather than the stream's own rate.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_fallback_while_playback_is_live_reads_through_the_relay() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the fallback completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    assert!(run.contains(RELAY), "{run}");
+    assert!(
+        !run.contains(" -re "),
+        "the budget paces it, not the stream's rate: {run}"
+    );
+    assert!(
+        !run.contains("-headers"),
+        "the proxy sends the referer: {run}"
+    );
+}
+
+#[test]
+fn the_download_relay_is_a_background_session_on_the_proxy() {
+    // A download's master is a playlist whatever its path says — the
+    // resolver accepts only a body that opens as one — so the relay
+    // is the playlist route, never the mp4 route, which passes bytes
+    // through unrewritten.
+    use crate::proxy::{MediaKind, ProxyOrigin, SessionTable};
+    let sessions = SessionTable::new();
+    let origin = ProxyOrigin::new("127.0.0.1", 41417);
+    for master in [
+        "https://cdn.example/x/master.m3u8",
+        "https://cdn.example/x/episode.mp4",
+    ] {
+        let (id, url) =
+            open_download_relay(&sessions, &origin, master, Some("https://embed.example/"))
+                .expect("a URL master opens a relay");
+        assert_eq!(
+            url,
+            format!("{}/s/{}/master.m3u8", origin.base, id.as_string()),
+            "the playlist route"
+        );
+        let session = sessions.get(&id).expect("the session is open");
+        assert!(session.background, "the download's own session");
+        assert_eq!(session.upstream_url.as_str(), master);
+        assert_eq!(session.referer, "https://embed.example/");
+        assert_eq!(session.media_kind, MediaKind::Hls);
+    }
+}
+
+#[test]
+fn a_master_that_is_not_a_url_opens_no_relay() {
+    // With no relay the paced run keeps its own caps; handing back the
+    // master as though it were one would run uncapped at the host.
+    let sessions = crate::proxy::SessionTable::new();
+    let origin = crate::proxy::ProxyOrigin::new("127.0.0.1", 41417);
+    assert!(open_download_relay(&sessions, &origin, "not a url", None).is_none());
+    assert!(sessions.is_empty());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_download_closes_its_relay_when_the_transfer_ends() {
+    // The relay's session is signed and lives as long as a paced run
+    // may; once the transfer is over nothing should fetch through it.
+    let server = stub_range_show();
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    state.sessions.note_media_fetch();
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": "Range Show",
+        "episode": "1",
+        "mode": "sub",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("the episode downloads");
+    assert!(
+        state.sessions.is_empty(),
+        "the relay's session was closed; {} left",
+        state.sessions.len()
+    );
+}
+
+/// Each argument a stub was given, bracketed, so an empty one shows.
+#[cfg(unix)]
+const BRACKETS_ITS_ARGS: &str =
+    "printf '%s ' \"$0\" >&2; for a in \"$@\"; do printf '[%s]' \"$a\" >&2; done; echo >&2";
+
+/// The relay is on this machine. A proxy the environment or the system
+/// names would carry the tools' requests to it somewhere else, so a
+/// relayed run tells each tool to connect directly.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_relayed_run_connects_to_the_relay_directly() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{BRACKETS_ITS_ARGS}; exit 1"),
+    );
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_secs(3600),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    let _ = spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await;
+    let run = lines
+        .iter()
+        .find(|l| l.contains("[--proxy]"))
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        run.contains("[--proxy][]"),
+        "yt-dlp connects directly: {lines:?}"
+    );
+
+    // ffmpeg alone, relayed.
+    let bin = tempfile::tempdir().expect("bin");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!("{BRACKETS_ITS_ARGS}; exit 0"),
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 3",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the fallback completes");
+    let run = lines
+        .iter()
+        .find(|l| l.contains("[-i]"))
+        .expect("ffmpeg ran");
+    assert!(
+        run.contains("[-http_proxy][]"),
+        "ffmpeg connects directly: {run}"
+    );
+    assert!(run.contains(RELAY), "{run}");
+}
+
+/// When the relayed yt-dlp run is what failed, the relay may be why:
+/// the fallback does not try it again, and reads from the host directly
+/// at the stream's own rate instead.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_fallback_after_a_relayed_run_failed_reads_from_the_host() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: Some("https://embed.example/".into()),
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the fallback completes");
+    // The referer header ends in a line break, so the echoed command
+    // spans lines; read it whole.
+    let joined = lines.join(" ");
+    let run = &joined[joined.find("ffmpeg ").expect("ffmpeg ran")..];
+    assert!(
+        !run.contains(RELAY),
+        "not the relay that just failed: {run}"
+    );
+    assert!(run.contains("https://cdn.example/x/master.m3u8"), "{run}");
+    assert!(run.contains(" -re "), "at the stream's own rate: {run}");
+    assert!(run.contains("-headers"), "with the referer: {run}");
+}
+
+/// Each tool reports the proxy exceptions it was started with.
+#[cfg(unix)]
+const REPORTS_ITS_PROXY_EXCEPTIONS: &str =
+    "echo \"$(basename \"$0\") no_proxy=[$no_proxy] NO_PROXY=[$NO_PROXY]\" >&2";
+
+/// The empty proxy a relayed run passes reaches only the request the
+/// tool makes first: ffmpeg's playlist demuxer drops an empty option
+/// when it opens the playlists and segments the relay points it at,
+/// and falls back to the proxy the environment names. A relayed run's
+/// tools are told, through their environment, that the relay's
+/// address is never to be proxied — which every request they and
+/// their own children make reads.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_relayed_runs_tools_never_proxy_the_relays_address() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{REPORTS_ITS_PROXY_EXCEPTIONS}; exit 1"),
+    );
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        &format!("{REPORTS_ITS_PROXY_EXCEPTIONS}; exit 0"),
+    );
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    )
+    .with_relay(&relay);
+    // yt-dlp through the relay, then ffmpeg alone through it.
+    let mut lines = Vec::new();
+    let _ = spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await;
+    let ytdlp = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("yt-dlp ran");
+    for var in ["no_proxy", "NO_PROXY"] {
+        let expected = relay_exceptions(std::env::var(var).ok().as_deref());
+        assert!(
+            ytdlp.contains(&format!("{var}=[{expected}]")),
+            "yt-dlp {var}: {ytdlp}"
+        );
+    }
+    std::fs::remove_file(bin.path().join("yt-dlp")).expect("ffmpeg alone");
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 3",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the fallback completes");
+    let ffmpeg = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    for var in ["no_proxy", "NO_PROXY"] {
+        let expected = relay_exceptions(std::env::var(var).ok().as_deref());
+        assert!(
+            ffmpeg.contains(&format!("{var}=[{expected}]")),
+            "ffmpeg {var}: {ffmpeg}"
+        );
+    }
+}
+
+/// A relayed run that fetched everything and only left the wrong
+/// container behind did not fail because of the relay: the fallback
+/// that repackages it reads through the relay while playback is live,
+/// in turn with the player, not from the host directly.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_repackage_after_a_relayed_run_still_reads_through_the_relay() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2; exit 0",
+    );
+    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    let is_live = || true;
+    let relay = || Some(RELAY.to_string());
+    let lane = tokio::sync::Semaphore::new(1);
+    let pacing = crate::commands::download_pacing::Pacing::new(
+        &is_live,
+        std::time::Duration::from_millis(50),
+        &lane,
+    )
+    .with_relay(&relay);
+    let mut lines = Vec::new();
+    spawn_download_tool_paced(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 2",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+        &pacing,
+    )
+    .await
+    .expect("the repackage completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ffmpeg ran");
+    assert!(run.contains(RELAY), "through the relay: {run}");
+    assert!(!run.contains(" -re "), "{run}");
+}
+
+mod relay_exception_props {
+    use super::super::relay_exceptions;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The relay's addresses come first, and whatever the
+        /// environment already named is kept whole after them.
+        #[test]
+        fn the_relays_addresses_lead_and_the_existing_exceptions_follow_whole(
+            existing in proptest::option::of("[a-z0-9.,*-]{0,40}"),
+        ) {
+            let got = relay_exceptions(existing.as_deref());
+            prop_assert!(got.starts_with("127.0.0.1,localhost"));
+            match existing.as_deref() {
+                Some(e) if !e.is_empty() => {
+                    prop_assert_eq!(got, format!("127.0.0.1,localhost,{e}"));
+                }
+                _ => prop_assert_eq!(got, "127.0.0.1,localhost"),
+            }
+        }
+    }
+}
+
+mod download_rate {
+    use crate::commands::download_progress::{
+        ffmpeg_progress_bytes, ytdlp_progress_bytes, RateMeter, RATE_WINDOW,
+    };
+    use proptest::prelude::*;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    #[test]
+    fn yt_dlps_progress_line_reads_as_the_bytes_downloaded() {
+        assert_eq!(
+            ytdlp_progress_bytes("ani-gui-progress 1048576"),
+            Some(1_048_576)
+        );
+        // yt-dlp prints NA before it knows.
+        assert_eq!(ytdlp_progress_bytes("ani-gui-progress NA"), None);
+        assert_eq!(ytdlp_progress_bytes("[download]  12.0% of 300MiB"), None);
+        assert_eq!(ytdlp_progress_bytes("WARNING: something"), None);
+    }
+
+    #[test]
+    fn ffmpegs_progress_lines_read_as_the_bytes_written() {
+        assert_eq!(ffmpeg_progress_bytes("total_size=2097152"), Some(2_097_152));
+        assert_eq!(ffmpeg_progress_bytes("total_size=N/A"), None);
+        assert_eq!(ffmpeg_progress_bytes("out_time_us=1000000"), None);
+        assert_eq!(ffmpeg_progress_bytes("progress=continue"), None);
+    }
+
+    #[test]
+    fn the_rate_is_the_bytes_gained_over_the_window() {
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(5 * 1024 * 1024, start + RATE_WINDOW);
+        let rate = meter.rate_at(start + RATE_WINDOW);
+        let expected = 5.0 * 1024.0 * 1024.0 / RATE_WINDOW.as_secs_f64();
+        assert!((rate - expected).abs() < 1.0, "{rate} vs {expected}");
+    }
+
+    #[test]
+    fn a_stalled_download_decays_to_zero() {
+        // Nothing gained for a whole window: the rate is zero, not the
+        // last speed seen.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(1_000_000, start + Duration::from_secs(1));
+        assert!(meter.rate_at(start + Duration::from_secs(1)) > 0.0);
+        assert_eq!(
+            meter.rate_at(start + Duration::from_secs(1) + RATE_WINDOW + Duration::from_millis(1)),
+            0.0
+        );
+    }
+
+    #[test]
+    fn a_count_that_falls_is_not_a_negative_speed() {
+        // A count that falls — yt-dlp counting again from a lower
+        // figure — is not a negative speed.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(10_000_000, start);
+        meter.observe(100, start + Duration::from_secs(1));
+        meter.observe(1_100, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!(rate > 0.0 && rate <= 1_000.0 + 1.0, "{rate}");
+    }
+
+    #[test]
+    fn a_recount_carries_the_speed_on_rather_than_flashing_zero() {
+        // yt-dlp's own count can step back — a fragment retried counts
+        // its bytes again. The speed carries on from the bytes gained
+        // since, rather than reading zero until the window refills.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(1_000_000, start + Duration::from_secs(1));
+        meter.observe(2_000_000, start + Duration::from_secs(2));
+        meter.observe(1_500_000, start + Duration::from_secs(3));
+        assert!(
+            meter.rate_at(start + Duration::from_secs(3)) > 0.0,
+            "the speed carried on through the recount"
+        );
+    }
+
+    #[test]
+    fn the_bytes_before_a_count_falls_stay_in_the_speed() {
+        // A count that falls to zero after ten mebibytes — a retried
+        // fragment counted from its start — takes nothing back from
+        // what was transferred before it: those bytes arrived.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(10 * 1024 * 1024, start + Duration::from_secs(1));
+        meter.observe(0, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        let expected = 10.0 * 1024.0 * 1024.0 / 2.0;
+        assert!((rate - expected).abs() < 1.0, "{rate} vs {expected}");
+    }
+
+    proptest! {
+        /// Whatever the tool's count does, the speed is what it gained
+        /// — every rise counted, every fall counted as nothing — since
+        /// the newest count before the window, or the oldest within it,
+        /// over the time since, never below a second.
+        #[test]
+        fn any_count_reads_as_its_gains_over_the_window(
+            steps in proptest::collection::vec((0u64..5_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut gained = 0u64;
+            let mut last: Option<u64> = None;
+            let mut seen = Vec::new();
+            for (count, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                if let Some(prev) = last {
+                    gained += count.saturating_sub(prev);
+                }
+                last = Some(*count);
+                meter.observe(*count, at);
+                seen.push((at, gained));
+            }
+            let now = at + Duration::from_millis(asked_after_ms);
+            let cutoff = now.checked_sub(RATE_WINDOW).unwrap_or(now);
+            let (since, from) = seen
+                .iter()
+                .rev()
+                .find(|(t, _)| *t < cutoff)
+                .or_else(|| seen.first())
+                .copied()
+                .expect("a count");
+            let elapsed = now.saturating_duration_since(since).max(Duration::from_secs(1));
+            #[allow(clippy::cast_precision_loss)]
+            let expected = (gained - from) as f64 / elapsed.as_secs_f64();
+            prop_assert!((meter.rate_at(now) - expected).abs() < 1e-6);
+        }
+
+        /// For a count that only grows, the speed is the bytes gained
+        /// since the newest count before the window, or the oldest
+        /// within it, over the time since — never below a second.
+        #[test]
+        fn a_growing_count_reads_as_the_window_formula(
+            steps in proptest::collection::vec((0u64..5_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut bytes = 0u64;
+            let mut seen = Vec::new();
+            for (gain, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                bytes += gain;
+                meter.observe(bytes, at);
+                seen.push((at, bytes));
+            }
+            let now = at + Duration::from_millis(asked_after_ms);
+            let cutoff = now.checked_sub(RATE_WINDOW).unwrap_or(now);
+            let (since, from) = seen
+                .iter()
+                .rev()
+                .find(|(t, _)| *t < cutoff)
+                .or_else(|| seen.first())
+                .copied()
+                .expect("a count");
+            let elapsed = now.saturating_duration_since(since).max(Duration::from_secs(1));
+            let expected = (bytes - from) as f64 / elapsed.as_secs_f64();
+            prop_assert!((meter.rate_at(now) - expected).abs() < 1e-6);
+        }
+
+        /// Asked more than a window after the count last grew, the
+        /// speed is zero, whatever came before.
+        #[test]
+        fn a_whole_window_without_growth_reads_as_zero(
+            steps in proptest::collection::vec((0u64..50_000_000, 1u64..3_000), 1..30),
+            beyond_ms in 1u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            for (bytes, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                meter.observe(*bytes, at);
+            }
+            let now = at + RATE_WINDOW + Duration::from_millis(beyond_ms);
+            prop_assert_eq!(meter.rate_at(now), 0.0);
+        }
+
+        /// Whatever the tool reports, the speed is never negative and
+        /// never more than everything it gained, over a second.
+        #[test]
+        fn the_rate_is_never_negative_nor_more_than_a_second_of_all_it_gained(
+            steps in proptest::collection::vec((0u64..50_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut gained = 0u64;
+            let mut last: Option<u64> = None;
+            for (bytes, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                meter.observe(*bytes, at);
+                if let Some(prev) = last {
+                    gained += bytes.saturating_sub(prev);
+                }
+                last = Some(*bytes);
+            }
+            let rate = meter.rate_at(at + Duration::from_millis(asked_after_ms));
+            prop_assert!(rate >= 0.0 && rate.is_finite());
+            #[allow(clippy::cast_precision_loss)]
+            let most = gained as f64;
+            prop_assert!(rate <= most + 1e-6);
+        }
+    }
+}
+
+/// The rates a run reported to the dock, in bytes a second.
+#[cfg(unix)]
+fn reported_rates(lines: &[String]) -> Vec<u64> {
+    lines
+        .iter()
+        .filter_map(|l| l.strip_prefix("status.download.rate "))
+        .filter_map(|r| r.parse().ok())
+        .collect()
+}
+
+/// yt-dlp prints its progress on stdout, which the app threw away, so
+/// the dock never had a speed. It is asked for a progress line of the
+/// app's shape on stdout, the app reads it, and reports the run's speed
+/// to the dock once a second — the progress lines themselves are not
+/// the dock's to show.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_yt_dlp_run_reports_its_speed_to_the_dock() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "echo \"yt-dlp $*\" >&2\n\
+         for b in 0 1048576 2097152 3145728 4194304; do echo \"ani-gui-progress $b\"; sleep 0.4; done\n\
+         exit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(run.contains("--newline"), "{run}");
+    assert!(
+        run.contains(
+            "--progress-template download:ani-gui-progress %(info.format_id)s %(progress.downloaded_bytes)s"
+        ),
+        "{run}"
+    );
+    let rates = reported_rates(&lines);
+    assert!(
+        rates.iter().any(|&r| r > 0),
+        "a speed was reported: {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.starts_with("ani-gui-progress")),
+        "the progress lines are not the dock's text: {lines:?}"
+    );
+}
+
+/// A run that reports progress and ends inside a second — a nearly
+/// finished resume — still shows a speed: the meter is read once more
+/// as the run's output closes, ahead of the zero its end reports.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_run_shorter_than_a_report_still_reports_a_speed() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "echo \"ani-gui-progress 137 1048576\"\nexit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let rates = reported_rates(&lines);
+    assert!(
+        rates.iter().any(|&r| r > 0),
+        "a speed was reported before the run's zero: {lines:?}"
+    );
+    assert_eq!(
+        rates.last(),
+        Some(&0),
+        "and the run ends at zero: {lines:?}"
+    );
+}
+
+/// A user's yt-dlp configuration applies to every run it does not
+/// override, and a run's progress line is only one of what it can
+/// change: `--no-progress` or `--quiet` in a configuration file
+/// silenced the line the meter reads, so the indicators read zero for
+/// the whole download, and a configured downloader silenced it even
+/// past `--progress`. Every run is told to load no configuration, so
+/// it is the run the app built.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_yt_dlp_run_loads_no_user_configuration() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2\nexit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(
+        run.split_whitespace().any(|a| a == "--ignore-config"),
+        "the run loads no user configuration: {run}"
+    );
+}
+
+/// ffmpeg's -stats line is one carriage-return-separated run the app
+/// read whole at the end. The fallback asks for its key=value progress
+/// on stdout instead and reports the speed the same way.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_run_reports_its_speed_to_the_dock() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2\n\
+         for b in 0 1048576 2097152 3145728 4194304; do echo \"total_size=$b\"; echo progress=continue; sleep 0.4; done\n\
+         exit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ran");
+    assert!(run.contains("-progress pipe:1"), "{run}");
+    assert!(run.contains("-nostats"), "{run}");
+    assert!(!run.contains(" -stats"), "{run}");
+    let rates = reported_rates(&lines);
+    assert!(
+        rates.iter().any(|&r| r > 0),
+        "a speed was reported: {lines:?}"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.starts_with("total_size=") || l.starts_with("progress=")),
+        "the progress lines are not the dock's text: {lines:?}"
+    );
+}
+
+/// A run that reported a speed reports zero when it ends, however it
+/// ends: between runs — the next episode resolving, a paced run
+/// waiting for the lane, the fallback starting — nothing is moving, and
+/// the indicators must not keep showing the last speed.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_run_that_measured_reports_zero_when_it_ends() {
+    for exit in ["exit 0", "exit 1"] {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        stage_tool(
+            bin.path(),
+            "yt-dlp",
+            &format!(
+                "for b in 0 1048576 2097152 3145728; do echo \"ani-gui-progress $b\"; sleep 0.4; done\n{exit}"
+            ),
+        );
+        let mut lines = Vec::new();
+        let _ = spawn_download_tool(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_secs(10),
+            &mut |l: &str| lines.push(l.to_string()),
+        )
+        .await;
+        let rates = reported_rates(&lines);
+        assert!(
+            rates.iter().any(|&r| r > 0),
+            "{exit}: a speed was reported: {lines:?}"
+        );
+        assert_eq!(
+            rates.last(),
+            Some(&0),
+            "{exit}: the run ended on zero: {lines:?}"
+        );
+    }
+}
+
+/// Every download is a finished episode, never a live broadcast, but
+/// yt-dlp guesses live from the first variant it checks — a guess the
+/// relay's episodes met — and a live stream gets no progress line and
+/// can be handed to an ffmpeg run without the app's extension option,
+/// which the relay's addresses fail. yt-dlp is told the stream is not
+/// live, on every run.
+#[cfg(unix)]
+#[tokio::test]
+async fn yt_dlp_is_told_the_episode_is_not_live() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(
+        run.contains("--extractor-args generic:is_live=false"),
+        "{run}"
+    );
+}
+
+/// A run's speed counts from the run's start: the first progress a tool
+/// reports already carries a block, and that block is part of the
+/// speed — but only what this run fetched, not what an earlier run of
+/// the same transfer left for it to resume from.
+mod rate_from_the_runs_start {
+    use crate::commands::download_progress::RateMeter;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    #[test]
+    fn a_fresh_runs_first_block_counts() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(0, start);
+        meter.observe(2_000_000, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - 1_000_000.0).abs() < 1.0, "{rate}");
+    }
+
+    #[test]
+    fn a_resumed_runs_first_count_counts_only_what_it_fetched() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(50_000_000, start);
+        meter.observe(52_000_000, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - 1_000_000.0).abs() < 1.0, "{rate}");
+    }
+
+    #[test]
+    fn what_a_run_resumes_from_is_the_partial_file_ytdlp_keeps() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        let resumed = super::super::resumed_partials(&out);
+        assert_eq!(
+            (resumed.whole, resumed.formats.len()),
+            (0, 0),
+            "nothing to resume"
+        );
+        std::fs::write(dir.path().join("episode.part.mp4.part"), vec![0u8; 4096]).expect("write");
+        assert_eq!(super::super::resumed_partials(&out).whole, 4096);
+    }
+
+    /// A stream whose video and audio yt-dlp fetches apart keeps a
+    /// partial file per format, named for the format beside the
+    /// output's stem, and a partial per fragment that was in flight
+    /// beside it; what the run resumes from is, by format, its partial
+    /// and its fragments' partials together — yt-dlp reports both as
+    /// downloaded — and nothing of another output's.
+    #[test]
+    fn what_a_run_resumes_from_is_each_format_it_keeps_apart() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        let write = |name: &str, len: usize| {
+            std::fs::write(dir.path().join(name), vec![0u8; len]).expect("write");
+        };
+        write("episode.part.f137.mp4.part", 4096);
+        write("episode.part.f140.m4a.part", 1024);
+        write("episode.part.f137.mp4.part-Frag7.part", 512);
+        write("other.part.f137.mp4.part", 2048);
+        let resumed = super::super::resumed_partials(&out);
+        assert_eq!(resumed.whole, 0);
+        assert_eq!(
+            resumed.formats,
+            std::collections::HashMap::from([("137".to_string(), 4608), ("140".to_string(), 1024)])
+        );
+    }
+
+    /// A single format's fragments in flight leave partials beside its
+    /// own, and those count toward what the run resumes from as well.
+    #[test]
+    fn what_a_run_resumes_from_counts_its_fragments_in_flight() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(dir.path().join("episode.part.mp4.part"), vec![0u8; 8000]).expect("write");
+        std::fs::write(
+            dir.path().join("episode.part.mp4.part-Frag7.part"),
+            vec![0u8; 1500],
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path().join("episode.part.mp4.part-Frag8.part"),
+            vec![0u8; 500],
+        )
+        .expect("write");
+        assert_eq!(super::super::resumed_partials(&out).whole, 10_000);
+    }
+
+    /// A partial on disk that yt-dlp never reports — a fragment whose
+    /// server ignored the range and started over, a fragment partial
+    /// behind the index yt-dlp resumed from — leaves a starting point the
+    /// count may never reach. It is held for one window from the
+    /// format's start, the time every fragment in flight has to give its
+    /// first report, and no longer: the run's speed shows after it.
+    #[test]
+    fn a_starting_point_the_count_never_reaches_is_let_go_after_a_window() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(1_000_000, start);
+        let mut at = start;
+        for second in 1..=12u64 {
+            at = start + Duration::from_secs(second);
+            meter.observe(second * 10_000, at);
+        }
+        let rate = meter.rate_at(at);
+        assert!(
+            (rate - 10_000.0).abs() < 1.0,
+            "the run's speed shows: {rate}"
+        );
+    }
+
+    /// yt-dlp reports a resumed fragment's partial as downloaded when
+    /// that fragment's thread first reports, which with fragments in
+    /// flight is not all at once: counts below what the run resumes from
+    /// are the resumed bytes arriving, not a fall to measure from, and
+    /// only what passes it is the run's.
+    #[test]
+    fn counts_below_what_a_run_resumes_from_gain_nothing_and_do_not_lower_it() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(10_000, start);
+        meter.observe(8_500, start + Duration::from_millis(500));
+        meter.observe(10_500, start + Duration::from_secs(1));
+        let rate = meter.rate_at(start + Duration::from_secs(1));
+        assert!((rate - 500.0).abs() < 1.0, "{rate}");
+    }
+
+    /// A format's id is read whole whatever it holds: the count is the
+    /// progress line's last word and the id everything before it, so the
+    /// reading does not rest on yt-dlp having replaced the spaces of an
+    /// HLS rendition's name, as it does today; the partial's name is
+    /// read by the whole id too.
+    #[test]
+    fn a_format_whose_id_has_spaces_is_read_by_its_whole_id() {
+        use crate::commands::download_progress::ytdlp_progress;
+        assert_eq!(
+            ytdlp_progress("ani-gui-progress hls-English 2.0 2048"),
+            Some((Some("hls-English 2.0".to_string()), 2048))
+        );
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(
+            dir.path().join("episode.part.fhls-English 2.0.m4a.part"),
+            vec![0u8; 512],
+        )
+        .expect("write");
+        assert_eq!(
+            super::super::resumed_partials(&out).formats,
+            std::collections::HashMap::from([("hls-English 2.0".to_string(), 512)])
+        );
+    }
+
+    /// A format's id may carry dots — an HLS rendition's name flows into
+    /// it — and its partial is read by the whole id, up to the
+    /// extension.
+    #[test]
+    fn a_format_whose_id_has_dots_is_read_by_its_whole_id() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(
+            dir.path().join("episode.part.fhls-English_2.0.m4a.part"),
+            vec![0u8; 2048],
+        )
+        .expect("write");
+        assert_eq!(
+            super::super::resumed_partials(&out).formats,
+            std::collections::HashMap::from([("hls-English_2.0".to_string(), 2048)])
+        );
+    }
+
+    /// yt-dlp fetches the formats it keeps apart one after another, and
+    /// counts each from its own partial: each format's count is measured
+    /// from that format's partial, so a resumed format's growth is its
+    /// speed however large another format's partial is, and a format
+    /// starting after another is measured from its own.
+    #[test]
+    fn each_resumed_format_is_measured_from_its_own_partial() {
+        const MIB: u64 = 1024 * 1024;
+        let start = Instant::now();
+        let resumed = crate::commands::download_progress::Resumed {
+            whole: 0,
+            formats: std::collections::HashMap::from([
+                ("137".to_string(), 4 * MIB),
+                ("140".to_string(), MIB),
+            ]),
+        };
+        let mut meter = RateMeter::starting_from_partials(resumed, start);
+        meter.observe_format(
+            Some("137"),
+            4 * MIB + MIB / 2,
+            start + Duration::from_secs(1),
+        );
+        let rate = meter.rate_at(start + Duration::from_secs(1));
+        assert!((rate - (MIB / 2) as f64).abs() < 1.0, "{rate}");
+        meter.observe_format(Some("140"), MIB + MIB / 2, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - MIB as f64 / 2.0).abs() < 1.0, "{rate}");
+    }
+
+    /// yt-dlp's progress line names the format it is fetching ahead of
+    /// its count.
+    #[test]
+    fn a_progress_line_names_its_format() {
+        use crate::commands::download_progress::{ytdlp_progress, ytdlp_progress_bytes};
+        assert_eq!(
+            ytdlp_progress("ani-gui-progress 137 2048"),
+            Some((Some("137".to_string()), 2048))
+        );
+        assert_eq!(
+            ytdlp_progress_bytes("ani-gui-progress 137 2048"),
+            Some(2048)
+        );
+        assert_eq!(ytdlp_progress("ani-gui-progress 137 NA"), None);
+    }
+}
+
+mod progress_props {
+    use crate::commands::download_progress::{
+        ffmpeg_progress_bytes, progress, rate_report, ytdlp_progress, RateMeter, Resumed,
+        RATE_STATUS,
+    };
+    use proptest::prelude::*;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    proptest! {
+        /// Whatever format yt-dlp names and whatever count it has, its
+        /// progress line reads back as them; a line with the count alone
+        /// names no format; ffmpeg's reads as its bytes, for no format.
+        #[test]
+        fn a_progress_line_reads_back_as_written(
+            format in "[A-Za-z0-9_+-][A-Za-z0-9_+. -]{0,14}[A-Za-z0-9_+-]",
+            bytes in proptest::num::u64::ANY,
+        ) {
+            prop_assert_eq!(
+                ytdlp_progress(&format!("ani-gui-progress {format} {bytes}")),
+                Some((Some(format.clone()), bytes))
+            );
+            prop_assert_eq!(ytdlp_progress(&format!("ani-gui-progress {bytes}")), Some((None, bytes)));
+            prop_assert_eq!(ffmpeg_progress_bytes(&format!("total_size={bytes}")), Some(bytes));
+            prop_assert_eq!(progress(&format!("total_size={bytes}")), Some((None, bytes)));
+        }
+
+        /// A speed report carries the speed rounded to whole bytes, and
+        /// none below zero.
+        #[test]
+        fn a_speed_report_is_the_speed_rounded_and_never_negative(speed in -1.0e12f64..1.0e12) {
+            let line = rate_report(speed);
+            let number: u64 = line
+                .strip_prefix(RATE_STATUS)
+                .expect("the status")
+                .trim()
+                .parse()
+                .expect("a number");
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let expected = speed.max(0.0).round() as u64;
+            prop_assert_eq!(number, expected);
+        }
+
+        /// Whatever a format resumes from and whatever it fetches next,
+        /// the first count of it reads as what it fetched, not its
+        /// partial, and a format after it starts from its own.
+        #[test]
+        fn each_formats_first_count_reads_as_what_it_fetched(
+            first in 0u64..1 << 40,
+            second in 0u64..1 << 40,
+            got_first in 0u64..1 << 30,
+            got_second in 0u64..1 << 30,
+        ) {
+            let start = Instant::now();
+            let resumed = Resumed {
+                whole: 0,
+                formats: std::collections::HashMap::from([
+                    ("v".to_string(), first),
+                    ("a".to_string(), second),
+                ]),
+            };
+            let mut meter = RateMeter::starting_from_partials(resumed, start);
+            let one = start + Duration::from_secs(1);
+            meter.observe_format(Some("v"), first + got_first, one);
+            #[allow(clippy::cast_precision_loss)]
+            let expected = got_first as f64;
+            prop_assert!((meter.rate_at(one) - expected).abs() < 1.0);
+            let two = start + Duration::from_secs(2);
+            meter.observe_format(Some("a"), second + got_second, two);
+            #[allow(clippy::cast_precision_loss)]
+            let expected = (got_first + got_second) as f64 / 2.0;
+            prop_assert!((meter.rate_at(two) - expected).abs() < 1.0);
+        }
+    }
 }
 
 /// A download tool that cannot be started at all — not on disk where it

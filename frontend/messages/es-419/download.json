@@ -40,7 +40,7 @@
 	"bar_cancel_all_title": "Cancelar todas las descargas",
 	"bar_cancel_confirm_single": "¿Cancelar la descarga de «{title}»?",
 	"bar_cancel_confirm_multi": "¿Cancelar {count} descargas activas?",
-	"dock_active_label": "{count} descarga(s) en curso",
+	"dock_active_speed_label": "{count} descarga(s) en curso, {speed}",
 	"dock_unseen_label": "{count} descarga(s) finalizadas",
 	"dock_idle_label": "Descargas",
 	"dock_title": "Descargas",
@@ -75,5 +75,7 @@
 	"failure_write": "No se pudo guardar el archivo en la carpeta de descargas. Revisa que la carpeta exista, permita escritura y tenga espacio libre.",
 	"failure_no_folder": "No hay ninguna carpeta de descargas definida. Elige una e inténtalo de nuevo.",
 	"failure_tool": "El programa de descarga se detuvo con un error. Inténtalo más tarde.",
-	"failure_tool_spawn": "No se pudo iniciar el programa de descarga. Si instalaste yt-dlp o ffmpeg por tu cuenta, revisa que se ejecute; si no, reinstala ani-gui."
+	"failure_tool_spawn": "No se pudo iniciar el programa de descarga. Si instalaste yt-dlp o ffmpeg por tu cuenta, revisa que se ejecute; si no, reinstala ani-gui.",
+	"speed_kbps": "{value} KB/s",
+	"speed_mbps": "{value} MB/s"
 }

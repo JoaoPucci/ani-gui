@@ -40,7 +40,7 @@
 	"bar_cancel_all_title": "Cancelar todos os downloads",
 	"bar_cancel_confirm_single": "Cancelar o download de \"{title}\"?",
 	"bar_cancel_confirm_multi": "Cancelar {count} downloads ativos?",
-	"dock_active_label": "{count} download(s) em andamento",
+	"dock_active_speed_label": "{count} download(s) em andamento, {speed}",
 	"dock_unseen_label": "{count} download(s) concluído(s)",
 	"dock_idle_label": "Downloads",
 	"dock_title": "Downloads",
@@ -75,5 +75,7 @@
 	"failure_write": "Não foi possível salvar o arquivo na pasta de download. Verifique se a pasta existe, permite gravação e tem espaço livre.",
 	"failure_no_folder": "Nenhuma pasta de download definida. Escolha uma e tente novamente.",
 	"failure_tool": "O programa de download parou com um erro. Tente novamente mais tarde.",
-	"failure_tool_spawn": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele executa; caso contrário, reinstale o ani-gui."
+	"failure_tool_spawn": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele executa; caso contrário, reinstale o ani-gui.",
+	"speed_kbps": "{value} KB/s",
+	"speed_mbps": "{value} MB/s"
 }

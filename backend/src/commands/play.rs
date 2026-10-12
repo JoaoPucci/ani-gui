@@ -296,16 +296,18 @@ where
                 return Ok(resp);
             }
             // The row is not served: its provider is no longer walked,
-            // or HEAD failed and the cached URL is dead. Evict it and
-            // fall through to a fresh resolve. Eviction is explicit (not
-            // just overwrite-on-put) because if the fresh resolve ALSO
-            // fails, we don't want the stale row to linger and bite the
-            // next attempt.
+            // or the check failed — a URL dead or refused, or one the
+            // host's budget kept from being asked within the check's
+            // deadline, which reads the same. Evict it and fall through
+            // to a fresh resolve. Eviction is explicit (not just
+            // overwrite-on-put) because if the fresh resolve ALSO fails,
+            // we don't want the stale row to linger and bite the next
+            // attempt.
             play_resolution_cache::evict(&state.cache_pool, &cache_key);
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
-                "play: cache row unservable (provider not walked or HEAD failed), evicted, resolving afresh",
+                "play: cache row unservable (provider not walked, or check failed or timed out), evicted, resolving afresh",
             );
         }
     }
@@ -519,6 +521,7 @@ pub(crate) mod tests {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
+            host_budget: crate::proxy::host_budget::HostBudget::fresh(),
             meta_http: reqwest::Client::new(),
             proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
             bundled_bin: None,

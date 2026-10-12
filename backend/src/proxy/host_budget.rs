@@ -1,0 +1,319 @@
+//! The host counts requests per address and refuses the address with
+//! 429s once the count runs high. The player fetches segments as fast
+//! as the host answers — an episode's worth in the first twenty seconds
+//! of pressing play — and in a live run that alone reached the refusal,
+//! with a download's requests beside it tipping it sooner. Every fetch
+//! the player makes passes through the proxy, so the proxy spaces them:
+//! each upstream host has a budget with a burst for startup and seeks
+//! and a steady refill after it, and every fetch the proxy makes to the
+//! host on the player's behalf — playlists, segments, mp4 ranges, and
+//! the subtitle tracks the player loads, which take turns with the media —
+//! is charged to it. hls.js loads one segment at a time and the player
+//! allows it ten seconds for a first byte, so a
+//! wait here of a second or so is absorbed, and the player still
+//! buffers as far ahead as it likes — over minutes rather than
+//! seconds; while it is still filling that buffer, a seek past it may
+//! take a few seconds longer than it otherwise would. The budget is
+//! per host and per app: the proxy charges every fetch it makes on the
+//! player's behalf, hop by hop where a redirect sends it on, and a
+//! download charges the subtitle tracks it stages beside its transfer
+//! and, while playback is live, its own fetches through the proxy,
+//! since the host counts them all against the one address — as
+//! background traffic, one request at a time, which while no one waits
+//! takes a token only above the last [`BACKGROUND_RESERVE`] of the
+//! bucket, so the player's next requests find them there — while
+//! download tools run free, at most one less than the hold below
+//! leaves: three beside sixteen fragments in flight, fewer beside
+//! more, none from nineteen, so the reserve shrinks with what the hold
+//! leaves — and while the
+//! player waits takes a turn only once the player has taken what it
+//! needs with room to spare ([`player_turns`]) — none while
+//! that need with its room is the whole refill or more, when it waits
+//! for the player to stop asking — so the player keeps pace and the
+//! download takes the rest. The bucket is per host: a download from a
+//! different host than the player's has a bucket of its own, and the
+//! two meet only if the host counts them together — or while a
+//! download tool runs free, whose hold is on every host. A cached
+//! resolution's liveness check — the next episode's first requests,
+//! made while another may still be playing from the host — is a class
+//! of its own between the two: it takes a token only while no player
+//! request waits in the host's line, so a playing player's next segment
+//! is never queued behind it, and from the reserve, which is kept for
+//! the player's next requests; background traffic yields to it while it
+//! waits — but for a turn the player's line already owes it, which keeps
+//! the line moving — so downloads never starve it. It waits so hop
+//! by hop, at each host a redirect reaches, under a deadline of seconds
+//! that a spent budget lets elapse — the row then reads as dead. What
+//! reaches the host past the budget counts against it too: while download tools run, every host's
+//! tokens are held to what their requests in flight leave of the burst,
+//! never below one: their fragments go wherever their playlists send
+//! them, which the app does not see. That is a hold, not a count: what
+//! a tool sent before is not charged, only kept from adding a full
+//! burst on top. When one ends, every host is left where the hold left
+//! it, one not yet fetched from included ([`UnpacedRun`]). Not charged: the
+//! resolver's fetches of a playlist through the impersonating
+//! transport, one or two requests ahead of the player's own, and an
+//! external player the app hands a stream to, which fetches from the
+//! host on its own, outside the app entirely.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use tokio::time::Instant;
+use url::Url;
+
+#[cfg(test)]
+pub(crate) use super::host_budget_demand::PLAYER_HEADROOM;
+pub(crate) use super::host_budget_demand::{player_turns, Demand, Stream};
+
+/// Requests a host answers without waiting: the playlists, the first
+/// segments, a seek's worth.
+pub(crate) const SEGMENT_BURST: u32 = 20;
+
+/// The steady rate once the burst is spent: one request per this
+/// interval, forty a minute. One muxed stream of five-second segments
+/// needs twelve, so its buffer grows over three times faster than
+/// playback drains it, and still well ahead while background traffic
+/// takes every other token; video and audio as two renditions need
+/// twenty-four, which [`player_turns`] leaves the player with room;
+/// two streams at two-second segments need sixty, more than the refill
+/// gives, and keep every token while the player waits.
+pub(crate) const SEGMENT_REFILL: Duration = Duration::from_millis(1500);
+
+#[path = "host_budget_admit.rs"]
+mod admit;
+#[path = "host_budget_probe.rs"]
+mod probe;
+#[path = "host_budget_unpaced.rs"]
+mod unpaced;
+use unpaced::Unpaced;
+pub(crate) use unpaced::UnpacedRun;
+
+/// Tokens background traffic leaves in the bucket: the player's next
+/// request and a seek's few are served from them at once, however much
+/// background traffic has been taking what the player was not using.
+/// While a download tool runs free the reserve is at most one less than
+/// what its hold leaves ([`HostBudget::reserve_under_hold`]), so beside
+/// such a download fewer are kept, or none.
+pub(crate) const BACKGROUND_RESERVE: u32 = 5;
+
+/// One host's budget: the tokens on hand and when they were last
+/// topped up.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Bucket {
+    tokens: f64,
+    refilled_at: Instant,
+}
+
+impl Bucket {
+    /// A full bucket at `now`.
+    #[must_use]
+    pub(crate) fn full(burst: u32, now: Instant) -> Self {
+        Self {
+            tokens: f64::from(burst),
+            refilled_at: now,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tokens(&self) -> f64 {
+        self.tokens
+    }
+}
+
+/// Takes one token if the bucket has one at `now`; otherwise says how
+/// long until it does. Pure over its inputs: the bucket is topped up by
+/// the time since it last was, one token per `refill`, capped at
+/// `burst`.
+#[cfg(test)]
+pub(crate) fn take(
+    bucket: &mut Bucket,
+    now: Instant,
+    burst: u32,
+    refill: Duration,
+) -> Option<Duration> {
+    take_leaving(bucket, now, burst, refill, 0)
+}
+
+/// [`take`], leaving `reserve` tokens behind: a token is taken only
+/// while more than the reserve is in the bucket, and otherwise the
+/// wait is until there is.
+pub(crate) fn take_leaving(
+    bucket: &mut Bucket,
+    now: Instant,
+    burst: u32,
+    refill: Duration,
+    reserve: u32,
+) -> Option<Duration> {
+    // A reserve as large as the burst leaves background traffic
+    // nothing: it would wait for good.
+    debug_assert!(
+        reserve < burst,
+        "the reserve {reserve} leaves no room under the burst {burst}"
+    );
+    let elapsed = now.saturating_duration_since(bucket.refilled_at);
+    let refilled = elapsed.as_secs_f64() / refill.as_secs_f64();
+    bucket.tokens = (bucket.tokens + refilled).min(f64::from(burst));
+    bucket.refilled_at = now;
+    let needed = 1.0 + f64::from(reserve);
+    if bucket.tokens >= needed {
+        bucket.tokens -= 1.0;
+        None
+    } else {
+        // A shade past the exact instant, so a caller who waits this
+        // long and asks again is not turned away by rounding.
+        Some(refill.mul_f64(needed - bucket.tokens) + Duration::from_millis(1))
+    }
+}
+
+/// Whose turn the next contended token at a host is. A player filling
+/// its buffer keeps a request waiting at all times, for as long as the
+/// fill lasts, which can be minutes after a start or a seek; background
+/// traffic that took only the tokens no one waited for took nothing for
+/// all that time. So while background traffic waits beside a waiting
+/// player, the tokens the player had to wait for count toward its turns
+/// ([`player_turns`]), and once it has taken them the next token is the
+/// background request's.
+#[derive(Debug, Default)]
+struct Turn {
+    /// A background request is waiting for a token.
+    background_waiting: bool,
+    /// Tokens the player waited for since the waiting background
+    /// request arrived.
+    player_taken: u32,
+    /// The player has taken its turns, so the next token is the
+    /// background request's.
+    background_owed: bool,
+}
+
+/// One host's tokens, turn, and the streams the player plays from it.
+#[derive(Debug)]
+struct HostState {
+    bucket: Bucket,
+    turn: Turn,
+    demand: Demand,
+}
+
+/// The budgets of every host fetched from, the line of requests
+/// waiting at each, and the lane background requests take their turn
+/// from one at a time.
+pub struct HostBudget {
+    states: Mutex<HashMap<String, HostState>>,
+    lines: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    lanes: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// The unpaced downloads running, and where they left a host not
+    /// yet fetched from.
+    unpaced: Mutex<Unpaced>,
+    /// The cached-row probes waiting at each host, which background
+    /// traffic yields to ([`Self::admit_probe`]).
+    probes: Mutex<HashMap<String, u32>>,
+    burst: u32,
+    refill: Duration,
+    reserve: u32,
+}
+
+impl HostBudget {
+    #[must_use]
+    pub(crate) fn new(burst: u32, refill: Duration) -> Self {
+        Self {
+            states: Mutex::new(HashMap::new()),
+            lines: Mutex::new(HashMap::new()),
+            lanes: Mutex::new(HashMap::new()),
+            unpaced: Mutex::new(Unpaced::default()),
+            probes: Mutex::new(HashMap::new()),
+            burst,
+            refill,
+            reserve: 0,
+        }
+    }
+
+    /// The budget an app state is built with: the app's constants,
+    /// shared by the proxy it builds and the downloads it runs. The app
+    /// builds one, so this is one budget per process — the address the
+    /// host counts.
+    #[must_use]
+    pub fn fresh() -> Arc<Self> {
+        Arc::new(Self {
+            reserve: BACKGROUND_RESERVE,
+            ..Self::new(SEGMENT_BURST, SEGMENT_REFILL)
+        })
+    }
+
+    /// The tokens `host` has on hand as of its last take, for a test
+    /// to see what a fetch spent; `None` for a host never fetched from.
+    #[cfg(test)]
+    pub(crate) fn on_hand(&self, host: &str) -> Option<f64> {
+        self.states
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(host)
+            .map(|state| state.bucket.tokens())
+    }
+
+    /// The player fetched a segment of `stream` from `host`, buying
+    /// `segment` of playback: the stream counts toward what the player
+    /// needs from the host while it keeps fetching.
+    pub(crate) fn note_player_segment(&self, host: &str, stream: Stream, segment: Duration) {
+        self.with_state(host, |state| {
+            state.demand.note(stream, segment, Instant::now())
+        });
+    }
+
+    /// The player made a request of `host` that is not a segment of a
+    /// stream — a playlist, a key, an init segment, an mp4 range: it
+    /// counts toward what the player needs from the host at the rate
+    /// such requests arrive, as it counts toward the turns it takes.
+    pub(crate) fn note_player_request(&self, host: &str) {
+        self.with_state(host, |state| state.demand.note_other(Instant::now()));
+    }
+
+    /// What the player needs from `host`, as requests a second: its
+    /// streams' segments and its other requests.
+    #[cfg(test)]
+    pub(crate) fn player_demand(&self, host: &str) -> f64 {
+        self.with_state(host, |state| state.demand.per_second(Instant::now()))
+    }
+
+    /// The line of requests waiting at `host`.
+    fn line(&self, host: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut lines = self.lines.lock().unwrap_or_else(|e| e.into_inner());
+        Arc::clone(lines.entry(host.to_owned()).or_default())
+    }
+
+    /// The lane background requests to `host` take their turn from.
+    fn lane(&self, host: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut lanes = self.lanes.lock().unwrap_or_else(|e| e.into_inner());
+        Arc::clone(lanes.entry(host.to_owned()).or_default())
+    }
+
+    /// Runs `f` over `host`'s tokens and turn, a full bucket for a host
+    /// never fetched from, held to what unpaced downloads there leave
+    /// of it.
+    fn with_state<T>(&self, host: &str, f: impl FnOnce(&mut HostState) -> T) -> T {
+        let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
+        let state = states.entry(host.to_owned()).or_insert_with(|| HostState {
+            bucket: self.new_bucket(Instant::now()),
+            turn: Turn::default(),
+            demand: Demand::default(),
+        });
+        self.hold_to_unpaced(&mut state.bucket, Instant::now());
+        f(state)
+    }
+}
+
+/// The key a URL's host is budgeted under: host and port, so two
+/// servers on one machine — the test servers, for one — are two
+/// budgets.
+#[must_use]
+pub(crate) fn host_key(url: &Url) -> String {
+    format!(
+        "{}:{}",
+        url.host_str().unwrap_or(""),
+        url.port_or_known_default().unwrap_or(0)
+    )
+}
+
+#[cfg(test)]
+#[path = "host_budget_test.rs"]
+mod tests;
