@@ -68,7 +68,9 @@ function failingSearch(failure: object = FAILURE) {
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(CONFIG)),
 		http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json(failure, { status: 502 }))
+		http.post(`${API_BASE}/api/kitsu/search/page`, () =>
+			HttpResponse.json(failure, { status: 502 })
+		)
 	);
 }
 

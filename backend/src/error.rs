@@ -179,6 +179,22 @@ pub enum AniError {
     #[error("invalid kitsu id")]
     InvalidKitsuId,
 
+    /// The renderer asked for a search page that is not one: an offset
+    /// off a page boundary or past the deepest page a search walks to.
+    /// 400, like [`Self::InvalidKitsuId`]: the caller sent the bad value.
+    #[error("invalid search offset")]
+    InvalidSearchOffset,
+
+    /// A request body that is not the shape its route takes: not JSON,
+    /// or missing a field it requires, other than the fields with a key
+    /// of their own (a search page's offset answers
+    /// [`Self::InvalidSearchOffset`]). 400: the caller sent it. Routes
+    /// that read their body themselves answer this instead of the
+    /// framework's plain-text rejection, so the renderer gets the same
+    /// keyed envelope as for every other error.
+    #[error("invalid request body")]
+    InvalidRequestBody,
+
     /// A token or secret the request carried is missing, expired or
     /// forged: a stream session's token at the proxy, an account's
     /// bearer at the account routes, AniList or MAL answering 401, the
@@ -234,6 +250,8 @@ impl AniError {
             Self::Metadata => "error.metadata.source",
             Self::UnsupportedPkce => "error.account.unsupported_pkce",
             Self::InvalidKitsuId => crate::i18n::keys::REQUEST_INVALID_KITSU_ID,
+            Self::InvalidSearchOffset => crate::i18n::keys::REQUEST_INVALID_SEARCH_OFFSET,
+            Self::InvalidRequestBody => crate::i18n::keys::REQUEST_INVALID_BODY,
             Self::InvalidToken => "error.stream.invalid_token",
         }
     }
@@ -283,7 +301,10 @@ impl AniError {
             Self::Network => 503,
             Self::GateRefused => 503,
             Self::Timeout => 504,
-            Self::UnsupportedPkce | Self::InvalidKitsuId => 400,
+            Self::UnsupportedPkce
+            | Self::InvalidKitsuId
+            | Self::InvalidSearchOffset
+            | Self::InvalidRequestBody => 400,
             Self::ParseFailed { .. }
             | Self::FfmpegMissing
             | Self::PlayerSpawnFailed { .. }

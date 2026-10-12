@@ -36,7 +36,15 @@
 	"card_eps_suffix": "эп.",
 	"error_headline": "Не удалось выполнить поиск в Kitsu.",
 	"sort_relevance": "Релевантность",
-	"sort_title": "Название",
 	"sort_year": "Год",
-	"sort_rating": "Рейтинг"
+	"sort_rating": "Рейтинг",
+	"paging_loading": "Загружаем ещё результаты…",
+	"paging_end": "Больше результатов по «{query}» нет.",
+	"paging_failed": "Не удалось загрузить ещё результаты.",
+	"paging_retry": "Повторить",
+	"paging_held": "На последних страницах не нашлось ничего, что можно посмотреть.",
+	"paging_keep_looking": "Искать дальше",
+	"paging_load_more": "Загрузить ещё результаты",
+	"count_more": "{count}+",
+	"count_word_open": "результатов"
 }

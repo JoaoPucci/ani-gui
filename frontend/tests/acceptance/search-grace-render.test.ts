@@ -110,7 +110,9 @@ describe('/search render-then-prune', () => {
 			http.get(`${API_BASE}/api/kitsu/trending`, () => HttpResponse.json([])),
 			http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
 
-			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([AVAILABLE, MISSING])),
+			http.post(`${API_BASE}/api/kitsu/search/page`, () =>
+				HttpResponse.json({ hits: [AVAILABLE, MISSING], next_offset: null })
+			),
 			// Nothing cached, so both rows go to the inline probe pool.
 			http.post(`${API_BASE}/api/availability/batch`, () =>
 				HttpResponse.json({ cached: {}, playable_episode_counts: {} })

@@ -286,9 +286,21 @@ starting it, and delete it when you find it done.
 - **Localised content fetch** — synopsis and episode titles.
 - **Franchise and season grouping** across surfaces.
 - **Search has no sort *direction* control.** Sorting by relevance,
-  title, year and rating ships, as do subtype filter chips; only
-  ascending/descending is absent. Name any further filters wanted
-  before starting, rather than reading this as filters being missing.
+  year and rating ships, as do subtype filter chips; only
+  ascending/descending is absent. Kitsu does the sorting, and it takes
+  `startDate` and `averageRating` in either direction. Name any further
+  filters wanted before starting, rather than reading this as filters
+  being missing.
+- **Search has no title order.** Kitsu cannot sort a text search by
+  title: `sort=canonicalTitle` and `sort=slug` answer 500, and
+  `titles.en` is refused as a sort criterion. Sorting only the pages
+  loaded so far re-sorts the whole grid as each page lands, which is
+  why the chip was removed rather than kept. The way back is a full
+  load: choosing Title fetches every remaining page first, with the
+  bottom indicator showing progress, then shows the whole list sorted
+  and never reorders it. A broad query costs several requests
+  ("dragon ball" is 3 pages, "gundam" 9), bounded by the deepest
+  offset a search walks to.
 - **Update notifier is not resilient to GitHub rate limits.**
 - **The OAuth callback pages still speak English whatever the app's
   language.** The pages the OAuth callback server answers the browser

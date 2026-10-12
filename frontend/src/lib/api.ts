@@ -927,6 +927,29 @@ export function kitsuSearch(query: string): Promise<KitsuAnimeRef[]> {
 	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query });
 }
 
+/** One page of a Kitsu text search: its hits, and the offset the
+ *  next page starts at (`null` on the last one). The offset counts
+ *  Kitsu's own rows, so pass it back verbatim. */
+export interface KitsuSearchPage {
+	hits: KitsuAnimeRef[];
+	next_offset: number | null;
+}
+
+/** The order a search's pages come in: Kitsu's ranking, newest
+ *  first, or highest rated first. */
+export type SearchOrder = 'relevance' | 'year' | 'rating';
+
+export function kitsuSearchPage(
+	query: string,
+	offset: number,
+	order: SearchOrder = 'relevance'
+): Promise<KitsuSearchPage> {
+	// Kitsu's ranking is the route's default, so a ranked request
+	// carries no order.
+	const body = order === 'relevance' ? { query, offset } : { query, offset, sort: order };
+	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body);
+}
+
 export function kitsuAnimeDetail(id: string): Promise<KitsuAnimeRef> {
 	return getJson<KitsuAnimeRef>(`/api/kitsu/anime/${encodeURIComponent(id)}`);
 }
