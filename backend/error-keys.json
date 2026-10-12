@@ -1,0 +1,21 @@
+[
+  "error.account.unsupported_pkce",
+  "error.cache.generic",
+  "error.config.parse",
+  "error.download.ffmpeg_missing",
+  "error.download.tool_failed",
+  "error.download.tool_spawn_failed",
+  "error.io.generic",
+  "error.metadata.source",
+  "error.network.rate_limited",
+  "error.network.unreachable",
+  "error.network.upstream",
+  "error.play.episode_unavailable",
+  "error.player.spawn_failed",
+  "error.request.invalid_kitsu_id",
+  "error.scraper.parse_failed",
+  "error.scraper.timeout",
+  "error.search.no_results",
+  "error.stream.invalid_token",
+  "error.syncplay.spawn_failed"
+]

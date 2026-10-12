@@ -58,34 +58,8 @@ fn rate_limited_maps_to_429_and_a_dedicated_key() {
 
 #[test]
 fn every_variant_has_a_stable_key() {
-    // A representative of each variant — if a new variant lands without
-    // a matching arm in `key()`, this test forces the author to think
-    // about its i18n key.
-    let cases = [
-        AniError::Scraper {
-            key: "error.scraper.custom_test_key",
-        },
-        AniError::Timeout,
-        AniError::NoResults,
-        AniError::EpisodeUnavailable,
-        AniError::ParseFailed { detail: "x".into() },
-        AniError::FfmpegMissing,
-        AniError::PlayerSpawnFailed {
-            binary: "vlc".into(),
-        },
-        AniError::SyncplaySpawnFailed {
-            binary: "syncplay".into(),
-        },
-        AniError::Upstream { status: 503 },
-        AniError::Network,
-        AniError::GateRefused,
-        AniError::Cache,
-        AniError::Io,
-        AniError::Config,
-        AniError::Metadata,
-        AniError::InvalidKitsuId,
-        AniError::InvalidToken,
-    ];
+    // Every variant, from the one list the compiler holds to the enum.
+    let cases = super::variants::every_variant();
     for c in cases {
         let k = c.key();
         assert!(
@@ -253,4 +227,42 @@ fn an_unavailable_episode_is_its_own_not_found() {
     assert!(!e.is_provider_block());
     let json = serde_json::to_value(&e).expect("serializes");
     assert_eq!(json["kind"], "episode_unavailable");
+}
+
+#[test]
+fn a_download_tool_that_exited_has_its_own_key() {
+    // A download tool exiting non-zero answered with the parse-failure
+    // key, whose copy says the service sent something unreadable — the
+    // wrong story for a local tool stopping, once the renderer shows a
+    // key's message.
+    let e = AniError::Scraper {
+        failure: crate::error::DownloadToolFailure::Exited,
+    };
+    assert_eq!(e.key(), "error.download.tool_failed");
+}
+
+/// The backend's error keys, published for the renderer's catalogues.
+/// `backend/error-keys.json` is what `tests/arch/error_keys.sh` holds
+/// every locale's `backend.json` to, and this test is what holds that
+/// file to the variants (`error::variants`, which a new variant does
+/// not compile past): a variant's key added, renamed or dropped fails
+/// here until the file says the same. A key chosen by a field value
+/// the list has no pair for is the one it cannot see; see
+/// `error_variants_test.rs`.
+#[test]
+fn the_published_key_list_is_every_variants_key() {
+    let keys: std::collections::BTreeSet<&str> = super::variants::every_variant()
+        .iter()
+        .map(AniError::key)
+        .collect();
+    let want = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&keys).expect("a list of strings serializes")
+    );
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/error-keys.json");
+    let have = std::fs::read_to_string(path).unwrap_or_default();
+    assert!(
+        have == want,
+        "{path} is not the backend's key list. Replace its contents with:\n{want}"
+    );
 }

@@ -4,8 +4,9 @@
  *
  *   • `describeError` (in ./describe-error, re-exported here) is the
  *     general one: a short localized sentence naming the cause by the
- *     error's `kind`. Every surface that shows a failure without a copy
- *     of its own uses it.
+ *     error's `key`, or by its `kind` when the key is absent or
+ *     unknown. Every surface that shows a failure without a copy of
+ *     its own uses it.
  *   • `describeRateLimit`, `describeSourceDown` and
  *     `describeSourceAnswer` (in ./source-answer, re-exported here)
  *     are first-chance mappers for the typed
