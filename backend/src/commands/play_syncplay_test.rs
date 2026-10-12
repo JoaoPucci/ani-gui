@@ -1,4 +1,5 @@
 use super::*;
+use crate::commands::play::tests::walked_key;
 use crate::commands::play::PlayArgs;
 use crate::scraper::table_provider::TableProvider;
 use std::sync::Arc;
@@ -146,7 +147,7 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "cached-show-9".into(),
+            show_id: walked_key("cached-show-9"),
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -175,7 +176,7 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
     let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
     assert!(hsts.contains("cached-show-9"), "{hsts}");
     assert!(
-        crate::commands::kitsu::watched_at_get(&state, "cached-show-9")
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("cached-show-9"))
             .expect("stamp read")
             .is_some(),
         "the watch is stamped once Syncplay started"
@@ -224,7 +225,7 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "cached-show-9".into(),
+            show_id: walked_key("cached-show-9"),
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -243,7 +244,8 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
     }
 
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "cached-show-9").expect("mapping read"),
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("cached-show-9"))
+            .expect("mapping read"),
         Some("42".into()),
         "the spawn persists the show's reverse mapping"
     );
@@ -271,7 +273,7 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
         &state.history_path,
         crate::history::HistoryEntry {
             ep_no: "1".into(),
-            id: "the-show-77".into(),
+            id: walked_key("the-show-77"),
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
@@ -284,7 +286,10 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
         tokio::spawn(async move { play_syncplay(&state, &play_args()).await })
     };
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    assert!(
+        crate::commands::history::history_delete(&state, &walked_key("the-show-77"))
+            .expect("delete")
+    );
     launch.await.expect("join").expect("launches");
     let mut argv = String::new();
     for _ in 0..100 {
@@ -308,7 +313,7 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
         "the removed show has no row"
     );
     assert_eq!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp"),
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77")).expect("stamp"),
         None
     );
     let offsets = std::fs::read_to_string(dir.path().join("ani-gui-offsets")).unwrap_or_default();
@@ -357,7 +362,7 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "the-show-77".into(),
+            show_id: walked_key("the-show-77"),
             show_title: "The Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -368,7 +373,7 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
         &state.history_path,
         crate::history::HistoryEntry {
             ep_no: "1".into(),
-            id: "the-show-77".into(),
+            id: walked_key("the-show-77"),
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
@@ -381,7 +386,10 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
         tokio::spawn(async move { play_syncplay(&state, &play_args()).await })
     };
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    assert!(
+        crate::commands::history::history_delete(&state, &walked_key("the-show-77"))
+            .expect("delete")
+    );
     launch.await.expect("join").expect("launches");
     let mut argv = String::new();
     for _ in 0..100 {

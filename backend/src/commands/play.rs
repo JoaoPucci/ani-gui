@@ -2,9 +2,9 @@
 //!
 //! The renderer's detail page calls `POST /api/play` (or its sibling
 //! `/api/play/external`) with the canonical title + episode + mode.
-//! Resolution is native: the anidb client searches, disambiguates by
-//! episode count, and walks episode → languages → embed →
-//! master-playlist URL, which becomes a [`StreamSession`]. The
+//! Resolution is native: the walked providers' clients search,
+//! disambiguate by episode count, and walk episode → servers → embed
+//! → master-playlist URL, which becomes a [`StreamSession`]. The
 //! external and download siblings take the same walk and differ only
 //! in what they do with the result.
 //!
@@ -130,13 +130,13 @@ fn write_history_on_cache_hit(
     }
     // the history file speaks the provider's numbering; the offset was
     // stamped by the fresh resolve that wrote this cache row.
-    let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
+    let offset = crate::commands::numbering_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
         // The row's own slot when it carries one; older rows fall
         // back to the stamp-aware translation.
         ep_no: cached.resolved_slot.map_or_else(
             || {
-                crate::commands::anidb_offset::write_ep_no(
+                crate::commands::numbering_offset::write_ep_no(
                     state,
                     &cached.show_id,
                     &args.episode,
@@ -295,7 +295,8 @@ where
                 .await;
                 return Ok(resp);
             }
-            // HEAD failed — the cached URL is dead. Evict the row and
+            // The row is not served: its provider is no longer walked,
+            // or HEAD failed and the cached URL is dead. Evict it and
             // fall through to a fresh resolve. Eviction is explicit (not
             // just overwrite-on-put) because if the fresh resolve ALSO
             // fails, we don't want the stale row to linger and bite the
@@ -304,13 +305,13 @@ where
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
-                "play: cache row stale (HEAD failed), evicted, resolving afresh",
+                "play: cache row unservable (provider not walked or HEAD failed), evicted, resolving afresh",
             );
         }
     }
 
-    // Resolve natively against anidb: alias walk, bounded probing,
-    // episode-to-master resolution. The subprocess never runs on the
+    // Resolve natively against the walked providers: alias walk,
+    // bounded probing, episode-to-master resolution. The subprocess never runs on the
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
     let request = NativeResolveRequest {
@@ -570,7 +571,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
@@ -609,7 +610,7 @@ pub(crate) mod tests {
                 extra_episodes: vec!["999.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
-                provider: None,
+                provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             },
         );
         let args = PlayArgs {
@@ -634,7 +635,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
@@ -686,7 +687,7 @@ pub(crate) mod tests {
         assert!(
             state
                 .providers
-                .gate(crate::scraper::provider::ProviderId::Anidb)
+                .gate(crate::scraper::provider::ProviderId::TestA)
                 .admit(crate::scraper::gate::ScrapePriority::Background)
                 .await
                 .is_ok(),
@@ -804,7 +805,7 @@ pub(crate) mod tests {
         play_resolution_cache::put(
             &state.cache_pool,
             &setting_cache_key(&args),
-            &cached_blank(
+            &cached_walked(
                 format!("{}/x/master.m3u8", upstream.uri()),
                 upstream.uri(),
                 MediaKind::Hls,
@@ -840,7 +841,7 @@ pub(crate) mod tests {
         let row = play_resolution_cache::get(&state.cache_pool, &setting_cache_key(&args))
             .expect("cache readable")
             .expect("the resolve records its row for the watch bookkeeping");
-        assert_eq!(row.show_id, "the-show-77");
+        assert_eq!(row.show_id, walked_key("the-show-77"));
         let second = play_with_progress(&state, &args, |_| {})
             .await
             .expect("the second play resolves fresh");
@@ -894,7 +895,7 @@ pub(crate) mod tests {
         play_resolution_cache::put(
             &state.cache_pool,
             &setting_cache_key(&args),
-            &cached_blank(
+            &cached_walked(
                 format!("{}/x/master.m3u8", upstream.uri()),
                 upstream.uri(),
                 MediaKind::Hls,
@@ -959,6 +960,26 @@ pub(crate) mod tests {
         }
     }
 
+    /// [`cached_blank`] resolved through the provider the test state
+    /// walks — a row a replay may serve.
+    pub(crate) fn cached_walked(
+        upstream_url: String,
+        referer: String,
+        kind: MediaKind,
+    ) -> CachedResolution {
+        CachedResolution {
+            show_id: walked_key("cached-show-1"),
+            ..cached_blank(upstream_url, referer, kind)
+        }
+    }
+
+    /// The key a resolve through the test state's provider stamps on
+    /// `slug`.
+    pub(crate) fn walked_key(slug: &str) -> String {
+        crate::scraper::provider::ShowKey::new(crate::provider_set::ProviderSet::TEST_DEFAULT, slug)
+            .to_string()
+    }
+
     #[test]
     fn cache_hit_history_writes_the_providers_numbering() {
         // The history file speaks the provider's numbering — a reader greps
@@ -976,7 +997,7 @@ pub(crate) mod tests {
         );
         cached.show_id = "the-sequel-88".into();
         cached.show_title = "The Sequel".into();
-        crate::commands::anidb_offset::put(&state, "the-sequel-88", 40);
+        crate::commands::numbering_offset::put(&state, "the-sequel-88", 40);
         let args = PlayArgs {
             title: "The Sequel".into(),
             episode: "1".into(),
@@ -1025,7 +1046,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let cached = cached_blank(
+        let cached = cached_walked(
             format!("{}/video.mp4", server.uri()),
             String::new(),
             MediaKind::Mp4,
@@ -1075,7 +1096,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let cached = cached_blank(
+        let cached = cached_walked(
             format!("{}/sub/1", server.uri()),
             "https://allmanga.to".into(),
             MediaKind::Mp4,
@@ -1195,7 +1216,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let mut cached = cached_blank(
+        let mut cached = cached_walked(
             format!("{}/video.mp4", server.uri()),
             "https://embed.example/".into(),
             MediaKind::Mp4,
@@ -1251,8 +1272,7 @@ pub(crate) mod tests {
     }
 
     /// A cached row whose show key names the provider it was
-    /// resolved through — a qualified key for any provider but
-    /// anidb, whose keys are bare.
+    /// resolved through — a qualified key; a bare one names none.
     fn seed_play_cache_from(state: &AppState, args: &PlayArgs, upstream: &str, show_id: &str) {
         let key = play_resolution_cache::cache_key(
             &args.title,
@@ -1316,7 +1336,7 @@ pub(crate) mod tests {
                 upstream_url: upstream.into(),
                 referer: referer.into(),
                 media_kind: MediaKind::Mp4,
-                show_id: "abc".into(),
+                show_id: walked_key("abc"),
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles,
@@ -1446,7 +1466,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The cached play is hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = PlayArgs {
             kitsu_id: Some("K9".into()),
             ..external_args("Remembered Show", "3")
@@ -1482,7 +1506,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The row and the cached play are hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = PlayArgs {
             kitsu_id: Some("K10".into()),
             ..external_args("Capped Show", "2")
@@ -1534,7 +1562,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The cached play is hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = external_args("Anonymous Show", "1");
         seed_play_cache_from(
             &state,
@@ -1698,7 +1730,7 @@ pub(crate) mod tests {
                 upstream_url: format!("{}/ep/3", server.uri()),
                 referer: "https://allmanga.to".into(),
                 media_kind: MediaKind::Mp4,
-                show_id: "x".into(),
+                show_id: walked_key("x"),
                 show_title: "Fast4 (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
@@ -1970,7 +2002,13 @@ pub(crate) mod tests {
 
         // The refresh answers first: bump + a positive write.
         state.availability_refreshes.bump(&row);
-        crate::commands::availability::write_cache(&state, "race-1", "sub", true, None);
+        crate::commands::availability::write_cache(
+            &state,
+            "race-1",
+            "sub",
+            true,
+            Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+        );
 
         // The stale resolution now tries to stamp a negative.
         stamp_availability_after_native(&state, &args, false, None, &at_start, None, &[]).await;
@@ -2015,7 +2053,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(2),
             &[],
@@ -2114,7 +2152,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(12),
             &[],

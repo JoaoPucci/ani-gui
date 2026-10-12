@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::app::AppState;
 
-#[path = "anidb_offset_store_format.rs"]
+#[path = "numbering_offset_store_format.rs"]
 mod format;
 pub(super) use format::parse;
 use format::serialize;
@@ -62,7 +62,7 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
         }),
     };
     if let Err(e) = rewrite(state, merge) {
-        tracing::warn!(slug, offset, error = ?e, "anidb offset write failed");
+        tracing::warn!(slug, offset, error = ?e, "numbering offset write failed");
     }
 }
 

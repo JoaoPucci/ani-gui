@@ -69,7 +69,7 @@ fn list_translates_provider_numbering_back_to_kitsu() {
         ],
     )
     .unwrap();
-    crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
+    crate::commands::numbering_offset::put(&s, "the-sequel-88", 40);
 
     let listed = history_list(&s).unwrap();
     assert_eq!(listed[0].ep_no, "1", "provider 41 minus offset 40");
@@ -93,7 +93,7 @@ fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
     )
     .unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "the-sequel-88", "9009").unwrap();
-    crate::commands::anidb_offset::put(&s, "the-sequel-88", 40);
+    crate::commands::numbering_offset::put(&s, "the-sequel-88", 40);
 
     let hit = history_by_kitsu(&s, "9009").unwrap().expect("match");
     assert_eq!(hit.ep_no, "2");
@@ -463,13 +463,13 @@ fn delete_keeps_title_match_rows_of_a_title_that_extends_the_rows() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     write_atomic(&path, &[row("re-1", "Re")]).unwrap();
-    put(&s, "title-match:v3:anidb.app:re:c1", "1");
-    put(&s, "title-match:v3:anidb.app:re:creators:c1", "2");
+    put(&s, "title-match:v3:legacy:re:c1", "1");
+    put(&s, "title-match:v3:legacy:re:creators:c1", "2");
 
     assert!(history_delete(&s, "re-1").unwrap());
 
-    assert_eq!(cached(&s, "title-match:v3:anidb.app:re:c1"), None);
-    assert!(cached(&s, "title-match:v3:anidb.app:re:creators:c1").is_some());
+    assert_eq!(cached(&s, "title-match:v3:legacy:re:c1"), None);
+    assert!(cached(&s, "title-match:v3:legacy:re:creators:c1").is_some());
 }
 
 // Title-match rows are keyed by what Continue Watching searched — the
@@ -493,13 +493,13 @@ fn delete_keeps_the_title_match_rows_a_remaining_row_searches() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:legacy:naruto:c1", "11");
     put(&s, "title-match:v2:naruto:c1", "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
     assert_eq!(
-        cached(&s, "title-match:v3:anidb.app:naruto:c1").as_deref(),
+        cached(&s, "title-match:v3:legacy:naruto:c1").as_deref(),
         Some("11")
     );
     assert_eq!(
@@ -521,7 +521,7 @@ fn delete_keeps_an_older_title_match_another_provider_searches() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:legacy:naruto:c1", "11");
     put(&s, "title-match:v3:hianime:naruto:c1", "11");
     put(&s, "title-match:v2:naruto:c1", "11");
 
@@ -532,7 +532,7 @@ fn delete_keeps_an_older_title_match_another_provider_searches() {
         None,
         "its own"
     );
-    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
     assert!(
         cached(&s, "title-match:v2:naruto:c1").is_some(),
         "the older key both providers' rows search"
@@ -552,11 +552,35 @@ fn delete_keeps_a_title_match_a_remaining_row_searches_less_its_episode_tail() {
         ],
     )
     .unwrap();
-    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:legacy:naruto:c1", "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
-    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
+}
+
+/// A bare row's title matches were written under anidb.app's label
+/// while the app shipped it. They are no longer read, but they are
+/// still the show's, and removing the row takes them — found by the
+/// row's title under that label, since nothing else names them.
+#[test]
+fn delete_takes_a_bare_rows_title_matches_under_anidbs_label_too() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history");
+    let s = make_state(path.clone());
+    write_atomic(&path, &[row("naruto-20", "Naruto")]).unwrap();
+    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    // The skip times found through that match are the show's too.
+    put(&s, "aniskip:v2:11:21:1", "[]");
+
+    assert!(history_delete(&s, "naruto-20").unwrap());
+
+    assert_eq!(cached(&s, "title-match:v3:anidb.app:naruto:c1"), None);
+    assert_eq!(
+        cached(&s, "aniskip:v2:11:21:1"),
+        None,
+        "the skip times of the id the match named"
+    );
 }
 
 #[test]
@@ -572,21 +596,17 @@ fn delete_takes_its_own_title_match_beside_one_a_remaining_row_searches() {
         ],
     )
     .unwrap();
-    put(
-        &s,
-        "title-match:v3:anidb.app:naruto (220 episodes):c1",
-        "11",
-    );
-    put(&s, "title-match:v3:anidb.app:naruto:c1", "11");
+    put(&s, "title-match:v3:legacy:naruto (220 episodes):c1", "11");
+    put(&s, "title-match:v3:legacy:naruto:c1", "11");
 
     assert!(history_delete(&s, "naruto-20").unwrap());
 
     assert_eq!(
-        cached(&s, "title-match:v3:anidb.app:naruto (220 episodes):c1"),
+        cached(&s, "title-match:v3:legacy:naruto (220 episodes):c1"),
         None,
         "the key only the removed row searched"
     );
-    assert!(cached(&s, "title-match:v3:anidb.app:naruto:c1").is_some());
+    assert!(cached(&s, "title-match:v3:legacy:naruto:c1").is_some());
 }
 
 /// A cache that cannot forget a row's entries fails the delete before
@@ -640,8 +660,8 @@ fn delete_removes_every_per_show_store_of_every_version() {
     ] {
         put(&s, key, body);
     }
-    crate::commands::anidb_offset::put(&s, gone, 3);
-    crate::commands::anidb_offset::put(&s, kept, 4);
+    crate::commands::numbering_offset::put(&s, gone, 3);
+    crate::commands::numbering_offset::put(&s, kept, 4);
 
     assert!(history_delete(&s, gone).unwrap());
 
@@ -658,7 +678,7 @@ fn delete_removes_every_per_show_store_of_every_version() {
     assert!(cached(&s, "allmanga2kitsu:v2:one-piece-69").is_some());
     let offsets = std::fs::read_to_string(tmp.path().join("ani-gui-offsets")).unwrap();
     assert!(!offsets.contains(gone), "the row's offset outlived it");
-    assert_eq!(crate::commands::anidb_offset::get(&s, kept), 4);
+    assert_eq!(crate::commands::numbering_offset::get(&s, kept), 4);
 }
 
 /// Clearing the history removes every row's offsets and every
@@ -675,13 +695,16 @@ fn clear_removes_the_offsets_and_the_resolution_rows() {
         r#"{"show_id":"one-piece-69"}"#,
     );
     put(&s, "play:v12:Naruto:sub:best:1:::", "{}");
-    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    crate::commands::numbering_offset::put(&s, "one-piece-69", 4);
 
     history_clear(&s).unwrap();
 
     assert_eq!(cached(&s, "play:v14:One Piece:sub:best:1:::"), None);
     assert_eq!(cached(&s, "play:v12:Naruto:sub:best:1:::"), None);
-    assert_eq!(crate::commands::anidb_offset::get(&s, "one-piece-69"), 0);
+    assert_eq!(
+        crate::commands::numbering_offset::get(&s, "one-piece-69"),
+        0
+    );
 }
 
 // — what a failed removal leaves ——————————————————————————————————
@@ -703,14 +726,14 @@ fn a_delete_whose_history_write_fails_keeps_the_row_and_its_offset() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
-    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    crate::commands::numbering_offset::put(&s, "one-piece-69", 4);
     block_write(tmp.path(), "history.new");
 
     assert!(history_delete(&s, "one-piece-69").is_err());
 
     assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
     assert_eq!(
-        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        crate::commands::numbering_offset::get(&s, "one-piece-69"),
         4,
         "with its offset"
     );
@@ -722,14 +745,14 @@ fn a_clear_whose_history_write_fails_keeps_the_rows_and_their_offsets() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
-    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    crate::commands::numbering_offset::put(&s, "one-piece-69", 4);
     block_write(tmp.path(), "history.new");
 
     assert!(history_clear(&s).is_err());
 
     assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
     assert_eq!(
-        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        crate::commands::numbering_offset::get(&s, "one-piece-69"),
         4,
         "with its offset"
     );
@@ -741,7 +764,7 @@ fn a_delete_whose_offsets_write_fails_still_removes_the_row() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
-    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    crate::commands::numbering_offset::put(&s, "one-piece-69", 4);
     block_write(tmp.path(), "ani-gui-offsets.new");
 
     // The row goes; the offset it leaves has no row to misread.
@@ -762,19 +785,22 @@ fn removal_keeps_the_offsets_of_shows_without_a_row() {
         &[row("one-piece-69", "One Piece"), row("naruto-20", "Naruto")],
     )
     .unwrap();
-    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
-    crate::commands::anidb_offset::put(&s, "naruto-20", 2);
-    crate::commands::anidb_offset::put(&s, "bleach-30", 1);
+    crate::commands::numbering_offset::put(&s, "one-piece-69", 4);
+    crate::commands::numbering_offset::put(&s, "naruto-20", 2);
+    crate::commands::numbering_offset::put(&s, "bleach-30", 1);
 
     assert!(history_delete(&s, "one-piece-69").unwrap());
-    assert_eq!(crate::commands::anidb_offset::get(&s, "one-piece-69"), 0);
-    assert_eq!(crate::commands::anidb_offset::get(&s, "naruto-20"), 2);
-    assert_eq!(crate::commands::anidb_offset::get(&s, "bleach-30"), 1);
+    assert_eq!(
+        crate::commands::numbering_offset::get(&s, "one-piece-69"),
+        0
+    );
+    assert_eq!(crate::commands::numbering_offset::get(&s, "naruto-20"), 2);
+    assert_eq!(crate::commands::numbering_offset::get(&s, "bleach-30"), 1);
 
     history_clear(&s).unwrap();
-    assert_eq!(crate::commands::anidb_offset::get(&s, "naruto-20"), 0);
+    assert_eq!(crate::commands::numbering_offset::get(&s, "naruto-20"), 0);
     assert_eq!(
-        crate::commands::anidb_offset::get(&s, "bleach-30"),
+        crate::commands::numbering_offset::get(&s, "bleach-30"),
         1,
         "never a row"
     );
@@ -879,7 +905,7 @@ fn delete_keeps_the_skip_times_of_ids_a_remaining_row_claims() {
     put(&s, "title-match:v3:hianime:seitokai:c1", "11");
     put(&s, "allmanga2kitsu:v2:hianime:seitokai-10497", "20");
     crate::commands::kitsu::allmanga_kitsu_put(&s, "naruto-20", "11").unwrap();
-    put(&s, "title-match:v3:anidb.app:bleach:c1", "20");
+    put(&s, "title-match:v3:legacy:bleach:c1", "20");
     for key in [
         "aniskip:v2:1623:1:1",
         "aniskip:v2:11:2:1",
@@ -923,7 +949,7 @@ fn a_clear_of_an_unreadable_history_fails_and_changes_nothing() {
     let path = tmp.path().join("history");
     let s = make_state(path.clone());
     write_atomic(&path, &[row("one-piece-69", "One Piece")]).unwrap();
-    crate::commands::anidb_offset::put(&s, "one-piece-69", 4);
+    crate::commands::numbering_offset::put(&s, "one-piece-69", 4);
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
     if std::fs::read(&path).is_ok() {
         return; // permissions do not hold here (root)
@@ -934,7 +960,7 @@ fn a_clear_of_an_unreadable_history_fails_and_changes_nothing() {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
     assert_eq!(history_list(&s).unwrap().len(), 1, "the row stays");
     assert_eq!(
-        crate::commands::anidb_offset::get(&s, "one-piece-69"),
+        crate::commands::numbering_offset::get(&s, "one-piece-69"),
         4,
         "with its offset"
     );
