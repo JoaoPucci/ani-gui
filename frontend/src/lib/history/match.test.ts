@@ -16,7 +16,7 @@ import {
 } from '$lib/api';
 
 // Mock the api module wholesale — `match.ts` is decoupled from the
-// transport (was Tauri invoke, now HTTP fetch), and the assertions
+// transport (HTTP fetch to the backend), and the assertions
 // here are about which api functions get called with what args.
 // Mocking the module itself lets these tests survive any future
 // transport switch without churn.

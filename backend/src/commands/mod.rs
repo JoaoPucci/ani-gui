@@ -69,6 +69,7 @@ pub(crate) mod play_native_record;
 pub mod play_native_resolve;
 mod play_native_split;
 #[cfg(test)]
+#[path = "play_native_test_provider_test.rs"]
 pub(crate) mod play_native_test_provider;
 pub mod play_native_walk;
 pub mod play_native_year;

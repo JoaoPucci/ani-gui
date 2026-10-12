@@ -85,7 +85,7 @@
 	"play_button_continue": "Continuar",
 	"quality_group_aria_label": "Qualidade",
 	"quality_group_label": "Qualidade",
-	"settings_error_prefix": "Ajustes: {detail}",
+	"settings_error_prefix": "Ajustes: {reason}",
 	"similar_strip_caption": "via busca no Kitsu",
 	"similar_strip_eyebrow": "Títulos parecidos",
 	"status_current": "Em exibição",
@@ -96,5 +96,7 @@
 	"synopsis_heading": "Sinopse",
 	"synopsis_toggle_less": "Mostrar menos",
 	"synopsis_toggle_more": "Mostrar mais",
-	"unavailable_message": "Fora do catálogo de streaming — reprodução e download indisponíveis para este título."
+	"unavailable_message": "Fora do catálogo de streaming — reprodução e download indisponíveis para este título.",
+	"error_no_id_headline": "Nenhum anime selecionado.",
+	"error_no_id_detail": "O endereço não traz o id do título."
 }
