@@ -1,17 +1,16 @@
-//! A title without the release years and format tags the provider
-//! brackets onto it — split from `play_native_title_entry_before` for
-//! the per-file complexity bar.
+//! A title without its catalogue tags — the release years and format
+//! tags the provider brackets onto it — which every reader of a title
+//! reads it without. Split from `play_native_title_grammar` for the
+//! per-file complexity bar.
 
-use super::*;
-
-/// `title` normalized ([`normalized`]) without the bracketed release
-/// years and format tags the provider adds to a title — a four-digit
+/// `title` lowercased, without the bracketed release years and format
+/// tags the provider adds to a title — a four-digit
 /// year ("Gintama (2011)") or TV, ONA, OVA or OAD ("JoJo no Kimyou na
 /// Bouken (TV)", "[OVA]") in round, square or lenticular brackets,
 /// brackets and tag alike ASCII or full-width ("（ＴＶ）"). Other
 /// bracketed words are left as they are.
-pub(crate) fn without_tags(title: &str) -> String {
-    let text = normalized(title);
+pub(crate) fn untagged(title: &str) -> String {
+    let text = title.to_lowercase();
     let mut out = String::new();
     let mut rest = text.as_str();
     while let Some(open) = rest.find(['(', '[', '（', '【']) {
@@ -36,7 +35,7 @@ pub(crate) fn without_tags(title: &str) -> String {
         rest = &after[close + closer..];
     }
     out.push_str(rest);
-    normalized(&out)
+    out
 }
 
 /// A full-width form's ASCII letter, digit or mark, lowercased; any

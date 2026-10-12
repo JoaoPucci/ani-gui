@@ -34,7 +34,13 @@ pub(crate) fn named_ordinals(title: &str) -> BTreeSet<u32> {
             .iter()
             .filter_map(|w| small_number(w).or_else(|| spelled_ordinal(w))),
     );
-    let half = with_kanji_numbers(&title.chars().map(half_width).collect::<String>());
+    let half = with_kanji_numbers(
+        &untagged(title)
+            .trim_end()
+            .chars()
+            .map(half_width)
+            .collect::<String>(),
+    );
     // Japanese writes a season's number straight after the title, with
     // no space to make it a word of its own ("怪獣８号", "…生活２").
     let tail: String = half

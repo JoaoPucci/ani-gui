@@ -7,6 +7,10 @@ use std::collections::BTreeSet;
 
 use super::play_native_kanji_number::{kanji_number, with_kanji_numbers};
 
+#[path = "play_native_title_tags.rs"]
+mod title_tags;
+pub(crate) use title_tags::*;
+
 #[path = "play_native_title_words.rs"]
 mod title_words;
 pub(crate) use title_words::*;
@@ -138,11 +142,11 @@ pub(crate) fn stem(title: &str) -> Vec<String> {
     parse_tail(title).0
 }
 
-/// A title with its whitespace runs collapsed, lowercased.
+/// A title as written, for comparing two: lowercased, without its
+/// catalogue tags ([`untagged`]), its whitespace runs collapsed.
 pub(crate) fn normalized(title: &str) -> String {
-    title
+    untagged(title)
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-        .to_lowercase()
 }

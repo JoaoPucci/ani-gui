@@ -4,12 +4,12 @@
 
 use super::*;
 
-/// A title's words, lowercased, split at anything that is neither a
+/// A title's words, lowercased and without its catalogue tags
+/// ([`untagged`]), split at anything that is neither a
 /// letter, a digit, nor the `+` a span is written with. Full-width
 /// digits read as their ASCII forms.
 pub(crate) fn words(title: &str) -> Vec<String> {
-    title
-        .to_lowercase()
+    untagged(title)
         .chars()
         .map(half_width)
         .collect::<String>()
