@@ -65,6 +65,7 @@ dependencies = [
  "refinery",
  "reqwest",
  "rusqlite",
+ "scheduled-thread-pool",
  "serde",
  "serde_json",
  "serde_urlencoded",
