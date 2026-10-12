@@ -42,31 +42,39 @@ export function afterPage(
 	nextOffset: number | null,
 	emptyStreak: number
 ): AfterPage {
-	void visible;
-	void nextOffset;
-	void emptyStreak;
-	return { phase: { kind: 'idle' }, emptyStreak: 0, advance: false };
+	if (visible > 0) {
+		return {
+			phase: { kind: nextOffset === null ? 'end' : 'idle' },
+			emptyStreak: 0,
+			advance: false
+		};
+	}
+	if (nextOffset === null) return { phase: { kind: 'end' }, emptyStreak, advance: false };
+	const streak = emptyStreak + 1;
+	if (streak >= MAX_EMPTY_PAGES)
+		return { phase: { kind: 'held' }, emptyStreak: streak, advance: false };
+	return { phase: { kind: 'loading-more' }, emptyStreak: streak, advance: true };
 }
 
 /** The hits of `hits` not already in `seen`, recording them there.
  *  Kitsu's ranking can shift between two page requests, so a show can
  *  turn up on two pages; the first appearance is the one kept. */
 export function freshHits(seen: Set<string>, hits: KitsuAnimeRef[]): KitsuAnimeRef[] {
-	void seen;
-	return hits;
+	return hits.filter((h) => {
+		if (seen.has(h.id)) return false;
+		seen.add(h.id);
+		return true;
+	});
 }
 
 /** Whether asking for more does anything in this phase. */
 export function canLoadMore(phase: PagingPhase): boolean {
-	void phase;
-	return false;
+	return phase.kind === 'idle' || phase.kind === 'failed' || phase.kind === 'held';
 }
 
 /** Whether the bottom of the grid coming into view loads the next page
  *  by itself. Only an idle search does: a failed or held one waits for
  *  the user's own action, so a page that keeps failing cannot spin. */
 export function shouldAutoLoad(phase: PagingPhase, sentinelVisible: boolean): boolean {
-	void phase;
-	void sentinelVisible;
-	return false;
+	return sentinelVisible && phase.kind === 'idle';
 }

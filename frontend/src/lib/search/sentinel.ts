@@ -24,8 +24,15 @@ export function watchSentinel(
 	onChange: (inReach: boolean) => void,
 	Observer: ObserverCtor | undefined = globalThis.IntersectionObserver
 ): () => void {
-	void node;
-	void onChange;
-	void Observer;
-	return () => {};
+	if (!Observer) {
+		onChange(false);
+		return () => {};
+	}
+	const observer = new Observer(
+		// Entries arrive oldest first; a batch is never empty.
+		(entries) => onChange(entries[entries.length - 1].isIntersecting),
+		{ root: null, rootMargin: SENTINEL_MARGIN }
+	);
+	observer.observe(node);
+	return () => observer.disconnect();
 }

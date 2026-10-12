@@ -935,9 +935,7 @@ export interface KitsuSearchPage {
 }
 
 export function kitsuSearchPage(query: string, offset: number): Promise<KitsuSearchPage> {
-	void query;
-	void offset;
-	return Promise.reject(new Error('not implemented'));
+	return postJson<KitsuSearchPage>('/api/kitsu/search/page', { query, offset });
 }
 
 export function kitsuAnimeDetail(id: string): Promise<KitsuAnimeRef> {
