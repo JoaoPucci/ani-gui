@@ -4,6 +4,7 @@ import {
 	HERO_EXPERIMENT_STORAGE_KEY,
 	heroExperimentFromQuery,
 	loadHeroExperiment,
+	withoutExperimentQuery,
 	naturalRatio,
 	parseHeroExperiment,
 	pickHeroImage,
@@ -195,6 +196,34 @@ describe('pickHeroImage', () => {
 			isCover: false,
 			origin: null
 		});
+	});
+});
+
+describe('pickHeroImage — provenance and master parity', () => {
+	it('names a cover that is AniList’s banner as AniList’s', () => {
+		// The backend backfills a null Kitsu cover with AniList's banner.
+		const d = show({ cover_image: { large: banner, original: banner } });
+		expect(pickHeroImage(d, exp('current', 'kitsu'), 'home')).toEqual({
+			url: banner,
+			isCover: true,
+			origin: 'anilist'
+		});
+	});
+	it('keeps an empty slot as master’s `??` chain did', () => {
+		const d = show({ cover_image: { ...cover, large: '' } });
+		expect(pickHeroImage(d, exp('current', 'kitsu'), 'home').url).toBe('');
+	});
+});
+
+describe('withoutExperimentQuery', () => {
+	it('drops only the experiment’s parameters', () => {
+		expect(withoutExperimentQuery('http://x/anime/1?hero=contain&page=2&heroSrc=anilist#ep')).toBe(
+			'http://x/anime/1?page=2#ep'
+		);
+	});
+	it('leaves a URL without them as it was', () => {
+		expect(withoutExperimentQuery('http://x/?page=2')).toBe('http://x/?page=2');
+		expect(withoutExperimentQuery('http://x/')).toBe('http://x/');
 	});
 });
 

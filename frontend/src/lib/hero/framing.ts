@@ -159,3 +159,9 @@ export function pickHeroImage(
 export function naturalRatio(width: number, height: number): number | null {
 	return width > 0 && height > 0 ? width / height : null;
 }
+
+/** `href` without `?hero=` / `?heroSrc=`, so a choice made in the switch
+ *  is not overridden by the query on the next load. */
+export function withoutExperimentQuery(href: string): string {
+	return href;
+}
