@@ -3,13 +3,12 @@
 
 use super::play::PlayArgs;
 use crate::app::AppState;
+use crate::scraper::table_provider::TableProvider;
 
-fn state_for(td: &tempfile::TempDir, anidb_base: &str) -> AppState {
+fn state_for(td: &tempfile::TempDir, provider: &std::sync::Arc<TableProvider>) -> AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     AppState {
-        anidb_base: Some(anidb_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -19,10 +18,8 @@ fn state_for(td: &tempfile::TempDir, anidb_base: &str) -> AppState {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests()
+            .with_stub(std::sync::Arc::clone(provider)),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem cache pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -35,53 +32,16 @@ fn state_for(td: &tempfile::TempDir, anidb_base: &str) -> AppState {
     }
 }
 
-/// One show, one episode, a jpn embed and a validating master.
-async fn stub_provider() -> wiremock::MockServer {
-    use wiremock::matchers::{method, path};
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(
-                r#"<a href="/anime/handoff-show-7"><img alt="Handoff Show"/></a>"#,
-            ),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/7/episodes"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":71,"number":1}]}"#),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/api/frontend/episode/71/languages"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(format!(
-                r#"{{"languages":[{{"code":"jpn","embed_url":"{}/embed/71"}}]}}"#,
-                server.uri()
-            )),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/embed/71"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200).set_body_string(format!(
-                "player.setup({{ file: '{}/m/master.m3u8' }});",
-                server.uri()
-            )),
-        )
-        .mount(&server)
-        .await;
-    wiremock::Mock::given(method("GET"))
-        .and(path("/m/master.m3u8"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
-        .mount(&server)
-        .await;
-    server
+/// One show every search finds, one episode streaming in sub from a
+/// master that validates.
+fn stub_provider() -> std::sync::Arc<TableProvider> {
+    std::sync::Arc::new(TableProvider::one_show(
+        "",
+        ("handoff-show-7", "Handoff Show"),
+        &[(71, 1)],
+        &[71],
+        "https://cdn.example/m/master.m3u8",
+    ))
 }
 
 /// A handoff asked for now, from no Kitsu page.
@@ -105,9 +65,9 @@ async fn the_handoff_resolves_through_the_native_walk() {
     // player serves these too — which is what this asserts: the state's
     // provider base is the stub below, and the launch args come back
     // carrying the URL that stub answered with.
-    let server = stub_provider().await;
+    let server = stub_provider();
     let td = tempfile::tempdir().expect("td");
-    let state = state_for(&td, &server.uri());
+    let state = state_for(&td, &server);
     let (launch, _watch) =
         super::play_handoff::resolve_launch_args(&state, &args_for(), asked_now(&state))
             .await
@@ -133,9 +93,9 @@ async fn the_handoff_resolves_through_the_native_walk() {
 /// remembered, so the next operation for the show starts from it.
 #[tokio::test]
 async fn a_handoff_resolve_remembers_the_provider_that_served_it() {
-    let server = stub_provider().await;
+    let server = stub_provider();
     let td = tempfile::tempdir().expect("td");
-    let state = state_for(&td, &server.uri());
+    let state = state_for(&td, &server);
     let mut args = args_for();
     args.kitsu_id = Some("hs-7".into());
     super::play_handoff::resolve_launch_args(&state, &args, asked_now(&state))
@@ -152,17 +112,9 @@ async fn a_handoff_resolve_remembers_the_provider_that_served_it() {
 async fn a_handoff_miss_surfaces_the_walks_verdict() {
     // A clean no-results walk is the show being absent, not a
     // spawn failure — the caller renders it as such.
-    use wiremock::matchers::method;
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(method("GET"))
-        .respond_with(
-            wiremock::ResponseTemplate::new(200)
-                .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-        )
-        .mount(&server)
-        .await;
+    let server = std::sync::Arc::new(TableProvider::new());
     let td = tempfile::tempdir().expect("td");
-    let state = state_for(&td, &server.uri());
+    let state = state_for(&td, &server);
     let mut args = args_for();
     args.kitsu_id = Some("hs-8".into());
     let err = super::play_handoff::resolve_launch_args(&state, &args, asked_now(&state))
@@ -342,9 +294,9 @@ mod default_first_props {
 /// record the watch once the spawn succeeded.
 #[tokio::test]
 async fn the_resolve_records_no_watch_before_the_spawn() {
-    let server = stub_provider().await;
+    let server = stub_provider();
     let td = tempfile::tempdir().expect("td");
-    let state = state_for(&td, &server.uri());
+    let state = state_for(&td, &server);
     let (_launch, _native) =
         super::play_handoff::resolve_launch_args(&state, &args_for(), asked_now(&state))
             .await

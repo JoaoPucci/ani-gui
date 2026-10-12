@@ -110,13 +110,11 @@ mod tests {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use std::path::PathBuf;
-    use std::sync::Arc;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn state_with_kitsu_at(uri: &str) -> AppState {
         AppState {
-            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -126,10 +124,7 @@ mod tests {
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: PathBuf::from("/y/history"),
-            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            hianime_base: None,
-            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+            providers: crate::provider_set::ProviderSet::for_tests(),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::with_base(reqwest::Client::new(), uri),

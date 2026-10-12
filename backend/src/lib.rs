@@ -32,6 +32,7 @@ pub mod kitsu_id;
 pub mod legacy_script;
 pub mod meta;
 pub mod parent_watch;
+pub mod provider_set;
 pub mod proxy;
 pub mod scraper;
 pub mod shutdown;

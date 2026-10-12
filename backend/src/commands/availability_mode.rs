@@ -54,7 +54,7 @@ const SCAN_BUDGET: usize = 8;
 /// [`SCAN_BUDGET`] of them.
 ///
 /// # Errors
-/// The transport's own failures, as in [`AnidbClient::has_mode`].
+/// The provider's own failures, as [`Provider::has_mode`] gives them.
 /// An answered-not-found row is NOT an error — it is the unknown
 /// verdict above.
 pub(crate) async fn mode_present<P: Provider + ?Sized>(

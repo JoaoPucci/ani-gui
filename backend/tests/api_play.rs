@@ -12,7 +12,7 @@
 //! body validation; this file covers the resolution path behind it.
 //!
 //! Hermetic: every hop answers from a local stub, pointed at through
-//! `AppState::anidb_base`. It has to be — a live resolve inside an
+//! `AppState::providers`. It has to be — a live resolve inside an
 //! integration test turns a throttled IP into a network 503 that
 //! reads exactly like a regression in the diff under review.
 //!
@@ -28,6 +28,7 @@ use ani_gui::api::build_api_router;
 use ani_gui::app::AppState;
 use ani_gui::cache;
 use ani_gui::meta::kitsu::KitsuClient;
+use ani_gui::provider_set::ProviderSet;
 use ani_gui::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use ani_gui::scraper::provider::ProviderId;
 use axum::body::Body;
@@ -99,11 +100,13 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str, hianime_base: Option<&st
         Some(_) => vec![ProviderId::Anidb, ProviderId::Hianime],
         None => vec![ProviderId::Anidb],
     };
+    let mut providers =
+        ProviderSet::listing(provider_order).with_origin(ProviderId::Anidb, anidb_base);
+    if let Some(base) = hianime_base {
+        providers.set_origin(ProviderId::Hianime, base);
+    }
     AppState {
-        anidb_base: Some(anidb_base.to_string()),
-        hianime_base: hianime_base.map(str::to_string),
-        hianime_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
-        provider_order,
+        providers,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -113,7 +116,6 @@ fn build_state(tmp: &std::path::Path, anidb_base: &str, hianime_base: Option<&st
         bundled_bin: None,
         legacy_sweep: ani_gui::legacy_script::SweepReport::default(),
         history_path: tmp.join("hist/history"),
-        anidb_gate: Arc::new(ani_gui::scraper::gate::ScraperGate::new()),
         image_cache_dir: tmp.join("images"),
         cache_pool: cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), "http://127.0.0.1:1"),
@@ -223,7 +225,7 @@ async fn play_fails_over_to_the_next_provider_when_the_first_is_down() {
     // One failure short of open: the outage this play observes is
     // what opens the primary's breaker, and only the primary's.
     for _ in 0..ani_gui::scraper::gate::FAILURE_THRESHOLD - 1 {
-        state.anidb_gate.record(
+        state.providers.gate(ProviderId::Anidb).record(
             ani_gui::scraper::outcome::ScrapeOutcome::Failure,
             tokio::time::Instant::now(),
         );
@@ -268,11 +270,11 @@ async fn play_fails_over_to_the_next_provider_when_the_first_is_down() {
         "history keyed on the answering provider: {history}"
     );
     assert!(
-        state.anidb_gate.is_open(),
+        state.providers.gate(ProviderId::Anidb).is_open(),
         "the primary's outage landed on its own breaker"
     );
     assert!(
-        !state.hianime_gate.is_open(),
+        !state.providers.gate(ProviderId::Hianime).is_open(),
         "and not on the provider that answered"
     );
 }

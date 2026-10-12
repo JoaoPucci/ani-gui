@@ -47,7 +47,6 @@ mod tests {
     use crate::app::AppState;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
     use std::path::PathBuf;
-    use std::sync::Arc;
 
     #[test]
     fn app_info_advertises_no_bundled_script() {
@@ -65,7 +64,6 @@ mod tests {
 
     fn fake_state() -> AppState {
         AppState {
-            anidb_base: None,
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -75,10 +73,7 @@ mod tests {
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: PathBuf::from("/home/u/.local/state/ani-gui/history"),
-            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            hianime_base: None,
-            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+            providers: crate::provider_set::ProviderSet::for_tests(),
             image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: crate::meta::kitsu::KitsuClient::new(reqwest::Client::new()),
