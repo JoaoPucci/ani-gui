@@ -54,5 +54,6 @@
 	"paging_held": "Las últimas páginas no tenían nada que puedas ver.",
 	"paging_keep_looking": "Seguir buscando",
 	"paging_load_more": "Cargar más resultados",
-	"count_more": "{count}+"
+	"count_more": "{count}+",
+	"count_word_open": "resultados"
 }
