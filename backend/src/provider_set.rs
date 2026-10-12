@@ -15,7 +15,17 @@
 //! - its place in [`ProviderSet::shipped`]'s order;
 //! - a client behind the [`Provider`](crate::scraper::provider::Provider)
 //!   trait, and its arm in
-//!   [`client_for`](crate::commands::providers::client_for).
+//!   [`client_for`](crate::commands::providers::client_for). The
+//!   requests it builds from its own site are held to that origin
+//!   ([`FetchRequest::held_to_origin`](crate::scraper::fetch::FetchRequest::held_to_origin)),
+//!   and an answer from elsewhere is refused, as hianime's client does;
+//! - its label in the renderer's list, `LABELED` in
+//!   `frontend/src/lib/history/show-key.ts`, which `StreamProvider` is
+//!   derived from — left out, its show keys read there as naming no
+//!   provider and its title matches are filed under the legacy
+//!   segment;
+//! - the sites it contacts, in `docs/PRIVACY.md`, and its place in
+//!   `docs/architecture.md`'s provider section.
 //!
 //! Nothing else names providers one by one: [`ProviderId::from_label`]
 //! and [`ShowKey::parse`](crate::scraper::provider::ShowKey::parse)
