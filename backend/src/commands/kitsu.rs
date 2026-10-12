@@ -1194,7 +1194,13 @@ async fn anime_detail_read(
     // AniList's own id; the result is cached for the detail row's
     // lifetime.
     if detail.cover_image.is_none() {
-        if let Some(banner) = anilist_banner_for(state, id, anilist_base).await {
+        // A show the trending row listed already brought its banner
+        // with that one request; only an unlisted show asks AniList.
+        let banner = match super::anilist_banner_memo::remembered(&state.cache_pool, id) {
+            Some(b) => Some(b),
+            None => anilist_banner_for(state, id, anilist_base).await,
+        };
+        if let Some(banner) = banner {
             detail.cover_image = Some(KitsuCoverImage {
                 tiny: None,
                 small: None,
