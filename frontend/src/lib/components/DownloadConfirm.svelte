@@ -378,15 +378,14 @@
 						{m.download_hint_this({ episode: args.episode })}
 					{:else if mode === 'all'}
 						{#if maxEpisode}
-							{m.download_hint_all_prefix_total({ count: maxEpisode })}
 							{hasGap
-								? m.download_hint_all_aired()
-								: ''}{m.download_hint_all_episodes_suffix()}{#if hasGap && announcedEpisode != null}{m.download_hint_all_gap_suffix(
-									{
-										announced: announcedEpisode,
-										available: maxEpisode
-									}
-								)}{:else}{m.download_hint_all_nogap_suffix()}{/if}
+								? m.download_hint_all_total_aired({ count: maxEpisode })
+								: m.download_hint_all_total({
+										count: maxEpisode
+									})}{#if hasGap && announcedEpisode != null}{m.download_hint_all_gap_suffix({
+									announced: announcedEpisode,
+									available: maxEpisode
+								})}{:else}{m.download_hint_all_nogap_suffix()}{/if}
 						{:else}
 							{m.download_hint_all_unknown()}
 						{/if}

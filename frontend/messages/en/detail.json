@@ -30,7 +30,16 @@
 	"episodes_pager_previous_aria_label": "Previous page",
 	"episodes_range_aired": "{count} aired",
 	"episodes_range_aired_so_far": "{count} aired so far",
-	"episodes_range_all": "{count} episodes",
+	"episodes_range_all": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} episode",
+				"countPlural=*": "{count} episodes"
+			}
+		}
+	],
 	"episodes_range_announced_suffix": " · {count} announced",
 	"episodes_range_expected_suffix": " · {count} expected",
 	"episodes_range_listed_suffix": " listed",

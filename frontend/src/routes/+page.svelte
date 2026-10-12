@@ -1153,9 +1153,7 @@
 <ConfirmDialog
 	open={clearConfirmOpen}
 	eyebrow={m.home_clear_confirm_eyebrow()}
-	title={(history?.length ?? 0) === 1
-		? m.home_clear_confirm_title_one()
-		: m.home_clear_confirm_title_other({ count: history?.length ?? 0 })}
+	title={m.home_clear_confirm_title({ count: history?.length ?? 0 })}
 	body={m.home_clear_confirm_body()}
 	confirmLabel={m.home_clear_confirm_button()}
 	destructive

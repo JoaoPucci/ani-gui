@@ -1,7 +1,16 @@
 {
 	"eyebrow_key": "Download",
 	"eyebrow_value_this": "episode {episode}",
-	"eyebrow_value_all": "all {count} episodes",
+	"eyebrow_value_all": [
+		{
+			"declarations": ["input count"],
+			"selectors": ["count"],
+			"match": {
+				"count=1": "{count} episode",
+				"count=*": "all {count} episodes"
+			}
+		}
+	],
 	"eyebrow_value_range": "{start}–{end}",
 	"label_episodes": "Episodes",
 	"mode_this_episode": "This episode",
@@ -16,13 +25,48 @@
 	"range_max_prefix": "max {max}",
 	"range_unknown_suffix": " · episode count unknown",
 	"hint_this": "Downloads episode {episode} only.",
-	"hint_all_prefix_total": "Downloads all {count}",
-	"hint_all_aired": " aired",
-	"hint_all_episodes_suffix": " episodes sequentially",
-	"hint_all_gap_suffix": " — {announced} are announced but only {available} have been released so far.",
+	"hint_all_total": [
+		{
+			"declarations": ["input count"],
+			"selectors": ["count"],
+			"match": {
+				"count=1": "Downloads {count} episode",
+				"count=*": "Downloads all {count} episodes sequentially"
+			}
+		}
+	],
+	"hint_all_total_aired": [
+		{
+			"declarations": ["input count"],
+			"selectors": ["count"],
+			"match": {
+				"count=1": "Downloads {count} aired episode",
+				"count=*": "Downloads all {count} aired episodes sequentially"
+			}
+		}
+	],
+	"hint_all_gap_suffix": [
+		{
+			"declarations": ["input available", "local availablePlural = available: plural"],
+			"selectors": ["availablePlural"],
+			"match": {
+				"availablePlural=one": " — {announced} are announced but only {available} has been released so far.",
+				"availablePlural=*": " — {announced} are announced but only {available} have been released so far."
+			}
+		}
+	],
 	"hint_all_nogap_suffix": ".",
 	"hint_all_unknown": "Episode count unknown — use Range to specify.",
-	"hint_range": "Downloads {count} episodes sequentially.",
+	"hint_range": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Downloads {count} episode.",
+				"countPlural=*": "Downloads {count} episodes sequentially."
+			}
+		}
+	],
 	"label_directory": "Save to",
 	"button_browse": "Browse…",
 	"hint_filename_prefix": "Files land as ",
@@ -35,13 +79,49 @@
 	"bar_ep_label_range_progress": "Ep {current} of {total}",
 	"bar_ep_label_range_static": "Eps {episode}",
 	"bar_ep_label_single": "Ep {episode}",
-	"bar_label_multi": "Downloading {count} episodes",
+	"bar_label_multi": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Downloading {count} episode",
+				"countPlural=*": "Downloading {count} episodes"
+			}
+		}
+	],
 	"bar_cancel_all_aria_label": "Cancel all downloads",
 	"bar_cancel_all_title": "Cancel all downloads",
 	"bar_cancel_confirm_single": "Cancel download of \"{title}\"?",
-	"bar_cancel_confirm_multi": "Cancel {count} active downloads?",
-	"dock_active_label": "{count} download(s) in progress",
-	"dock_unseen_label": "{count} download(s) finished",
+	"bar_cancel_confirm_multi": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Cancel {count} active download?",
+				"countPlural=*": "Cancel {count} active downloads?"
+			}
+		}
+	],
+	"dock_active_label": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} download in progress",
+				"countPlural=*": "{count} downloads in progress"
+			}
+		}
+	],
+	"dock_unseen_label": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} download finished",
+				"countPlural=*": "{count} downloads finished"
+			}
+		}
+	],
 	"dock_idle_label": "Downloads",
 	"dock_title": "Downloads",
 	"dock_empty": "No downloads yet.",
@@ -68,7 +148,16 @@
 	"range_error_below_one": "Episode numbers start at 1.",
 	"range_error_start_over_max": "The first episode can't be past {max}, the last one available.",
 	"range_error_end_over_max": "The last episode can't be past {max}, the last one available.",
-	"range_error_over_cap": "You can't download more than {max} episodes for this show.",
+	"range_error_over_cap": [
+		{
+			"declarations": ["input max", "local maxPlural = max: plural"],
+			"selectors": ["maxPlural"],
+			"match": {
+				"maxPlural=one": "You can't download more than {max} episode for this show.",
+				"maxPlural=*": "You can't download more than {max} episodes for this show."
+			}
+		}
+	],
 	"range_error_end_before_start": "The last episode can't come before the first.",
 	"browse_dialog_title": "Choose download folder",
 	"failure_timeout": "The download took too long and was stopped. Try again later.",

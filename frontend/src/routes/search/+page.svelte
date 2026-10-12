@@ -215,9 +215,7 @@
 				{:else}
 					<span class="eyebrow-count">
 						<span class="num">{count}</span>
-						<span class="word"
-							>{count === 1 ? m.search_count_singular() : m.search_count_plural()}</span
-						>
+						<span class="word">{m.search_count_word({ count })}</span>
 					</span>
 				{/if}
 			</p>
@@ -371,7 +369,10 @@
 								{/if}
 								{#if hit.episode_count}
 									<span class="card-meta-sep" aria-hidden="true">·</span>
-									<span>{hit.episode_count} {m.search_card_eps_suffix()}</span>
+									<span
+										>{hit.episode_count}
+										{m.search_card_eps_suffix({ count: hit.episode_count })}</span
+									>
 								{/if}
 								{#if rating}
 									<span class="card-meta-sep" aria-hidden="true">·</span>
