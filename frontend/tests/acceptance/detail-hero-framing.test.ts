@@ -26,7 +26,7 @@ vi.mock('$app/navigation', () => ({
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
-import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/framing';
+import { HERO_PREFS_STORAGE_KEY, failedHeroImages } from '../../src/lib/hero/framing';
 import { m } from '../../src/lib/paraglide/messages';
 
 const KITSU_ID = '42';
@@ -50,6 +50,7 @@ beforeEach(() => {
 	__resetPlayCacheForTests();
 	g.EventSource = SilentEventSource;
 	localStorage.clear();
+	failedHeroImages.clear();
 	setParams({ id: KITSU_ID });
 	target = document.createElement('div');
 	document.body.appendChild(target);
@@ -113,6 +114,7 @@ async function heroImage(): Promise<HTMLImageElement> {
 	return target.querySelector('section.hero img.hero-img') as HTMLImageElement;
 }
 const proxied = (url: string) => `url=${encodeURIComponent(url)}`;
+const heroSrc = () => target.querySelector('section.hero img.hero-img')?.getAttribute('src') ?? '';
 const framingClasses = () =>
 	['framing-contain', 'framing-pillar', 'framing-focus'].filter((f) =>
 		target.querySelector('section.hero')?.classList.contains(f)
@@ -177,6 +179,37 @@ describe('detail hero framing', () => {
 		expect(target.querySelector('section.hero')?.classList.contains('hero-fallback')).toBe(true);
 		expect(framingClasses()).toEqual([]);
 		expect(target.querySelector('.hero-backdrop')).toBeNull();
+	});
+
+	it('falls back from a banner that fails to load, to the cover, the poster, and nothing', async () => {
+		// happy-dom never fetches an <img>'s source; the `error` a 404 from
+		// the image route would raise is fired here.
+		useShow();
+		app = mount(DetailPage, { target });
+		let img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(BANNER));
+
+		img.dispatchEvent(new Event('error'));
+		await vi.waitFor(() => expect(heroSrc()).toContain(proxied(COVER_WHOLE)));
+		expect(framingClasses()).toEqual(['framing-pillar']);
+		expect(target.querySelector('.hero-backdrop')?.getAttribute('src')).toBe(heroSrc());
+
+		img = await heroImage();
+		img.dispatchEvent(new Event('error'));
+		await vi.waitFor(() => expect(heroSrc()).toContain(proxied(COVER)));
+
+		img = await heroImage();
+		img.dispatchEvent(new Event('error'));
+		await vi.waitFor(() => expect(heroSrc()).toContain(proxied(POSTER)));
+		expect(target.querySelector('section.hero')?.classList.contains('hero-fallback')).toBe(true);
+		expect(framingClasses()).toEqual([]);
+		expect(target.querySelector('.hero-backdrop')).toBeNull();
+
+		img = await heroImage();
+		img.dispatchEvent(new Event('error'));
+		await vi.waitFor(() => expect(target.querySelector('section.hero img.hero-img')).toBeNull());
+		// The band stays, on the show's accent gradient.
+		expect(target.querySelector('section.hero')).not.toBeNull();
 	});
 
 	it('shows no framing switch until the diagnostics page turns it on', async () => {

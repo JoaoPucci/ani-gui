@@ -25,16 +25,18 @@ vi.mock('$app/navigation', () => ({
 
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/framing';
+import { HERO_PREFS_STORAGE_KEY, failedHeroImages } from '../../src/lib/hero/framing';
 import { m } from '../../src/lib/paraglide/messages';
 
 const COVER = 'https://media.kitsu.app/anime/1/cover_image/large.jpg';
 const COVER_WHOLE = 'https://media.kitsu.app/anime/1/cover_image/original.jpg';
+const POSTER = 'https://media.kitsu.app/anime/1/poster_image/large.jpg';
 const BANNER = 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/1.jpg';
 
 function featured(banner: string | null = BANNER) {
 	return {
 		...kitsuRef('1', 'Cowboy Bebop', 26),
+		poster_image: { large: POSTER },
 		cover_image: { tiny: null, small: null, large: COVER, original: COVER_WHOLE },
 		anilist_banner: banner
 	};
@@ -46,6 +48,7 @@ let app: ReturnType<typeof mount> | null = null;
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
 	localStorage.clear();
+	failedHeroImages.clear();
 	target = document.createElement('div');
 	document.body.appendChild(target);
 	serve(featured());
@@ -84,6 +87,7 @@ async function heroImage(): Promise<HTMLImageElement> {
 	return target.querySelector('.hero .hero-img') as HTMLImageElement;
 }
 const proxied = (url: string) => `url=${encodeURIComponent(url)}`;
+const heroSrc = () => target.querySelector('.hero .hero-img')?.getAttribute('src') ?? '';
 const layer = () => target.querySelector('.hero-layer') as HTMLElement;
 const switchButton = (label: string) =>
 	Array.from(target.querySelectorAll('.hero-framing-switch button')).find(
@@ -176,6 +180,46 @@ describe('home hero framing', () => {
 		expect(img.getAttribute('src')).toContain(proxied(BANNER));
 		expect(framingClasses()).toEqual(['framing-focus']);
 		expect(target.querySelector('.hero-backdrop')).toBeNull();
+	});
+
+	it('falls back from a banner that fails to load, to the cover, the poster, and nothing', async () => {
+		// happy-dom never fetches an <img>'s source, so the browser's part
+		// — a 404 from the image route raising `error` — is taken as read
+		// and the event is fired here.
+		store('pillar', 'anilist', true);
+		app = mount(HomePage, { target });
+		let img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(BANNER));
+
+		img.dispatchEvent(new Event('error'));
+		await vi.waitFor(() => expect(heroSrc()).toContain(proxied(COVER_WHOLE)));
+		expect(framingClasses()).toEqual(['framing-pillar']);
+		expect(target.querySelector('.hero-backdrop')?.getAttribute('src')).toBe(heroSrc());
+		expect(target.querySelector('.hero-framing-switch')?.textContent).toContain(
+			m.hero_framing_origin_kitsu()
+		);
+
+		img = await heroImage();
+		img.dispatchEvent(new Event('error'));
+		await vi.waitFor(() => expect(heroSrc()).toContain(proxied(COVER)));
+
+		img = await heroImage();
+		img.dispatchEvent(new Event('error'));
+		await vi.waitFor(() => expect(heroSrc()).toContain(proxied(POSTER)));
+		expect((await heroImage()).classList.contains('fallback')).toBe(true);
+		expect(framingClasses()).toEqual([]);
+		expect(target.querySelector('.hero-backdrop')).toBeNull();
+		expect(target.querySelector('.hero-framing-switch')?.textContent).toContain(
+			m.hero_framing_origin_poster()
+		);
+
+		img = await heroImage();
+		img.dispatchEvent(new Event('error'));
+		await vi.waitFor(() => expect(target.querySelector('.hero .hero-img')).toBeNull());
+		expect(layer()).not.toBeNull();
+		expect(target.querySelector('.hero-framing-switch')?.textContent).toContain(
+			m.hero_framing_origin_none()
+		);
 	});
 
 	it('shows no framing switch until the diagnostics page turns it on', async () => {

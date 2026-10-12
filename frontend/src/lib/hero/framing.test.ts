@@ -3,8 +3,10 @@ import {
 	HERO_PREFS_DEFAULT,
 	HERO_PREFS_STORAGE_KEY,
 	browserStorage,
+	failedHeroImages,
 	loadHeroPrefs,
 	naturalRatio,
+	noteHeroImageFailed,
 	parseHeroPrefs,
 	pickHeroImage,
 	saveHeroPrefs,
@@ -217,6 +219,67 @@ describe('pickHeroImage', () => {
 			isCover: false,
 			origin: null
 		});
+	});
+});
+
+describe('pickHeroImage — after a failed load', () => {
+	const failed = (...urls: string[]) => new Set(urls);
+
+	it('passes over a banner that failed for the cover', () => {
+		expect(pickHeroImage(show(), prefs('pillar', 'anilist'), 'home', failed(banner))).toEqual({
+			url: cover.original,
+			isCover: true,
+			origin: 'kitsu'
+		});
+	});
+	it('passes over a cover slot that failed for the next in that framing’s order', () => {
+		expect(
+			pickHeroImage(show(), prefs('pillar', 'anilist'), 'home', failed(banner, cover.original)).url
+		).toBe(cover.large);
+		expect(pickHeroImage(show(), prefs('top', 'kitsu'), 'home', failed(cover.large)).url).toBe(
+			cover.original
+		);
+		expect(pickHeroImage(show(), prefs('top', 'kitsu'), 'detail', failed(cover.large)).url).toBe(
+			cover.small
+		);
+	});
+	it('falls to the poster once every cover has failed', () => {
+		const gone = failed(banner, cover.original, cover.large, cover.small, cover.tiny);
+		expect(pickHeroImage(show(), prefs('pillar', 'anilist'), 'home', gone)).toEqual({
+			url: poster.large,
+			isCover: false,
+			origin: 'poster'
+		});
+		expect(pickHeroImage(show(), prefs('pillar', 'anilist'), 'detail', gone).url).toBe(
+			poster.large
+		);
+	});
+	it('passes over a poster slot that failed too, and has nothing once all have', () => {
+		const gone = failed(banner, cover.original, cover.large, cover.small, cover.tiny);
+		expect(
+			pickHeroImage(show(), prefs('pillar', 'anilist'), 'home', new Set([...gone, poster.large]))
+				.url
+		).toBe(poster.original);
+		const all = new Set([...gone, ...Object.values(poster)]);
+		expect(pickHeroImage(show(), prefs('pillar', 'anilist'), 'home', all)).toEqual({
+			url: null,
+			isCover: false,
+			origin: null
+		});
+	});
+	it('does not skip a cover that is the banner’s URL unless that URL failed', () => {
+		const d = show({ cover_image: { large: banner, original: banner } });
+		expect(pickHeroImage(d, prefs('top', 'anilist'), 'home', failed()).url).toBe(banner);
+		expect(pickHeroImage(d, prefs('top', 'anilist'), 'home', failed(banner)).origin).toBe('poster');
+	});
+});
+
+describe('failedHeroImages', () => {
+	afterEach(() => failedHeroImages.clear());
+	it('remembers what noteHeroImageFailed was told', () => {
+		expect(failedHeroImages.has(banner)).toBe(false);
+		noteHeroImageFailed(banner);
+		expect(failedHeroImages.has(banner)).toBe(true);
 	});
 });
 

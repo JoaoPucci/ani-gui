@@ -21,6 +21,8 @@
  * per machine, in local storage.
  */
 
+import { SvelteSet } from 'svelte/reactivity';
+
 export type HeroFraming = 'top' | 'contain' | 'pillar' | 'focus';
 export type HeroSource = 'kitsu' | 'anilist';
 
@@ -144,16 +146,28 @@ const POSTER_ORDER: Record<'home' | 'detail', readonly Slot[]> = {
 	detail: ['large', 'medium', 'original']
 };
 
+/** Image URLs that failed to load this session. A hero skips them;
+ *  nothing retries one until the app is next started. */
+export const failedHeroImages = new SvelteSet<string>();
+
+/** Record that `url` failed to load, so no hero picks it again. */
+export function noteHeroImageFailed(url: string): void {
+	failedHeroImages.add(url);
+}
+
 /**
  * The image a hero renders. `surface` keeps each page's existing slot
  * order for the `top` and `focus` framings; `contain` and `pillar`
  * prefer the cover's `original`, the whole upload, since Kitsu's sized
- * covers are themselves centre crops of it.
+ * covers are themselves centre crops of it. URLs in `failed` are
+ * passed over for the next in order.
  */
 export function pickHeroImage(
 	d: HeroImageInput,
 	prefs: Pick<HeroPrefs, 'framing' | 'source'>,
-	surface: 'home' | 'detail'
+	surface: 'home' | 'detail',
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the seam the next commit reads
+	failed?: ReadonlySet<string>
 ): HeroPick {
 	if (prefs.source === 'anilist' && d.anilist_banner) {
 		return { url: d.anilist_banner, isCover: true, origin: 'anilist' };
