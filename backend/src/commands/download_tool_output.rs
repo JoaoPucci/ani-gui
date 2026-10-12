@@ -17,9 +17,10 @@ use crate::error::{AniError, Result};
 /// the read. Progress on stdout feeds the meter, and once a second,
 /// from the first progress the tool gives, the run's speed is handed to
 /// `on_line` as a rate report; when both streams close with a count the
-/// last report has not covered — a run shorter than a second — the
-/// speed is reported once more. `measured` records that a speed was
-/// reported, so the runner can report zero when the run ends.
+/// last report has not covered — a count that arrived after the last
+/// tick, which a run shorter than a second always ends with — the speed
+/// is reported once more. `measured` records that the tool gave a
+/// count, so the runner can report zero when the run ends.
 ///
 /// # Errors
 /// [`AniError::FfmpegMissing`] when yt-dlp reports the repackage failed.
