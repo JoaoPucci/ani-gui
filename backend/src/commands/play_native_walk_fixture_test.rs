@@ -2029,3 +2029,72 @@ async fn a_catalogue_tag_is_not_a_title_s_tail() {
         assert_eq!(walk_over(site).await.expect("picked").hit.slug, "x");
     }
 }
+
+/// A catalogue tag is kept where two titles are compared as written:
+/// it is what tells a remake from its original. Without a count, or
+/// on a tie, the exact title wins in either direction, and an entry's
+/// own tagged title is not its untagged namesake.
+#[tokio::test]
+async fn a_catalogue_tag_tells_a_remake_from_its_original() {
+    for (entry, count, rows, want) in [
+        (
+            "Hunter x Hunter",
+            None,
+            [
+                ("new", "Hunter x Hunter (2011)", 148),
+                ("old", "Hunter x Hunter", 62),
+            ],
+            "old",
+        ),
+        (
+            "Hunter x Hunter (2011)",
+            None,
+            [
+                ("old", "Hunter x Hunter", 62),
+                ("new", "Hunter x Hunter (2011)", 148),
+            ],
+            "new",
+        ),
+        (
+            "Gintama",
+            None,
+            [("new", "Gintama (2011)", 51), ("old", "Gintama", 201)],
+            "old",
+        ),
+        (
+            "Fruits Basket",
+            Some(25),
+            [
+                ("new", "Fruits Basket (2019)", 25),
+                ("old", "Fruits Basket", 25),
+            ],
+            "old",
+        ),
+        (
+            "Fruits Basket (2019)",
+            Some(25),
+            [
+                ("old", "Fruits Basket", 25),
+                ("new", "Fruits Basket (2019)", 25),
+            ],
+            "new",
+        ),
+        (
+            "Show (2011)",
+            Some(12),
+            [("other", "Show", 12), ("own", "Show (2011)", 12)],
+            "own",
+        ),
+    ] {
+        for year in [2020, 0] {
+            let mut site = pool_of(&[entry], count, 2020, entry, &rows);
+            if year == 0 {
+                site.doc.kitsu.year = None;
+            }
+            let picked = walk_over(site)
+                .await
+                .unwrap_or_else(|e| panic!("{entry}: {e:?}"));
+            assert_eq!(picked.hit.slug, want, "{entry} {count:?} year {year}");
+        }
+    }
+}

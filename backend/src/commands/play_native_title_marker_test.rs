@@ -443,8 +443,12 @@ proptest::proptest! {
         proptest::prop_assert_eq!(part_ordinals(&tagged), part_ordinals(plain), "parts of {}", tagged);
         proptest::prop_assert_eq!(reading(&tagged), reading(plain), "reading of {}", tagged);
         proptest::prop_assert_eq!(name(&tagged), name(plain), "name of {}", tagged);
-        proptest::prop_assert_eq!(normalized(&tagged), normalized(plain), "{} as written", tagged);
-        proptest::prop_assert_eq!(part_ordinal("Show", &tagged), part_ordinal("Show", plain), "part of Show in {}", tagged);
+        proptest::prop_assert_ne!(normalized(&tagged), normalized(plain), "{} as written keeps its tag", tagged);
+        if part_ordinal("Show", plain) != Some(1) {
+            proptest::prop_assert_eq!(part_ordinal("Show", &tagged), part_ordinal("Show", plain), "part of Show in {}", tagged);
+        } else {
+            proptest::prop_assert_ne!(part_ordinal("Show", &tagged), Some(1), "{} is not the stem as written", tagged);
+        }
         let e = entry(&["Show"]);
         proptest::prop_assert_eq!(e.admits(&tagged), e.admits(plain), "Show admits {}", tagged);
     }
