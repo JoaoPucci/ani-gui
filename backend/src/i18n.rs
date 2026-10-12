@@ -70,6 +70,9 @@ pub mod keys {
     /// The renderer asked for a search page off a page boundary or past
     /// the deepest one. `AniError::InvalidSearchOffset` maps here.
     pub const REQUEST_INVALID_SEARCH_OFFSET: &str = "error.request.invalid_search_offset";
+    /// A request body that is not the shape its route takes.
+    /// `AniError::InvalidRequestBody` maps here.
+    pub const REQUEST_INVALID_BODY: &str = "error.request.invalid_body";
 
     // --- error.scraper.* ---
     /// Something the app read did not have the shape it expected.

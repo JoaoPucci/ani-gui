@@ -80,6 +80,18 @@ pub async fn kitsu_search_page(
     Ok(page)
 }
 
+/// Read a search-page request body: `{ "query": string, "offset": n }`.
+///
+/// # Errors
+/// - [`AniError::InvalidRequestBody`] when the body is not JSON or has
+///   no string `query`.
+/// - [`AniError::InvalidSearchOffset`] when `offset` is missing or is
+///   not a whole number a page offset can be.
+pub(crate) fn read_page_request(body: &[u8]) -> Result<(String, u32)> {
+    let _ = body;
+    todo!("read_page_request")
+}
+
 /// Lowercase + collapse internal whitespace + trim. Stable cache key
 /// regardless of how the user types the query.
 fn normalize_query(s: &str) -> String {

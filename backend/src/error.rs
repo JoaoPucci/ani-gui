@@ -179,6 +179,14 @@ pub enum AniError {
     #[error("invalid search offset")]
     InvalidSearchOffset,
 
+    /// A request body that is not the shape its route takes: not JSON,
+    /// or missing a field it requires. 400: the caller sent it. Routes
+    /// that read their body themselves answer this instead of the
+    /// framework's plain-text rejection, so the renderer gets the same
+    /// keyed envelope as for every other error.
+    #[error("invalid request body")]
+    InvalidRequestBody,
+
     /// Stream session token was missing, expired, or signature-invalid.
     #[error("invalid stream token")]
     InvalidToken,
@@ -213,6 +221,7 @@ impl AniError {
             Self::UnsupportedPkce => "error.account.unsupported_pkce",
             Self::InvalidKitsuId => crate::i18n::keys::REQUEST_INVALID_KITSU_ID,
             Self::InvalidSearchOffset => crate::i18n::keys::REQUEST_INVALID_SEARCH_OFFSET,
+            Self::InvalidRequestBody => crate::i18n::keys::REQUEST_INVALID_BODY,
             Self::InvalidToken => "error.stream.invalid_token",
         }
     }
@@ -262,7 +271,10 @@ impl AniError {
             Self::Network => 503,
             Self::GateRefused => 503,
             Self::Timeout => 504,
-            Self::UnsupportedPkce | Self::InvalidKitsuId | Self::InvalidSearchOffset => 400,
+            Self::UnsupportedPkce
+            | Self::InvalidKitsuId
+            | Self::InvalidSearchOffset
+            | Self::InvalidRequestBody => 400,
             Self::ParseFailed { .. }
             | Self::FfmpegMissing
             | Self::PlayerSpawnFailed { .. }

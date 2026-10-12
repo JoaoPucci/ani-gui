@@ -222,3 +222,59 @@ async fn a_failed_page_is_not_cached() {
     assert!(kitsu_search_page(&state, "x", 20).await.is_err());
     assert!(kitsu_search_page(&state, "x", 20).await.is_err());
 }
+
+#[test]
+fn a_page_request_reads_its_query_and_offset() {
+    let (q, o) = read_page_request(br#"{"query":"dragon ball","offset":40}"#).expect("ok");
+    assert_eq!((q.as_str(), o), ("dragon ball", 40));
+}
+
+#[test]
+fn a_body_that_is_not_a_page_request_is_an_invalid_body() {
+    for body in [
+        &b"not json"[..],
+        br#"{"offset":20}"#,
+        br#"{"query":7,"offset":20}"#,
+        b"[]",
+    ] {
+        let err = read_page_request(body).expect_err("refused");
+        assert!(
+            matches!(err, crate::error::AniError::InvalidRequestBody),
+            "{}: {err:?}",
+            String::from_utf8_lossy(body)
+        );
+    }
+}
+
+#[test]
+fn an_offset_that_is_no_page_offset_is_an_invalid_offset() {
+    for body in [
+        &br#"{"query":"x"}"#[..],
+        br#"{"query":"x","offset":null}"#,
+        br#"{"query":"x","offset":-20}"#,
+        br#"{"query":"x","offset":20.5}"#,
+        br#"{"query":"x","offset":"20"}"#,
+        br#"{"query":"x","offset":4294967296}"#,
+    ] {
+        let err = read_page_request(body).expect_err("refused");
+        assert!(
+            matches!(err, crate::error::AniError::InvalidSearchOffset),
+            "{}: {err:?}",
+            String::from_utf8_lossy(body)
+        );
+    }
+}
+
+proptest::proptest! {
+    #[test]
+    fn any_integer_offset_reads_as_itself_or_is_refused(offset in proptest::num::i64::ANY) {
+        let body = format!(r#"{{"query":"q","offset":{offset}}}"#);
+        match u32::try_from(offset) {
+            Ok(o) => proptest::prop_assert_eq!(read_page_request(body.as_bytes()).ok(), Some(("q".to_owned(), o))),
+            Err(_) => proptest::prop_assert!(matches!(
+                read_page_request(body.as_bytes()),
+                Err(crate::error::AniError::InvalidSearchOffset)
+            )),
+        }
+    }
+}

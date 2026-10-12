@@ -40,6 +40,7 @@ fn every_variant() -> Vec<AniError> {
         AniError::UnsupportedPkce,
         AniError::InvalidKitsuId,
         AniError::InvalidSearchOffset,
+        AniError::InvalidRequestBody,
         AniError::InvalidToken,
     ];
     for e in &all {
@@ -63,6 +64,7 @@ fn every_variant() -> Vec<AniError> {
             | AniError::UnsupportedPkce
             | AniError::InvalidKitsuId
             | AniError::InvalidSearchOffset
+            | AniError::InvalidRequestBody
             | AniError::InvalidToken => {}
         }
     }

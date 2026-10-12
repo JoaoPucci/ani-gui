@@ -68,15 +68,32 @@ async fn an_offset_off_a_page_boundary_is_a_bad_request_with_its_key() {
     assert!(body.contains("invalid_search_offset"), "{body}");
 }
 
+/// The envelope every app error answers with: a 400 carrying `kind`
+/// and the stable `key`, as JSON.
+async fn assert_envelope(body: &str, key: &str) {
+    let td = TempDir::new().expect("tempdir");
+    let response = post_page(test_app_state(&td), body).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
+    let text = body_string(response).await;
+    let v: serde_json::Value = serde_json::from_str(&text)
+        .unwrap_or_else(|e| panic!("{body}: not the JSON envelope ({e}): {text}"));
+    assert_eq!(v["key"], key, "{body}: {v}");
+}
+
 #[tokio::test]
-async fn a_negative_or_missing_offset_is_refused() {
-    for body in [r#"{"query":"x","offset":-20}"#, r#"{"query":"x"}"#] {
-        let td = TempDir::new().expect("tempdir");
-        let response = post_page(test_app_state(&td), body).await;
-        assert!(
-            response.status().is_client_error(),
-            "{body}: {}",
-            response.status()
-        );
+async fn a_negative_missing_or_fractional_offset_answers_the_offset_envelope() {
+    for body in [
+        r#"{"query":"x","offset":-20}"#,
+        r#"{"query":"x"}"#,
+        r#"{"query":"x","offset":20.5}"#,
+    ] {
+        assert_envelope(body, "error.request.invalid_search_offset").await;
+    }
+}
+
+#[tokio::test]
+async fn a_body_that_is_not_a_page_request_answers_the_body_envelope() {
+    for body in ["not json", r#"{"offset":20}"#, "", "[]"] {
+        assert_envelope(body, "error.request.invalid_body").await;
     }
 }

@@ -85,6 +85,7 @@ fn every_variant_has_a_stable_key() {
         AniError::Metadata,
         AniError::InvalidKitsuId,
         AniError::InvalidSearchOffset,
+        AniError::InvalidRequestBody,
         AniError::InvalidToken,
     ];
     for c in cases {
