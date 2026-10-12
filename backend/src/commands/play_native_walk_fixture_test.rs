@@ -2006,3 +2006,26 @@ async fn a_broad_listing_that_is_another_entry_is_never_cut() {
         panic!("picked {} ({})", p.hit.slug, p.episodes.len());
     }
 }
+
+/// A catalogue tag is not a title's tail: "Show Season 2 (2024)" and
+/// "Show Part 2 (TV)" name a season and a part the unnumbered "Show"
+/// does not, and "Show Season 2 (TV)" is "Show Season 2"'s own.
+#[tokio::test]
+async fn a_catalogue_tag_is_not_a_title_s_tail() {
+    for count in [Some(12), None] {
+        for listing in ["Show Season 2 (2024)", "Show Part 2 (TV)"] {
+            let site = pool_of(&["Show"], count, 2020, "Show", &[("x", listing, 12)]);
+            if let Ok(p) = walk_over(site).await {
+                panic!("{listing} {count:?}: picked {}", p.hit.slug);
+            }
+        }
+        let site = pool_of(
+            &["Show Season 2"],
+            count,
+            2020,
+            "Show Season 2",
+            &[("x", "Show Season 2 (TV)", 12)],
+        );
+        assert_eq!(walk_over(site).await.expect("picked").hit.slug, "x");
+    }
+}

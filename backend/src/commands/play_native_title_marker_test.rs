@@ -390,3 +390,62 @@ proptest::proptest! {
         proptest::prop_assert_eq!(e.names_later_part(&sibling, &wide), ordinal > 1, "{}", sibling);
     }
 }
+
+// ── catalogue tags ──────────────────────────────────────────────────
+
+const TAGGED_TITLES: &[&str] = &[
+    "Show",
+    "Show 2",
+    "Show Season 2",
+    "Show Part 2",
+    "Show 2nd Season Part 2",
+    "Show II Part 2",
+    "Kaiju No. 8 Season 2",
+    "ショー第2期",
+    "ショー２",
+    "86 Part 2",
+    "Gintama'",
+];
+
+const CATALOGUE_TAGS: &[&str] = &[
+    "(2024)",
+    "(TV)",
+    "[OVA]",
+    "（ＯＮＡ）",
+    "【OAD】",
+    "（２０２０）",
+];
+
+proptest::proptest! {
+    /// Every reader reads a title as it reads the title without its
+    /// catalogue tags, wherever the tag stands.
+    #[test]
+    fn every_reader_reads_a_title_without_its_catalogue_tags(
+        t in 0..TAGGED_TITLES.len(),
+        g in 0..CATALOGUE_TAGS.len(),
+        at_end in proptest::bool::ANY,
+    ) {
+        use super::super::play_native_part_title::part_ordinal;
+        use super::super::play_native_title_grammar::{named_ordinals, part_ordinals, stem_number, trailing_markers};
+        use super::super::play_native_title_reading::reading;
+        let plain = TAGGED_TITLES[t];
+        let tag = CATALOGUE_TAGS[g];
+        let tagged = if at_end {
+            format!("{plain} {tag}")
+        } else {
+            let (first, rest) = plain.split_once(' ').unwrap_or((plain, ""));
+            format!("{first} {tag} {rest}")
+        };
+        proptest::prop_assert_eq!(trailing_markers(&tagged), trailing_markers(plain), "markers of {}", tagged);
+        proptest::prop_assert_eq!(stem(&tagged), stem(plain), "stem of {}", tagged);
+        proptest::prop_assert_eq!(stem_number(&tagged), stem_number(plain), "stem number of {}", tagged);
+        proptest::prop_assert_eq!(named_ordinals(&tagged), named_ordinals(plain), "named in {}", tagged);
+        proptest::prop_assert_eq!(part_ordinals(&tagged), part_ordinals(plain), "parts of {}", tagged);
+        proptest::prop_assert_eq!(reading(&tagged), reading(plain), "reading of {}", tagged);
+        proptest::prop_assert_eq!(name(&tagged), name(plain), "name of {}", tagged);
+        proptest::prop_assert_eq!(normalized(&tagged), normalized(plain), "{} as written", tagged);
+        proptest::prop_assert_eq!(part_ordinal("Show", &tagged), part_ordinal("Show", plain), "part of Show in {}", tagged);
+        let e = entry(&["Show"]);
+        proptest::prop_assert_eq!(e.admits(&tagged), e.admits(plain), "Show admits {}", tagged);
+    }
+}
