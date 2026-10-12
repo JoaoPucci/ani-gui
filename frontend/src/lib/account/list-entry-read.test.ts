@@ -113,3 +113,51 @@ describe('readEntryWithRetry', () => {
 		expect(attempts()).toBe(1);
 	});
 });
+
+describe('readEntryWithRetry on a rate limit', () => {
+	const limited = (secs: number | null) =>
+		new AccountApiError(
+			429,
+			JSON.stringify({
+				kind: 'rate_limited',
+				retry_after_secs: secs,
+				key: 'error.network.rate_limited'
+			})
+		);
+
+	it('waits the advertised seconds, then takes the answer', async () => {
+		const { deps, sleeps, attempts } = scripted([
+			fails(limited(7)),
+			answers([{ status: 'watching', progress: 3 }])
+		]);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({
+			kind: 'ok',
+			entry: { status: 'watching', progress: 3 }
+		});
+		expect(sleeps).toEqual([7000]);
+		expect(attempts()).toBe(2);
+	});
+
+	it('gives up on the second rate limit, naming it with its wait', async () => {
+		const { deps, sleeps, attempts } = scripted([fails(limited(60))]);
+		const outcome = await readEntryWithRetry(deps);
+		expect(outcome.kind).toBe('failed');
+		if (outcome.kind !== 'failed') return;
+		expect(outcome.last.rateLimited).toBe(true);
+		expect(outcome.last.retryAfterSecs).toBe(60);
+		expect(outcome.last.envelope).toMatchObject({ kind: 'rate_limited', retry_after_secs: 60 });
+		// One wait, two attempts — not five attempts in fifteen seconds.
+		expect(sleeps).toEqual([60_000]);
+		expect(attempts()).toBe(2);
+	});
+
+	it('switches from the plain schedule to the advertised wait when a 429 arrives', async () => {
+		const { deps, sleeps } = scripted([
+			fails(new Error('no bearer for mal')),
+			fails(limited(20)),
+			answers([null])
+		]);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({ kind: 'ok', entry: null });
+		expect(sleeps).toEqual([1000, 20_000]);
+	});
+});
