@@ -95,4 +95,16 @@ describe('watchSentinel', () => {
 		o.fireAt({ isIntersecting: true, time: 300 });
 		expect(onChange.mock.calls).toEqual([[false], [true]]);
 	});
+
+	// `disconnect` stops new observations but does not drop entries the
+	// observer has already queued; a stopped watch must not report them,
+	// or an old "in reach" lands after the next search has started.
+	it('reports nothing once stopped, even entries queued before', () => {
+		const onChange = vi.fn();
+		const watch = watchSentinel({} as Element, onChange, FakeObserver);
+		const o = FakeObserver.last!;
+		watch.stop();
+		o.fire(true);
+		expect(onChange).not.toHaveBeenCalled();
+	});
 });
