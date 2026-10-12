@@ -164,6 +164,7 @@ The pools each row answers, E = 12:
 | Show Season 3 | "Show Season 3" 24, "Show Season 3 Second Half" 12 | cut — "Second" after W's own season 3 divides it: a part 2 | the span, cut |
 | Show II | "Show II" 24, "Show II Part Two" 12 | cut — "II Part Two" reads 2, 2 | the span, cut |
 | Show Part 2 | "Show Part 2" 24, "Show Part 2 Second Half" 12 | cut — "Second" after W's part names a season 2 | the span, cut |
+| Show Season 3 | "Show Season 3" 24, "Show Season 3 Part 2 Second Half" 12 | "Second" after the part names a season 2, before W's 3: a P, whatever its part 2 says | nothing |
 | Show Season 3 Part 1 | "Show Season 3 Part 1" 24, "Show Season 3 Part 1 Second Half" 12 | no L — "Second" follows W's part, not its season: a season 2, a P | nothing |
 | ショー第3期 | "ショー第3期" 24, "ショー第3期２" 12 | cut — the ２ glued after W's season 3 divides it | the span, cut |
 | Show 2nd Season | "Show 2nd Season" 24, "Show 2nd Season Second Half" 12 | cut — the same, W's season repeated | the span, cut |
