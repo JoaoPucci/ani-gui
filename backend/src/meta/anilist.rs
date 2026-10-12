@@ -63,8 +63,8 @@ pub struct AniListAnimeRef {
     /// Total announced episode count. Null on shows without a
     /// confirmed total.
     pub episodes: Option<u32>,
-    /// AniList's trending score for this entry — rough surrogate for
-    /// "users who interacted in the last few days." Higher = hotter.
+    /// AniList's trending score for this entry: related activity over
+    /// the past hour, per AniList's schema. Higher = hotter.
     pub trending: Option<u32>,
     /// Mean rating × 100 (0..=100). Optional because not every show
     /// has enough scores to compute one.
