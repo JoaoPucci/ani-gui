@@ -444,8 +444,9 @@ const MAX_SAME_ORIGIN_HOPS: usize = 10;
 impl Fetch for CurlImpersonateFetch {
     /// A held request is fetched a hop at a time: a redirect that
     /// stays on its origin is followed, anything else is the answer.
-    /// The hops share the request's one deadline, as the transfers of
-    /// curl's own `-L` chain did.
+    /// The hops share the transport's one deadline, so a chain ends
+    /// there however many hops it takes; each hop is also bounded by
+    /// curl's own `--max-time`, which bounded a whole `-L` chain.
     async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse> {
         tokio::time::timeout(self.deadline, self.follow_on_origin(req))
             .await
