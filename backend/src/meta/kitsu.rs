@@ -651,25 +651,12 @@ impl KitsuClient {
         .await
     }
 
-    /// Reverse of [`Self::lookup_by_mal_id`] — finds the MyAnimeList id
-    /// for a known Kitsu anime. Returns `None` when Kitsu has no MAL
-    /// mapping recorded (rare for popular shows; possible for niche
-    /// entries). Used by the aniskip lookup, whose API is keyed by
-    /// MAL id alone.
-    ///
-    /// # Errors
-    /// - [`AniError::Upstream`] on non-2xx HTTP.
-    /// - [`AniError::Network`] on transport failure.
-    /// - [`AniError::ParseFailed`] on malformed JSON:API.
-    pub async fn mal_id_for_kitsu_id(&self, kitsu_id: &str) -> Result<Option<u32>> {
-        Ok(self.external_ids_for_kitsu_id(kitsu_id).await?.mal)
-    }
-
-    /// Every tracker-relevant external id for a Kitsu anime — the same
-    /// single `/anime/:id?include=mappings` round-trip as
-    /// [`Self::mal_id_for_kitsu_id`], but keeping the `anilist/anime`
-    /// mapping too so tracker id-resolution can fall back to it when
-    /// the MAL mapping is missing (fresh seasonal shows).
+    /// Every tracker-relevant external id for a Kitsu anime, from one
+    /// `/anime/:id?include=mappings` round-trip: the MAL id (aniskip
+    /// and the MAL account key on it) and the `anilist/anime` mapping,
+    /// which tracker id-resolution falls back to when the MAL mapping
+    /// is missing (fresh seasonal shows). Commands read it through
+    /// [`crate::commands::external_ids::external_ids_for`].
     ///
     /// # Errors
     /// - [`AniError::Upstream`] on non-2xx HTTP.

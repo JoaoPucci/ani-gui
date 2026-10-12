@@ -46,10 +46,11 @@ pub async fn aniskip_get(
     let begun = crate::history::guard::epoch(&state.history_path);
     // Bridge kitsu_id → mal_id. No mapping = aniskip can't index
     // it; return empty so the player skips rendering the button.
-    let mal_id = match state.kitsu.mal_id_for_kitsu_id(kitsu_id).await {
-        Ok(Some(id)) => id,
-        Ok(None) => return Ok(Vec::new()),
-        Err(e) => return Err(e),
+    let Some(mal_id) = super::external_ids::external_ids_for(state, kitsu_id)
+        .await?
+        .mal
+    else {
+        return Ok(Vec::new());
     };
 
     let key = cache_key(kitsu_id, mal_id, episode);

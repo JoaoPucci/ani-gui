@@ -485,10 +485,9 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
         // got written as a dead end for a day — so one blip hid those
         // cards long after AniList recovered. `None` here means nobody
         // said anything, and nothing about these ids is recorded.
-        let mal_to_anilist =
-            crate::meta::anilist::media_ids_for_mals(&state.meta_http, &miss_ids, anilist_base)
-                .await
-                .ok();
+        let mal_to_anilist = super::anilist_ids::media_ids_for_mals(state, &miss_ids, anilist_base)
+            .await
+            .ok();
         let anilist_answered = mal_to_anilist.is_some();
         let mal_to_anilist = mal_to_anilist.unwrap_or_default();
         let filled: Vec<(usize, Option<crate::meta::kitsu::KitsuAnimeRef>)> = stream::iter(misses)
@@ -574,7 +573,7 @@ pub(crate) async fn resolve_native_media_id(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Result<Option<ProviderMediaId>> {
-    let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await?;
+    let ids = super::external_ids::external_ids_for(state, kitsu_id).await?;
     match kind {
         // MAL's anime id IS the mapped MAL id; else anilist mapping →
         // AniList's recorded idMal.
@@ -585,12 +584,8 @@ pub(crate) async fn resolve_native_media_id(
             let Some(anilist_id) = ids.anilist else {
                 return Ok(None);
             };
-            let mal_id = crate::meta::anilist::mal_id_for_media_id(
-                &state.meta_http,
-                anilist_id,
-                anilist_base,
-            )
-            .await?;
+            let mal_id =
+                super::anilist_ids::mal_id_for_media_id(state, anilist_id, anilist_base).await?;
             Ok(mal_id.map(ProviderMediaId))
         }
         // AniList keys on its own numeric mediaId: MAL bridge first
@@ -598,8 +593,7 @@ pub(crate) async fn resolve_native_media_id(
         ProviderKind::AniList => {
             if let Some(mal_id) = ids.mal {
                 let media_id =
-                    crate::meta::anilist::media_id_for_mal(&state.meta_http, mal_id, anilist_base)
-                        .await?;
+                    super::anilist_ids::media_id_for_mal(state, mal_id, anilist_base).await?;
                 if media_id.is_some() {
                     return Ok(media_id.map(ProviderMediaId));
                 }
