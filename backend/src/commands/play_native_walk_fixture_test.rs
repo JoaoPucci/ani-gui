@@ -1947,3 +1947,32 @@ async fn another_entry_is_never_charged_to_the_probe_head() {
     );
     assert_eq!(walk_over(site).await.expect("picked").hit.slug, "own");
 }
+
+/// Another entry of the same show could never have won, so its probe
+/// dying unheard blocks no winner: a dead "Show" ahead of a live "Show
+/// 2nd Season" for "Show 2", or a dead season before the entry ahead
+/// of its own listing.
+#[tokio::test]
+async fn another_entry_s_dead_probe_blocks_no_winner() {
+    for (entry, dead, own) in [
+        ("Show 2", "Show", "Show 2nd Season"),
+        (
+            "Show Season 3 Part 2",
+            "Show Season 2 Part 2",
+            "Show 3rd Season Part 2",
+        ),
+    ] {
+        let mut site = pool_of(
+            &[entry],
+            Some(12),
+            2020,
+            entry,
+            &[("dead", dead, 12), ("own", own, 12)],
+        );
+        site.dead = vec!["dead"];
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{entry}: {e:?}"));
+        assert_eq!(picked.hit.slug, "own", "{entry}");
+    }
+}
