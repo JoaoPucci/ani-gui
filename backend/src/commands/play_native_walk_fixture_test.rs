@@ -747,6 +747,29 @@ async fn a_stitched_chain_is_led_by_the_cour_whose_part_agrees() {
     );
 }
 
+/// A broad listing that carries a subtitle the entry's titles do not is
+/// another show, and the entry does not head it: "Show 2nd Season:
+/// Extra Arc" (24) beside its "Part 2" (12) is not cut for a 12-episode
+/// "Show 2nd Season" — its first twelve episodes are the extra arc's,
+/// not the season's. Nothing else fits, so nothing plays.
+#[tokio::test]
+async fn a_broad_listing_with_a_subtitle_the_entry_lacks_is_never_cut_for_it() {
+    let rows = [
+        ("extra-1", "Show 2nd Season: Extra Arc", 24),
+        ("extra-p2-2", "Show 2nd Season: Extra Arc Part 2", 12),
+    ];
+    let site = pool_of(
+        &["Show 2nd Season"],
+        Some(12),
+        2020,
+        "Show 2nd Season",
+        &rows,
+    );
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} ({} episodes)", p.hit.slug, p.episodes.len());
+    }
+}
+
 /// A spanning listing twice the entry's length beside an exact
 /// listing of the entry: "Show" (24) and "Show Part 1" (12) for a
 /// 12-episode entry. The exact listing is the entry's own and wins;
