@@ -94,7 +94,6 @@ use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 
 fn test_state(td: &TempDir) -> Arc<AppState> {
     Arc::new(AppState {
-        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -104,10 +103,7 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -124,7 +120,6 @@ fn test_state(td: &TempDir) -> Arc<AppState> {
 /// server, so id-resolution can be driven (e.g. an unmappable show).
 fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
     Arc::new(AppState {
-        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -134,10 +129,7 @@ fn test_state_with_kitsu(td: &TempDir, kitsu_uri: &str) -> Arc<AppState> {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),

@@ -12,6 +12,7 @@
 <script lang="ts">
 	import { startDownload } from '$lib/download/start';
 	import { defaultRangeOnEnter } from '$lib/download/default-range';
+	import { rangeError as rangeErrorFor } from '$lib/download/range-error';
 	import type { DownloadArgs } from '$lib/api';
 	import { m } from '$lib/paraglide/messages';
 
@@ -119,31 +120,9 @@
 		return Math.max(1, Math.floor(endEp) - Math.floor(startEp) + 1);
 	});
 
-	// Range validation. Returns null when valid, a human-readable
-	// message when not. Used to disable Confirm and surface an inline
-	// error row beneath the inputs. Only checked while in `range`
-	// mode — This and All build their episode arg from constants.
-	const rangeError = $derived.by(() => {
-		if (mode !== 'range') return null;
-		const s = Math.floor(startEp);
-		const e = Math.floor(endEp);
-		if (!Number.isFinite(startEp) || !Number.isFinite(endEp)) {
-			return 'Enter a number for both From and To.';
-		}
-		if (s < 1 || e < 1) return 'Episode numbers must be at least 1.';
-		if (s > rangeMax) {
-			return maxEpisode
-				? `Only ${maxEpisode} episode${maxEpisode === 1 ? '' : 's'} available — From can't exceed ${maxEpisode}.`
-				: `You can't download more than ${rangeMax} episodes for this show.`;
-		}
-		if (e > rangeMax) {
-			return maxEpisode
-				? `Only ${maxEpisode} episode${maxEpisode === 1 ? '' : 's'} available — To can't exceed ${maxEpisode}.`
-				: `You can't download more than ${rangeMax} episodes for this show.`;
-		}
-		if (e < s) return 'To must be greater than or equal to From.';
-		return null;
-	});
+	// Range validation lives in $lib/download/range-error: null when
+	// valid, the inline error row's message when not.
+	const rangeError = $derived(rangeErrorFor({ mode, startEp, endEp, rangeMax, maxEpisode }));
 	const startInvalid = $derived(
 		mode === 'range' &&
 			(!Number.isFinite(startEp) || Math.floor(startEp) < 1 || Math.floor(startEp) > rangeMax)
@@ -160,7 +139,7 @@
 		const picker = typeof window !== 'undefined' ? window.aniGui?.pickDirectory : null;
 		if (!picker) return; // dev-mode browser without preload — leave dir as-is
 		const picked = await picker({
-			title: 'Choose download folder',
+			title: m.download_browse_dialog_title(),
 			defaultPath: dir
 		});
 		if (picked) dir = picked;
