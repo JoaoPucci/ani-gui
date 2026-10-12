@@ -1725,3 +1725,16 @@ async fn an_entry_naming_only_later_divisions_refuses_the_one_before() {
     );
     assert_eq!(walk_over(site).await.expect("picked").hit.slug, "own");
 }
+
+/// Only a candidate carrying the entry's name is the entry before it:
+/// "Eighty Six" is a candidate for "86", "Show Season 1" for "ショー 第十期".
+#[tokio::test]
+async fn the_entry_before_carries_the_entry_s_name() {
+    for (entry, listing) in [("86", "Eighty Six"), ("ショー 第十期", "Show Season 1")] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{entry}: {listing} refused: {e:?}"));
+        assert_eq!(picked.hit.slug, "x");
+    }
+}
