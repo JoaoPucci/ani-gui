@@ -248,7 +248,7 @@ describe('startDownload', () => {
 			[{ kind: 'timeout', key: 'error.scraper.timeout' }, /download took too long/i],
 			[{ kind: 'io', key: 'error.io.generic' }, /download folder/i],
 			[{ kind: 'config', key: 'error.config.parse' }, /no download folder/i],
-			[{ kind: 'scraper', key: 'error.scraper.parse_failed' }, /downloader/i]
+			[{ kind: 'scraper', key: 'error.download.tool_failed' }, /downloader/i]
 		];
 		for (const [failure, copy] of cases) {
 			storeMock.downloadStore.markError.mockReset();
@@ -268,7 +268,7 @@ describe('startDownload', () => {
 		// that ran and failed carries the other key. The user acts on
 		// the two differently, so they read differently.
 		const spawn = { kind: 'scraper', key: 'error.download.tool_spawn_failed' };
-		const ran = { kind: 'scraper', key: 'error.scraper.parse_failed' };
+		const ran = { kind: 'scraper', key: 'error.download.tool_failed' };
 		const shown: string[] = [];
 		for (const failure of [spawn, ran]) {
 			storeMock.downloadStore.markError.mockReset();
