@@ -419,6 +419,21 @@ async fn a_special_the_catalogue_does_not_list_is_refused() {
     assert_picks(&[("44661", None)]).await;
 }
 
+/// Dragon Ball Z: The Real 4-D is a 2016 one-episode special hianime
+/// does not list. Its Japanese title's search answers with One Piece 4D,
+/// a one-episode special from 2015 — a year the filter tolerates as a
+/// December premiere, and a count of one that fits — and the pick
+/// played it. Nothing but the count vouches for it, so the pool is
+/// refused; the refusal overrides a fit on how the hit is named, so it
+/// is not the clean miss the availability cache persists.
+#[tokio::test]
+async fn a_one_episode_special_from_another_show_is_not_the_entry() {
+    match walk("13123").await {
+        Ok(p) => panic!("picked {} ({})", p.hit.slug, p.hit.title),
+        Err(e) => assert!(!e.clean_miss, "a refusal by name persisted: {:?}", e.error),
+    }
+}
+
 /// The same pool with a one-episode crossover special in it — the
 /// franchise's name among other shows' — whose entry page names no
 /// year. A single video's count is one, so the count says nothing of

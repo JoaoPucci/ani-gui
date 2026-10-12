@@ -34,6 +34,11 @@
     "captured": "2026-10-06",
     "sha256": "291cdfca73814bb758c723fa4510ccdcd468eaba12ca1739368b787f7debb30b"
   },
+  "13123.json": {
+    "source": "kitsu.io /api/edge/anime/13123; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-12",
+    "sha256": "ed1c92a4faf9d778b7332d938c3055b30cf6d94c284b47871cd51b5e3169c763"
+  },
   "13237.json": {
     "source": "kitsu.io /api/edge/anime/13237; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
