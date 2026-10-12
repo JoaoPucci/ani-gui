@@ -32,4 +32,18 @@ describe('resultCount', () => {
 		expect(resultCount(5, false)).toEqual({ num: '5', word: 'результатов' });
 		expect(resultCount(22, false)).toEqual({ num: '22', word: 'результата' });
 	});
+
+	// "1+" and "21+" mean more than that, so the word agrees with an
+	// open count rather than with the number shown.
+	it('gives an open count the plural word', () => {
+		overwriteGetLocale(() => 'en');
+		expect(resultCount(1, true)).toEqual({ num: '1+', word: 'results' });
+		overwriteGetLocale(() => 'pt-BR');
+		expect(resultCount(1, true).word).toBe('resultados');
+		overwriteGetLocale(() => 'es-419');
+		expect(resultCount(1, true).word).toBe('resultados');
+		overwriteGetLocale(() => 'ru');
+		expect(resultCount(21, true).word).toBe('результатов');
+		expect(resultCount(22, true).word).toBe('результатов');
+	});
 });
