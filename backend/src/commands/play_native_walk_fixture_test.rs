@@ -1568,3 +1568,32 @@ async fn a_word_ordinal_inside_a_name_does_not_end_it() {
         }
     }
 }
+
+/// An earlier season never completes a broad listing: it names a
+/// season before the one the broad listing carries, wherever the
+/// provider lists it, so nothing is cut.
+#[tokio::test]
+async fn an_earlier_season_never_completes_a_broad_listing() {
+    type Pool<'a> = [(&'a str, &'a str, u32); 2];
+    let cases: [(&str, Pool<'_>); 3] = [
+        (
+            "Show Season 3",
+            [("w", "Show Season 3", 24), ("e", "Show Season 2", 12)],
+        ),
+        (
+            "Show Season 3",
+            [("e", "Show Season 2", 12), ("w", "Show Season 3", 24)],
+        ),
+        ("Show 2", [("w", "Show 2", 24), ("e", "Show Season 1", 12)]),
+    ];
+    for (entry, rows) in cases {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &rows);
+        if let Ok(p) = walk_over(site).await {
+            panic!(
+                "{entry} {rows:?}: picked {} ({})",
+                p.hit.slug,
+                p.episodes.len()
+            );
+        }
+    }
+}
