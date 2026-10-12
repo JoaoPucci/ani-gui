@@ -66,7 +66,9 @@ impl EntryTitles<'_> {
     /// of their names and reads as naming none, and is not one of the
     /// entry's titles: the entry before this one ("Show" or "Show
     /// Season 1" for "Show 2"), never picked. Another name ("Eighty Six"
-    /// for "86") is not the entry before it. An
+    /// for "86") is not the entry before it, nor a title carrying a
+    /// number an entry title carries after the same words ("Show20" for
+    /// an entry also known as "Show 20"). An
     /// entry with any title naming no later division never refuses on
     /// this, so a provider's own unnumbered name for a sequel stands.
     ///
@@ -76,6 +78,8 @@ impl EntryTitles<'_> {
         reading(candidate).is_empty()
             && self.all().all(|t| !reading(t).is_empty())
             && self.all().any(|t| starts_with_name_of(candidate, t))
-            && !self.all().any(|t| normalized(t) == exact)
+            && !self
+                .all()
+                .any(|t| normalized(t) == exact || carries_number_of(candidate, t))
     }
 }
