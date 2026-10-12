@@ -181,15 +181,15 @@
 	.cd-title {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: var(--type-h4);
+		font-size: var(--type-body-l);
 		font-weight: 600;
 		color: var(--bone-100);
 		line-height: var(--leading-tight);
 	}
 	.cd-body {
 		margin: var(--space-3) 0 0;
-		font-size: var(--type-small);
-		line-height: var(--leading-relaxed);
+		font-size: var(--type-meta);
+		line-height: var(--leading-prose);
 		color: var(--bone-300);
 	}
 	.cd-foot {
@@ -205,7 +205,7 @@
 		border-radius: var(--radius-pill);
 		border: 1px solid transparent;
 		font-family: inherit;
-		font-size: var(--type-small);
+		font-size: var(--type-meta);
 		font-weight: 500;
 		line-height: 1;
 		cursor: pointer;

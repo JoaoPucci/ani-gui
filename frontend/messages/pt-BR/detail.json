@@ -28,11 +28,61 @@
 	"episodes_pager_aria_label": "Paginação de episódios",
 	"episodes_pager_next_aria_label": "Próxima página",
 	"episodes_pager_previous_aria_label": "Página anterior",
-	"episodes_range_aired": "{count} exibidos",
-	"episodes_range_aired_so_far": "{count} exibidos até agora",
-	"episodes_range_all": "{count} episódios",
-	"episodes_range_announced_suffix": " · {count} anunciados",
-	"episodes_range_expected_suffix": " · {count} previstos",
+	"episodes_range_aired": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "{count} exibidos",
+				"count=*, countPlural=one": "{count} exibido",
+				"count=*, countPlural=*": "{count} exibidos"
+			}
+		}
+	],
+	"episodes_range_aired_so_far": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "{count} exibidos até agora",
+				"count=*, countPlural=one": "{count} exibido até agora",
+				"count=*, countPlural=*": "{count} exibidos até agora"
+			}
+		}
+	],
+	"episodes_range_all": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "{count} episódios",
+				"count=*, countPlural=one": "{count} episódio",
+				"count=*, countPlural=*": "{count} episódios"
+			}
+		}
+	],
+	"episodes_range_announced_suffix": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": " · {count} anunciados",
+				"count=*, countPlural=one": " · {count} anunciado",
+				"count=*, countPlural=*": " · {count} anunciados"
+			}
+		}
+	],
+	"episodes_range_expected_suffix": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": " · {count} previstos",
+				"count=*, countPlural=one": " · {count} previsto",
+				"count=*, countPlural=*": " · {count} previstos"
+			}
+		}
+	],
 	"episodes_range_listed_suffix": " listados",
 	"episodes_range_loading": "carregando…",
 	"episodes_range_of": "{aired} de {total}",

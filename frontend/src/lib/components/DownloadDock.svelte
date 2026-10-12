@@ -257,7 +257,7 @@
 		background: transparent;
 		border: 1px solid transparent;
 		/* Rounded square — radius-card (8px) gives noticeable corner
-		   rounding without going full circle. var(--radius-sm) was
+		   rounding without going full circle. `--radius-sm` was
 		   an undefined token leaving the active state square at 0. */
 		border-radius: var(--radius-card);
 		color: var(--bone-300);
@@ -363,7 +363,7 @@
 		padding: var(--space-3) var(--space-2);
 		color: var(--bone-300);
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		text-align: center;
 	}
 	.dl-dock-list {
@@ -383,7 +383,7 @@
 		align-items: center;
 		gap: var(--space-2);
 		padding: var(--space-2) var(--space-3);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		transition: background var(--dur-fast) var(--ease-out-soft);
 		min-inline-size: 0;
 		overflow: hidden;
@@ -408,7 +408,7 @@
 	}
 	.dl-row-title {
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		font-weight: 500;
 		color: var(--bone-100);
 		overflow: hidden;
@@ -422,7 +422,7 @@
 	}
 	.dl-row-ep {
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		color: var(--brand);
 		white-space: nowrap;
 		flex-shrink: 0;
@@ -465,7 +465,7 @@
 		flex-basis: 100%;
 		min-inline-size: 0;
 		font-size: var(--type-micro);
-		color: var(--text-dim, #9a9a9a);
+		color: var(--bone-300);
 		overflow-wrap: anywhere;
 	}
 	.dl-row-error {
@@ -475,9 +475,9 @@
 		justify-content: center;
 		inline-size: 1.25rem;
 		block-size: 1.25rem;
-		background: color-mix(in oklab, var(--oxblood, #b11a1a) 25%, transparent);
+		background: color-mix(in oklab, var(--accent-oxblood) 25%, transparent);
 		border-radius: 50%;
-		color: var(--oxblood, #b11a1a);
+		color: var(--accent-oxblood);
 		font-family: var(--font-mono);
 		font-size: var(--type-micro);
 		font-weight: 700;
@@ -498,7 +498,7 @@
 		padding: 0;
 		background: transparent;
 		border: 0;
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		color: var(--bone-300);
 		cursor: pointer;
 		flex-shrink: 0;

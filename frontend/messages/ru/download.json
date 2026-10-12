@@ -1,7 +1,18 @@
 {
 	"eyebrow_key": "Загрузка",
 	"eyebrow_value_this": "эпизод {episode}",
-	"eyebrow_value_all": "все {count} эпизодов",
+	"eyebrow_value_all": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=1, countPlural=*": "{count} эпизод",
+				"count=*, countPlural=one": "все {count} эпизод",
+				"count=*, countPlural=few": "все {count} эпизода",
+				"count=*, countPlural=*": "все {count} эпизодов"
+			}
+		}
+	],
 	"eyebrow_value_range": "{start}–{end}",
 	"label_episodes": "Эпизоды",
 	"mode_this_episode": "Этот эпизод",
@@ -12,17 +23,69 @@
 	"range_to_aria_label": "По эпизод",
 	"range_separator": "–",
 	"range_of": "из {total}",
-	"range_announced_suffix": " · {count} анонсировано",
+	"range_announced_suffix": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": " · {count} анонсирован",
+				"countPlural=few": " · {count} анонсировано",
+				"countPlural=*": " · {count} анонсировано"
+			}
+		}
+	],
 	"range_max_prefix": "макс. {max}",
 	"range_unknown_suffix": " · число эпизодов неизвестно",
 	"hint_this": "Скачает только эпизод {episode}.",
-	"hint_all_prefix_total": "Скачает все {count}",
-	"hint_all_aired": " вышедших",
-	"hint_all_episodes_suffix": " эпизодов подряд",
-	"hint_all_gap_suffix": " — анонсировано {announced}, но вышло пока только {available}.",
+	"hint_all_total": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=1, countPlural=*": "Скачает {count} эпизод",
+				"count=*, countPlural=one": "Скачает все {count} эпизод подряд",
+				"count=*, countPlural=few": "Скачает все {count} эпизода подряд",
+				"count=*, countPlural=*": "Скачает все {count} эпизодов подряд"
+			}
+		}
+	],
+	"hint_all_total_aired": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=1, countPlural=*": "Скачает {count} вышедший эпизод",
+				"count=*, countPlural=one": "Скачает все {count} вышедший эпизод подряд",
+				"count=*, countPlural=few": "Скачает все {count} вышедших эпизода подряд",
+				"count=*, countPlural=*": "Скачает все {count} вышедших эпизодов подряд"
+			}
+		}
+	],
+	"hint_all_gap_suffix": [
+		{
+			"declarations": ["input available", "local availablePlural = available: plural"],
+			"selectors": ["availablePlural"],
+			"match": {
+				"availablePlural=one": " — анонсировано {announced}, но вышел пока только {available}.",
+				"availablePlural=few": " — анонсировано {announced}, но вышло пока только {available}.",
+				"availablePlural=*": " — анонсировано {announced}, но вышло пока только {available}."
+			}
+		}
+	],
 	"hint_all_nogap_suffix": ".",
 	"hint_all_unknown": "Число эпизодов неизвестно — задайте через диапазон.",
-	"hint_range": "Скачает {count} эпизодов подряд.",
+	"hint_range": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=1, countPlural=*": "Скачает {count} эпизод.",
+				"count=*, countPlural=one": "Скачает {count} эпизод подряд.",
+				"count=*, countPlural=few": "Скачает {count} эпизода подряд.",
+				"count=*, countPlural=*": "Скачает {count} эпизодов подряд."
+			}
+		}
+	],
 	"label_directory": "Сохранить в",
 	"button_browse": "Обзор…",
 	"hint_filename_prefix": "Файлы сохраняются как ",
@@ -35,13 +98,53 @@
 	"bar_ep_label_range_progress": "Эп. {current} из {total}",
 	"bar_ep_label_range_static": "Эп. {episode}",
 	"bar_ep_label_single": "Эп. {episode}",
-	"bar_label_multi": "Загрузка {count} серий",
+	"bar_label_multi": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Загрузка {count} серии",
+				"countPlural=few": "Загрузка {count} серий",
+				"countPlural=*": "Загрузка {count} серий"
+			}
+		}
+	],
 	"bar_cancel_all_aria_label": "Отменить все загрузки",
 	"bar_cancel_all_title": "Отменить все загрузки",
 	"bar_cancel_confirm_single": "Отменить загрузку «{title}»?",
-	"bar_cancel_confirm_multi": "Отменить {count} активных загрузок?",
-	"dock_active_speed_label": "{count} загрузок в процессе, {speed}",
-	"dock_unseen_label": "{count} загрузок завершено",
+	"bar_cancel_confirm_multi": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Отменить {count} активную загрузку?",
+				"countPlural=few": "Отменить {count} активные загрузки?",
+				"countPlural=*": "Отменить {count} активных загрузок?"
+			}
+		}
+	],
+	"dock_active_speed_label": [
+		{
+			"declarations": ["input count", "input speed", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} загрузка в процессе, {speed}",
+				"countPlural=few": "{count} загрузки в процессе, {speed}",
+				"countPlural=*": "{count} загрузок в процессе, {speed}"
+			}
+		}
+	],
+	"dock_unseen_label": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} загрузка завершена",
+				"countPlural=few": "{count} загрузки завершены",
+				"countPlural=*": "{count} загрузок завершено"
+			}
+		}
+	],
 	"dock_idle_label": "Загрузки",
 	"dock_title": "Загрузки",
 	"dock_empty": "Загрузок пока нет.",
@@ -68,7 +171,17 @@
 	"range_error_below_one": "Нумерация эпизодов начинается с 1.",
 	"range_error_start_over_max": "Первый эпизод не может быть больше {max} — это последний доступный.",
 	"range_error_end_over_max": "Последний эпизод не может быть больше {max} — это последний доступный.",
-	"range_error_over_cap": "Нельзя загрузить больше {max} эпизодов этого тайтла.",
+	"range_error_over_cap": [
+		{
+			"declarations": ["input max", "local maxPlural = max: plural"],
+			"selectors": ["maxPlural"],
+			"match": {
+				"maxPlural=one": "Нельзя загрузить больше {max} эпизода этого тайтла.",
+				"maxPlural=few": "Нельзя загрузить больше {max} эпизодов этого тайтла.",
+				"maxPlural=*": "Нельзя загрузить больше {max} эпизодов этого тайтла."
+			}
+		}
+	],
 	"range_error_end_before_start": "Последний эпизод не может идти раньше первого.",
 	"browse_dialog_title": "Выберите папку для загрузок",
 	"failure_timeout": "Загрузка заняла слишком много времени и была остановлена. Попробуйте позже.",

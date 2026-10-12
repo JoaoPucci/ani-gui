@@ -2300,7 +2300,7 @@
 		border: 1px solid var(--ink-300);
 		border-radius: var(--radius-card);
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		color: var(--bone-200);
 	}
 	.unavailable > [aria-hidden] {

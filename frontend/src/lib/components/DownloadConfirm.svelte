@@ -378,15 +378,14 @@
 						{m.download_hint_this({ episode: args.episode })}
 					{:else if mode === 'all'}
 						{#if maxEpisode}
-							{m.download_hint_all_prefix_total({ count: maxEpisode })}
 							{hasGap
-								? m.download_hint_all_aired()
-								: ''}{m.download_hint_all_episodes_suffix()}{#if hasGap && announcedEpisode != null}{m.download_hint_all_gap_suffix(
-									{
-										announced: announcedEpisode,
-										available: maxEpisode
-									}
-								)}{:else}{m.download_hint_all_nogap_suffix()}{/if}
+								? m.download_hint_all_total_aired({ count: maxEpisode })
+								: m.download_hint_all_total({
+										count: maxEpisode
+									})}{#if hasGap && announcedEpisode != null}{m.download_hint_all_gap_suffix({
+									announced: announcedEpisode,
+									available: maxEpisode
+								})}{:else}{m.download_hint_all_nogap_suffix()}{/if}
 						{:else}
 							{m.download_hint_all_unknown()}
 						{/if}
@@ -507,7 +506,7 @@
 	.dl-title {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: var(--type-h3);
+		font-size: var(--type-display-m);
 		font-weight: 600;
 		color: var(--bone-100);
 		line-height: var(--leading-tight);
@@ -540,7 +539,7 @@
 		padding: 2px;
 		background: var(--ink-000);
 		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		margin-block-start: var(--space-2);
 	}
 	.dl-mode-btn {
@@ -552,10 +551,10 @@
 		padding: var(--space-2) var(--space-3);
 		background: transparent;
 		border: 1px solid transparent;
-		border-radius: calc(var(--radius-sm) - 2px);
+		border-radius: calc(var(--radius-control) - 2px);
 		color: var(--bone-200);
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		font-weight: 500;
 		cursor: pointer;
 		transition:
@@ -607,7 +606,7 @@
 		background: var(--ink-000);
 		color: var(--bone-100);
 		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		box-shadow: 0 8px 18px -6px rgb(0 0 0 / 0.55);
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
@@ -672,10 +671,10 @@
 		padding: var(--space-2) var(--space-3);
 		background: var(--ink-000);
 		border: 1px solid var(--ink-200);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		color: var(--bone-100);
 		font-family: var(--font-mono);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 	}
 	.dl-input:focus-visible {
 		outline: none;
@@ -685,18 +684,18 @@
 	/* Invalid Range input — oxblood border, faint background tint;
 	   keeps the focus halo readable on top via box-shadow stack. */
 	.dl-input-error {
-		border-color: var(--oxblood, #b11a1a);
-		background: color-mix(in oklab, var(--oxblood, #b11a1a) 10%, var(--ink-000));
+		border-color: var(--accent-oxblood);
+		background: color-mix(in oklab, var(--accent-oxblood) 10%, var(--ink-000));
 	}
 	.dl-input-error:focus-visible {
-		border-color: var(--oxblood, #b11a1a);
-		box-shadow: 0 0 0 2px color-mix(in oklab, var(--oxblood, #b11a1a) 35%, transparent);
+		border-color: var(--accent-oxblood);
+		box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-oxblood) 35%, transparent);
 	}
 	.dl-error {
 		margin: var(--space-2) 0 0;
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
-		color: var(--oxblood, #b11a1a);
+		color: var(--accent-oxblood);
 	}
 	.dl-hint {
 		margin: 0;
@@ -718,9 +717,9 @@
 		align-items: center;
 		gap: var(--space-2);
 		padding: var(--space-2) var(--space-4);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		font-weight: 500;
 		cursor: pointer;
 		transition: background var(--dur-fast) var(--ease-out-soft);

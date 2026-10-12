@@ -28,10 +28,50 @@
 	"episodes_pager_aria_label": "Пагинация эпизодов",
 	"episodes_pager_next_aria_label": "Следующая страница",
 	"episodes_pager_previous_aria_label": "Предыдущая страница",
-	"episodes_range_aired": "{count} вышло",
-	"episodes_range_aired_so_far": "{count} вышло",
-	"episodes_range_all": "{count} эпизодов",
-	"episodes_range_announced_suffix": " · {count} анонсировано",
+	"episodes_range_aired": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} вышел",
+				"countPlural=few": "{count} вышло",
+				"countPlural=*": "{count} вышло"
+			}
+		}
+	],
+	"episodes_range_aired_so_far": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} вышел",
+				"countPlural=few": "{count} вышло",
+				"countPlural=*": "{count} вышло"
+			}
+		}
+	],
+	"episodes_range_all": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} эпизод",
+				"countPlural=few": "{count} эпизода",
+				"countPlural=*": "{count} эпизодов"
+			}
+		}
+	],
+	"episodes_range_announced_suffix": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": " · {count} анонсирован",
+				"countPlural=few": " · {count} анонсировано",
+				"countPlural=*": " · {count} анонсировано"
+			}
+		}
+	],
 	"episodes_range_expected_suffix": " · {count} ожидается",
 	"episodes_range_listed_suffix": " в списке",
 	"episodes_range_loading": "загрузка…",
