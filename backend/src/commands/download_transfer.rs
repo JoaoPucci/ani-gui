@@ -37,6 +37,7 @@ use std::path::{Path, PathBuf};
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn transfer_with_sidecars<F>(
     client: &reqwest::Client,
+    budget: &crate::proxy::host_budget::HostBudget,
     source: &StreamSource,
     dest: &Path,
     file_stem: &str,
@@ -44,21 +45,33 @@ pub(crate) async fn transfer_with_sidecars<F>(
     path_env: &str,
     timeout: std::time::Duration,
     on_line: &mut F,
+    pacing: &super::download_pacing::Pacing<'_>,
 ) -> Result<Vec<PathBuf>>
 where
     F: FnMut(&str) + Send,
 {
+    // The tracks are paced with the transfer. Whether playback is live
+    // is read once, as the phase starts, for the phase's concurrency
+    // and deadline: one at a time under a deadline long enough for a
+    // listing at the cap to take its tokens that way, or four at a
+    // time for the phase's minute. Each fetch also asks the gate, so
+    // once playback is live every download's tracks share one lane
+    // to the host, whatever the phase chose.
+    let live = pacing.is_live();
+    let gate = pacing.sidecar_gate();
     let mut sidecars = std::pin::pin!(super::download::stage_sidecar_subtitles_with(
         client,
+        budget,
+        &gate,
         &source.subtitles,
         source.referer.as_deref(),
         dest,
         file_stem,
-        super::download::SIDECAR_PHASE_DEADLINE,
-        super::download::SIDECAR_FETCH_CONCURRENCY,
+        super::download_pacing::sidecar_phase_deadline(live),
+        super::download_pacing::sidecar_concurrency(live),
     ));
-    let mut transfer = std::pin::pin!(super::download::spawn_download_tool(
-        source, dest, file_stem, quality, path_env, timeout, on_line,
+    let mut transfer = std::pin::pin!(super::download::spawn_download_tool_paced(
+        source, dest, file_stem, quality, path_env, timeout, on_line, pacing,
     ));
     let mut staged = None;
     let transferred = loop {

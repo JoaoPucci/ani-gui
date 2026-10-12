@@ -102,13 +102,13 @@
 			}
 		}
 	],
-	"dock_active_label": [
+	"dock_active_speed_label": [
 		{
-			"declarations": ["input count", "local countPlural = count: plural"],
+			"declarations": ["input count", "input speed", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} download in progress",
-				"countPlural=*": "{count} downloads in progress"
+				"countPlural=one": "{count} download in progress, {speed}",
+				"countPlural=*": "{count} downloads in progress, {speed}"
 			}
 		}
 	],
@@ -164,5 +164,7 @@
 	"failure_write": "Couldn't save the file to the download folder. Check that the folder exists, is writable and has free space.",
 	"failure_no_folder": "No download folder is set. Choose one and try again.",
 	"failure_tool": "The downloader stopped with an error. Try again later.",
-	"failure_tool_spawn": "The downloader couldn't be started. If you installed yt-dlp or ffmpeg yourself, check that it runs; otherwise reinstall ani-gui."
+	"failure_tool_spawn": "The downloader couldn't be started. If you installed yt-dlp or ffmpeg yourself, check that it runs; otherwise reinstall ani-gui.",
+	"speed_kbps": "{value} KB/s",
+	"speed_mbps": "{value} MB/s"
 }

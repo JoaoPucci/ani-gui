@@ -35,6 +35,9 @@ type Row = {
 
 const count = (n: number) => ({ count: n });
 
+/** What the dock's speed label carries beside its count. */
+const SPEED = '1.2 MB/s';
+
 const ROWS: Row[] = [
 	{
 		message: 'search_count_word',
@@ -343,26 +346,31 @@ const ROWS: Row[] = [
 		}
 	},
 	{
-		message: 'download_dock_active_label',
+		message: 'download_dock_active_speed_label',
+		inputs: (n) => ({ count: n, speed: SPEED }),
 		en: {
-			0: '0 downloads in progress',
-			1: '1 download in progress',
-			2: '2 downloads in progress'
+			0: '0 downloads in progress, ' + SPEED,
+			1: '1 download in progress, ' + SPEED,
+			2: '2 downloads in progress, ' + SPEED
 		},
 		'pt-BR': {
-			0: '0 downloads em andamento',
-			1: '1 download em andamento',
-			2: '2 downloads em andamento'
+			0: '0 downloads em andamento, ' + SPEED,
+			1: '1 download em andamento, ' + SPEED,
+			2: '2 downloads em andamento, ' + SPEED
 		},
-		'es-419': { 0: '0 descargas en curso', 1: '1 descarga en curso', 2: '2 descargas en curso' },
+		'es-419': {
+			0: '0 descargas en curso, ' + SPEED,
+			1: '1 descarga en curso, ' + SPEED,
+			2: '2 descargas en curso, ' + SPEED
+		},
 		ru: {
-			1: '1 загрузка в процессе',
-			2: '2 загрузки в процессе',
-			5: '5 загрузок в процессе',
-			21: '21 загрузка в процессе',
-			22: '22 загрузки в процессе',
-			25: '25 загрузок в процессе',
-			11: '11 загрузок в процессе'
+			1: '1 загрузка в процессе, ' + SPEED,
+			2: '2 загрузки в процессе, ' + SPEED,
+			5: '5 загрузок в процессе, ' + SPEED,
+			21: '21 загрузка в процессе, ' + SPEED,
+			22: '22 загрузки в процессе, ' + SPEED,
+			25: '25 загрузок в процессе, ' + SPEED,
+			11: '11 загрузок в процессе, ' + SPEED
 		}
 	},
 	{
@@ -461,8 +469,9 @@ describe('counted words agree with their count', () => {
 			expect(lookup(name), name).toBeUndefined();
 		}
 		for (const locale of ['en', 'pt-BR', 'es-419'] as const) {
-			for (const name of ['download_dock_active_label', 'download_dock_unseen_label']) {
-				expect(lookup(name)?.({ count: 3 }, { locale }), `${locale} ${name}`).not.toMatch(/\(s\)/);
+			for (const name of ['download_dock_active_speed_label', 'download_dock_unseen_label']) {
+				const text = lookup(name)?.({ count: 3, speed: SPEED }, { locale });
+				expect(text, `${locale} ${name}`).not.toMatch(/\(s\)/);
 			}
 		}
 	});

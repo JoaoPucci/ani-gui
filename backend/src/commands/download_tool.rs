@@ -1,8 +1,8 @@
-//! How to tell a yt-dlp run went wrong from what it says.
+//! How to tell a download tool's run went wrong from what it says.
 //!
-//! Reads yt-dlp specifically — it matches the tool's own warning line
-//! — so it sits beside the downloader rather than with the generic
-//! spawn plumbing in [`crate::spawn`].
+//! Reads the tools specifically — yt-dlp's own warning line, ffmpeg's
+//! own rejection of an option — so it sits beside the downloader
+//! rather than with the generic spawn plumbing in [`crate::spawn`].
 //!
 //! A companion used to live here that deleted a mislabeled file from
 //! the user's download folder, identifying it by the MPEG-TS sync
@@ -35,4 +35,14 @@ pub(crate) fn yt_dlp_could_not_repackage(stderr: &str) -> bool {
         let line = line.trim_start();
         line.starts_with("WARNING:") && line.contains("Possible MPEG-TS in MP4 container")
     })
+}
+
+/// Whether an ffmpeg line is a build rejecting the option that turns
+/// the hls demuxer's extension check off: a build without the check
+/// has no such option — Ubuntu 24.04's 6.1 is one — and refuses the
+/// whole command for it. The match is the line naming the option as
+/// unknown; the line after it, "Error splitting the argument list",
+/// says the same of any unknown option.
+pub(crate) fn ffmpeg_rejected_extension_picky(line: &str) -> bool {
+    line.contains("Unrecognized option 'extension_picky'")
 }

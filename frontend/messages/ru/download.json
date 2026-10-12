@@ -123,14 +123,14 @@
 			}
 		}
 	],
-	"dock_active_label": [
+	"dock_active_speed_label": [
 		{
-			"declarations": ["input count", "local countPlural = count: plural"],
+			"declarations": ["input count", "input speed", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "{count} загрузка в процессе",
-				"countPlural=few": "{count} загрузки в процессе",
-				"countPlural=*": "{count} загрузок в процессе"
+				"countPlural=one": "{count} загрузка в процессе, {speed}",
+				"countPlural=few": "{count} загрузки в процессе, {speed}",
+				"countPlural=*": "{count} загрузок в процессе, {speed}"
 			}
 		}
 	],
@@ -188,5 +188,7 @@
 	"failure_write": "Не удалось сохранить файл в папку загрузок. Проверьте, что папка существует, доступна для записи и на диске есть место.",
 	"failure_no_folder": "Папка для загрузок не задана. Выберите её и попробуйте снова.",
 	"failure_tool": "Программа загрузки завершилась с ошибкой. Попробуйте позже.",
-	"failure_tool_spawn": "Не удалось запустить программу загрузки. Если вы устанавливали yt-dlp или ffmpeg сами, проверьте, что они запускаются; иначе переустановите ani-gui."
+	"failure_tool_spawn": "Не удалось запустить программу загрузки. Если вы устанавливали yt-dlp или ffmpeg сами, проверьте, что они запускаются; иначе переустановите ani-gui.",
+	"speed_kbps": "{value} КБ/с",
+	"speed_mbps": "{value} МБ/с"
 }

@@ -116,14 +116,14 @@
 			}
 		}
 	],
-	"dock_active_label": [
+	"dock_active_speed_label": [
 		{
-			"declarations": ["input count", "local countPlural = count: plural"],
+			"declarations": ["input count", "input speed", "local countPlural = count: plural"],
 			"selectors": ["count", "countPlural"],
 			"match": {
-				"count=0, countPlural=*": "{count} downloads em andamento",
-				"count=*, countPlural=one": "{count} download em andamento",
-				"count=*, countPlural=*": "{count} downloads em andamento"
+				"count=0, countPlural=*": "{count} downloads em andamento, {speed}",
+				"count=*, countPlural=one": "{count} download em andamento, {speed}",
+				"count=*, countPlural=*": "{count} downloads em andamento, {speed}"
 			}
 		}
 	],
@@ -181,5 +181,7 @@
 	"failure_write": "Não foi possível salvar o arquivo na pasta de download. Verifique se a pasta existe, permite gravação e tem espaço livre.",
 	"failure_no_folder": "Nenhuma pasta de download definida. Escolha uma e tente novamente.",
 	"failure_tool": "O programa de download parou com um erro. Tente novamente mais tarde.",
-	"failure_tool_spawn": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele executa; caso contrário, reinstale o ani-gui."
+	"failure_tool_spawn": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele executa; caso contrário, reinstale o ani-gui.",
+	"speed_kbps": "{value} KB/s",
+	"speed_mbps": "{value} MB/s"
 }

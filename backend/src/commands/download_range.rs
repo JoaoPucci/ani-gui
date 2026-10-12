@@ -202,9 +202,28 @@ where
             subtitles: resolved.subtitles,
         };
         // The sidecars are fetched beside the transfer, while their
-        // signed URLs are as fresh as the stream's.
+        // signed URLs are as fresh as the stream's. The transfer yields
+        // to playback the proxy is serving.
+        let is_live = || {
+            state
+                .sessions
+                .playback_live(super::download_pacing::PLAYBACK_LIVE_WINDOW)
+        };
+        // The relay opens the first time a paced run asks for it and
+        // closes when the transfer is done with it.
+        let download_relay = super::download::DownloadRelay::new(state, &source);
+        let relay = || download_relay.url();
+        let pacing = super::download_pacing::Pacing::new(
+            &is_live,
+            super::download_pacing::PACING_POLL,
+            &super::download_pacing::PACED_LANE,
+        )
+        .woken_by(state.sessions.media_noted())
+        .charged_to(&state.host_budget)
+        .with_relay(&relay);
         super::download_transfer::transfer_with_sidecars(
             &state.proxy_http,
+            &state.host_budget,
             &source,
             dest,
             &file_stem,
@@ -212,11 +231,12 @@ where
             path_env,
             std::time::Duration::from_secs(60 * 60),
             &mut |line| {
-                tracing::info!(line = %line, "download.tool.stderr");
+                super::download_tool_output::log_progress_line(line);
                 on_progress(DownloadProgress {
                     line: line.to_string(),
                 });
             },
+            &pacing,
         )
         .await?;
     }

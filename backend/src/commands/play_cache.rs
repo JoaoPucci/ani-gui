@@ -99,8 +99,8 @@ pub(crate) async fn row_before_check(
 /// How long a cached row may take to prove itself live. The row is
 /// a shortcut past a fresh resolve, whose first request answers in
 /// a few seconds; a shortcut that takes longer than that is no
-/// shortcut, and the metadata client would otherwise let each URL
-/// stall for its own thirty seconds. The URLs are asked together,
+/// shortcut, and the proxy's client would otherwise let each URL
+/// stall for its own two minutes. The URLs are asked together,
 /// so this bounds the whole check, however many tracks the row
 /// lists.
 pub(crate) const CACHED_ROW_CHECK_DEADLINE: std::time::Duration =
@@ -151,14 +151,21 @@ pub(crate) async fn cached_row_is_live_within(
         };
         track_urls.push(url);
     }
+    // The host counts the check's requests, so each hop waits for a
+    // token at the host it reaches, as a probe: behind a player playing
+    // there, ahead of background traffic. The proxy's client follows no
+    // redirect on its own, so every hop is seen; a check its tokens
+    // keep past the deadline reads as not live, and a fresh resolve
+    // takes its place.
+    let budget = &state.host_budget;
     let stream = async {
-        upstream_head_ok(&state.meta_http, &stream_url, &cached.referer)
+        upstream_head_ok(&state.proxy_http, budget, &stream_url, &cached.referer)
             .await
             .then_some(())
             .ok_or(())
     };
     let tracks = track_urls.iter().map(|url| async move {
-        cached_track_ok(&state.meta_http, url, &cached.referer)
+        cached_track_ok(&state.proxy_http, budget, url, &cached.referer)
             .await
             .then_some(())
             .ok_or(())
@@ -228,7 +235,7 @@ pub(crate) async fn try_launch_args_from_cache(
         tracing::info!(
             title = %args.title,
             episode = %args.episode,
-            "play_external: cache row unservable (provider not walked, or the stream's HEAD or a track's read failed), evicted, resolving afresh",
+            "play_external: cache row unservable (provider not walked, or the stream's HEAD or a track's read failed, or the check timed out), evicted, resolving afresh",
         );
         return None;
     }
