@@ -103,4 +103,25 @@ proptest! {
         prop_assert_eq!(marks_agree(&a, &b), want);
         prop_assert_eq!(marks_agree(&b, &a), want);
     }
+
+    /// An apostrophe that opens a quote or sits inside a word is no
+    /// prime: quoting any word of a title in any apostrophe form, or
+    /// writing a possessive, leaves its marks as they were, the primes
+    /// it ends on included; and an elision is no prime either.
+    #[test]
+    fn quotes_elisions_and_possessives_are_no_primes(
+        words in words(),
+        quoted in 0usize..4,
+        open in proptest::sample::select(PRIMES.to_vec()),
+        close in proptest::sample::select(PRIMES.to_vec()),
+        ending in 0usize..3,
+    ) {
+        let mut parts: Vec<String> = words.iter().map(|w| (*w).to_string()).collect();
+        let at = quoted % parts.len();
+        parts[at] = format!("{open}{}{close}", parts[at]);
+        let plain = format!("{}{}", words.join(" "), "'".repeat(ending));
+        let marked = format!("{}{open}s {}{}", words[0], parts.join(" "), "'".repeat(ending));
+        prop_assert_eq!(title_marks(&marked), title_marks(&format!("{}s {plain}", words[0])));
+        prop_assert_eq!(title_marks(&format!("{open}Tis {}", words.join(" "))), (String::new(), Vec::new()));
+    }
 }
