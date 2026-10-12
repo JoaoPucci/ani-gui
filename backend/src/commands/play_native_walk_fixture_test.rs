@@ -770,6 +770,124 @@ async fn a_broad_listing_with_a_subtitle_the_entry_lacks_is_never_cut_for_it() {
     }
 }
 
+/// A pool written out inline: an entry known by `titles` with `count`
+/// and `year`, every title's search answering with the rows `(slug,
+/// title, episodes, the year its page names)`.
+fn inline_pool(
+    titles: &[&str],
+    count: Option<u32>,
+    year: Option<u32>,
+    subtype: &str,
+    rows: &[(&str, &str, u32, Option<u32>)],
+) -> Recorded {
+    let listing = |n: u32| {
+        serde_json::Value::Array((1..=n).map(|k| serde_json::json!([k, k, null])).collect())
+    };
+    let json = serde_json::json!({
+        "kitsu": {
+            "canonical": titles[0],
+            "alt_titles": titles[1..],
+            "episode_count": count,
+            "year": year,
+            "subtype": subtype,
+        },
+        "searches": titles.iter().map(|q| ((*q).to_string(), serde_json::json!(rows.iter().map(|(s, t, _, _)| [*s, *t, subtype]).collect::<Vec<_>>()))).collect::<serde_json::Map<_, _>>(),
+        "episodes": rows.iter().map(|(s, _, n, _)| ((*s).to_string(), listing(*n))).collect::<serde_json::Map<_, _>>(),
+        "years": rows.iter().map(|(s, _, _, y)| ((*s).to_string(), serde_json::json!(y))).collect::<serde_json::Map<_, _>>(),
+    });
+    Recorded::inline("inline", &json.to_string())
+}
+
+/// The marks a title is written with are part of what names it. A
+/// prime tells Gintama' from the Gintama before it, and a release year
+/// in brackets a film from its remake; neither is a word, and reading
+/// titles by their words alone named the earlier show as the entry.
+/// With no count and no year, a pool holding only "Gintama" is refused
+/// for "Gintama'"; a one-video "Film (2020)" refuses "Film (2019)" whose
+/// page names no year; the spanning cut does not head "Show" (24) for
+/// "Show'" beside its Part 2 (12). Where the marks agree, each is still
+/// taken.
+#[tokio::test]
+async fn a_title_s_marks_and_release_year_are_part_of_what_names_it() {
+    let refused = [
+        inline_pool(
+            &["Gintama'"],
+            None,
+            None,
+            "TV",
+            &[("gintama-1", "Gintama", 201, None)],
+        ),
+        inline_pool(
+            &["Gintama’"],
+            None,
+            None,
+            "TV",
+            &[("gintama-1", "Gintama", 201, None)],
+        ),
+        inline_pool(
+            &["Film (2020)", "Film Gekijouban"],
+            Some(1),
+            Some(2020),
+            "movie",
+            &[("film-1", "Film (2019)", 1, None)],
+        ),
+        inline_pool(
+            &["Show'"],
+            Some(12),
+            Some(2020),
+            "TV",
+            &[
+                ("show-1", "Show", 24, Some(2020)),
+                ("show-p2-2", "Show Part 2", 12, Some(2020)),
+            ],
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for site in refused {
+        let entry = site.doc.kitsu.canonical.clone();
+        if let Ok(p) = walk_over(site).await {
+            wrong.push(format!("{entry}: picked {}", p.hit.slug));
+        }
+    }
+    let taken = [
+        (
+            inline_pool(
+                &["Gintama'"],
+                None,
+                None,
+                "TV",
+                &[
+                    ("gintama-1", "Gintama", 201, None),
+                    ("gintama-2-2", "Gintama′", 51, None),
+                ],
+            ),
+            "gintama-2-2",
+        ),
+        (
+            inline_pool(
+                &["Film (2020)", "Film Gekijouban"],
+                Some(1),
+                Some(2020),
+                "movie",
+                &[
+                    ("film-1", "Film (2019)", 1, None),
+                    ("film-2", "Film Gekijouban", 1, None),
+                ],
+            ),
+            "film-2",
+        ),
+    ];
+    for (site, want) in taken {
+        let entry = site.doc.kitsu.canonical.clone();
+        match walk_over(site).await {
+            Ok(p) if p.hit.slug == want => {}
+            Ok(p) => wrong.push(format!("{entry}: picked {}, want {want}", p.hit.slug)),
+            Err(e) => wrong.push(format!("{entry}: {:?}, want {want}", e.error)),
+        }
+    }
+    assert!(wrong.is_empty(), "wrong picks:\n{}", wrong.join("\n"));
+}
+
 /// A spanning listing twice the entry's length beside an exact
 /// listing of the entry: "Show" (24) and "Show Part 1" (12) for a
 /// 12-episode entry. The exact listing is the entry's own and wins;
