@@ -121,12 +121,16 @@
 		if (shouldAutoLoad(phase, bottomInReach, activeSubtypes.size > 0)) searchRunner.loadMore();
 	});
 
-	let folio = $state<HTMLElement | null>(null);
+	// Focus handed on by a leaving paging button lands here: a silent
+	// spot at the head of the folio, outside its live region, so the
+	// status line is announced once — by the live region — not again
+	// on focus.
+	let focusAnchor = $state<HTMLElement | null>(null);
 	// A paging button leaves when the phase it belongs to does — Try
 	// again as its page loads, Load more at the end. If it held focus,
-	// focus moves to the folio rather than falling to the page body
-	// ($lib/search/keep-focus.ts).
-	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => folio);
+	// focus moves to the folio's anchor rather than falling to the page
+	// body ($lib/search/keep-focus.ts).
+	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => focusAnchor);
 
 	// Bumped per search so the marker under the grid is observed
 	// afresh: an observer reports only changes, and a grid short both
@@ -134,7 +138,13 @@
 	let searchCount = $state(0);
 
 	function sentinel(node: HTMLElement) {
-		return { destroy: watchSentinel(node, (inReach) => (bottomInReach = inReach)) };
+		const stop = watchSentinel(node, (inReach) => (bottomInReach = inReach));
+		return {
+			destroy() {
+				stop();
+				bottomInReach = false;
+			}
+		};
 	}
 
 	onMount(async () => {
@@ -456,23 +466,27 @@
 		{/if}
 	{/if}
 
-	{#if submitted && results !== null && !error}
+	<!-- Mounted once the search's first page has settled, so its
+	     observer's first report measures this search's grid, not the
+	     previous one still on screen while the new search loads. -->
+	{#if submitted && results !== null && !error && phase.kind !== 'loading'}
 		{#key searchCount}
 			<div class="sentinel" use:sentinel aria-hidden="true"></div>
 		{/key}
 	{/if}
 	{#if submitted}
-		<!-- tabindex -1: where focus goes when a paging button leaves. -->
-		<div class="folio" data-phase={phase.kind} tabindex="-1" bind:this={folio}>
-			{#if phase.kind === 'loading-more' && shown}
-				<span class="folio-rule folio-rule-drawing" aria-hidden="true"></span>
-			{:else if phase.kind === 'end' && shown}
-				<span class="folio-rule folio-rule-closed" aria-hidden="true"></span>
-			{:else if phase.kind === 'failed'}
-				<span class="folio-rule folio-rule-failed" aria-hidden="true"></span>
-			{:else if phase.kind === 'held'}
-				<span class="folio-rule folio-rule-held" aria-hidden="true"></span>
-			{/if}
+		<div class="folio" data-phase={phase.kind} data-settled={results !== null}>
+			<span class="folio-anchor" tabindex="-1" bind:this={focusAnchor}></span>
+			<!-- One rule, always in place, so a state change recolours it
+			     instead of moving what is below. -->
+			<span
+				class="folio-rule"
+				class:folio-rule-drawing={phase.kind === 'loading-more' && shown}
+				class:folio-rule-closed={phase.kind === 'end' && shown}
+				class:folio-rule-failed={phase.kind === 'failed'}
+				class:folio-rule-held={phase.kind === 'held'}
+				aria-hidden="true"
+			></span>
 			<!-- The one live region of the paging, mounted with the query
 			     so a screen reader hears each change; buttons stay outside. -->
 			<p class="folio-line" data-testid="search-paging" aria-live="polite" aria-atomic="true">
@@ -776,26 +790,50 @@
 		padding-block-end: var(--space-6);
 	}
 	/* Mounted with the query so its live region is in place before the
-	   first page lands; until then (and under a failed first search)
-	   it is empty and takes no room. */
-	.folio[data-phase='loading'] {
+	   first page lands. Until a first page has been shown (and under a
+	   failed first search) it takes no room; from then on its room is
+	   fixed, so a second search does not move the bottom of the page. */
+	.folio:not([data-settled='true']) {
 		margin-block-start: 0;
 		padding-block-end: 0;
 	}
+	.folio-anchor:focus {
+		outline: none;
+	}
+	/* The rule is a fixed 5px band: a line at its head whose weight and
+	   colour carry the state, and, at the end, a second hairline at its
+	   foot. Nothing about it changes size between states. */
 	.folio-rule {
+		--rule-weight: 1px;
+		--rule-color: transparent;
 		position: relative;
 		display: block;
 		inline-size: 100%;
-		block-size: 1px;
-		background: var(--ink-200);
+		block-size: 5px;
 		overflow: hidden;
+	}
+	.folio-rule::before,
+	.folio-rule::after {
+		content: '';
+		position: absolute;
+		inset-inline: 0;
+	}
+	.folio-rule::before {
+		inset-block-start: 0;
+		block-size: var(--rule-weight);
+		background: var(--rule-color);
+	}
+	/* The two states that ask something of the reader — wait, or act —
+	   carry a heavier rule than the settled ones. */
+	.folio-rule-drawing {
+		--rule-weight: 2px;
+		--rule-color: var(--ink-200);
 	}
 	/* Drawn from the start of the line: the origin follows the
 	   writing direction. */
 	.folio-rule-drawing::after {
-		content: '';
-		position: absolute;
-		inset: 0;
+		inset-block-start: 0;
+		block-size: 2px;
 		background: var(--accent-persimmon);
 		transform-origin: left center;
 		animation: folio-draw 1.6s var(--ease-in-out) infinite;
@@ -820,24 +858,25 @@
 	/* The manga-page double rule closes the list: two hairlines,
 	   3px apart. */
 	.folio-rule-closed {
-		block-size: 5px;
-		background: none;
-		border-block: 1px solid var(--ink-300);
+		--rule-color: var(--ink-300);
 	}
-	/* The two states that ask something of the reader — wait, or act —
-	   carry a heavier rule than the settled ones. */
-	.folio-rule-drawing,
-	.folio-rule-failed {
-		block-size: 2px;
+	.folio-rule-closed::after {
+		inset-block-end: 0;
+		block-size: 1px;
+		background: var(--ink-300);
 	}
 	.folio-rule-failed {
-		background: var(--accent-oxblood);
+		--rule-weight: 2px;
+		--rule-color: var(--accent-oxblood);
 	}
 	.folio-rule-held {
-		background: var(--bone-400);
+		--rule-color: var(--bone-400);
 	}
 	.folio-line {
 		margin: 0;
+		/* One line's room even while empty, so copy arriving or leaving
+		   does not move what is below. */
+		min-block-size: calc(1em * var(--leading-prose));
 		max-inline-size: 60ch;
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
@@ -871,9 +910,6 @@
 	.folio-action:focus-visible {
 		outline: none;
 		box-shadow: 0 0 0 2px var(--bone-100);
-	}
-	.folio:focus {
-		outline: none;
 	}
 	.grid-ghost {
 		margin-block-start: var(--space-6);
