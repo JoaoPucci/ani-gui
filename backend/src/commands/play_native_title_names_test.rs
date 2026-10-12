@@ -63,3 +63,19 @@ proptest! {
         prop_assert_eq!(entry.names(&title(name, division, &other)), same);
     }
 }
+
+/// A Japanese division glued to the name is read past like one written
+/// apart: what follows it is the subtitle, and an entry so titled names
+/// the same title and not its season alone.
+#[test]
+fn a_glued_japanese_division_is_read_past_to_the_subtitle() {
+    assert_eq!(
+        undivided_rest("ショー第2期: 番外編"),
+        vec!["番外編".to_string()]
+    );
+    assert!(undivided_rest("ショー第2期").is_empty());
+    let titles = ["ショー第2期: 番外編"];
+    let entry = EntryTitles::new(&titles);
+    assert!(entry.names("ショー 第2期 番外編"));
+    assert!(!entry.names("ショー第2期"));
+}
