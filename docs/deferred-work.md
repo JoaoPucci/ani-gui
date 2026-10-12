@@ -461,30 +461,23 @@ starting it, and delete it when you find it done.
   the canonical domain is filtered per ISP, and the origin is a
   constant with a test override only.
 
-## Holding a provider's own requests to its origin
+## Following a provider's legitimate domain move
 
-- **Decide whether a provider's catalogue requests follow redirects
-  off its origin.** The transport follows every redirect. When
-  anidb.app began redirecting its search to an unrelated site, the
-  app followed, read that site's home page as an empty search, and
-  persisted it as anidb's clean miss. Holding a catalogue request to
-  the provider's own origin — following a redirect only while it
-  stays there, and reading a page another origin served as no answer
-  — closes that. An implementation was built for anidb.app's client
-  before it left, in closed pull request #223: the transport's held
-  request and its same-origin hop rule (718e9f40b, with the tests of
-  its argv, hop limit and rule in c9d8c8d8b).
+- **Let a provider's move to another domain reach the app without a
+  release.** A provider's own requests are held to its origin: a
+  redirect off it is not followed, and an answer from elsewhere is a
+  failure (`docs/architecture.md`, "Providers and failover"). That
+  stops a redirect to an unrelated site from being read as the
+  provider's answer, as anidb.app's was; the price is that when
+  hianime moves its front by redirect — its canonical domain is
+  filtered per ISP, and the app already reads it at another front —
+  the app treats the move as an outage until a release changes the
+  client's base URL.
 
-  Why it waits: for hianime it is a tradeoff, not a fix, and the
-  maintainer's call. Its canonical domain is filtered per ISP, and the
-  app already reads it at another front (hianime.at); held to its
-  origin, a legitimate move of that front becomes an outage until the
-  base URL changes, where today the app follows the redirect. Unheld, a
-  redirect to an unrelated site can poison availability with that
-  site's answers, as anidb.app's did. hianime's embed pages follow
-  redirects between its own hosts by design (the walk keys a page on
-  the host that served it), so a hold would apply to the catalogue
-  requests alone.
+  Why it waits: telling a provider's own move from a hijack needs a
+  source of truth other than the redirect itself, such as a list of
+  fronts the app trusts or one it can update outside a release, and
+  none exists yet.
 
 ## Decoding hianime's other embed hosts
 

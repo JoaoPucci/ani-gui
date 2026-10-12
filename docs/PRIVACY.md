@@ -178,7 +178,10 @@ requires it; the exception is the update check that runs on launch
   episodes, or changing the audio mode or quality setting, resolves
   what is newly in view. These requests carry the search terms you
   typed or the anime IDs you're browsing; they do not carry any account
-  identifier unless you've connected one. Resolving an episode through
+  identifier unless you've connected one. A request to hianime's own
+  site follows a redirect only while it stays on that site; one that
+  points anywhere else is not followed, so the site it names never
+  receives the request. Resolving an episode through
   hianime also fetches an embed page from the embed hosts the site names
   for that episode — one at a time, the hosts whose pages the client knows
   how to read first — megaplay's ahead of zokoanime's, in the site's order
