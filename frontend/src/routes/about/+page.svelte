@@ -287,7 +287,7 @@
 	.page-title {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: var(--type-display-s);
+		font-size: clamp(2rem, 4vw, var(--type-display-l));
 		font-weight: 700;
 		letter-spacing: -0.01em;
 		color: var(--bone-100);
@@ -339,7 +339,7 @@
 		text-transform: uppercase;
 		color: var(--bone-100);
 		padding-block-end: var(--space-3);
-		border-block-end: 1px solid var(--bone-500);
+		border-block-end: 1px solid var(--ink-300);
 	}
 	.section-eyebrow-faint {
 		color: var(--bone-400);
@@ -369,7 +369,7 @@
 		align-items: center;
 		padding: var(--space-3) var(--space-4);
 		background: color-mix(in oklab, var(--brand) 6%, var(--ink-100));
-		border: 1px solid color-mix(in oklab, var(--brand) 25%, var(--bone-500));
+		border: 1px solid color-mix(in oklab, var(--brand) 25%, var(--ink-300));
 		border-radius: var(--radius-card, 8px);
 		color: var(--bone-100);
 		font-family: var(--font-mono);
@@ -382,7 +382,7 @@
 	}
 	.donate-address:hover {
 		background: color-mix(in oklab, var(--brand) 12%, var(--ink-100));
-		border-color: color-mix(in oklab, var(--brand) 45%, var(--bone-500));
+		border-color: color-mix(in oklab, var(--brand) 45%, var(--ink-300));
 	}
 	.donate-address:focus-visible {
 		outline: none;
@@ -430,7 +430,7 @@
 		flex-direction: column;
 		gap: var(--space-1);
 		padding-block: var(--space-3);
-		border-block-end: 1px solid var(--bone-600);
+		border-block-end: 1px solid var(--ink-200);
 	}
 	.credit-item:last-child {
 		border-block-end: none;
@@ -500,7 +500,7 @@
 		column-gap: var(--space-4);
 		row-gap: var(--space-1);
 		padding-block: var(--space-3);
-		border-block-end: 1px solid var(--bone-600);
+		border-block-end: 1px solid var(--ink-200);
 		align-items: baseline;
 	}
 	.dep-item:last-child {
@@ -579,7 +579,7 @@
 		text-decoration: none;
 		color: var(--bone-100);
 		background: color-mix(in oklab, var(--brand) 6%, var(--ink-100));
-		border: 1px solid color-mix(in oklab, var(--brand) 25%, var(--bone-500));
+		border: 1px solid color-mix(in oklab, var(--brand) 25%, var(--ink-300));
 		border-radius: var(--radius-pill, 999px);
 		transition:
 			background var(--dur-fast) var(--ease-out-soft),
@@ -587,7 +587,7 @@
 	}
 	.license-link:hover {
 		background: color-mix(in oklab, var(--brand) 14%, var(--ink-100));
-		border-color: color-mix(in oklab, var(--brand) 50%, var(--bone-500));
+		border-color: color-mix(in oklab, var(--brand) 50%, var(--ink-300));
 	}
 	.license-link:focus-visible {
 		outline: none;

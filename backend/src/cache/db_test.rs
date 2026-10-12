@@ -299,3 +299,56 @@ fn opening_an_earlier_cache_marks_the_mappings_the_stamp_rule_read_as_played() {
     let pool = open_pool(&path).unwrap();
     assert_eq!(mark(&pool, "later"), None);
 }
+
+/// Live threads whose name starts with `prefix`, read from procfs.
+#[cfg(target_os = "linux")]
+fn threads_named(prefix: &str) -> usize {
+    std::fs::read_dir("/proc/self/task")
+        .expect("task list")
+        .filter_map(|task| std::fs::read_to_string(task.ok()?.path().join("comm")).ok())
+        .filter(|name| name.starts_with(prefix))
+        .count()
+}
+
+/// A pool's background work runs on helper threads. If every pool had
+/// its own, a dropped pool's helpers would linger until its next
+/// scheduled cleanup — half a minute later — and a process that opens
+/// many pools, as the test binary does, would run into the system's
+/// per-process thread limit. Pools share one small set of helpers, so
+/// opening and dropping pools leaves no helper threads behind.
+///
+/// Linux only: the thread names come from procfs.
+#[cfg(target_os = "linux")]
+#[test]
+fn dropped_pools_leave_no_helper_threads_behind() {
+    for _ in 0..20 {
+        drop(open_in_memory().expect("pool opens"));
+    }
+    let lingering = threads_named("r2d2-worker");
+    assert_eq!(lingering, 0, "{lingering} per-pool helper threads alive");
+}
+
+/// r2d2 retires idle and old connections from a job it schedules every
+/// 30 seconds for each pool. On the shared helpers that job would
+/// outlive its pool and keep running for the life of the process, once
+/// for every pool ever opened. A pool here has no such job: a local
+/// SQLite connection does not go stale, and retiring the one connection
+/// of an in-memory pool would throw its database away.
+#[test]
+fn pools_schedule_no_connection_reaper() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let file = open_pool(&tmp.path().join("meta.db")).expect("file pool");
+    let memory = open_in_memory().expect("memory pool");
+    for (name, pool) in [("file", &file), ("memory", &memory)] {
+        assert_eq!(
+            pool.idle_timeout(),
+            None,
+            "{name} pool retires idle connections"
+        );
+        assert_eq!(
+            pool.max_lifetime(),
+            None,
+            "{name} pool retires old connections"
+        );
+    }
+}

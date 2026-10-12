@@ -16,7 +16,7 @@ import ptBR from '../../messages/pt-BR/download.json';
 import ru from '../../messages/ru/download.json';
 
 describe('missing-tool modal bodies', () => {
-	const locales: Record<string, Record<string, string>> = {
+	const locales: Record<string, Record<string, unknown>> = {
 		en,
 		'es-419': es419,
 		'pt-BR': ptBR,

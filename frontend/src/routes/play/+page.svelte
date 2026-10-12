@@ -112,13 +112,13 @@
 	h1 {
 		margin: var(--space-2) 0 0;
 		font-family: var(--font-display);
-		font-size: var(--type-h2);
+		font-size: var(--type-display-m);
 		color: var(--bone-100);
 	}
 	.hint {
 		margin: var(--space-3) 0 0;
 		color: var(--bone-300);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 	}
 	/* The `<code>` formerly inlined in the hint copy now lives inside
 	   the localized `play_test_hint` message, so Svelte's CSS
@@ -138,10 +138,10 @@
 		padding: var(--space-2) var(--space-3);
 		background: var(--ink-050);
 		border: 1px solid var(--ink-300);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		color: var(--bone-100);
 		font-family: var(--font-mono);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 	}
 	input:focus {
 		outline: none;
@@ -151,10 +151,10 @@
 		padding: var(--space-2) var(--space-4);
 		background: var(--accent);
 		border: 1px solid var(--accent);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 		color: var(--ink-000);
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		font-weight: 600;
 		cursor: pointer;
 	}
@@ -164,7 +164,7 @@
 	}
 	.error {
 		margin: 0;
-		color: var(--oxblood, #b11a1a);
+		color: var(--accent-oxblood);
 		font-family: var(--font-mono);
 		font-size: var(--type-meta);
 	}
@@ -172,6 +172,6 @@
 		inline-size: 100%;
 		aspect-ratio: 16 / 9;
 		background: #000;
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-control);
 	}
 </style>
