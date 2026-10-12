@@ -1,8 +1,10 @@
 //! AniList GraphQL client.
 //!
-//! Used today only for the home page's Trending Now row — AniList's
-//! `TRENDING_DESC` sort is genuinely week-fresh (it weights recent
-//! activity surge), unlike Kitsu's `userCount` which is cumulative
+//! The home page's Trending Now row, the banner backfill and the id
+//! lookups between AniList and MAL; airing, episode thumbnails and the
+//! account live in the sibling `anilist_*` modules. AniList's
+//! `TRENDING_DESC` sort follows recent activity (its `trending` value
+//! counts the past hour), unlike Kitsu's `userCount` which is cumulative
 //! across all time and lets evergreens like One Piece anchor the top
 //! forever. The plan-doc rationale is in `requirements.md` §7 / D2.
 //!

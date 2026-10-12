@@ -119,7 +119,7 @@ Catalogue caches shared with browsing — Kitsu details, artwork, episode lists,
 
 The landing page shows four rows: **Trending Now**, **Popular This Season**, **Top Rated**, **Recently Released**.
 
-- **Trending Now** is fetched from AniList's GraphQL endpoint (`Page.media(sort: TRENDING_DESC)`). AniList's trending sort tracks current weekly popularity, which Kitsu's `userCount` cannot match.
+- **Trending Now** is fetched from AniList's GraphQL endpoint (`Page.media(sort: TRENDING_DESC)`). AniList's trending sort follows recent activity (its `trending` value counts the past hour), which Kitsu's cumulative `userCount` cannot match.
 - **Popular This Season**, **Top Rated**, and **Recently Released** are fetched from Kitsu (REST/JSON:API). Kitsu's posters and banners (sizes verified at build time) are sufficient for these views.
 - Both APIs are hit only when cache misses; cache is SQLite (`$XDG_CACHE_HOME/ani-gui/meta.db`) with TTLs from 1 hour (trending) up to 30 days (title-match cache).
 
