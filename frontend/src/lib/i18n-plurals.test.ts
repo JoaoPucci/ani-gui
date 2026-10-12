@@ -2,7 +2,7 @@
 // the count, through Paraglide's plural variants (Intl.PluralRules).
 //
 // Russian has three integer forms — one (1, 21, 31…), few (2–4,
-// 22–24…) and many (5–20, 11–14, 25…) — so it is pinned on numbers
+// 22–24…) and many (5–20, 25–30…) — so it is pinned on numbers
 // that land in each, including the teens that look like 1 and 2 but
 // are not. English, Brazilian Portuguese and Latin American Spanish
 // are pinned on 0, 1 and 2: zero takes the plural in all three, which
