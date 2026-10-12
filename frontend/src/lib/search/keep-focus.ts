@@ -18,7 +18,24 @@ export function keepFocus(
 	node: FocusSource,
 	target: () => { focus(options?: FocusOptions): void } | null
 ): { destroy(): void } {
-	void node;
-	void target;
-	return { destroy() {} };
+	let held = false;
+	const onFocus = () => {
+		held = true;
+	};
+	// A blur fired by the control's own removal is not the reader
+	// moving on: it is checked once the removal has happened.
+	const onBlur = () => {
+		queueMicrotask(() => {
+			if (node.isConnected) held = false;
+		});
+	};
+	node.addEventListener('focus', onFocus);
+	node.addEventListener('blur', onBlur);
+	return {
+		destroy() {
+			node.removeEventListener('focus', onFocus);
+			node.removeEventListener('blur', onBlur);
+			if (held) target()?.focus({ preventScroll: true });
+		}
+	};
 }

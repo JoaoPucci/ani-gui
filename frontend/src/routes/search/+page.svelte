@@ -28,6 +28,7 @@
 	import { shouldAutoLoad, type PagingPhase } from '$lib/search/paging';
 	import { watchSentinel } from '$lib/search/sentinel';
 	import { staggerSlots } from '$lib/search/stagger';
+	import { keepFocus } from '$lib/search/keep-focus';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
@@ -123,15 +124,9 @@
 	let folio = $state<HTMLElement | null>(null);
 	// A paging button leaves when the phase it belongs to does — Try
 	// again as its page loads, Load more at the end. If it held focus,
-	// focus moves to the folio rather than falling to the page body.
-	function keepFocusInFolio(node: HTMLElement) {
-		return {
-			destroy() {
-				const active = document.activeElement;
-				if (active === node || active === document.body || active === null) folio?.focus();
-			}
-		};
-	}
+	// focus moves to the folio rather than falling to the page body
+	// ($lib/search/keep-focus.ts).
+	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => folio);
 
 	// Bumped per search so the marker under the grid is observed
 	// afresh: an observer reports only changes, and a grid short both
@@ -779,6 +774,13 @@
 		gap: var(--space-3);
 		margin-block-start: var(--space-6);
 		padding-block-end: var(--space-6);
+	}
+	/* Mounted with the query so its live region is in place before the
+	   first page lands; until then (and under a failed first search)
+	   it is empty and takes no room. */
+	.folio[data-phase='loading'] {
+		margin-block-start: 0;
+		padding-block-end: 0;
 	}
 	.folio-rule {
 		position: relative;
