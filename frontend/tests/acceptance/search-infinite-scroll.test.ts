@@ -284,8 +284,12 @@ describe('/search infinite scroll', () => {
 
 		const loadMore = buttonNamed(m.search_paging_load_more());
 		expect(loadMore).not.toBeNull();
+		loadMore!.focus();
 		loadMore!.click();
 		await until(() => screen().includes('Dragon Ball Super: Broly'), 'the asked-for page');
 		expect(offsets).toEqual([0, 20]);
+		// The button stays where the keyboard left it, so asking for
+		// page after page is one key each, not a Tab back first.
+		expect(document.activeElement).toBe(loadMore);
 	});
 });
