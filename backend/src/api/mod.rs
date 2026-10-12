@@ -246,8 +246,9 @@ async fn post_kitsu_search_page(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SearchPageBody>,
 ) -> Result<Json<KitsuSearchPage>, AniError> {
-    let _ = (state, body);
-    todo!("post_kitsu_search_page")
+    Ok(Json(
+        crate::commands::kitsu_search::kitsu_search_page(&state, &body.query, body.offset).await?,
+    ))
 }
 
 async fn get_kitsu_anime_detail(

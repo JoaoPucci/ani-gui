@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AniError, Result};
 
-use super::kitsu_page::KitsuSearchPage;
+use super::kitsu_page::{next_offset, KitsuSearchPage};
 
 /// Kitsu API base URL. Override in tests via [`KitsuClient::with_base`].
 pub const KITSU_BASE: &str = "https://kitsu.io/api/edge";
@@ -311,8 +311,30 @@ fn into_ref(r: AnimeResource) -> KitsuAnimeRef {
 /// Returns [`AniError::ParseFailed`] if the body isn't valid JSON:API for
 /// an anime collection.
 pub fn parse_search_page(body: &[u8], offset: u32, limit: u8) -> Result<KitsuSearchPage> {
-    let _ = (body, offset, limit);
-    todo!("parse_search_page")
+    #[derive(Deserialize)]
+    struct Links {
+        next: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct Meta {
+        count: Option<u64>,
+    }
+    #[derive(Deserialize)]
+    struct Page {
+        data: Vec<AnimeResource>,
+        links: Option<Links>,
+        meta: Option<Meta>,
+    }
+    let parsed: Page = serde_json::from_slice(body).map_err(|e| AniError::ParseFailed {
+        detail: format!("kitsu search parse: {e}"),
+    })?;
+    let has_next_link = parsed.links.and_then(|l| l.next).is_some();
+    let count = parsed.meta.and_then(|m| m.count);
+    let next = next_offset(offset, limit, parsed.data.len(), has_next_link, count);
+    Ok(KitsuSearchPage {
+        hits: drop_music(parsed.data.into_iter().map(into_ref).collect()),
+        next_offset: next,
+    })
 }
 
 /// Parse `{ "data": [...] }` into a list of refs. Used for search.
@@ -549,25 +571,7 @@ impl KitsuClient {
     /// - [`AniError::Network`] on transport failure.
     /// - [`AniError::ParseFailed`] on malformed JSON:API.
     pub async fn search(&self, query: &str, limit: u8) -> Result<Vec<KitsuAnimeRef>> {
-        let resp = self
-            .http
-            .get(format!("{}/anime", self.base))
-            .header(reqwest::header::ACCEPT, "application/vnd.api+json")
-            .query(&[
-                ("filter[text]", query.to_string()),
-                ("page[limit]", limit.to_string()),
-                ("fields[anime]", ANIME_FIELDS.to_string()),
-            ])
-            .send()
-            .await
-            .map_err(|_| AniError::Network)?;
-        if !resp.status().is_success() {
-            return Err(AniError::Upstream {
-                status: resp.status().as_u16(),
-            });
-        }
-        let body = resp.bytes().await.map_err(|_| AniError::Network)?;
-        parse_search_response(&body)
+        Ok(self.search_page(query, limit, 0).await?.hits)
     }
 
     /// One page of a free-text search, starting at `offset`.
@@ -580,8 +584,26 @@ impl KitsuClient {
         limit: u8,
         offset: u32,
     ) -> Result<KitsuSearchPage> {
-        let _ = (query, limit, offset);
-        todo!("search_page")
+        let resp = self
+            .http
+            .get(format!("{}/anime", self.base))
+            .header(reqwest::header::ACCEPT, "application/vnd.api+json")
+            .query(&[
+                ("filter[text]", query.to_string()),
+                ("page[limit]", limit.to_string()),
+                ("page[offset]", offset.to_string()),
+                ("fields[anime]", ANIME_FIELDS.to_string()),
+            ])
+            .send()
+            .await
+            .map_err(|_| AniError::Network)?;
+        if !resp.status().is_success() {
+            return Err(AniError::Upstream {
+                status: resp.status().as_u16(),
+            });
+        }
+        let body = resp.bytes().await.map_err(|_| AniError::Network)?;
+        parse_search_page(&body, offset, limit)
     }
 
     /// Currently-airing anime sorted by user count descending — a usable

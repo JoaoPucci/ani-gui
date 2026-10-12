@@ -1,6 +1,8 @@
 //! Kitsu text search, cached through the SQLite `meta_cache` table.
 //!
-//! Search results live under `DISCOVERY_TTL` (6h): popular anime is
+//! Each page is cached under its own offset (`kitsu:v3:search:<offset>:
+//! <normalized-query>`); the plain search is the first page. Pages
+//! live under `DISCOVERY_TTL` (6h): popular anime is
 //! stable, but trending changes within a day, and that is the right
 //! tradeoff between responsiveness and Kitsu API volume.
 
@@ -8,42 +10,21 @@ use crate::app::AppState;
 use crate::cache::ttl::DISCOVERY_TTL;
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::commands::kitsu_warm::warm_signed_image_urls;
-use crate::error::Result;
-use crate::meta::kitsu::{drop_music, KitsuAnimeRef};
+use crate::error::{AniError, Result};
+use crate::meta::kitsu::KitsuAnimeRef;
 use crate::meta::kitsu_page::KitsuSearchPage;
 
 /// The search page size we ask Kitsu for. Kitsu's anime search caps
 /// `page[limit]` at 20.
 pub(crate) const SEARCH_PAGE_LIMIT: u8 = 20;
 
-/// Search Kitsu for anime by free-text. Cache key:
-/// `kitsu:v2:search:<normalized-query>`. Returns at most
-/// [`SEARCH_PAGE_LIMIT`] hits.
+/// Search Kitsu for anime by free-text: the first page of
+/// [`kitsu_search_page`], sharing its cache entry.
 ///
 /// # Errors
-/// Inherits from [`crate::meta::kitsu::KitsuClient::search`] on cache miss.
+/// Inherits from [`kitsu_search_page`].
 pub async fn kitsu_search(state: &AppState, query: &str) -> Result<Vec<KitsuAnimeRef>> {
-    let key = format!("kitsu:v2:search:{}", normalize_query(query));
-    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
-        if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
-            // Warm-on-hit: idempotent. get_or_fetch returns from
-            // disk on bytes-cache hit (no network), so this is cheap.
-            // Catches the case where meta_cache outlives the image
-            // cache (LRU evicted the bytes, response still warm).
-            warm_signed_image_urls(state, &body);
-            // Sanitize music on read so caches written before the music
-            // filter existed don't keep serving MVs.
-            return Ok(drop_music(hits));
-        }
-        // Cached body deserialized as something else — treat as miss and
-        // rebuild rather than hand the frontend bad data.
-    }
-    let hits = state.kitsu.search(query, SEARCH_PAGE_LIMIT).await?;
-    if let Ok(body) = serde_json::to_string(&hits) {
-        let _ = meta_cache_put(&state.cache_pool, &key, &body, DISCOVERY_TTL.as_secs());
-        warm_signed_image_urls(state, &body);
-    }
-    Ok(hits)
+    Ok(kitsu_search_page(state, query, 0).await?.hits)
 }
 
 /// The deepest `page[offset]` a search walks to: fifty pages. A text
@@ -64,8 +45,33 @@ pub async fn kitsu_search_page(
     query: &str,
     offset: u32,
 ) -> Result<KitsuSearchPage> {
-    let _ = (state, query, offset);
-    todo!("kitsu_search_page")
+    if offset % u32::from(SEARCH_PAGE_LIMIT) != 0 || offset > MAX_SEARCH_OFFSET {
+        return Err(AniError::InvalidSearchOffset);
+    }
+    let key = format!("kitsu:v3:search:{offset}:{}", normalize_query(query));
+    if let Some(body) = meta_cache_get(&state.cache_pool, &key)? {
+        if let Ok(page) = serde_json::from_str::<KitsuSearchPage>(&body) {
+            // Warm-on-hit: idempotent. get_or_fetch returns from
+            // disk on bytes-cache hit (no network), so this is cheap.
+            // Catches the case where meta_cache outlives the image
+            // cache (LRU evicted the bytes, response still warm).
+            warm_signed_image_urls(state, &body);
+            return Ok(page);
+        }
+        // Cached body deserialized as something else — treat as miss and
+        // rebuild rather than hand the frontend bad data.
+    }
+    let mut page = state
+        .kitsu
+        .search_page(query, SEARCH_PAGE_LIMIT, offset)
+        .await?;
+    // Never advertise a page this function would refuse.
+    page.next_offset = page.next_offset.filter(|n| *n <= MAX_SEARCH_OFFSET);
+    if let Ok(body) = serde_json::to_string(&page) {
+        let _ = meta_cache_put(&state.cache_pool, &key, &body, DISCOVERY_TTL.as_secs());
+        warm_signed_image_urls(state, &body);
+    }
+    Ok(page)
 }
 
 /// Lowercase + collapse internal whitespace + trim. Stable cache key

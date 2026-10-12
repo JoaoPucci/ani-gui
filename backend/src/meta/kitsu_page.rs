@@ -33,8 +33,12 @@ pub fn next_offset(
     has_next_link: bool,
     count: Option<u64>,
 ) -> Option<u32> {
-    let _ = (offset, limit, returned, has_next_link, count);
-    todo!("next_offset")
+    if returned == 0 {
+        return None;
+    }
+    let next = offset.checked_add(u32::from(limit))?;
+    let counted_more = count.is_some_and(|c| c > u64::from(next));
+    (has_next_link || counted_more).then_some(next)
 }
 
 #[cfg(test)]
