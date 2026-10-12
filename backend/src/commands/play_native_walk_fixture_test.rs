@@ -1976,3 +1976,33 @@ async fn another_entry_s_dead_probe_blocks_no_winner() {
         assert_eq!(picked.hit.slug, "own", "{entry}");
     }
 }
+
+/// A broad listing that is another entry of the same show is never
+/// cut: the entry heads "Show Second Season" through its "Show 2nd
+/// Season" alias, but the listing names a season before the entry's
+/// "Season 3".
+#[tokio::test]
+async fn a_broad_listing_that_is_another_entry_is_never_cut() {
+    let rows = |n: u32| {
+        (1..=n)
+            .map(|k| format!("[{k}, {k}, null]"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let hits = r#"[["w", "Show Second Season", "TV"], ["l", "Show Second Season Part 2", "TV"]]"#;
+    let json = format!(
+        r#"{{
+ "kitsu": {{"canonical": "Show Season 3", "alt_titles": ["Show 2nd Season"],
+            "episode_count": 12, "year": 2020, "subtype": "TV"}},
+ "searches": {{"Show Season 3": {hits}, "Show 2nd Season": {hits}}},
+ "episodes": {{"w": [{w}], "l": [{l}]}},
+ "years": {{"w": 2020, "l": 2020}}
+}}"#,
+        w = rows(24),
+        l = rows(12),
+    );
+    let site = Recorded::inline("inline", &json);
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} ({})", p.hit.slug, p.episodes.len());
+    }
+}
