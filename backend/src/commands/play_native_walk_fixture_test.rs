@@ -888,6 +888,74 @@ async fn a_title_s_marks_and_release_year_are_part_of_what_names_it() {
     assert!(wrong.is_empty(), "wrong picks:\n{}", wrong.join("\n"));
 }
 
+/// Only the marks that tell shows apart count: a prime, and a release
+/// year where both titles carry one and they differ. Catalogues drift
+/// on the rest — an exclamation or question mark, a decorative symbol,
+/// a wave dash written one way or the other, a release year one side
+/// leaves off — and a broad listing written without them is still the
+/// one the entry heads, as an entry with no count or year still takes
+/// a hit written without them.
+#[tokio::test]
+async fn marks_catalogues_drift_on_do_not_part_a_title_from_the_entry() {
+    let spanning = |entry: &str, wide: &str| {
+        let part2 = format!("{wide} Part 2");
+        inline_pool(
+            &[entry],
+            Some(12),
+            Some(2020),
+            "TV",
+            &[
+                ("w-1", wide, 24, Some(2020)),
+                ("p2-2", &part2, 12, Some(2020)),
+            ],
+        )
+    };
+    let cases = [
+        (spanning("Remake (2020)", "Remake"), "w-1"),
+        (spanning("Haikyuu!!", "Haikyuu"), "w-1"),
+        (spanning("Lucky☆Star", "Lucky Star"), "w-1"),
+        (spanning("Show 〜Arc〜", "Show ~Arc~"), "w-1"),
+        (
+            inline_pool(
+                &["Toradora!"],
+                None,
+                None,
+                "TV",
+                &[
+                    ("other-1", "Other Show", 12, None),
+                    ("toradora-2", "Toradora", 25, None),
+                ],
+            ),
+            "toradora-2",
+        ),
+        (
+            inline_pool(
+                &["Is It Wrong to Pick Up Girls in a Dungeon?"],
+                None,
+                None,
+                "TV",
+                &[(
+                    "dungeon-1",
+                    "Is It Wrong to Pick Up Girls in a Dungeon",
+                    13,
+                    None,
+                )],
+            ),
+            "dungeon-1",
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for (site, want) in cases {
+        let entry = site.doc.kitsu.canonical.clone();
+        match walk_over(site).await {
+            Ok(p) if p.hit.slug == want => {}
+            Ok(p) => wrong.push(format!("{entry}: picked {}, want {want}", p.hit.slug)),
+            Err(e) => wrong.push(format!("{entry}: {:?}, want {want}", e.error)),
+        }
+    }
+    assert!(wrong.is_empty(), "wrong picks:\n{}", wrong.join("\n"));
+}
+
 /// A spanning listing twice the entry's length beside an exact
 /// listing of the entry: "Show" (24) and "Show Part 1" (12) for a
 /// 12-episode entry. The exact listing is the entry's own and wins;
