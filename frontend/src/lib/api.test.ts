@@ -27,6 +27,7 @@ import {
 	kitsuEpisodes,
 	kitsuResolveAllmangaShowId,
 	kitsuSearch,
+	kitsuSearchPage,
 	kitsuTitleMatchGet,
 	kitsuTitleMatchPut,
 	kitsuTopRated,
@@ -959,6 +960,19 @@ describe('kitsuSearch', () => {
 		expect(JSON.parse(init?.body as string)).toEqual({ query: 'one piece' });
 		expect(hits).toHaveLength(1);
 		expect(hits[0].canonical_title).toBe('One Piece');
+	});
+});
+
+describe('kitsuSearchPage', () => {
+	it('POSTs the query and offset to the paged route and returns the page', async () => {
+		const fetchMock = mockFetchOnce({ hits: [], next_offset: 40 });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		const page = await kitsuSearchPage('dragon ball', 20);
+		const { url, init } = lastCall(fetchMock);
+		expect(url).toBe(`${BASE}/api/kitsu/search/page`);
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(init?.body as string)).toEqual({ query: 'dragon ball', offset: 20 });
+		expect(page).toEqual({ hits: [], next_offset: 40 });
 	});
 });
 

@@ -12,10 +12,12 @@
  * that its run is still the newest before touching page state.
  */
 
-import type { Config, KitsuAnimeRef } from '$lib/api';
+import type { Config, KitsuAnimeRef, KitsuSearchPage } from '$lib/api';
+import type { PagingPhase } from './paging';
 
 export interface SearchRunnerDeps {
-	kitsuSearch: (q: string) => Promise<KitsuAnimeRef[]>;
+	/** One page of the Kitsu search, starting at `offset`. */
+	searchPage: (q: string, offset: number) => Promise<KitsuSearchPage>;
 	/** Settings fetch; rejections fall back to a null config (the
 	 *  mode picker defaults to 'sub'), never to the error state. */
 	getConfig: () => Promise<Config | null>;
@@ -30,10 +32,13 @@ export interface SearchRunnerDeps {
 	onResults: (visible: KitsuAnimeRef[]) => void;
 	onError: (e: unknown) => void;
 	onBusy: (busy: boolean) => void;
+	/** Every change of the paging phase. */
+	onPhase: (phase: PagingPhase) => void;
 }
 
 export function createSearchRunner(deps: SearchRunnerDeps): {
 	run: (q: string) => Promise<void>;
+	loadMore: () => void;
 } {
 	let generation = 0;
 	// Config is cached only after a SUCCESSFUL load, and the load is
@@ -67,7 +72,7 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		deps.onBusy(true);
 		try {
 			if (!configLoaded) await loadConfigOnce();
-			const raw = await deps.kitsuSearch(q);
+			const raw = (await deps.searchPage(q, 0)).hits;
 			await deps.filter(raw, deps.pickMode(config), (visible) => {
 				if (!current()) return;
 				deps.onResults(visible);
@@ -80,5 +85,7 @@ export function createSearchRunner(deps: SearchRunnerDeps): {
 		}
 	};
 
-	return { run };
+	const loadMore = () => {};
+
+	return { run, loadMore };
 }

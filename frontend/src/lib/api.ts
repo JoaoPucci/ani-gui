@@ -926,6 +926,20 @@ export function kitsuSearch(query: string): Promise<KitsuAnimeRef[]> {
 	return postJson<KitsuAnimeRef[]>('/api/kitsu/search', { query });
 }
 
+/** One page of a Kitsu text search: its hits, and the offset the
+ *  next page starts at (`null` on the last one). The offset counts
+ *  Kitsu's own rows, so pass it back verbatim. */
+export interface KitsuSearchPage {
+	hits: KitsuAnimeRef[];
+	next_offset: number | null;
+}
+
+export function kitsuSearchPage(query: string, offset: number): Promise<KitsuSearchPage> {
+	void query;
+	void offset;
+	return Promise.reject(new Error('not implemented'));
+}
+
 export function kitsuAnimeDetail(id: string): Promise<KitsuAnimeRef> {
 	return getJson<KitsuAnimeRef>(`/api/kitsu/anime/${encodeURIComponent(id)}`);
 }

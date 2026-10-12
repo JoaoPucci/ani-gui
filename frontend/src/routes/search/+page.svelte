@@ -10,7 +10,7 @@
 	import { resolve } from '$app/paths';
 	import {
 		imageProxyUrl,
-		kitsuSearch,
+		kitsuSearchPage,
 		kitsuTopRated,
 		kitsuTrending,
 		settingsGet,
@@ -137,7 +137,7 @@
 	// The closures below are the page-side adapter, one Svelte
 	// reassignment each.
 	const searchRunner = createSearchRunner({
-		kitsuSearch,
+		searchPage: kitsuSearchPage,
 		getConfig: async () => {
 			// Same race as onMount: a fast ?q= deeplink can fire before
 			// settingsGet has resolved on first load. The runner caches
@@ -157,7 +157,8 @@
 		},
 		onBusy: (b) => {
 			busy = b;
-		}
+		},
+		onPhase: () => {}
 	});
 
 	async function runSearch(q: string) {
