@@ -320,3 +320,7 @@ impl From<toml::de::Error> for AniError {
 #[cfg(test)]
 #[path = "error_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "error_variants_test.rs"]
+pub(crate) mod variants;

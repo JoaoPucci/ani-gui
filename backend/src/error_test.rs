@@ -58,34 +58,8 @@ fn rate_limited_maps_to_429_and_a_dedicated_key() {
 
 #[test]
 fn every_variant_has_a_stable_key() {
-    // A representative of each variant — if a new variant lands without
-    // a matching arm in `key()`, this test forces the author to think
-    // about its i18n key.
-    let cases = [
-        AniError::Scraper {
-            failure: crate::error::DownloadToolFailure::Exited,
-        },
-        AniError::Timeout,
-        AniError::NoResults,
-        AniError::EpisodeUnavailable,
-        AniError::ParseFailed { detail: "x".into() },
-        AniError::FfmpegMissing,
-        AniError::PlayerSpawnFailed {
-            binary: "vlc".into(),
-        },
-        AniError::SyncplaySpawnFailed {
-            binary: "syncplay".into(),
-        },
-        AniError::Upstream { status: 503 },
-        AniError::Network,
-        AniError::GateRefused,
-        AniError::Cache,
-        AniError::Io,
-        AniError::Config,
-        AniError::Metadata,
-        AniError::InvalidKitsuId,
-        AniError::InvalidToken,
-    ];
+    // Every variant, from the one list the compiler holds to the enum.
+    let cases = super::variants::every_variant();
     for c in cases {
         let k = c.key();
         assert!(
