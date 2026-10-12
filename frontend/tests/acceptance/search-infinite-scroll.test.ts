@@ -81,6 +81,7 @@ function baseHandlers() {
 /** The scroll stand-in: every observer the route creates, and a way to
  *  bring their targets into reach. */
 const observers: { cb: IntersectionObserverCallback; targets: Element[] }[] = [];
+let inReachOnObserve = false;
 class ControlledObserver {
 	private entry: { cb: IntersectionObserverCallback; targets: Element[] };
 	constructor(cb: IntersectionObserverCallback) {
@@ -89,6 +90,16 @@ class ControlledObserver {
 	}
 	observe(el: Element) {
 		this.entry.targets.push(el);
+		// A real observer reports a target's initial state once it is
+		// observed. Scenarios that care set `inReachOnObserve`.
+		if (inReachOnObserve) {
+			queueMicrotask(() =>
+				this.entry.cb(
+					[{ target: el, isIntersecting: true } as IntersectionObserverEntry],
+					{} as IntersectionObserver
+				)
+			);
+		}
 	}
 	disconnect() {
 		const i = observers.indexOf(this.entry);
@@ -114,6 +125,7 @@ beforeEach(() => {
 	savedObserver = globalThis.IntersectionObserver;
 	globalThis.IntersectionObserver = ControlledObserver as unknown as typeof IntersectionObserver;
 	observers.length = 0;
+	inReachOnObserve = false;
 	target = document.createElement('div');
 	document.body.appendChild(target);
 });
@@ -291,5 +303,105 @@ describe('/search infinite scroll', () => {
 		// The button stays where the keyboard left it, so asking for
 		// page after page is one key each, not a Tab back first.
 		expect(document.activeElement).toBe(loadMore);
+	});
+
+	it('a second short search loads more even though the bottom never left reach', async () => {
+		// The grid is short both times, so the marker under it is in
+		// reach before the second search and stays there: an observer
+		// only reports a change, and there is none to report.
+		inReachOnObserve = true;
+		const asked: string[] = [];
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { query, offset } = (await request.json()) as { query: string; offset: number };
+				asked.push(`${query}@${offset}`);
+				if (query === 'trigun') {
+					return HttpResponse.json({ hits: [ref('1', 'Trigun')], next_offset: null });
+				}
+				if (offset === 0) {
+					return HttpResponse.json({ hits: [ref('2', 'Monster')], next_offset: 20 });
+				}
+				return HttpResponse.json({ hits: [ref('3', 'Pluto')], next_offset: null });
+			})
+		);
+
+		setQuery('trigun');
+		app = mount(SearchPage, { target });
+		await until(
+			() => screen().includes(m.search_paging_end({ query: 'trigun' })),
+			'the first search to end'
+		);
+
+		setQuery('monster');
+		await until(() => screen().includes('Pluto'), 'the second search to load its next page');
+		expect(asked).toEqual(['trigun@0', 'monster@0', 'monster@20']);
+	});
+
+	it('Load more that reaches the end leaves focus on the paging line, not the page body', async () => {
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset } = (await request.json()) as { offset: number };
+				if (offset === 0) {
+					return HttpResponse.json({
+						hits: [
+							{ ...ref('1', 'Dragon Ball Z'), subtype: 'TV' },
+							{ ...ref('2', 'Dragon Ball: Path to Power'), subtype: 'movie' }
+						],
+						next_offset: 20
+					});
+				}
+				return HttpResponse.json({
+					hits: [{ ...ref('3', 'Dragon Ball Super: Broly'), subtype: 'movie' }],
+					next_offset: null
+				});
+			})
+		);
+
+		setQuery('dragon ball');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Dragon Ball Z'), 'the first page');
+		buttonNamed(subtypeLabel('movie'))!.click();
+		await until(() => buttonNamed(m.search_paging_load_more()) !== null, 'the Load more button');
+
+		const loadMore = buttonNamed(m.search_paging_load_more())!;
+		loadMore.focus();
+		loadMore.click();
+		await until(
+			() => screen().includes(m.search_paging_end({ query: 'dragon ball' })),
+			'the search to end'
+		);
+		expect(buttonNamed(m.search_paging_load_more())).toBeNull();
+		expect(document.activeElement).not.toBe(document.body);
+		expect(target.contains(document.activeElement)).toBe(true);
+	});
+
+	it('the paging status line is in place before the first page lands', async () => {
+		// A live region only announces changes it was mounted to hear.
+		let release: () => void = () => {};
+		const held = new Promise<void>((r) => (release = r));
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async () => {
+				await held;
+				return HttpResponse.json({ hits: [ref('1', 'Trigun')], next_offset: null });
+			})
+		);
+
+		setQuery('trigun');
+		app = mount(SearchPage, { target });
+		await until(
+			() => target.querySelector('[aria-live="polite"][data-testid="search-paging"]') !== null,
+			'the status line to mount while the first page is in flight'
+		);
+		release();
+		await until(
+			() =>
+				target
+					.querySelector('[data-testid="search-paging"]')
+					?.textContent?.includes(m.search_paging_end({ query: 'trigun' })) ?? false,
+			'the end line to arrive in that same region'
+		);
 	});
 });
