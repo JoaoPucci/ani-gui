@@ -410,6 +410,64 @@ async fn entries_named_for_a_series_pick_their_own_listings() {
     .await;
 }
 
+/// Dragon Ball Super: Ginga Patrol is announced: Kitsu has no count
+/// and no premiere date for it, and hianime does not list it yet. Every
+/// search for it answers with Dragon Ball Super's pool, and the
+/// countless pick took the series — its 131 episodes — as the
+/// provider's first hit. With neither a count nor a year, nothing
+/// vouches for a hit not named as the entry: the series, the remake
+/// and the Heroes shows are other shows, and the pool is refused.
+#[tokio::test]
+async fn an_announced_entry_with_no_count_or_year_takes_no_hit_not_named_as_it() {
+    assert_picks(&[("50496", None)]).await;
+}
+
+/// The same pool once the catalogue lists the entry, under the English
+/// title Kitsu gives it rather than the one searched: the countless pick
+/// takes it, behind the series and named only by an alias.
+#[tokio::test]
+async fn an_entry_with_no_count_or_year_takes_the_hit_named_as_it() {
+    let mut site = Recorded::load("50496");
+    let pool = site
+        .doc
+        .searches
+        .get_mut("Dragon Ball Super: Ginga Patrol")
+        .expect("the canonical pool");
+    pool.insert(
+        3,
+        (
+            "dragon-ball-super-the-galactic-patrol-1".to_string(),
+            "Dragon Ball Super: The Galactic Patrol".to_string(),
+            Some("TV".to_string()),
+        ),
+    );
+    site.doc.episodes.insert(
+        "dragon-ball-super-the-galactic-patrol-1".to_string(),
+        vec![(1, 1, None)],
+    );
+    let picked = walk_over(site).await.expect("the entry's listing");
+    assert_eq!(picked.hit.slug, "dragon-ball-super-the-galactic-patrol-1");
+}
+
+/// Named as the entry is its name and the divisions it reads as, not
+/// the words they are written in: "Show Season 2" is "Show 2nd
+/// Season", and an unrelated hit before it is not.
+#[tokio::test]
+async fn a_hit_reading_as_the_entry_is_named_as_it() {
+    let json = r#"{
+ "kitsu": {"canonical": "Show 2nd Season", "alt_titles": [], "episode_count": null,
+            "year": null, "subtype": "TV"},
+ "searches": {"Show 2nd Season": [["other-1", "Other Show", "TV"],
+                                  ["show-season-2-2", "Show Season 2", "TV"]]},
+ "episodes": {"other-1": [[1, 1, null]], "show-season-2-2": [[2, 1, null]]},
+ "years": {}
+}"#;
+    let picked = walk_over(Recorded::inline("inline", json))
+        .await
+        .expect("the hit reading as the entry");
+    assert_eq!(picked.hit.slug, "show-season-2-2");
+}
+
 /// Slime's second season: hianime lists "Season 2" and "2nd Season
 /// Part 2" at twelve episodes each, both from 2021, Part 2 first. The
 /// entry names no second part, so provider order must not decide.

@@ -287,7 +287,15 @@ async fn unknown_expected_count_prefers_exact_title_then_first() {
         .expect("picked");
     assert_eq!(picked.hit.slug, "wanted-77");
 
-    let picked = pick_candidate(&client, &hits, None, "no such title", None, None)
+    // With no year either, nothing vouches for a hit not named as the
+    // entry: the provider's first hit is not taken on position.
+    let err = pick_candidate(&client, &hits, None, "no such title", None, None)
+        .await
+        .expect_err("nothing named as the entry");
+    assert!(matches!(err, AniError::NoResults));
+
+    // A year that disproved nothing keeps the provider's order.
+    let picked = pick_candidate(&client, &hits, None, "no such title", Some(2026), None)
         .await
         .expect("falls back to first");
     assert_eq!(picked.hit.slug, "first-66");
