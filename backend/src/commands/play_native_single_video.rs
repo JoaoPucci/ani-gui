@@ -44,3 +44,7 @@ pub(super) fn unvouched_single_videos(
     }
     refused_a_fit
 }
+
+#[cfg(test)]
+#[path = "play_native_single_video_test.rs"]
+mod tests;

@@ -105,3 +105,7 @@ impl YearEvidence {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "play_native_countless_test.rs"]
+mod tests;
