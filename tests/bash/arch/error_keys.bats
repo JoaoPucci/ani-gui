@@ -43,11 +43,14 @@ planted_repo() {
     [ "$status" -eq 0 ]
 }
 
-@test "a tree with no published key list is a skip, not a pass about nothing" {
-    root=$(mktemp -d "$BATS_TEST_TMPDIR/repo-XXXXXX")
-    ARCH_REPO_ROOT="$root" run sh "$CHECK"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *skipping* ]]
+@test "a tree with no published key list fails rather than passing about nothing" {
+    # The list is committed; a check that skipped without it would pass
+    # by having no subject.
+    root=$(planted_repo)
+    rm "$root/backend/error-keys.json"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"arch/error_keys FAIL"* ]]
+    [[ "$output" == *backend/error-keys.json* ]]
 }
 
 @test "a locale lacking a key's message is caught, and the key is named" {
@@ -115,6 +118,9 @@ planted_repo() {
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
     [[ "$output" == *"arch/error_keys FAIL"* ]]
     printf 'null\n' >"$root/frontend/project.inlang/settings.json"
+    ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
+    [[ "$output" == *"arch/error_keys FAIL"* ]]
+    printf '{"locales": []}\n' >"$root/frontend/project.inlang/settings.json"
     ARCH_REPO_ROOT="$root" run ! sh "$CHECK"
     [[ "$output" == *"arch/error_keys FAIL"* ]]
 }
