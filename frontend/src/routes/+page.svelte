@@ -99,7 +99,9 @@
 		loadHeroPrefs,
 		naturalRatio,
 		pickHeroImage,
-		type HeroOrigin
+		saveHeroPrefs,
+		type HeroOrigin,
+		type HeroPrefs
 	} from '$lib/hero/framing';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
@@ -738,8 +740,13 @@
 		}
 	});
 
-	// Hero framing preferences — see $lib/hero/framing.
-	const heroPrefs = loadHeroPrefs(browserStorage());
+	// Hero framing preferences — see $lib/hero/framing. A choice made in
+	// the switch applies to the hero at once and is kept for the next load.
+	let heroPrefs = $state(loadHeroPrefs(browserStorage()));
+	function chooseHeroPrefs(next: HeroPrefs) {
+		heroPrefs = next;
+		saveHeroPrefs(browserStorage(), next);
+	}
 
 	function heroFor(d: KitsuAnimeRef): {
 		url: string | null;
@@ -860,7 +867,11 @@
 			</div>
 		{/key}
 		{#if heroPrefs.controls}
-			<HeroFramingSwitch prefs={heroPrefs} origin={heroFor(featured).origin} />
+			<HeroFramingSwitch
+				prefs={heroPrefs}
+				origin={heroFor(featured).origin}
+				onchoose={chooseHeroPrefs}
+			/>
 		{/if}
 		{#if heroRotation.length > 1}
 			<div class="hero-pager" aria-label={m.home_hero_pager_aria_label()}>

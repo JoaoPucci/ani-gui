@@ -17,7 +17,9 @@
 		loadHeroPrefs,
 		naturalRatio,
 		pickHeroImage,
-		type HeroOrigin
+		saveHeroPrefs,
+		type HeroOrigin,
+		type HeroPrefs
 	} from '$lib/hero/framing';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -1098,8 +1100,13 @@
 		return sharedDescribePlayFailure(e, { noResults: m.detail_error_play_no_results });
 	}
 
-	// Hero framing preferences — see $lib/hero/framing.
-	const heroPrefs = loadHeroPrefs(browserStorage());
+	// Hero framing preferences — see $lib/hero/framing. A choice made in
+	// the switch applies to the hero at once and is kept for the next load.
+	let heroPrefs = $state(loadHeroPrefs(browserStorage()));
+	function chooseHeroPrefs(next: HeroPrefs) {
+		heroPrefs = next;
+		saveHeroPrefs(browserStorage(), next);
+	}
 
 	function heroFor(d: KitsuAnimeRef): {
 		url: string | null;
@@ -1463,10 +1470,10 @@
 			{#if !hero.isCover}
 				<div class="hero-grain" aria-hidden="true"></div>
 			{/if}
+			{#if heroPrefs.controls}
+				<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} onchoose={chooseHeroPrefs} />
+			{/if}
 		</section>
-		{#if heroPrefs.controls}
-			<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} />
-		{/if}
 
 		<div class="content">
 			<section class="masthead">
