@@ -20,6 +20,8 @@
 // - It does not tell comments from code. A comment that writes
 //   `var(--old-name)` fails it; a comment that writes `--name:`
 //   satisfies it.
+// - It counts a `--name:` written in a .ts file as a declaration
+//   (styles built as strings there), and does not check reads there.
 // - It does not see properties set from script (`setProperty`), and
 //   none are today; one added that way has to be declared in CSS too,
 //   or this check has to learn the form.
