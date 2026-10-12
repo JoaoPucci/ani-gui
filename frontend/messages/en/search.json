@@ -30,7 +30,7 @@
 	"sort_title": "Title",
 	"sort_year": "Year",
 	"sort_rating": "Rating",
-	"paging_loading": "Loading more results",
+	"paging_loading": "Loading more results…",
 	"paging_end": "End of results for “{query}”.",
 	"paging_failed": "Couldn't load more results.",
 	"paging_retry": "Try again",

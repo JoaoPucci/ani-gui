@@ -14,7 +14,8 @@ export function staggerSlots(
 	prev: Map<string, number>,
 	list: KitsuAnimeRef[]
 ): Map<string, number> {
-	void prev;
-	void list;
-	return new Map();
+	const next = new Map<string, number>();
+	let arrivals = 0;
+	for (const hit of list) next.set(hit.id, prev.get(hit.id) ?? arrivals++);
+	return next;
 }
