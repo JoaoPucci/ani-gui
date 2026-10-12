@@ -109,10 +109,11 @@ Without a count, a pool from which the title rule dropped a hit it refuses is ne
 
 **The spanning cut** — inputs, read through that one reader:
 
-- W, an admitted candidate from Kitsu's year listing more than E episodes, with a stem; when several qualify, the first in the provider's order that the entry heads and beside which an L or an O exists, and only when there is none, the first beside which an L, an O or — the entry not being its head — an F exists;
-- L, a sibling listing exactly W's count minus E that opens what follows W's stem with divisions — read up to the first word that names none, any W itself ends on left out — one of them above the entry's part, and that is not an O; beside a W the entry is not the head of, also not the entry's own by title (as an O is, whatever its count). Beside a W the entry heads, a sibling that reads as the entry but does not fit is still an L: "Show Part 2" (10) beside "Show Season 2" (22) for "Show 2";
+- W, an admitted candidate from Kitsu's year listing more than E episodes, with a stem; when several qualify, the first in the provider's order that the entry heads and beside which an L or an O exists, and only when there is none, the first beside which an L, an O, a P or — the entry not being its head — an F exists;
+- L, a sibling listing exactly W's count minus E that opens what follows W's stem with divisions — read up to the first word that names none, any W itself ends on left out — one of them later than W: a season above the season W carries (the first when it carries none), or a part above the entry's part. An earlier season is never one ("Show Season 2" beside "Show Season 3"), and that is not an O; beside a W the entry is not the head of, also not the entry's own by title (as an O is, whatever its count). Beside a W the entry heads, a sibling that reads as the entry but does not fit is still an L: "Show Part 2" (10) beside "Show Season 2" (22) for "Show 2";
 - O, an admitted candidate listing exactly E that is the entry's own beside W: one of the entry's titles, or a title that reads as the entry and either carries W's stem alone or opens what follows it with a division. A spinoff — a title going on past W's stem with a word that names no division ("Show Side Story", "Show Side Story 3") — is never an O, numbered or not, unless it is one of the entry's titles;
 - F, beside a W the entry is not the head of, a candidate that opens what follows W's stem on first divisions alone, any W itself ends on left out ("Show Part 1", "Show Season 1", "Show First Half"), and is not the entry's own by title: W's first half.
+- P, a candidate that opens what follows W's stem with a season before the season W carries ("Show Season 2" beside "Show Season 3", "Show Season 1" beside "Show 2"), and is not the entry's own by title: a season before W.
 
 | The entry heads W (same name, read alike) | L exists | O exists | Outcome |
 |---|---|---|---|
@@ -121,7 +122,7 @@ Without a count, a pool from which the title rule dropped a hit it refuses is ne
 | yes | yes | yes | nothing is cut; every L is never picked; O scores every other exact fit one behind it |
 | yes | yes | no | W is cut to the entry's episodes and scored exact; every L is never picked; every other exact-count candidate is scored one behind the cut |
 
-With no W, nothing is cut. A refused candidate is never picked, whatever the table says of it.
+With no W, nothing is cut. A P is never picked, in any row. A refused candidate is never picked, whatever the table says of it.
 
 The pools each row answers, E = 12:
 
@@ -157,6 +158,9 @@ The pools each row answers, E = 12:
 | Show | "Show Seventh Season" 12 | no W; a seventh season the entry never names is refused | nothing |
 | Show Seventh Season | "Show" 12 | no W; "Show" is the season before | nothing |
 | Spy x Family | "Spy x Family" 12 | no W; x is no numeral | Spy x Family |
+| Show Season 3 | "Show Season 3" 24, "Show Season 2" 12 | no L — season 2 is before W's season 3 | nothing |
+| Show Season 3 | "Show Season 2" 12, "Show Season 3" 24 | the same, the earlier season listed first | nothing |
+| Show 2 | "Show 2" 24, "Show Season 1" 12 | no L; "Show Season 1" is a P | nothing |
 | The Seventh Sense | "The Seventh Son" 24, "The Seventh Son Season 2" 12 | not W's head — "The Seventh Son" is another name | nothing |
 | Kaiju No. 8 Season 2 | "Kaiju No. 8 2nd Season" 12 | no W; it carries 8, its "2nd" a word of its own | Kaiju No. 8 2nd Season |
 | Show 2 | "Show 2 (2020)" 12 | no W; it carries 2 | Show 2 (2020) |
