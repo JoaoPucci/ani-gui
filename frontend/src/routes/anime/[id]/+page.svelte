@@ -1465,7 +1465,9 @@
 				<div class="hero-grain" aria-hidden="true"></div>
 			{/if}
 		</section>
-		<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} />
+		{#if heroPrefs.controls}
+			<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} />
+		{/if}
 
 		<div class="content">
 			<section class="masthead">

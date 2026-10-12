@@ -15,6 +15,7 @@
 		type HistoryEntry
 	} from '$lib/api';
 	import { legacySweepView } from '$lib/diagnostics/legacy-sweep';
+	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/framing';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -30,6 +31,16 @@
 	// on the launch that upgraded from a version which kept its own
 	// copy of the shell script — see $lib/diagnostics/legacy-sweep.
 	const legacySweep = $derived(legacySweepView(info?.removed_legacy_paths));
+
+	// Whether the home and detail pages show their banner framing
+	// switch. Kept with the framing preferences themselves, so turning
+	// the controls on or off leaves a chosen framing as it is — see
+	// $lib/hero/framing.
+	let heroPrefs = $state(loadHeroPrefs(browserStorage()));
+	function setFramingControls(shown: boolean) {
+		heroPrefs = { ...heroPrefs, controls: shown };
+		saveHeroPrefs(browserStorage(), heroPrefs);
+	}
 
 	async function refresh() {
 		infoError = null;
@@ -157,6 +168,21 @@
 		</p>
 		{#if cacheStatus}<p>{cacheStatus}</p>{/if}
 		{#if cacheError}<p>{m.diagnostics_cache_clear_error()} {cacheError}</p>{/if}
+	</section>
+
+	<section>
+		<h2>{m.diagnostics_section_banner_framing()}</h2>
+		<p>{m.diagnostics_banner_framing_description()}</p>
+		<p>
+			<label>
+				<input
+					type="checkbox"
+					checked={heroPrefs.controls}
+					onchange={(e) => setFramingControls((e.currentTarget as HTMLInputElement).checked)}
+				/>
+				{m.diagnostics_banner_framing_toggle_label()}
+			</label>
+		</p>
 	</section>
 
 	<section>

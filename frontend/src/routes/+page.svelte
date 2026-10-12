@@ -860,7 +860,9 @@
 				</div>
 			</div>
 		{/key}
-		<HeroFramingSwitch prefs={heroPrefs} origin={heroFor(featured).origin} />
+		{#if heroPrefs.controls}
+			<HeroFramingSwitch prefs={heroPrefs} origin={heroFor(featured).origin} />
+		{/if}
 		{#if heroRotation.length > 1}
 			<div class="hero-pager" aria-label={m.home_hero_pager_aria_label()}>
 				{#each heroRotation as item, i (item.id)}
