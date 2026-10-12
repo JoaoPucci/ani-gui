@@ -15,15 +15,30 @@
 //! - its place in [`ProviderSet::shipped`]'s order;
 //! - a client behind the [`Provider`](crate::scraper::provider::Provider)
 //!   trait, and its arm in
-//!   [`client_for`](crate::commands::providers::client_for);
-//! - when its show keys carry its label, the label in
-//!   [`ProviderId::from_label`] and
-//!   [`ShowKey::parse`](crate::scraper::provider::ShowKey::parse).
+//!   [`client_for`](crate::commands::providers::client_for). The
+//!   requests it builds from its own site are held to that origin
+//!   ([`FetchRequest::held_to_origin`](crate::scraper::fetch::FetchRequest::held_to_origin)),
+//!   and an answer from elsewhere is refused, as hianime's client does;
+//! - its label in the renderer's list, `LABELED` in
+//!   `frontend/src/lib/history/show-key.ts`, which `StreamProvider` is
+//!   derived from — left out, its show keys read there as naming no
+//!   provider and its title matches are filed under the legacy
+//!   segment;
+//! - the documents that name the shipped providers: the sites it
+//!   contacts in `docs/PRIVACY.md`; `docs/architecture.md`'s data
+//!   flow and its provider section; the bridge's list of APIs in
+//!   `docs/title-resolution.md`; and `README.md`'s summary.
 //!
-//! A gate exists for every known id, not just the ordered ones: a
-//! row written by a provider the order no longer lists still names
-//! that provider, and the availability cache's read rule asks its
-//! gate whether it can stand behind the row.
+//! Nothing else in the code names providers one by one: [`ProviderId::from_label`]
+//! and [`ShowKey::parse`](crate::scraper::provider::ShowKey::parse)
+//! walk every known id, so a new variant's label is recognised in
+//! stored keys as soon as it exists. Its label has to equal the
+//! identifier it serializes as — the renderer sends that identifier
+//! where the API reads a label — which `provider_set_test.rs` checks
+//! for every member of [`ProviderId::ALL`].
+//!
+//! A gate exists for every known id, not just the ordered ones, so a
+//! change of order never leaves a walked provider without one.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -49,7 +64,7 @@ impl ProviderSet {
     /// The providers the app ships, in the order a walk asks them.
     #[must_use]
     pub fn shipped() -> Self {
-        Self::listing(vec![ProviderId::Anidb, ProviderId::Hianime])
+        Self::listing(vec![ProviderId::Hianime])
     }
 
     /// A set walking `order`, with a fresh gate for every known
@@ -79,8 +94,14 @@ impl ProviderSet {
     #[cfg(test)]
     #[must_use]
     pub fn for_tests() -> Self {
-        Self::listing(vec![ProviderId::Anidb])
+        Self::listing(vec![Self::TEST_DEFAULT])
     }
+
+    /// The provider a unit test walks unless it says otherwise: the
+    /// one [`Self::for_tests`] orders, a table answers as by default,
+    /// and a fixture row names when it is meant to be served.
+    #[cfg(test)]
+    pub const TEST_DEFAULT: ProviderId = ProviderId::TestA;
 
     /// The providers a walk runs against, in order — the next is
     /// asked only when the one before it was unreachable, refusing

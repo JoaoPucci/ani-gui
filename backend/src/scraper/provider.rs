@@ -32,13 +32,11 @@ pub fn encode_query(query: &str) -> String {
 /// failover between providers can attribute each attempt.
 ///
 /// Serialized as the identifier the renderer's `StreamProvider`
-/// names — `anidb`, `hianime` — not as the label a show key carries,
-/// so a response field typed on one side matches the other.
+/// names — `hianime` — not as the label a show key carries, so a
+/// response field typed on one side matches the other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderId {
-    /// anidb.app — the provider ani-cli 5.0 scrapes.
-    Anidb,
     /// hianime — the provider ani-cli moved to when anidb.app went
     /// dark in September 2026.
     Hianime,
@@ -56,7 +54,7 @@ impl ProviderId {
     /// Every provider the app knows, whether or not a state orders
     /// it: the set a gate exists for, and the set a stored label can
     /// name.
-    pub const ALL: &'static [ProviderId] = &[Self::Anidb, Self::Hianime];
+    pub const ALL: &'static [ProviderId] = &[Self::Hianime];
 
     /// The providers that exist only in tests. They have gates like
     /// every known provider and answer only from a table a test
@@ -64,15 +62,20 @@ impl ProviderId {
     #[cfg(test)]
     pub const TEST: &'static [ProviderId] = &[Self::TestA, Self::TestB];
 
-    /// The provider a label names. Anything that is not a known
-    /// label — an absent one included — is anidb, the default every
-    /// caller from before there were two providers means.
+    /// The provider a label names, when it names a known one. An
+    /// absent or unknown label names none.
     #[must_use]
-    pub fn from_label(label: &str) -> Self {
-        match label {
-            "hianime" => Self::Hianime,
-            _ => Self::Anidb,
-        }
+    pub fn from_label(label: &str) -> Option<Self> {
+        Self::known().find(|p| p.label() == label)
+    }
+
+    /// Every provider the build knows: [`Self::ALL`], and in test
+    /// builds [`Self::TEST`] too.
+    pub(crate) fn known() -> impl Iterator<Item = Self> {
+        let known = Self::ALL.iter();
+        #[cfg(test)]
+        let known = known.chain(Self::TEST);
+        known.copied()
     }
 
     /// The label the renderer interpolates into its progress copy
@@ -80,7 +83,6 @@ impl ProviderId {
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
-            Self::Anidb => "anidb.app",
             // The brand, not a domain: the site's domain churns and is
             // filtered per ISP, and the label names who answered.
             Self::Hianime => "hianime",
@@ -125,94 +127,7 @@ pub struct EpisodeRef {
     pub number2: Option<String>,
 }
 
-/// The digits after a slug's last hyphen, when there are any —
-/// the entry id both providers key their listings on.
-#[must_use]
-pub fn slug_numeric_id(slug: &str) -> Option<u64> {
-    slug.rsplit('-').next()?.parse().ok()
-}
-
-/// The Kitsu-searchable text a slug carries: its hyphenated
-/// words with the trailing numeric id removed (`one-piece-69` →
-/// `one piece`). `None` when `slug` isn't slug-shaped — legacy
-/// allanime ids are mixed-case and hyphenless, so they fall through
-/// to their own resolve path.
-#[must_use]
-pub fn slug_search_term(slug: &str) -> Option<String> {
-    Some(slug_words(slug)?.replace('-', " "))
-}
-
-/// The slug without its numeric tail — `words-id` less the id — when
-/// it is slug-shaped: the hyphenated words that name the show, which
-/// the search term is made from and the cour is read off, since the
-/// tail is the provider's id and would otherwise read as a trailing
-/// number.
-#[must_use]
-pub fn slug_words(slug: &str) -> Option<&str> {
-    slug_numeric_id(slug)?;
-    let (words, _id) = slug.rsplit_once('-')?;
-    if words.is_empty() {
-        return None;
-    }
-    Some(words)
-}
-
-/// A show id that says whose id it is. Every store stamped by a
-/// resolve — history rows, the numbering sidecar, the watched-at
-/// stamps, the reverse mapping, the cache row — keys on this key's
-/// string form. anidb's is the bare slug every existing row already
-/// holds, so nothing migrates; any other provider's carries its label
-/// as a prefix, so the read side can tell them apart.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ShowKey {
-    /// The provider whose slug this is.
-    pub provider: ProviderId,
-    /// The slug as the provider spells it.
-    pub slug: String,
-}
-
-impl ShowKey {
-    /// A key for `slug` on `provider`.
-    pub fn new(provider: ProviderId, slug: impl Into<String>) -> Self {
-        Self {
-            provider,
-            slug: slug.into(),
-        }
-    }
-
-    /// The key a stored id names. A prefix the app does not know is
-    /// part of the slug: only a known label qualifies an id, and a
-    /// bare id is anidb's — including the allanime-era ids that
-    /// predate slugs, which parse but carry no words.
-    #[must_use]
-    pub fn parse(id: &str) -> Self {
-        for provider in [ProviderId::Hianime] {
-            if let Some(slug) = id
-                .strip_prefix(provider.label())
-                .and_then(|r| r.strip_prefix(':'))
-            {
-                return Self::new(provider, slug);
-            }
-        }
-        Self::new(ProviderId::Anidb, id)
-    }
-
-    /// The Kitsu-searchable words the slug carries, when it is
-    /// slug-shaped — both providers spell theirs `words-id`.
-    #[must_use]
-    pub fn search_term(&self) -> Option<String> {
-        slug_search_term(&self.slug)
-    }
-}
-
-impl std::fmt::Display for ShowKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.provider {
-            ProviderId::Anidb => f.write_str(&self.slug),
-            other => write!(f, "{}:{}", other.label(), self.slug),
-        }
-    }
-}
+pub use super::show_key::{slug_numeric_id, slug_search_term, slug_words, ShowKey};
 
 /// The most a subtitle track's URL may run to, in bytes. A track URL
 /// a CDN signs runs to a few hundred bytes — a path, a token, an

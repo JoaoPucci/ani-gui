@@ -46,7 +46,7 @@ fn put_numbering(state: &AppState, native: &NativeResolved) {
                 &native.resolved_slot.to_string(),
             ) =>
         {
-            crate::commands::anidb_offset::put_display(
+            crate::commands::numbering_offset::put_display(
                 state,
                 &native.slug,
                 native.numbering_offset,
@@ -54,7 +54,7 @@ fn put_numbering(state: &AppState, native: &NativeResolved) {
                 tag,
             );
         }
-        _ => crate::commands::anidb_offset::put(state, &native.slug, native.numbering_offset),
+        _ => crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset),
     }
 }
 

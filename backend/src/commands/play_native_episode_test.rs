@@ -335,7 +335,7 @@ struct ListedTracks(Vec<crate::scraper::provider::SubtitleTrack>);
 #[async_trait::async_trait]
 impl crate::scraper::provider::Provider for ListedTracks {
     fn id(&self) -> crate::scraper::provider::ProviderId {
-        crate::scraper::provider::ProviderId::Anidb
+        crate::scraper::provider::ProviderId::TestA
     }
     async fn search(&self, _q: &str) -> crate::error::Result<Vec<BrowseHit>> {
         Ok(vec![BrowseHit {

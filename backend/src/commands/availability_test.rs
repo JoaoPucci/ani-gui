@@ -122,7 +122,7 @@ fn warm_backoff_keeps_the_pacing_gap_for_other_outcomes() {
         episode_count: None,
         episode_count_approximate: false,
         gate_refused: false,
-        provider: None,
+        provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         extra_episodes: Vec::new(),
     });
     assert_eq!(warm_backoff(&ok), std::time::Duration::from_millis(500));
@@ -153,7 +153,7 @@ fn response_round_trips_with_episode_count_and_extras() {
         episode_count: Some(1160),
         episode_count_approximate: false,
         gate_refused: false,
-        provider: None,
+        provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         extra_episodes: vec!["1061.5".into()],
     };
     let json = serde_json::to_string(&r).expect("serialize");
@@ -289,7 +289,7 @@ fn positive_ttl_for_current_returns_24_hour_window() {
 /// fires on every detail-page mount and every rail warm.
 #[tokio::test]
 async fn check_availability_honours_the_state_level_override() {
-    let server = no_results(ProviderId::Anidb);
+    let server = no_results(ProviderId::TestA);
     let td = tempfile::tempdir().expect("tempdir");
     let mut state = cache_only_state(&td);
     state.providers.set_stub(Arc::clone(&server));
@@ -333,13 +333,21 @@ fn stub_one_show(count: u32) -> Arc<TableProvider> {
 
 #[tokio::test]
 async fn the_response_names_the_provider_whose_catalogue_answered() {
-    // Two providers means "available" needs an owner: the row
-    // says whose catalogue it describes, in the identifier the
-    // renderer's `StreamProvider` uses, and rows written before
-    // the field parse as unattributed rather than failing.
-    let server = stub_one_show(7);
+    // "Available" needs an owner: the row says whose catalogue it
+    // describes, in the identifier the renderer's `StreamProvider`
+    // uses, and rows written before the field parse as unattributed
+    // rather than failing.
+    let rows: Vec<u64> = (5001..=5007).collect();
+    let server = Arc::new(one_show(
+        ProviderId::Hianime,
+        ("probe-show-5", "Probe Show", None),
+        &rows,
+        true,
+        false,
+    ));
     let td = tempfile::tempdir().expect("td");
-    let state = cache_only_state(&td);
+    let mut state = cache_only_state(&td);
+    state.providers.set_order(vec![ProviderId::Hianime]);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Probe Show",
         "mode": "sub",
@@ -350,9 +358,9 @@ async fn the_response_names_the_provider_whose_catalogue_answered() {
     let got = check_with(&state, &args, &server)
         .await
         .expect("probe succeeds");
-    assert_eq!(got.provider, Some(ProviderId::Anidb));
+    assert_eq!(got.provider, Some(ProviderId::Hianime));
     let body = serde_json::to_value(&got).expect("json");
-    assert_eq!(body["provider"], "anidb");
+    assert_eq!(body["provider"], "hianime");
     let legacy: AvailabilityResponse =
         serde_json::from_str(r#"{"available":true,"episode_count":7,"extra_episodes":[]}"#)
             .expect("a row from before the field");
@@ -384,7 +392,7 @@ async fn the_cached_row_keeps_the_provider_that_answered() {
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert_eq!(
         row.provider,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the row names the provider whose catalogue answered"
     );
 }
@@ -634,7 +642,8 @@ fn a_negative_row_is_not_served_while_its_provider_is_in_a_rate_limit_pause() {
 /// closed, breaker open, pausing, both — for a row from either
 /// provider or from before the field: a row is served exactly
 /// when its provider is not refusing and every provider ahead of
-/// it is, and a pause counts as refusing wherever a breaker does.
+/// it is, and a pause counts as refusing wherever a breaker does;
+/// a row from before the field names nobody and is never served.
 /// Driven by hand on one state, whose gates are reset between
 /// cases by the success that clears both a breaker and a pause.
 
@@ -1166,7 +1175,8 @@ fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_re
                 let a_refusing = a_broken || a_paused;
                 let b_refusing = b_broken || b_paused;
                 let expected = match provider {
-                    None | Some(ProviderId::TestA) => !a_refusing,
+                    None => false,
+                    Some(ProviderId::TestA) => !a_refusing,
                     Some(ProviderId::TestB) => !b_refusing && a_refusing,
                     Some(other) => unreachable!("the cases draw no {other:?} row"),
                 };
@@ -1226,7 +1236,7 @@ fn the_remembered_provider_is_read_off_a_positive_row_alone() {
 /// A primary whose search answers with nothing — the one answer
 /// that proves absence.
 fn stub_no_results() -> Arc<TableProvider> {
-    no_results(ProviderId::Anidb)
+    no_results(ProviderId::TestA)
 }
 
 #[tokio::test]
@@ -1253,7 +1263,7 @@ async fn a_clean_miss_row_names_the_provider_that_answered_it() {
     let row: AvailabilityResponse = serde_json::from_str(&row).expect("row parses");
     assert_eq!(
         row.provider,
-        Some(ProviderId::Anidb),
+        Some(ProviderId::TestA),
         "the negative row names the provider whose miss it is"
     );
 }
@@ -1265,8 +1275,8 @@ async fn a_negative_row_is_not_served_while_its_provider_is_unreachable() {
     // through the outage hides — from the lists and from the
     // page's play and download — a show the fallback carries, for
     // the row's whole lifetime, in the exact outage failover
-    // exists for. Unattributed negatives — rows the play path
-    // stamped — count as the primary's.
+    // exists for. An unattributed negative is nobody's verdict and is
+    // not served either.
     let fallback = stub_sub_only(ProviderId::TestB);
     let td = tempfile::tempdir().expect("td");
     let mut state = cache_only_state(&td);
@@ -1315,8 +1325,8 @@ fn a_negative_row_is_served_while_its_provider_is_reachable() {
     // Reachable means seen answering: a fresh gate has answered
     // nothing, and a row served on it would stand on a provider
     // that may be down since before the process started.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
-    write_cache(&state, "562", "sub", false, Some(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
+    write_cache(&state, "562", "sub", false, Some(ProviderId::TestA));
     let listed = batch_cached(
         &state,
         &AvailabilityBatchArgs {
@@ -1451,7 +1461,7 @@ async fn one_probe_leaves_the_breaker_one_outcome() {
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD - 1 {
         state
             .providers
-            .gate(ProviderId::Anidb)
+            .gate(ProviderId::TestA)
             .record_outcome(false, tokio::time::Instant::now());
     }
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1464,7 +1474,7 @@ async fn one_probe_leaves_the_breaker_one_outcome() {
     assert!(
         state
             .providers
-            .gate(ProviderId::Anidb)
+            .gate(ProviderId::TestA)
             .admit(crate::scraper::gate::ScrapePriority::Background)
             .await
             .is_err(),
@@ -1566,7 +1576,7 @@ async fn a_sub_only_show_probed_for_dub_caches_unavailable() {
     // The provider ANSWERED absence for this mode, so the
     // negative verdict is cacheable — like the clean search miss.
     let server = Arc::new(one_show(
-        ProviderId::Anidb,
+        ProviderId::TestA,
         ("sub-only-71", "Sub Only Show", None),
         &[711, 712],
         true,
@@ -1639,7 +1649,7 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
 
 #[tokio::test]
 async fn a_transient_provider_failure_surfaces_network_and_writes_nothing() {
-    let server = refusing(ProviderId::Anidb, 500);
+    let server = refusing(ProviderId::TestA, 500);
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -1824,7 +1834,7 @@ fn write_cache_full_round_trips_via_batch_cached() {
             extra_episodes: vec!["1061.5".into()],
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
     let resp = batch_cached(
@@ -1855,7 +1865,7 @@ fn write_cache_full_skips_empty_kitsu_id() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
     // No row in the cache → batch_cached returns an empty map
@@ -1881,8 +1891,14 @@ fn write_cache_round_trips_for_negative_results() {
     let td = tempfile::tempdir().expect("tempdir");
     let state = cache_only_state(&td);
     // A negative row is usable only on a provider seen answering.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
-    write_cache(&state, "kid-2", "dub", false, None);
+    close_breaker(state.providers.gate(ProviderId::TestA));
+    write_cache(
+        &state,
+        "kid-2",
+        "dub",
+        false,
+        Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+    );
     let resp = batch_cached(
         &state,
         &AvailabilityBatchArgs {
@@ -1900,7 +1916,13 @@ fn write_cache_round_trips_for_negative_results() {
 fn batch_cached_keys_by_mode() {
     let td = tempfile::tempdir().expect("tempdir");
     let state = cache_only_state(&td);
-    write_cache(&state, "kid-3", "sub", true, None);
+    write_cache(
+        &state,
+        "kid-3",
+        "sub",
+        true,
+        Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+    );
     let dub_resp = batch_cached(
         &state,
         &AvailabilityBatchArgs {
@@ -1927,7 +1949,13 @@ fn batch_cached_keys_by_mode() {
 fn batch_cached_skips_empty_ids_in_input() {
     let td = tempfile::tempdir().expect("tempdir");
     let state = cache_only_state(&td);
-    write_cache(&state, "kid-4", "sub", true, None);
+    write_cache(
+        &state,
+        "kid-4",
+        "sub",
+        true,
+        Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+    );
     let resp = batch_cached(
         &state,
         &AvailabilityBatchArgs {
@@ -1983,7 +2011,7 @@ fn batch_cached_returns_playable_episode_counts() {
     let td = tempfile::tempdir().expect("tempdir");
     let state = cache_only_state(&td);
     // The negative row below stands on a provider seen answering.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
     write_cache_full(
         &state,
         "ongoing-show",
@@ -1995,7 +2023,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
     write_cache_full(
@@ -2009,7 +2037,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
     // Cached as unavailable — no playable count to surface.
@@ -2024,7 +2052,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
     let resp = batch_cached(
@@ -2085,7 +2113,7 @@ async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
 
@@ -2162,7 +2190,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
 
@@ -2235,7 +2263,7 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
     drop(guard);
@@ -2265,7 +2293,7 @@ async fn background_probe_skips_the_network_while_the_breaker_is_open() {
     for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
         state
             .providers
-            .gate(ProviderId::Anidb)
+            .gate(ProviderId::TestA)
             .record_outcome(false, tokio::time::Instant::now());
     }
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
@@ -2305,7 +2333,7 @@ fn an_approximate_cached_count_is_not_a_usable_hit() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        provider: None,
+        provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
         cache_hit_is_usable(&state, &exact),
@@ -2315,7 +2343,7 @@ fn an_approximate_cached_count_is_not_a_usable_hit() {
     let approximate = AvailabilityResponse {
         episode_count_approximate: true,
         gate_refused: false,
-        provider: None,
+        provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         ..exact.clone()
     };
     assert!(
@@ -2333,14 +2361,14 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     // A negative row is usable only on a provider seen answering.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
     let legacy = AvailabilityResponse {
         available: true,
         episode_count: None,
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        provider: None,
+        provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
         !cache_hit_is_usable(&state, &legacy),
@@ -2353,12 +2381,27 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        provider: None,
+        provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
         cache_hit_is_usable(&state, &negative),
         "a negative row is kept"
     );
+
+    // Nobody's verdict: neither a positive nor a negative that names
+    // no provider is served.
+    for available in [true, false] {
+        let unattributed = AvailabilityResponse {
+            available,
+            episode_count: Some(12),
+            provider: None,
+            ..negative.clone()
+        };
+        assert!(
+            !cache_hit_is_usable(&state, &unattributed),
+            "a row naming no provider re-probes (available: {available})"
+        );
+    }
 }
 
 /// The rule over the whole input space rather than the four
@@ -2378,7 +2421,7 @@ fn usability_is_negative_or_a_confirmed_count() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     // A negative row is usable only on a provider seen answering.
-    close_breaker(state.providers.gate(ProviderId::Anidb));
+    close_breaker(state.providers.gate(ProviderId::TestA));
     let cases = (
         proptest::bool::ANY,
         proptest::option::of(0u32..2000),
@@ -2393,7 +2436,7 @@ fn usability_is_negative_or_a_confirmed_count() {
                 extra_episodes: extras,
                 episode_count_approximate: approximate,
                 gate_refused: false,
-                provider: None,
+                provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             };
             proptest::prop_assert_eq!(
                 cache_hit_is_usable(&state, &row),
@@ -2423,7 +2466,7 @@ fn an_unconfirmed_available_row_is_never_served() {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: approximate,
                 gate_refused: false,
-                provider: None,
+                provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             };
             proptest::prop_assert!(!cache_hit_is_usable(&state, &row));
             Ok(())
@@ -2448,7 +2491,7 @@ fn write_cache_full_round_trips_the_approximate_flag() {
             extra_episodes: Vec::new(),
             episode_count_approximate: true,
             gate_refused: false,
-            provider: None,
+            provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
     let raw = meta_cache_get(&state.cache_pool, &cache_key("kid-approx", "sub"))
@@ -2468,8 +2511,13 @@ fn write_cache_full_round_trips_the_approximate_flag() {
 fn a_legacy_row_without_the_flag_parses_as_exact() {
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
-    let parsed: AvailabilityResponse =
-        serde_json::from_str(r#"{"available":true,"episode_count":12}"#).expect("parse");
+    // A row from before the flag, naming the provider the state walks.
+    let parsed: AvailabilityResponse = serde_json::from_value(serde_json::json!({
+        "available": true,
+        "episode_count": 12,
+        "provider": crate::provider_set::ProviderSet::TEST_DEFAULT,
+    }))
+    .expect("parse");
     assert!(!parsed.episode_count_approximate);
     assert!(cache_hit_is_usable(&state, &parsed));
 }

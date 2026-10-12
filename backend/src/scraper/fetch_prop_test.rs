@@ -1,7 +1,6 @@
 //! Property coverage for the transport's pure helpers.
 //!
-//! Its own file rather than an append to `anidb_test.rs`, matching
-//! the other property modules on this branch.
+//! Its own file, like the crate's other property modules.
 
 use super::{candidate_names, fetch_args, redacted_url, scrub_stderr, split_trailer, FetchRequest};
 

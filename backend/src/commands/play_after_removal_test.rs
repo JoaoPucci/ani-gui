@@ -46,7 +46,7 @@ fn native() -> NativeResolved {
         extra_tags: Vec::new(),
         resolved_slot: 2,
         resolved_tag: None,
-        provider: crate::scraper::provider::ProviderId::Anidb,
+        provider: crate::scraper::provider::ProviderId::TestA,
         referer: None,
         subtitles: Vec::new(),
     }
@@ -103,7 +103,7 @@ fn left(state: &AppState) -> (usize, u32, bool) {
             .iter()
             .filter(|r| r.id == SHOW)
             .count(),
-        crate::commands::anidb_offset::get(state, SHOW),
+        crate::commands::numbering_offset::get(state, SHOW),
         crate::cache::meta_cache_get(&state.cache_pool, KEY)
             .expect("cache")
             .is_some(),
@@ -318,7 +318,7 @@ fn removing_a_show_takes_what_its_page_resolved_under_another_key() {
         other_key,
         &other,
     );
-    crate::commands::anidb_offset::put(&state, "other-show-9", 3);
+    crate::commands::numbering_offset::put(&state, "other-show-9", 3);
 
     assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
 
@@ -328,7 +328,7 @@ fn removing_a_show_takes_what_its_page_resolved_under_another_key() {
         "another page's stays"
     );
     assert_eq!(
-        crate::commands::anidb_offset::get(&state, "other-show-9"),
+        crate::commands::numbering_offset::get(&state, "other-show-9"),
         3
     );
 }
@@ -520,7 +520,7 @@ fn a_key_a_surviving_resolution_row_names_keeps_its_numbering() {
         resolution(&state, PAGELESS).is_some(),
         "the pageless one stays"
     );
-    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 12);
+    assert_eq!(crate::commands::numbering_offset::get(&state, SHOW), 12);
 }
 
 /// A clear takes what a delete of each show would: the numbering its
@@ -540,13 +540,13 @@ fn a_clear_takes_the_numbering_its_shows_pages_resolved_under_another_key() {
         "play:v14:Other Show:sub:best:1:::",
         &browsed,
     );
-    crate::commands::anidb_offset::put(&state, "other-show-9", 3);
+    crate::commands::numbering_offset::put(&state, "other-show-9", 3);
 
     crate::commands::history::history_clear(&state).unwrap();
 
-    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+    assert_eq!(crate::commands::numbering_offset::get(&state, SHOW), 0);
     assert_eq!(
-        crate::commands::anidb_offset::get(&state, "other-show-9"),
+        crate::commands::numbering_offset::get(&state, "other-show-9"),
         3
     );
 }
@@ -567,7 +567,7 @@ fn a_delete_retried_after_its_history_write_failed_takes_the_other_keys_numberin
 
     assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
 
-    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+    assert_eq!(crate::commands::numbering_offset::get(&state, SHOW), 0);
 }
 
 /// A clear takes every resolution row, so one that names the other key
@@ -583,7 +583,7 @@ fn a_clear_takes_the_other_keys_numbering_whatever_else_named_it() {
     crate::commands::history::history_clear(&state).unwrap();
 
     assert!(resolution(&state, PAGELESS).is_none(), "every row goes");
-    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+    assert_eq!(crate::commands::numbering_offset::get(&state, SHOW), 0);
 }
 
 // A removal that fails part-way is retried, and the retry finds the
@@ -625,7 +625,7 @@ fn a_delete_retried_after_the_skip_times_failed_takes_the_other_keys_numbering()
 
     assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
 
-    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+    assert_eq!(crate::commands::numbering_offset::get(&state, SHOW), 0);
 }
 
 #[test]
@@ -640,7 +640,7 @@ fn a_clear_retried_after_the_skip_times_failed_takes_the_other_keys_numbering() 
 
     crate::commands::history::history_clear(&state).unwrap();
 
-    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+    assert_eq!(crate::commands::numbering_offset::get(&state, SHOW), 0);
 }
 
 /// The page's rows are deleted one by one: one that refuses, after
@@ -660,7 +660,7 @@ fn a_delete_retried_after_a_resolution_row_failed_takes_the_other_keys_numbering
 
     assert!(crate::commands::history::history_delete(&state, "hianime:the-show-100").unwrap());
 
-    assert_eq!(crate::commands::anidb_offset::get(&state, SHOW), 0);
+    assert_eq!(crate::commands::numbering_offset::get(&state, SHOW), 0);
 }
 
 /// A row from before rows recorded the Kitsu id is known by its
@@ -736,7 +736,7 @@ fn a_delete_takes_the_title_match_stored_under_the_rows_old_title() {
     let old = format!(
         "{}1",
         crate::commands::kitsu::title_match_prefix(
-            crate::scraper::provider::ProviderId::Hianime,
+            Some(crate::scraper::provider::ProviderId::Hianime),
             "The Show"
         )
     );

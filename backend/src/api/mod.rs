@@ -346,7 +346,8 @@ async fn get_kitsu_episodes(
 struct TitleMatchQuery {
     title: String,
     cour: u32,
-    /// The provider whose title this is; anidb when absent.
+    /// The provider whose title this is; none when absent — a history
+    /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
 }
@@ -385,7 +386,8 @@ struct TitleMatchBody {
     title: String,
     cour: u32,
     kitsu_id: String,
-    /// The provider whose title this is; anidb when absent.
+    /// The provider whose title this is; none when absent — a history
+    /// row whose key names no provider.
     #[serde(default)]
     provider: Option<String>,
 }
@@ -908,13 +910,12 @@ mod tests {
     async fn get_play_stream_emits_a_terminal_error_event_when_the_gate_refuses() {
         let td = TempDir::new().expect("tempdir");
         let state = test_app_state(&td);
-        // The native play admits through the anidb gate since the
-        // provider split; priming the provider gate no longer
-        // refuses anything on this path.
+        // The native play admits through the walked provider's own
+        // gate; priming it is what makes the play refuse.
         for _ in 0..crate::scraper::gate::FAILURE_THRESHOLD {
             state
                 .providers
-                .gate(crate::scraper::provider::ProviderId::Anidb)
+                .gate(crate::scraper::provider::ProviderId::TestA)
                 .record_outcome(false, tokio::time::Instant::now());
         }
         let router = build_api_router(Arc::new(state));
@@ -1182,7 +1183,7 @@ mod tests {
             "null"
         );
 
-        // The row is hianime's; a request without a provider is anidb's.
+        // The row is hianime's; a request without a provider names none.
         let other_provider = r#"{"title":"Naruto","cour":1,"kitsu_id":"11"}"#;
         assert_eq!(
             put_title_match(&router, other_provider).await,
@@ -1696,7 +1697,7 @@ mod tests {
             },
         );
         // A later resolve moved the display stamp to its own row.
-        crate::commands::anidb_offset::put_display(&state, "the-show-77", 0, 7, "6");
+        crate::commands::numbering_offset::put_display(&state, "the-show-77", 0, 7, "6");
         let router = build_api_router(Arc::new(state));
 
         let response = router
@@ -1749,7 +1750,7 @@ mod tests {
             },
         );
         // The stamp names display 4 as slot 5.
-        crate::commands::anidb_offset::put_display(&state, "the-show-77", 0, 5, "4");
+        crate::commands::numbering_offset::put_display(&state, "the-show-77", 0, 5, "4");
         let router = build_api_router(Arc::new(state));
 
         let response = router

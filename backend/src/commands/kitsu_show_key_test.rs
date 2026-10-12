@@ -60,7 +60,7 @@ fn state_with_kitsu_at(uri: &str) -> AppState {
 }
 
 /// A row keyed under another provider's label resolves through its
-/// slug's words like an anidb row, and persists under the id asked.
+/// slug's words like a bare row, and persists under the id asked.
 #[tokio::test]
 async fn a_qualified_id_resolves_through_its_slugs_words() {
     let mock = MockServer::start().await;
@@ -114,8 +114,8 @@ async fn the_cour_guard_applies_to_every_providers_ids() {
         .await;
     let state = state_with_kitsu_at(&mock.uri());
     // Kitsu's One Piece slug carries no part suffix (cour 1); the
-    // provider title says Part 2. For anidb that is the poison the
-    // guard exists for.
+    // provider title says Part 2. For a bare row that is the poison
+    // the guard exists for.
     try_put_allmanga_kitsu_mapping(
         &state,
         "one-piece-69",
@@ -127,7 +127,7 @@ async fn the_cour_guard_applies_to_every_providers_ids() {
     assert_eq!(
         allmanga_kitsu_get(&state, "one-piece-69").expect("read"),
         None,
-        "an anidb id under a cross-cour title stays unmapped"
+        "a bare id under a cross-cour title stays unmapped"
     );
     try_put_allmanga_kitsu_mapping(
         &state,

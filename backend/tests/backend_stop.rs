@@ -31,21 +31,49 @@ use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-/// The provider's transport: answers every step of the resolve walk
-/// from the script, in the `<body>\n<status> <url>` shape the real
-/// one prints. The URL is curl's operand, the last argument.
-const TRANSPORT: &str = r##"#!/bin/sh
+/// The provider's transport: answers every step of hianime's resolve
+/// walk from the script — the search page, the episode list, the
+/// server list, the embed page carrying the player's payload, and the
+/// master — in the `<body>\n<status> <url>` shape the real one prints.
+/// The URL is curl's operand, the last argument.
+fn transport() -> String {
+    use base64::Engine as _;
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+    let embed = "https://stand-in.invalid/stream/1/1001/sub";
+    // The embed page's payload, XOR'd under the site's key and
+    // base64'd, as the site's own pages carry it.
+    let payload = br#"{"src":"https://stand-in.invalid/op/master.m3u8","subtitles":[]}"#;
+    let key = b"otaku-embed-v1";
+    let xored: Vec<u8> = payload
+        .iter()
+        .zip(key.iter().cycle())
+        .map(|(b, k)| b ^ k)
+        .collect();
+    let search = r#"<div class="film_list-wrap"><div class="flw-item"><div class="film-detail"><h3 class="film-name"><a href="https://stand-in.invalid/test-show-1" title="test" class="dynamic-name">test</a></h3><div class="fd-infor"><span class="fdi-item">TV</span></div></div></div></div><div id="main-sidebar"></div>"#;
+    let list = r#"{"status":true,"html":"<a class=\"ep-item\" data-number=\"1\" data-id=\"1001\"></a><a class=\"ep-item\" data-number=\"2\" data-id=\"1002\"></a>"}"#;
+    let servers = format!(
+        r#"{{"status":true,"html":"<div class=\"server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"{}\"></div>"}}"#,
+        b64(embed.as_bytes())
+    );
+    let page = format!(
+        r#"<html><body><script>window.__P="{}"</script></body></html>"#,
+        b64(&xored)
+    );
+    format!(
+        r##"#!/bin/sh
 for url in "$@"; do :; done
 case "$url" in
-  */browse*) body='<a href="/anime/test-show-1"><img alt="test"/></a>' ;;
-  */anime/1/episodes) body='{"episodes":[{"id":1001,"number":1},{"id":1002,"number":2}]}' ;;
-  */episode/*/languages) body='{"languages":[{"code":"jpn","embed_url":"https://stand-in.invalid/embed/x"}]}' ;;
-  */embed/x) body="player.setup({ file: 'https://stand-in.invalid/op/master.m3u8' });" ;;
+  */search\?keyword=*) body='{search}' ;;
+  */api/theme/episode/list/1) body='{list}' ;;
+  */api/theme/episode/servers\?episodeId=*) body='{servers}' ;;
+  */stream/1/1001/sub) body='{page}' ;;
   */master.m3u8) body='#EXTM3U' ;;
   *) printf 'not found\n404 %s' "$url"; exit 0 ;;
 esac
 printf '%s\n200 %s' "$body" "$url"
-"##;
+"##
+    )
+}
 
 /// yt-dlp: a tool with a helper of its own, both of which outlive
 /// anything that does not kill the group. Each leaves its pid beside
@@ -217,7 +245,7 @@ fn start_a_download() -> Downloading {
     }
     let bin = root.join("bin");
     std::fs::create_dir(&bin).expect("mkdir bin");
-    stage(&bin.join("curl_firefox135"), TRANSPORT);
+    stage(&bin.join("curl_firefox135"), &transport());
     stage(&bin.join("yt-dlp"), TOOL);
 
     // Standard error is a pipe nobody reads, like standard output

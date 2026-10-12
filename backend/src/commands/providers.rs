@@ -816,10 +816,6 @@ pub fn client_for<'a>(
         crate::scraper::gated::GatedFetch::new(fetch, Some(gate_of(state, provider)), priority);
     let origin = state.providers.origin(provider);
     Ok(match provider {
-        ProviderId::Anidb => match origin {
-            Some(base) => Box::new(crate::scraper::anidb::AnidbClient::with_base(fetch, base)),
-            None => Box::new(crate::scraper::anidb::AnidbClient::new(fetch)),
-        },
         ProviderId::Hianime => match origin {
             Some(base) => Box::new(crate::scraper::hianime::HianimeClient::with_base(
                 fetch, base,

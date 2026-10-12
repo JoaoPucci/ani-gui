@@ -1,7 +1,6 @@
 //! The transport's own tests: binary resolution and failover
 //! order, the child's argv, the subprocess itself, and log redaction.
-//! Moved here with the transport; the anidb client's tests stay with
-//! that client.
+//! The provider clients' tests stay with each client.
 
 use super::*;
 
@@ -358,7 +357,7 @@ fn every_wrapper_and_plain_curl_carry_no_target() {
 #[test]
 fn a_candidate_with_a_target_passes_it_on_the_command_line() {
     let args = fetch_args(
-        &FetchRequest::get("https://anidb.app/anime/x"),
+        &FetchRequest::get("https://provider.example/anime/x"),
         Some("chrome136"),
     );
     let i = args
@@ -370,7 +369,7 @@ fn a_candidate_with_a_target_passes_it_on_the_command_line() {
 
 #[test]
 fn a_candidate_without_a_target_gets_no_impersonate_flag() {
-    let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), None);
+    let args = fetch_args(&FetchRequest::get("https://provider.example/anime/x"), None);
     assert!(
         !args.iter().any(|a| a == "--impersonate"),
         "a wrapper already carries its fingerprint; passing a target too would fight it"
@@ -386,7 +385,10 @@ fn a_candidate_without_a_target_gets_no_impersonate_flag() {
 #[test]
 fn the_windows_child_reads_the_native_certificate_store() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             args.iter().any(|a| a == "--ca-native"),
             "without the flag a BoringSSL child on Windows fails every TLS verify"
@@ -402,7 +404,10 @@ fn the_windows_child_reads_the_native_certificate_store() {
 #[test]
 fn other_platforms_keep_the_builds_own_verification_defaults() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             !args.iter().any(|a| a == "--ca-native"),
             "the flag is a Windows accommodation, not a default"
@@ -419,18 +424,18 @@ fn other_platforms_keep_the_builds_own_verification_defaults() {
 #[test]
 fn transport_logs_elide_credential_shaped_url_parts() {
     let signed = redacted_url(
-        "https://hls.anidb.app/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8",
+        "https://hls.provider.example/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8",
     );
     assert!(
         !signed.contains("lCu4egwqaEzu"),
         "a path segment that long is a token, not a name: {signed}"
     );
     assert!(
-        signed.contains("hls.anidb.app") && signed.contains("master.m3u8"),
+        signed.contains("hls.provider.example") && signed.contains("master.m3u8"),
         "host and the failing endpoint must survive redaction: {signed}"
     );
 
-    let with_query = redacted_url("https://anidb.app/browse?q=some+title");
+    let with_query = redacted_url("https://provider.example/browse?q=some+title");
     assert!(
         !with_query.contains("some") && !with_query.contains('?'),
         "queries carry signatures and search text; they never reach the log: {with_query}"
@@ -440,9 +445,9 @@ fn transport_logs_elide_credential_shaped_url_parts() {
         "the endpoint survives: {with_query}"
     );
 
-    let ordinary = redacted_url("https://anidb.app/api/frontend/anime/1234/episodes");
+    let ordinary = redacted_url("https://provider.example/api/frontend/anime/1234/episodes");
     assert_eq!(
-        ordinary, "https://anidb.app/api/frontend/anime/1234/episodes",
+        ordinary, "https://provider.example/api/frontend/anime/1234/episodes",
         "short-segment paths carry no credential and stay legible"
     );
 
@@ -462,13 +467,16 @@ fn transport_logs_elide_credential_shaped_url_parts() {
 #[test]
 fn the_child_never_globs_and_its_stderr_echo_is_redacted() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             args.iter().any(|a| a == "-g"),
             "an unmatched bracket in a URL makes curl print the whole operand to stderr"
         );
     }
-    let url = "https://hls.anidb.app/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8";
+    let url = "https://hls.provider.example/stream/lCu4egwqaEzuaBJYHn948CSqKItUfl9TaL1iuFw7i4ISHYbYkTw4rwtFlxQ7axN8/master.m3u8";
     let scrubbed = scrub_stderr(&format!("curl: (3) URL rejected: {url}"), url);
     assert!(
         !scrubbed.contains("lCu4egwqaEzu"),
@@ -492,7 +500,10 @@ fn the_child_never_globs_and_its_stderr_echo_is_redacted() {
 #[test]
 fn the_child_reports_its_error_text_despite_silent_mode() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             args.iter().any(|a| a == "-sSL"),
             "silent mode without show-error logs an empty stderr on every transfer failure"
@@ -510,7 +521,10 @@ fn the_child_reports_its_error_text_despite_silent_mode() {
 #[test]
 fn the_child_decodes_the_content_encoding_it_advertises() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert!(
             args.iter().any(|a| a == "--compressed"),
             "an advertised encoding the child does not decode is a parse failure downstream"
@@ -526,7 +540,10 @@ fn the_child_decodes_the_content_encoding_it_advertises() {
 #[test]
 fn the_child_reports_the_url_the_transfer_ended_on() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         let at = args
             .iter()
             .position(|a| a == "-w")
@@ -589,10 +606,13 @@ async fn an_unredirected_response_carries_the_url_that_was_asked_for() {
 #[test]
 fn the_url_stays_last_whether_or_not_a_target_is_passed() {
     for target in [Some("chrome136"), None] {
-        let args = fetch_args(&FetchRequest::get("https://anidb.app/anime/x"), target);
+        let args = fetch_args(
+            &FetchRequest::get("https://provider.example/anime/x"),
+            target,
+        );
         assert_eq!(
             args.last().map(String::as_str),
-            Some("https://anidb.app/anime/x")
+            Some("https://provider.example/anime/x")
         );
     }
 }
@@ -685,4 +705,125 @@ async fn get_is_a_headerless_fetch() {
     let seen = t.0.lock().expect("log").clone();
     assert_eq!(seen, vec![FetchRequest::get("https://provider.example/y")]);
     assert!(seen[0].headers.is_empty());
+}
+
+#[test]
+fn a_held_request_does_not_let_curl_follow_redirects() {
+    // The flags this rests on — `-sS` without `-L`, and the trailer
+    // naming the redirect's target — are the same on every platform;
+    // what differs (the native CA store on Windows, the cipher list on
+    // macOS, the impersonation target) does not touch redirects, so
+    // this holds for the Windows build as well.
+    for target in [None, Some("chrome136")] {
+        let held = fetch_args(
+            &FetchRequest::get("https://hianime.at/search?keyword=x").held_to_origin(),
+            target,
+        );
+        assert!(held.iter().any(|a| a == "-sS"));
+        assert!(!held.iter().any(|a| a == "-sSL"), "no -L: {held:?}");
+        assert!(held.iter().any(|a| a == "\n%{http_code} %{redirect_url}"));
+        let free = fetch_args(
+            &FetchRequest::get("https://hianime.at/search?keyword=x"),
+            target,
+        );
+        assert!(free.iter().any(|a| a == "-sSL"));
+        assert!(free.iter().any(|a| a == "\n%{http_code} %{url_effective}"));
+    }
+}
+
+#[tokio::test]
+async fn a_held_request_gives_up_on_a_same_origin_redirect_loop() {
+    use wiremock::matchers::method;
+    let Some(curl) =
+        CurlImpersonateFetch::resolve(None, &std::env::var("PATH").unwrap_or_default())
+    else {
+        eprintln!("no curl on PATH; skipping");
+        return;
+    };
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .respond_with(wiremock::ResponseTemplate::new(302).insert_header("location", "/again"))
+        .mount(&server)
+        .await;
+    let req = FetchRequest::get(format!("{}/start", server.uri())).held_to_origin();
+    assert!(matches!(curl.fetch(&req).await, Err(AniError::Network)));
+    let asked = server.received_requests().await.expect("recorded").len();
+    assert_eq!(
+        asked,
+        MAX_SAME_ORIGIN_HOPS + 1,
+        "bounded, one transfer per hop"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_held_requests_hops_share_one_deadline() {
+    // curl's own -L bounded a whole redirect chain by one transfer's
+    // deadline. Followed a hop at a time, each hop is its own
+    // transfer: the chain as a whole must still end at the request's
+    // deadline, not at one deadline per hop.
+    use wiremock::matchers::{method, path};
+    let Some(curl) =
+        CurlImpersonateFetch::resolve(None, &std::env::var("PATH").unwrap_or_default())
+    else {
+        eprintln!("no curl on PATH; skipping");
+        return;
+    };
+    let curl = curl.with_deadline(std::time::Duration::from_millis(600));
+    let server = wiremock::MockServer::start().await;
+    let hop = std::time::Duration::from_millis(250);
+    for n in 0..6 {
+        wiremock::Mock::given(method("GET"))
+            .and(path(format!("/hop{n}")))
+            .respond_with(
+                wiremock::ResponseTemplate::new(302)
+                    .insert_header("location", format!("/hop{}", n + 1).as_str())
+                    .set_delay(hop),
+            )
+            .mount(&server)
+            .await;
+    }
+    wiremock::Mock::given(method("GET"))
+        .and(path("/hop6"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string("arrived"))
+        .mount(&server)
+        .await;
+    let req = FetchRequest::get(format!("{}/hop0", server.uri())).held_to_origin();
+    let started = std::time::Instant::now();
+    let got = curl.fetch(&req).await;
+    assert!(matches!(got, Err(AniError::Timeout)), "{got:?}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(1200),
+        "ended at the request's deadline: {:?}",
+        started.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn a_redirect_without_a_target_is_one_transfer_held_or_not() {
+    // A 3xx that names nowhere to go — a broken upstream redirect —
+    // is the answer, from one transfer, whether the request is held
+    // or not: an unheld request is curl's own -L transfer and never
+    // enters the hop loop, and a held one has no target to hop to.
+    use wiremock::matchers::method;
+    let Some(curl) =
+        CurlImpersonateFetch::resolve(None, &std::env::var("PATH").unwrap_or_default())
+    else {
+        eprintln!("no curl on PATH; skipping");
+        return;
+    };
+    for held in [false, true] {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(302))
+            .mount(&server)
+            .await;
+        let req = FetchRequest::get(format!("{}/broken", server.uri()));
+        let req = if held { req.held_to_origin() } else { req };
+        let resp = curl.fetch(&req).await.expect("the redirect is the answer");
+        assert_eq!(resp.status, 302, "held={held}");
+        assert_eq!(resp.url, format!("{}/broken", server.uri()), "held={held}");
+        let asked = server.received_requests().await.expect("recorded").len();
+        assert_eq!(asked, 1, "held={held}: one transfer");
+    }
 }

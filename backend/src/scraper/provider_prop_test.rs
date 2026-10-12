@@ -20,7 +20,6 @@ fn provider() -> impl Strategy<Value = ProviderId> {
 
 fn pinned_label(id: ProviderId) -> &'static str {
     match id {
-        ProviderId::Anidb => "anidb.app",
         ProviderId::Hianime => "hianime",
         ProviderId::TestA => "test-a",
         ProviderId::TestB => "test-b",
