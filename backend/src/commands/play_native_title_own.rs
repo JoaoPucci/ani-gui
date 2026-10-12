@@ -3,13 +3,16 @@
 //! entry, a broad listing's first half — split from
 //! `play_native_title_marker` for the per-file complexity bar.
 
+use super::super::play_native_title_marks::title_marks;
 use super::*;
 
 impl EntryTitles<'_> {
     /// Whether the entry names `title` — heads it, when `title` is a
     /// broad listing: one of its titles carries the name `title` does
     /// ([`name`]), reads as it does ([`reading`]), and carries the same
-    /// words past that name outside its divisions ([`undivided_rest`]).
+    /// words past that name outside its divisions ([`undivided_rest`]),
+    /// written with the same marks and release year ([`title_marks`]):
+    /// "Gintama" is not "Gintama'", nor "Film (2019)" "Film (2020)".
     /// "Show Season 2" and "Show Second Cour" are named by "Show 2nd
     /// Season"; "Other Show Season 2", which reads alike, is another
     /// show, and so are "Show 2nd Season: Extra Arc" and, for "Show 2:
@@ -18,10 +21,16 @@ impl EntryTitles<'_> {
     /// [`name`]: super::play_native_title_reading::name
     /// [`reading`]: super::play_native_title_reading::reading
     /// [`undivided_rest`]: super::play_native_title_reading::undivided_rest
+    /// [`title_marks`]: super::play_native_title_marks::title_marks
     pub(crate) fn names(&self, title: &str) -> bool {
         let (theirs, called, rest) = (reading(title), name(title), undivided_rest(title));
-        self.all()
-            .any(|t| reading(t) == theirs && name(t) == called && undivided_rest(t) == rest)
+        let marks = title_marks(title);
+        self.all().any(|t| {
+            reading(t) == theirs
+                && name(t) == called
+                && undivided_rest(t) == rest
+                && title_marks(t) == marks
+        })
     }
 
     /// Whether `title` reads as one of the entry's titles does and
