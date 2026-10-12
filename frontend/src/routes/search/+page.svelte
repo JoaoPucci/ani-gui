@@ -132,11 +132,6 @@
 	// body ($lib/search/keep-focus.ts).
 	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => focusAnchor);
 
-	// Bumped per search so the marker under the grid is observed
-	// afresh: an observer reports only changes, and a grid short both
-	// times never takes the marker out of reach to report one.
-	let searchCount = $state(0);
-
 	function sentinel(node: HTMLElement) {
 		const stop = watchSentinel(node, (inReach) => (bottomInReach = inReach));
 		return {
@@ -220,10 +215,10 @@
 	async function runSearch(q: string) {
 		error = null;
 		submitted = q;
-		// The marker's last report belongs to the previous results; the
-		// observer made for this search reports its initial state.
+		// The marker's last report belongs to the previous results; it
+		// unmounts while this search's first page loads, and the
+		// observer made when it mounts again reports its initial state.
 		bottomInReach = false;
-		searchCount += 1;
 		await searchRunner.run(q);
 	}
 
@@ -466,28 +461,32 @@
 		{/if}
 	{/if}
 
-	<!-- Mounted once the search's first page has settled, so its
-	     observer's first report measures this search's grid, not the
-	     previous one still on screen while the new search loads. -->
+	<!-- Mounted once each search's first page has settled, and
+	     unmounted while the next search's first page loads: every search
+	     gets a fresh observer, which reports its initial state (an
+	     observer reports only changes, and a grid short for two searches
+	     in a row gives it none), measured against this search's grid,
+	     not the previous one still on screen. -->
 	{#if submitted && results !== null && !error && phase.kind !== 'loading'}
-		{#key searchCount}
-			<div class="sentinel" use:sentinel aria-hidden="true"></div>
-		{/key}
+		<div class="sentinel" use:sentinel aria-hidden="true"></div>
 	{/if}
 	{#if submitted}
 		<div class="folio" data-phase={phase.kind} data-settled={results !== null}>
 			<span class="folio-anchor" tabindex="-1" bind:this={focusAnchor}></span>
-			<!-- One rule, always in place, so a state change recolours it
-			     instead of moving what is below. -->
-			<span
-				data-testid="search-paging-rule"
-				class="folio-rule"
-				class:folio-rule-drawing={phase.kind === 'loading-more' && shown}
-				class:folio-rule-closed={phase.kind === 'end' && shown}
-				class:folio-rule-failed={phase.kind === 'failed'}
-				class:folio-rule-held={phase.kind === 'held'}
-				aria-hidden="true"
-			></span>
+			<!-- Once a first page is shown: one rule, always in place, so a
+			     state change recolours it instead of moving what is below.
+			     Before that the folio is the bare live region. -->
+			{#if results !== null}
+				<span
+					data-testid="search-paging-rule"
+					class="folio-rule"
+					class:folio-rule-drawing={phase.kind === 'loading-more' && shown}
+					class:folio-rule-closed={phase.kind === 'end' && shown}
+					class:folio-rule-failed={phase.kind === 'failed'}
+					class:folio-rule-held={phase.kind === 'held'}
+					aria-hidden="true"
+				></span>
+			{/if}
 			<!-- The one live region of the paging, mounted with the query
 			     so a screen reader hears each change; buttons stay outside. -->
 			<p class="folio-line" data-testid="search-paging" aria-live="polite" aria-atomic="true">
@@ -784,6 +783,7 @@
 		block-size: 1px;
 	}
 	.folio {
+		position: relative;
 		display: grid;
 		justify-items: start;
 		gap: var(--space-3);
@@ -792,11 +792,18 @@
 	}
 	/* Mounted with the query so its live region is in place before the
 	   first page lands. Until a first page has been shown (and under a
-	   failed first search) it takes no room; from then on its room is
-	   fixed, so a second search does not move the bottom of the page. */
+	   failed first search) it is the empty live region alone and takes
+	   no room; from then on its room is fixed, so a second search does
+	   not move the bottom of the page. */
 	.folio:not([data-settled='true']) {
 		margin-block-start: 0;
 		padding-block-end: 0;
+	}
+	/* Out of the grid's flow: a focus target, not a row. */
+	.folio-anchor {
+		position: absolute;
+		inset-block-start: 0;
+		inset-inline-start: 0;
 	}
 	.folio-anchor:focus {
 		outline: none;
@@ -875,14 +882,17 @@
 	}
 	.folio-line {
 		margin: 0;
-		/* One line's room even while empty, so copy arriving or leaving
-		   does not move what is below. */
-		min-block-size: calc(1em * var(--leading-prose));
+
 		max-inline-size: 60ch;
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
 		line-height: var(--leading-prose);
 		color: var(--bone-300);
+	}
+	/* One line's room even while empty, once a first page is shown, so
+	   copy arriving or leaving does not move what is below. */
+	.folio[data-settled='true'] .folio-line {
+		min-block-size: calc(1em * var(--leading-prose));
 	}
 	.folio-detail {
 		color: var(--bone-400);
