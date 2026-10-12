@@ -228,3 +228,15 @@ fn an_unavailable_episode_is_its_own_not_found() {
     let json = serde_json::to_value(&e).expect("serializes");
     assert_eq!(json["kind"], "episode_unavailable");
 }
+
+#[test]
+fn a_download_tool_that_exited_has_its_own_key() {
+    // A download tool exiting non-zero answered with the parse-failure
+    // key, whose copy says the service sent something unreadable — the
+    // wrong story for a local tool stopping, once the renderer shows a
+    // key's message.
+    let e = AniError::Scraper {
+        failure: crate::error::DownloadToolFailure::Exited,
+    };
+    assert_eq!(e.key(), "error.download.tool_failed");
+}
