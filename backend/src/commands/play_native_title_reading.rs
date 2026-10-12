@@ -5,8 +5,8 @@
 //! bar.
 
 use super::play_native_title_grammar::{
-    glued_number, japanese_trailing, kind_of, marker_of, ordinals_after_marker, small_number,
-    spelled_ordinal, stem, trailing_markers, words, Kind, Marker,
+    glued_number, japanese_trailing, kind_of, marker_of, normalized, ordinals_after_marker,
+    small_number, spelled_ordinal, stem, trailing_markers, words, Kind, Marker,
 };
 
 #[path = "play_native_title_past.rs"]

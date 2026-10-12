@@ -62,22 +62,26 @@ impl EntryTitles<'_> {
     }
 
     /// Whether every title of the entry reads as naming a division
-    /// beyond the first ([`reading`]) while `candidate` starts with one
-    /// of their names and reads as naming none, and is not one of the
-    /// entry's titles: the entry before this one ("Show" or "Show
-    /// Season 1" for "Show 2"), never picked. Another name ("Eighty Six"
-    /// for "86") is not the entry before it, nor a title carrying a
-    /// number an entry title carries after the same words ("Show20" for
-    /// an entry also known as "Show 20"). An
-    /// entry with any title naming no later division never refuses on
-    /// this, so a provider's own unnumbered name for a sequel stands.
+    /// other than the first ([`reading`]) while `candidate` is one of
+    /// their names followed by first divisions alone or by nothing
+    /// ([`is_name_and_first_divisions`]), and is not one of the entry's
+    /// titles: the entry before this one ("Show" or "Show Season 1" for
+    /// "Show 2"), never picked. A candidate adding a word or a mark to
+    /// the name ("Gintama'" for "Gintama 2", "Eighty Six" for "86") is
+    /// not the entry before it, nor a title carrying a number an entry
+    /// title carries after the same words ("Show20" for an entry also
+    /// known as "Show 20"). An entry with any title naming no later
+    /// division never refuses on this.
     ///
     /// [`reading`]: super::play_native_title_reading::reading
+    /// [`is_name_and_first_divisions`]: super::play_native_title_reading::is_name_and_first_divisions
     pub(crate) fn before_entry(&self, candidate: &str) -> bool {
         let exact = normalized(candidate);
         reading(candidate).is_empty()
             && self.all().all(|t| !reading(t).is_empty())
-            && self.all().any(|t| starts_with_name_of(candidate, t))
+            && self
+                .all()
+                .any(|t| is_name_and_first_divisions(candidate, t))
             && !self
                 .all()
                 .any(|t| normalized(t) == exact || carries_number_of(candidate, t))

@@ -78,10 +78,10 @@ pub(super) fn fit_to_entry(
             row.2 = UNFIT;
         }
     }
-    if let Some(span) = span {
-        apply_span(probed, expected, &span);
-    }
-    refused_a_fit
+    // A candidate the titles scored out as an L, F or P that fit the
+    // count is as much an inference as a refusal: never a clean miss.
+    let inferred_a_fit = span.is_some_and(|span| apply_span(probed, expected, &span, tolerance));
+    refused_a_fit || inferred_a_fit
 }
 
 /// Scores the pool as `span` decided: the later siblings and W's
@@ -90,8 +90,10 @@ pub(super) fn fit_to_entry(
 /// cut, W cut to the entry's episodes and every other exact fit one
 /// behind it — an unrelated title or a spinoff sharing the franchise
 /// name ("Show Side Story") is a fallback, never ahead on order.
-fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span) {
+fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span, tolerance: u32) -> bool {
+    let mut scored_out_a_fit = false;
     for &j in span.later.iter().chain(&span.firsts).chain(&span.earlier) {
+        scored_out_a_fit |= probed[j].2 <= tolerance;
         probed[j].2 = UNFIT;
     }
     if !span.own_fits.is_empty() || span.cut {
@@ -105,6 +107,7 @@ fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span) {
         probed[span.wide].1 = head_of(&probed[span.wide].1, expected);
         probed[span.wide].2 = 0;
     }
+    scored_out_a_fit
 }
 
 /// The listing's rows up to its `expected + 1`-th regular episode:

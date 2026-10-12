@@ -19,8 +19,8 @@ use super::play_native_title_grammar::{
 };
 use super::play_native_title_number::{carries_number_of, continues_number_of};
 use super::play_native_title_reading::{
-    divisions_beside, name, names_past_stem, opens_on_a_first_division, reading,
-    starts_with_name_of,
+    divisions_beside, is_name_and_first_divisions, name, names_past_stem,
+    opens_on_a_first_division, reading, starts_with_name_of,
 };
 
 /// Every title the entry goes by: its canonical title, then the
