@@ -74,8 +74,7 @@
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
-	import { pickSeedEntry } from '$lib/account/list-entry-view';
-	import { nextReadRetryMs } from '$lib/account/read-retry';
+	import { readEntryWithRetry } from '$lib/account/list-entry-read';
 	import { freshBearerFor } from '$lib/account/fresh-bearer';
 	import ListEntryEditor from '$lib/components/ListEntryEditor.svelte';
 	import type { EntryView } from '$lib/account/types';
@@ -764,13 +763,13 @@
 	// whose progress a Save would otherwise clobber.
 	let listEntryError = $state(false);
 	// Bumped on every read so a newer read (navigation or a post-write
-	// reconcile) supersedes any in-flight one.
+	// reconcile) supersedes any in-flight one — including one waiting
+	// out a retry, which checks the sequence again when its wait ends.
 	let listEntryReadSeq = 0;
-	let listEntryRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Read every connected tracker and fold to the seed entry, retrying a
-	// transient failure (e.g. a 429 while rate-limited) with backoff so a
-	// passing limit self-heals. Two modes:
+	// transient failure on the plan in `read-retry` so a passing failure
+	// self-heals; the loop itself is `readEntryWithRetry`. Two modes:
 	//  - loud (navigation): reset to null + show loading + disable on hard
 	//    failure, so a Save can't fire against a not-yet-known entry.
 	//  - quiet (post-write reconcile): refresh in the background without a
@@ -780,7 +779,6 @@
 		const seq = ++listEntryReadSeq;
 		const kitsuId = id;
 		const connected = accountStore.connected;
-		clearTimeout(listEntryRetryTimer);
 		if (!quiet) {
 			// The route reuses this component across shows; a stale entry must not
 			// linger while the async read is in flight or if it fails.
@@ -793,42 +791,37 @@
 		}
 		if (!quiet) listEntryLoading = true;
 		const providers = [...connected];
-		const attempt = (n: number) => {
-			void (async () => {
-				try {
-					// Promise.all rejects on the first failure, so any unreadable
-					// provider drops us into the catch rather than seeding from a
-					// partial picture.
-					const views = await Promise.all(
-						providers.map(async (p) => {
-							const bearer = await freshBearerFor(p);
-							if (!bearer) throw new Error(`no bearer for ${p}`);
-							return getEntry(p, bearer, kitsuId);
-						})
-					);
-					if (seq !== listEntryReadSeq) return; // superseded
-					listEntry = pickSeedEntry(views);
-					listEntryError = false;
-					listEntryLoading = false;
-				} catch {
-					if (seq !== listEntryReadSeq) return;
-					const delay = nextReadRetryMs(n);
-					if (delay !== null) {
-						listEntryRetryTimer = setTimeout(() => {
-							if (seq === listEntryReadSeq) attempt(n + 1);
-						}, delay);
-					} else if (!quiet) {
-						// Out of retries on a fresh read: unknown entry, not absent —
-						// the editor stays disabled rather than offering a stale Add.
-						listEntryError = true;
-						listEntryLoading = false;
-					}
-					// quiet: give up silently, keep whatever the editor optimistically
-					// set; the write itself already reported success/failure.
-				}
-			})();
-		};
-		attempt(0);
+		void readEntryWithRetry({
+			// Promise.all rejects on the first failure, so any unreadable
+			// provider ends the attempt rather than seeding from a partial
+			// picture.
+			readAll: () =>
+				Promise.all(
+					providers.map(async (p) => {
+						const bearer = await freshBearerFor(p);
+						if (!bearer) throw new Error(`no bearer for ${p}`);
+						return getEntry(p, bearer, kitsuId);
+					})
+				),
+			isCurrent: () => seq === listEntryReadSeq,
+			sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+		}).then((outcome) => {
+			if (outcome.kind === 'superseded') return;
+			if (outcome.kind === 'ok') {
+				listEntry = outcome.entry;
+				listEntryError = false;
+				listEntryLoading = false;
+				return;
+			}
+			// Out of retries. On a fresh read: unknown entry, not absent — the
+			// editor stays disabled rather than offering a stale Add. Quiet:
+			// give up silently, keep whatever the editor optimistically set;
+			// the write itself already reported success/failure.
+			if (!quiet) {
+				listEntryError = true;
+				listEntryLoading = false;
+			}
+		});
 	}
 
 	$effect(() => {
@@ -838,7 +831,6 @@
 		readListEntry(false);
 		return () => {
 			listEntryReadSeq += 1; // cancel any in-flight read on teardown
-			clearTimeout(listEntryRetryTimer);
 		};
 	});
 
