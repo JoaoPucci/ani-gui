@@ -1754,3 +1754,46 @@ async fn a_carried_number_is_not_the_entry_before() {
     let picked = walk_over(site).await.expect("the entry's own number");
     assert_eq!(picked.hit.slug, "x");
 }
+
+/// A provider's unnumbered name for a sequel adds a word to the
+/// entry's name, so it is not the entry before it and plays.
+#[tokio::test]
+async fn an_unnumbered_sequel_name_is_not_the_entry_before() {
+    for (entry, listing) in [
+        ("Gintama 2", "Gintama'"),
+        (
+            "Kaguya-sama wa Kokurasetai 2",
+            "Kaguya-sama wa Kokurasetai?",
+        ),
+        ("Haikyuu!! 4th Season", "Haikyuu!! To the Top"),
+        ("Steins;Gate 0", "Steins;Gate Zero"),
+        ("Show 2", "Show Two"),
+    ] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{entry}: {listing} refused: {e:?}"));
+        assert_eq!(picked.hit.slug, "x", "{entry}");
+    }
+}
+
+/// A pool rejected after the titles scored out a candidate that fit
+/// the count — the season before the broad listing — is never the
+/// clean miss the availability cache persists.
+#[tokio::test]
+async fn a_title_inference_is_never_a_clean_miss() {
+    let site = pool_of(
+        &["Show Season 3 Part 1"],
+        Some(12),
+        2020,
+        "Show Season 3 Part 1",
+        &[
+            ("w", "Show Season 3 Part 1", 24),
+            ("p", "Show Season 3 Part 1 2nd Half", 12),
+        ],
+    );
+    match walk_over(site).await {
+        Err(e) => assert!(!e.clean_miss, "persisted: {e:?}"),
+        Ok(p) => panic!("picked {}", p.hit.slug),
+    }
+}
