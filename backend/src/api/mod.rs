@@ -240,7 +240,9 @@ async fn get_kitsu_anime_detail(
     Path(id): Path<String>,
 ) -> Result<Json<KitsuAnimeRef>, AniError> {
     let id = crate::kitsu_id::require(&id)?;
-    Ok(Json(kitsu_inner::kitsu_anime_detail(&state, id).await?))
+    Ok(Json(
+        kitsu_inner::kitsu_anime_detail_page(&state, id).await?,
+    ))
 }
 
 async fn get_kitsu_anime_by_slug(

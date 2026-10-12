@@ -204,13 +204,15 @@ pub(super) async fn bridge_anilist_to_kitsu(
                 Some(k) => k,
                 None => kitsu.lookup_by_anilist_id(entry.id).await.ok().flatten()?,
             };
+            // AniList's banner rides beside Kitsu's cover, free: this
+            // request already carried it.
+            kref.anilist_banner.clone_from(&banner);
             // Backfill banner from AniList when Kitsu hasn't
             // catalogued one. New ongoing shows like Slime S4 land
             // on Kitsu before their cataloguers upload a banner;
             // AniList typically has it from day one. The image
             // proxy accepts any https URL so the renderer doesn't
             // need to know the source.
-            kref.anilist_banner.clone_from(&banner);
             if kref.cover_image.is_none() {
                 if let Some(url) = banner {
                     kref.cover_image = Some(KitsuCoverImage {
@@ -1099,6 +1101,17 @@ pub(crate) fn warm_anime_detail_cache(state: &AppState, detail: &KitsuAnimeRef) 
     }
 }
 
+/// The detail page's read: [`kitsu_anime_detail`] plus the AniList
+/// banner the trending row remembered for the show, if it listed it.
+/// Internal callers of the detail read have no use for the banner and
+/// skip the lookup.
+///
+/// # Errors
+/// Those of [`kitsu_anime_detail`].
+pub async fn kitsu_anime_detail_page(state: &AppState, id: &str) -> Result<KitsuAnimeRef> {
+    kitsu_anime_detail_page_with_anilist_base(state, id, None).await
+}
+
 /// Fetch a single anime by Kitsu id, cached under [`anime_detail_key`].
 ///
 /// # Errors
@@ -1117,7 +1130,9 @@ pub(crate) async fn kitsu_anime_detail_page_with_anilist_base(
     id: &str,
     anilist_base: Option<&str>,
 ) -> Result<KitsuAnimeRef> {
-    kitsu_anime_detail_with_anilist_base(state, id, anilist_base).await
+    let mut detail = kitsu_anime_detail_with_anilist_base(state, id, anilist_base).await?;
+    super::anilist_banner_memo::attach(&state.cache_pool, &mut detail);
+    Ok(detail)
 }
 
 /// [`kitsu_anime_detail`] with the AniList endpoint overridable, so
@@ -1128,9 +1143,7 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
     id: &str,
     anilist_base: Option<&str>,
 ) -> Result<KitsuAnimeRef> {
-    let mut detail = anime_detail_read(state, id, anilist_base, |_| {}).await?;
-    super::anilist_banner_memo::attach(&state.cache_pool, &mut detail);
-    Ok(detail)
+    anime_detail_read(state, id, anilist_base, |_| {}).await
 }
 
 /// [`kitsu_anime_detail`], running `past_cache` once the cache has
