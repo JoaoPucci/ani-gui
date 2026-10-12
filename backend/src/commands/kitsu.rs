@@ -51,9 +51,10 @@ pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
 
 /// AniList-backed trending — the hero / Trending strip on home use
 /// this in preference to [`kitsu_trending`] because AniList's
-/// `TRENDING_DESC` is recency-weighted (last few days of viewer
-/// activity), which keeps evergreens like One Piece from anchoring
-/// the top of the row regardless of what's actually hot this week.
+/// `TRENDING_DESC` is recency-weighted (its `trending` value counts
+/// viewer activity over the past hour), which keeps evergreens like
+/// One Piece from anchoring the top of the row regardless of what is
+/// hot now.
 ///
 /// Pipeline:
 ///   1. Fetch AniList trending (top N).
