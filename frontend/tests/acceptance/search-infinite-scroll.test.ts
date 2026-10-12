@@ -81,7 +81,10 @@ function baseHandlers() {
 /** The scroll stand-in: every observer the route creates, and a way to
  *  bring their targets into reach. */
 const observers: { cb: IntersectionObserverCallback; targets: Element[] }[] = [];
-let inReachOnObserve = false;
+/** What a newly observed target reports: a fixed answer, or one read
+ *  from the page as it stands when observed — happy-dom has no layout,
+ *  so a scenario says which content makes the grid short. */
+let inReachOnObserve: boolean | (() => boolean) = false;
 class ControlledObserver {
 	private entry: { cb: IntersectionObserverCallback; targets: Element[] };
 	constructor(cb: IntersectionObserverCallback) {
@@ -91,8 +94,10 @@ class ControlledObserver {
 	observe(el: Element) {
 		this.entry.targets.push(el);
 		// A real observer reports a target's initial state once it is
-		// observed. Scenarios that care set `inReachOnObserve`.
-		if (inReachOnObserve) {
+		// observed, measured against the layout it was observed in.
+		// Scenarios that care set `inReachOnObserve`.
+		const inReach = typeof inReachOnObserve === 'function' ? inReachOnObserve() : inReachOnObserve;
+		if (inReach) {
 			queueMicrotask(() =>
 				this.entry.cb(
 					[{ target: el, isIntersecting: true } as IntersectionObserverEntry],
@@ -147,6 +152,20 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 }
 
 const screen = () => target.textContent ?? '';
+
+/** Focus sits in the page, on something that says nothing itself and
+ *  does not contain the live status line: the status line is what
+ *  announces the change, once. */
+function expectQuietFocus() {
+	const active = document.activeElement as HTMLElement | null;
+	const live = target.querySelector('[aria-live="polite"][data-testid="search-paging"]');
+	expect(active).not.toBe(document.body);
+	expect(target.contains(active)).toBe(true);
+	expect(live).not.toBeNull();
+	expect(active!.contains(live)).toBe(false);
+	expect((active!.textContent ?? '').trim()).toBe('');
+	expect(active!.getAttribute('aria-label')).toBeNull();
+}
 
 function buttonNamed(name: string): HTMLButtonElement | null {
 	return [...target.querySelectorAll('button')].find((b) => b.textContent?.trim() === name) ?? null;
@@ -253,9 +272,11 @@ describe('/search infinite scroll', () => {
 		expect(screen()).toContain('Cowboy Bebop');
 
 		failing = false;
+		retry!.focus();
 		retry!.click();
 		await until(() => screen().includes('Cowboy Bebop: The Movie'), 'the retried page');
 		expect(screen()).not.toContain(m.search_paging_failed());
+		expectQuietFocus();
 	});
 
 	it('with a type filter on, loads more only when asked', async () => {
@@ -338,7 +359,7 @@ describe('/search infinite scroll', () => {
 		expect(asked).toEqual(['trigun@0', 'monster@0', 'monster@20']);
 	});
 
-	it('Load more that reaches the end leaves focus on the paging line, not the page body', async () => {
+	it('Load more that reaches the end leaves focus in the paging area, not the page body', async () => {
 		server.use(
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
@@ -375,6 +396,7 @@ describe('/search infinite scroll', () => {
 		expect(buttonNamed(m.search_paging_load_more())).toBeNull();
 		expect(document.activeElement).not.toBe(document.body);
 		expect(target.contains(document.activeElement)).toBe(true);
+		expectQuietFocus();
 	});
 
 	it('the paging status line is in place before the first page lands', async () => {
@@ -436,5 +458,43 @@ describe('/search infinite scroll', () => {
 		setQuery('monster');
 		await until(() => buttonNamed(m.search_paging_load_more()) === null, 'Load more to leave');
 		expect(document.activeElement).toBe(document.body);
+	});
+
+	it('a short grid followed by a tall one does not load the tall one a second page', async () => {
+		// The marker is in reach under the first search's short grid and
+		// out of reach under the second's tall one. Only a report about
+		// the second search's own grid may load its next page.
+		inReachOnObserve = () => !screen().includes('Tall result');
+		let releaseTall: () => void = () => {};
+		const tallHeld = new Promise<void>((r) => (releaseTall = r));
+		const asked: string[] = [];
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { query, offset } = (await request.json()) as { query: string; offset: number };
+				asked.push(`${query}@${offset}`);
+				if (query === 'short') {
+					return HttpResponse.json({ hits: [ref('1', 'Short result')], next_offset: null });
+				}
+				await tallHeld;
+				return HttpResponse.json({ hits: [ref('2', 'Tall result')], next_offset: 20 });
+			})
+		);
+
+		setQuery('short');
+		app = mount(SearchPage, { target });
+		await until(
+			() => screen().includes(m.search_paging_end({ query: 'short' })),
+			'the short search to end'
+		);
+
+		setQuery('tall');
+		await until(() => asked.includes('tall@0'), 'the tall search to be asked for');
+		// Let the stale report, if any, land before the tall grid does.
+		for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 10));
+		releaseTall();
+		await until(() => screen().includes('Tall result'), 'the tall grid');
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(asked).toEqual(['short@0', 'tall@0']);
 	});
 });
