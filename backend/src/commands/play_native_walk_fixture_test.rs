@@ -1799,3 +1799,21 @@ async fn a_title_inference_is_never_a_clean_miss() {
         Ok(p) => panic!("picked {}", p.hit.slug),
     }
 }
+
+/// A separator between the name and its first divisions is no mark of
+/// its own, and the name is compared word by word: each of these is
+/// the entry before the entry, never picked.
+#[tokio::test]
+async fn a_separator_does_not_hide_the_entry_before() {
+    for (entry, listing) in [
+        ("Show 2", "Show: Season 1"),
+        ("Oshi no Ko Season 2", "Oshi no Ko: Season 1"),
+        ("Show: Season 2", "Show Season 1"),
+        ("Steins;Gate 0", "Steins Gate"),
+    ] {
+        let site = pool_of(&[entry], Some(12), 2020, entry, &[("x", listing, 12)]);
+        if let Ok(p) = walk_over(site).await {
+            panic!("{entry}: picked {} ({listing})", p.hit.slug);
+        }
+    }
+}
