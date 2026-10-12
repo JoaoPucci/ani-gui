@@ -1639,3 +1639,31 @@ async fn an_ordinal_after_w_s_own_season_divides_it() {
         );
     }
 }
+
+/// A numeral is judged by its own form before a marker, and only the
+/// broad listing's own season is divided by an ordinal after it —
+/// spaced or glued to a Japanese season.
+#[tokio::test]
+async fn a_numeral_by_its_form_and_only_w_s_season_divided() {
+    for (entry, w, l) in [
+        ("Show II", "Show II", "Show II Part Two"),
+        ("Show Part 2", "Show Part 2", "Show Part 2 Second Half"),
+        ("ショー第3期", "ショー第3期", "ショー第3期２"),
+    ] {
+        let site = pool_of(
+            &[entry],
+            Some(12),
+            2020,
+            entry,
+            &[("w", w, 24), ("l", l, 12)],
+        );
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{w} + {l}: {e:?}"));
+        assert_eq!(
+            (picked.hit.slug.as_str(), picked.episodes.len()),
+            ("w", 12),
+            "{w} + {l}"
+        );
+    }
+}
