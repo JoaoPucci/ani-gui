@@ -29,5 +29,11 @@
 	"sort_relevance": "Relevancia",
 	"sort_title": "Título",
 	"sort_year": "Año",
-	"sort_rating": "Calificación"
+	"sort_rating": "Calificación",
+	"paging_loading": "Cargando más resultados",
+	"paging_end": "Fin de los resultados para “{query}”.",
+	"paging_failed": "No se pudieron cargar más resultados.",
+	"paging_retry": "Reintentar",
+	"paging_held": "Las últimas páginas no tenían nada que puedas ver.",
+	"paging_keep_looking": "Seguir buscando"
 }

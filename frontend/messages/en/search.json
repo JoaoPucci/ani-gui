@@ -29,5 +29,11 @@
 	"sort_relevance": "Relevance",
 	"sort_title": "Title",
 	"sort_year": "Year",
-	"sort_rating": "Rating"
+	"sort_rating": "Rating",
+	"paging_loading": "Loading more results",
+	"paging_end": "End of results for “{query}”.",
+	"paging_failed": "Couldn't load more results.",
+	"paging_retry": "Try again",
+	"paging_held": "The last few pages had nothing you can play.",
+	"paging_keep_looking": "Keep looking"
 }
