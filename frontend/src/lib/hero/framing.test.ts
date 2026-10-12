@@ -1,15 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
-	HERO_EXPERIMENT_DEFAULT,
-	HERO_EXPERIMENT_STORAGE_KEY,
-	heroExperimentFromQuery,
-	loadHeroExperiment,
-	withoutExperimentQuery,
+	HERO_PREFS_DEFAULT,
+	HERO_PREFS_STORAGE_KEY,
+	browserStorage,
+	loadHeroPrefs,
 	naturalRatio,
-	parseHeroExperiment,
+	parseHeroPrefs,
 	pickHeroImage,
-	type HeroExperiment,
-	type HeroImageInput
+	saveHeroPrefs,
+	type HeroImageInput,
+	type HeroPrefs
 } from './framing';
 
 const cover = {
@@ -30,10 +30,11 @@ const banner = 'https://a/banner.jpg';
 function show(over: Partial<HeroImageInput> = {}): HeroImageInput {
 	return { anilist_banner: banner, cover_image: cover, poster_image: poster, ...over };
 }
-const exp = (framing: HeroExperiment['framing'], source: HeroExperiment['source']) => ({
-	framing,
-	source
-});
+const prefs = (
+	framing: HeroPrefs['framing'],
+	source: HeroPrefs['source'],
+	controls = false
+): HeroPrefs => ({ framing, source, controls });
 
 class MemStorage {
 	map = new Map<string, string>();
@@ -44,114 +45,125 @@ class MemStorage {
 		this.map.set(k, v);
 	}
 }
+const broken = {
+	getItem: () => {
+		throw new Error('denied');
+	},
+	setItem: () => {
+		throw new Error('denied');
+	}
+};
 
-describe('parseHeroExperiment', () => {
-	it('reads both fields', () => {
-		expect(parseHeroExperiment('{"framing":"contain","source":"anilist"}')).toEqual({
-			framing: 'contain',
-			source: 'anilist'
-		});
+describe('parseHeroPrefs', () => {
+	it('reads every field', () => {
+		expect(parseHeroPrefs('{"framing":"contain","source":"anilist","controls":true}')).toEqual(
+			prefs('contain', 'anilist', true)
+		);
 	});
 	it('falls back per field on unknown values', () => {
-		expect(parseHeroExperiment('{"framing":"zoom","source":"anilist"}')).toEqual({
-			framing: 'current',
-			source: 'anilist'
-		});
-		expect(parseHeroExperiment('{"framing":"focus","source":7}')).toEqual({
-			framing: 'focus',
-			source: 'kitsu'
-		});
+		expect(parseHeroPrefs('{"framing":"zoom","source":"anilist"}')).toEqual(
+			prefs(HERO_PREFS_DEFAULT.framing, 'anilist')
+		);
+		expect(parseHeroPrefs('{"framing":"focus","source":7}')).toEqual(
+			prefs('focus', HERO_PREFS_DEFAULT.source)
+		);
+	});
+	it('shows the controls only on a stored true', () => {
+		for (const v of ['"yes"', '1', 'null', '{}']) {
+			expect(parseHeroPrefs(`{"controls":${v}}`).controls).toBe(false);
+		}
+		expect(parseHeroPrefs('{"controls":true}').controls).toBe(true);
+	});
+	it('names every framing', () => {
+		for (const f of ['top', 'contain', 'pillar', 'focus'] as const) {
+			expect(parseHeroPrefs(`{"framing":"${f}"}`).framing).toBe(f);
+		}
 	});
 	it('is the default for nothing, junk and non-objects', () => {
-		expect(parseHeroExperiment(null)).toEqual(HERO_EXPERIMENT_DEFAULT);
-		expect(parseHeroExperiment('{nope')).toEqual(HERO_EXPERIMENT_DEFAULT);
-		expect(parseHeroExperiment('null')).toEqual(HERO_EXPERIMENT_DEFAULT);
-		expect(parseHeroExperiment('"focus"')).toEqual(HERO_EXPERIMENT_DEFAULT);
+		expect(parseHeroPrefs(null)).toEqual(HERO_PREFS_DEFAULT);
+		expect(parseHeroPrefs('{nope')).toEqual(HERO_PREFS_DEFAULT);
+		expect(parseHeroPrefs('null')).toEqual(HERO_PREFS_DEFAULT);
+		expect(parseHeroPrefs('"focus"')).toEqual(HERO_PREFS_DEFAULT);
 	});
 });
 
-describe('heroExperimentFromQuery', () => {
-	const base = exp('focus', 'anilist');
-	it('is null when the query names neither', () => {
-		expect(heroExperimentFromQuery('?page=2', base)).toBeNull();
-		expect(heroExperimentFromQuery('', base)).toBeNull();
+describe('loadHeroPrefs', () => {
+	it('is the default with no storage', () => {
+		expect(loadHeroPrefs(null)).toEqual(HERO_PREFS_DEFAULT);
 	});
-	it('overrides only the named field', () => {
-		expect(heroExperimentFromQuery('?hero=contain', base)).toEqual(exp('contain', 'anilist'));
-		expect(heroExperimentFromQuery('?heroSrc=kitsu', base)).toEqual(exp('focus', 'kitsu'));
-		expect(heroExperimentFromQuery('?hero=current&heroSrc=kitsu', base)).toEqual(
-			exp('current', 'kitsu')
-		);
+	it('reads the stored preferences', () => {
+		const s = new MemStorage();
+		s.setItem(HERO_PREFS_STORAGE_KEY, JSON.stringify(prefs('focus', 'anilist', true)));
+		expect(loadHeroPrefs(s)).toEqual(prefs('focus', 'anilist', true));
 	});
-	it('names the fill-height framing', () => {
-		expect(heroExperimentFromQuery('?hero=pillar', base)).toEqual(exp('pillar', 'anilist'));
-		expect(parseHeroExperiment('{"framing":"pillar","source":"kitsu"}')).toEqual(
-			exp('pillar', 'kitsu')
-		);
-	});
-	it('ignores an unknown value for that field', () => {
-		expect(heroExperimentFromQuery('?hero=zoom&heroSrc=anilist', base)).toEqual(base);
-	});
-	it('resets to the default', () => {
-		expect(heroExperimentFromQuery('?hero=reset', base)).toEqual(HERO_EXPERIMENT_DEFAULT);
+	it('is the default when storage refuses', () => {
+		expect(loadHeroPrefs(broken)).toEqual(HERO_PREFS_DEFAULT);
 	});
 });
 
-describe('loadHeroExperiment', () => {
-	it('is the default with no storage and no query', () => {
-		expect(loadHeroExperiment('', null)).toEqual(HERO_EXPERIMENT_DEFAULT);
-	});
-	it('reads the stored experiment', () => {
+describe('saveHeroPrefs', () => {
+	it('round-trips through storage', () => {
 		const s = new MemStorage();
-		s.setItem(HERO_EXPERIMENT_STORAGE_KEY, JSON.stringify(exp('focus', 'anilist')));
-		expect(loadHeroExperiment('', s)).toEqual(exp('focus', 'anilist'));
+		saveHeroPrefs(s, prefs('pillar', 'kitsu', true));
+		expect(loadHeroPrefs(s)).toEqual(prefs('pillar', 'kitsu', true));
 	});
-	it('applies the query over the stored one and persists it', () => {
+	it('is quiet with no storage and when storage refuses', () => {
+		expect(() => saveHeroPrefs(null, HERO_PREFS_DEFAULT)).not.toThrow();
+		expect(() => saveHeroPrefs(broken, HERO_PREFS_DEFAULT)).not.toThrow();
+	});
+});
+
+describe('browserStorage', () => {
+	const g = globalThis as { localStorage?: unknown };
+	const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+	afterEach(() => {
+		if (had) Object.defineProperty(globalThis, 'localStorage', had);
+		else delete g.localStorage;
+	});
+	it('is null where the window has none', () => {
+		delete g.localStorage;
+		expect(browserStorage()).toBeNull();
+	});
+	it('is the window’s storage when there is one', () => {
 		const s = new MemStorage();
-		s.setItem(HERO_EXPERIMENT_STORAGE_KEY, JSON.stringify(exp('focus', 'anilist')));
-		expect(loadHeroExperiment('?hero=contain', s)).toEqual(exp('contain', 'anilist'));
-		expect(JSON.parse(s.getItem(HERO_EXPERIMENT_STORAGE_KEY) ?? 'null')).toEqual(
-			exp('contain', 'anilist')
-		);
+		Object.defineProperty(globalThis, 'localStorage', { value: s, configurable: true });
+		expect(browserStorage()).toBe(s);
 	});
-	it('still answers when storage throws', () => {
-		const broken = {
-			getItem: () => {
+	it('is null when reaching it throws', () => {
+		Object.defineProperty(globalThis, 'localStorage', {
+			get() {
 				throw new Error('denied');
 			},
-			setItem: () => {
-				throw new Error('denied');
-			}
-		};
-		expect(loadHeroExperiment('?hero=focus', broken)).toEqual(exp('focus', 'kitsu'));
-		expect(loadHeroExperiment('', broken)).toEqual(HERO_EXPERIMENT_DEFAULT);
+			configurable: true
+		});
+		expect(browserStorage()).toBeNull();
 	});
 });
 
 describe('pickHeroImage', () => {
-	it('keeps each surface’s existing cover order under current and focus', () => {
-		for (const f of ['current', 'focus'] as const) {
-			expect(pickHeroImage(show(), exp(f, 'kitsu'), 'home')).toEqual({
+	it('keeps each surface’s existing cover order under top and focus', () => {
+		for (const f of ['top', 'focus'] as const) {
+			expect(pickHeroImage(show(), prefs(f, 'kitsu'), 'home')).toEqual({
 				url: cover.large,
 				isCover: true,
 				origin: 'kitsu'
 			});
 			const noLarge = show({ cover_image: { ...cover, large: null } });
-			expect(pickHeroImage(noLarge, exp(f, 'kitsu'), 'home').url).toBe(cover.original);
-			expect(pickHeroImage(noLarge, exp(f, 'kitsu'), 'detail').url).toBe(cover.small);
+			expect(pickHeroImage(noLarge, prefs(f, 'kitsu'), 'home').url).toBe(cover.original);
+			expect(pickHeroImage(noLarge, prefs(f, 'kitsu'), 'detail').url).toBe(cover.small);
 		}
 	});
 	it('prefers the whole upload when filling the height', () => {
-		expect(pickHeroImage(show(), exp('pillar', 'kitsu'), 'home').url).toBe(cover.original);
-		expect(pickHeroImage(show(), exp('pillar', 'anilist'), 'detail').url).toBe(banner);
+		expect(pickHeroImage(show(), prefs('pillar', 'kitsu'), 'home').url).toBe(cover.original);
+		expect(pickHeroImage(show(), prefs('pillar', 'anilist'), 'detail').url).toBe(banner);
 	});
 	it('prefers the whole upload when never cropping', () => {
-		expect(pickHeroImage(show(), exp('contain', 'kitsu'), 'detail').url).toBe(cover.original);
+		expect(pickHeroImage(show(), prefs('contain', 'kitsu'), 'detail').url).toBe(cover.original);
 		const noOriginal = show({ cover_image: { ...cover, original: null } });
-		expect(pickHeroImage(noOriginal, exp('contain', 'kitsu'), 'home').url).toBe(cover.large);
+		expect(pickHeroImage(noOriginal, prefs('contain', 'kitsu'), 'home').url).toBe(cover.large);
 	});
 	it('takes the AniList banner first when the source asks for it', () => {
-		expect(pickHeroImage(show(), exp('focus', 'anilist'), 'detail')).toEqual({
+		expect(pickHeroImage(show(), prefs('focus', 'anilist'), 'detail')).toEqual({
 			url: banner,
 			isCover: true,
 			origin: 'anilist'
@@ -160,7 +172,7 @@ describe('pickHeroImage', () => {
 	it('falls back to the Kitsu cover when AniList has no banner', () => {
 		for (const missing of [null, undefined, '']) {
 			const d = show({ anilist_banner: missing });
-			expect(pickHeroImage(d, exp('contain', 'anilist'), 'home')).toEqual({
+			expect(pickHeroImage(d, prefs('contain', 'anilist'), 'home')).toEqual({
 				url: cover.original,
 				isCover: true,
 				origin: 'kitsu'
@@ -168,11 +180,11 @@ describe('pickHeroImage', () => {
 		}
 	});
 	it('ignores the AniList banner under the Kitsu source', () => {
-		expect(pickHeroImage(show(), exp('current', 'kitsu'), 'home').origin).toBe('kitsu');
+		expect(pickHeroImage(show(), prefs('top', 'kitsu'), 'home').origin).toBe('kitsu');
 	});
 	it('falls back to the poster with no cover, in each surface’s order', () => {
 		const d = show({ anilist_banner: null, cover_image: null });
-		expect(pickHeroImage(d, exp('focus', 'anilist'), 'home')).toEqual({
+		expect(pickHeroImage(d, prefs('focus', 'anilist'), 'home')).toEqual({
 			url: poster.large,
 			isCover: false,
 			origin: 'poster'
@@ -182,16 +194,16 @@ describe('pickHeroImage', () => {
 			cover_image: null,
 			poster_image: { ...poster, large: null }
 		});
-		expect(pickHeroImage(noLarge, exp('current', 'kitsu'), 'home').url).toBe(poster.original);
-		expect(pickHeroImage(noLarge, exp('current', 'kitsu'), 'detail').url).toBe(poster.medium);
+		expect(pickHeroImage(noLarge, prefs('top', 'kitsu'), 'home').url).toBe(poster.original);
+		expect(pickHeroImage(noLarge, prefs('top', 'kitsu'), 'detail').url).toBe(poster.medium);
 	});
 	it('treats an empty cover bag as no cover', () => {
 		const d = show({ anilist_banner: null, cover_image: {} });
-		expect(pickHeroImage(d, exp('contain', 'kitsu'), 'detail').origin).toBe('poster');
+		expect(pickHeroImage(d, prefs('contain', 'kitsu'), 'detail').origin).toBe('poster');
 	});
 	it('has nothing when there is no image at all', () => {
 		const d = { cover_image: null, poster_image: null };
-		expect(pickHeroImage(d, exp('focus', 'anilist'), 'detail')).toEqual({
+		expect(pickHeroImage(d, prefs('focus', 'anilist'), 'detail')).toEqual({
 			url: null,
 			isCover: false,
 			origin: null
@@ -199,31 +211,19 @@ describe('pickHeroImage', () => {
 	});
 });
 
-describe('pickHeroImage — provenance and master parity', () => {
+describe('pickHeroImage — provenance and the pre-banner order', () => {
 	it('names a cover that is AniList’s banner as AniList’s', () => {
 		// The backend backfills a null Kitsu cover with AniList's banner.
 		const d = show({ cover_image: { large: banner, original: banner } });
-		expect(pickHeroImage(d, exp('current', 'kitsu'), 'home')).toEqual({
+		expect(pickHeroImage(d, prefs('top', 'kitsu'), 'home')).toEqual({
 			url: banner,
 			isCover: true,
 			origin: 'anilist'
 		});
 	});
-	it('keeps an empty slot as master’s `??` chain did', () => {
+	it('keeps an empty slot as the pages’ `??` chains did', () => {
 		const d = show({ cover_image: { ...cover, large: '' } });
-		expect(pickHeroImage(d, exp('current', 'kitsu'), 'home').url).toBe('');
-	});
-});
-
-describe('withoutExperimentQuery', () => {
-	it('drops only the experiment’s parameters', () => {
-		expect(withoutExperimentQuery('http://x/anime/1?hero=contain&page=2&heroSrc=anilist#ep')).toBe(
-			'http://x/anime/1?page=2#ep'
-		);
-	});
-	it('leaves a URL without them as it was', () => {
-		expect(withoutExperimentQuery('http://x/?page=2')).toBe('http://x/?page=2');
-		expect(withoutExperimentQuery('http://x/')).toBe('http://x/');
+		expect(pickHeroImage(d, prefs('top', 'kitsu'), 'home').url).toBe('');
 	});
 });
 

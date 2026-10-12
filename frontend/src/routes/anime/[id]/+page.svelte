@@ -13,13 +13,14 @@
 -->
 <script lang="ts">
 	import {
-		HERO_EXPERIMENT_DEFAULT,
-		loadHeroExperiment,
+		HERO_PREFS_DEFAULT,
+		browserStorage,
+		loadHeroPrefs,
 		naturalRatio,
 		pickHeroImage,
 		type HeroOrigin
 	} from '$lib/hero/framing';
-	import HeroExperimentSwitch from '$lib/hero/HeroExperimentSwitch.svelte';
+	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -1098,10 +1099,8 @@
 		return sharedDescribePlayFailure(e, { noResults: m.detail_error_play_no_results });
 	}
 
-	// DEV-ONLY banner framing experiment — see $lib/hero/framing.
-	const heroExp = import.meta.env.DEV
-		? loadHeroExperiment(location.search, localStorage)
-		: HERO_EXPERIMENT_DEFAULT;
+	// Hero framing preferences — see $lib/hero/framing. Dev builds only for now.
+	const heroPrefs = import.meta.env.DEV ? loadHeroPrefs(browserStorage()) : HERO_PREFS_DEFAULT;
 
 	function heroFor(d: KitsuAnimeRef): {
 		url: string | null;
@@ -1112,7 +1111,7 @@
 		// signed-URL bytes under a canonical hash so the proxy serves
 		// them regardless of staleness. See PosterCard for full
 		// rationale. (The slot order lives in $lib/hero/framing.)
-		const p = pickHeroImage(d, heroExp, 'detail');
+		const p = pickHeroImage(d, heroPrefs, 'detail');
 		return { url: imageProxyUrl(p.url), isCover: p.isCover, origin: p.origin };
 	}
 
@@ -1439,11 +1438,11 @@
 		<section
 			class="hero"
 			class:hero-fallback={!hero.isCover}
-			class:framing-contain={hero.isCover && heroExp.framing === 'contain'}
-			class:framing-pillar={hero.isCover && heroExp.framing === 'pillar'}
-			class:framing-focus={hero.isCover && heroExp.framing === 'focus'}
+			class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
+			class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
+			class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
 		>
-			{#if hero.url && hero.isCover && (heroExp.framing === 'contain' || heroExp.framing === 'pillar')}
+			{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
 				<img
 					class="hero-backdrop"
 					src={hero.url}
@@ -1466,7 +1465,7 @@
 				<div class="hero-grain" aria-hidden="true"></div>
 			{/if}
 		</section>
-		<HeroExperimentSwitch exp={heroExp} origin={hero.origin} />
+		<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} />
 
 		<div class="content">
 			<section class="masthead">

@@ -1,6 +1,6 @@
-// Acceptance (DEV-ONLY experiment): the home hero renders the framing
-// and image source the banner experiment names, and master's rendering
-// when it names none. Delete with $lib/hero/framing.
+// Acceptance: the home hero renders the framing and image source the
+// stored preferences name, and the pre-banner rendering when nothing
+// is stored.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -24,7 +24,7 @@ vi.mock('$app/navigation', () => ({
 
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { HERO_EXPERIMENT_STORAGE_KEY } from '../../src/lib/hero/framing';
+import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/framing';
 
 const COVER = 'https://media.kitsu.app/anime/1/cover_image/large.jpg';
 const COVER_WHOLE = 'https://media.kitsu.app/anime/1/cover_image/original.jpg';
@@ -68,8 +68,8 @@ async function heroImage(): Promise<HTMLImageElement> {
 }
 const proxied = (url: string) => `url=${encodeURIComponent(url)}`;
 
-describe('home hero framing experiment', () => {
-	it('renders master’s framing and Kitsu’s cover when no experiment is chosen', async () => {
+describe('home hero framing', () => {
+	it('renders the top crop of Kitsu’s cover when nothing is stored', async () => {
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(COVER));
@@ -81,7 +81,7 @@ describe('home hero framing experiment', () => {
 
 	it('never crops: the whole upload over a blurred copy of itself', async () => {
 		localStorage.setItem(
-			HERO_EXPERIMENT_STORAGE_KEY,
+			HERO_PREFS_STORAGE_KEY,
 			JSON.stringify({ framing: 'contain', source: 'kitsu' })
 		);
 		app = mount(HomePage, { target });
@@ -94,7 +94,7 @@ describe('home hero framing experiment', () => {
 
 	it('fills the height: the whole upload over a blurred copy, cropped at the sides only', async () => {
 		localStorage.setItem(
-			HERO_EXPERIMENT_STORAGE_KEY,
+			HERO_PREFS_STORAGE_KEY,
 			JSON.stringify({ framing: 'pillar', source: 'kitsu' })
 		);
 		app = mount(HomePage, { target });
@@ -106,7 +106,7 @@ describe('home hero framing experiment', () => {
 		);
 	});
 
-	it('leaves a show with no cover on master’s blurred poster under every framing', async () => {
+	it('leaves a show with no cover on the blurred poster under every framing', async () => {
 		server.use(
 			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
 				HttpResponse.json([
@@ -119,13 +119,13 @@ describe('home hero framing experiment', () => {
 			)
 		);
 		localStorage.setItem(
-			HERO_EXPERIMENT_STORAGE_KEY,
+			HERO_PREFS_STORAGE_KEY,
 			JSON.stringify({ framing: 'pillar', source: 'anilist' })
 		);
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.classList.contains('fallback')).toBe(true);
-		// No framing class anywhere in the hero: its scrim stays master's.
+		// No framing class anywhere in the hero: its scrim stays the poster's.
 		for (const f of ['framing-contain', 'framing-pillar', 'framing-focus']) {
 			expect(target.querySelector(`section.hero .${f}, section.hero.${f}`)).toBeNull();
 		}
@@ -134,7 +134,7 @@ describe('home hero framing experiment', () => {
 
 	it('takes AniList’s banner first under the AniList source', async () => {
 		localStorage.setItem(
-			HERO_EXPERIMENT_STORAGE_KEY,
+			HERO_PREFS_STORAGE_KEY,
 			JSON.stringify({ framing: 'focus', source: 'anilist' })
 		);
 		app = mount(HomePage, { target });

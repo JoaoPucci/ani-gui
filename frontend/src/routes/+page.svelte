@@ -95,13 +95,14 @@
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import {
-		HERO_EXPERIMENT_DEFAULT,
-		loadHeroExperiment,
+		HERO_PREFS_DEFAULT,
+		browserStorage,
+		loadHeroPrefs,
 		naturalRatio,
 		pickHeroImage,
 		type HeroOrigin
 	} from '$lib/hero/framing';
-	import HeroExperimentSwitch from '$lib/hero/HeroExperimentSwitch.svelte';
+	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { filterAvailable } from '$lib/availability/filter';
@@ -738,17 +739,15 @@
 		}
 	});
 
-	// DEV-ONLY banner framing experiment — see $lib/hero/framing.
-	const heroExp = import.meta.env.DEV
-		? loadHeroExperiment(location.search, localStorage)
-		: HERO_EXPERIMENT_DEFAULT;
+	// Hero framing preferences — see $lib/hero/framing. Dev builds only for now.
+	const heroPrefs = import.meta.env.DEV ? loadHeroPrefs(browserStorage()) : HERO_PREFS_DEFAULT;
 
 	function heroFor(d: KitsuAnimeRef): {
 		url: string | null;
 		isCover: boolean;
 		origin: HeroOrigin | null;
 	} {
-		const p = pickHeroImage(d, heroExp, 'home');
+		const p = pickHeroImage(d, heroPrefs, 'home');
 		return { url: imageProxyUrl(p.url), isCover: p.isCover, origin: p.origin };
 	}
 
@@ -806,13 +805,13 @@
 			{@const synopsis = snippetOf(featured.synopsis)}
 			<div
 				class="hero-layer"
-				class:framing-contain={hero.isCover && heroExp.framing === 'contain'}
-				class:framing-pillar={hero.isCover && heroExp.framing === 'pillar'}
-				class:framing-focus={hero.isCover && heroExp.framing === 'focus'}
+				class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
+				class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
+				class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
 				in:fade={{ duration: 480 }}
 				out:fade={{ duration: 480 }}
 			>
-				{#if hero.url && hero.isCover && (heroExp.framing === 'contain' || heroExp.framing === 'pillar')}
+				{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
 					<img
 						class="hero-backdrop"
 						src={hero.url}
@@ -861,7 +860,7 @@
 				</div>
 			</div>
 		{/key}
-		<HeroExperimentSwitch exp={heroExp} origin={heroFor(featured).origin} />
+		<HeroFramingSwitch prefs={heroPrefs} origin={heroFor(featured).origin} />
 		{#if heroRotation.length > 1}
 			<div class="hero-pager" aria-label={m.home_hero_pager_aria_label()}>
 				{#each heroRotation as item, i (item.id)}

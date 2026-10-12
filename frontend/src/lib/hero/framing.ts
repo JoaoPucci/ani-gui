@@ -1,91 +1,95 @@
 /**
- * Hero banner framing EXPERIMENT (dev builds only). Decides which image
- * a hero renders and how it is framed, for side-by-side comparison of:
+ * Hero banner framing. Decides which image a hero renders and how it
+ * is framed:
  *
- *   - `current`: master's rendering (cover, anchored near the top, heavy fades)
+ *   - `top`:     cover, anchored near the top, heavy fades — the framing
+ *                the heroes had before AniList's banner reached them
  *   - `contain`: never crop — the whole image over a blurred copy of itself
- *   - `pillar`:  fill the height — the whole upload, pillarboxed over its
- *                blurred copy when narrow, cropped at the sides when wide
+ *   - `pillar`:  fill the height — the whole upload at the band's height,
+ *                pillarboxed over its blurred copy when narrow, cropped at
+ *                the sides when wide
  *   - `focus`:   cover anchored at the centre, fades only behind text
  *
- * and of the image source: Kitsu's cover, or AniList's banner first with
- * Kitsu's cover as the fallback. Remove this module, its switch and the
- * branches that read it before any real change ships.
+ * and which image comes first: Kitsu's cover, or AniList's banner with
+ * Kitsu's cover as the fallback. `controls` says whether the on-page
+ * switch that changes these is shown; the diagnostics page owns it.
+ * The three are kept together per machine, in local storage.
  */
 
-export type HeroFraming = 'current' | 'contain' | 'pillar' | 'focus';
+export type HeroFraming = 'top' | 'contain' | 'pillar' | 'focus';
 export type HeroSource = 'kitsu' | 'anilist';
 
-export interface HeroExperiment {
+export interface HeroPrefs {
 	framing: HeroFraming;
 	source: HeroSource;
+	controls: boolean;
 }
 
-export const HERO_EXPERIMENT_DEFAULT: HeroExperiment = { framing: 'current', source: 'kitsu' };
-export const HERO_EXPERIMENT_STORAGE_KEY = 'ani-gui:dev:hero-experiment';
+export const HERO_PREFS_DEFAULT: HeroPrefs = { framing: 'top', source: 'kitsu', controls: false };
+export const HERO_PREFS_STORAGE_KEY = 'ani-gui:dev:hero-experiment';
 
-const FRAMINGS: readonly HeroFraming[] = ['current', 'contain', 'pillar', 'focus'];
-const SOURCES: readonly HeroSource[] = ['kitsu', 'anilist'];
+export const HERO_FRAMINGS: readonly HeroFraming[] = ['top', 'contain', 'pillar', 'focus'];
+export const HERO_SOURCES: readonly HeroSource[] = ['kitsu', 'anilist'];
 
 function framingOr(v: unknown, fallback: HeroFraming): HeroFraming {
-	return FRAMINGS.find((f) => f === v) ?? fallback;
+	return HERO_FRAMINGS.find((f) => f === v) ?? fallback;
 }
 function sourceOr(v: unknown, fallback: HeroSource): HeroSource {
-	return SOURCES.find((s) => s === v) ?? fallback;
+	return HERO_SOURCES.find((s) => s === v) ?? fallback;
 }
 
-/** Read a stored experiment, falling back to the default per field. */
-export function parseHeroExperiment(raw: string | null): HeroExperiment {
+/** Read stored preferences, falling back to the default per field. */
+export function parseHeroPrefs(raw: string | null): HeroPrefs {
 	let v: unknown;
 	try {
 		v = JSON.parse(raw ?? 'null');
 	} catch {
 		v = null;
 	}
-	if (typeof v !== 'object' || v === null) return HERO_EXPERIMENT_DEFAULT;
+	if (typeof v !== 'object' || v === null) return HERO_PREFS_DEFAULT;
 	const o = v as Record<string, unknown>;
 	return {
-		framing: framingOr(o.framing, HERO_EXPERIMENT_DEFAULT.framing),
-		source: sourceOr(o.source, HERO_EXPERIMENT_DEFAULT.source)
+		framing: framingOr(o.framing, HERO_PREFS_DEFAULT.framing),
+		source: sourceOr(o.source, HERO_PREFS_DEFAULT.source),
+		controls: o.controls === true
 	};
 }
 
-/** Apply `?hero=` / `?heroSrc=` over `base`; `null` when neither is present. */
-export function heroExperimentFromQuery(
-	search: string,
-	base: HeroExperiment
-): HeroExperiment | null {
-	const q = new URLSearchParams(search);
-	const hero = q.get('hero');
-	const src = q.get('heroSrc');
-	if (hero === null && src === null) return null;
-	if (hero === 'reset') return HERO_EXPERIMENT_DEFAULT;
-	return { framing: framingOr(hero, base.framing), source: sourceOr(src, base.source) };
-}
-
-interface StorageLike {
+export interface StorageLike {
 	getItem(key: string): string | null;
 	setItem(key: string, value: string): void;
 }
 
-/** The experiment in force: the query when it names one (and it is
- *  persisted, so navigation keeps it), else the stored one. */
-export function loadHeroExperiment(search: string, storage: StorageLike | null): HeroExperiment {
+/** The window's local storage, or `null` where there is none or
+ *  reaching it throws, as it does in a context that denies it. */
+export function browserStorage(): StorageLike | null {
+	try {
+		return (globalThis as { localStorage?: StorageLike }).localStorage ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/** The stored preferences, or the default when there is no storage,
+ *  storage refuses, or nothing is stored. */
+export function loadHeroPrefs(storage: StorageLike | null): HeroPrefs {
 	let stored: string | null;
 	try {
-		stored = storage?.getItem(HERO_EXPERIMENT_STORAGE_KEY) ?? null;
+		stored = storage?.getItem(HERO_PREFS_STORAGE_KEY) ?? null;
 	} catch {
 		stored = null;
 	}
-	const base = parseHeroExperiment(stored);
-	const fromQuery = heroExperimentFromQuery(search, base);
-	if (fromQuery === null) return base;
+	return parseHeroPrefs(stored);
+}
+
+/** Keep `prefs` for the next load. A refusal is not an error: the
+ *  caller already holds the preferences for this session. */
+export function saveHeroPrefs(storage: StorageLike | null, prefs: HeroPrefs): void {
 	try {
-		storage?.setItem(HERO_EXPERIMENT_STORAGE_KEY, JSON.stringify(fromQuery));
+		storage?.setItem(HERO_PREFS_STORAGE_KEY, JSON.stringify(prefs));
 	} catch {
-		// Not persisted: this load still uses it.
+		// Not persisted: this session still uses it.
 	}
-	return fromQuery;
 }
 
 export type HeroOrigin = 'anilist' | 'kitsu' | 'poster';
@@ -133,21 +137,21 @@ const POSTER_ORDER: Record<'home' | 'detail', readonly Slot[]> = {
 
 /**
  * The image a hero renders. `surface` keeps each page's existing slot
- * order for the `current` and `focus` framings; `contain` and `pillar` prefer the
- * cover's `original`, the whole upload, since Kitsu's sized covers are
- * themselves centre crops of it.
+ * order for the `top` and `focus` framings; `contain` and `pillar`
+ * prefer the cover's `original`, the whole upload, since Kitsu's sized
+ * covers are themselves centre crops of it.
  */
 export function pickHeroImage(
 	d: HeroImageInput,
-	exp: HeroExperiment,
+	prefs: Pick<HeroPrefs, 'framing' | 'source'>,
 	surface: 'home' | 'detail'
 ): HeroPick {
-	if (exp.source === 'anilist' && d.anilist_banner) {
+	if (prefs.source === 'anilist' && d.anilist_banner) {
 		return { url: d.anilist_banner, isCover: true, origin: 'anilist' };
 	}
 	const cover = firstOf(
 		d.cover_image,
-		exp.framing === 'contain' || exp.framing === 'pillar' ? COVER_WHOLE : COVER_ORDER[surface]
+		prefs.framing === 'contain' || prefs.framing === 'pillar' ? COVER_WHOLE : COVER_ORDER[surface]
 	);
 	if (cover !== null) {
 		// The backend fills a null Kitsu cover with AniList's banner.
@@ -162,13 +166,4 @@ export function pickHeroImage(
 /** Natural aspect ratio of a loaded image, or `null` when unknown. */
 export function naturalRatio(width: number, height: number): number | null {
 	return width > 0 && height > 0 ? width / height : null;
-}
-
-/** `href` without `?hero=` / `?heroSrc=`, so a choice made in the switch
- *  is not overridden by the query on the next load. */
-export function withoutExperimentQuery(href: string): string {
-	const url = new URL(href);
-	url.searchParams.delete('hero');
-	url.searchParams.delete('heroSrc');
-	return url.toString();
 }

@@ -1,7 +1,6 @@
-// Acceptance (DEV-ONLY experiment): the detail hero renders the framing
-// and image source the banner experiment names, master's rendering when
-// it names none, and master's blurred poster for a show with no cover.
-// Delete with $lib/hero/framing.
+// Acceptance: the detail hero renders the framing and image source the
+// stored preferences name, the pre-banner rendering when nothing is
+// stored, and the blurred poster for a show with no cover.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -26,7 +25,7 @@ vi.mock('$app/navigation', () => ({
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
-import { HERO_EXPERIMENT_STORAGE_KEY } from '../../src/lib/hero/framing';
+import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/framing';
 
 const KITSU_ID = '42';
 const COVER = 'https://media.kitsu.app/anime/42/cover_image/large.jpg';
@@ -95,7 +94,7 @@ function useShow(withCover: boolean) {
 }
 
 function choose(framing: string, source: string) {
-	localStorage.setItem(HERO_EXPERIMENT_STORAGE_KEY, JSON.stringify({ framing, source }));
+	localStorage.setItem(HERO_PREFS_STORAGE_KEY, JSON.stringify({ framing, source }));
 }
 
 async function heroImage(): Promise<HTMLImageElement> {
@@ -110,8 +109,8 @@ const framingClasses = () =>
 		target.querySelector('section.hero')?.classList.contains(f)
 	);
 
-describe('detail hero framing experiment', () => {
-	it('renders master’s framing and Kitsu’s cover when no experiment is chosen', async () => {
+describe('detail hero framing', () => {
+	it('renders the top crop of Kitsu’s cover when nothing is stored', async () => {
 		useShow(true);
 		app = mount(DetailPage, { target });
 		expect((await heroImage()).getAttribute('src')).toContain(proxied(COVER));
@@ -139,7 +138,7 @@ describe('detail hero framing experiment', () => {
 		expect(framingClasses()).toEqual(['framing-contain']);
 	});
 
-	it('keeps master’s blurred poster for a show with no cover', async () => {
+	it('keeps the blurred poster for a show with no cover', async () => {
 		useShow(false);
 		choose('focus', 'anilist');
 		app = mount(DetailPage, { target });
