@@ -46,7 +46,15 @@
 	],
 	"error_headline": "Não foi possível buscar no Kitsu.",
 	"sort_relevance": "Relevância",
-	"sort_title": "Título",
 	"sort_year": "Ano",
-	"sort_rating": "Nota"
+	"sort_rating": "Nota",
+	"paging_loading": "Carregando mais resultados…",
+	"paging_end": "Fim dos resultados para “{query}”.",
+	"paging_failed": "Não foi possível carregar mais resultados.",
+	"paging_retry": "Tentar de novo",
+	"paging_held": "As últimas páginas não tinham nada que você possa assistir.",
+	"paging_keep_looking": "Continuar procurando",
+	"paging_load_more": "Carregar mais resultados",
+	"count_more": "{count}+",
+	"count_word_open": "resultados"
 }

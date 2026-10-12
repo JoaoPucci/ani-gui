@@ -130,8 +130,11 @@ describe('/search late prune', () => {
 
 		server.use(
 			...baseHandlers(),
-			http.post(`${API_BASE}/api/kitsu/search`, () =>
-				HttpResponse.json([ref('1', 'Gone One'), ref('2', 'Gone Two')])
+			http.post(`${API_BASE}/api/kitsu/search/page`, () =>
+				HttpResponse.json({
+					hits: [ref('1', 'Gone One'), ref('2', 'Gone Two')],
+					next_offset: null
+				})
 			),
 			http.post(`${API_BASE}/api/availability`, async () => {
 				await probesHeld;
@@ -174,17 +177,18 @@ describe('/search late prune', () => {
 
 		server.use(
 			...baseHandlers(),
-			http.post(`${API_BASE}/api/kitsu/search`, async ({ request }) => {
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { query } = (await request.json()) as { query: string };
 				searchCalls += 1;
 				if (query === 'cowboy' && searchCalls === 1) {
 					// The stale run: held open, then answered with
 					// results that must never reach the screen.
 					await firstAHeld;
-					return HttpResponse.json([ref('9', 'Stale Result')]);
+					return HttpResponse.json({ hits: [ref('9', 'Stale Result')], next_offset: null });
 				}
-				if (query === 'trigun') return HttpResponse.json([ref('5', 'Interim Result')]);
-				return HttpResponse.json([ref('7', 'Fresh Result')]);
+				if (query === 'trigun')
+					return HttpResponse.json({ hits: [ref('5', 'Interim Result')], next_offset: null });
+				return HttpResponse.json({ hits: [ref('7', 'Fresh Result')], next_offset: null });
 			}),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { kitsu_id?: string };
