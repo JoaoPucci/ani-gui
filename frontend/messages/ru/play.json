@@ -57,7 +57,17 @@
 	"external_spawn_failed_named": "Не удалось запустить {binary}. Убедитесь, что плеер установлен и доступен в PATH (или укажите полный путь в Настройках).",
 	"episodes_section_heading": "Эпизоды",
 	"episodes_range_pagination": "{epStart}–{epEnd} из {total}",
-	"episodes_range_all": "{count} эпизодов",
+	"episodes_range_all": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} эпизод",
+				"countPlural=few": "{count} эпизода",
+				"countPlural=*": "{count} эпизодов"
+			}
+		}
+	],
 	"episodes_range_page": "стр. {page}",
 	"episodes_range_unavailable": "недоступно",
 	"episodes_range_loading": "загрузка…",

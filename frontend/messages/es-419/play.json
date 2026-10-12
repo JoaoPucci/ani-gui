@@ -57,7 +57,16 @@
 	"external_spawn_failed_named": "No se pudo abrir {binary}. Asegúrate de que esté instalado y en PATH (o elige la ruta completa en Ajustes).",
 	"episodes_section_heading": "Episodios",
 	"episodes_range_pagination": "{epStart}–{epEnd} de {total}",
-	"episodes_range_all": "{count} episodios",
+	"episodes_range_all": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} episodio",
+				"countPlural=*": "{count} episodios"
+			}
+		}
+	],
 	"episodes_range_page": "página {page}",
 	"episodes_range_unavailable": "no disponible",
 	"episodes_range_loading": "cargando…",

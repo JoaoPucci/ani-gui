@@ -321,10 +321,10 @@ describe('describePlayFailure — one mapper for every surface', () => {
 });
 
 describe('wait copy reads right for any number of seconds', () => {
-	// The message catalogue has no plural forms, so "{seconds} seconds"
-	// is wrong for 1 in English and for most numbers in Russian
-	// (1 секунду, 2 секунды, 5 секунд). The wait is written with the
-	// unit's abbreviation, which does not inflect.
+	// "{seconds} seconds" with one fixed noun is wrong for 1 in English
+	// and for most numbers in Russian (1 секунду, 2 секунды, 5 секунд).
+	// The wait is written with the unit's abbreviation, which does not
+	// inflect, so it needs no plural variants.
 	const UNIT = { en: 's', 'pt-BR': 's', 'es-419': 's', ru: 'с' } as const;
 	const WAITS = [m.errors_reason_busy_wait, m.play_play_failure_rate_limited_wait];
 

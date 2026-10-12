@@ -33,13 +33,17 @@ pub struct AppState {
     pub sessions: SessionTable,
     /// Outbound http client used by the proxy.
     pub proxy_http: reqwest::Client,
+    /// The per-host request budget the proxy's fetches on the player's
+    /// behalf and a download's subtitle tracks are charged to. One per
+    /// app state, since the host counts both against the one address.
+    pub host_budget: std::sync::Arc<crate::proxy::host_budget::HostBudget>,
     /// Outbound HTTP client for metadata calls (Kitsu, AniList,
     /// images, GitHub release polls). Separate from
     /// `proxy_http` so these calls carry tight timeouts: the proxy
     /// client's 120s ceiling is sized for streaming bodies, and a
     /// stalled metadata connection could hold a probe handler for two
-    /// minutes. Same User-Agent as the proxy client — CDN HEAD probes
-    /// (`upstream_head_ok`) rely on the client default.
+    /// minutes. Same User-Agent as the proxy client, which a cached
+    /// row's liveness probes (`upstream_head_ok`) go out on.
     pub meta_http: reqwest::Client,
     /// Public base URL the frontend uses to reach the proxy
     /// (`http://127.0.0.1:<port>`). Set after the listener binds.
@@ -157,6 +161,7 @@ impl AppState {
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http,
+            host_budget: crate::proxy::host_budget::HostBudget::fresh(),
             meta_http,
             proxy_origin,
             bundled_bin,
@@ -195,6 +200,7 @@ impl AppState {
             secret: self.secret.clone(),
             client: self.proxy_http.clone(),
             origin: self.proxy_origin.clone(),
+            host_budget: self.host_budget.clone(),
         }
     }
 }

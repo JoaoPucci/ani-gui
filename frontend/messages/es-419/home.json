@@ -30,8 +30,16 @@
 	"clear_menu_button_aria": "Opciones del historial",
 	"clear_menu_item": "Borrar historial",
 	"clear_confirm_eyebrow": "Borrar todo",
-	"clear_confirm_title_one": "¿Quitar 1 entrada del historial?",
-	"clear_confirm_title_other": "¿Quitar {count} entradas del historial?",
+	"clear_confirm_title": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "¿Quitar {count} entrada del historial?",
+				"countPlural=*": "¿Quitar {count} entradas del historial?"
+			}
+		}
+	],
 	"clear_confirm_body": "Esto borra el historial de reproducción de ani-gui. No se puede deshacer.",
 	"clear_confirm_button": "Borrar todo",
 	"hero_error_eyebrow_value": "Sin respuesta de Kitsu"

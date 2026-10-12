@@ -114,7 +114,7 @@
 	/* — Spacing on a 4px base. Strict scale: 4 / 8 / 12 / 16 / 24 / 32
 	   / 48 / 64. No tokens beyond 64px — the few places that used
 	   96px-ish gaps (page padding, hero overlap) are now collapsed to
-	   64px so the scale is enforceable. Use var(--space-N) consistently
+	   64px so the scale is enforceable. Use the --space-N tokens consistently
 	   for section margin-bottom (48), card gap (12), row gap (16),
 	   page padding (48). */
 	--space-1: 0.25rem;

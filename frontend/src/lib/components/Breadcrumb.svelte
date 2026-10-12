@@ -116,9 +116,9 @@
 		margin: 0;
 		padding: 0;
 		font-family: var(--font-mono);
-		/* Bumped from --type-meta (12px) to --type-body-s (14px) — the
-		   prior size felt swallowed by the topbar's other elements. */
-		font-size: var(--type-body-s);
+		/* --type-meta (14px): a 12px trail felt swallowed by the
+		   topbar's other elements. */
+		font-size: var(--type-meta);
 		letter-spacing: var(--tracking-meta);
 		min-inline-size: 0;
 	}
