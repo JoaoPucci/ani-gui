@@ -816,3 +816,7 @@ mod tests;
 #[cfg(test)]
 #[path = "account_key_test.rs"]
 mod key_tests;
+
+#[cfg(test)]
+#[path = "account_resolve_test.rs"]
+mod resolve_tests;

@@ -51,3 +51,7 @@ pub(crate) async fn media_ids_for_mals(
 ) -> Result<HashMap<u32, u32>> {
     crate::meta::anilist::media_ids_for_mals(&state.meta_http, mal_ids, anilist_base).await
 }
+
+#[cfg(test)]
+#[path = "anilist_ids_test.rs"]
+mod tests;

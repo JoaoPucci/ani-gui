@@ -18,3 +18,7 @@ use crate::meta::kitsu::ExternalIds;
 pub(crate) async fn external_ids_for(state: &AppState, kitsu_id: &str) -> Result<ExternalIds> {
     state.kitsu.external_ids_for_kitsu_id(kitsu_id).await
 }
+
+#[cfg(test)]
+#[path = "external_ids_test.rs"]
+mod tests;
