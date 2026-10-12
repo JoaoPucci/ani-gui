@@ -58,7 +58,8 @@ pub mod keys {
     pub const IO_GENERIC: &str = "error.io.generic";
 
     // --- error.metadata.* ---
-    /// Kitsu/AniList returned malformed data.
+    /// An account request the backend could not carry out
+    /// (`AniError::Metadata`; see its variant for what raises it).
     pub const METADATA_SOURCE: &str = "error.metadata.source";
 
     // --- error.network.* ---
@@ -90,11 +91,14 @@ pub mod keys {
     pub const PLAY_EPISODE_UNAVAILABLE: &str = "error.play.episode_unavailable";
 
     // --- error.search.* ---
-    /// Search returned zero results.
+    /// The streaming source has no match for the title
+    /// (`AniError::NoResults`).
     pub const SEARCH_NO_RESULTS: &str = "error.search.no_results";
 
     // --- error.stream.* ---
-    /// Stream token missing/expired/forged.
+    /// A token or secret missing, expired or forged — a stream
+    /// session's or an account's (`AniError::InvalidToken`; see its
+    /// variant for what raises it).
     pub const STREAM_INVALID_TOKEN: &str = "error.stream.invalid_token";
 }
 

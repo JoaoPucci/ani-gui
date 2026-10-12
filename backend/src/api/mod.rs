@@ -51,7 +51,8 @@ use crate::meta::kitsu::{KitsuAnimeRef, KitsuEpisode};
 /// `kind` discriminator, the variant's fields, and its stable `key` —
 /// so an HTTP error and an SSE error event carry the same shape, and
 /// the stable key AGENTS.md §4 promises the frontend reaches it either
-/// way. The frontend's error surfaces dispatch on `kind` today.
+/// way. The frontend resolves the key to its copy, with `kind` as the
+/// fallback for a key it has no message for.
 impl IntoResponse for AniError {
     fn into_response(self) -> Response {
         let status = StatusCode::from_u16(self.http_status_code())
@@ -1269,7 +1270,7 @@ mod tests {
     #[tokio::test]
     async fn ani_error_no_results_serializes_with_kind() {
         // Spot-check the IntoResponse impl — the body carries the `kind`
-        // discriminator the frontend's error copy is chosen from.
+        // discriminator the frontend's error copy falls back to.
         let resp = AniError::NoResults.into_response();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
         let body = body_string(resp).await;

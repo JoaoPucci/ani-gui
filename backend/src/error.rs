@@ -3,7 +3,10 @@
 //!
 //! Every variant maps to a stable i18n key returned to the frontend.
 //! Localized strings are resolved by the frontend (Paraglide), never by the
-//! backend. See [`crate::i18n`] for the canonical key list.
+//! backend. [`crate::i18n`] holds the key constants; `backend/error-keys.json`
+//! publishes the key of every variant for the renderer's catalogues, and
+//! `error_test.rs` holds that file to the variant list in
+//! `error_variants_test.rs`.
 
 use serde::Serialize;
 use thiserror::Error;
@@ -39,7 +42,8 @@ pub enum AniError {
     #[error("deadline exceeded")]
     Timeout,
 
-    /// Search returned zero results.
+    /// The streaming source has no match for the title: raised while
+    /// resolving a play or a download, not by the catalogue search.
     #[error("no results")]
     NoResults,
 
@@ -152,7 +156,11 @@ pub enum AniError {
     #[error("config error")]
     Config,
 
-    /// Metadata source (Kitsu or AniList) returned malformed data.
+    /// An account request the backend could not carry out: an unknown
+    /// or unconfigured list provider, a PKCE request it cannot convert,
+    /// AniList's absent refresh flow or a delete it reported as not
+    /// done, a Watch Later bridge asking for too many ids. The name is
+    /// older than that use; malformed bodies are `ParseFailed`.
     #[error("metadata source")]
     Metadata,
 
@@ -171,7 +179,11 @@ pub enum AniError {
     #[error("invalid kitsu id")]
     InvalidKitsuId,
 
-    /// Stream session token was missing, expired, or signature-invalid.
+    /// A token or secret the request carried is missing, expired or
+    /// forged: a stream session's token at the proxy, an account's
+    /// bearer at the account routes, AniList or MAL answering 401, the
+    /// internal secret the Watch Later bridge checks. The `stream` in
+    /// its key is older than the account uses.
     #[error("invalid stream token")]
     InvalidToken,
 }

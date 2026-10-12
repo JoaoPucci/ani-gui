@@ -6,10 +6,13 @@
 //! the patterns into a `match` with no wildcard and the values into the
 //! list, so a variant added to the enum does not compile until it has a
 //! pair here, and a pair cannot name a pattern without giving its
-//! value. `every_value_matches_its_own_pattern` closes the one gap the
+//! value. `every_value_matches_its_own_pattern` closes one gap the
 //! compiler leaves: a value that is not the variant its pattern names.
-//! A variant whose fields choose its key (`Scraper`'s failure) has one
-//! pair per choice.
+//! The other is a field that chooses the key: a variant whose `key()`
+//! arms split on a field (`Scraper`'s failure) needs one pair per
+//! choice, and nothing but this convention says so — a `{ .. }` pair
+//! over a field `key()` later starts splitting on keeps compiling, and
+//! the new key reaches neither `error-keys.json` nor the catalogues.
 
 use crate::error::{AniError, DownloadToolFailure};
 

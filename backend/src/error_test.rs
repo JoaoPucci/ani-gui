@@ -245,8 +245,10 @@ fn a_download_tool_that_exited_has_its_own_key() {
 /// `backend/error-keys.json` is what `tests/arch/error_keys.sh` holds
 /// every locale's `backend.json` to, and this test is what holds that
 /// file to the variants (`error::variants`, which a new variant does
-/// not compile past): a key added, renamed or dropped fails here until
-/// the file says the same.
+/// not compile past): a variant's key added, renamed or dropped fails
+/// here until the file says the same. A key chosen by a field value
+/// the list has no pair for is the one it cannot see; see
+/// `error_variants_test.rs`.
 #[test]
 fn the_published_key_list_is_every_variants_key() {
     let keys: std::collections::BTreeSet<&str> = super::variants::every_variant()
