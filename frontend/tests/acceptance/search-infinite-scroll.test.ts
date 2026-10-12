@@ -806,4 +806,31 @@ describe('/search infinite scroll', () => {
 		expect(buttonNamed(subtypeLabel('TV'))).toBe(tv);
 		expect(document.activeElement).toBe(tv);
 	});
+
+	// A reorder starts the search over, so its first page failing is the
+	// search failing. The chip the reader pressed stays where it is, so
+	// they can pick another order or try again from the same place.
+	it('a reorder whose first page fails keeps the controls and the focus on the chip', async () => {
+		const FAILURE = { kind: 'upstream', key: 'error.network.upstream', status: 503, detail: 'x' };
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { sort } = (await request.json()) as { sort?: string };
+				if (sort === 'year') return HttpResponse.json(FAILURE, { status: 502 });
+				return HttpResponse.json({ hits: [ref('1', 'Alpha')], next_offset: null });
+			})
+		);
+
+		setQuery('show');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Alpha'), 'the ranked results');
+
+		const year = buttonNamed(m.search_sort_year())!;
+		year.focus();
+		year.click();
+		await until(() => !screen().includes('Alpha'), 'the failed reorder');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(buttonNamed(m.search_sort_year())).toBe(year);
+		expect(document.activeElement).toBe(year);
+	});
 });
