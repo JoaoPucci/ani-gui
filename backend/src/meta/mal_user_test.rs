@@ -1191,3 +1191,115 @@ fn parse_iso8601_to_epoch_applies_the_utc_offset() {
         "and an offset behind UTC likewise"
     );
 }
+
+// --- 429 from MAL ------------------------------------------------------
+// A rate limit is the tracker refusing this client for a while, not an
+// answer about the request. The envelope carries that as
+// `error.network.rate_limited` with the advertised wait so the renderer
+// can wait it out instead of retrying at once; every bearer-authed
+// verb and the token endpoint read it the same way.
+
+fn rate_limit_tokens() -> crate::account::provider::Tokens {
+    crate::account::provider::Tokens {
+        access_token: "mal-access".into(),
+        refresh_token: None,
+        expires_at_epoch_s: i64::MAX,
+    }
+}
+
+fn assert_rate_limited(err: &crate::error::AniError, wait: Option<u64>) {
+    match err {
+        crate::error::AniError::RateLimited { retry_after_secs } => {
+            assert_eq!(*retry_after_secs, wait, "advertised wait: {err:?}");
+        }
+        other => panic!("expected RateLimited {{ retry_after_secs: {wait:?} }}, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn me_surfaces_429_as_rate_limited_with_the_advertised_wait() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/users/@me"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "30"))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .me(&rate_limit_tokens())
+        .await
+        .expect_err("429 must surface");
+    assert_rate_limited(&err, Some(30));
+}
+
+#[tokio::test]
+async fn current_entry_surfaces_429_without_a_wait_as_rate_limited() {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/anime/21"))
+        .respond_with(wiremock::ResponseTemplate::new(429))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .current_entry(&rate_limit_tokens(), ProviderMediaId(21))
+        .await
+        .expect_err("429 must surface");
+    assert_rate_limited(&err, None);
+}
+
+#[tokio::test]
+async fn update_entry_surfaces_429_as_rate_limited() {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("PATCH"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "5"))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let update = crate::account::provider::EntryUpdate {
+        status: None,
+        progress_episodes: Some(6),
+        score_0_to_100: None,
+        repeat_count: None,
+    };
+    let err = provider
+        .update_entry(&rate_limit_tokens(), ProviderMediaId(21), update)
+        .await
+        .expect_err("429 must surface");
+    assert_rate_limited(&err, Some(5));
+}
+
+#[tokio::test]
+async fn delete_entry_surfaces_429_as_rate_limited() {
+    use wiremock::matchers::{method, path};
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("DELETE"))
+        .and(path("/anime/21/my_list_status"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "5"))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .delete_entry(&rate_limit_tokens(), ProviderMediaId(21))
+        .await
+        .expect_err("429 must surface");
+    assert_rate_limited(&err, Some(5));
+}
+
+#[tokio::test]
+async fn refresh_surfaces_429_as_rate_limited() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "60"))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let err = provider
+        .refresh("still-good")
+        .await
+        .expect_err("429 must surface");
+    assert_rate_limited(&err, Some(60));
+}
