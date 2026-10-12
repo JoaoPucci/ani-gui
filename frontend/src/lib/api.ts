@@ -942,10 +942,12 @@ export type SearchOrder = 'relevance' | 'year' | 'rating';
 export function kitsuSearchPage(
 	query: string,
 	offset: number,
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	_order: SearchOrder = 'relevance'
+	order: SearchOrder = 'relevance'
 ): Promise<KitsuSearchPage> {
-	return postJson<KitsuSearchPage>('/api/kitsu/search/page', { query, offset });
+	// Kitsu's ranking is the route's default, so a ranked request
+	// carries no order.
+	const body = order === 'relevance' ? { query, offset } : { query, offset, sort: order };
+	return postJson<KitsuSearchPage>('/api/kitsu/search/page', body);
 }
 
 export function kitsuAnimeDetail(id: string): Promise<KitsuAnimeRef> {

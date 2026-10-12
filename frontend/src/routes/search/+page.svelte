@@ -15,7 +15,8 @@
 		kitsuTrending,
 		settingsGet,
 		type Config,
-		type KitsuAnimeRef
+		type KitsuAnimeRef,
+		type SearchOrder
 	} from '$lib/api';
 	import { accentFor } from '$lib/design/accent';
 	import PosterCard from '$lib/components/PosterCard.svelte';
@@ -73,14 +74,16 @@
 	// pages get picked up.
 	let config = $state<Config | null>(null);
 
-	// Client-side sort + filter over the pages loaded so far. Kitsu
-	// serves 20 hits a page; sorting/filtering what is on screen is
-	// cheap to do here rather than re-querying.
-	type SortKey = 'relevance' | 'title' | 'year' | 'rating';
+	// The order comes from Kitsu: choosing one starts the search over
+	// in it, and each page that loads continues it below what is shown.
+	// Sorting only the loaded pages here would re-sort the whole grid
+	// as every page landed. Kitsu cannot sort a text search by title,
+	// so there is no title order. The type filter stays here: it hides
+	// cards, it does not move them.
+	type SortKey = SearchOrder;
 	// Message functions, called at render so a locale switch relabels.
 	const SORT_LABELS: Record<SortKey, () => string> = {
 		relevance: m.search_sort_relevance,
-		title: m.search_sort_title,
 		year: m.search_sort_year,
 		rating: m.search_sort_rating
 	};
@@ -99,22 +102,6 @@
 		let list = results.slice();
 		if (activeSubtypes.size > 0) {
 			list = list.filter((h) => activeSubtypes.has(h.subtype ?? 'TV'));
-		}
-		if (sortKey === 'title') {
-			list.sort((a, b) =>
-				a.canonical_title.localeCompare(b.canonical_title, undefined, { sensitivity: 'base' })
-			);
-		} else if (sortKey === 'year') {
-			// Empty start_date sorts last regardless of direction.
-			list.sort((a, b) => {
-				const aY = a.start_date ?? '';
-				const bY = b.start_date ?? '';
-				if (!aY && bY) return 1;
-				if (aY && !bY) return -1;
-				return bY.localeCompare(aY);
-			});
-		} else if (sortKey === 'rating') {
-			list.sort((a, b) => (b.average_rating ?? -1) - (a.average_rating ?? -1));
 		}
 		return list;
 	});
@@ -250,7 +237,15 @@
 		// unmounts while this search's first page loads, and the
 		// observer made when it mounts again reports its initial state.
 		reach = UNMEASURED;
-		await searchRunner.run(q);
+		await searchRunner.run(q, sortKey);
+	}
+
+	/** Choose the order the results come in: the search starts over,
+	 *  with Kitsu sorting it. */
+	function chooseOrder(key: SortKey) {
+		if (key === sortKey) return;
+		sortKey = key;
+		if (submitted) void runSearch(submitted);
 	}
 
 	function posterFor(hit: KitsuAnimeRef): string | null {
@@ -330,7 +325,7 @@
 							class:active={sortKey === key}
 							role="radio"
 							aria-checked={sortKey === key}
-							onclick={() => (sortKey = key as SortKey)}
+							onclick={() => chooseOrder(key as SortKey)}
 						>
 							{label()}
 						</button>
