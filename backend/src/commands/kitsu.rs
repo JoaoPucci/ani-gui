@@ -1238,6 +1238,10 @@ mod title_match_tests;
 mod show_key_tests;
 
 #[cfg(test)]
+#[path = "kitsu_anilist_banner_test.rs"]
+mod anilist_banner_tests;
+
+#[cfg(test)]
 #[path = "kitsu_banner_test.rs"]
 mod banner_tests;
 
