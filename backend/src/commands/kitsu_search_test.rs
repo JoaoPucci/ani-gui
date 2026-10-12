@@ -270,6 +270,27 @@ fn an_offset_that_is_no_page_offset_is_an_invalid_offset() {
 }
 
 proptest::proptest! {
+    /// Only the three orders the route offers are read; any other
+    /// `sort` string is refused rather than read as relevance.
+    #[test]
+    fn only_an_offered_order_is_read(sort in "[a-z_]{0,12}") {
+        use crate::meta::kitsu_page::SearchOrder;
+        let body = format!(r#"{{"query":"q","offset":0,"sort":"{sort}"}}"#);
+        let want = match sort.as_str() {
+            "relevance" => Some(SearchOrder::Relevance),
+            "year" => Some(SearchOrder::Year),
+            "rating" => Some(SearchOrder::Rating),
+            _ => None,
+        };
+        match want {
+            Some(order) => proptest::prop_assert_eq!(read_page_order(body.as_bytes()).ok(), Some(order)),
+            None => proptest::prop_assert!(matches!(
+                read_page_order(body.as_bytes()),
+                Err(crate::error::AniError::InvalidRequestBody)
+            )),
+        }
+    }
+
     #[test]
     fn any_integer_offset_reads_as_itself_or_is_refused(offset in proptest::num::i64::ANY) {
         let body = format!(r#"{{"query":"q","offset":{offset}}}"#);

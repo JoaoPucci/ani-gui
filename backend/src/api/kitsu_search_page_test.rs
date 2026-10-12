@@ -97,3 +97,47 @@ async fn a_body_that_is_not_a_page_request_answers_the_body_envelope() {
         assert_envelope(body, "error.request.invalid_body").await;
     }
 }
+
+/// The route hands the order it read on to Kitsu: a year search reaches
+/// Kitsu sorted newest first.
+#[tokio::test]
+async fn a_page_request_s_order_reaches_kitsu() {
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime"))
+        .and(query_param("sort", "-startDate"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_json(serde_json::json!({
+                    "data": [{ "id": "68", "type": "anime", "attributes": { "canonicalTitle": "Newest" } }],
+                    "links": {},
+                    "meta": { "count": 1 }
+                })),
+        )
+        .expect(1)
+        .mount(&mock)
+        .await;
+
+    let td = TempDir::new().expect("tempdir");
+    let mut state = test_app_state(&td);
+    state.kitsu = KitsuClient::with_base(reqwest::Client::new(), mock.uri());
+    let response = post_page(state, r#"{"query":"dragon ball","offset":0,"sort":"year"}"#).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_str(&body_string(response).await).expect("json");
+    assert_eq!(body["hits"][0]["id"], "68");
+}
+
+/// An order the route does not offer answers the invalid-body envelope.
+#[tokio::test]
+async fn a_page_request_with_an_order_not_offered_is_refused() {
+    let td = TempDir::new().expect("tempdir");
+    let response = post_page(
+        test_app_state(&td),
+        r#"{"query":"dragon ball","offset":0,"sort":"title"}"#,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body: serde_json::Value = serde_json::from_str(&body_string(response).await).expect("json");
+    assert_eq!(body["key"], crate::i18n::keys::REQUEST_INVALID_BODY);
+}
