@@ -1884,3 +1884,43 @@ async fn a_year_or_format_tag_does_not_hide_the_entry_before() {
     );
     assert_eq!(walk_over(site).await.expect("picked").hit.slug, "x");
 }
+
+/// A candidate naming a season before the entry's own is the season
+/// before the entry, never picked — alone or beside the broad listing
+/// the sequel guard drops — and its rejected pool is a clean miss. An
+/// entry naming no season keeps the cross-kind allowance.
+#[tokio::test]
+async fn a_season_before_the_entry_s_own_is_never_picked() {
+    for (entry, rows) in [
+        (
+            "Show Season 3 Part 2",
+            &[("s", "Show Season 2 Part 2", 12)][..],
+        ),
+        ("Show Season 3 Part 2", &[("s", "Show Season 2", 12)][..]),
+        ("Show 3 Part 2", &[("s", "Show 2 Part 2", 12)][..]),
+        (
+            "Show Season 3 Part 2",
+            &[
+                ("w", "Show Season 3", 24),
+                ("s", "Show Season 2 Part 2", 12),
+            ][..],
+        ),
+        ("ショー 第3期 第2部", &[("s", "ショー第二期第2部", 12)][..]),
+    ] {
+        for count in [Some(12), None] {
+            let site = pool_of(&[entry], count, 2020, entry, rows);
+            match walk_over(site).await {
+                Ok(p) => panic!("{entry} {count:?}: picked {}", p.hit.slug),
+                Err(e) => assert!(e.clean_miss, "{entry} {count:?}: {e:?}"),
+            }
+        }
+    }
+    let site = pool_of(
+        &["86 Part 2"],
+        Some(12),
+        2021,
+        "86 Part 2",
+        &[("x", "Eighty Six: 2nd Season", 12)],
+    );
+    assert_eq!(walk_over(site).await.expect("picked").hit.slug, "x");
+}
