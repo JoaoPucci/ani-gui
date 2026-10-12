@@ -439,7 +439,18 @@ const MAX_SAME_ORIGIN_HOPS: usize = 10;
 impl Fetch for CurlImpersonateFetch {
     /// A held request is fetched a hop at a time: a redirect that
     /// stays on its origin is followed, anything else is the answer.
+    /// The hops share the request's one deadline, as the transfers of
+    /// curl's own `-L` chain did.
     async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse> {
+        tokio::time::timeout(self.deadline, self.follow_on_origin(req))
+            .await
+            .unwrap_or(Err(AniError::Timeout))
+    }
+}
+
+impl CurlImpersonateFetch {
+    /// Each hop of `req`, while a redirect stays on its origin.
+    async fn follow_on_origin(&self, req: &FetchRequest) -> Result<FetchResponse> {
         let mut hop = req.clone();
         for _ in 0..=MAX_SAME_ORIGIN_HOPS {
             let (resp, target) = self.fetch_once(&hop).await?;
