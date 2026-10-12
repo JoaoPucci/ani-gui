@@ -119,11 +119,14 @@ fn page_body(ids: &[&str], next: bool) -> Vec<u8> {
     serde_json::to_vec(&v).expect("json")
 }
 
+/// Mounts the page that starts at `offset`, which Kitsu is asked for
+/// by number: offset 0 is page 1, offset 20 page 2.
 async fn mount_page(mock: &MockServer, offset: &str, ids: &[&str], next: bool, times: u64) {
+    let number = offset.parse::<u32>().expect("offset") / 20 + 1;
     Mock::given(method("GET"))
         .and(path("/anime"))
-        .and(query_param("page[offset]", offset))
-        .and(query_param("page[limit]", "20"))
+        .and(query_param("page[number]", number.to_string()))
+        .and(query_param("page[size]", "20"))
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("content-type", "application/vnd.api+json")
@@ -278,4 +281,31 @@ proptest::proptest! {
             )),
         }
     }
+}
+
+/// A page cached before the client asked Kitsu by page number holds
+/// what Kitsu's late offsets answered, often the page before. It is not
+/// served: the page is fetched again.
+#[tokio::test]
+async fn a_page_cached_from_an_offset_request_is_fetched_again() {
+    let mock = MockServer::start().await;
+    mount_page(&mock, "20", &["21"], true, 1).await;
+
+    let state = state_with_kitsu_at(&mock.uri());
+    let stale = serde_json::to_string(&crate::meta::kitsu_page::KitsuSearchPage {
+        hits: Vec::new(),
+        next_offset: Some(40),
+    })
+    .expect("json");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:v3:search:20:dragon ball",
+        &stale,
+        3600,
+    )
+    .expect("seed");
+    let page = kitsu_search_page(&state, "dragon ball", 20)
+        .await
+        .expect("ok");
+    assert_eq!(page.hits[0].id, "21");
 }

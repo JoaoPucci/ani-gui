@@ -3,12 +3,14 @@
 //! Locks two contracts:
 //! 1. The HTTP request shape (path, query string, Accept header) matches what
 //!    real Kitsu expects — wiremock asserts the request matches `/anime` with
-//!    `filter[text]=`, `page[limit]=`, `fields[anime]=` query parameters.
+//!    `filter[text]=`, `page[size]=`, `page[number]=`, `fields[anime]=` query
+//!    parameters, and no `page[offset]=`, which Kitsu's text search reads a
+//!    page late.
 //! 2. End-to-end decoding: the bytes wiremock returns (real Kitsu fixture
 //!    JSON) round-trip into `KitsuAnimeRef` instances.
 
 use ani_gui::meta::kitsu::{KitsuClient, ANIME_FIELDS};
-use wiremock::matchers::{header, method, path, query_param};
+use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const SEARCH_FIXTURE: &[u8] = include_bytes!("../../tests/fixtures/kitsu/search_one_piece.json");
@@ -22,7 +24,9 @@ async fn search_sends_jsonapi_accept_and_filter_query() {
         .and(path("/anime"))
         .and(header("accept", "application/vnd.api+json"))
         .and(query_param("filter[text]", "one piece"))
-        .and(query_param("page[limit]", "5"))
+        .and(query_param("page[size]", "5"))
+        .and(query_param("page[number]", "1"))
+        .and(query_param_is_missing("page[offset]"))
         .and(query_param("fields[anime]", ANIME_FIELDS))
         .respond_with(
             ResponseTemplate::new(200)

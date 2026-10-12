@@ -4,7 +4,7 @@ use super::*;
 use crate::meta::kitsu::{parse_search_page, KitsuClient};
 use proptest::prelude::*;
 use serde_json::json;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{method, path, query_param, query_param_is_missing};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const SEARCH_FIXTURE: &[u8] = include_bytes!("../../../tests/fixtures/kitsu/search_one_piece.json");
@@ -101,14 +101,21 @@ proptest! {
     }
 }
 
+/// Kitsu's text search reads `page[offset]` a page late: offsets 0 and
+/// 20 both answer the first page, 40 the second, so the last page of a
+/// query is never asked for. Measured on "dragon ball" (58 hits): offset
+/// 60 answered the third page, which offset 40 should have. Its
+/// `page[number]` answers the page asked for, so the client turns the
+/// offset into the page that starts there.
 #[tokio::test]
-async fn the_client_asks_kitsu_for_the_offset_it_was_given() {
+async fn the_client_asks_kitsu_for_the_page_that_starts_at_the_offset() {
     let mock = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/anime"))
         .and(query_param("filter[text]", "dragon ball"))
-        .and(query_param("page[limit]", "20"))
-        .and(query_param("page[offset]", "60"))
+        .and(query_param("page[size]", "20"))
+        .and(query_param("page[number]", "4"))
+        .and(query_param_is_missing("page[offset]"))
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("content-type", "application/vnd.api+json")

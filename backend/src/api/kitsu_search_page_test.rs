@@ -31,7 +31,7 @@ async fn a_page_answers_its_hits_and_where_the_next_one_starts() {
     Mock::given(method("GET"))
         .and(path("/anime"))
         .and(query_param("filter[text]", "dragon ball"))
-        .and(query_param("page[offset]", "60"))
+        .and(query_param("page[number]", "4"))
         .respond_with(
             ResponseTemplate::new(200)
                 .insert_header("content-type", "application/vnd.api+json")
