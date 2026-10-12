@@ -1702,6 +1702,8 @@ async fn an_entry_naming_only_later_divisions_refuses_the_one_before() {
     for (titles, listing) in [
         (&["Show 2"][..], "Show"),
         (&["Show Part 2"][..], "Show Season 1"),
+        (&["Show 2"][..], "Show First Half"),
+        (&["Show 2"][..], "Show Season 1 First Half"),
     ] {
         let site = pool_of(titles, Some(12), 2020, titles[0], &[("x", listing, 12)]);
         if let Ok(p) = walk_over(site).await {
