@@ -6,12 +6,54 @@
 //! becomes the `idMal` the MAL account keys on, and the Watch Later
 //! rail asks for many MAL ids at once. Every one of these is a public
 //! AniList request against the 30-per-minute budget the rest of the
-//! app shares, so they are asked through here.
+//! app shares, so each answer is kept in `meta_cache`, one row per
+//! id in each direction:
+//!
+//! - `anilist:media-id-for-mal:v1:<mal_id>` — AniList's `mediaId`
+//! - `anilist:mal-id-for-media:v1:<media_id>` — the `idMal` it records
+//!
+//! A row's body is the translated id, or empty for "AniList does not
+//! index this" — an id is never empty, so the two cannot be confused.
+//! A positive is kept for [`ANILIST_ID_MAP_TTL`], a negative for
+//! [`ANILIST_ID_MAP_MISS_TTL`]; a failed request is kept nowhere. The
+//! batch writes every id it learns, so the detail page's single
+//! translation for a show the rail already bridged costs nothing.
 
 use std::collections::HashMap;
 
 use crate::app::AppState;
+use crate::cache::ttl::{ANILIST_ID_MAP_MISS_TTL, ANILIST_ID_MAP_TTL};
+use crate::cache::{meta_cache_get, meta_cache_put, SqlitePool};
 use crate::error::Result;
+
+fn media_id_key(mal_id: u32) -> String {
+    format!("anilist:media-id-for-mal:v1:{mal_id}")
+}
+
+fn mal_id_key(media_id: u32) -> String {
+    format!("anilist:mal-id-for-media:v1:{media_id}")
+}
+
+/// The cached answer under `key`: `Some(Some(id))` translated,
+/// `Some(None)` known not indexed, `None` never asked — or a row this
+/// build cannot read, which is re-asked like one never written.
+fn cached_id(pool: &SqlitePool, key: &str) -> Option<Option<u32>> {
+    match meta_cache_get(pool, key) {
+        Ok(Some(body)) if body.is_empty() => Some(None),
+        Ok(Some(body)) => body.parse::<u32>().ok().map(Some),
+        _ => None,
+    }
+}
+
+/// Record an answer AniList gave. Best-effort: a failed write costs
+/// one more AniList request.
+fn remember_id(pool: &SqlitePool, key: &str, id: Option<u32>) {
+    let (body, ttl) = match id {
+        Some(id) => (id.to_string(), ANILIST_ID_MAP_TTL),
+        None => (String::new(), ANILIST_ID_MAP_MISS_TTL),
+    };
+    let _ = meta_cache_put(pool, key, &body, ttl.as_secs());
+}
 
 /// AniList's `mediaId` for a MAL id; `None` when AniList does not
 /// index it.
@@ -23,7 +65,13 @@ pub(crate) async fn media_id_for_mal(
     mal_id: u32,
     anilist_base: Option<&str>,
 ) -> Result<Option<u32>> {
-    crate::meta::anilist::media_id_for_mal(&state.meta_http, mal_id, anilist_base).await
+    let key = media_id_key(mal_id);
+    if let Some(known) = cached_id(&state.cache_pool, &key) {
+        return Ok(known);
+    }
+    let id = crate::meta::anilist::media_id_for_mal(&state.meta_http, mal_id, anilist_base).await?;
+    remember_id(&state.cache_pool, &key, id);
+    Ok(id)
 }
 
 /// The MAL id AniList records for one of its media; `None` when it
@@ -36,20 +84,53 @@ pub(crate) async fn mal_id_for_media_id(
     media_id: u32,
     anilist_base: Option<&str>,
 ) -> Result<Option<u32>> {
-    crate::meta::anilist::mal_id_for_media_id(&state.meta_http, media_id, anilist_base).await
+    let key = mal_id_key(media_id);
+    if let Some(known) = cached_id(&state.cache_pool, &key) {
+        return Ok(known);
+    }
+    let id =
+        crate::meta::anilist::mal_id_for_media_id(&state.meta_http, media_id, anilist_base).await?;
+    remember_id(&state.cache_pool, &key, id);
+    Ok(id)
 }
 
 /// AniList's `mediaId` for each of many MAL ids; ids AniList does not
-/// index are absent from the map.
+/// index are absent from the map. Only the ids with no live row reach
+/// AniList, and every id the request answers for — by a media, or by
+/// its absence from a page AniList did return — is remembered.
 ///
 /// # Errors
-/// Same as [`crate::meta::anilist::media_ids_for_mals`].
+/// Same as [`crate::meta::anilist::media_ids_for_mals`]. Nothing is
+/// remembered from a failed request.
 pub(crate) async fn media_ids_for_mals(
     state: &AppState,
     mal_ids: &[u32],
     anilist_base: Option<&str>,
 ) -> Result<HashMap<u32, u32>> {
-    crate::meta::anilist::media_ids_for_mals(&state.meta_http, mal_ids, anilist_base).await
+    let mut map = HashMap::new();
+    let mut unknown = Vec::new();
+    for &mal_id in mal_ids {
+        match cached_id(&state.cache_pool, &media_id_key(mal_id)) {
+            Some(Some(media_id)) => {
+                map.insert(mal_id, media_id);
+            }
+            Some(None) => {}
+            None => unknown.push(mal_id),
+        }
+    }
+    if unknown.is_empty() {
+        return Ok(map);
+    }
+    let fetched =
+        crate::meta::anilist::media_ids_for_mals(&state.meta_http, &unknown, anilist_base).await?;
+    for mal_id in unknown {
+        let media_id = fetched.get(&mal_id).copied();
+        remember_id(&state.cache_pool, &media_id_key(mal_id), media_id);
+        if let Some(media_id) = media_id {
+            map.insert(mal_id, media_id);
+        }
+    }
+    Ok(map)
 }
 
 #[cfg(test)]

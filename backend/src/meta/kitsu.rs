@@ -443,7 +443,11 @@ pub fn parse_mal_id_from_mappings(body: &[u8]) -> Result<Option<u32>> {
 /// MAL-mapped yet (fresh seasonal titles) often already carry the
 /// direct `anilist/anime` mapping, which is enough to reach both
 /// providers (AniList directly, MAL via AniList's `idMal`).
-#[derive(Debug, Default, PartialEq, Eq)]
+///
+/// Serialized as the body of the `kitsu:external-ids:v1:k<id>` cache
+/// row ([`crate::commands::external_ids`]); a field added or renamed
+/// here moves that key's version.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExternalIds {
     /// `myanimelist/anime` mapping, when present.
     pub mal: Option<u32>,
