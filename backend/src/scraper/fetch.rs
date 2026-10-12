@@ -368,9 +368,9 @@ pub(crate) fn split_trailer(text: &str) -> (&str, &str, &str) {
 /// assertable without spawning anything.
 ///
 /// `-w` appends the status and the effective URL after the body; the
-/// last line is split back off ([`split_trailer`]). Mirrors the
-/// script's anidb_curl flags, plus the impersonation target when the
-/// resolved binary needs one.
+/// last line is split back off ([`split_trailer`]). The flag set began
+/// as the retired ani-cli script's own curl invocation, plus the
+/// impersonation target when the resolved binary needs one.
 pub(crate) fn fetch_args(req: &FetchRequest, impersonate: Option<&str>) -> Vec<String> {
     let url = req.url.as_str();
     let mut args: Vec<String> = Vec::with_capacity(12 + 2 * req.headers.len());
