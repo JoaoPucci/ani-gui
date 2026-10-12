@@ -419,10 +419,9 @@ starting it, and delete it when you find it done.
 - **Add a second provider when one is worth having.** One provider
   ships, hianime. The walk, the per-provider gates, the availability
   rows that name their provider and the show keys that carry its
-  label are all written for several, so a second is a client behind
-  the `Provider` trait, a `ProviderId` variant with its label and its
-  entry in `ProviderId::ALL`, its place in the shipped order and an
-  arm in `client_for` — the recipe in `backend/src/provider_set.rs`.
+  label are all written for several, so a second is mostly a client
+  behind the `Provider` trait; the recipe in
+  `backend/src/provider_set.rs` lists every place it has to be named.
   The survey in [`proposals/additional-providers.md`](./proposals/additional-providers.md)
   is the starting list; it rots quickly, so re-verify every row.
 

@@ -1,5 +1,5 @@
 {
-  "$comment": "Synthesized HLS fixtures, not recordings, so `make fixtures-refresh` does not apply to either. The MPEG-TS sample, for the player's demuxer regression tests, is produced by the ffmpeg command in its entry and committed as base64 text (.b64) so a reviewer can diff it; a test decodes the text. Byte-identical regeneration needs the same x264 build (its version is embedded in the stream's SEI); what a test relies on is the shape the entry describes, not the bytes. The master playlist, for the quality-selection tests, is plain playlist text written by hand and read as it is; its entry says where it came from.",
+  "$comment": "Synthesized HLS fixtures, not recordings, so `make fixtures-refresh` does not apply to either. The MPEG-TS sample, for the player's demuxer regression tests, is produced by the ffmpeg command in its entry and committed as base64 text (.b64) so a reviewer can diff it; a test decodes the text. Byte-identical regeneration needs the same x264 build (its version is embedded in the stream's SEI); what a test relies on is the shape the entry describes, not the bytes. The master playlist, for the quality-selection tests, is plain playlist text written by hand and read as it is; its entry says where it came from. The top-level captured_at dates the MPEG-TS sample; the playlist's entry carries its own.",
   "captured_at": "2026-09-28",
   "fixtures": {
     "video-before-audio.mpegts.b64": {
@@ -11,6 +11,7 @@
     },
     "master_op.m3u8": {
       "source": "synthesized by hand in the shape of an anidb.app master playlist (added under tests/fixtures/anidb/ in 0c1cbc060, 2026-08-03) and moved here unchanged when the anidb.app client was removed: a master listing a 1080p and a 720p rendition by absolute URI",
+      "captured_at": "2026-08-03",
       "size": 234,
       "sha256": "1224c9b6620cb1bef9beb616d87cfc0837dc792467a68c80106d9c4054afed1d",
       "notes": "Read by backend/src/scraper/hls_test.rs. An HLS master is the same document whichever site served it."

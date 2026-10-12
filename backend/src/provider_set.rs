@@ -24,10 +24,12 @@
 //!   derived from — left out, its show keys read there as naming no
 //!   provider and its title matches are filed under the legacy
 //!   segment;
-//! - the sites it contacts, in `docs/PRIVACY.md`, and its place in
-//!   `docs/architecture.md`'s provider section.
+//! - the documents that name the shipped providers: the sites it
+//!   contacts in `docs/PRIVACY.md`; `docs/architecture.md`'s data
+//!   flow and its provider section; the bridge's list of APIs in
+//!   `docs/title-resolution.md`; and `README.md`'s summary.
 //!
-//! Nothing else names providers one by one: [`ProviderId::from_label`]
+//! Nothing else in the code names providers one by one: [`ProviderId::from_label`]
 //! and [`ShowKey::parse`](crate::scraper::provider::ShowKey::parse)
 //! walk every known id, so a new variant's label is recognised in
 //! stored keys as soon as it exists. Its label has to equal the
