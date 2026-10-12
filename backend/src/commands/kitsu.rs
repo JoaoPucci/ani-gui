@@ -126,7 +126,9 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     // v4: bridge backfills cover_image from AniList's bannerImage
     //     when Kitsu's is null (new ongoing shows). v3 rows have
     //     null covers for those entries; bumping forces a refresh.
-    const KEY: &str = "kitsu:v5:trending_anilist";
+    // v6: each ref keeps AniList's bannerImage as `anilist_banner`
+    //     beside Kitsu's cover; v5 rows were built without it.
+    const KEY: &str = "kitsu:v6:trending_anilist";
     if let Some(body) = meta_cache_get(&state.cache_pool, KEY)? {
         if let Ok(hits) = serde_json::from_str::<Vec<KitsuAnimeRef>>(&body) {
             warm_signed_image_urls(state, &body);
@@ -157,6 +159,7 @@ pub(crate) async fn kitsu_trending_anilist_with_base(
     // Bridged refs come from lookup_by_mal_id (single-resource parse), not
     // the list parser, so sanitize music here too.
     let hits = drop_music(hits);
+    super::anilist_banner_memo::remember(&state.cache_pool, &hits);
     if let Ok(body) = serde_json::to_string(&hits) {
         let _ = meta_cache_put(&state.cache_pool, KEY, &body, TRENDING_TTL.as_secs());
         warm_signed_image_urls(state, &body);
@@ -207,6 +210,7 @@ pub(super) async fn bridge_anilist_to_kitsu(
             // AniList typically has it from day one. The image
             // proxy accepts any https URL so the renderer doesn't
             // need to know the source.
+            kref.anilist_banner.clone_from(&banner);
             if kref.cover_image.is_none() {
                 if let Some(url) = banner {
                     kref.cover_image = Some(KitsuCoverImage {
@@ -1113,7 +1117,9 @@ pub(crate) async fn kitsu_anime_detail_with_anilist_base(
     id: &str,
     anilist_base: Option<&str>,
 ) -> Result<KitsuAnimeRef> {
-    anime_detail_read(state, id, anilist_base, |_| {}).await
+    let mut detail = anime_detail_read(state, id, anilist_base, |_| {}).await?;
+    super::anilist_banner_memo::attach(&state.cache_pool, &mut detail);
+    Ok(detail)
 }
 
 /// [`kitsu_anime_detail`], running `past_cache` once the cache has

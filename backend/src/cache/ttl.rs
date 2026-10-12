@@ -50,6 +50,11 @@ pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); //
 /// was written, however often it is replayed.
 pub const PLAY_RESOLUTION_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60); // 7d
 
+/// TTL for an AniList banner remembered per Kitsu id from the trending
+/// feed. Banners rarely change, and the row is only ever written from a
+/// request the app made anyway, so a long life costs no traffic.
+pub const ANILIST_BANNER_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
+
 #[cfg(test)]
 mod tests {
     use super::*;
