@@ -882,7 +882,6 @@
 	}
 	.folio-line {
 		margin: 0;
-
 		max-inline-size: 60ch;
 		font-family: var(--font-body);
 		font-size: var(--type-meta);
