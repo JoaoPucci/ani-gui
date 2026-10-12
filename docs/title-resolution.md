@@ -92,13 +92,16 @@ What each rule reads of a candidate, and what it decides. "Admitted" is the titl
 | 怪獣８号 | Kaiju No. 8 | yes — a number before a counter (号, 期, 話) is named, full-width or not |
 | Mob Psycho 100 | Mob Psycho 100 | yes — three digits number no sequel |
 
-**The probe head** — which hits the pick considers at all (at most five admitted ones, so with a count at most ten probes per pool):
+**The probe head** — which hits the pick considers at all (at most five that could be picked, so with a count at most ten probes per pool). *Another entry* is an admitted hit that is the entry before this one or the season before it (above): admitted, but never picked, so it is never charged to the five:
 
 | Count known | Admitted | Raw position | Considered |
 |---|---|---|---|
-| yes | yes | any | yes — probed, until five admitted are taken |
+| yes | yes, not another entry | any | yes — probed, until five such are taken |
+| yes | yes, another entry | among the first five | yes — probed as evidence only (read for a broad listing), never picked, and not one of the five |
+| yes | yes, another entry | after the first five | no |
 | yes | no | among the first five | yes — probed as evidence only, never picked, rescued or a chain's lead |
 | yes | no | after the first five | no |
+| no | yes, another entry | any | no — passed over, leaving a clean miss |
 | no | yes | any | yes, until five are taken — their years are read, and their listings in preference order, a listing answered with an error status moving on to the next unless the answer is the provider blocking the client, and any other failure ending the pick |
 | no | no | any | no |
 
@@ -173,6 +176,7 @@ The pools each row answers, E = 12:
 | The Seventh Sense | "The Seventh Son" 24, "The Seventh Son Season 2" 12 | not W's head — "The Seventh Son" is another name | nothing |
 | Show 2 | "Show" 12 | every title of the entry names a later season; "Show" names none | nothing |
 | Show Part 2 | "Show Season 1" 12 | the same; a first season names nothing beyond the first | nothing |
+| Show 2 | "Show", "Show Season 1", "Show Part 1", "Show First Season", "Show First Half" 12 each, then "Show 2" 12 | the five before it are other entries, never charged to the five: "Show 2" is considered | Show 2 |
 | Show 2 | "Show Season 1 (2020)" 12 | a release year is no word: the entry before | nothing |
 | Show 2 | "Show (TV)" 12 | a format tag is no word: the entry before | nothing |
 | Show 2 | "Show (Shin Series)" 12 | bracketed words are words: not the entry before | Show (Shin Series) |
