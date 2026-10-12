@@ -1966,6 +1966,7 @@ mod tests {
             age_rating: None,
             popularity_rank: None,
             poster_image: None,
+            anilist_banner: None,
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
@@ -2065,6 +2066,7 @@ mod tests {
             age_rating: None,
             popularity_rank: None,
             poster_image: None,
+            anilist_banner: None,
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
@@ -2155,6 +2157,7 @@ mod tests {
             age_rating: None,
             popularity_rank: None,
             poster_image: None,
+            anilist_banner: None,
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");

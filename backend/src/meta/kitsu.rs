@@ -83,6 +83,12 @@ pub struct KitsuAnimeRef {
     pub poster_image: Option<KitsuPosterImage>,
     /// Banner cover URLs (21:5). Often null — UI must fall back.
     pub cover_image: Option<KitsuCoverImage>,
+    /// AniList's `bannerImage` for the same show, when an AniList
+    /// request the app already made carried one. Never fetched for
+    /// its own sake; absent from the wire and from cache rows when
+    /// unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anilist_banner: Option<String>,
 }
 
 /// 5:7 portrait poster URLs at the Kitsu-rendered sizes.
@@ -296,6 +302,7 @@ fn into_ref(r: AnimeResource) -> KitsuAnimeRef {
         age_rating: r.attributes.age_rating,
         popularity_rank: r.attributes.popularity_rank,
         poster_image: r.attributes.poster_image,
+        anilist_banner: None,
         cover_image: r.attributes.cover_image,
     }
 }
@@ -908,6 +915,7 @@ mod tests {
             age_rating: None,
             popularity_rank: None,
             poster_image: None,
+            anilist_banner: None,
             cover_image: None,
         }
     }

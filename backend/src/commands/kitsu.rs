@@ -108,6 +108,16 @@ pub async fn kitsu_trending(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
 /// Bubbles AniList / Kitsu transport failures only when the fallback
 /// also fails. Cache write failures are silently ignored.
 pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRef>> {
+    kitsu_trending_anilist_with_base(state, None).await
+}
+
+/// [`kitsu_trending_anilist`] with the AniList endpoint overridable,
+/// so tests can point the trending fetch at wiremock. Production
+/// passes `None`.
+pub(crate) async fn kitsu_trending_anilist_with_base(
+    state: &AppState,
+    anilist_base: Option<&str>,
+) -> Result<Vec<KitsuAnimeRef>> {
     // v5: the bridge gained the anilist/anime mapping fallback for
     //     entries Kitsu hasn't MAL-mapped yet. v4 rows were built
     //     without it and silently omit exactly the newest seasonal
@@ -126,7 +136,8 @@ pub async fn kitsu_trending_anilist(state: &AppState) -> Result<Vec<KitsuAnimeRe
 
     // AniList → MAL ids → bridge to Kitsu refs.
     let anilist =
-        crate::meta::anilist::trending(&state.meta_http, ANILIST_TRENDING_LIMIT, None).await;
+        crate::meta::anilist::trending(&state.meta_http, ANILIST_TRENDING_LIMIT, anilist_base)
+            .await;
     if let Err(ref e) = anilist {
         tracing::warn!(error = ?e, "anilist trending failed; falling back to kitsu_trending");
     }

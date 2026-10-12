@@ -568,6 +568,7 @@ fn served(id: &str) -> crate::meta::kitsu::KitsuAnimeRef {
         age_rating: None,
         popularity_rank: None,
         poster_image: None,
+        anilist_banner: None,
         cover_image: Some(crate::meta::kitsu::KitsuCoverImage {
             tiny: None,
             small: None,
