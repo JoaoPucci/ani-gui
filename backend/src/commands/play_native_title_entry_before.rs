@@ -26,12 +26,17 @@ pub(crate) fn is_name_and_first_divisions(candidate: &str, title: &str) -> bool 
 }
 
 /// Whether `words` are first divisions and nothing else, each read by
-/// `division_at`: "Season 1", "1st Season Part 1", or no words at all.
+/// `division_at`, with the "Half" a first half writes after its
+/// ordinal: "Season 1", "1st Season Part 1", "First Half", or no words
+/// at all.
 fn first_divisions_only(words: &[String]) -> bool {
     let mut j = 0;
     while j < words.len() {
         match division_at(words, j) {
-            Some((m, taken)) if m.ordinals.iter().all(|&o| o == 1) => j += taken,
+            Some((m, taken)) if m.ordinals.iter().all(|&o| o == 1) => {
+                j += taken;
+                j += usize::from(words.get(j).is_some_and(|w| w == "half"));
+            }
             _ => return false,
         }
     }
