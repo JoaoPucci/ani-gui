@@ -19,18 +19,18 @@ pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
 }
 
 /// The hits the pick considers, in the provider's order: up to
-/// [`MAX_PROBED_CANDIDATES`] the entry's titles admit, so listings
-/// named for other seasons never crowd the entry's own out of the
-/// bounded head. With a count, the refused hits among the first
-/// [`MAX_PROBED_CANDIDATES`] are kept too — they are probed as
-/// evidence (a span's later part, a split's parts) and never picked.
-/// Without one they are dropped: the titles are the only identity —
-/// and so is another entry of the same show (the entry before this
-/// one, or the season before it), which is
-/// no refusal. Alongside the head, whether a
-/// refused hit was dropped — a
-/// countless pick that then finds nothing was narrowed by the title
-/// inference, and answers [`refused_by_title`] ([`countless_miss`]).
+/// [`MAX_PROBED_CANDIDATES`] that could be picked — admitted, and not
+/// another entry of the same show (the entry before this one, or the
+/// season before it) — so listings named for other seasons never
+/// crowd the entry's own out of the bounded head. With a count, the
+/// refused hits and the other entries among the first
+/// [`MAX_PROBED_CANDIDATES`] are kept too — probed as evidence (a
+/// span's later part, a split's parts, a broad listing) and never
+/// picked. Without one they are dropped: the titles are the only
+/// identity, and another entry is no refusal. Alongside the head,
+/// whether a refused hit was dropped — a countless pick that then
+/// finds nothing was narrowed by the title inference, and answers
+/// [`refused_by_title`] ([`countless_miss`]).
 ///
 /// # Errors
 /// [`refused_by_title`] when, without a count to probe them for, the
@@ -46,12 +46,13 @@ pub(super) fn probe_head(
         .into_iter()
         .enumerate()
         .filter(|(pos, h)| {
-            // Without a count, another entry of the same show is dropped
-            // with the refused ([`EntryTitles::another_entry`]) — but as
-            // another entry of the same show, not a refusal: it leaves
-            // the miss clean.
+            // Another entry of the same show
+            // ([`EntryTitles::another_entry`]) is never picked, so it is
+            // never charged to the five: with a count it is evidence as
+            // a refused hit is, without one it is dropped — but as no
+            // refusal, so it leaves the miss clean.
             let admits = entry.admits(&h.title);
-            if admits && (counted || !entry.another_entry(&h.title)) {
+            if admits && !entry.another_entry(&h.title) {
                 admitted += 1;
                 admitted <= MAX_PROBED_CANDIDATES
             } else {
