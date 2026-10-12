@@ -95,6 +95,10 @@ pub mod keys {
     /// The show was found and the episode was not, or has no stream
     /// in the requested mode.
     pub const PLAY_EPISODE_UNAVAILABLE: &str = "error.play.episode_unavailable";
+    /// The show was found and its stream server did not serve the
+    /// episode — did not answer, timed out, or served nothing the
+    /// client could play (`AniError::StreamServerFailed`).
+    pub const PLAY_STREAM_SERVER_FAILED: &str = "error.play.stream_server_failed";
 
     // --- error.search.* ---
     /// The streaming source has no match for the title
@@ -128,6 +132,7 @@ mod tests {
             NETWORK_UNREACHABLE,
             NETWORK_UPSTREAM,
             PLAY_EPISODE_UNAVAILABLE,
+            PLAY_STREAM_SERVER_FAILED,
             REQUEST_INVALID_KITSU_ID,
             REQUEST_INVALID_SEARCH_OFFSET,
             REQUEST_INVALID_BODY,

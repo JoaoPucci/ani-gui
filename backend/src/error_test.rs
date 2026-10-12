@@ -266,3 +266,50 @@ fn the_published_key_list_is_every_variants_key() {
         "{path} is not the backend's key list. Replace its contents with:\n{want}"
     );
 }
+
+/// The show was found and its stream server did not serve: the
+/// chain's verdict for a transport failure, a timeout or an unplayable
+/// answer met past the searches, with the stage and host for the log.
+/// Its own key, so the renderer can say the source's video server did
+/// not serve the episode instead of telling the user to check a
+/// connection the searches got through on; a gateway status, since a
+/// server the app asked did not serve; neither a block nor absence.
+#[test]
+fn a_stream_server_that_did_not_serve_is_its_own_verdict() {
+    let e = AniError::StreamServerFailed {
+        stage: "embed",
+        host: Some("zokoanime.video".into()),
+    };
+    assert_eq!(e.key(), "error.play.stream_server_failed");
+    assert_eq!(e.http_status_code(), 502);
+    assert!(!e.is_provider_block());
+    assert!(!e.is_not_found_shaped());
+    let json = serde_json::to_value(&e).expect("serializes");
+    assert_eq!(json["kind"], "stream_server_failed");
+    assert_eq!(json["stage"], "embed");
+    assert_eq!(json["host"], "zokoanime.video");
+}
+
+/// The line that logs a failed resolution prints the error, and this
+/// one has to say which host failed at which stage — or the next
+/// report of a stream server failing is as untraceable as the
+/// connection-blaming copy it replaces was.
+#[test]
+fn the_stream_server_verdict_names_its_stage_and_host_for_the_log() {
+    let named = AniError::StreamServerFailed {
+        stage: "embed",
+        host: Some("zokoanime.video".into()),
+    };
+    assert_eq!(
+        format!("{named}"),
+        "stream server failed: stage=embed host=zokoanime.video"
+    );
+    let unnamed = AniError::StreamServerFailed {
+        stage: "stream",
+        host: None,
+    };
+    assert_eq!(
+        format!("{unnamed}"),
+        "stream server failed: stage=stream host=unnamed"
+    );
+}

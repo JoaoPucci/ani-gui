@@ -1808,6 +1808,28 @@ impl Fetch for Site {
                 }
             }
             "https://zokoanime.video/stream/mal/9/gate/sub" => Err(AniError::GateRefused),
+            // The site's own listing of an episode's servers does not
+            // answer: the connection to it dies.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21481") => {
+                Err(AniError::Network)
+            }
+            // A lone server whose payload names a master that answers
+            // a page, not a playlist.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21482") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2h0bWxtYXN0ZXIvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/htmlmaster/sub" => ok(embed_page(
+                r#"{"src":"https://hls.example/v/html/master.m3u8","subtitles":[]}"#,
+            )),
+            "https://hls.example/v/html/master.m3u8" => {
+                ok("<html><body>the player page, not a playlist</body></html>")
+            }
             // The same undecodable page first, then a host whose page
             // decodes.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21423") => {
@@ -2606,11 +2628,16 @@ async fn a_mode_with_only_unreadable_rows_is_a_parse_failure_to_the_client() {
     let err = c.has_mode(21429, "sub").await.expect_err("uncertain");
     assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
     assert!(c.has_mode(21429, "dub").await.expect("read"));
+    // Asked for the stream, the same doubt is the stream server not
+    // serving, named for the listing it arose in.
     let err = c
         .master_playlist_url(21429, "sub")
         .await
         .expect_err("no stream can be read");
-    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "servers", host: Some(h) } if h == "stub"),
+        "{err:?}"
+    );
 }
 
 #[tokio::test]
@@ -2737,18 +2764,23 @@ async fn the_master_comes_from_the_first_server_whose_page_the_client_reads() {
 /// A mode the listing left uncertain — a row the client could not
 /// read beside one it could — stays uncertain when the readable
 /// server's page carries no payload: the unreadable row may have
-/// been the playable server, so the walk ends in a parse failure,
-/// never in the answered absence the resolver would treat as an
-/// episode's dead end.
+/// been the playable server, so the walk ends in the stream server
+/// not serving, never in the answered absence the resolver would
+/// treat as an episode's dead end. The host that served the page is
+/// the one named: of the two readings of one rank — the page without
+/// its payload and the row the client could not read — the first stays.
 #[tokio::test]
-async fn an_uncertain_mode_whose_readable_pages_carry_no_payload_is_a_parse_failure() {
+async fn an_uncertain_mode_whose_readable_pages_carry_no_payload_is_the_stream_servers_failure() {
     let c = client();
     assert!(c.has_mode(21434, "sub").await.expect("a readable server"));
     let err = c
         .master_playlist_url(21434, "sub")
         .await
         .expect_err("no stream can be read");
-    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "megaplay.buzz"),
+        "{err:?}"
+    );
 }
 
 /// A lone host the client never read, serving a page without the
@@ -2767,18 +2799,24 @@ async fn an_episode_whose_servers_all_serve_unreadable_pages_has_no_stream() {
 /// A host the client reads, serving its page without the payload
 /// marker, is the site having changed shape under the client — the
 /// same event as a blob the key no longer opens — and when every
-/// readable server's page is like that, the walk's end is a parse
-/// failure, never the answered absence the resolver would persist
-/// as the episode's dead end and the breaker as health.
+/// readable server's page is like that, the walk's end is the stream
+/// server not serving, named for the host and the page, never the
+/// answered absence the resolver would persist as the episode's dead
+/// end and the breaker as health — and never the parse failure under
+/// its own name, whose copy says the app could not read the provider
+/// it read all the way to this host.
 #[tokio::test]
-async fn a_readable_host_whose_page_lost_the_payload_is_a_parse_failure_once_every_server_is_tried()
-{
+async fn a_readable_host_whose_page_lost_the_payload_is_the_stream_servers_failure_once_every_server_is_tried(
+) {
     let c = client();
     let err = c
         .master_playlist_url(21435, "sub")
         .await
         .expect_err("no page decoded");
-    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "zokoanime.video"),
+        "{err:?}"
+    );
 }
 
 /// The same page beside a readable host whose page decodes: the
@@ -2794,25 +2832,34 @@ async fn a_readable_host_whose_page_lost_the_payload_is_stepped_over_when_a_late
 }
 
 /// The readable host's missing marker outranks the silence of a host
-/// the client never read: the mixed listing ends in a parse failure.
+/// the client never read: the mixed listing ends in the stream server
+/// not serving. Both hosts here are ones the client reads, and
+/// megaplay's servers are tried first ([`servers_for`]), so of two
+/// pages without their payload — one rank — the first tried names the
+/// verdict.
 #[tokio::test]
-async fn a_readable_host_without_the_payload_beside_an_unreadable_host_is_a_parse_failure() {
+async fn a_readable_host_without_the_payload_beside_an_unreadable_host_is_the_stream_servers_failure(
+) {
     let c = client();
     let err = c
         .master_playlist_url(21437, "sub")
         .await
         .expect_err("no page decoded");
-    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "megaplay.buzz"),
+        "{err:?}"
+    );
 }
 
 /// A page is judged by the host that served it. An embed URL on a
 /// host the client never reads, redirected onto a host it does,
 /// arrives from the readable host: a page without the payload marker
-/// is then that host having changed shape — a parse failure — and not
-/// the silence of an unread host the walk steps over. Keying the
-/// verdict on the listing's URL would read the redirect as an
-/// episode with no stream, which the resolver persists and the
-/// breaker counts as health.
+/// is then that host having changed shape — the stream server not
+/// serving, named for the host that served the page — and not the
+/// silence of an unread host the walk steps over. Keying the verdict
+/// on the listing's URL would read the redirect as an episode with no
+/// stream, which the resolver persists and the breaker counts as
+/// health.
 #[tokio::test]
 async fn a_redirected_embed_is_judged_by_the_host_that_served_the_page() {
     let c = client();
@@ -2821,7 +2868,7 @@ async fn a_redirected_embed_is_judged_by_the_host_that_served_the_page() {
         .await
         .expect_err("the page that arrived carries no payload");
     assert!(
-        matches!(&err, AniError::ParseFailed { detail } if detail.contains("zokoanime.video")),
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "zokoanime.video"),
         "{err:?}"
     );
 }
@@ -2844,18 +2891,25 @@ async fn the_referer_is_the_origin_the_embed_page_came_from() {
 }
 
 #[tokio::test]
-async fn a_payload_the_client_cannot_decode_is_a_parse_failure_once_every_server_is_tried() {
+async fn a_payload_the_client_cannot_decode_is_the_stream_servers_failure_once_every_server_is_tried(
+) {
     // The marker is on the page and the blob does not open: the key
     // rotated or the shape moved. Read as "no stream" that is an
     // answered verdict — health to the breaker, an absence the mode
     // probe may persist — for what is the client no longer reading
-    // the site.
+    // the site. The verdict is the stream server not serving, named
+    // for a host whose page the client could not read: the megaplay
+    // server is tried first, its page reads nothing, and the
+    // undecodable blob after it ranks the same, so the first stays.
     let c = client();
     let err = c
         .master_playlist_url(21422, "sub")
         .await
         .expect_err("nothing decoded");
-    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "megaplay.buzz"),
+        "{err:?}"
+    );
 }
 
 #[tokio::test]
@@ -2895,7 +2949,8 @@ async fn the_weather_kept_across_servers_is_the_rate_limit_over_a_generic_block(
 /// answered dead end — recorded as the provider's health, never
 /// failed over — when a possible server was unreachable; the
 /// transport failure is what the walk needs, since it alone moves
-/// the walk on.
+/// the walk on — surfaced as the stream server not serving, named for
+/// the host that was never heard from.
 #[tokio::test]
 async fn the_weather_kept_across_servers_is_the_transport_failure_over_an_answered_status() {
     let c = client();
@@ -2903,7 +2958,10 @@ async fn the_weather_kept_across_servers_is_the_transport_failure_over_an_answer
         .master_playlist_url(21438, "sub")
         .await
         .expect_err("no server served a stream");
-    assert!(matches!(err, AniError::Timeout), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "zokoanime.video"),
+        "{err:?}"
+    );
 }
 
 /// A fetch the gate refuses is the gate speaking, not the host: the
@@ -2948,16 +3006,20 @@ async fn a_payload_whose_source_the_client_cannot_fetch_is_stepped_over_for_a_la
 }
 
 #[tokio::test]
-async fn a_payload_whose_source_is_blank_is_a_parse_failure_when_no_server_serves_a_stream() {
+async fn a_payload_whose_source_is_blank_is_the_stream_servers_failure_when_no_server_serves_a_stream(
+) {
     // Decoded, and not the shape the client can use: the site changed
-    // what it puts in the payload, which is a parse failure and never
-    // an episode without a stream.
+    // what it puts in the payload, which is the stream server not
+    // serving and never an episode without a stream.
     let c = client();
     let err = c
         .master_playlist_url(21427, "sub")
         .await
         .expect_err("no usable source");
-    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "zokoanime.video"),
+        "{err:?}"
+    );
 }
 
 #[tokio::test]
@@ -3261,8 +3323,8 @@ async fn the_listings_doubt_carries_the_listing_attempts_instant() {
         .await
         .expect_err("nobody served it");
     assert!(
-        matches!(err, AniError::ParseFailed { .. }),
-        "the doubt outranks the host's not-found: {err:?}"
+        matches!(&err, AniError::StreamServerFailed { stage: "servers", host: Some(h) } if h == "stub"),
+        "the doubt outranks the host's not-found, and is the listing's: {err:?}"
     );
     assert_eq!(
         c.last_attempt_at(),
@@ -3357,16 +3419,20 @@ async fn a_megaplay_servers_encrypted_sources_carry_the_stream_the_walk_takes() 
 }
 
 #[tokio::test]
-async fn a_megaplay_server_whose_ciphertext_does_not_open_is_a_parse_failure() {
+async fn a_megaplay_server_whose_ciphertext_does_not_open_is_the_stream_servers_failure() {
     // Nothing in the clear and a blob the site's constants do not
     // open: the site changed what it hands the client, which is
-    // never an episode without a stream.
+    // never an episode without a stream — the stream server did not
+    // serve, and the sources it hands the client belong to its page.
     let c = client();
     let err = c
         .master_playlist_url(21431, "sub")
         .await
         .expect_err("no usable source");
-    assert!(matches!(err, AniError::ParseFailed { .. }), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "megaplay.buzz"),
+        "{err:?}"
+    );
 }
 
 /// The site streams an episode from more than one content delivery
@@ -4175,7 +4241,10 @@ async fn an_unnamed_host_ahead_of_the_last_listed_server_keeps_the_bound() {
         .stream_for(21454, "sub", "720")
         .await
         .expect_err("the readable page's chain was cut off, the last page read nothing");
-    assert!(matches!(err, AniError::Timeout), "{err:?}");
+    assert!(
+        matches!(err, AniError::StreamServerFailed { .. }),
+        "the cut-off is the stream server not serving: {err:?}"
+    );
     assert!(
         started.elapsed() < std::time::Duration::from_secs(5),
         "the earlier server was cut off at its bound: {:?}",
@@ -4186,15 +4255,51 @@ async fn an_unnamed_host_ahead_of_the_last_listed_server_keeps_the_bound() {
 /// When every server stalls, the earlier ones are cut off at the
 /// per-server bound and the last is the transport's to bound; the
 /// walk surfaces the first cut-off, the two verdicts ranking the
-/// same.
+/// same — as the stream server not serving, named for the master's
+/// host and the playlist step the first chain was cut off in.
 #[tokio::test]
-async fn every_server_stalling_surfaces_a_timeout() {
+async fn every_server_stalling_is_the_stream_servers_failure() {
     let c = client_with_server_budget(100);
     let err = c
         .stream_for(21447, "sub", "720")
         .await
         .expect_err("no server answered in time");
-    assert!(matches!(err, AniError::Timeout), "{err:?}");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "playlist", host: Some(h) } if h == "hls.example"),
+        "{err:?}"
+    );
+}
+
+/// The site's own listing of an episode's servers does not answer:
+/// the chain failed before any host was asked, and the verdict names
+/// the listing and the site.
+#[tokio::test]
+async fn a_servers_listing_that_does_not_answer_is_the_stream_servers_failure_at_the_listing() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21481, "sub")
+        .await
+        .expect_err("the listing did not answer");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "servers", host: Some(h) } if h == "stub"),
+        "{err:?}"
+    );
+}
+
+/// The page decoded and its master answered with a page instead of a
+/// playlist: the stream server did not serve, at the playlist step,
+/// and the host named is the master's.
+#[tokio::test]
+async fn a_master_that_is_not_a_playlist_is_the_stream_servers_failure_at_the_playlist() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21482, "sub")
+        .await
+        .expect_err("the master is not a playlist");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "playlist", host: Some(h) } if h == "hls.example"),
+        "{err:?}"
+    );
 }
 
 /// Exactly the requests built from the client's origin are held to

@@ -172,6 +172,31 @@ fn a_background_deadline_elapse_is_no_evidence() {
     ));
 }
 
+/// A stream server that did not serve stands for a transport failure,
+/// a timeout or an unplayable answer in the episode chain, which the
+/// breaker heard as distress when they surfaced under their own
+/// names; naming them for the user changes nothing the breaker hears.
+#[test]
+fn a_stream_server_that_did_not_serve_is_distress() {
+    for priority in [ScrapePriority::Interactive, ScrapePriority::Background] {
+        let ne = NativeError {
+            error: AniError::StreamServerFailed {
+                stage: "embed",
+                host: Some("zokoanime.video".into()),
+            },
+            clean_miss: false,
+            failed_at: None,
+        };
+        assert!(
+            matches!(
+                breaker_outcome::<()>(priority, &Err(ne)),
+                Some(ScrapeOutcome::Failure)
+            ),
+            "{priority:?}"
+        );
+    }
+}
+
 fn arb_error() -> impl proptest::strategy::Strategy<Value = AniError> {
     use proptest::strategy::Strategy as _;
     proptest::prop_oneof![
@@ -185,6 +210,10 @@ fn arb_error() -> impl proptest::strategy::Strategy<Value = AniError> {
         (0u16..1000).prop_map(|status| AniError::Upstream { status }),
         proptest::option::of(0u64..100_000)
             .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+        proptest::option::of("[a-z.]{1,12}").prop_map(|host| AniError::StreamServerFailed {
+            stage: "embed",
+            host,
+        }),
     ]
 }
 
