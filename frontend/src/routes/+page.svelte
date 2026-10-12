@@ -94,6 +94,14 @@
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
+	import {
+		HERO_EXPERIMENT_DEFAULT,
+		loadHeroExperiment,
+		naturalRatio,
+		pickHeroImage,
+		type HeroOrigin
+	} from '$lib/hero/framing';
+	import HeroExperimentSwitch from '$lib/hero/HeroExperimentSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { filterAvailable } from '$lib/availability/filter';
@@ -730,12 +738,27 @@
 		}
 	});
 
-	function heroFor(d: KitsuAnimeRef): { url: string | null; isCover: boolean } {
-		const cover = d.cover_image?.large ?? d.cover_image?.original ?? d.cover_image?.small ?? null;
-		if (cover) return { url: imageProxyUrl(cover), isCover: true };
-		const poster =
-			d.poster_image?.large ?? d.poster_image?.original ?? d.poster_image?.medium ?? null;
-		return { url: imageProxyUrl(poster), isCover: false };
+	// DEV-ONLY banner framing experiment — see $lib/hero/framing.
+	const heroExp = import.meta.env.DEV
+		? loadHeroExperiment(location.search, localStorage)
+		: HERO_EXPERIMENT_DEFAULT;
+
+	function heroFor(d: KitsuAnimeRef): {
+		url: string | null;
+		isCover: boolean;
+		origin: HeroOrigin | null;
+	} {
+		const p = pickHeroImage(d, heroExp, 'home');
+		return { url: imageProxyUrl(p.url), isCover: p.isCover, origin: p.origin };
+	}
+
+	// Natural aspect ratio per show, once its hero image decodes — the
+	// never-crop framing sizes the image box from it.
+	let heroRatios = $state<Record<string, number>>({});
+	function onHeroLoad(id: string, e: Event) {
+		const img = e.currentTarget as HTMLImageElement;
+		const r = naturalRatio(img.naturalWidth, img.naturalHeight);
+		if (r !== null) heroRatios[id] = r;
 	}
 
 	function snippetOf(syn: string | null): string | null {
@@ -770,6 +793,8 @@
 <!-- Hero. -->
 <section
 	class="hero"
+	class:framing-contain={heroExp.framing === 'contain'}
+	class:framing-focus={heroExp.framing === 'focus'}
 	style:--accent={featuredAccent}
 	aria-label={m.home_hero_aria_label()}
 	onmouseenter={() => (heroPaused = true)}
@@ -782,6 +807,14 @@
 			{@const hero = heroFor(featured)}
 			{@const synopsis = snippetOf(featured.synopsis)}
 			<div class="hero-layer" in:fade={{ duration: 480 }} out:fade={{ duration: 480 }}>
+				{#if hero.url && hero.isCover && heroExp.framing === 'contain'}
+					<img
+						class="hero-backdrop"
+						src={hero.url}
+						alt=""
+						style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
+					/>
+				{/if}
 				{#if hero.url}
 					<img
 						class="hero-img"
@@ -789,6 +822,8 @@
 						src={hero.url}
 						alt=""
 						style:transform={heroTransform(scrollY, hero.isCover)}
+						style:--ratio={heroRatios[featured.id]}
+						onload={(e) => onHeroLoad(featured.id, e)}
 					/>
 				{/if}
 				<div class="hero-scrim" aria-hidden="true"></div>
@@ -821,6 +856,7 @@
 				</div>
 			</div>
 		{/key}
+		<HeroExperimentSwitch exp={heroExp} origin={heroFor(featured).origin} />
 		{#if heroRotation.length > 1}
 			<div class="hero-pager" aria-label={m.home_hero_pager_aria_label()}>
 				{#each heroRotation as item, i (item.id)}
@@ -1347,6 +1383,68 @@
 		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 		background-size: 160px 160px;
 		mix-blend-mode: overlay;
+	}
+
+	/* DEV-ONLY banner framing experiment ($lib/hero/framing). Both
+	   variants keep the darkening to where text sits: a field under
+	   the copy at the lower left, a thin band under the topbar, and a
+	   short hand-off into the page at the bottom edge. */
+	.framing-contain .hero-scrim,
+	.framing-focus .hero-scrim {
+		background:
+			linear-gradient(
+				180deg,
+				color-mix(in oklab, var(--ink-000) 45%, transparent) 0%,
+				transparent calc(var(--topbar-h) * 2)
+			),
+			linear-gradient(180deg, transparent 72%, var(--ink-000) 100%),
+			linear-gradient(
+				90deg,
+				color-mix(in oklab, var(--ink-000) 72%, transparent) 0%,
+				color-mix(in oklab, var(--ink-000) 40%, transparent) 40%,
+				transparent 65%
+			),
+			radial-gradient(
+				ellipse 72% 92% at 0% 100%,
+				color-mix(in oklab, var(--ink-000) 88%, transparent) 0%,
+				color-mix(in oklab, var(--ink-000) 60%, transparent) 50%,
+				transparent 100%
+			);
+	}
+	/* Smarter crop: still fills the band, anchored at the centre —
+	   Kitsu's sized covers are centre crops of the upload already. */
+	.framing-focus .hero-img:not(.fallback) {
+		object-position: 50% 50%;
+	}
+	/* Never crop: the whole image, centred, over a blurred, dimmed
+	   copy of itself that carries its colour to the band's edges. */
+	.framing-contain .hero-layer {
+		container-type: size;
+	}
+	.hero-backdrop {
+		position: absolute;
+		inset: 0;
+		inline-size: 100%;
+		block-size: 100%;
+		object-fit: cover;
+		filter: blur(44px) brightness(0.28) saturate(1.1);
+		animation: hero-in var(--dur-slow) var(--ease-out-soft) both;
+	}
+	.framing-contain .hero-img:not(.fallback) {
+		inset: 0;
+		margin: auto;
+		/* Until the image decodes and its own ratio arrives inline. */
+		--ratio: 4.2;
+		inline-size: min(100cqi, 100cqb * var(--ratio));
+		block-size: auto;
+		aspect-ratio: auto var(--ratio);
+		object-fit: cover;
+		/* Feathered edges so the image settles into its backdrop
+		   instead of sitting on it as a hard-edged card. */
+		mask-image:
+			linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent),
+			linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+		mask-composite: intersect;
 	}
 
 	.hero-body,
