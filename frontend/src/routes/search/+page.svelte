@@ -37,6 +37,7 @@
 	import { staggerSlots } from '$lib/search/stagger';
 	import { keepFocus } from '$lib/search/keep-focus';
 	import { subtypeLabel } from '$lib/search/subtype-label';
+	import { resultCount } from '$lib/search/result-count';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -130,6 +131,7 @@
 			phase.kind === 'failed' ||
 			phase.kind === 'held'
 	);
+	const counter = $derived(resultCount(count, moreToCome));
 
 	// Each card rises from the slot it arrived in, so an appended
 	// page staggers from its own first card ($lib/search/stagger.ts).
@@ -299,12 +301,8 @@
 					<span class="eyebrow-count">{m.search_status_searching()}</span>
 				{:else}
 					<span class="eyebrow-count">
-						<!-- "+" while Kitsu has more pages: the count is what
-						     is shown so far, not the whole catalogue. -->
-						<span class="num"
-							>{moreToCome && count > 0 ? m.search_count_more({ count }) : count}</span
-						>
-						<span class="word">{m.search_count_word({ count })}</span>
+						<span class="num">{counter.num}</span>
+						<span class="word">{counter.word}</span>
 					</span>
 				{/if}
 			</p>
