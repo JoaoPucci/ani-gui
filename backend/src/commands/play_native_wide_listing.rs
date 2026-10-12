@@ -67,10 +67,13 @@ pub(super) fn fit_to_entry(
         .zip(&admitted)
         .map(|((h, _, _, _), ok)| *ok && !entry.before_entry(&h.title))
         .collect();
+    // Only a refusal by title keeps a rejected pool from being a clean
+    // miss: the entry before, like an L, F or P, is another entry of
+    // the same show.
     let tolerance = super::play_native::ep_count_threshold(expected);
     let refused_a_fit = probed
         .iter()
-        .zip(&pickable)
+        .zip(&admitted)
         .any(|(row, ok)| !ok && row.2 <= tolerance);
     let span = spanning(probed, expected, &admitted, entry);
     for (row, ok) in probed.iter_mut().zip(&pickable) {
@@ -78,10 +81,10 @@ pub(super) fn fit_to_entry(
             row.2 = UNFIT;
         }
     }
-    // A candidate the titles scored out as an L, F or P that fit the
-    // count is as much an inference as a refusal: never a clean miss.
-    let inferred_a_fit = span.is_some_and(|span| apply_span(probed, expected, &span, tolerance));
-    refused_a_fit || inferred_a_fit
+    if let Some(span) = span {
+        apply_span(probed, expected, &span);
+    }
+    refused_a_fit
 }
 
 /// Scores the pool as `span` decided: the later siblings and W's
@@ -90,10 +93,8 @@ pub(super) fn fit_to_entry(
 /// cut, W cut to the entry's episodes and every other exact fit one
 /// behind it — an unrelated title or a spinoff sharing the franchise
 /// name ("Show Side Story") is a fallback, never ahead on order.
-fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span, tolerance: u32) -> bool {
-    let mut scored_out_a_fit = false;
+fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span) {
     for &j in span.later.iter().chain(&span.firsts).chain(&span.earlier) {
-        scored_out_a_fit |= probed[j].2 <= tolerance;
         probed[j].2 = UNFIT;
     }
     if !span.own_fits.is_empty() || span.cut {
@@ -107,7 +108,6 @@ fn apply_span(probed: &mut [Probed<'_>], expected: u32, span: &Span, tolerance: 
         probed[span.wide].1 = head_of(&probed[span.wide].1, expected);
         probed[span.wide].2 = 0;
     }
-    scored_out_a_fit
 }
 
 /// The listing's rows up to its `expected + 1`-th regular episode:

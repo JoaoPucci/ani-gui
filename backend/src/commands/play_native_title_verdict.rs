@@ -24,20 +24,21 @@ pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
 /// bounded head. With a count, the refused hits among the first
 /// [`MAX_PROBED_CANDIDATES`] are kept too — they are probed as
 /// evidence (a span's later part, a split's parts) and never picked.
-/// Without one they are dropped: the titles are the only identity.
-/// Alongside the head, whether a hit was dropped that way — a
+/// Without one they are dropped: the titles are the only identity —
+/// and so is the entry before this one, which is another entry of the
+/// same show rather than a refusal. Alongside the head, whether a
+/// refused hit was dropped — a
 /// countless pick that then finds nothing was narrowed by the title
 /// inference, and answers [`refused_by_title`] ([`countless_miss`]).
 ///
 /// # Errors
-/// [`refused_by_title`] when hits there were and the titles refused
-/// them all without a count to probe them for.
+/// [`refused_by_title`] when, without a count to probe them for, the
+/// titles left nothing and refused at least one hit.
 pub(super) fn probe_head(
     hits: Vec<BrowseHit>,
     counted: bool,
     entry: EntryTitles<'_>,
 ) -> crate::error::Result<(Vec<BrowseHit>, bool)> {
-    let any = !hits.is_empty();
     let mut admitted = 0;
     let mut refused_dropped = false;
     let head: Vec<BrowseHit> = hits
@@ -45,18 +46,21 @@ pub(super) fn probe_head(
         .enumerate()
         .filter(|(pos, h)| {
             // Without a count, the entry before this one is dropped
-            // with the refused ([`EntryTitles::before_entry`]).
-            if entry.admits(&h.title) && (counted || !entry.before_entry(&h.title)) {
+            // with the refused ([`EntryTitles::before_entry`]) — but as
+            // another entry of the same show, not a refusal: it leaves
+            // the miss clean.
+            let admits = entry.admits(&h.title);
+            if admits && (counted || !entry.before_entry(&h.title)) {
                 admitted += 1;
                 admitted <= MAX_PROBED_CANDIDATES
             } else {
-                refused_dropped |= !counted;
+                refused_dropped |= !counted && !admits;
                 counted && *pos < MAX_PROBED_CANDIDATES
             }
         })
         .map(|(_, h)| h)
         .collect();
-    if any && head.is_empty() && !counted {
+    if head.is_empty() && refused_dropped {
         return Err(refused_by_title());
     }
     Ok((head, refused_dropped))
