@@ -728,13 +728,11 @@ A survey, on 2026-10-12, of fields the metadata sources answer that the
 app does not show, kept so features can be derived from it. It records
 what each source was seen to return, not a design; whoever picks one up
 checks the source again. The app already uses AniList's banner,
-trailer, per-episode thumbnails, accent colour, relations and
-characters, so those are not listed.
+per-episode thumbnails and accent colour, so those are not listed.
 
 - **Title logos for the home banner.** Neither Kitsu nor AniList has
   logos. TMDB (`/tv/{id}/images`, `/movie/{id}/images`) returns
-  transparent title logos, often in Japanese and English, and
-  fanart.tv has clear-logo art. Both answer 401 without an API key, so
+  transparent title logos, and fanart.tv has clear-logo art. Both answer 401 without an API key, so
   how many anime carry a logo was not measured. Kitsu maps to TVDB
   only for older shows; the community mapping at
   `github.com/Fribb/anime-lists` (`anime-list-mini.json`, about 39,600
@@ -748,7 +746,8 @@ characters, so those are not listed.
   ("MADHOUSE" for Frieren).
 - **Rankings.** AniList `rankings` gives entries such as "#1 highest
   rated all time" and "#51 most popular all time", with a context
-  string and whether the ranking is all-time or seasonal.
+  string and whether the ranking is all-time, for a year or for a
+  season.
 - **Recommendations.** AniList `recommendations` lists related shows
   readers recommend. The detail page already has a placeholder "Similar
   titles" strip and a comment waiting for it.
@@ -759,9 +758,18 @@ characters, so those are not listed.
   videos by MAL id; see the openings mode under "Three listening and
   watching modes" below.
 - **Runtime.** Kitsu `episodeLength` and `totalLength` give minutes per
-  episode and the whole show.
+  episode and for the whole show. `totalLength` is often null for a
+  show still airing (Frieren answers null; One Piece answers 33840).
+- **Trailer.** AniList `trailer` gives a video id and site (YouTube for
+  Frieren), and Kitsu `youtubeVideoId` the same for YouTube.
+- **Characters and cast.** AniList `characters` lists characters by
+  role with their voice actors per language.
+- **Relations.** AniList `relations` names prequels, sequels, side
+  stories and adaptations, each typed; a base for the franchise and
+  season grouping listed under Interface.
 - **Spoiler-safe tags.** AniList `tags` carry a relevance rank and an
-  `isMediaSpoiler` flag, enough to show the top tags without spoilers.
+  `isMediaSpoiler` flag, enough to show the top tags without spoilers;
+  related to the spoiler-free mode entry above.
 - **Rating breakdown and counts.** Kitsu `ratingFrequencies`,
   `favoritesCount` and `userCount`, and AniList's score distribution.
 
