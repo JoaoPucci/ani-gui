@@ -558,4 +558,40 @@ describe('/search infinite scroll', () => {
 		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
 		expect(offsets).toEqual([0, 20, 40]);
 	});
+
+	it('turning a type filter off measures the grid it restores before loading', async () => {
+		// With the chip on, the short filtered grid puts the bottom in
+		// reach; that report describes the filtered grid. Turning the
+		// chip off restores the full one, and only a measurement of that
+		// may load a page.
+		const offsets: number[] = [];
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset } = (await request.json()) as { offset: number };
+				offsets.push(offset);
+				return HttpResponse.json({
+					hits: [
+						{ ...ref(String(offset + 1), `Show ${offset + 1}`), subtype: 'TV' },
+						{ ...ref(String(offset + 2), `Film ${offset + 2}`), subtype: 'movie' }
+					],
+					next_offset: offset < 100 ? offset + 20 : null
+				});
+			})
+		);
+
+		setQuery('dragon ball');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Show 1'), 'the first page');
+		const movie = buttonNamed(subtypeLabel('movie'))!;
+		movie.click();
+		await until(() => !screen().includes('Show 1'), 'the movie filter to apply');
+		reachBottom();
+		for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 10));
+
+		movie.click();
+		await until(() => screen().includes('Show 1'), 'the filter to come off');
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(offsets).toEqual([0]);
+	});
 });
