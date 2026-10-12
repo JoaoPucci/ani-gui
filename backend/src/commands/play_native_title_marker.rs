@@ -12,7 +12,6 @@ use std::collections::BTreeSet;
 use super::play_native_title_grammar::normalized;
 pub(crate) use super::play_native_title_grammar::stem;
 use super::play_native_title_grammar::Kind;
-#[cfg(test)]
 use super::play_native_title_grammar::Marker;
 use super::play_native_title_grammar::{
     named_ordinals, part_ordinals, stem_number, trailing_markers,
@@ -137,16 +136,20 @@ impl EntryTitles<'_> {
     /// it names a division of its own ([`divisions_beside`]) later than
     /// `wide` — a season above the one `wide` carries, or a part above
     /// the one the entry's titles end on (part 1 when they end on
-    /// none). An earlier season is never one.
+    /// none). A sibling naming an earlier season anywhere among those
+    /// divisions is never one, whatever part it names besides
+    /// ([`names_earlier_season`](Self::names_earlier_season)): "Show
+    /// Season 2 Part 2" beside "Show Season 3" is another season.
     ///
     /// [`divisions_beside`]: super::play_native_title_reading::divisions_beside
     pub(crate) fn names_later_part(&self, sibling: &str, wide: &str) -> bool {
         let own = self.own_part();
         divisions_beside(sibling, wide).is_some_and(|(named, season)| {
-            named.iter().any(|m| {
-                let bar = if m.kind == Kind::Season { season } else { own };
-                m.ordinals.iter().any(|n| *n > bar)
-            })
+            !named.iter().any(|m| season_before(m, season))
+                && named.iter().any(|m| {
+                    let bar = if m.kind == Kind::Season { season } else { own };
+                    m.ordinals.iter().any(|n| *n > bar)
+                })
         })
     }
 
@@ -157,11 +160,8 @@ impl EntryTitles<'_> {
     ///
     /// [`divisions_beside`]: super::play_native_title_reading::divisions_beside
     pub(crate) fn names_earlier_season(&self, sibling: &str, wide: &str) -> bool {
-        divisions_beside(sibling, wide).is_some_and(|(named, season)| {
-            named
-                .iter()
-                .any(|m| m.kind == Kind::Season && m.ordinals.iter().any(|n| *n < season))
-        })
+        divisions_beside(sibling, wide)
+            .is_some_and(|(named, season)| named.iter().any(|m| season_before(m, season)))
     }
 
     /// The part the entry's titles end on — the highest, part 1 when
@@ -169,6 +169,11 @@ impl EntryTitles<'_> {
     fn own_part(&self) -> u32 {
         self.all().flat_map(part_ordinals).max().unwrap_or(1)
     }
+}
+
+/// Whether `m` is a season before `season`.
+fn season_before(m: &Marker, season: u32) -> bool {
+    m.kind == Kind::Season && m.ordinals.iter().any(|n| *n < season)
 }
 
 #[path = "play_native_title_own.rs"]
