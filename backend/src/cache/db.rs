@@ -16,19 +16,64 @@
 //!
 //! Calls are synchronous. From async contexts, wrap in
 //! `tokio::task::spawn_blocking` to avoid stalling the runtime.
+//!
+//! Each pool opens its connections on helper threads. Every pool shares
+//! one set of them and retires no connections; see [`helper_threads`]
+//! and [`builder`].
 
 use std::path::Path;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, OptionalExtension};
+use scheduled_thread_pool::ScheduledThreadPool;
 
 use crate::cache::schema::run_migrations;
 use crate::error::{AniError, Result};
 
 /// Convenience type alias for the pool.
 pub type SqlitePool = Pool<SqliteConnectionManager>;
+
+/// The helper threads every pool runs its background work on.
+///
+/// Left to itself, r2d2 starts three threads for each pool, and they
+/// outlive a dropped pool until its next scheduled cleanup, up to
+/// 30 seconds later. A process that opens many pools, as the test binary
+/// does, then holds thousands of idle threads, which on macOS reaches
+/// the per-process thread limit. One shared set keeps the count at
+/// three however many pools come and go.
+///
+/// The cleanup itself is turned off (see [`builder`]): on a shared set
+/// it would outlive its pool and keep running for the life of the
+/// process.
+fn helper_threads() -> Arc<ScheduledThreadPool> {
+    static HELPERS: OnceLock<Arc<ScheduledThreadPool>> = OnceLock::new();
+    Arc::clone(HELPERS.get_or_init(|| {
+        Arc::new(
+            ScheduledThreadPool::builder()
+                .num_threads(3)
+                .thread_name_pattern("cache-helper-{}")
+                .build(),
+        )
+    }))
+}
+
+/// A pool builder on the shared helpers, with no connection reaper.
+///
+/// r2d2 retires idle and old connections from a job it schedules every
+/// 30 seconds whenever a pool has an idle timeout or a maximum lifetime.
+/// Neither helps here: a local SQLite connection does not go stale, and
+/// retiring the one connection of an in-memory pool would throw its
+/// database away. Without them r2d2 schedules no reaper, so nothing a
+/// pool leaves on the shared helpers outlives it.
+fn builder() -> r2d2::Builder<SqliteConnectionManager> {
+    Pool::builder()
+        .thread_pool(helper_threads())
+        .idle_timeout(None)
+        .max_lifetime(None)
+}
 
 /// Open a pool against an on-disk SQLite database, creating the file if
 /// it doesn't exist. Runs all pending migrations, and marks the
@@ -38,7 +83,7 @@ pub type SqlitePool = Pool<SqliteConnectionManager>;
 /// - [`AniError::Cache`] when the pool can't be built or migrations fail.
 pub fn open_pool(path: &Path) -> Result<SqlitePool> {
     let manager = SqliteConnectionManager::file(path);
-    let pool = Pool::builder()
+    let pool = builder()
         .max_size(4)
         .build(manager)
         .map_err(|_| AniError::Cache)?;
@@ -56,7 +101,7 @@ pub fn open_pool(path: &Path) -> Result<SqlitePool> {
 /// - [`AniError::Cache`] when the pool can't be built or migrations fail.
 pub fn open_in_memory() -> Result<SqlitePool> {
     let manager = SqliteConnectionManager::memory();
-    let pool = Pool::builder()
+    let pool = builder()
         .max_size(1)
         .build(manager)
         .map_err(|_| AniError::Cache)?;
