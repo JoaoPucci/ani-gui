@@ -327,3 +327,28 @@ fn dropped_pools_leave_no_helper_threads_behind() {
     let lingering = threads_named("r2d2-worker");
     assert_eq!(lingering, 0, "{lingering} per-pool helper threads alive");
 }
+
+/// r2d2 retires idle and old connections from a job it schedules every
+/// 30 seconds for each pool. On the shared helpers that job would
+/// outlive its pool and keep running for the life of the process, once
+/// for every pool ever opened. A pool here has no such job: a local
+/// SQLite connection does not go stale, and retiring the one connection
+/// of an in-memory pool would throw its database away.
+#[test]
+fn pools_schedule_no_connection_reaper() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let file = open_pool(&tmp.path().join("meta.db")).expect("file pool");
+    let memory = open_in_memory().expect("memory pool");
+    for (name, pool) in [("file", &file), ("memory", &memory)] {
+        assert_eq!(
+            pool.idle_timeout(),
+            None,
+            "{name} pool retires idle connections"
+        );
+        assert_eq!(
+            pool.max_lifetime(),
+            None,
+            "{name} pool retires old connections"
+        );
+    }
+}
