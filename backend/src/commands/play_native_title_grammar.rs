@@ -142,11 +142,19 @@ pub(crate) fn stem(title: &str) -> Vec<String> {
     parse_tail(title).0
 }
 
-/// A title as written, for comparing two: lowercased, without its
-/// catalogue tags ([`untagged`]), its whitespace runs collapsed.
+/// A title as written, for comparing two: lowercased, its whitespace
+/// runs collapsed, its catalogue tags kept — a tag is what tells a
+/// remake from its original ("Hunter x Hunter (2011)").
 pub(crate) fn normalized(title: &str) -> String {
-    untagged(title)
+    title
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+        .to_lowercase()
+}
+
+/// A title as its structure is read: [`normalized`] without its
+/// catalogue tags ([`untagged`]).
+pub(crate) fn untagged_normalized(title: &str) -> String {
+    normalized(&untagged(title))
 }

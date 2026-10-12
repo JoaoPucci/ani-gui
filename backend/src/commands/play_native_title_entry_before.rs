@@ -13,7 +13,7 @@ use super::*;
 /// 2", "Kaguya-sama wa Kokurasetai 2" and "Steins;Gate 0" are not —
 /// each adds a mark or a word to the name.
 pub(crate) fn is_name_and_first_divisions(candidate: &str, title: &str) -> bool {
-    let (candidate, title) = (normalized(candidate), normalized(title));
+    let (candidate, title) = (untagged_normalized(candidate), untagged_normalized(title));
     let named = name(&title);
     let (Some(c), Some(t)) = (name_end(&candidate, &named), name_end(&title, &named)) else {
         return false;

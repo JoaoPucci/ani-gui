@@ -4,17 +4,19 @@
 //! grammar it reads is the one the title rules read
 //! (`play_native_title_grammar`).
 
-use super::play_native_title_grammar::{normalized, sole_ordinal};
+use super::play_native_title_grammar::{normalized, sole_ordinal, untagged_normalized};
 
 /// Which part of `stem` a title names: 1 for the stem itself, `k` for
 /// the stem followed by a short `k`-th part marker ("2nd Stage",
 /// "Part 3", "Season 2"), `None` for anything else.
 #[must_use]
 pub(crate) fn part_ordinal(stem: &str, title: &str) -> Option<u32> {
-    let (stem, title) = (normalized(stem), normalized(title));
-    if title == stem {
+    // The stem itself is compared as written, its catalogue tags kept;
+    // what follows it is read past them.
+    if normalized(title) == normalized(stem) {
         return Some(1);
     }
+    let (stem, title) = (untagged_normalized(stem), untagged_normalized(title));
     let rest = title.strip_prefix(&stem)?;
     // "The Showdown" is not a part of "The Show" — but Japanese
     // writes its 第 straight after the title.
