@@ -14,7 +14,16 @@
 		type HeroPrefs
 	} from './framing';
 
-	let { prefs, origin }: { prefs: HeroPrefs; origin: HeroOrigin | null } = $props();
+	// eslint-disable-next-line svelte/no-unused-props -- `onchoose` is the seam the next commit wires
+	let {
+		prefs,
+		origin
+	}: {
+		prefs: HeroPrefs;
+		origin: HeroOrigin | null;
+		/** A choice made in the switch; the page applies and keeps it. */
+		onchoose?: (next: HeroPrefs) => void;
+	} = $props();
 
 	// Dev-only tool: not translated.
 	const groupLabel = 'hero framing';

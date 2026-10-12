@@ -27,6 +27,7 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/framing';
+import { m } from '../../src/lib/paraglide/messages';
 
 const KITSU_ID = '42';
 const COVER = 'https://media.kitsu.app/anime/42/cover_image/large.jpg';
@@ -116,6 +117,11 @@ const framingClasses = () =>
 	['framing-contain', 'framing-pillar', 'framing-focus'].filter((f) =>
 		target.querySelector('section.hero')?.classList.contains(f)
 	);
+const switchButton = (label: string) =>
+	Array.from(target.querySelectorAll('.hero-framing-switch button')).find(
+		(b) => b.textContent?.trim() === label
+	) as HTMLButtonElement;
+const stored = () => JSON.parse(localStorage.getItem(HERO_PREFS_STORAGE_KEY) ?? 'null');
 
 describe('detail hero framing', () => {
 	it('fills the height with AniList’s banner over a blurred copy when nothing is stored', async () => {
@@ -195,5 +201,30 @@ describe('detail hero framing', () => {
 		app = mount(DetailPage, { target });
 		await heroImage();
 		expect(target.querySelector('.hero-framing-switch')).not.toBeNull();
+	});
+
+	it('keeps the switch inside the hero band, where nothing else is fixed', async () => {
+		// The page's enter animation leaves a transform on its root, so a
+		// `position: fixed` child would be anchored to the page, not the
+		// window; inside the band there is nothing to be anchored against.
+		useShow();
+		store('pillar', 'anilist', true);
+		app = mount(DetailPage, { target });
+		await heroImage();
+		expect(target.querySelector('section.hero .hero-framing-switch')).not.toBeNull();
+	});
+
+	it('applies a framing chosen in the switch at once, without a reload, and keeps it', async () => {
+		useShow();
+		store('pillar', 'anilist', true);
+		const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+		app = mount(DetailPage, { target });
+		await heroImage();
+		switchButton(m.hero_framing_focus()).click();
+		await vi.waitFor(() => expect(framingClasses()).toEqual(['framing-focus']));
+		expect(target.querySelector('.hero-backdrop')).toBeNull();
+		expect(reload).not.toHaveBeenCalled();
+		expect(stored()).toEqual({ framing: 'focus', source: 'anilist', controls: true });
+		reload.mockRestore();
 	});
 });

@@ -1,0 +1,14 @@
+{
+	"framing_group_label": "Кадрирование баннера",
+	"framing_top": "Обрезка сверху",
+	"framing_contain": "Вписать",
+	"framing_pillar": "По высоте",
+	"framing_focus": "Обрезка по центру",
+	"framing_source_kitsu": "Обложка Kitsu",
+	"framing_source_anilist": "Баннер AniList",
+	"framing_origin_prefix": "На экране:",
+	"framing_origin_anilist": "Баннер AniList",
+	"framing_origin_kitsu": "Обложка Kitsu",
+	"framing_origin_poster": "Постер",
+	"framing_origin_none": "Нет изображения"
+}

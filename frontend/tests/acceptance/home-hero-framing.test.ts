@@ -26,6 +26,7 @@ vi.mock('$app/navigation', () => ({
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/framing';
+import { m } from '../../src/lib/paraglide/messages';
 
 const COVER = 'https://media.kitsu.app/anime/1/cover_image/large.jpg';
 const COVER_WHOLE = 'https://media.kitsu.app/anime/1/cover_image/original.jpg';
@@ -84,6 +85,11 @@ async function heroImage(): Promise<HTMLImageElement> {
 }
 const proxied = (url: string) => `url=${encodeURIComponent(url)}`;
 const layer = () => target.querySelector('.hero-layer') as HTMLElement;
+const switchButton = (label: string) =>
+	Array.from(target.querySelectorAll('.hero-framing-switch button')).find(
+		(b) => b.textContent?.trim() === label
+	) as HTMLButtonElement;
+const stored = () => JSON.parse(localStorage.getItem(HERO_PREFS_STORAGE_KEY) ?? 'null');
 const framingClasses = () =>
 	['framing-contain', 'framing-pillar', 'framing-focus'].filter((f) =>
 		layer().classList.contains(f)
@@ -191,5 +197,42 @@ describe('home hero framing', () => {
 		app = mount(HomePage, { target });
 		await heroImage();
 		expect(target.querySelector('.hero-framing-switch')).not.toBeNull();
+	});
+
+	it('keeps the switch inside the hero band, where nothing else is fixed', async () => {
+		store('pillar', 'anilist', true);
+		app = mount(HomePage, { target });
+		await heroImage();
+		expect(target.querySelector('section.hero .hero-framing-switch')).not.toBeNull();
+	});
+
+	it('applies a framing chosen in the switch at once, without a reload, and keeps it', async () => {
+		store('pillar', 'anilist', true);
+		const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
+		app = mount(HomePage, { target });
+		await heroImage();
+		switchButton(m.hero_framing_contain()).click();
+		await vi.waitFor(() => expect(framingClasses()).toEqual(['framing-contain']));
+		expect(reload).not.toHaveBeenCalled();
+		expect(stored()).toEqual({ framing: 'contain', source: 'anilist', controls: true });
+		expect(switchButton(m.hero_framing_contain()).getAttribute('aria-pressed')).toBe('true');
+		reload.mockRestore();
+	});
+
+	it('applies a source chosen in the switch at once, and says what is on screen', async () => {
+		store('pillar', 'anilist', true);
+		app = mount(HomePage, { target });
+		const img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(BANNER));
+		switchButton(m.hero_framing_source_kitsu()).click();
+		await vi.waitFor(() =>
+			expect(
+				(target.querySelector('.hero .hero-img') as HTMLImageElement).getAttribute('src')
+			).toContain(proxied(COVER_WHOLE))
+		);
+		expect(target.querySelector('.hero-framing-switch')?.textContent).toContain(
+			m.hero_framing_origin_kitsu()
+		);
+		expect(stored()).toEqual({ framing: 'pillar', source: 'kitsu', controls: true });
 	});
 });
