@@ -198,7 +198,7 @@ impl AniError {
         match self {
             Self::Scraper {
                 failure: DownloadToolFailure::Exited,
-            } => crate::i18n::keys::SCRAPER_PARSE_FAILED,
+            } => crate::i18n::keys::DOWNLOAD_TOOL_FAILED,
             Self::Scraper {
                 failure: DownloadToolFailure::NotStarted,
             } => crate::i18n::keys::DOWNLOAD_TOOL_SPAWN_FAILED,
