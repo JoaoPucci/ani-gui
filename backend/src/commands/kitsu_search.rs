@@ -1,10 +1,15 @@
 //! Kitsu text search, cached through the SQLite `meta_cache` table.
 //!
 //! Each page is cached under its own offset (`kitsu:v3:search:<offset>:
-//! <normalized-query>`); the plain search is the first page. Pages
-//! live under `DISCOVERY_TTL` (6h): popular anime is
-//! stable, but trending changes within a day, and that is the right
-//! tradeoff between responsiveness and Kitsu API volume.
+//! <normalized-query>`); the plain search is the first page. Pages live
+//! under `DISCOVERY_TTL` (6h): popular anime is stable, but trending
+//! changes within a day, and that is the right tradeoff between
+//! responsiveness and Kitsu API volume.
+//!
+//! Each page keeps its own TTL, so two pages of one query can come from
+//! Kitsu rankings hours apart: a show that moved between them in the
+//! meantime can appear on both — the renderer drops the second — or on
+//! neither.
 
 use crate::app::AppState;
 use crate::cache::ttl::DISCOVERY_TTL;
@@ -27,7 +32,8 @@ pub async fn kitsu_search(state: &AppState, query: &str) -> Result<Vec<KitsuAnim
     Ok(kitsu_search_page(state, query, 0).await?.hits)
 }
 
-/// The deepest `page[offset]` a search walks to: fifty pages. A text
+/// The deepest `page[offset]` a search walks to: the fifty-first page,
+/// offsets 0 through 1000 in steps of [`SEARCH_PAGE_LIMIT`]. A text
 /// search ranked by popularity has long stopped being about the query
 /// by then, and the bound keeps a caller from walking Kitsu's whole
 /// catalogue one page at a time.
