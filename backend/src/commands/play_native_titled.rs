@@ -3,6 +3,7 @@
 //! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
 use super::*;
+use crate::commands::play_native_single_video::unvouched_single_videos;
 use crate::commands::play_native_title_grammar::normalized;
 
 /// [`pick_candidate`] told every title the requested entry goes by —
@@ -107,6 +108,11 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // episodes (see play_native_wide_listing). Before the split
     // stitching below, which still sees every part.
     let refused_a_fit = fit_to_entry(&mut probed_ok, expected, entry);
+    // A single video's count fits every other single video: only its
+    // name or its year makes it the entry (see
+    // play_native_single_video).
+    let refused_a_fit =
+        unvouched_single_videos(&mut probed_ok, expected, &needle, entry) || refused_a_fit;
     // An empty pool splits by what killed the probes: any transport
     // death means nothing was learned (the transient Network), while
     // all-answered not-found means the pool is dead but the provider
