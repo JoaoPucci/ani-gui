@@ -479,10 +479,16 @@
 				<button type="button" class="folio-action" onclick={resume}>
 					{m.search_paging_retry()}
 				</button>
-			{:else if phase.kind === 'idle' && activeSubtypes.size > 0}
+			{:else if (phase.kind === 'idle' || phase.kind === 'loading-more') && activeSubtypes.size > 0}
 				<!-- A type filter turns the auto-load off (see shouldAutoLoad);
-				     the next page is the reader's to ask for. -->
-				<button type="button" class="folio-action" onclick={resume}>
+				     the next page is the reader's to ask for. The button stays
+				     mounted while that page loads, so focus stays on it. -->
+				<button
+					type="button"
+					class="folio-action"
+					aria-disabled={phase.kind === 'loading-more'}
+					onclick={() => searchRunner.loadMore()}
+				>
 					{m.search_paging_load_more()}
 				</button>
 			{:else if phase.kind === 'held'}
@@ -822,6 +828,10 @@
 		transition:
 			border-color var(--dur-fast) var(--ease-out-soft),
 			background var(--dur-fast) var(--ease-out-soft);
+	}
+	.folio-action[aria-disabled='true'] {
+		color: var(--bone-400);
+		cursor: progress;
 	}
 	.folio-action:hover {
 		border-color: var(--bone-300);
