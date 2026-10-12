@@ -240,3 +240,27 @@ fn a_download_tool_that_exited_has_its_own_key() {
     };
     assert_eq!(e.key(), "error.download.tool_failed");
 }
+
+/// The backend's error keys, published for the renderer's catalogues.
+/// `backend/error-keys.json` is what `tests/arch/error_keys.sh` holds
+/// every locale's `backend.json` to, and this test is what holds that
+/// file to the variants (`error::variants`, which a new variant does
+/// not compile past): a key added, renamed or dropped fails here until
+/// the file says the same.
+#[test]
+fn the_published_key_list_is_every_variants_key() {
+    let keys: std::collections::BTreeSet<&str> = super::variants::every_variant()
+        .iter()
+        .map(AniError::key)
+        .collect();
+    let want = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&keys).expect("a list of strings serializes")
+    );
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/error-keys.json");
+    let have = std::fs::read_to_string(path).unwrap_or_default();
+    assert!(
+        have == want,
+        "{path} is not the backend's key list. Replace its contents with:\n{want}"
+    );
+}
