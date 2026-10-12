@@ -67,19 +67,22 @@ fn scan(words: &[String], leading: bool) -> Vec<Marker> {
 }
 
 /// The division `words` name starting at `i`, and how many words it
-/// takes: a marker pair, unless the first word is a numeral before a
-/// marker carrying its own number ("II Part 2" — not "3rd Season
-/// Second Half", whose "Season" is the 3rd's); a Japanese division
+/// takes: a marker pair, unless the first word is a Roman numeral or a
+/// bare number before a marker carrying its own ordinal ("II Part 2",
+/// "II Part Two") — a suffixed or spelled ordinal pairs with the marker
+/// after it ("3rd Season Second Half"); a Japanese division
 /// (a word of its own or glued to the end of one); or an ordinal
 /// standing alone — spelled, bare, or a number glued to a Japanese
 /// word.
 fn division_at(words: &[String], i: usize) -> Option<(Marker, usize)> {
     let w = &words[i];
-    let own_marker_follows = kind_of(w).is_none()
+    let numeral = small_number(w).is_some()
+        || (w.chars().all(|c| "ivx".contains(c)) && spelled_ordinal(w).is_some());
+    let own_marker_follows = numeral
         && words.get(i + 1).is_some_and(|k| kind_of(k).is_some())
-        && words.get(i + 2).is_some_and(|o| {
-            o.starts_with(|c: char| c.is_ascii_digit()) && ordinals_after_marker(o).is_some()
-        });
+        && words
+            .get(i + 2)
+            .is_some_and(|o| ordinals_after_marker(o).is_some());
     if !own_marker_follows {
         if let Some(m) = words.get(i + 1).and_then(|next| marker_of(w, next)) {
             return Some((m, 2));
