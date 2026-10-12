@@ -1973,8 +1973,19 @@ fn batch_cached_skips_empty_ids_in_input() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v15:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v15:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v16:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v16:kid-1:dub");
+}
+
+/// A verdict the picker stamped before an entry with no count or year
+/// took only a hit named as it, and before a single video needed its
+/// name or its year, is not served: Dragon Ball Super: Ginga Patrol's
+/// row holds Dragon Ball Super's 131 episodes as its own.
+#[test]
+fn a_verdict_stamped_before_names_vouched_for_countless_and_single_video_picks_is_not_read() {
+    let current = cache_key("50496", "sub");
+    let previous = current.replacen("availability:v16:", "availability:v15:", 1);
+    assert_ne!(previous, current, "the key must have moved past v15");
 }
 
 #[test]

@@ -1709,6 +1709,25 @@ mod tests {
     }
 
     #[test]
+    fn a_mapping_stamped_before_names_vouched_for_countless_picks_is_not_read() {
+        // Dragon Ball Super: Ginga Patrol, with no count or year, was
+        // resolved to Dragon Ball Super's listing, and a play stamps
+        // the picked show's key with the entry asked for: the series'
+        // key bound to the sequel. Nothing in a row says which pick
+        // wrote it.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:dragon-ball-super-1101";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v4:{key}"),
+            "50496",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
     fn allmanga_kitsu_cache_round_trips_for_a_given_show_id() {
         let state = state_with_kitsu_at("http://unused");
         allmanga_kitsu_put(&state, "vDTSJHSpYnrkZnAvG", "11469").expect("put ok");
