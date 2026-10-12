@@ -10,18 +10,19 @@ use serde::{Deserialize, Serialize};
 use super::kitsu::KitsuAnimeRef;
 
 /// The order a search's pages come in. Kitsu ranks a text search by
-/// relevance unless asked otherwise.
+/// popularity unless asked otherwise.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SearchOrder {
-    /// Kitsu's own ranking.
+    /// Kitsu's own ranking, by popularity. The page labels it
+    /// "Relevance".
     #[default]
     Relevance,
     /// Newest first by start date.
     Year,
-    /// Highest average rating first, as Kitsu ranks it. Kitsu sorts on a
-    /// stored rating that can lag the `averageRating` it returns, so
-    /// neighbouring cards may show small inversions.
+    /// Highest average rating first, as Kitsu sorts it. Kitsu's order
+    /// does not always agree with the `averageRating` it returns, so
+    /// neighbouring cards can show small inversions.
     Rating,
 }
 
