@@ -49,12 +49,22 @@ fn pick(
     needle: &str,
     year: YearEvidence,
 ) -> crate::error::Result<super::PickedShow> {
+    pick_confirmed(hits, &vec![false; hits.len()], needle, year)
+}
+
+/// [`pick`] with each hit's own year matched or not.
+fn pick_confirmed(
+    hits: &[BrowseHit],
+    confirmed: &[bool],
+    needle: &str,
+    year: YearEvidence,
+) -> crate::error::Result<super::PickedShow> {
     let client = TableProvider::counted(
         &(1..=hits.len() as u64)
             .map(|id| (id, 1))
             .collect::<Vec<_>>(),
     );
-    let head: Vec<(&BrowseHit, bool)> = hits.iter().map(|h| (h, false)).collect();
+    let head: Vec<(&BrowseHit, bool)> = hits.iter().zip(confirmed).map(|(h, c)| (h, *c)).collect();
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -108,6 +118,28 @@ proptest! {
         let p = pick(&hits, ENTRY[searched], YearEvidence::DisprovedNone).expect("a hit is taken");
         if hits.iter().any(|h| h.title == ENTRY[searched]) {
             prop_assert_eq!(p.hit.title.as_str(), ENTRY[searched]);
+        }
+    }
+
+    /// When the year disproved part of the pool, a hit is taken only
+    /// when it is the title searched or its own year matched — never
+    /// on the provider's order — and one such is always taken.
+    #[test]
+    fn a_year_that_disproved_some_takes_only_the_searched_title_or_a_matched_year(
+        pool in pool(),
+        searched in 0..ENTRY.len(),
+        confirmed in proptest::collection::vec(any::<bool>(), 6),
+    ) {
+        let hits = hits(&pool);
+        let confirmed = &confirmed[..hits.len()];
+        let vouched = |h: &BrowseHit, c: bool| c || h.title == ENTRY[searched];
+        let any = hits.iter().zip(confirmed).any(|(h, c)| vouched(h, *c));
+        match pick_confirmed(&hits, confirmed, ENTRY[searched], YearEvidence::DisprovedSome) {
+            Ok(p) => {
+                let i = hits.iter().position(|h| h.slug == p.hit.slug).expect("a pool hit");
+                prop_assert!(vouched(&hits[i], confirmed[i]), "took {} on position", p.hit.title);
+            }
+            Err(_) => prop_assert!(!any, "refused a pool holding a vouched hit"),
         }
     }
 }
