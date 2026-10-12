@@ -1,0 +1,52 @@
+{
+ "kitsu": {
+  "id": "44398",
+  "name": "86 P2",
+  "canonical": "86 Part 2",
+  "alt_titles": ["86－エイティシックス－ 第2クール", "EIGHTY-SIX Part 2"],
+  "episode_count": 12,
+  "year": 2021,
+  "subtype": "TV"
+ },
+ "searches": {
+  "86 Part 2": [
+    ["86-eighty-six-season-2-recap-9822", "86 EIGHTY-SIX Season 2 Recap", "SPECIAL"],
+    ["86-eighty-six-1260", "86", "TV"],
+    ["86-eighty-six-part-2-1421", "Eighty Six: 2nd Season", "TV"],
+    ["86-eighty-six-special-edition-the-poppies-bloom-red-on-the-battlefield-2622", "86-Eighty Six- Special Edition - Coquelicots Blooming Across the Battlefield", "SPECIAL"]
+  ]
+ },
+ "episodes": {
+  "86-eighty-six-1260": [
+    [21162, 1, null],
+    [21163, 2, null],
+    [21164, 3, null],
+    [21165, 4, null],
+    [21166, 5, null],
+    [21167, 6, null],
+    [21168, 7, null],
+    [21169, 8, null],
+    [21170, 9, null],
+    [21171, 10, null],
+    [21172, 11, null]
+  ],
+  "86-eighty-six-part-2-1421": [
+    [24934, 1, null],
+    [24935, 2, null],
+    [24936, 3, null],
+    [24937, 4, null],
+    [24938, 5, null],
+    [24939, 6, null],
+    [24940, 7, null],
+    [24941, 8, null],
+    [24942, 9, null],
+    [24943, 10, null],
+    [24944, 11, null],
+    [24945, 12, null]
+  ]
+ },
+ "years": {
+  "86-eighty-six-1260": 2021,
+  "86-eighty-six-part-2-1421": 2021
+ }
+}

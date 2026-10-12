@@ -1830,7 +1830,7 @@ mod tests {
         // Verify the reverse mapping was persisted by reading the
         // cache row directly. The frontend will read this via the
         // GET /api/allmanga-kitsu-map/:show_id endpoint.
-        let key = "allmanga2kitsu:v3:vDTSJHSpYnrkZnAvG";
+        let key = "allmanga2kitsu:v4:vDTSJHSpYnrkZnAvG";
         let body = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(body, Some("11061".to_string()));
     }
@@ -1998,7 +1998,7 @@ mod tests {
         // the mapping write was suppressed. Surface decisions stay in
         // tracing::warn for diagnostics.
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let key = "allmanga2kitsu:v3:D5ksnsKtYAzzFXeSp";
+        let key = "allmanga2kitsu:v4:D5ksnsKtYAzzFXeSp";
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored, None,
@@ -2093,7 +2093,7 @@ mod tests {
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let stored =
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v3:seq-show").expect("get");
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v4:seq-show").expect("get");
         assert_eq!(
             stored,
             Some("99001".to_string()),
@@ -2183,7 +2183,7 @@ mod tests {
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let stored =
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v3:seq2-show").expect("get");
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v4:seq2-show").expect("get");
         assert_eq!(
             stored,
             Some("99002".to_string()),
@@ -2258,7 +2258,7 @@ mod tests {
             .expect("oneshot");
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let key = "allmanga2kitsu:v3:D5ksnsKtYAzzFXeSp";
+        let key = "allmanga2kitsu:v4:D5ksnsKtYAzzFXeSp";
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored,
@@ -2371,7 +2371,7 @@ mod tests {
             "a watch that never reached the file must not be stamped"
         );
         assert_eq!(
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v3:vDTSJHSpYnrkZnAvG")
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v4:vDTSJHSpYnrkZnAvG")
                 .expect("get"),
             None,
             "nor mapped"

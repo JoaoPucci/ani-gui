@@ -1,0 +1,54 @@
+{
+ "kitsu": {
+  "id": "46231",
+  "name": "Solo Leveling",
+  "canonical": "Ore Dake Level Up na Ken",
+  "alt_titles": ["俺だけレベルアップな件", "Solo Leveling", "나 혼자만 레벨업", "Na Honjaman Level Up"],
+  "episode_count": 12,
+  "year": 2024,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Ore Dake Level Up na Ken": [
+    ["solo-leveling-235", "Solo Leveling", "TV"],
+    ["solo-leveling-season-2-arise-from-the-shadow-84", "Solo Leveling Season 2: Arise from the Shadow", "TV"],
+    ["solo-leveling-reawakening-2787", "Solo Leveling: ReAwakening", "MOVIE"],
+    ["solo-leveling-how-to-get-stronger-4232", "Solo Leveling: Specials", "SPECIAL"]
+  ]
+ },
+ "episodes": {
+  "solo-leveling-235": [
+    [4341, 1, null],
+    [4342, 2, null],
+    [4343, 3, null],
+    [4344, 4, null],
+    [4345, 5, null],
+    [4346, 6, null],
+    [4347, 7, null],
+    [4348, 8, null],
+    [4349, 9, null],
+    [4350, 10, null],
+    [4351, 11, null],
+    [4352, 12, null]
+  ],
+  "solo-leveling-season-2-arise-from-the-shadow-84": [
+    [2733, 1, null],
+    [2734, 2, null],
+    [2735, 3, null],
+    [2736, 4, null],
+    [2737, 5, null],
+    [2738, 6, null],
+    [2739, 7, null],
+    [2740, 8, null],
+    [2741, 9, null],
+    [2742, 10, null],
+    [2743, 11, null],
+    [2744, 12, null],
+    [2745, 13, null]
+  ]
+ },
+ "years": {
+  "solo-leveling-235": 2024,
+  "solo-leveling-season-2-arise-from-the-shadow-84": 2025
+ }
+}

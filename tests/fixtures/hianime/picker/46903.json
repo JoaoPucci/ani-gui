@@ -1,0 +1,41 @@
+{
+ "kitsu": {
+  "id": "46903",
+  "name": "Bleach TYBW 2",
+  "canonical": "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan",
+  "alt_titles": ["BLEACH 千年血戦篇-訣別譚-", "BLEACH: Thousand-Year Blood War Part 2 - The Separation", "BLEACH: Thousand-Year Blood War - The Separation -", "BLEACH: Thousand-Year Blood War Part 2", "BLEACH 千年血戦篇 2クール"],
+  "episode_count": 13,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "BLEACH: Sennen Kessen-hen - Ketsubetsu-tan": [
+    ["bleach-thousand-year-blood-war-the-separation-1009", "Bleach: Thousand-Year Blood War - The Separation", "TV"],
+    ["bleach-thousand-year-blood-war-the-separation-recap-3863", "Bleach: Thousand-Year Blood War - The Separation Recap", "TV"]
+  ]
+ },
+ "episodes": {
+  "bleach-thousand-year-blood-war-the-separation-1009": [
+    [16932, 1, null],
+    [16933, 2, null],
+    [16934, 3, null],
+    [16935, 4, null],
+    [16936, 5, null],
+    [16937, 6, null],
+    [16938, 7, null],
+    [16939, 8, null],
+    [16940, 9, null],
+    [16941, 10, null],
+    [16942, 11, null],
+    [16943, 12, null],
+    [16944, 13, null]
+  ],
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": [
+    [50279, 1, null]
+  ]
+ },
+ "years": {
+  "bleach-thousand-year-blood-war-the-separation-1009": 2023,
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": 2023
+ }
+}

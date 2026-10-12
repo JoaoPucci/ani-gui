@@ -1,0 +1,70 @@
+{
+ "kitsu": {
+  "id": "46229",
+  "name": "Mashle",
+  "canonical": "Mashle",
+  "alt_titles": ["マッシュル-MASHLE-", "Mashle: Magic and Muscles"],
+  "episode_count": 12,
+  "year": 2023,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Mashle": [
+    ["mashle-magic-and-muscles-591", "Mashle: Magic and Muscles", "TV"],
+    ["mashle-magic-and-muscles-the-divine-visionary-candidate-exam-arc-593", "Mashle: Magic and Muscles Season 2", "TV"],
+    ["mashle-magic-and-muscles-mash-burnedead-and-the-mysterious-letter-592", "Mashle: Magic and Muscles (Specials)", "SPECIAL"],
+    ["mashle-sanma-taisou-shinkakusha-saishuu-shiken-hen-7216", "MASHLE: Sanma Taisou Shinkakusha Saishuu Shiken-hen", "TV (? eps)"],
+    ["mashle-magic-and-muscles-picture-drama-6339", "Mashle: Magic and Muscles Picture Drama", "ONA"]
+  ]
+ },
+ "episodes": {
+  "mashle-magic-and-muscles-591": [
+    [10489, 1, null],
+    [10490, 2, null],
+    [10491, 3, null],
+    [10492, 4, null],
+    [10493, 5, null],
+    [10494, 6, null],
+    [10495, 7, null],
+    [10496, 8, null],
+    [10497, 9, null],
+    [10498, 10, null],
+    [10499, 11, null],
+    [10500, 12, null]
+  ],
+  "mashle-magic-and-muscles-picture-drama-6339": [
+    [83721, 1, null],
+    [83722, 2, null],
+    [83723, 3, null],
+    [83724, 4, null],
+    [83725, 5, null],
+    [83726, 6, null],
+    [83727, 7, null],
+    [83728, 8, null],
+    [83729, 9, null],
+    [83730, 10, null],
+    [83731, 11, null],
+    [83732, 12, null]
+  ],
+  "mashle-magic-and-muscles-the-divine-visionary-candidate-exam-arc-593": [
+    [10502, 1, null],
+    [10503, 2, null],
+    [10504, 3, null],
+    [10505, 4, null],
+    [10506, 5, null],
+    [10507, 6, null],
+    [10508, 7, null],
+    [10509, 8, null],
+    [10510, 9, null],
+    [10511, 10, null],
+    [10512, 11, null],
+    [10513, 12, null]
+  ]
+ },
+ "years": {
+  "mashle-magic-and-muscles-591": 2023,
+  "mashle-magic-and-muscles-picture-drama-6339": 2023,
+  "mashle-magic-and-muscles-the-divine-visionary-candidate-exam-arc-593": 2024,
+  "mashle-sanma-taisou-shinkakusha-saishuu-shiken-hen-7216": 2026
+ }
+}

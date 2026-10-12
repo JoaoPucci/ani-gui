@@ -14,19 +14,25 @@
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
-use super::play_native_choice::{identity_rank, pick_without_count, select_winner};
+use super::play_native_choice::{entry_rank, pick_without_count, select_winner, strongest_dead};
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
+use super::play_native_title_marker::EntryTitles;
+use super::play_native_title_verdict::{countless_miss, probe_head, rejection, rescuable};
+use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
 #[path = "play_native_titled.rs"]
 mod titled;
 pub use titled::pick_candidate_titled;
 
-/// How many browse hits get an episodes probe. Beyond this the match
-/// was not a match; the request budget is better spent on the next
-/// alias.
+/// How many browse hits the entry's titles admit get an episodes
+/// probe. Beyond this the match was not a match; the request budget
+/// is better spent on the next alias. With a count, the refused hits
+/// among the first this many are probed besides, as evidence about
+/// the pool — at most twice this many probes per pool (see
+/// `play_native_title_verdict::probe_head`).
 pub const MAX_PROBED_CANDIDATES: usize = 5;
 
 /// A picked show: the hit plus the episode list the probe already
@@ -50,7 +56,8 @@ fn dead_outranks(best_failed: Option<(u8, usize)>, winner_rank: u8, winner_pos: 
     let Some((rank, pos)) = best_failed else {
         return false;
     };
-    rank < winner_rank || (rank == winner_rank && rank <= 1 && pos < winner_pos)
+    let identity = rank == 0 || rank % 2 == 1;
+    rank < winner_rank || (rank == winner_rank && identity && pos < winner_pos)
 }
 
 /// Distance tolerance: long-running shows get proportional slack,
@@ -63,7 +70,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// Pick the show a query meant from browse `hits`, using Kitsu's
 /// `expected` episode count and premiere `year` when known.
 ///
-/// - Considers at most [`MAX_PROBED_CANDIDATES`] hits.
+/// - Considers at most [`MAX_PROBED_CANDIDATES`] hits the entry's
+///   titles admit — plus, with a count, the refused ones among the
+///   first [`MAX_PROBED_CANDIDATES`] as evidence about the pool.
 /// - With `year = Some(y)`: candidates whose detail page names a
 ///   premiere year more than one off `y` are excluded before any
 ///   scoring — the identity signal that separates cour and
@@ -73,23 +82,39 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   carry it.
 /// - With `expected = Some(n)`: best episode-count distance wins,
 ///   rejected when the best distance exceeds [`ep_count_threshold`];
-///   ties prefer an exact (case-insensitive, trimmed) title match on
+///   ties prefer an exact title match, compared as written (case
+///   and spacing aside, catalogue tags wherever they stand), on
 ///   `search_title`. When no survivor sits within the threshold, a
 ///   survivor whose own year positively matched and whose episode
 ///   list is shorter than expected still wins — an airing part has
 ///   aired fewer episodes than the total Kitsu knows is coming.
-/// - With `expected = None`: an exact title match wins, else the
-///   first surviving hit — positional order is the provider's own
-///   ranking.
+/// - With `expected = None`: an exact title match wins; else a
+///   candidate whose part agrees with the entry's comes before one
+///   naming another part, and within each a matched year before the
+///   rest, the provider's order breaking ties — only a year-matched
+///   candidate when the year disproved part of the pool (see
+///   `pick_without_count`).
 /// - A candidate the searched title names a later part of ("X" when
 ///   asked for "X Season 2") is the season before, and never picked;
 ///   [`pick_candidate_titled`] reads every title the entry goes by.
+///   So is the entry before this one ("Show" for "Show 2"). Each is
+///   another entry of the same show, so a pool rejected after it is
+///   still a clean miss.
+/// - A candidate the entry's titles do not admit — named for a
+///   season or part the entry is not — is never picked (with a
+///   count it is still probed); a pool rejected for that alone is
+///   not a clean miss; a listing that spans this entry and
+///   the next is cut to this entry's episodes (see
+///   `play_native_wide_listing`).
 /// - Probe errors skip the candidate rather than abort the pick; a
 ///   pick only fails when no probed candidate survives.
 ///
 /// # Errors
 /// [`crate::error::AniError::NoResults`] when `hits` is empty or no
-/// candidate survives the threshold.
+/// candidate survives the threshold; the answered dead end
+/// `Upstream { status: 404 }` when the titles refused a candidate the
+/// count accepted, or without a count refused a hit and nothing else
+/// was picked.
 pub async fn pick_candidate<P: Provider + ?Sized>(
     client: &P,
     hits: &[BrowseHit],

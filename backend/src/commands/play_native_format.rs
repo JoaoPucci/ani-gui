@@ -44,13 +44,24 @@ pub(crate) fn format_compatible(
         // Both sides known: the categories must agree — a special is
         // not a TV entry is not an OVA, and for one-video same-title
         // same-year entries the tag is the only separating signal.
-        return w == h;
+        // TV and ONA are the one pair that does not separate: a
+        // series a streaming service premiered is a TV series to one
+        // catalogue and a web release to the other (Stone Ocean is
+        // TV on Kitsu and ONA on hianime). Count and year still
+        // separate a TV series from a web one where they differ.
+        return w == h || series_pair(w, h);
     }
     // No category verdict (either side unknown or subtype absent):
     // the count-derived movie exclusion still applies — a card
     // badged movie-shaped cannot be the multi-episode series.
     let expects_non_movie = want.is_none() && matches!(expected, Some(n) if n > 1);
     !(expects_non_movie && have == Some("movie"))
+}
+
+/// Whether two categories are the TV/ONA pair the catalogues
+/// disagree on for one and the same series.
+fn series_pair(a: &str, b: &str) -> bool {
+    matches!((a, b), ("tv", "ona") | ("ona", "tv"))
 }
 
 /// The category a format tag names, unifying Kitsu subtypes and the

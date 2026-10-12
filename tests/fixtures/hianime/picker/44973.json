@@ -1,0 +1,50 @@
+{
+ "kitsu": {
+  "id": "44973",
+  "name": "Blue Lock",
+  "canonical": "BLUE LOCK",
+  "alt_titles": ["Blue Lock", "ブルーロック"],
+  "episode_count": 24,
+  "year": 2022,
+  "subtype": "TV"
+ },
+ "searches": {
+  "BLUE LOCK": [
+    ["blue-lock-964", "Blue Lock", "TV"],
+    ["blue-lock-season-2-2614", "Blue Lock Season 2", "TV"],
+    ["blue-lock-episode-nagi-4693", "Blue Lock: Episode Nagi", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "blue-lock-964": [
+    [16225, 1, null],
+    [16226, 2, null],
+    [16227, 3, null],
+    [16228, 4, null],
+    [16229, 5, null],
+    [16230, 6, null],
+    [16231, 7, null],
+    [16232, 8, null],
+    [16233, 9, null],
+    [16234, 10, null],
+    [16235, 11, null],
+    [16236, 12, null],
+    [16237, 13, null],
+    [16238, 14, null],
+    [16239, 15, null],
+    [16240, 16, null],
+    [16241, 17, null],
+    [16242, 18, null],
+    [16243, 19, null],
+    [16244, 20, null],
+    [16245, 21, null],
+    [16246, 22, null],
+    [16247, 23, null],
+    [16248, 24, null]
+  ]
+ },
+ "years": {
+  "blue-lock-964": 2022,
+  "blue-lock-season-2-2614": 2024
+ }
+}
