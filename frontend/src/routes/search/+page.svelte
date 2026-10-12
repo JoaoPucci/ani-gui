@@ -311,7 +311,10 @@
 		{/if}
 	</section>
 
-	{#if submitted && results !== null && results.length > 0}
+	<!-- Mounted while the search may still bring shows, not only while
+	     some are shown: a reorder can open on a page the availability
+	     filter empties, and the chip just pressed keeps focus. -->
+	{#if submitted && results !== null && (results.length > 0 || moreToCome)}
 		<section class="controls" aria-label={m.search_controls_aria_label()}>
 			<div class="control-group">
 				<span class="control-label">{m.search_control_sort_label()}</span>
