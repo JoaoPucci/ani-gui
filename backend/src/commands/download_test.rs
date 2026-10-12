@@ -7111,6 +7111,28 @@ mod rate_from_the_runs_start {
         assert_eq!(super::super::resumed_partials(&out).whole, 10_000);
     }
 
+    /// A partial on disk that yt-dlp never reports — a fragment whose
+    /// server ignored the range and started over, a fragment partial
+    /// behind the index yt-dlp resumed from — leaves a starting point the
+    /// count may never reach. It is held for one window from the
+    /// format's start, the time every fragment in flight has to give its
+    /// first report, and no longer: the run's speed shows after it.
+    #[test]
+    fn a_starting_point_the_count_never_reaches_is_let_go_after_a_window() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(1_000_000, start);
+        let mut at = start;
+        for second in 1..=12u64 {
+            at = start + Duration::from_secs(second);
+            meter.observe(second * 10_000, at);
+        }
+        let rate = meter.rate_at(at);
+        assert!(
+            (rate - 10_000.0).abs() < 1.0,
+            "the run's speed shows: {rate}"
+        );
+    }
+
     /// yt-dlp reports a resumed fragment's partial as downloaded when
     /// that fragment's thread first reports, which with fragments in
     /// flight is not all at once: counts below what the run resumes from
