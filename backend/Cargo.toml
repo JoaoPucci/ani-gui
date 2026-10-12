@@ -13,7 +13,7 @@ path = "src/lib.rs"
 
 # The only binary is the standalone backend the Electron main process
 # spawns as a sidecar. The pre-Electron Tauri entrypoint lived in
-# `src/main.rs` and was removed in M-E5.
+# `src/main.rs` and was removed with Tauri.
 [[bin]]
 name = "ani-gui-backend"
 path = "src/bin/backend.rs"

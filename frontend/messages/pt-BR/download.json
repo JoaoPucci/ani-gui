@@ -63,5 +63,17 @@
 	"status_abandoned_claim": "Um download interrompido deixou um arquivo vazio em {path}; exclua-o e tente novamente.",
 	"status_claim_pending": "Outro download está publicando {path} e ainda não terminou; tente novamente em instantes.",
 	"status_repackage_retry": "O yt-dlp não conseguiu reempacotar o stream; tentando novamente com o ffmpeg.",
-	"status_retry_ffmpeg": "O yt-dlp falhou; tentando novamente com o ffmpeg."
+	"status_retry_ffmpeg": "O yt-dlp falhou; tentando novamente com o ffmpeg.",
+	"range_error_not_a_number": "Informe os dois números de episódio.",
+	"range_error_below_one": "A numeração dos episódios começa em 1.",
+	"range_error_start_over_max": "O primeiro episódio não pode passar de {max}, o último disponível.",
+	"range_error_end_over_max": "O último episódio não pode passar de {max}, o último disponível.",
+	"range_error_over_cap": "Não é possível baixar mais de {max} episódios deste título.",
+	"range_error_end_before_start": "O último episódio não pode vir antes do primeiro.",
+	"browse_dialog_title": "Escolha a pasta de download",
+	"failure_timeout": "O download demorou demais e foi interrompido. Tente novamente mais tarde.",
+	"failure_write": "Não foi possível salvar o arquivo na pasta de download. Verifique se a pasta existe, permite gravação e tem espaço livre.",
+	"failure_no_folder": "Nenhuma pasta de download definida. Escolha uma e tente novamente.",
+	"failure_tool": "O programa de download parou com um erro. Tente novamente mais tarde.",
+	"failure_tool_spawn": "Não foi possível iniciar o programa de download. Se você instalou o yt-dlp ou o ffmpeg por conta própria, verifique se ele executa; caso contrário, reinstale o ani-gui."
 }

@@ -30,6 +30,7 @@ const failureStoreMock = vi.hoisted(() => ({
 vi.mock('./failure-store.svelte', () => failureStoreMock);
 
 import { startDownload } from './start';
+import { describeError, describePlayFailure } from '$lib/play/error-copy';
 
 const baseArgs = {
 	title: 'Demon Slayer',
@@ -175,32 +176,123 @@ describe('startDownload', () => {
 		expect(failureStoreMock.downloadFailureStore.show).not.toHaveBeenCalled();
 	});
 
-	it('translates a thrown Error into markError with its message', async () => {
+	// The dock row's tooltip is user copy. A thrown Error's message
+	// ("Download stream closed before completion.", a JSON parse
+	// error), a bare string and a payload's `detail` are all internal
+	// text, so every other failure gets describeError's sentence for
+	// its kind instead.
+	it('shows describeError copy for a thrown Error, never its message', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce(new Error('upstream 500'));
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', 'upstream 500');
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			describeError(new Error('upstream 500'))
+		);
+		expect(storeMock.downloadStore.markError).not.toHaveBeenCalledWith('dl-1', 'upstream 500');
 		expect(storeMock.downloadStore.markDone).not.toHaveBeenCalled();
 	});
 
-	it('translates a thrown string into markError using the string itself', async () => {
-		// Some legacy promise paths reject with bare strings. The
-		// branch in start.ts catches that and forwards it as the
-		// message; a regression here would render `[object Object]`.
+	it('shows describeError copy for a thrown string, never the string', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce('aborted by user');
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', 'aborted by user');
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			describeError('aborted by user')
+		);
 	});
 
-	it("falls back to a generic message when the rejection isn't an Error or string", async () => {
+	it('names a typed failure by its kind and leaves its detail out', async () => {
+		const failure = { kind: 'parse_failed', detail: 'missing field `dest_dir`' };
+		apiMock.downloadStream.mockRejectedValueOnce(failure);
+		startDownload(baseArgs);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', describeError(failure));
+		const shown = storeMock.downloadStore.markError.mock.calls[0][1] as string;
+		expect(shown).not.toContain('dest_dir');
+	});
+
+	it('words every provider answer the way the play page does', async () => {
+		// A download resolves through the same provider as play, so a
+		// catalogue miss, a source outage and any other upstream status
+		// read the same on both surfaces.
+		for (const failure of [
+			{ kind: 'no_results' },
+			{ kind: 'upstream', status: 503 },
+			{ kind: 'upstream', status: 404 },
+			{ kind: 'upstream', status: 403 }
+		]) {
+			storeMock.downloadStore.markError.mockReset();
+			apiMock.downloadStream.mockRejectedValueOnce(failure);
+			startDownload(baseArgs);
+			await Promise.resolve();
+			await Promise.resolve();
+			expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+				'dl-1',
+				describePlayFailure(failure)
+			);
+		}
+	});
+
+	it('words the failures a download has of its own for the download, not a service', async () => {
+		// In a download these kinds mean something the general sentence
+		// gets wrong: `timeout` includes the transfer's own one-hour
+		// deadline, which is not a service being slow; `io` is the
+		// destination folder refusing the file; `config` is no folder
+		// being set; `scraper` is the download tool exiting non-zero.
+		const cases: Array<[object, RegExp]> = [
+			[{ kind: 'timeout', key: 'error.scraper.timeout' }, /download took too long/i],
+			[{ kind: 'io', key: 'error.io.generic' }, /download folder/i],
+			[{ kind: 'config', key: 'error.config.parse' }, /no download folder/i],
+			[{ kind: 'scraper', key: 'error.scraper.parse_failed' }, /downloader/i]
+		];
+		for (const [failure, copy] of cases) {
+			storeMock.downloadStore.markError.mockReset();
+			apiMock.downloadStream.mockRejectedValueOnce(failure);
+			startDownload(baseArgs);
+			await Promise.resolve();
+			await Promise.resolve();
+			const shown = storeMock.downloadStore.markError.mock.calls[0]?.[1] as string;
+			expect(shown, JSON.stringify(failure)).toMatch(copy);
+			expect(shown, JSON.stringify(failure)).not.toBe(describeError(failure));
+		}
+	});
+
+	it('says the downloader could not start when the tool cannot be spawned', async () => {
+		// The backend raises the download-tool variant with its own key
+		// when yt-dlp or ffmpeg is found but cannot be started; a tool
+		// that ran and failed carries the other key. The user acts on
+		// the two differently, so they read differently.
+		const spawn = { kind: 'scraper', key: 'error.download.tool_spawn_failed' };
+		const ran = { kind: 'scraper', key: 'error.scraper.parse_failed' };
+		const shown: string[] = [];
+		for (const failure of [spawn, ran]) {
+			storeMock.downloadStore.markError.mockReset();
+			apiMock.downloadStream.mockRejectedValueOnce(failure);
+			startDownload(baseArgs);
+			await Promise.resolve();
+			await Promise.resolve();
+			shown.push(storeMock.downloadStore.markError.mock.calls[0]?.[1] as string);
+		}
+		expect(shown[0]).toMatch(/couldn't be started/i);
+		expect(shown[0]).not.toBe(shown[1]);
+		expect(shown[0]).not.toMatch(/connection/i);
+	});
+
+	it('falls back to localized generic copy for an unrecognised rejection', async () => {
 		apiMock.downloadStream.mockRejectedValueOnce({ unexpected: true });
 		startDownload(baseArgs);
 		await Promise.resolve();
 		await Promise.resolve();
-		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', 'Download failed');
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			describeError({ unexpected: true })
+		);
+		expect(storeMock.downloadStore.markError).not.toHaveBeenCalledWith('dl-1', 'Download failed');
 	});
 
 	it('routes a typed ffmpeg_missing payload to the failure store and dismisses the dock row', async () => {
