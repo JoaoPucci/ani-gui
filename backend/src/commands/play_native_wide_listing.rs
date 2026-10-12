@@ -59,17 +59,17 @@ pub(super) fn fit_to_entry(
         .iter()
         .map(|(h, _, _, _)| entry.admits(&h.title))
         .collect();
-    // Pickable: admitted, and not the entry before this one
-    // ([`EntryTitles::before_entry`]) — which still counts as admitted
+    // Pickable: admitted, and not another entry of the same show
+    // ([`EntryTitles::another_entry`]) — which still counts as admitted
     // when the pool is read for a broad listing.
     let pickable: Vec<bool> = probed
         .iter()
         .zip(&admitted)
-        .map(|((h, _, _, _), ok)| *ok && !entry.before_entry(&h.title))
+        .map(|((h, _, _, _), ok)| *ok && !entry.another_entry(&h.title))
         .collect();
     // Only a refusal by title keeps a rejected pool from being a clean
-    // miss: the entry before, like an L, F or P, is another entry of
-    // the same show.
+    // miss: another entry of the same show, like an L, F or P, is no
+    // refusal.
     let tolerance = super::play_native::ep_count_threshold(expected);
     let refused_a_fit = probed
         .iter()

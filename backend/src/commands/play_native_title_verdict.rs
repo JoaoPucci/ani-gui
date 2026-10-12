@@ -25,8 +25,9 @@ pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
 /// [`MAX_PROBED_CANDIDATES`] are kept too — they are probed as
 /// evidence (a span's later part, a split's parts) and never picked.
 /// Without one they are dropped: the titles are the only identity —
-/// and so is the entry before this one, which is another entry of the
-/// same show rather than a refusal. Alongside the head, whether a
+/// and so is another entry of the same show (the entry before this
+/// one, or the season before it), which is
+/// no refusal. Alongside the head, whether a
 /// refused hit was dropped — a
 /// countless pick that then finds nothing was narrowed by the title
 /// inference, and answers [`refused_by_title`] ([`countless_miss`]).
@@ -45,12 +46,12 @@ pub(super) fn probe_head(
         .into_iter()
         .enumerate()
         .filter(|(pos, h)| {
-            // Without a count, the entry before this one is dropped
-            // with the refused ([`EntryTitles::before_entry`]) — but as
+            // Without a count, another entry of the same show is dropped
+            // with the refused ([`EntryTitles::another_entry`]) — but as
             // another entry of the same show, not a refusal: it leaves
             // the miss clean.
             let admits = entry.admits(&h.title);
-            if admits && (counted || !entry.before_entry(&h.title)) {
+            if admits && (counted || !entry.another_entry(&h.title)) {
                 admitted += 1;
                 admitted <= MAX_PROBED_CANDIDATES
             } else {
