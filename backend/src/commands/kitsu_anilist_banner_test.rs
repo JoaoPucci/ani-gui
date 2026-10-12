@@ -159,7 +159,7 @@ async fn the_detail_of_a_listed_show_reads_its_banner_with_no_anilist_request() 
         .await
         .expect("trending");
 
-    let detail = kitsu_anime_detail_with_anilist_base(&state, "12", Some(&anilist.uri()))
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
         .await
         .expect("detail");
 
@@ -188,7 +188,7 @@ async fn the_detail_of_a_show_never_listed_has_no_banner_and_asks_nothing() {
         .await;
     let state = state_with_kitsu_at(&kitsu.uri());
 
-    let detail = kitsu_anime_detail_with_anilist_base(&state, "12", Some(&anilist.uri()))
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
         .await
         .expect("detail");
 
@@ -223,4 +223,104 @@ async fn a_rate_limited_trending_falls_back_with_no_banner_and_no_retry_storm() 
 
     assert!(refs.iter().all(|r| r.anilist_banner.is_none()));
     anilist.verify().await;
+}
+
+/// Kitsu answering `/anime/12` with a null-cover detail, and its
+/// mappings sideload naming MAL 21 — what the null-cover backfill would
+/// take to AniList.
+async fn mount_null_cover_detail(kitsu: &MockServer) {
+    let mappings = serde_json::json!({
+        "data": { "id": "12", "type": "anime", "attributes": { "canonicalTitle": "x" } },
+        "included": [{
+            "id": "1",
+            "type": "mappings",
+            "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" },
+        }],
+    });
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(mappings))
+        .with_priority(1)
+        .mount(kitsu)
+        .await;
+    let mut detail: serde_json::Value = serde_json::from_slice(DETAIL_FIXTURE).expect("fixture");
+    detail["data"]["attributes"]["coverImage"] = serde_json::Value::Null;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_json(detail),
+        )
+        .mount(kitsu)
+        .await;
+}
+
+#[tokio::test]
+async fn a_listed_show_without_a_kitsu_cover_backfills_from_the_remembered_banner() {
+    // The null-cover backfill would ask AniList for the very banner
+    // the trending request already brought; the remembered one serves.
+    let (anilist, kitsu) = trending_fixture().await;
+    mount_null_cover_detail(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+
+    let cover = detail.cover_image.expect("backfilled cover");
+    assert_eq!(cover.large.as_deref(), Some(BANNER));
+    assert_eq!(detail.anilist_banner.as_deref(), Some(BANNER));
+    // Still exactly the trending request.
+    anilist.verify().await;
+}
+
+#[tokio::test]
+async fn a_banner_anilist_no_longer_has_is_forgotten_at_the_next_trending_fetch() {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, None)] } }
+        })))
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(DETAIL_FIXTURE),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("first trending");
+    // The feed's own hour runs out; the next fetch asks AniList again.
+    crate::cache::meta_cache_delete(&state.cache_pool, "kitsu:v6:trending_anilist")
+        .expect("expire trending");
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("second trending");
+
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+
+    assert_eq!(detail.anilist_banner, None);
 }

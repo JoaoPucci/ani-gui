@@ -1112,6 +1112,17 @@ pub async fn kitsu_anime_detail(state: &AppState, id: &str) -> Result<KitsuAnime
 /// [`kitsu_anime_detail`] with the AniList endpoint overridable, so
 /// tests can point the banner backfill at wiremock. Production passes
 /// `None`.
+pub(crate) async fn kitsu_anime_detail_page_with_anilist_base(
+    state: &AppState,
+    id: &str,
+    anilist_base: Option<&str>,
+) -> Result<KitsuAnimeRef> {
+    kitsu_anime_detail_with_anilist_base(state, id, anilist_base).await
+}
+
+/// [`kitsu_anime_detail`] with the AniList endpoint overridable, so
+/// tests can point the banner backfill at wiremock. Production passes
+/// `None`.
 pub(crate) async fn kitsu_anime_detail_with_anilist_base(
     state: &AppState,
     id: &str,
