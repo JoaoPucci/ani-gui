@@ -73,7 +73,7 @@ describe('home hero framing experiment', () => {
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(COVER));
-		const hero = target.querySelector('section.hero') as HTMLElement;
+		const hero = target.querySelector('.hero-layer') as HTMLElement;
 		expect(hero.classList.contains('framing-contain')).toBe(false);
 		expect(hero.classList.contains('framing-focus')).toBe(false);
 		expect(target.querySelector('.hero-backdrop')).toBeNull();
@@ -87,7 +87,7 @@ describe('home hero framing experiment', () => {
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(COVER_WHOLE));
-		expect(target.querySelector('section.hero')?.classList.contains('framing-contain')).toBe(true);
+		expect(target.querySelector('.hero-layer')?.classList.contains('framing-contain')).toBe(true);
 		const backdrop = target.querySelector('.hero-backdrop');
 		expect(backdrop?.getAttribute('src')).toBe(img.getAttribute('src'));
 	});
@@ -100,10 +100,36 @@ describe('home hero framing experiment', () => {
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(COVER_WHOLE));
-		expect(target.querySelector('section.hero')?.classList.contains('framing-pillar')).toBe(true);
+		expect(target.querySelector('.hero-layer')?.classList.contains('framing-pillar')).toBe(true);
 		expect(target.querySelector('.hero-backdrop')?.getAttribute('src')).toBe(
 			img.getAttribute('src')
 		);
+	});
+
+	it('leaves a show with no cover on master’s blurred poster under every framing', async () => {
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
+				HttpResponse.json([
+					{
+						...kitsuRef('2', 'Trigun', 26),
+						poster_image: { large: 'https://media.kitsu.app/anime/2/poster/large.jpg' },
+						cover_image: null
+					}
+				])
+			)
+		);
+		localStorage.setItem(
+			HERO_EXPERIMENT_STORAGE_KEY,
+			JSON.stringify({ framing: 'pillar', source: 'anilist' })
+		);
+		app = mount(HomePage, { target });
+		const img = await heroImage();
+		expect(img.classList.contains('fallback')).toBe(true);
+		// No framing class anywhere in the hero: its scrim stays master's.
+		for (const f of ['framing-contain', 'framing-pillar', 'framing-focus']) {
+			expect(target.querySelector(`section.hero .${f}, section.hero.${f}`)).toBeNull();
+		}
+		expect(target.querySelector('.hero-backdrop')).toBeNull();
 	});
 
 	it('takes AniList’s banner first under the AniList source', async () => {
@@ -114,7 +140,7 @@ describe('home hero framing experiment', () => {
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(BANNER));
-		expect(target.querySelector('section.hero')?.classList.contains('framing-focus')).toBe(true);
+		expect(target.querySelector('.hero-layer')?.classList.contains('framing-focus')).toBe(true);
 		expect(target.querySelector('.hero-backdrop')).toBeNull();
 	});
 });
