@@ -1869,6 +1869,8 @@ async fn a_year_or_format_tag_does_not_hide_the_entry_before() {
         "Show [OVA]",
         "Show (2020) Season 1",
         "Show （ONA）",
+        "Show （ＴＶ）",
+        "Show Season 1 （２０２０）",
     ] {
         let site = pool_of(&["Show 2"], Some(12), 2020, "Show 2", &[("x", listing, 12)]);
         if let Ok(p) = walk_over(site).await {
