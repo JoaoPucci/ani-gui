@@ -17,6 +17,10 @@ pub(crate) use title_past::*;
 mod title_name;
 pub(crate) use title_name::*;
 
+#[path = "play_native_title_beside.rs"]
+mod title_beside;
+pub(crate) use title_beside::*;
+
 /// The divisions `sibling` names as its own right after `wide`'s stem
 /// ([`divisions_beside`]), with their kinds: "Attack on Titan Season 3
 /// Part 2" beside "Attack on Titan Season 3" names part 2;
