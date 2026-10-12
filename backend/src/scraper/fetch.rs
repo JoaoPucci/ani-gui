@@ -447,8 +447,17 @@ impl Fetch for CurlImpersonateFetch {
     /// The hops share the transport's one deadline, so a chain ends
     /// there however many hops it takes; each hop is also bounded by
     /// curl's own `--max-time`, which bounded a whole `-L` chain.
+    /// A request that is not held is one transfer, curl's own `-L`
+    /// chain, and never enters the hop loop.
     async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse> {
-        tokio::time::timeout(self.deadline, self.follow_on_origin(req))
+        let transfer = async {
+            if req.held_to_origin {
+                self.follow_on_origin(req).await
+            } else {
+                self.fetch_once(req).await.map(|(resp, _)| resp)
+            }
+        };
+        tokio::time::timeout(self.deadline, transfer)
             .await
             .unwrap_or(Err(AniError::Timeout))
     }
