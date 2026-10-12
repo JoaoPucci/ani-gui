@@ -1827,3 +1827,33 @@ async fn a_separator_does_not_hide_the_entry_before() {
         }
     }
 }
+
+/// A sibling naming a season before W's is a P whatever part it names
+/// besides — however the season is written, and after a part too — so
+/// it never completes W and nothing is cut.
+#[tokio::test]
+async fn a_season_before_w_disqualifies_a_sibling_whatever_its_part() {
+    for (entry, wide, sibling) in [
+        ("Show Season 3", "Show Season 3", "Show Season 2 Part 2"),
+        ("Show Season 3", "Show Season 3", "Show II Part 2"),
+        (
+            "Show Season 3",
+            "Show Season 3",
+            "Show Second Season Part 2",
+        ),
+        ("Show Season 3", "Show Season 3", "Show Part 2 Season 2"),
+        ("ショー 第3期", "ショー第3期", "ショー第二期第2部"),
+        ("ショー 第3期", "ショー第3期", "ショー第2期第2部"),
+    ] {
+        let site = pool_of(
+            &[entry],
+            Some(12),
+            2020,
+            entry,
+            &[("w", wide, 24), ("s", sibling, 12)],
+        );
+        if let Ok(p) = walk_over(site).await {
+            panic!("{sibling} beside {wide}: picked {}", p.hit.slug);
+        }
+    }
+}
