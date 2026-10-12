@@ -1,6 +1,7 @@
-// Acceptance: the detail hero renders the framing and image source the
-// stored preferences name, the pre-banner rendering when nothing is
-// stored, and the blurred poster for a show with no cover.
+// Acceptance: the detail hero fills its height with AniList's banner by
+// default — in a production build as much as in a dev one — falling
+// back to the whole Kitsu cover and then the blurred poster, and
+// renders the framing and image source the stored preferences name.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -59,9 +60,10 @@ afterEach(() => {
 	delete g.EventSource;
 	target.remove();
 	localStorage.clear();
+	vi.unstubAllEnvs();
 });
 
-function useShow(withCover: boolean) {
+function useShow({ cover = true, banner = true }: { cover?: boolean; banner?: boolean } = {}) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
@@ -69,10 +71,10 @@ function useShow(withCover: boolean) {
 				...kitsuRef(KITSU_ID, 'Ongoing Show', 12),
 				status: 'finished',
 				poster_image: { large: POSTER },
-				cover_image: withCover
+				cover_image: cover
 					? { tiny: null, small: null, large: COVER, original: COVER_WHOLE }
 					: null,
-				anilist_banner: withCover ? BANNER : null
+				anilist_banner: banner ? BANNER : null
 			})
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
@@ -93,8 +95,14 @@ function useShow(withCover: boolean) {
 	);
 }
 
-function choose(framing: string, source: string, controls = false) {
+function store(framing: string, source: string, controls = false) {
 	localStorage.setItem(HERO_PREFS_STORAGE_KEY, JSON.stringify({ framing, source, controls }));
+}
+
+/** A production build: `import.meta.env.DEV` is false. */
+function production() {
+	vi.stubEnv('DEV', false);
+	vi.stubEnv('PROD', true);
 }
 
 async function heroImage(): Promise<HTMLImageElement> {
@@ -110,17 +118,8 @@ const framingClasses = () =>
 	);
 
 describe('detail hero framing', () => {
-	it('renders the top crop of Kitsu’s cover when nothing is stored', async () => {
-		useShow(true);
-		app = mount(DetailPage, { target });
-		expect((await heroImage()).getAttribute('src')).toContain(proxied(COVER));
-		expect(framingClasses()).toEqual([]);
-		expect(target.querySelector('.hero-backdrop')).toBeNull();
-	});
-
-	it('fills the height with AniList’s banner over a blurred copy under the AniList source', async () => {
-		useShow(true);
-		choose('pillar', 'anilist');
+	it('fills the height with AniList’s banner over a blurred copy when nothing is stored', async () => {
+		useShow();
 		app = mount(DetailPage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(BANNER));
@@ -130,36 +129,71 @@ describe('detail hero framing', () => {
 		);
 	});
 
+	it('does so in a production build', async () => {
+		useShow();
+		production();
+		app = mount(DetailPage, { target });
+		const img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(BANNER));
+		expect(framingClasses()).toEqual(['framing-pillar']);
+		expect(target.querySelector('.hero-backdrop')).not.toBeNull();
+	});
+
+	it('fills the height with the whole Kitsu cover when AniList has no banner', async () => {
+		useShow({ banner: false });
+		app = mount(DetailPage, { target });
+		expect((await heroImage()).getAttribute('src')).toContain(proxied(COVER_WHOLE));
+		expect(framingClasses()).toEqual(['framing-pillar']);
+	});
+
+	it('renders the top crop of Kitsu’s cover when that is stored', async () => {
+		useShow();
+		store('top', 'kitsu');
+		app = mount(DetailPage, { target });
+		expect((await heroImage()).getAttribute('src')).toContain(proxied(COVER));
+		expect(framingClasses()).toEqual([]);
+		expect(target.querySelector('.hero-backdrop')).toBeNull();
+	});
+
 	it('never crops the whole Kitsu upload under the Kitsu source', async () => {
-		useShow(true);
-		choose('contain', 'kitsu');
+		useShow();
+		store('contain', 'kitsu');
 		app = mount(DetailPage, { target });
 		expect((await heroImage()).getAttribute('src')).toContain(proxied(COVER_WHOLE));
 		expect(framingClasses()).toEqual(['framing-contain']);
 	});
 
+	it('keeps the blurred poster for a show with no cover', async () => {
+		useShow({ cover: false, banner: false });
+		store('focus', 'anilist');
+		app = mount(DetailPage, { target });
+		expect((await heroImage()).getAttribute('src')).toContain(proxied(POSTER));
+		expect(target.querySelector('section.hero')?.classList.contains('hero-fallback')).toBe(true);
+		expect(framingClasses()).toEqual([]);
+		expect(target.querySelector('.hero-backdrop')).toBeNull();
+	});
+
 	it('shows no framing switch until the diagnostics page turns it on', async () => {
-		useShow(true);
+		useShow();
 		app = mount(DetailPage, { target });
 		await heroImage();
 		expect(target.querySelector('.hero-framing-switch')).toBeNull();
 	});
 
 	it('shows the framing switch once the diagnostics page has turned it on', async () => {
-		useShow(true);
-		choose('pillar', 'anilist', true);
+		useShow();
+		store('pillar', 'anilist', true);
 		app = mount(DetailPage, { target });
 		await heroImage();
 		expect(target.querySelector('.hero-framing-switch')).not.toBeNull();
 	});
 
-	it('keeps the blurred poster for a show with no cover', async () => {
-		useShow(false);
-		choose('focus', 'anilist');
+	it('shows the framing switch in a production build once it is turned on', async () => {
+		useShow();
+		production();
+		store('pillar', 'anilist', true);
 		app = mount(DetailPage, { target });
-		expect((await heroImage()).getAttribute('src')).toContain(proxied(POSTER));
-		expect(target.querySelector('section.hero')?.classList.contains('hero-fallback')).toBe(true);
-		expect(framingClasses()).toEqual([]);
-		expect(target.querySelector('.hero-backdrop')).toBeNull();
+		await heroImage();
+		expect(target.querySelector('.hero-framing-switch')).not.toBeNull();
 	});
 });

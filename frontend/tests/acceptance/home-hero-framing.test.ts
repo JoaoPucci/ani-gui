@@ -1,6 +1,7 @@
-// Acceptance: the home hero renders the framing and image source the
-// stored preferences name, and the pre-banner rendering when nothing
-// is stored.
+// Acceptance: the home hero fills its height with AniList's banner by
+// default — in a production build as much as in a dev one — falling
+// back to the whole Kitsu cover and then the blurred poster, and
+// renders the framing and image source the stored preferences name.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -30,11 +31,11 @@ const COVER = 'https://media.kitsu.app/anime/1/cover_image/large.jpg';
 const COVER_WHOLE = 'https://media.kitsu.app/anime/1/cover_image/original.jpg';
 const BANNER = 'https://s4.anilist.co/file/anilistcdn/media/anime/banner/1.jpg';
 
-function featured() {
+function featured(banner: string | null = BANNER) {
 	return {
 		...kitsuRef('1', 'Cowboy Bebop', 26),
 		cover_image: { tiny: null, small: null, large: COVER, original: COVER_WHOLE },
-		anilist_banner: BANNER
+		anilist_banner: banner
 	};
 }
 
@@ -46,11 +47,7 @@ beforeEach(() => {
 	localStorage.clear();
 	target = document.createElement('div');
 	document.body.appendChild(target);
-	server.use(
-		...homeHandlers({}, [
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([featured()]))
-		])
-	);
+	serve(featured());
 });
 
 afterEach(() => {
@@ -58,7 +55,26 @@ afterEach(() => {
 	app = null;
 	target.remove();
 	localStorage.clear();
+	vi.unstubAllEnvs();
 });
+
+function serve(show: ReturnType<typeof featured> | Record<string, unknown>) {
+	server.use(
+		...homeHandlers({}, [
+			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([show]))
+		])
+	);
+}
+
+function store(framing: string, source: string, controls = false) {
+	localStorage.setItem(HERO_PREFS_STORAGE_KEY, JSON.stringify({ framing, source, controls }));
+}
+
+/** A production build: `import.meta.env.DEV` is false. */
+function production() {
+	vi.stubEnv('DEV', false);
+	vi.stubEnv('PROD', true);
+}
 
 async function heroImage(): Promise<HTMLImageElement> {
 	await vi.waitFor(() => expect(target.querySelector('.hero .hero-img')).not.toBeNull(), {
@@ -67,61 +83,76 @@ async function heroImage(): Promise<HTMLImageElement> {
 	return target.querySelector('.hero .hero-img') as HTMLImageElement;
 }
 const proxied = (url: string) => `url=${encodeURIComponent(url)}`;
+const layer = () => target.querySelector('.hero-layer') as HTMLElement;
+const framingClasses = () =>
+	['framing-contain', 'framing-pillar', 'framing-focus'].filter((f) =>
+		layer().classList.contains(f)
+	);
 
 describe('home hero framing', () => {
-	it('renders the top crop of Kitsu’s cover when nothing is stored', async () => {
+	it('fills the height with AniList’s banner over a blurred copy when nothing is stored', async () => {
+		app = mount(HomePage, { target });
+		const img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(BANNER));
+		expect(framingClasses()).toEqual(['framing-pillar']);
+		expect(target.querySelector('.hero-backdrop')?.getAttribute('src')).toBe(
+			img.getAttribute('src')
+		);
+	});
+
+	it('does so in a production build', async () => {
+		production();
+		app = mount(HomePage, { target });
+		const img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(BANNER));
+		expect(framingClasses()).toEqual(['framing-pillar']);
+		expect(target.querySelector('.hero-backdrop')).not.toBeNull();
+	});
+
+	it('fills the height with the whole Kitsu cover when AniList has no banner', async () => {
+		serve(featured(null));
+		app = mount(HomePage, { target });
+		const img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(COVER_WHOLE));
+		expect(framingClasses()).toEqual(['framing-pillar']);
+	});
+
+	it('renders the top crop of Kitsu’s cover when that is stored', async () => {
+		store('top', 'kitsu');
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(COVER));
-		const hero = target.querySelector('.hero-layer') as HTMLElement;
-		expect(hero.classList.contains('framing-contain')).toBe(false);
-		expect(hero.classList.contains('framing-focus')).toBe(false);
+		expect(framingClasses()).toEqual([]);
 		expect(target.querySelector('.hero-backdrop')).toBeNull();
 	});
 
 	it('never crops: the whole upload over a blurred copy of itself', async () => {
-		localStorage.setItem(
-			HERO_PREFS_STORAGE_KEY,
-			JSON.stringify({ framing: 'contain', source: 'kitsu' })
-		);
+		store('contain', 'kitsu');
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(COVER_WHOLE));
-		expect(target.querySelector('.hero-layer')?.classList.contains('framing-contain')).toBe(true);
+		expect(framingClasses()).toEqual(['framing-contain']);
 		const backdrop = target.querySelector('.hero-backdrop');
 		expect(backdrop?.getAttribute('src')).toBe(img.getAttribute('src'));
 	});
 
-	it('fills the height: the whole upload over a blurred copy, cropped at the sides only', async () => {
-		localStorage.setItem(
-			HERO_PREFS_STORAGE_KEY,
-			JSON.stringify({ framing: 'pillar', source: 'kitsu' })
-		);
+	it('fills the height with the whole Kitsu upload under the Kitsu source', async () => {
+		store('pillar', 'kitsu');
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.getAttribute('src')).toContain(proxied(COVER_WHOLE));
-		expect(target.querySelector('.hero-layer')?.classList.contains('framing-pillar')).toBe(true);
+		expect(framingClasses()).toEqual(['framing-pillar']);
 		expect(target.querySelector('.hero-backdrop')?.getAttribute('src')).toBe(
 			img.getAttribute('src')
 		);
 	});
 
 	it('leaves a show with no cover on the blurred poster under every framing', async () => {
-		server.use(
-			http.get(`${API_BASE}/api/kitsu/trending-anilist`, () =>
-				HttpResponse.json([
-					{
-						...kitsuRef('2', 'Trigun', 26),
-						poster_image: { large: 'https://media.kitsu.app/anime/2/poster/large.jpg' },
-						cover_image: null
-					}
-				])
-			)
-		);
-		localStorage.setItem(
-			HERO_PREFS_STORAGE_KEY,
-			JSON.stringify({ framing: 'pillar', source: 'anilist' })
-		);
+		serve({
+			...kitsuRef('2', 'Trigun', 26),
+			poster_image: { large: 'https://media.kitsu.app/anime/2/poster/large.jpg' },
+			cover_image: null
+		});
 		app = mount(HomePage, { target });
 		const img = await heroImage();
 		expect(img.classList.contains('fallback')).toBe(true);
@@ -132,6 +163,15 @@ describe('home hero framing', () => {
 		expect(target.querySelector('.hero-backdrop')).toBeNull();
 	});
 
+	it('takes AniList’s banner first under the centre crop too', async () => {
+		store('focus', 'anilist');
+		app = mount(HomePage, { target });
+		const img = await heroImage();
+		expect(img.getAttribute('src')).toContain(proxied(BANNER));
+		expect(framingClasses()).toEqual(['framing-focus']);
+		expect(target.querySelector('.hero-backdrop')).toBeNull();
+	});
+
 	it('shows no framing switch until the diagnostics page turns it on', async () => {
 		app = mount(HomePage, { target });
 		await heroImage();
@@ -139,24 +179,17 @@ describe('home hero framing', () => {
 	});
 
 	it('shows the framing switch once the diagnostics page has turned it on', async () => {
-		localStorage.setItem(
-			HERO_PREFS_STORAGE_KEY,
-			JSON.stringify({ framing: 'pillar', source: 'anilist', controls: true })
-		);
+		store('pillar', 'anilist', true);
 		app = mount(HomePage, { target });
 		await heroImage();
 		expect(target.querySelector('.hero-framing-switch')).not.toBeNull();
 	});
 
-	it('takes AniList’s banner first under the AniList source', async () => {
-		localStorage.setItem(
-			HERO_PREFS_STORAGE_KEY,
-			JSON.stringify({ framing: 'focus', source: 'anilist' })
-		);
+	it('shows the framing switch in a production build once it is turned on', async () => {
+		production();
+		store('pillar', 'anilist', true);
 		app = mount(HomePage, { target });
-		const img = await heroImage();
-		expect(img.getAttribute('src')).toContain(proxied(BANNER));
-		expect(target.querySelector('.hero-layer')?.classList.contains('framing-focus')).toBe(true);
-		expect(target.querySelector('.hero-backdrop')).toBeNull();
+		await heroImage();
+		expect(target.querySelector('.hero-framing-switch')).not.toBeNull();
 	});
 });
