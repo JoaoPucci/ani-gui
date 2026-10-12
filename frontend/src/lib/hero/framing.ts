@@ -116,7 +116,7 @@ function firstOf(bag: ImageBag | null, order: readonly Slot[]): string | null {
 	if (!bag) return null;
 	for (const slot of order) {
 		const v = bag[slot];
-		if (v) return v;
+		if (v != null) return v;
 	}
 	return null;
 }
@@ -149,9 +149,13 @@ export function pickHeroImage(
 		d.cover_image,
 		exp.framing === 'contain' || exp.framing === 'pillar' ? COVER_WHOLE : COVER_ORDER[surface]
 	);
-	if (cover) return { url: cover, isCover: true, origin: 'kitsu' };
+	if (cover !== null) {
+		// The backend fills a null Kitsu cover with AniList's banner.
+		const origin = cover === d.anilist_banner ? 'anilist' : 'kitsu';
+		return { url: cover, isCover: true, origin };
+	}
 	const poster = firstOf(d.poster_image, POSTER_ORDER[surface]);
-	if (poster) return { url: poster, isCover: false, origin: 'poster' };
+	if (poster !== null) return { url: poster, isCover: false, origin: 'poster' };
 	return { url: null, isCover: false, origin: null };
 }
 
@@ -163,5 +167,8 @@ export function naturalRatio(width: number, height: number): number | null {
 /** `href` without `?hero=` / `?heroSrc=`, so a choice made in the switch
  *  is not overridden by the query on the next load. */
 export function withoutExperimentQuery(href: string): string {
-	return href;
+	const url = new URL(href);
+	url.searchParams.delete('hero');
+	url.searchParams.delete('heroSrc');
+	return url.toString();
 }

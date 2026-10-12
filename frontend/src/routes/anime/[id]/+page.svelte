@@ -1439,9 +1439,9 @@
 		<section
 			class="hero"
 			class:hero-fallback={!hero.isCover}
-			class:framing-contain={heroExp.framing === 'contain'}
-			class:framing-pillar={heroExp.framing === 'pillar'}
-			class:framing-focus={heroExp.framing === 'focus'}
+			class:framing-contain={hero.isCover && heroExp.framing === 'contain'}
+			class:framing-pillar={hero.isCover && heroExp.framing === 'pillar'}
+			class:framing-focus={hero.isCover && heroExp.framing === 'focus'}
 		>
 			{#if hero.url && hero.isCover && (heroExp.framing === 'contain' || heroExp.framing === 'pillar')}
 				<img
@@ -1457,8 +1457,8 @@
 					src={hero.url}
 					alt=""
 					style:transform={heroTransform(scrollY, hero.isCover)}
-					style:--ratio={heroRatios[heroId]}
-					onload={(e) => onHeroLoad(heroId, e)}
+					style:--ratio={import.meta.env.DEV ? heroRatios[heroId] : undefined}
+					onload={import.meta.env.DEV ? (e) => onHeroLoad(heroId, e) : undefined}
 				/>
 			{/if}
 			<div class="hero-scrim" aria-hidden="true"></div>

@@ -793,9 +793,6 @@
 <!-- Hero. -->
 <section
 	class="hero"
-	class:framing-contain={heroExp.framing === 'contain'}
-	class:framing-pillar={heroExp.framing === 'pillar'}
-	class:framing-focus={heroExp.framing === 'focus'}
 	style:--accent={featuredAccent}
 	aria-label={m.home_hero_aria_label()}
 	onmouseenter={() => (heroPaused = true)}
@@ -807,7 +804,14 @@
 		{#key featured.id}
 			{@const hero = heroFor(featured)}
 			{@const synopsis = snippetOf(featured.synopsis)}
-			<div class="hero-layer" in:fade={{ duration: 480 }} out:fade={{ duration: 480 }}>
+			<div
+				class="hero-layer"
+				class:framing-contain={hero.isCover && heroExp.framing === 'contain'}
+				class:framing-pillar={hero.isCover && heroExp.framing === 'pillar'}
+				class:framing-focus={hero.isCover && heroExp.framing === 'focus'}
+				in:fade={{ duration: 480 }}
+				out:fade={{ duration: 480 }}
+			>
 				{#if hero.url && hero.isCover && (heroExp.framing === 'contain' || heroExp.framing === 'pillar')}
 					<img
 						class="hero-backdrop"
@@ -823,8 +827,8 @@
 						src={hero.url}
 						alt=""
 						style:transform={heroTransform(scrollY, hero.isCover)}
-						style:--ratio={heroRatios[featured.id]}
-						onload={(e) => onHeroLoad(featured.id, e)}
+						style:--ratio={import.meta.env.DEV ? heroRatios[featured.id] : undefined}
+						onload={import.meta.env.DEV ? (e) => onHeroLoad(featured.id, e) : undefined}
 					/>
 				{/if}
 				<div class="hero-scrim" aria-hidden="true"></div>
@@ -1420,8 +1424,8 @@
 	}
 	/* Never crop: the whole image, centred, over a blurred, dimmed
 	   copy of itself that carries its colour to the band's edges. */
-	.framing-contain .hero-layer,
-	.framing-pillar .hero-layer {
+	.hero-layer.framing-contain,
+	.hero-layer.framing-pillar {
 		container-type: size;
 	}
 	.hero-backdrop {

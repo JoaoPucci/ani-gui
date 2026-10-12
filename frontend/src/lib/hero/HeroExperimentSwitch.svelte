@@ -7,6 +7,7 @@
 <script lang="ts">
 	import {
 		HERO_EXPERIMENT_STORAGE_KEY,
+		withoutExperimentQuery,
 		type HeroExperiment,
 		type HeroFraming,
 		type HeroOrigin,
@@ -22,7 +23,8 @@
 
 	function choose(next: HeroExperiment) {
 		localStorage.setItem(HERO_EXPERIMENT_STORAGE_KEY, JSON.stringify(next));
-		location.reload();
+		// Reload without `?hero=` / `?heroSrc=`, which would override it.
+		location.replace(withoutExperimentQuery(location.href));
 	}
 </script>
 
