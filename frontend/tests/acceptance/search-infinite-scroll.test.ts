@@ -106,6 +106,9 @@ class ControlledObserver {
 			);
 		}
 	}
+	unobserve(el: Element) {
+		this.entry.targets = this.entry.targets.filter((t) => t !== el);
+	}
 	disconnect() {
 		const i = observers.indexOf(this.entry);
 		if (i >= 0) observers.splice(i, 1);
@@ -504,5 +507,55 @@ describe('/search infinite scroll', () => {
 		await until(() => screen().includes('Tall result'), 'the tall grid');
 		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
 		expect(asked).toEqual(['short@0', 'tall@0']);
+	});
+
+	it('one reach of the bottom loads one page, not one per settle', async () => {
+		// The reader reaches the bottom once and the next page lands
+		// below them. Nothing has measured the marker since; the old "in
+		// reach" must not load the page after that as well.
+		const offsets: number[] = [];
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset } = (await request.json()) as { offset: number };
+				offsets.push(offset);
+				return HttpResponse.json({
+					hits: [ref(String(offset + 1), `Show ${offset + 1}`)],
+					next_offset: offset < 100 ? offset + 20 : null
+				});
+			})
+		);
+
+		setQuery('dragon ball');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Show 1'), 'the first page');
+		reachBottom();
+		await until(() => screen().includes('Show 21'), 'the reached page');
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(offsets).toEqual([0, 20]);
+	});
+
+	it('a page that leaves the bottom in reach is measured again and the next one loads', async () => {
+		// The other half: a grid still short once its page lands keeps
+		// filling, because the marker is measured afresh after each page.
+		inReachOnObserve = () => !screen().includes('Show 41');
+		const offsets: number[] = [];
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset } = (await request.json()) as { offset: number };
+				offsets.push(offset);
+				return HttpResponse.json({
+					hits: [ref(String(offset + 1), `Show ${offset + 1}`)],
+					next_offset: offset < 100 ? offset + 20 : null
+				});
+			})
+		);
+
+		setQuery('dragon ball');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Show 41'), 'the grid to fill to the third page');
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(offsets).toEqual([0, 20, 40]);
 	});
 });

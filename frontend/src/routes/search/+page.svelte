@@ -25,7 +25,7 @@
 	import { filterAvailableProgressive } from '$lib/availability/progressive';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
 	import { createSearchRunner } from '$lib/search/run-search';
-	import { shouldAutoLoad, type PagingPhase } from '$lib/search/paging';
+	import { measured, shouldAutoLoad, type PagingPhase } from '$lib/search/paging';
 	import { watchSentinel } from '$lib/search/sentinel';
 	import { staggerSlots } from '$lib/search/stagger';
 	import { keepFocus } from '$lib/search/keep-focus';
@@ -118,7 +118,8 @@
 	const slotOf = $derived.by(() => (slots = staggerSlots(slots, displayed ?? [])));
 
 	$effect(() => {
-		if (shouldAutoLoad(phase, bottomInReach, activeSubtypes.size > 0)) searchRunner.loadMore();
+		if (shouldAutoLoad(phase, measured(bottomInReach), activeSubtypes.size > 0))
+			searchRunner.loadMore();
 	});
 
 	// Focus handed on by a leaving paging button lands here: a silent
@@ -133,7 +134,7 @@
 	const keepFocusInFolio = (node: HTMLElement) => keepFocus(node, () => focusAnchor);
 
 	function sentinel(node: HTMLElement) {
-		const stop = watchSentinel(node, (inReach) => (bottomInReach = inReach));
+		const { stop } = watchSentinel(node, (inReach) => (bottomInReach = inReach));
 		return {
 			destroy() {
 				stop();

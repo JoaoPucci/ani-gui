@@ -7,7 +7,11 @@ import {
 	canLoadMore,
 	freshHits,
 	shouldAutoLoad,
-	type PagingPhase
+	UNMEASURED,
+	measured,
+	spent,
+	type PagingPhase,
+	type Reach
 } from './paging';
 
 const ref = (id: string) => ({ id, canonical_title: `Title ${id}` }) as KitsuAnimeRef;
@@ -100,11 +104,14 @@ describe('canLoadMore', () => {
 	});
 });
 
+const IN_REACH = measured(true);
+
 describe('shouldAutoLoad', () => {
-	it('loads by itself only when idle with the bottom of the grid in view', () => {
-		const auto = PHASES.filter((p) => shouldAutoLoad(p, true, false)).map((p) => p.kind);
+	it('loads by itself only when idle on a fresh in-reach measurement', () => {
+		const auto = PHASES.filter((p) => shouldAutoLoad(p, IN_REACH, false)).map((p) => p.kind);
 		expect(auto).toEqual(['idle']);
-		expect(PHASES.some((p) => shouldAutoLoad(p, false, false))).toBe(false);
+		expect(PHASES.some((p) => shouldAutoLoad(p, measured(false), false))).toBe(false);
+		expect(PHASES.some((p) => shouldAutoLoad(p, UNMEASURED, false))).toBe(false);
 	});
 
 	it('never loads by itself while a type filter narrows the grid', () => {
@@ -112,6 +119,29 @@ describe('shouldAutoLoad', () => {
 		// every settled page would fetch the next: a crawl through the
 		// whole search, unbounded by the empty-page hold because the
 		// pages are not empty, only filtered out of view.
-		expect(PHASES.some((p) => shouldAutoLoad(p, true, true))).toBe(false);
+		expect(PHASES.some((p) => shouldAutoLoad(p, IN_REACH, true))).toBe(false);
+	});
+
+	it('a spent measurement loads nothing until a new one arrives', () => {
+		// One intersection, one page: the measurement that started a
+		// load, or that predates a settled page, says where the marker
+		// was before the grid grew.
+		const idle: PagingPhase = { kind: 'idle' };
+		expect(shouldAutoLoad(idle, spent(IN_REACH), false)).toBe(false);
+		expect(shouldAutoLoad(idle, spent(spent(IN_REACH)), false)).toBe(false);
+		expect(shouldAutoLoad(idle, measured(true), false)).toBe(true);
+	});
+
+	it('only a measurement taken after the last spend can load (property)', () => {
+		// Any sequence of measurements and spends: a load is allowed
+		// exactly when the last step was an in-reach measurement.
+		fc.assert(
+			fc.property(fc.array(fc.oneof(fc.constant<'spend'>('spend'), fc.boolean())), (steps) => {
+				let reach: Reach = UNMEASURED;
+				for (const step of steps) reach = step === 'spend' ? spent(reach) : measured(step);
+				const last = steps.at(-1);
+				expect(shouldAutoLoad({ kind: 'idle' }, reach, false)).toBe(last === true);
+			})
+		);
 	});
 });

@@ -13,20 +13,29 @@ export const SENTINEL_MARGIN = '0px 0px 800px 0px';
 type ObserverCtor = new (
 	cb: IntersectionObserverCallback,
 	init?: IntersectionObserverInit
-) => Pick<IntersectionObserver, 'observe' | 'disconnect'>;
+) => Pick<IntersectionObserver, 'observe' | 'unobserve' | 'disconnect'>;
 
-/** Start watching `node`; `onChange` hears every change of whether it
- *  is in reach. Returns the function that stops watching. Without an
- *  observer the marker never reports in reach — nothing auto-loads,
- *  and the grid is the first page alone. */
+/** A watched marker: stop watching it, or ask for a new measurement. */
+export interface SentinelWatch {
+	stop: () => void;
+	/** Measure again: the observer reports the marker's state against
+	 *  the layout as it stands now — after a page has landed, say —
+	 *  whether or not it changed. */
+	remeasure: () => void;
+}
+
+/** Start watching `node`; `onChange` hears every measurement of
+ *  whether it is in reach. Without an observer the marker never
+ *  reports in reach — nothing auto-loads, and the grid is the first
+ *  page alone. */
 export function watchSentinel(
 	node: Element,
 	onChange: (inReach: boolean) => void,
 	Observer: ObserverCtor | undefined = globalThis.IntersectionObserver
-): () => void {
+): SentinelWatch {
 	if (!Observer) {
 		onChange(false);
-		return () => {};
+		return { stop: () => {}, remeasure: () => {} };
 	}
 	const observer = new Observer(
 		// Entries arrive oldest first; a batch is never empty.
@@ -34,5 +43,5 @@ export function watchSentinel(
 		{ root: null, rootMargin: SENTINEL_MARGIN }
 	);
 	observer.observe(node);
-	return () => observer.disconnect();
+	return { stop: () => observer.disconnect(), remeasure: () => {} };
 }

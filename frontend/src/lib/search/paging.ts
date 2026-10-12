@@ -72,17 +72,39 @@ export function canLoadMore(phase: PagingPhase): boolean {
 	return phase.kind === 'idle' || phase.kind === 'failed' || phase.kind === 'held';
 }
 
+/** What the page knows about the marker under the grid: whether its
+ *  latest measurement put it in reach, and whether that measurement is
+ *  still fresh — taken since the last page settled and not yet used to
+ *  load one. */
+export interface Reach {
+	inReach: boolean;
+	fresh: boolean;
+}
+
+/** Nothing measured yet: a new search, or a marker just unmounted. */
+export const UNMEASURED: Reach = { inReach: false, fresh: false };
+
+/** A new measurement from the marker's observer. */
+export function measured(inReach: boolean): Reach {
+	return { inReach, fresh: true };
+}
+
+/** The measurement used up: by the load it started, or by a page
+ *  settling, which moves the marker the measurement was taken at. The
+ *  next load by itself waits for a measurement taken after that. */
+export function spent(reach: Reach): Reach {
+	return reach;
+}
+
 /** Whether the bottom of the grid coming into view loads the next page
  *  by itself. Only an idle search does: a failed or held one waits for
  *  the user's own action, so a page that keeps failing cannot spin.
  *  Nor does a `narrowed` grid — one a filter on the page hides part
  *  of: it can stay shorter than the screen, keeping the bottom in
  *  reach after every page, and its pages are not empty, only hidden,
- *  so the empty-page hold would never stop the walk. */
-export function shouldAutoLoad(
-	phase: PagingPhase,
-	sentinelVisible: boolean,
-	narrowed: boolean
-): boolean {
-	return !narrowed && sentinelVisible && phase.kind === 'idle';
+ *  so the empty-page hold would never stop the walk. And only on a
+ *  fresh measurement: one taken before the last page settled says
+ *  where the marker was, not where it is. */
+export function shouldAutoLoad(phase: PagingPhase, reach: Reach, narrowed: boolean): boolean {
+	return !narrowed && reach.inReach && phase.kind === 'idle';
 }
