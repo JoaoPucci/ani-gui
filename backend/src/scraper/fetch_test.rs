@@ -709,8 +709,11 @@ async fn get_is_a_headerless_fetch() {
 
 #[test]
 fn a_held_request_does_not_let_curl_follow_redirects() {
-    // The argv is the same on every platform (only the CA and cipher
-    // flags differ), so this holds for the Windows build as well.
+    // The flags this rests on — `-sS` without `-L`, and the trailer
+    // naming the redirect's target — are the same on every platform;
+    // what differs (the native CA store on Windows, the cipher list on
+    // macOS, the impersonation target) does not touch redirects, so
+    // this holds for the Windows build as well.
     for target in [None, Some("chrome136")] {
         let held = fetch_args(
             &FetchRequest::get("https://hianime.at/search?keyword=x").held_to_origin(),

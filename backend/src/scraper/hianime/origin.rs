@@ -7,8 +7,9 @@ use crate::scraper::fetch::{FetchRequest, FetchResponse};
 
 /// Refuse the answer to a request held to the client's origin
 /// (`base`) when it is not the origin's: a redirect the transport did
-/// not follow because it left the origin, which comes back as the
-/// 3xx itself, or a page another origin served all the same. Either is
+/// not follow — one that left the origin, or one with no target it
+/// could follow — which comes back as the 3xx itself, or a page
+/// another origin served all the same. Either is
 /// a parse failure — the walk fails over past it and the gate hears
 /// distress — rather than a parser reading another site's page as
 /// hianime's answer. A request that is not held, to the embed host or
@@ -23,7 +24,7 @@ pub(super) fn refuse_foreign(base: &str, req: &FetchRequest, resp: &FetchRespons
     }
     if (300..400).contains(&resp.status) || answered_elsewhere(base, &req.url, &resp.url) {
         return Err(AniError::ParseFailed {
-            detail: "hianime: a request to its origin was redirected off it or answered from another origin".into(),
+            detail: "hianime: a request to its origin ended on a redirect it did not follow, or was answered from another origin".into(),
         });
     }
     Ok(())
