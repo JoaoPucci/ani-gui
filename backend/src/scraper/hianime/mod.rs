@@ -718,6 +718,10 @@ fn weather_rank(weather: &AniError) -> u8 {
 mod tests;
 
 #[cfg(test)]
+#[path = "hianime_origin_test.rs"]
+mod origin_tests;
+
+#[cfg(test)]
 #[path = "hianime_prop_test.rs"]
 mod prop_tests;
 
