@@ -728,59 +728,82 @@ A survey, on 2026-10-12, of fields the metadata sources answer that the
 app does not show, kept so features can be derived from it. It records
 what each source was seen to return, not a design; whoever picks one up
 checks the source again. Not listed is what the app already reads from
-AniList: the airing status and schedule (`status`, `episodes`,
-`nextAiringEpisode`, `airingSchedule`) that gate and date episode
-tiles, the account list sync, and two artwork fields used only to fill
-gaps Kitsu leaves: the banner stands in for a detail page's cover when
-Kitsu has none, and per-episode thumbnails fill episodes Kitsu has no
-thumbnail for.
+AniList: the weekly trending order behind the home hero and Trending
+strip; the `id` and `idMal` lookups that bridge AniList entries to
+Kitsu and resolve tracker ids; the airing status and schedule
+(`status`, `episodes`, `nextAiringEpisode`, `airingSchedule`) that gate
+and date episode tiles; the signed-in account's profile (name, avatar,
+list count and mean score) and list sync; and two artwork fields used
+only to fill gaps Kitsu leaves: the banner stands in for a show's cover
+when Kitsu has none (on the detail page and on trending entries), and
+per-episode thumbnails fill episodes Kitsu has no thumbnail for.
 
-- **Accent colour.** AniList `coverImage.color` gives a show's colour in
-  CSS form where AniList has one; the field is nullable. The backend
-  already fetches it, but nothing in the renderer reads it: `accentFor()`
-  in `frontend/src/lib/design/accent.ts` hashes the Kitsu id into a fixed
-  eight-colour palette, and its TODO says to replace that with this
-  colour. The palette stays as the fallback for shows without one.
-
+- **Accent colour.** AniList `coverImage.color` gives a show's colour as
+  a hex string (`#bbf1a1` for Frieren) where AniList has one; the field
+  is nullable. The trending query already selects it, but only for
+  trending entries, and the bridge to Kitsu drops it; nothing in the
+  renderer reads it: `accentFor()` in `frontend/src/lib/design/accent.ts`
+  hashes the Kitsu id into a fixed eight-colour palette, and its TODO
+  says to replace that with this colour. The palette stays as the
+  fallback for shows without one.
 - **Title logos for the home banner.** Neither Kitsu nor AniList has
   logos. TMDB (`/tv/{id}/images`, `/movie/{id}/images`) returns
-  transparent title logos, and fanart.tv has clear-logo art. Both answer 401 without an API key, so
-  how many anime carry a logo was not measured. Kitsu maps to TVDB
-  only for older shows; the community mapping at
-  `github.com/Fribb/anime-lists` (`anime-list-mini.json`, about 39,600
-  entries) links Kitsu, MAL and AniList ids to TMDB and TVDB ids
-  (Frieren: Kitsu 46474, TMDB tv 209867, TVDB 424536). Open questions:
-  a key shipped inside an open-source app can be read out of it, the
-  alternative being a key the user supplies in Settings; TMDB requires
-  visible attribution; TMDB groups seasons under one show, so a later
-  season gets the series logo; titles without a logo keep the text.
-- **Studio.** AniList `studios(isMain: true)` names the main studio
-  ("MADHOUSE" for Frieren).
+  transparent title logos, and fanart.tv has clear-logo art. Both
+  answer 401 without an API key, so how many anime carry a logo was
+  not measured. Kitsu's mappings carry a TVDB id for older shows only,
+  in more than one form (`thetvdb` as `76885` or `267440/1`,
+  `thetvdb/series`, `thetvdb/season`); Demon Slayer and Frieren have
+  none. The community mapping at `github.com/Fribb/anime-lists`
+  (`anime-list-mini.json`, about 39,600 entries) links Kitsu, MAL and
+  AniList ids to TMDB and TVDB ids where it has them: about 22,000
+  entries carry a Kitsu id and about 8,500 a TMDB id, so the mapping is
+  itself a coverage limit (Frieren: Kitsu 46474, TMDB tv 209867, TVDB
+  424536). Open questions: a key shipped inside an open-source app can
+  be read out of it, the alternative being a key the user supplies in
+  Settings; TMDB requires visible attribution; TMDB groups seasons
+  under one show, so a later season gets the series logo; titles
+  without a logo keep the text.
+- **Studio.** AniList `studios(isMain: true)` lists the main studios:
+  usually one ("MADHOUSE" for Frieren), sometimes several (GAINAX and
+  Tatsunoko Production for Evangelion), none for some minor entries.
 - **Rankings.** AniList `rankings` gives entries such as "#1 highest
   rated all time" and "#51 most popular all time", with a context
   string and whether the ranking is all-time, for a year or for a
-  season.
+  season. The list is empty for minor shows. The detail page shows only
+  Kitsu's `popularityRank` today.
 - **Recommendations.** AniList `recommendations` lists related shows
-  readers recommend. The detail page already has a placeholder "Similar
-  titles" strip and a comment waiting for it.
+  readers recommend. The detail page's "Similar titles" strip is filled
+  today by a Kitsu search on the first words of the title; its comment
+  names AniList recommendations as the richer source.
 - **Official links.** AniList `externalLinks` lists the official site,
   social accounts and legitimate streaming services (Crunchyroll,
   Netflix, Hulu, Prime Video). A link's type, icon and colour are each
   optional (Frieren's official-site link has neither icon nor colour),
-  so a link without them still needs a way to be shown.
+  so a link without them still needs a way to be shown; links also
+  carry a language and an `isDisabled` flag.
 - **Openings and endings.** AnimeThemes answers a show's OP and ED
-  videos by MAL id; see the openings mode under "Three listening and
-  watching modes" below.
+  videos by MAL, AniList or Kitsu id; see the openings mode under
+  "Three listening and watching modes" below.
 - **Runtime.** Kitsu `episodeLength` and `totalLength` give minutes per
-  episode and for the whole show. `totalLength` is often null for a
-  show still airing (Frieren answers null; One Piece answers 33840).
-- **Trailer.** AniList `trailer` gives a video id and site (YouTube for
-  Frieren), and Kitsu `youtubeVideoId` the same for YouTube.
+  episode and for the whole show. Episode tiles already show each
+  episode's own `length`, but the show-level fields are unused.
+  `totalLength` is nullable regardless of airing status (Frieren,
+  finished, answers null; One Piece, still airing, answers 33840), and
+  `episodeLength` can be 0.
+- **Trailer.** AniList `trailer` gives a video id, site and thumbnail
+  where it has one (site `"youtube"` for Frieren; null for shows
+  without), and Kitsu `youtubeVideoId` a YouTube id of its own, also
+  nullable. The two need not agree (Frieren: AniList `tR8YH0G67Rk`,
+  Kitsu `qgQunxD0qCk`).
 - **Characters and cast.** AniList `characters` lists characters by
-  role with their voice actors per language.
+  role (`MAIN`, `SUPPORTING`, `BACKGROUND`) with their voice actors per
+  language. `voiceActors` answers null unless the query also selects
+  the edge's `node`, and minor shows have no characters at all.
 - **Relations.** AniList `relations` names prequels, sequels, side
-  stories and adaptations, each typed; a base for the franchise and
-  season grouping listed under Interface.
+  stories, adaptations and looser links by `relationType`, and includes
+  manga and novel entries, so grouping anime filters on the related
+  node's `type`; a base for the franchise and season grouping listed
+  under Interface.
 - **Spoiler-safe tags.** AniList `tags` carry a relevance rank and two
   spoiler flags: `isMediaSpoiler` (spoils this show) and
   `isGeneralSpoiler` (spoils any show it is on). Showing tags without
