@@ -101,3 +101,7 @@ impl EntryTitles<'_> {
                 .any(|t| normalized(t) == exact || carries_number_of(candidate, t))
     }
 }
+
+#[cfg(test)]
+#[path = "play_native_title_names_test.rs"]
+mod tests;
