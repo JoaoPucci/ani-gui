@@ -43,16 +43,21 @@ fn name_end(text: &str, named: &[String]) -> Option<usize> {
 }
 
 /// The marks written right after the name ending at `end`, up to the
-/// next letter or digit, without spaces and separators (":", "-",
-/// "–", "—", ",", "."): "'" for "Gintama'", "!!" for "Haikyuu!! 2nd
-/// Season", nothing for "Show: Season 1".
+/// next letter or digit, without spaces and [`SEPARATORS`]: "'" for
+/// "Gintama'", "!!" for "Haikyuu!! 2nd Season", nothing for "Show:
+/// Season 1", "ショー：第1期" or "[Oshi no Ko] 2nd Season".
 fn marks_after(text: &str, end: usize) -> String {
     text[end..]
         .chars()
         .take_while(|c| !c.is_alphanumeric())
-        .filter(|c| !c.is_whitespace() && !":-–—,.".contains(*c))
+        .filter(|c| !c.is_whitespace() && !SEPARATORS.contains(*c))
         .collect()
 }
+
+/// The marks that separate a name from what follows it rather than
+/// belong to it, full-width forms and a closing bracket around the
+/// name included.
+const SEPARATORS: &str = ":-–—~,.・、：－～，．]）)】」』";
 
 /// Whether `words` are first divisions and nothing else, each read by
 /// `division_at`, with the "Half" a first half writes after its
