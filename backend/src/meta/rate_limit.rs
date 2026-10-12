@@ -66,3 +66,7 @@ pub(crate) fn rate_limited(provider: &'static str, resp: &reqwest::Response) -> 
     );
     AniError::RateLimited { retry_after_secs }
 }
+
+#[cfg(test)]
+#[path = "rate_limit_prop_test.rs"]
+mod prop_tests;

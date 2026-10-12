@@ -72,3 +72,7 @@ pub(crate) async fn external_ids_for(state: &AppState, kitsu_id: &str) -> Result
 #[cfg(test)]
 #[path = "external_ids_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "external_ids_prop_test.rs"]
+mod prop_tests;
