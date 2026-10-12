@@ -36,3 +36,7 @@ pub(crate) fn attach(pool: &SqlitePool, detail: &mut KitsuAnimeRef) {
         detail.anilist_banner = remembered(pool, &detail.id);
     }
 }
+
+#[cfg(test)]
+#[path = "anilist_banner_memo_test.rs"]
+mod tests;
