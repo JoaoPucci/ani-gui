@@ -3,7 +3,7 @@
 //! entry, a broad listing's first half — split from
 //! `play_native_title_marker` for the per-file complexity bar.
 
-use super::super::play_native_title_marks::title_marks;
+use super::super::play_native_title_marks::{marks_agree, title_marks};
 use super::*;
 
 impl EntryTitles<'_> {
@@ -11,8 +11,10 @@ impl EntryTitles<'_> {
     /// broad listing: one of its titles carries the name `title` does
     /// ([`name`]), reads as it does ([`reading`]), and carries the same
     /// words past that name outside its divisions ([`undivided_rest`]),
-    /// written with the same marks and release year ([`title_marks`]):
-    /// "Gintama" is not "Gintama'", nor "Film (2019)" "Film (2020)".
+    /// written with the same primes and no conflicting release year
+    /// ([`title_marks`]): "Gintama" is not "Gintama'", nor "Film (2019)"
+    /// "Film (2020)", while "Haikyuu" is "Haikyuu!!" and "Remake" is
+    /// "Remake (2020)".
     /// "Show Season 2" and "Show Second Cour" are named by "Show 2nd
     /// Season"; "Other Show Season 2", which reads alike, is another
     /// show, and so are "Show 2nd Season: Extra Arc" and, for "Show 2:
@@ -29,7 +31,7 @@ impl EntryTitles<'_> {
             reading(t) == theirs
                 && name(t) == called
                 && undivided_rest(t) == rest
-                && title_marks(t) == marks
+                && marks_agree(&title_marks(t), &marks)
         })
     }
 
