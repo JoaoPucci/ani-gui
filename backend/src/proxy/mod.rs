@@ -4,16 +4,31 @@
 //!
 //! - `GET /healthz` — liveness probe used by the frontend bootstrap.
 //! - `GET /s/<session>/master.m3u8` — fetch + rewrite + return master.
-//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>` — proxy a segment.
+//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>[&k=pl&s=<stream>[&v=<variables key>]]`
+//!   — fetch + rewrite + return a rendition playlist when the master
+//!   marked it `k=pl` (with its kind of stream, `s=`, and the key the
+//!   session keeps that master response's variables under, `v=`, which
+//!   the playlist imports),
+//!   or, for a URL without a mark, when its path ends in lowercase
+//!   `.m3u8`.
+//! - `GET /s/<session>/seg?u=<base64-url>&t=<hmac>&k=md[&r=<stream>&d=<ms>]`
+//!   — proxy a segment, key or init object a media playlist named, a
+//!   master's session key or session data, or an unmarked URL whose
+//!   path does not end in `.m3u8`; a media segment names its kind of stream and
+//!   its duration, which the player's fetch of it notes to the budget.
 //!
 //! Every fetch upstream uses the [`StreamSession`]'s stored `Referer:`
 //! header, when the session stores one — an empty stored referer is a
 //! stream whose CDN asks for none, and the fetch then carries no such
 //! header. Segment URLs in rewritten manifests carry an HMAC signature
-//! the proxy verifies before issuing the upstream fetch.
+//! over the upstream and every mark beside it, which the proxy verifies
+//! before issuing the upstream fetch: a URI whose marks were changed or
+//! dropped is refused.
 
 pub mod host_budget;
+pub mod host_budget_demand;
 pub mod m3u8;
+pub mod m3u8_define;
 pub mod token;
 pub mod upstream;
 
@@ -33,11 +48,16 @@ use url::Url;
 
 use crate::error::AniError;
 
-pub use m3u8::{rewrite_master, rewrite_media, ProxyOrigin};
-pub use token::{
-    sign_segment, verify_segment, AppSecret, MediaKind, SessionId, SessionSubtitle, SessionTable,
-    StreamSession,
+use host_budget_demand::Stream;
+pub use m3u8::{
+    master_variables, rewrite_master, rewrite_master_naming, rewrite_media, rewrite_media_as,
+    rewrite_media_importing, ProxyOrigin,
 };
+pub use token::{
+    sign_marked, sign_segment, verify_marked, verify_segment, AppSecret, MediaKind, SessionId,
+    SessionSubtitle, SessionTable, StreamSession,
+};
+use upstream::Admission;
 
 /// Shared state every proxy route reads.
 #[derive(Clone)]
@@ -54,7 +74,7 @@ pub struct ProxyState {
     /// The per-host budget every fetch to a host on the player's behalf
     /// is charged to, hop by hop, by the fetch itself
     /// ([`upstream::send_paced_as`]): media as the player's traffic,
-    /// subtitle tracks as background traffic behind it.
+    /// subtitle tracks as background traffic taking turns with it.
     pub host_budget: Arc<host_budget::HostBudget>,
 }
 
@@ -121,13 +141,17 @@ async fn handle_master(
 
     // The master is the first thing a starting player asks for: a
     // download running beside it yields from here, not after the
-    // first segment has already competed with it.
-    state.sessions.note_media_fetch();
+    // first segment has already competed with it. A download's own
+    // session is not the player, and marks nothing.
+    if !sess.background {
+        state.sessions.note_media_fetch();
+    }
     // The manifest's relative URIs resolve against where it was served
     // from, which a redirect can move away from the session's URL.
     let (body, served_from) = match upstream::fetch_text(
         &state.client,
         &state.host_budget,
+        sess.admission(),
         &sess.upstream_url,
         &sess.referer,
     )
@@ -143,8 +167,20 @@ async fn handle_master(
         Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
     };
 
-    let rewritten = match rewrite_master(&body, &served_from, &state.origin, session, &state.secret)
-    {
+    // What this response defines, kept for the playlists it names to
+    // import under the key their URIs carry.
+    let vars = state
+        .sessions
+        .keep_master_variables(session, master_variables(&body, &served_from))
+        .unwrap_or_default();
+    let rewritten = match rewrite_master_naming(
+        &body,
+        &served_from,
+        &state.origin,
+        session,
+        &state.secret,
+        &vars,
+    ) {
         Ok(s) => s,
         Err(_) => {
             // Try as a media playlist before giving up — some upstreams
@@ -301,7 +337,9 @@ async fn handle_mp4(
             "session media is not MP4 — use /master.m3u8",
         );
     }
-    state.sessions.note_media_fetch();
+    if !sess.background {
+        state.sessions.note_media_fetch();
+    }
 
     let range = headers_in
         .get(axum::http::header::RANGE)
@@ -310,6 +348,7 @@ async fn handle_mp4(
     let upstream_resp = match upstream::fetch_streaming(
         &state.client,
         &state.host_budget,
+        sess.admission(),
         &sess.upstream_url,
         &sess.referer,
         range,
@@ -358,8 +397,24 @@ async fn handle_mp4(
     let body = Body::from_stream(noting_media(
         upstream_resp.bytes_stream(),
         state.sessions.clone(),
+        !sess.background,
     ));
     (status, out_headers, body).into_response()
+}
+
+/// How a segment fetch is admitted: a player's media segment that
+/// names its stream and duration is noted at every host it reaches, so
+/// each host leaves the player what its streams need; anything else is
+/// admitted as the session's traffic, and the player's counts toward
+/// its need at the rate it arrives.
+fn segment_admission(session: Admission, q: &SegmentQuery) -> Admission {
+    match (session, q.r.as_deref().and_then(Stream::from_slot), q.d) {
+        (Admission::Player, Some(stream), Some(ms)) => Admission::PlayerSegment {
+            stream,
+            segment: std::time::Duration::from_millis(ms),
+        },
+        _ => session,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -368,6 +423,50 @@ struct SegmentQuery {
     u: String,
     /// HMAC signature.
     t: String,
+    /// `pl` when the manifest that named the URL named a playlist.
+    #[serde(default)]
+    k: Option<String>,
+    /// The kind of stream a playlist the master named carries.
+    #[serde(default)]
+    s: Option<String>,
+    /// The kind of stream a media segment feeds.
+    #[serde(default)]
+    r: Option<String>,
+    /// The playback a media segment buys, in milliseconds.
+    #[serde(default)]
+    d: Option<u64>,
+    /// The key the session keeps the variables of the master response
+    /// that named a playlist under, for it to import
+    /// ([`SessionTable::keep_master_variables`]).
+    #[serde(default)]
+    v: Option<String>,
+}
+
+/// The marks a segment-route request carries after its token, in the
+/// order the rewrite writes them — `k`, `s`, `v`, `r`, `d`, each only
+/// when present — which the token signs with the upstream.
+/// Each value is written back encoded, as the rewrite writes it — its
+/// values need no encoding, so they read the same — so a separator a
+/// request encoded into a value stays in that value rather than
+/// spelling another mark.
+fn marks_of(q: &SegmentQuery) -> String {
+    let d = q.d.map(|d| d.to_string());
+    [
+        ("k", q.k.as_deref()),
+        ("s", q.s.as_deref()),
+        ("v", q.v.as_deref()),
+        ("r", q.r.as_deref()),
+        ("d", d.as_deref()),
+    ]
+    .into_iter()
+    .filter_map(|(name, value)| {
+        value.map(|value| {
+            let value: String = url::form_urlencoded::byte_serialize(value.as_bytes()).collect();
+            format!("{name}={value}")
+        })
+    })
+    .collect::<Vec<_>>()
+    .join("&")
 }
 
 async fn handle_seg(
@@ -388,23 +487,54 @@ async fn handle_seg(
         Err(_) => return error_response(StatusCode::BAD_REQUEST, "bad segment url encoding"),
     };
 
-    if verify_segment(&state.secret, session, upstream_url.as_str(), &q.t).is_err() {
+    if verify_marked(
+        &state.secret,
+        session,
+        upstream_url.as_str(),
+        &marks_of(&q),
+        &q.t,
+    )
+    .is_err()
+    {
         return error_response(StatusCode::FORBIDDEN, "invalid segment token");
     }
 
-    // For .m3u8 sub-playlists, fetch + rewrite. For raw segments (mp4/ts/m4s),
+    // For sub-playlists, fetch + rewrite. For raw segments (mp4/ts/m4s),
     // stream bytes through with the Range header preserved.
-    let path = upstream_url.path();
-    let is_manifest = path.ends_with(".m3u8");
+    let is_manifest = m3u8::names_a_playlist(q.k.as_deref(), &upstream_url);
 
     // Media playlists and segments alike: both are the player
     // fetching, and a segment every few seconds is what a download
-    // must leave room for.
-    state.sessions.note_media_fetch();
+    // must leave room for. A download's own session marks nothing.
+    if !sess.background {
+        state.sessions.note_media_fetch();
+    }
     if is_manifest {
+        // The kind of stream the master named this playlist as, which
+        // its segments carry on to the budget; a playlist it did not
+        // name is the main stream.
+        let stream =
+            q.s.as_deref()
+                .and_then(Stream::from_slot)
+                .unwrap_or(Stream::Main);
+        // The variables of the master response that named this
+        // playlist, kept by the session under the key its URI carries
+        // signed with the rest of its marks — looked up before the
+        // playlist is fetched, so a key the session does not keep costs
+        // the host nothing.
+        let imported = match q.v.as_deref() {
+            None => m3u8_define::Variables::new(),
+            Some(key) => match state.sessions.master_variables(&session, key) {
+                Some(vars) => vars,
+                None => {
+                    return error_response(StatusCode::BAD_REQUEST, "unknown playlist variables");
+                }
+            },
+        };
         let (body, served_from) = match upstream::fetch_text(
             &state.client,
             &state.host_budget,
+            sess.admission(),
             &upstream_url,
             &sess.referer,
         )
@@ -419,16 +549,23 @@ async fn handle_seg(
             }
             Err(_) => return error_response(StatusCode::BAD_GATEWAY, "upstream fetch failed"),
         };
-        let rewritten =
-            match rewrite_media(&body, &served_from, &state.origin, session, &state.secret) {
-                Ok(s) => s,
-                Err(_) => {
-                    return error_response(
-                        StatusCode::BAD_GATEWAY,
-                        "upstream media playlist unparseable",
-                    );
-                }
-            };
+        let rewritten = match rewrite_media_importing(
+            &body,
+            &served_from,
+            &state.origin,
+            session,
+            &state.secret,
+            stream,
+            &imported,
+        ) {
+            Ok(s) => s,
+            Err(_) => {
+                return error_response(
+                    StatusCode::BAD_GATEWAY,
+                    "upstream media playlist unparseable",
+                );
+            }
+        };
         let mut headers = HeaderMap::new();
         headers.insert(
             HeaderName::from_static("content-type"),
@@ -456,9 +593,10 @@ async fn handle_seg(
     if let Some(range) = headers_in.get("range") {
         headers.insert(reqwest::header::RANGE, range.clone());
     }
-    let resp = match upstream::send_paced(
+    let resp = match upstream::send_paced_as(
         &state.client,
         &state.host_budget,
+        segment_admission(sess.admission(), &q),
         reqwest::Method::GET,
         &upstream_url,
         headers,
@@ -473,7 +611,11 @@ async fn handle_seg(
         tracing::warn!(url = %upstream_url, %status, "proxy: upstream answered a segment with an error");
     }
     let headers = clone_passthrough_headers(resp.headers());
-    let stream = noting_media(resp.bytes_stream(), state.sessions.clone());
+    let stream = noting_media(
+        resp.bytes_stream(),
+        state.sessions.clone(),
+        !sess.background,
+    );
     (
         StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK),
         headers,
@@ -495,17 +637,19 @@ fn decode_seg_url(b64: &str) -> crate::Result<Url> {
 /// covers a segment, gone in seconds; an mp4 range request streams
 /// for minutes, and a download beside it must not be let back to full
 /// speed while its bytes are still moving. An error in the stream is
-/// passed through and is not media served.
+/// passed through and is not media served. With `note` false — a
+/// download's own session — nothing is noted.
 fn noting_media<S, E>(
     stream: S,
     sessions: SessionTable,
+    note: bool,
 ) -> impl futures_util::Stream<Item = std::result::Result<bytes::Bytes, E>>
 where
     S: futures_util::Stream<Item = std::result::Result<bytes::Bytes, E>>,
 {
     use futures_util::StreamExt as _;
     stream.inspect(move |chunk| {
-        if chunk.is_ok() {
+        if note && chunk.is_ok() {
             sessions.note_media_fetch();
         }
     })
@@ -545,6 +689,10 @@ mod empty_referer_tests;
 mod redirected_playlist_tests;
 
 #[cfg(test)]
+#[path = "opaque_rendition_test.rs"]
+mod opaque_rendition_tests;
+
+#[cfg(test)]
 #[path = "subtitle_test.rs"]
 mod subtitle_tests;
 
@@ -555,6 +703,10 @@ mod seg_referer_tests;
 #[cfg(test)]
 #[path = "media_activity_test.rs"]
 mod media_activity_tests;
+
+#[cfg(test)]
+#[path = "signed_marks_test.rs"]
+mod signed_marks_tests;
 
 #[cfg(test)]
 #[path = "host_budget_route_test.rs"]
