@@ -419,6 +419,74 @@ async fn a_special_the_catalogue_does_not_list_is_refused() {
     assert_picks(&[("44661", None)]).await;
 }
 
+/// The same pool with a one-episode crossover special in it — the
+/// franchise's name among other shows' — whose entry page names no
+/// year. A single video's count is one, so the count says nothing of
+/// which video it is: without the entry's name or its year, the
+/// special is not the entry, and the pool is refused rather than
+/// played. Dropped as an inference, the refusal is no clean miss.
+/// Where the entry page does name the special's year, the year rules
+/// it out, as it does Bardock and Trunks.
+#[tokio::test]
+async fn a_single_video_with_neither_the_entry_s_name_nor_its_year_is_not_the_entry() {
+    for (year, clean) in [(None, false), (Some(2013), true)] {
+        let mut site = Recorded::load("44661");
+        let slug = "dream-9-toriko-one-piece-dragon-ball-z-super-collaboration-special-1";
+        site.doc
+            .searches
+            .get_mut("Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai")
+            .expect("the canonical pool")
+            .insert(
+                0,
+                (
+                    slug.to_string(),
+                    "Dream 9 Toriko & One Piece & Dragon Ball Z Super Collaboration Special"
+                        .to_string(),
+                    Some("SPECIAL".to_string()),
+                ),
+            );
+        site.doc
+            .episodes
+            .insert(slug.to_string(), vec![(9, 1, None)]);
+        site.doc.years.insert(slug.to_string(), year);
+        match walk_over(site).await {
+            Ok(p) => panic!("year {year:?}: picked {}", p.hit.slug),
+            Err(e) => assert_eq!(e.clean_miss, clean, "year {year:?}: {:?}", e.error),
+        }
+    }
+}
+
+/// A single video the entry names, or one whose year is the entry's,
+/// is still the entry when its entry page says nothing more.
+#[tokio::test]
+async fn a_single_video_named_as_the_entry_or_from_its_year_is_picked() {
+    let named = r#"{
+ "kitsu": {"canonical": "Show: The Movie", "alt_titles": ["Show Gekijouban"],
+            "episode_count": 1, "year": 2017, "subtype": "movie"},
+ "searches": {"Show: The Movie": [["other-1", "Other Film", "MOVIE"],
+                                  ["show-gekijouban-2", "Show Gekijouban", "MOVIE"]]},
+ "episodes": {"other-1": [[1, 1, null]], "show-gekijouban-2": [[2, 1, null]]},
+ "years": {"other-1": null, "show-gekijouban-2": null}
+}"#;
+    let picked = walk_over(Recorded::inline("inline", named))
+        .await
+        .expect("the film named as the entry");
+    assert_eq!(picked.hit.slug, "show-gekijouban-2");
+
+    let dated = r#"{
+ "kitsu": {"canonical": "Show: The Movie", "alt_titles": [],
+            "episode_count": 1, "year": 2017, "subtype": "movie"},
+ "searches": {"Show: The Movie": [["other-1", "Other Film", "MOVIE"],
+                                  ["show-film-2", "Show Film", "MOVIE"]]},
+ "episodes": {"other-1": [[1, 1, null]], "show-film-2": [[2, 1, null]]},
+ "years": {"other-1": null, "show-film-2": 2017}
+}"#;
+    let picked = walk_over(Recorded::inline("inline", dated))
+        .await
+        .expect("the film from the entry's year");
+    assert_eq!(picked.hit.slug, "show-film-2");
+}
+
 /// Dragon Ball Super: Ginga Patrol is announced: Kitsu has no count
 /// and no premiere date for it, and hianime does not list it yet. Every
 /// search for it answers with Dragon Ball Super's pool, and the
