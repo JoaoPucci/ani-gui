@@ -1667,3 +1667,29 @@ async fn a_numeral_by_its_form_and_only_w_s_season_divided() {
         );
     }
 }
+
+/// Only an ordinal right after the broad listing's own season divides
+/// it: after its part, "Second" is a season 2, before W's season 3, and
+/// completes nothing — spaced or glued in Japanese.
+#[tokio::test]
+async fn only_an_ordinal_right_after_w_s_season_divides_it() {
+    for (entry, w, l) in [
+        (
+            "Show Season 3 Part 1",
+            "Show Season 3 Part 1",
+            "Show Season 3 Part 1 Second Half",
+        ),
+        ("ショー第3期第1部", "ショー第3期第1部", "ショー第3期第1部２"),
+    ] {
+        let site = pool_of(
+            &[entry],
+            Some(12),
+            2020,
+            entry,
+            &[("w", w, 24), ("l", l, 12)],
+        );
+        if let Ok(p) = walk_over(site).await {
+            panic!("{w} + {l}: picked {} ({})", p.hit.slug, p.episodes.len());
+        }
+    }
+}
