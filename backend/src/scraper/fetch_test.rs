@@ -798,3 +798,32 @@ async fn a_held_requests_hops_share_one_deadline() {
         started.elapsed()
     );
 }
+
+#[tokio::test]
+async fn a_redirect_without_a_target_is_one_transfer_held_or_not() {
+    // A 3xx that names nowhere to go — a broken upstream redirect —
+    // is the answer, from one transfer, whether the request is held
+    // or not: an unheld request is curl's own -L transfer and never
+    // enters the hop loop, and a held one has no target to hop to.
+    use wiremock::matchers::method;
+    let Some(curl) =
+        CurlImpersonateFetch::resolve(None, &std::env::var("PATH").unwrap_or_default())
+    else {
+        eprintln!("no curl on PATH; skipping");
+        return;
+    };
+    for held in [false, true] {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(method("GET"))
+            .respond_with(wiremock::ResponseTemplate::new(302))
+            .mount(&server)
+            .await;
+        let req = FetchRequest::get(format!("{}/broken", server.uri()));
+        let req = if held { req.held_to_origin() } else { req };
+        let resp = curl.fetch(&req).await.expect("the redirect is the answer");
+        assert_eq!(resp.status, 302, "held={held}");
+        assert_eq!(resp.url, format!("{}/broken", server.uri()), "held={held}");
+        let asked = server.received_requests().await.expect("recorded").len();
+        assert_eq!(asked, 1, "held={held}: one transfer");
+    }
+}
