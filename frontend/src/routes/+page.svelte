@@ -96,8 +96,10 @@
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import {
 		browserStorage,
+		failedHeroImages,
 		loadHeroPrefs,
 		naturalRatio,
+		noteHeroImageFailed,
 		pickHeroImage,
 		saveHeroPrefs,
 		type HeroOrigin,
@@ -748,13 +750,16 @@
 		saveHeroPrefs(browserStorage(), next);
 	}
 
+	// `raw` is the upstream URL `url` proxies; a load failure is noted
+	// against it, and the next pick passes it over.
 	function heroFor(d: KitsuAnimeRef): {
 		url: string | null;
+		raw: string | null;
 		isCover: boolean;
 		origin: HeroOrigin | null;
 	} {
-		const p = pickHeroImage(d, heroPrefs, 'home');
-		return { url: imageProxyUrl(p.url), isCover: p.isCover, origin: p.origin };
+		const p = pickHeroImage(d, heroPrefs, 'home', failedHeroImages);
+		return { url: imageProxyUrl(p.url), raw: p.url, isCover: p.isCover, origin: p.origin };
 	}
 
 	// Natural aspect ratio per show, once its hero image decodes — the
@@ -834,6 +839,7 @@
 						style:transform={heroTransform(scrollY, hero.isCover)}
 						style:--ratio={heroRatios[featured.id]}
 						onload={(e) => onHeroLoad(featured.id, e)}
+						onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
 					/>
 				{/if}
 				<div class="hero-scrim" aria-hidden="true"></div>

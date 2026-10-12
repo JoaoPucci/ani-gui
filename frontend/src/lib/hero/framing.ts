@@ -127,14 +127,20 @@ export interface HeroImageInput {
 
 type Slot = keyof ImageBag;
 
-function firstOf(bag: ImageBag | null, order: readonly Slot[]): string | null {
+function firstOf(
+	bag: ImageBag | null,
+	order: readonly Slot[],
+	failed: ReadonlySet<string>
+): string | null {
 	if (!bag) return null;
 	for (const slot of order) {
 		const v = bag[slot];
-		if (v != null) return v;
+		if (v != null && !failed.has(v)) return v;
 	}
 	return null;
 }
+
+const NO_FAILURES: ReadonlySet<string> = new Set();
 
 const COVER_ORDER: Record<'home' | 'detail', readonly Slot[]> = {
 	home: ['large', 'original', 'small'],
@@ -166,22 +172,23 @@ export function pickHeroImage(
 	d: HeroImageInput,
 	prefs: Pick<HeroPrefs, 'framing' | 'source'>,
 	surface: 'home' | 'detail',
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the seam the next commit reads
-	failed?: ReadonlySet<string>
+	failed: ReadonlySet<string> = NO_FAILURES
 ): HeroPick {
-	if (prefs.source === 'anilist' && d.anilist_banner) {
-		return { url: d.anilist_banner, isCover: true, origin: 'anilist' };
+	const banner = d.anilist_banner;
+	if (prefs.source === 'anilist' && banner && !failed.has(banner)) {
+		return { url: banner, isCover: true, origin: 'anilist' };
 	}
 	const cover = firstOf(
 		d.cover_image,
-		prefs.framing === 'contain' || prefs.framing === 'pillar' ? COVER_WHOLE : COVER_ORDER[surface]
+		prefs.framing === 'contain' || prefs.framing === 'pillar' ? COVER_WHOLE : COVER_ORDER[surface],
+		failed
 	);
 	if (cover !== null) {
 		// The backend fills a null Kitsu cover with AniList's banner.
-		const origin = cover === d.anilist_banner ? 'anilist' : 'kitsu';
+		const origin = cover === banner ? 'anilist' : 'kitsu';
 		return { url: cover, isCover: true, origin };
 	}
-	const poster = firstOf(d.poster_image, POSTER_ORDER[surface]);
+	const poster = firstOf(d.poster_image, POSTER_ORDER[surface], failed);
 	if (poster !== null) return { url: poster, isCover: false, origin: 'poster' };
 	return { url: null, isCover: false, origin: null };
 }

@@ -14,8 +14,10 @@
 <script lang="ts">
 	import {
 		browserStorage,
+		failedHeroImages,
 		loadHeroPrefs,
 		naturalRatio,
+		noteHeroImageFailed,
 		pickHeroImage,
 		saveHeroPrefs,
 		type HeroOrigin,
@@ -1108,8 +1110,11 @@
 		saveHeroPrefs(browserStorage(), next);
 	}
 
+	// `raw` is the upstream URL `url` proxies; a load failure is noted
+	// against it, and the next pick passes it over.
 	function heroFor(d: KitsuAnimeRef): {
 		url: string | null;
+		raw: string | null;
 		isCover: boolean;
 		origin: HeroOrigin | null;
 	} {
@@ -1117,8 +1122,8 @@
 		// signed-URL bytes under a canonical hash so the proxy serves
 		// them regardless of staleness. See PosterCard for full
 		// rationale. (The slot order lives in $lib/hero/framing.)
-		const p = pickHeroImage(d, heroPrefs, 'detail');
-		return { url: imageProxyUrl(p.url), isCover: p.isCover, origin: p.origin };
+		const p = pickHeroImage(d, heroPrefs, 'detail', failedHeroImages);
+		return { url: imageProxyUrl(p.url), raw: p.url, isCover: p.isCover, origin: p.origin };
 	}
 
 	// Natural aspect ratio per show, once its hero image decodes — the
@@ -1464,6 +1469,7 @@
 					style:transform={heroTransform(scrollY, hero.isCover)}
 					style:--ratio={heroRatios[heroId]}
 					onload={(e) => onHeroLoad(heroId, e)}
+					onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
 				/>
 			{/if}
 			<div class="hero-scrim" aria-hidden="true"></div>
