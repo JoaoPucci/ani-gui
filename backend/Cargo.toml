@@ -98,6 +98,19 @@ fs4 = { version = "1.1.0", default-features = false, features = ["sync"] }
 # AniList GraphQL — added in M3, listed here so cargo-deny audits the dep tree
 # cynic = { version = "3.10", features = ["http-reqwest"] }
 
+# Windows job objects: a downloader's yt-dlp and ffmpeg are put in
+# one before they run, so the guard can find what they start even
+# after they have exited, and the job's kill-on-close takes them down
+# with a backend that dies without running its guards. A safe wrapper,
+# so the crate's ban on unsafe code holds.
+[target.'cfg(windows)'.dependencies]
+win32job = "2.0"
+# Spawning a tool suspended, putting it in a job and resuming it, so a
+# helper it starts the moment it runs is already in its tree; and
+# ending that job whole. A safe wrapper (watchexec's), for the same
+# reason as `win32job`.
+process-wrap = { version = "10.0", default-features = false, features = ["tokio1", "job-object", "kill-on-drop"] }
+
 [dev-dependencies]
 proptest = "1.5"
 wiremock = "0.6"

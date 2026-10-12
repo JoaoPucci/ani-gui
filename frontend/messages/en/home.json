@@ -30,8 +30,16 @@
 	"clear_menu_button_aria": "History options",
 	"clear_menu_item": "Clear history",
 	"clear_confirm_eyebrow": "Clear all",
-	"clear_confirm_title_one": "Remove 1 entry from history?",
-	"clear_confirm_title_other": "Remove {count} entries from history?",
+	"clear_confirm_title": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Remove {count} entry from history?",
+				"countPlural=*": "Remove {count} entries from history?"
+			}
+		}
+	],
 	"clear_confirm_body": "This clears ani-gui's watch history. Cannot be undone.",
 	"clear_confirm_button": "Clear all",
 	"hero_error_eyebrow_value": "No answer from Kitsu"

@@ -3831,7 +3831,7 @@
 		border: 0;
 		color: var(--bone-100);
 		font-family: var(--font-body);
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		text-align: start;
 		border-radius: calc(var(--radius-card) - var(--space-1));
 		cursor: pointer;
@@ -4433,14 +4433,14 @@
 	}
 	.player-error-headline {
 		font-family: var(--font-display);
-		font-size: var(--type-display-s);
+		font-size: var(--type-display-m);
 		font-weight: 700;
 		color: var(--bone-100);
 		margin: 0;
 		line-height: 1.2;
 	}
 	.player-error-body {
-		font-size: var(--type-body-m);
+		font-size: var(--type-body);
 		font-weight: 400;
 		color: var(--bone-200);
 		margin: 0;
@@ -4454,11 +4454,11 @@
 		padding-inline: var(--space-5);
 		margin-block-start: var(--space-2);
 		background: var(--accent);
-		color: var(--ink-bg);
+		color: var(--ink-000);
 		border: none;
-		border-radius: var(--radius-md);
+		border-radius: var(--radius-control);
 		font-family: var(--font-body);
-		font-size: var(--type-body-m);
+		font-size: var(--type-body);
 		font-weight: 600;
 		cursor: pointer;
 		transition:
@@ -4476,7 +4476,7 @@
 		outline-offset: 2px;
 	}
 	.player-error-detail {
-		font-size: var(--type-body-s);
+		font-size: var(--type-meta);
 		font-weight: 400;
 		color: var(--bone-300);
 		opacity: 0.7;

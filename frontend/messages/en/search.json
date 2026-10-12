@@ -3,8 +3,16 @@
 	"subtitle_empty": "Refine your search above. Results are grouped by source.",
 	"eyebrow_key": "Query",
 	"status_searching": "searching…",
-	"count_singular": "result",
-	"count_plural": "results",
+	"count_word": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "result",
+				"countPlural=*": "results"
+			}
+		}
+	],
 	"eyebrow_key_empty": "Catalogue",
 	"eyebrow_value_empty": "via Kitsu",
 	"empty_caption": "Trending now · Currently airing · Top 20",
@@ -24,7 +32,16 @@
 	"discovery_top_rated_caption": "all-time · via Kitsu",
 	"filtered_empty_headline": "No matches in the current filter.",
 	"filtered_empty_detail": "Clear or change the type filter above to see more results.",
-	"card_eps_suffix": "eps",
+	"card_eps_suffix": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "ep",
+				"countPlural=*": "eps"
+			}
+		}
+	],
 	"error_headline": "Couldn't search Kitsu.",
 	"sort_relevance": "Relevance",
 	"sort_title": "Title",

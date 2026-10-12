@@ -125,6 +125,240 @@ async fn a_cached_track_whose_get_is_a_track_keeps_the_row_live() {
     );
 }
 
+/// A cached row's liveness check pings the stream and reads each
+/// track, and the host counts those requests: each takes a token from
+/// its budget.
+#[tokio::test]
+async fn a_cached_rows_check_is_spent_from_the_hosts_budget() {
+    let server = MockServer::start().await;
+    let cached = row_with_track(
+        &server,
+        ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()),
+    )
+    .await;
+    let state = state_with_proxy_origin();
+    assert!(try_serve_cached(&state, &cached).await.is_some());
+    let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
+    // Two tokens taken a moment apart: the second tops up by the moment.
+    let left = state.host_budget.on_hand(&host).expect("spent");
+    assert!(
+        (left - (burst - 2.0)).abs() < 0.01,
+        "the stream's ping and the track's read: {left}"
+    );
+}
+
+/// The liveness check's requests take their tokens where they land: a ping
+/// the stream's host redirects to an edge is a request to each, so
+/// the edge — the host the player will fetch from — is charged too.
+#[tokio::test]
+async fn a_cached_rows_check_is_spent_at_every_host_a_redirect_reaches() {
+    let origin = MockServer::start().await;
+    let edge = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/video.mp4", edge.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&edge)
+        .await;
+    let cached = cached_walked(
+        format!("{}/video.mp4", origin.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    let mut state = state_with_proxy_origin();
+    // The app's own client for stream traffic, which follows no
+    // redirect on its own.
+    state.proxy_http = crate::proxy::upstream::build_client().expect("client");
+    assert!(try_serve_cached(&state, &cached).await.is_some());
+    let burst = f64::from(crate::proxy::host_budget::SEGMENT_BURST);
+    for server in [&origin, &edge] {
+        let host =
+            crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+        let left = state.host_budget.on_hand(&host).unwrap_or(burst);
+        assert!((left - (burst - 1.0)).abs() < 0.01, "{host}: {left}");
+    }
+}
+
+/// The check follows a redirect itself, on the app's client for stream
+/// traffic, carrying the row's referer to every hop — an edge that
+/// wants it answers only with it — and gives up on a chain that never
+/// lands, past the transport's hop cap, as a dead row.
+#[tokio::test]
+async fn a_cached_rows_check_carries_its_referer_to_every_hop_and_gives_up_on_a_loop() {
+    let origin = MockServer::start().await;
+    let edge = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/video.mp4", edge.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .and(wiremock::matchers::header(
+            "referer",
+            "https://site.example/",
+        ))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&edge)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path("/loop.mp4"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/loop.mp4", origin.uri()).as_str()),
+        )
+        .mount(&origin)
+        .await;
+    let mut state = state_with_proxy_origin();
+    state.proxy_http = crate::proxy::upstream::build_client().expect("client");
+    let landed = cached_walked(
+        format!("{}/video.mp4", origin.uri()),
+        "https://site.example/".into(),
+        MediaKind::Mp4,
+    );
+    assert!(
+        try_serve_cached(&state, &landed).await.is_some(),
+        "the referer reached the edge"
+    );
+    let looping = cached_walked(
+        format!("{}/loop.mp4", origin.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    assert!(
+        try_serve_cached(&state, &looping).await.is_none(),
+        "a loop is a dead row"
+    );
+}
+
+/// The liveness check is the player's startup, and the host counts its
+/// requests like any other: each waits for its host's token, so with
+/// the host's tokens spent the check sends nothing before its deadline
+/// — the row reads as not live and a fresh resolve takes its place.
+#[tokio::test]
+async fn a_cached_rows_check_waits_for_its_hosts_tokens() {
+    let server = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let cached = cached_walked(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    let state = state_with_proxy_origin();
+    let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
+        state.host_budget.admit(&host).await;
+    }
+    let live =
+        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_millis(300))
+            .await;
+    assert!(!live, "nothing reached the host before the deadline");
+}
+
+/// A row with a stream and `tracks` subtitle tracks, all on `server`
+/// and all live.
+async fn row_with_tracks(server: &MockServer, tracks: usize) -> CachedResolution {
+    Mock::given(method("HEAD"))
+        .and(path("/video.mp4"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(server)
+        .await;
+    Mock::given(method("GET"))
+        .and(wiremock::matchers::path_regex(r"^/subs/\d+\.vtt$"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"WEBVTT\n\n".to_vec()))
+        .mount(server)
+        .await;
+    let mut cached = cached_walked(
+        format!("{}/video.mp4", server.uri()),
+        String::new(),
+        MediaKind::Mp4,
+    );
+    cached.subtitles = (0..tracks)
+        .map(|i| {
+            track(
+                &format!("l{i}"),
+                i == 0,
+                &format!("{}/subs/{i}.vtt", server.uri()),
+            )
+        })
+        .collect();
+    cached
+}
+
+/// A row's check never queues ahead of an episode already playing from
+/// the host: with the host's tokens spent and a whole row's probes
+/// waiting, the playing player's next segment is served at the next
+/// token, not after the row.
+#[tokio::test]
+async fn a_cached_rows_check_never_queues_ahead_of_a_playing_players_segment() {
+    let server = MockServer::start().await;
+    let cached = row_with_tracks(&server, 4).await;
+    let state = std::sync::Arc::new(state_with_proxy_origin());
+    let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
+        state.host_budget.admit(&host).await;
+    }
+    let checking = {
+        let state = std::sync::Arc::clone(&state);
+        tokio::spawn(async move {
+            super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(10))
+                .await
+        })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let start = std::time::Instant::now();
+    state.host_budget.admit(&host).await;
+    let waited = start.elapsed();
+    checking.abort();
+    assert!(
+        waited < crate::proxy::host_budget::SEGMENT_REFILL + std::time::Duration::from_millis(700),
+        "the playing player's segment waited {waited:?} behind the check"
+    );
+}
+
+/// A row's check is not starved by downloads: beside background traffic
+/// asking without pause, its probes are served ahead of it, within the
+/// check's deadline.
+#[tokio::test]
+async fn a_cached_rows_check_is_served_beside_background_downloads() {
+    let server = MockServer::start().await;
+    let cached = row_with_tracks(&server, 1).await;
+    let state = state_with_proxy_origin();
+    let host = crate::proxy::host_budget::host_key(&url::Url::parse(&server.uri()).expect("url"));
+    for _ in 0..crate::proxy::host_budget::SEGMENT_BURST {
+        state.host_budget.admit(&host).await;
+    }
+    let budget = std::sync::Arc::clone(&state.host_budget);
+    let download_host = host.clone();
+    let download = tokio::spawn(async move {
+        loop {
+            budget.admit_background(&download_host).await;
+        }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    // Its two tokens come at a refill and two; room for a slow runner.
+    let live =
+        super::cached_row_is_live_within(&state, &cached, std::time::Duration::from_secs(8)).await;
+    download.abort();
+    assert!(live, "served ahead of the downloads within the deadline");
+}
+
 mod webvtt_prefix_props {
     use crate::commands::play_cache_tracks::webvtt_prefix;
     use crate::proxy::is_webvtt;
@@ -177,6 +411,7 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
+        host_budget: crate::proxy::host_budget::HostBudget::fresh(),
         meta_http: reqwest::Client::new(),
         proxy_origin: ProxyOrigin::new("127.0.0.1", 12_345),
         bundled_bin: None,

@@ -3,8 +3,17 @@
 	"subtitle_empty": "Уточните запрос выше. Результаты сгруппированы по источнику.",
 	"eyebrow_key": "Запрос",
 	"status_searching": "поиск…",
-	"count_singular": "результат",
-	"count_plural": "результатов",
+	"count_word": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "результат",
+				"countPlural=few": "результата",
+				"countPlural=*": "результатов"
+			}
+		}
+	],
 	"eyebrow_key_empty": "Каталог",
 	"eyebrow_value_empty": "по Kitsu",
 	"empty_caption": "В тренде · Сейчас выходит · Топ-20",
