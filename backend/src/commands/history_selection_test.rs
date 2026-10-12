@@ -6,7 +6,6 @@ use crate::app::AppState;
 use crate::history::{write_atomic, HistoryEntry};
 use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
 use std::path::PathBuf;
-use std::sync::Arc;
 
 fn make_state(history_path: PathBuf) -> AppState {
     state_with(
@@ -17,7 +16,6 @@ fn make_state(history_path: PathBuf) -> AppState {
 
 fn state_with(history_path: PathBuf, kitsu: crate::meta::kitsu::KitsuClient) -> AppState {
     AppState {
-        anidb_base: None,
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -26,10 +24,7 @@ fn state_with(history_path: PathBuf, kitsu: crate::meta::kitsu::KitsuClient) -> 
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path,
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu,
@@ -148,7 +143,7 @@ fn two_rows_on_different_numberings(s: &AppState, path: &std::path::Path) {
     .unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(s, "the-show-77", "1001").unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(s, "hianime:the-show-9", "1001").unwrap();
-    crate::commands::anidb_offset::put(s, "the-show-77", 40);
+    crate::commands::numbering_offset::put(s, "the-show-77", 40);
 }
 
 /// Progress is compared in the entry's numbering, the one the strip
@@ -209,7 +204,7 @@ fn a_row_without_an_offset_compares_by_its_own_number() {
     .unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "the-show-77", "1001").unwrap();
     crate::commands::kitsu::allmanga_kitsu_put(&s, "hianime:the-show-9", "1001").unwrap();
-    crate::commands::anidb_offset::put(&s, "the-show-77", 40);
+    crate::commands::numbering_offset::put(&s, "the-show-77", 40);
     let hit = history_by_kitsu(&s, "1001").unwrap().expect("match");
     assert_eq!(hit.id, "the-show-77", "episode 5 is further than episode 3");
     assert_eq!(

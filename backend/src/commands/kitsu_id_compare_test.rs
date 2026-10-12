@@ -19,7 +19,6 @@ const DIGITS: &str = "49877";
 
 fn state(td: &TempDir) -> Arc<AppState> {
     Arc::new(AppState {
-        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -28,10 +27,7 @@ fn state(td: &TempDir) -> Arc<AppState> {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(
@@ -187,8 +183,8 @@ fn a_claimed_id_is_kept_whichever_side_is_padded() {
 fn a_title_match_naming_a_forgotten_id_goes_though_padded() {
     let td = TempDir::new().expect("tempdir");
     let s = state(&td);
-    let provider = crate::scraper::provider::ProviderId::Anidb;
-    k::title_match_put(&s, provider, "Elsewhere", 1, PADDED).expect("seed");
+    let provider = crate::scraper::provider::ProviderId::TestA;
+    k::title_match_put(&s, Some(provider), "Elsewhere", 1, PADDED).expect("seed");
     crate::commands::history_forget_titles::forget_title_matches_naming(
         &s,
         "show-a",
@@ -197,7 +193,7 @@ fn a_title_match_naming_a_forgotten_id_goes_though_padded() {
     )
     .expect("forget");
     assert_eq!(
-        k::title_match_get(&s, provider, "Elsewhere", 1).expect("read"),
+        k::title_match_get(&s, Some(provider), "Elsewhere", 1).expect("read"),
         None
     );
 }

@@ -315,8 +315,7 @@ async fn entries_the_audit_found_picked_right_stay_picked_right() {
     assert_picks(AUDITED_RIGHT).await;
 }
 
-/// The manifest pins every fixture byte-for-byte, in both directions,
-/// as the anidb fixtures' does.
+/// The manifest pins every fixture byte-for-byte, in both directions.
 #[test]
 fn fixture_manifest_matches_the_fixtures() {
     use sha2::Digest as _;

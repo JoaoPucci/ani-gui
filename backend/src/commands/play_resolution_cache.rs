@@ -156,7 +156,7 @@ pub struct CachedResolution {
     /// Whether the proxy should serve this as HLS (manifest rewrite)
     /// or MP4 (byte-stream pass-through).
     pub media_kind: MediaKind,
-    /// Provider show id (anidb slug) of the chosen candidate. Captured
+    /// The show key of the chosen candidate. Captured
     /// during the fresh-fetch path so a subsequent cache-hit can write
     /// the same history row a fresh resolve would. Empty string on rows
     /// written before this field existed — callers fall back to
@@ -268,8 +268,9 @@ pub(crate) fn store(
 }
 
 /// Drop a single cached resolution. Two callers feed this:
-/// 1. The play flow's HEAD-fail branch — the cached URL is dead so
-///    the row should not linger if the fresh resolve also fails.
+/// 1. The play flow's unservable-row branch — the row's provider is
+///    no longer walked, or the cached URL is dead — so the row should
+///    not linger if the fresh resolve also fails.
 /// 2. The frontend's player-error feedback path — the player tried
 ///    the cached upstream and got a 4xx/5xx, so the URL has rotated
 ///    even though our HEAD said it was alive.

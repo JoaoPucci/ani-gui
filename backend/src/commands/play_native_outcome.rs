@@ -43,7 +43,7 @@ pub fn breaker_outcome<T>(
             AniError::RateLimited { retry_after_secs } => Some(ScrapeOutcome::RateLimited {
                 retry_after: retry_after_secs.map(std::time::Duration::from_secs),
             }),
-            // anidb rate-limits with the HTTP status, not the
+            // A provider can rate-limit with the HTTP status, not the
             // in-band payload the typed variant carries: the
             // provider explicitly asked clients to stop, so the
             // hintless rate-limit outcome opens the advertised

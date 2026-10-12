@@ -1,36 +1,7 @@
 use super::*;
 use crate::error::AniError;
-use crate::scraper::anidb::AnidbClient;
-use crate::scraper::fetch::{Fetch, FetchRequest, FetchResponse};
 use crate::scraper::provider::EpisodeRef;
-
-/// A fetch whose episodes endpoint answers per numeric id from a
-/// canned table; every other route 404s.
-struct EpisodesTable(&'static [(u64, u32)]);
-
-#[async_trait::async_trait]
-impl Fetch for EpisodesTable {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        for (id, count) in self.0 {
-            if url.contains(&format!("/api/frontend/anime/{id}/episodes")) {
-                let rows: Vec<String> = (1..=*count)
-                    .map(|n| format!("{{\"id\":{},\"number\":{}}}", id * 1000 + u64::from(n), n))
-                    .collect();
-                return Ok(FetchResponse {
-                    url: req.url.clone(),
-                    status: 200,
-                    body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
-                });
-            }
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
-}
+use crate::scraper::table_provider::{listing_of, Answer, Asked, TableProvider};
 
 fn hit(slug: &str, title: &str) -> BrowseHit {
     BrowseHit {
@@ -139,36 +110,16 @@ fn threshold_is_a_floor_of_three_with_proportional_slack() {
 
 /// Twelve regular rows plus four recaps under decimal tags — the
 /// One Piece shape at small scale.
-struct TaggedEpisodes;
-
-#[async_trait::async_trait]
-impl Fetch for TaggedEpisodes {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains("/api/frontend/anime/7/episodes") {
-            let mut rows: Vec<String> = (1..=12)
-                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 700 + n, n))
-                .collect();
-            for (i, tag) in ["3.5", "6.5", "9.5", "11.5"].iter().enumerate() {
-                rows.push(format!(
-                    "{{\"id\":{},\"number\":{},\"number2\":{}}}",
-                    900 + i,
-                    13 + i,
-                    tag
-                ));
-            }
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
-            });
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
+fn tagged_episodes() -> TableProvider {
+    let mut rows: Vec<EpisodeRef> = listing_of(7, 12);
+    for (i, tag) in ["3.5", "6.5", "9.5", "11.5"].iter().enumerate() {
+        rows.push(EpisodeRef {
+            id: 900 + i as u64,
+            number: 13 + i as u32,
+            number2: Some((*tag).to_string()),
+        });
     }
+    TableProvider::new().listing(7, rows)
 }
 
 #[tokio::test]
@@ -178,7 +129,7 @@ async fn fractional_extras_do_not_inflate_the_candidate_count() {
     // puts the one correct candidate 4 past the threshold of 3 and
     // rejects it on its own extras — the distance must come from
     // regular display episodes.
-    let client = AnidbClient::new(TaggedEpisodes);
+    let client = tagged_episodes();
     let hits = [hit("the-show-7", "The Show")];
     let picked = pick_candidate(&client, &hits, Some(12), "the show", None, None)
         .await
@@ -187,31 +138,8 @@ async fn fractional_extras_do_not_inflate_the_candidate_count() {
 }
 
 /// Slug 99 dies on transport; slug 88 answers twelve episodes.
-struct OneDeadOneAlive;
-
-#[async_trait::async_trait]
-impl Fetch for OneDeadOneAlive {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains("/api/frontend/anime/99/episodes") {
-            return Err(AniError::Network);
-        }
-        if url.contains("/api/frontend/anime/88/episodes") {
-            let rows: Vec<String> = (1..=12)
-                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
-                .collect();
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
-            });
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
+fn one_dead_one_alive() -> TableProvider {
+    TableProvider::counted(&[(88, 12)]).listing(99, Answer::fails(|| AniError::Network))
 }
 
 #[tokio::test]
@@ -222,7 +150,7 @@ async fn a_transport_dead_title_match_blocks_a_sibling_pick() {
     // the strength of a transient failure — when the dead candidate
     // carries more identity than the survivor, the pick must stay
     // transient until it can answer.
-    let client = AnidbClient::new(OneDeadOneAlive);
+    let client = one_dead_one_alive();
     let hits = [
         hit("the-show-99", "The Show"),
         hit("the-show-part-2-88", "The Show Part 2"),
@@ -238,31 +166,8 @@ async fn a_transport_dead_title_match_blocks_a_sibling_pick() {
 
 /// Two exact-title twins: slug 99 (provider-first) dies on
 /// transport, slug 88 answers twelve episodes.
-struct FirstTwinDead;
-
-#[async_trait::async_trait]
-impl Fetch for FirstTwinDead {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains("/api/frontend/anime/99/episodes") {
-            return Err(AniError::Network);
-        }
-        if url.contains("/api/frontend/anime/88/episodes") {
-            let rows: Vec<String> = (1..=12)
-                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
-                .collect();
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
-            });
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
+fn first_twin_dead() -> TableProvider {
+    one_dead_one_alive()
 }
 
 #[tokio::test]
@@ -273,7 +178,7 @@ async fn an_equal_rank_dead_twin_ahead_in_order_stays_transient() {
     // twin the win converts a transient failure into a cached,
     // possibly wrong pick — the strict outranks-only guard let it
     // through.
-    let client = AnidbClient::new(FirstTwinDead);
+    let client = first_twin_dead();
     let hits = [
         hit("the-show-99", "The Show"),
         hit("the-show-88", "The Show"),
@@ -294,7 +199,7 @@ async fn a_dead_plain_candidate_ahead_of_a_plain_winner_still_picks() {
     // row as blocking would abort picks on any garbage hit dying —
     // the probe-skip behavior exists precisely for that. Only
     // identity-bearing equal ranks block.
-    let client = AnidbClient::new(FirstTwinDead);
+    let client = first_twin_dead();
     let hits = [
         hit("unrelated-99", "Unrelated"),
         hit("also-unrelated-88", "Also Unrelated"),
@@ -307,28 +212,8 @@ async fn a_dead_plain_candidate_ahead_of_a_plain_winner_still_picks() {
 
 /// Two same-title candidates: the first's episodes endpoint answers
 /// 404 (a stale slug), the second serves a listing.
-struct FirstSlugStale;
-
-#[async_trait::async_trait]
-impl Fetch for FirstSlugStale {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains("/api/frontend/anime/88/episodes") {
-            let rows: Vec<String> = (1..=12)
-                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 8800 + n, n))
-                .collect();
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
-            });
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
+fn first_slug_stale() -> TableProvider {
+    TableProvider::counted(&[(88, 12)])
 }
 
 #[tokio::test]
@@ -339,7 +224,7 @@ async fn a_countless_pick_walks_past_a_stale_candidate() {
     // alias's playback failed outright. Answered dead ends move to
     // the next eligible candidate; blocks and transport failures
     // still stop the pick.
-    let client = AnidbClient::new(FirstSlugStale);
+    let client = first_slug_stale();
     let hits = [
         hit("the-show-99", "The Show"),
         hit("the-show-88", "The Show"),
@@ -354,7 +239,7 @@ async fn a_countless_pick_walks_past_a_stale_candidate() {
 async fn expected_count_picks_the_closest_probed_candidate() {
     // Movie (1 ep) vs series (26 eps): expected 26 must pick the
     // series even though the movie ranks first.
-    let client = AnidbClient::new(EpisodesTable(&[(11, 1), (22, 26)]));
+    let client = TableProvider::counted(&[(11, 1), (22, 26)]);
     let hits = [
         hit("gintama-movie-11", "Gintama: The Movie"),
         hit("gintama-22", "Gintama"),
@@ -370,7 +255,7 @@ async fn expected_count_picks_the_closest_probed_candidate() {
 async fn best_distance_beyond_threshold_is_rejected_not_guessed() {
     // Only sibling available is 6 episodes away from an expected 1 —
     // the Wing-for-1979 shape. A silent pick plays the wrong show.
-    let client = AnidbClient::new(EpisodesTable(&[(33, 7)]));
+    let client = TableProvider::counted(&[(33, 7)]);
     let hits = [hit("wrong-sibling-33", "Some Sibling")];
     let err = pick_candidate(&client, &hits, Some(1), "The Real Movie", None, None)
         .await
@@ -382,7 +267,7 @@ async fn best_distance_beyond_threshold_is_rejected_not_guessed() {
 async fn ties_prefer_the_exact_title_match() {
     // Two candidates at equal distance; the one named exactly like
     // the search wins regardless of order.
-    let client = AnidbClient::new(EpisodesTable(&[(44, 12), (55, 12)]));
+    let client = TableProvider::counted(&[(44, 12), (55, 12)]);
     let hits = [
         hit("other-cut-44", "Other Cut"),
         hit("the-show-55", "The Show"),
@@ -395,7 +280,7 @@ async fn ties_prefer_the_exact_title_match() {
 
 #[tokio::test]
 async fn unknown_expected_count_prefers_exact_title_then_first() {
-    let client = AnidbClient::new(EpisodesTable(&[(66, 3), (77, 8)]));
+    let client = TableProvider::counted(&[(66, 3), (77, 8)]);
     let hits = [hit("first-66", "First"), hit("wanted-77", "Wanted")];
     let picked = pick_candidate(&client, &hits, None, "wanted", None, None)
         .await
@@ -412,7 +297,7 @@ async fn unknown_expected_count_prefers_exact_title_then_first() {
 async fn probe_errors_skip_the_candidate_instead_of_aborting() {
     // First candidate's episodes endpoint 404s (transient or gone);
     // the second still wins.
-    let client = AnidbClient::new(EpisodesTable(&[(88, 13)]));
+    let client = TableProvider::counted(&[(88, 13)]);
     let hits = [hit("dead-99", "Dead"), hit("alive-88", "Alive")];
     let picked = pick_candidate(&client, &hits, Some(13), "Alive", None, None)
         .await
@@ -424,14 +309,8 @@ async fn probe_errors_skip_the_candidate_instead_of_aborting() {
 async fn probing_stops_at_the_bound() {
     // Six candidates, the only in-threshold one is past the bound —
     // the pick fails rather than probing forever.
-    let client = AnidbClient::new(EpisodesTable(&[
-        (1, 100),
-        (2, 100),
-        (3, 100),
-        (4, 100),
-        (5, 100),
-        (6, 12),
-    ]));
+    let client =
+        TableProvider::counted(&[(1, 100), (2, 100), (3, 100), (4, 100), (5, 100), (6, 12)]);
     let hits = [
         hit("a-1", "A"),
         hit("b-2", "B"),
@@ -459,7 +338,7 @@ async fn an_all_not_found_pool_is_an_answered_dead_end() {
     // This replaces all_probes_failing_is_transient_not_absence: its
     // fake answered 404s, so it was pinning the answered case to the
     // transport verdict. The transport case keeps its own pin below.
-    let client = AnidbClient::new(EpisodesTable(&[]));
+    let client = TableProvider::counted(&[]);
     let hits = [hit("a-1", "A"), hit("b-2", "B")];
     let err = pick_candidate(&client, &hits, Some(12), "A", None, None)
         .await
@@ -470,22 +349,9 @@ async fn an_all_not_found_pool_is_an_answered_dead_end() {
     );
 }
 
-/// A fetch whose probes die on transport — no answer at all.
-struct TransportDeadEpisodes;
-
-#[async_trait::async_trait]
-impl Fetch for TransportDeadEpisodes {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains("/episodes") {
-            return Err(AniError::Network);
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
+/// A provider whose episode probes die on transport — no answer at all.
+fn transport_dead_episodes() -> TableProvider {
+    TableProvider::new().listings_default(Answer::fails(|| AniError::Network))
 }
 
 #[tokio::test]
@@ -493,7 +359,7 @@ async fn all_probes_dying_on_transport_stays_transient() {
     // Nothing was learned about the show when the probes never got
     // an answer: the verdict must be the transient Network so the
     // caller records distress and never persists absence.
-    let client = AnidbClient::new(TransportDeadEpisodes);
+    let client = transport_dead_episodes();
     let hits = [hit("a-1", "A"), hit("b-2", "B")];
     let err = pick_candidate(&client, &hits, Some(12), "A", None, None)
         .await
@@ -503,31 +369,8 @@ async fn all_probes_dying_on_transport_stays_transient() {
 
 /// One candidate's probe dies on transport while the other answers —
 /// with a count far outside tolerance.
-struct MixedEpisodes;
-
-#[async_trait::async_trait]
-impl Fetch for MixedEpisodes {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains("/api/frontend/anime/11/episodes") {
-            return Err(AniError::Network);
-        }
-        if url.contains("/api/frontend/anime/22/episodes") {
-            let rows: Vec<String> = (1..=7u32)
-                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 22_000 + n, n))
-                .collect();
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
-            });
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
+fn mixed_episodes() -> TableProvider {
+    TableProvider::counted(&[(22, 7)]).listing(11, Answer::fails(|| AniError::Network))
 }
 
 #[tokio::test]
@@ -539,7 +382,7 @@ async fn a_rejected_pool_with_failed_probes_stays_transient() {
     // candidate got to answer, and a NoResults here rides the walk
     // into a persistable clean miss that hides the show for the
     // negative TTL. Weather stays weather.
-    let client = AnidbClient::new(MixedEpisodes);
+    let client = mixed_episodes();
     let hits = [hit("the-show-11", "The Show"), hit("the-spinoff-22", "S")];
     let err = pick_candidate(&client, &hits, Some(24), "the show", None, None)
         .await
@@ -549,56 +392,16 @@ async fn a_rejected_pool_with_failed_probes_stays_transient() {
 
 #[tokio::test]
 async fn empty_hits_are_no_results() {
-    let client = AnidbClient::new(EpisodesTable(&[]));
+    let client = TableProvider::counted(&[]);
     let err = pick_candidate(&client, &[], Some(12), "x", None, None)
         .await
         .expect_err("empty");
     assert!(matches!(err, AniError::NoResults));
 }
 
-/// Episodes plus premiere years, served the way the provider does:
-/// counts from the episodes API, years off each slug's detail page.
-/// A `None` year answers the detail route with a 404 — the soft-miss
-/// shape a page without a season link produces.
-struct YearTable(&'static [(u64, u32, Option<u32>)]);
-
-#[async_trait::async_trait]
-impl Fetch for YearTable {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        for (id, count, year) in self.0 {
-            if url.contains(&format!("/api/frontend/anime/{id}/episodes")) {
-                let rows: Vec<String> = (1..=*count)
-                    .map(|n| format!("{{\"id\":{},\"number\":{}}}", id * 1000 + u64::from(n), n))
-                    .collect();
-                return Ok(FetchResponse {
-                    url: req.url.clone(),
-                    status: 200,
-                    body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
-                });
-            }
-            if !url.contains("/api/") && url.ends_with(&format!("-{id}")) {
-                return match year {
-                    Some(y) => Ok(FetchResponse {
-                        url: req.url.clone(),
-                        status: 200,
-                        body: format!("<a href=\"/browse?season=fall&year={y}\">Fall {y}</a>"),
-                    }),
-                    None => Ok(FetchResponse {
-                        url: req.url.clone(),
-                        status: 404,
-                        body: String::new(),
-                    }),
-                };
-            }
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
-}
+// The year tables below (`TableProvider::counted_with_years`) list
+// each show's episode count and the premiere year its detail page
+// names; a `None` year is a page without one — the soft miss.
 
 #[tokio::test]
 async fn a_year_match_beats_count_tied_cour_siblings() {
@@ -607,12 +410,12 @@ async fn a_year_match_beats_count_tied_cour_siblings() {
     // fourth part has only aired 2. Count alone lands on Part 1; the
     // year names the part — only the 2026 candidate is the clicked
     // show, and its short count is what airing looks like.
-    let client = AnidbClient::new(YearTable(&[
+    let client = TableProvider::counted_with_years(&[
         (675, 13, Some(2022)),
         (676, 14, Some(2023)),
         (677, 13, Some(2024)),
         (6378, 2, Some(2026)),
-    ]));
+    ]);
     let hits = [
         hit("tybw-675", "TYBW"),
         hit("tybw-the-conflict-676", "TYBW - The Conflict"),
@@ -637,7 +440,7 @@ async fn year_mismatches_are_excluded_before_scoring() {
     // Gundam 1979 vs Wing 1995: both TV-length and both within the
     // count tolerance, so the mismatched sibling can win on distance
     // or order. The year is an identity filter, not a late tie-break.
-    let client = AnidbClient::new(YearTable(&[(2, 45, Some(1995)), (1, 43, Some(1979))]));
+    let client = TableProvider::counted_with_years(&[(2, 45, Some(1995)), (1, 43, Some(1979))]);
     // Neither title matches the search term exactly, so without the
     // year the count tie falls to provider order — the 1995 sibling.
     let hits = [
@@ -662,7 +465,7 @@ async fn unknown_years_pass_the_identity_filter() {
     // A detail page that 404s or names no season must not exclude its
     // candidate — the year is a soft hint, and a provider hiccup on
     // one page must not hide the right show.
-    let client = AnidbClient::new(YearTable(&[(2, 12, Some(1990)), (1, 14, None)]));
+    let client = TableProvider::counted_with_years(&[(2, 12, Some(1990)), (1, 14, None)]);
     let hits = [hit("old-2", "Old"), hit("mystery-1", "Mystery")];
     let picked = pick_candidate(&client, &hits, Some(12), "unrelated", Some(2020), None)
         .await
@@ -681,7 +484,7 @@ async fn an_all_mismatched_pool_is_rejected_so_the_walk_moves_on() {
     // is where the real show turns up. (A provider-side markup
     // change can't trip this: unparseable years read as unknown and
     // unknown years never exclude.)
-    let client = AnidbClient::new(YearTable(&[(1, 12, Some(2000)), (2, 30, Some(2001))]));
+    let client = TableProvider::counted_with_years(&[(1, 12, Some(2000)), (2, 30, Some(2001))]);
     let hits = [hit("a-1", "A"), hit("b-2", "B")];
     let err = pick_candidate(&client, &hits, Some(12), "a", Some(2026), None)
         .await
@@ -694,7 +497,7 @@ async fn a_lone_candidate_with_a_mismatched_year_is_rejected() {
     // The identity filter applies even when there is nothing to
     // discriminate between: one count-tied candidate from the wrong
     // decade is still the wrong show.
-    let client = AnidbClient::new(YearTable(&[(1, 12, Some(2001))]));
+    let client = TableProvider::counted_with_years(&[(1, 12, Some(2001))]);
     let hits = [hit("old-show-1", "Old Show")];
     let err = pick_candidate(&client, &hits, Some(12), "new show", Some(2022), None)
         .await
@@ -704,7 +507,7 @@ async fn a_lone_candidate_with_a_mismatched_year_is_rejected() {
 
 #[tokio::test]
 async fn a_lone_candidate_with_a_matching_year_wins() {
-    let client = AnidbClient::new(YearTable(&[(1, 12, Some(2022))]));
+    let client = TableProvider::counted_with_years(&[(1, 12, Some(2022))]);
     let hits = [hit("new-show-1", "New Show")];
     let picked = pick_candidate(&client, &hits, Some(12), "new show", Some(2022), None)
         .await
@@ -719,7 +522,7 @@ async fn the_airing_rescue_prefers_the_exact_title_on_a_distance_tie() {
     // and the provider ranks the sibling first. Normal winner
     // selection ranks the user's own words above provider order;
     // the rescue must not drop that evidence at the door.
-    let client = AnidbClient::new(YearTable(&[(21, 2, Some(2026)), (22, 2, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(21, 2, Some(2026)), (22, 2, Some(2026))]);
     let hits = [
         hit("the-show-part-2-21", "The Show Part 2"),
         hit("the-show-22", "The Show"),
@@ -737,7 +540,7 @@ async fn a_lone_airing_part_with_a_confirmed_year_survives_the_count_gap() {
     // matches — the same airing-part evidence that rescues it inside
     // a sibling pool must rescue it here, or exactly the
     // currently-airing show becomes unresolvable through that alias.
-    let client = AnidbClient::new(YearTable(&[(6378, 2, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(6378, 2, Some(2026))]);
     let hits = [hit("tybw-the-calamity-6378", "TYBW - The Calamity")];
     let picked = pick_candidate(
         &client,
@@ -758,7 +561,7 @@ async fn year_filters_apply_without_an_episode_count() {
     // when the cour siblings collide. With no count, the year filter
     // plus the provider's own ranking must still land on the right
     // part instead of the first sibling.
-    let client = AnidbClient::new(YearTable(&[(675, 13, Some(2022)), (6378, 2, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(675, 13, Some(2022)), (6378, 2, Some(2026))]);
     let hits = [
         hit("tybw-675", "TYBW"),
         hit("tybw-the-calamity-6378", "TYBW - The Calamity"),
@@ -778,7 +581,7 @@ async fn a_countless_pick_prefers_the_year_confirmed_candidate() {
     // Kitsu's count is null while a show airs — exactly when the
     // provider's token search pollutes the pool. Positional order
     // must lose to a candidate whose detail year matches Kitsu's.
-    let client = AnidbClient::new(YearTable(&[(1, 1, None), (2, 4, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(1, 1, None), (2, 4, Some(2026))]);
     let hits = [
         hit("some-movie-1", "Some Movie"),
         hit("the-show-2", "The Show"),
@@ -798,12 +601,12 @@ async fn a_countless_garbage_pool_with_only_unknown_survivors_is_rejected() {
     // year evidence already showed to be mostly wrong must not be
     // won by the one candidate with no identity evidence at all —
     // rejecting it lets the walk's next alias find the real entry.
-    let client = AnidbClient::new(YearTable(&[
+    let client = TableProvider::counted_with_years(&[
         (1, 1, Some(1991)),
         (2, 4, Some(1975)),
         (3, 12, Some(2001)),
         (4, 1, None),
-    ]));
+    ]);
     let hits = [
         hit("old-movie-1", "Old Movie"),
         hit("old-robot-2", "Old Robot"),
@@ -822,7 +625,7 @@ async fn a_countless_clean_pool_with_an_unknown_year_still_picks_first() {
     // with no exclusions and an unknown-year first hit keeps the
     // provider's own ranking, so pages without season links don't
     // become unresolvable.
-    let client = AnidbClient::new(YearTable(&[(1, 12, None)]));
+    let client = TableProvider::counted_with_years(&[(1, 12, None)]);
     let hits = [hit("plain-show-1", "Plain Show")];
     let picked = pick_candidate(&client, &hits, None, "unrelated", Some(2026), None)
         .await
@@ -840,11 +643,11 @@ async fn an_off_by_one_year_carries_no_identity_for_the_rescue() {
     // pool but must not vouch for it: with the far-off siblings
     // excluded and no exact-year survivor, the pool is rejected so
     // the next alias finds the real entry.
-    let client = AnidbClient::new(YearTable(&[
+    let client = TableProvider::counted_with_years(&[
         (1, 1, Some(1991)),
         (2, 12, Some(2001)),
         (3, 1, Some(2025)),
-    ]));
+    ]);
     let hits = [
         hit("old-movie-1", "Old Movie"),
         hit("old-maids-2", "Old Maids"),
@@ -861,7 +664,7 @@ async fn an_off_by_one_year_still_competes_on_count() {
     // The tolerance keeps its original job: a season-boundary entry
     // (Kitsu says 2025, the provider files the winter premiere under
     // 2026) whose count agrees must keep winning outright.
-    let client = AnidbClient::new(YearTable(&[(1, 12, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(1, 12, Some(2026))]);
     let hits = [hit("boundary-show-1", "Boundary Show")];
     let picked = pick_candidate(&client, &hits, Some(12), "boundary show", Some(2025), None)
         .await
@@ -878,7 +681,7 @@ async fn an_exact_year_breaks_a_count_tie_against_a_tolerated_neighbor() {
     // order — but the original's detail year matched Kitsu's
     // exactly, and that stored confirmation is positive identity the
     // tie-break must spend before falling back to ranking.
-    let client = AnidbClient::new(YearTable(&[(11, 12, Some(2019)), (12, 12, Some(2020))]));
+    let client = TableProvider::counted_with_years(&[(11, 12, Some(2019)), (12, 12, Some(2020))]);
     let hits = [
         hit("the-show-remake-11", "The Show Remake"),
         hit("the-show-original-12", "The Show Original"),
@@ -894,7 +697,7 @@ async fn an_exact_title_match_still_beats_a_year_confirmed_rival() {
     // The year is a tie-break below the title, not above it: when
     // the user's own search term names one candidate verbatim, an
     // exact-year sibling must not override that stronger signal.
-    let client = AnidbClient::new(YearTable(&[(11, 12, Some(2019)), (12, 12, Some(2020))]));
+    let client = TableProvider::counted_with_years(&[(11, 12, Some(2019)), (12, 12, Some(2020))]);
     let hits = [
         hit("the-show-11", "The Show"),
         hit("the-show-original-12", "The Show Original"),
@@ -911,7 +714,7 @@ async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
     // 12-episode series the caller expects, however well its count
     // or position scores — the same class of mispick the provider
     // picker's type filter used to catch.
-    let client = AnidbClient::new(EpisodesTable(&[(1, 12), (2, 12)]));
+    let client = TableProvider::counted(&[(1, 12), (2, 12)]);
     let hits = [
         typed_hit("recap-movie-1", "Recap Movie", "Movie"),
         typed_hit("the-series-2", "The Series", "TV"),
@@ -924,7 +727,7 @@ async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
 
 #[tokio::test]
 async fn a_pool_of_only_movies_under_a_series_expectation_is_rejected() {
-    let client = AnidbClient::new(EpisodesTable(&[(1, 12)]));
+    let client = TableProvider::counted(&[(1, 12)]);
     let hits = [typed_hit("recap-movie-1", "Recap Movie", "Movie")];
     let err = pick_candidate(&client, &hits, Some(12), "the series", None, None)
         .await
@@ -936,7 +739,7 @@ async fn a_pool_of_only_movies_under_a_series_expectation_is_rejected() {
 async fn a_single_video_expectation_keeps_movie_candidates() {
     // Kitsu movies expect one episode — the badge agrees, no
     // disproof. Unknown badges never exclude either way.
-    let client = AnidbClient::new(EpisodesTable(&[(1, 1)]));
+    let client = TableProvider::counted(&[(1, 1)]);
     let hits = [typed_hit("the-movie-1", "The Movie", "Movie")];
     let picked = pick_candidate(&client, &hits, Some(1), "the movie", None, None)
         .await
@@ -954,7 +757,7 @@ async fn a_movie_badge_is_disproof_against_a_special_subtype() {
     // year. With every candidate disproven the pool rejects, the
     // walk exhausts cleanly, and the frontend gets its "isn't on the
     // streaming source" overlay instead of the wrong film.
-    let client = AnidbClient::new(YearTable(&[(1, 1, Some(2007)), (2, 500, Some(2007))]));
+    let client = TableProvider::counted_with_years(&[(1, 1, Some(2007)), (2, 500, Some(2007))]);
     let hits = [
         typed_hit("franchise-movie-1-1", "Franchise Movie 1", "Movie"),
         typed_hit("franchise-3687-2", "Franchise", "TV"),
@@ -979,7 +782,7 @@ async fn a_non_movie_badge_is_disproof_against_a_movie_subtype() {
     // card with the same title and year ties on every remaining
     // signal. A known non-movie badge cannot be the movie; unknown
     // badges stay soft.
-    let client = AnidbClient::new(EpisodesTable(&[(1, 1), (2, 1)]));
+    let client = TableProvider::counted(&[(1, 1), (2, 1)]);
     let hits = [
         typed_hit("franchise-special-1", "The Title", "Special"),
         typed_hit("the-movie-2", "The Title", "Movie"),
@@ -995,7 +798,7 @@ async fn an_unknown_badge_survives_a_movie_subtype() {
     // A card without a format badge stays eligible — the filter
     // works on positive disproof only, so a provider markup change
     // degrades to badge-blind picking instead of emptying pools.
-    let client = AnidbClient::new(EpisodesTable(&[(1, 1)]));
+    let client = TableProvider::counted(&[(1, 1)]);
     let hits = [hit("plain-1", "Plain")];
     let picked = pick_candidate(&client, &hits, Some(1), "plain", None, Some("movie"))
         .await
@@ -1005,7 +808,7 @@ async fn an_unknown_badge_survives_a_movie_subtype() {
 
 #[tokio::test]
 async fn a_movie_subtype_keeps_movie_candidates() {
-    let client = AnidbClient::new(EpisodesTable(&[(1, 1)]));
+    let client = TableProvider::counted(&[(1, 1)]);
     let hits = [typed_hit("the-movie-1", "The Movie", "Movie")];
     let picked = pick_candidate(&client, &hits, Some(1), "the movie", None, Some("movie"))
         .await
@@ -1013,53 +816,18 @@ async fn a_movie_subtype_keeps_movie_candidates() {
     assert_eq!(picked.hit.slug, "the-movie-1");
 }
 
-/// A fetch whose first episodes probe answers a Cloudflare-shaped
-/// refusal and which counts every episodes request it receives.
-struct RefusingEpisodes {
-    probes: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+/// A provider whose every episodes probe answers a refusal; the log
+/// counts how many were asked.
+fn refusing_episodes() -> TableProvider {
+    TableProvider::new().listings_default(Answer::fails(|| AniError::Upstream { status: 403 }))
 }
 
-#[async_trait::async_trait]
-impl Fetch for RefusingEpisodes {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains("/episodes") {
-            self.probes
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            return Err(AniError::Upstream { status: 403 });
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
-}
-
-/// A fetch whose detail pages answer a refusal while the episodes
-/// endpoint stays healthy, counting the detail requests it receives.
-struct RefusingDetails {
-    details: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-}
-
-#[async_trait::async_trait]
-impl Fetch for RefusingDetails {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains("/episodes") {
-            let rows: Vec<String> = (1..=12)
-                .map(|n| format!("{{\"id\":{},\"number\":{}}}", 1000 + n, n))
-                .collect();
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: format!("{{\"episodes\":[{}]}}", rows.join(",")),
-            });
-        }
-        self.details
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Err(AniError::Upstream { status: 403 })
-    }
+/// A provider whose detail pages answer a refusal while its listings
+/// stay healthy; the log counts the detail requests.
+fn refusing_details() -> TableProvider {
+    TableProvider::new()
+        .listings_default(listing_of(1, 12))
+        .years_default(Answer::fails(|| AniError::Upstream { status: 403 }))
 }
 
 #[tokio::test]
@@ -1069,17 +837,14 @@ async fn a_detail_probe_refusal_stops_the_pick() {
     // unknown year keeps requesting the rest of the pool's detail
     // pages and then selects year-blind through the block. The
     // refusal must surface typed after exactly one detail request.
-    let details = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let client = AnidbClient::new(RefusingDetails {
-        details: details.clone(),
-    });
+    let client = refusing_details();
     let hits = [hit("show-a-1", "Show A"), hit("show-b-2", "Show B")];
     let err = pick_candidate(&client, &hits, Some(12), "Show A", Some(2026), None)
         .await
         .expect_err("refused");
     assert!(matches!(err, AniError::Upstream { .. }), "got {err:?}");
     assert_eq!(
-        details.load(std::sync::atomic::Ordering::SeqCst),
+        client.count(|a| matches!(a, Asked::Year(_))),
         1,
         "the pick kept probing detail pages past the refusal"
     );
@@ -1092,17 +857,14 @@ async fn an_upstream_refusal_stops_the_probe_walk() {
     // block into a burst of further requests, and the alias walk can
     // then repeat the burst per alias. The refusal must surface
     // immediately, typed, after exactly one probe.
-    let probes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let client = AnidbClient::new(RefusingEpisodes {
-        probes: probes.clone(),
-    });
+    let client = refusing_episodes();
     let hits = [hit("show-a-1", "Show A"), hit("show-b-2", "Show B")];
     let err = pick_candidate(&client, &hits, Some(12), "Show A", None, None)
         .await
         .expect_err("refused");
     assert!(matches!(err, AniError::Upstream { .. }), "got {err:?}");
     assert_eq!(
-        probes.load(std::sync::atomic::Ordering::SeqCst),
+        client.count(|a| matches!(a, Asked::Episodes(_))),
         1,
         "the walk kept probing past the refusal"
     );
@@ -1116,7 +878,7 @@ async fn format_incompatible_hits_do_not_crowd_the_probe_head() {
     // slots, the series at rank six is never considered, and the
     // alias is rejected — ultimately reported absent despite a
     // perfectly valid result.
-    let client = AnidbClient::new(EpisodesTable(&[(66, 26)]));
+    let client = TableProvider::counted(&[(66, 26)]);
     let hits = [
         typed_hit("film-1-11", "Film 1", "Movie"),
         typed_hit("film-2-22", "Film 2", "Movie"),
@@ -1139,7 +901,7 @@ async fn a_lowercase_movie_badge_cannot_carry_a_series_expectation() {
     // lowercase would silently re-admit movies into series pools —
     // exactly where the count can tie (a recap movie beside a short
     // season). Both directions read the badge the same way.
-    let client = AnidbClient::new(EpisodesTable(&[(11, 3)]));
+    let client = TableProvider::counted(&[(11, 3)]);
     let hits = [typed_hit("the-film-11", "The Film", "movie")];
     let err = pick_candidate(&client, &hits, Some(3), "the film", None, None)
         .await
@@ -1173,7 +935,7 @@ async fn a_tv_badge_cannot_carry_a_special_expectation() {
     // later signal — provider order picked the wrong video. Known
     // badge and known subtype must agree category-wise; unknown
     // badges still never exclude.
-    let client = AnidbClient::new(EpisodesTable(&[(11, 1)]));
+    let client = TableProvider::counted(&[(11, 1)]);
     let hits = [typed_hit("the-tv-11", "The Show", "TV")];
     let err = pick_candidate(&client, &hits, Some(1), "the show", None, Some("special"))
         .await
@@ -1199,7 +961,7 @@ fn numbered(picked: &PickedShow) -> Vec<(u32, u64)> {
 
 #[tokio::test]
 async fn an_airing_split_entry_stitches_both_parts_under_the_first() {
-    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 2, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(4, 1, Some(2026)), (10465, 2, Some(2026))]);
     let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
         .await
         .expect("picked");
@@ -1222,7 +984,7 @@ async fn a_finished_split_entry_stitches_rather_than_taking_the_near_miss() {
     // 1 + 11 = 12: the 2nd Stage alone sits one off, inside the
     // tolerance, and would otherwise win and number every episode one
     // short.
-    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 11, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(4, 1, Some(2026)), (10465, 11, Some(2026))]);
     let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
         .await
         .expect("picked");
@@ -1235,7 +997,7 @@ async fn a_finished_split_entry_stitches_rather_than_taking_the_near_miss() {
 async fn a_part_that_already_fits_is_not_stitched_to_its_sequel() {
     // The reverse shape must not regress: a provider entry that is the
     // whole Kitsu entry stands alone even with a same-year sequel.
-    let client = AnidbClient::new(YearTable(&[(4, 12, Some(2026)), (10465, 2, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(4, 12, Some(2026)), (10465, 2, Some(2026))]);
     let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
         .await
         .expect("picked");
@@ -1245,7 +1007,7 @@ async fn a_part_that_already_fits_is_not_stitched_to_its_sequel() {
 
 #[tokio::test]
 async fn a_sibling_from_another_year_is_not_stitched() {
-    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 2, Some(2029))]));
+    let client = TableProvider::counted_with_years(&[(4, 1, Some(2026)), (10465, 2, Some(2029))]);
     let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
         .await
         .expect("picked");
@@ -1254,7 +1016,7 @@ async fn a_sibling_from_another_year_is_not_stitched() {
 
 #[tokio::test]
 async fn a_bare_title_inside_the_tolerance_is_not_stitched_to_a_same_year_sequel() {
-    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (32, 1, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(31, 12, Some(2026)), (32, 1, Some(2026))]);
     let hits = [hit("x-31", "X"), hit("x-part-2-32", "X Part 2")];
     let picked = pick_candidate(&client, &hits, Some(13), "X", Some(2026), Some("TV"))
         .await
@@ -1270,7 +1032,7 @@ async fn a_finished_split_is_stitched_when_the_provider_spells_it_differently() 
     // later part, so the entry is the stitched pair.
     const EN: &str = "Steel Ball Run: JoJo's Bizarre Adventure";
     const EN_2ND: &str = "Steel Ball Run: JoJo's Bizarre Adventure 2nd Stage";
-    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 11, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(4, 1, Some(2026)), (10465, 11, Some(2026))]);
     let hits = [hit("sbr-1st-4", EN), hit("sbr-2nd-10465", EN_2ND)];
     let picked = pick_candidate(&client, &hits, Some(12), SBR, Some(2026), Some("ONA"))
         .await
@@ -1282,7 +1044,7 @@ async fn a_finished_split_is_stitched_when_the_provider_spells_it_differently() 
 
 #[tokio::test]
 async fn an_airing_split_does_not_flip_to_its_later_part_mid_season() {
-    let client = AnidbClient::new(YearTable(&[(4, 1, Some(2026)), (10465, 9, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(4, 1, Some(2026)), (10465, 9, Some(2026))]);
     let picked = pick_candidate(&client, &sbr_hits(), Some(12), SBR, Some(2026), Some("ONA"))
         .await
         .expect("picked");
@@ -1304,7 +1066,7 @@ async fn a_later_part_asked_for_by_name_is_not_stitched_to_the_part_before() {
     // 12 + 5 = 17 falls short of 24 like an airing split, and the
     // bare title alone is twelve off — but stitching would play
     // Season 2's episodes 1-12 from the first season.
-    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (33, 5, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(31, 12, Some(2026)), (33, 5, Some(2026))]);
     let picked = pick_candidate(
         &client,
         &later_part_hits(),
@@ -1324,7 +1086,7 @@ async fn a_later_part_asked_for_by_name_is_not_stitched_to_the_part_before() {
 async fn a_later_part_is_not_taken_for_the_part_before_however_close_its_count() {
     // The first season's twelve hit Season 2's announced twelve
     // exactly while Season 2 has aired ten: still not the entry.
-    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (33, 10, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(31, 12, Some(2026)), (33, 10, Some(2026))]);
     let picked = pick_candidate(
         &client,
         &later_part_hits(),
@@ -1342,7 +1104,7 @@ async fn a_later_part_is_not_taken_for_the_part_before_however_close_its_count()
 async fn a_later_part_is_recognised_by_any_title_the_entry_goes_by() {
     // The walk searches an alias; the entry's canonical title is the
     // one that names the part.
-    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (33, 5, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(31, 12, Some(2026)), (33, 5, Some(2026))]);
     let picked = pick_candidate_titled(
         &client,
         &later_part_hits(),
@@ -1361,7 +1123,7 @@ async fn a_later_part_is_recognised_by_any_title_the_entry_goes_by() {
 async fn the_part_before_alone_is_no_match_for_a_later_part() {
     // The provider has not listed Season 2 yet: the first season is
     // a clean miss, not a stand-in.
-    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(31, 12, Some(2026))]);
     let err = pick_candidate(
         &client,
         &[hit("x-31", "X")],
@@ -1380,7 +1142,7 @@ async fn a_bare_entry_beside_its_airing_same_year_sequel_stays_whole() {
     // The inverse: Kitsu's entry is the bare show, and the same-year
     // "Season 2" is a separate Kitsu entry five episodes in. The bare
     // title fits on its own, so it never heads a chain.
-    let client = AnidbClient::new(YearTable(&[(31, 12, Some(2026)), (33, 5, Some(2026))]));
+    let client = TableProvider::counted_with_years(&[(31, 12, Some(2026)), (33, 5, Some(2026))]);
     for expected in [12, 13] {
         let picked = pick_candidate(
             &client,

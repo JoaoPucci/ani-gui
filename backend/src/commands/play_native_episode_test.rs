@@ -2,43 +2,14 @@ use super::*;
 use crate::scraper::fetch::{FetchRequest, FetchResponse};
 use crate::scraper::provider::{BrowseHit, EpisodeRef};
 
-/// Serves the full chain — languages, embed, master — for exactly
-/// one episode id; every other id 404s. Resolving proves which row
-/// the matcher chased.
-struct OnlyEpisode(u64);
-
-#[async_trait::async_trait]
-impl crate::scraper::fetch::Fetch for OnlyEpisode {
-    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
-        let url = req.url.as_str();
-        if url.contains(&format!("/api/frontend/episode/{}/languages", self.0)) {
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: r#"{"languages":[{"code":"jpn","embed_url":"https://cdn.example/e/x"}]}"#
-                    .into(),
-            });
-        }
-        if url.contains("/e/x") {
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: "player.setup({ file: 'https://cdn.example/x/master.m3u8' });".into(),
-            });
-        }
-        if url.contains("/x/master.m3u8") {
-            return Ok(FetchResponse {
-                url: req.url.clone(),
-                status: 200,
-                body: "#EXTM3U\n".into(),
-            });
-        }
-        Ok(FetchResponse {
-            url: req.url.clone(),
-            status: 404,
-            body: String::new(),
-        })
-    }
+/// Streams exactly one episode id in sub; every other id is not
+/// found. Resolving proves which row the matcher chased.
+fn only_episode(id: u64) -> crate::scraper::table_provider::TableProvider {
+    crate::scraper::table_provider::TableProvider::new().stream(
+        id,
+        "sub",
+        "https://cdn.example/x/master.m3u8",
+    )
 }
 
 fn ep(id: u64, number: u32, tag: Option<&str>) -> EpisodeRef {
@@ -65,7 +36,7 @@ async fn a_tagged_continuation_maps_per_entry_numbers() {
     // The cumulative numbering lives in the tags while slots restart
     // at 1: per-entry request 1 is display 41.
     let picked = show(vec![ep(10, 1, Some("41")), ep(11, 2, Some("42"))]);
-    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(10));
+    let client = only_episode(10);
     let url = resolve_episode(&client, &picked, "1", "sub", "best")
         .await
         .expect("per-entry 1 is display 41")
@@ -83,7 +54,7 @@ async fn a_fractional_request_maps_through_the_offset_too() {
         ep(12, 2, Some("41.5")),
         ep(11, 3, Some("42")),
     ]);
-    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(12));
+    let client = only_episode(12);
     let url = resolve_episode(&client, &picked, "1.5", "sub", "best")
         .await
         .expect("per-entry 1.5 is display 41.5")
@@ -98,7 +69,7 @@ async fn a_zero_padded_integer_tag_still_answers_its_episode() {
     // parse it numerically — the matcher's byte comparison against
     // the constructed "41" is the one place it dies.
     let picked = show(vec![ep(10, 1, Some("041")), ep(11, 2, Some("042"))]);
-    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(10));
+    let client = only_episode(10);
     let url = resolve_episode(&client, &picked, "1", "sub", "best")
         .await
         .expect("per-entry 1 is display 041 = 41")
@@ -118,7 +89,7 @@ async fn a_trailing_zero_fraction_matches_the_normalized_click() {
         ep(3, 3, None),
         ep(4, 4, Some("3.50")),
     ]);
-    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(4));
+    let client = only_episode(4);
     let url = resolve_episode(&client, &picked, "3.5", "sub", "best")
         .await
         .expect("the normalized click finds the padded tag")
@@ -168,7 +139,7 @@ async fn an_integer_request_skips_the_recap_in_its_slot() {
         ep(4, 4, Some("3.5")),
         ep(5, 5, Some("4")),
     ]);
-    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(5));
+    let client = only_episode(5);
     let url = resolve_episode(&client, &picked, "4", "sub", "best")
         .await
         .expect("the tag-4 row carries episode 4")
@@ -185,7 +156,7 @@ async fn an_integer_request_skips_the_recap_in_its_slot() {
 #[tokio::test]
 async fn a_reversed_range_resolves_to_the_episodes_own_verdict() {
     let picked = show(vec![ep(1, 1, None), ep(2, 2, None), ep(12, 12, None)]);
-    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(12));
+    let client = only_episode(12);
     let ne = resolve_episode(&client, &picked, "12-1", "sub", "best")
         .await
         .expect_err("a reversed pair names no episode");
@@ -211,7 +182,7 @@ async fn a_recap_slot_without_its_true_episode_is_a_dead_end() {
         ep(3, 3, None),
         ep(4, 4, Some("3.5")),
     ]);
-    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(4));
+    let client = only_episode(4);
     let ne = resolve_episode(&client, &picked, "4", "sub", "best")
         .await
         .expect_err("the recap must not answer for episode 4");
@@ -229,7 +200,7 @@ async fn an_integer_display_tag_still_matches_through_the_offset() {
     // tags; the per-entry request maps through the offset into the
     // same display space the tags live in.
     let picked = show(vec![ep(10, 41, None), ep(11, 42, Some("42"))]);
-    let client = crate::scraper::anidb::AnidbClient::new(OnlyEpisode(11));
+    let client = only_episode(11);
     let url = resolve_episode(&client, &picked, "2", "sub", "best")
         .await
         .expect("per-entry 2 is display 42")
@@ -364,7 +335,7 @@ struct ListedTracks(Vec<crate::scraper::provider::SubtitleTrack>);
 #[async_trait::async_trait]
 impl crate::scraper::provider::Provider for ListedTracks {
     fn id(&self) -> crate::scraper::provider::ProviderId {
-        crate::scraper::provider::ProviderId::Anidb
+        crate::scraper::provider::ProviderId::TestA
     }
     async fn search(&self, _q: &str) -> crate::error::Result<Vec<BrowseHit>> {
         Ok(vec![BrowseHit {

@@ -11,11 +11,10 @@ git-LFS is not configured.
 
 | Path | Contents |
 |---|---|
-| `anidb/` | Synthesized anidb.app response shapes the native resolver scrapes: browse pages (results, empty, cloudflare interstitial), a detail page (MAL link + Seasons), episodes JSON, languages JSON, an embed page, and a master playlist. |
 | `hianime/picker/` | Real hianime pools, one file per Kitsu entry: the arguments the app sends for the entry (canonical title, fallbacks, episode count, year, subtype) and every search result, episode listing and entry-page year the pick walk read for it from the live site, reduced to what the client's parsers return. Captured by running the walk against hianime through the impersonating transport. |
 | `kitsu/` | JSON:API responses for `/anime?filter[text]=`, `/anime/:id` (with and without a cover image), and `/anime/:id/episodes`. |
 | `history/` | Watch-history samples for the GUI's reader: empty, single-entry, multi-entry. |
-| `hls/` | Synthesized MPEG-TS samples for the player's demuxer regression tests, as base64 text: a stream whose video starts under one second and whose audio starts after it. |
+| `hls/` | Synthesized MPEG-TS samples for the player's demuxer regression tests, as base64 text: a stream whose video starts under one second and whose audio starts after it. And a master playlist the quality-selection tests read, as plain text: written by hand in the shape of anidb.app's, and moved here from `anidb/` when that client was removed. |
 | `title-words/` | Shared vectors for the title-word rule the frontend's Continue resolution and the backend's show-id resolve both apply to a Kitsu search hit: pairs of a show's titles with its Kitsu entry, the unrelated hits Kitsu returned for the provider's Seitokai ni mo Ana wa Aru! title, and the rule's edges, sequel markers among them. |
 | `arch/` | Stand-in checks the bats harness under `tests/bash/arch/` drives: a check a stray environment can redirect. |
 
@@ -39,9 +38,9 @@ fixtures that property tests depend on.
 ## Capture conventions
 
 - Responses are captured with the same User-Agent the production code uses.
-- For anidb.app, capture through the same impersonating transport the
-  resolver spawns — a plain client is answered with the cloudflare
-  interstitial, which is itself one of the recorded shapes.
+- For a provider behind cloudflare, capture through the same
+  impersonating transport the resolver spawns — a plain client is
+  answered with the cloudflare interstitial.
 - Personally-identifying fields (none expected for these APIs, but worth
   checking) are scrubbed before commit.
 - Binary fixtures (the `tobeparsed` blobs) are committed as base64 text in

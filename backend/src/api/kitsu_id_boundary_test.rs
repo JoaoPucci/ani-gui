@@ -24,7 +24,6 @@ use crate::commands::play::PlayArgs;
 /// whether a route asked Kitsu for anything.
 fn state(td: &TempDir, kitsu: &str) -> Arc<AppState> {
     Arc::new(AppState {
-        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -33,10 +32,7 @@ fn state(td: &TempDir, kitsu: &str) -> Arc<AppState> {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: td.path().join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: td.path().join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu),
@@ -286,7 +282,7 @@ async fn a_stored_value_that_is_not_an_id_reaches_neither_the_renderer_nor_kitsu
     let td = TempDir::new().expect("tempdir");
     let s = state(&td, &kitsu);
     k::allmanga_kitsu_put(&s, "show-a", "../49877").expect("seed");
-    k::title_match_put(&s, ProviderId::Anidb, "Naruto", 1, "12:21").expect("seed");
+    k::title_match_put(&s, Some(ProviderId::TestA), "Naruto", 1, "12:21").expect("seed");
 
     let (status, text) = send(s.clone(), "GET", "/api/allmanga-kitsu-map/show-a", "").await;
     assert_eq!((status, text.as_str()), (StatusCode::OK, "null"));

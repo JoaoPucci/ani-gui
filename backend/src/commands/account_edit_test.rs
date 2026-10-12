@@ -20,7 +20,6 @@ use crate::meta::mal_user::{MalProvider, MalRefreshState};
 fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
     use std::path::PathBuf;
     Arc::new(AppState {
-        anidb_base: None,
         secret: crate::proxy::AppSecret::random(),
         sessions: crate::proxy::SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -29,10 +28,7 @@ fn state_with_kitsu(kitsu_uri: &str) -> Arc<AppState> {
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: PathBuf::from("/tmp/ani-gui/history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests(),
         image_cache_dir: PathBuf::from("/tmp/ani-gui-images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: crate::meta::kitsu::KitsuClient::with_base(reqwest::Client::new(), kitsu_uri),

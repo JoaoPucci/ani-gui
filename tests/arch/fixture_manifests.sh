@@ -10,7 +10,7 @@
 #
 # Each manifest is parsed with node's JSON parser — a real parser, not
 # a pattern. Its entries are the `fixtures` object when the manifest
-# has one, and otherwise the whole object (the flat form anidb/ uses).
+# has one, and otherwise the whole object (the flat form).
 # For every entry:
 #
 #   - its name is a plain file name — no `/`, `\` or `:`, not `.` or `..`,
@@ -28,9 +28,7 @@
 #     rather than being skipped.
 #
 # And nothing beside a manifest escapes it. Every regular file there is
-# listed in it, the same two-way rule the anidb/ Rust test
-# (`fixture_manifest_matches_the_fixtures`) applies to its own
-# directory: a fixture added without an entry is one the manifest
+# listed in it: a fixture added without an entry is one the manifest
 # cannot vouch for. Every subdirectory there carries a MANIFEST.json
 # of its own, which is checked in turn. Anything else there — a
 # symbolic link, a fifo, a socket — fails.
@@ -44,7 +42,7 @@
 # MANIFEST.json and no manifest-carrying parent (history/ and arch/
 # hold hand-written inputs and carry none) — its contents, links
 # included, are not examined. Size is checked only where an entry
-# records it; anidb/'s entries record a digest alone. A name repeated
+# records it. A name repeated
 # within one manifest is not reported: JSON.parse keeps the last of
 # duplicate keys, and that entry is the one checked.
 

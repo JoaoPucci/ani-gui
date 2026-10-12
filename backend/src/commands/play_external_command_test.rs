@@ -1,55 +1,25 @@
 use super::*;
+use crate::commands::play::tests::walked_key;
 use crate::commands::play::PlayArgs;
-use wiremock::matchers::{method, path, query_param};
+use crate::scraper::provider::{BrowseHit, EpisodeRef};
+use crate::scraper::table_provider::TableProvider;
+use std::sync::Arc;
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// Mount the full native resolution surface for one show on `mock`:
-/// browse for `query`, a two-episode list, a jpn embed on episode 2,
-/// and the embed page carrying the master playlist URL.
-async fn stub_provider(mock: &MockServer, query: &str) {
-    Mock::given(method("GET"))
-        .and(path("/browse"))
-        .and(query_param("q", query))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>"),
-        )
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/77/episodes"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string(r#"{"episodes":[{"id":701,"number":1},{"id":702,"number":2}]}"#),
-        )
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/api/frontend/episode/702/languages"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
-            mock.uri()
-        )))
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/e/x"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            "player.setup({{ file: '{}/x/master.m3u8' }});",
-            mock.uri()
-        )))
-        .mount(mock)
-        .await;
-    // The quality step validates the master before handing it on, so
-    // the stub has to serve it like the CDN would.
-    Mock::given(method("GET"))
-        .and(path("/x/master.m3u8"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
-        .mount(mock)
-        .await;
+/// One show a search for `query` finds: a two-episode listing whose
+/// second episode streams in sub from a master on `mock`, the CDN.
+fn stub_provider(mock: &MockServer, query: &str) -> TableProvider {
+    TableProvider::one_show(
+        query,
+        ("the-show-77", "The Show"),
+        &[(701, 1), (702, 2)],
+        &[702],
+        &format!("{}/x/master.m3u8", mock.uri()),
+    )
 }
 
-/// Mount a listing whose provider slots and display tags diverge:
+/// A listing whose provider slots and display tags diverge:
 /// slot 4 is the recap tagged `3.5`, so regular episode 4 lives in
 /// slot 5. Requesting display episode 4 must resolve slot 5, and the
 /// history row has to carry the slot rather than the tag.
@@ -59,50 +29,32 @@ async fn stub_provider(mock: &MockServer, query: &str) {
 /// recap. Storing the display tag would resume the wrong episode.
 /// The offset store is what translates between the two when the
 /// strip needs a number to show.
-async fn stub_provider_with_a_recap(mock: &MockServer, query: &str) {
-    Mock::given(method("GET"))
-        .and(path("/browse"))
-        .and(query_param("q", query))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>"),
+fn stub_provider_with_a_recap(mock: &MockServer, query: &str) -> TableProvider {
+    let row = |id: u64, number: u32, tag: Option<&str>| EpisodeRef {
+        id,
+        number,
+        number2: tag.map(str::to_string),
+    };
+    TableProvider::new()
+        .hits(
+            query,
+            vec![BrowseHit {
+                slug: "the-show-77".into(),
+                title: "The Show".into(),
+                kind: None,
+            }],
         )
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/api/frontend/anime/77/episodes"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            r#"{"episodes":[
-                {"id":701,"number":1,"number2":null},
-                {"id":702,"number":2,"number2":null},
-                {"id":703,"number":3,"number2":null},
-                {"id":704,"number":4,"number2":3.5},
-                {"id":705,"number":5,"number2":4}
-            ]}"#,
-        ))
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/api/frontend/episode/705/languages"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
-            mock.uri()
-        )))
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/e/x"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-            "player.setup({{ file: '{}/x/master.m3u8' }});",
-            mock.uri()
-        )))
-        .mount(mock)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/x/master.m3u8"))
-        .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
-        .mount(mock)
-        .await;
+        .listing(
+            77,
+            vec![
+                row(701, 1, None),
+                row(702, 2, None),
+                row(703, 3, None),
+                row(704, 4, Some("3.5")),
+                row(705, 5, Some("4")),
+            ],
+        )
+        .stream(705, "sub", &format!("{}/x/master.m3u8", mock.uri()))
 }
 
 /// A player binary that records its argv and exits — the observable
@@ -125,12 +77,10 @@ fn stage_recorder(dir: &std::path::Path) -> (std::path::PathBuf, std::path::Path
     (player, argv_file)
 }
 
-fn state_for(dir: &std::path::Path, provider_base: &str) -> crate::app::AppState {
+fn state_for(dir: &std::path::Path, provider: &Arc<TableProvider>) -> crate::app::AppState {
     use crate::meta::kitsu::KitsuClient;
     use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-    use std::sync::Arc;
     crate::app::AppState {
-        anidb_base: Some(provider_base.to_string()),
         secret: AppSecret::random(),
         sessions: SessionTable::new(),
         proxy_http: reqwest::Client::new(),
@@ -139,10 +89,7 @@ fn state_for(dir: &std::path::Path, provider_base: &str) -> crate::app::AppState
         bundled_bin: None,
         legacy_sweep: crate::legacy_script::SweepReport::default(),
         history_path: dir.join("history"),
-        anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        hianime_base: None,
-        hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-        provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+        providers: crate::provider_set::ProviderSet::for_tests().with_stub(Arc::clone(provider)),
         image_cache_dir: dir.join("images"),
         cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
         kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -189,10 +136,10 @@ async fn a_fresh_external_play_resolves_natively_and_hands_the_player_the_master
     // a nonexistent binary, so an Ok can only come from the native
     // resolution — a subprocess attempt would fail the play.
     let mock = MockServer::start().await;
-    stub_provider(&mock, "the show").await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), &mock.uri());
+    let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
         format!("external_player = \"{}\"\n", player.display()),
@@ -206,12 +153,7 @@ async fn a_fresh_external_play_resolves_natively_and_hands_the_player_the_master
         argv.contains(&format!("{}/x/master.m3u8", mock.uri())),
         "player must receive the master playlist URL; got: {argv}"
     );
-    let browsed = mock
-        .received_requests()
-        .await
-        .expect("recorded")
-        .iter()
-        .any(|r| r.url.path() == "/browse");
+    let browsed = !provider.searched().is_empty();
     assert!(browsed, "the native walk must have searched the provider");
 }
 
@@ -220,10 +162,10 @@ async fn an_external_play_lands_in_history_under_the_provider_slug() {
     // The subprocess used to write the history file itself; the native path
     // owns that write now, keyed on the slug like embedded play.
     let mock = MockServer::start().await;
-    stub_provider(&mock, "the show").await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), &mock.uri());
+    let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
         format!("external_player = \"{}\"\n", player.display()),
@@ -248,10 +190,10 @@ async fn an_external_play_records_the_provider_slot_not_the_display_number() {
     // the display number points the row at the recap instead, and
     // the rail then offers to resume "3.5".
     let mock = MockServer::start().await;
-    stub_provider_with_a_recap(&mock, "the show").await;
+    let provider = Arc::new(stub_provider_with_a_recap(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), &mock.uri());
+    let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
         format!("external_player = \"{}\"\n", player.display()),
@@ -279,9 +221,9 @@ async fn an_external_play_records_the_provider_slot_not_the_display_number() {
 #[tokio::test]
 async fn a_failed_spawn_records_no_watch() {
     let mock = MockServer::start().await;
-    stub_provider(&mock, "the show").await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
-    let state = state_for(dir.path(), &mock.uri());
+    let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
         format!(
@@ -303,7 +245,8 @@ async fn a_failed_spawn_records_no_watch() {
         "no history row for a watch that never began"
     );
     assert_eq!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77"))
+            .expect("stamp read"),
         None
     );
 }
@@ -322,7 +265,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
         .await;
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
     std::fs::write(
         &state.config_path,
         format!(
@@ -348,7 +291,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "cached-show-9".into(),
+            show_id: walked_key("cached-show-9"),
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -374,7 +317,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
         hsts.contains("cached-show-9"),
         "the row keys on the cached show id: {hsts}"
     );
-    let stamp = crate::commands::kitsu::watched_at_get(&state, "cached-show-9")
+    let stamp = crate::commands::kitsu::watched_at_get(&state, &walked_key("cached-show-9"))
         .expect("stamp read")
         .expect("the watch is stamped once the player started");
     assert!(stamp >= before);
@@ -389,10 +332,10 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
 #[tokio::test]
 async fn an_external_play_persists_the_shows_kitsu_mapping() {
     let mock = MockServer::start().await;
-    stub_provider(&mock, "the show").await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), &mock.uri());
+    let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
         format!("external_player = \"{}\"\n", player.display()),
@@ -407,14 +350,15 @@ async fn an_external_play_persists_the_shows_kitsu_mapping() {
     wait_for(&argv_file).await;
 
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("the-show-77"))
+            .expect("mapping read"),
         Some("42".into()),
         "the spawn persists the show's reverse mapping"
     );
     let resumed = crate::commands::history::history_by_kitsu(&state, "42")
         .expect("history read")
         .expect("the row is found by its Kitsu id");
-    assert_eq!(resumed.id, "the-show-77");
+    assert_eq!(resumed.id, walked_key("the-show-77"));
 }
 
 #[tokio::test]
@@ -427,7 +371,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
         .await;
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
-    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
     std::fs::write(
         &state.config_path,
         format!(
@@ -456,7 +400,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "cached-show-9".into(),
+            show_id: walked_key("cached-show-9"),
             show_title: "Cached Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -470,7 +414,8 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
     wait_for(&argv_file).await;
 
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "cached-show-9").expect("mapping read"),
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("cached-show-9"))
+            .expect("mapping read"),
         Some("42".into()),
         "a cached handoff persists the mapping too"
     );
@@ -485,21 +430,23 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
 #[tokio::test]
 async fn a_watch_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
     let dir = tempfile::tempdir().expect("tmp");
-    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
     std::fs::create_dir_all(&state.history_path).expect("a directory where the file should be");
     let watch = crate::commands::play_native_record::Watch {
-        show_id: "the-show-77".into(),
+        show_id: walked_key("the-show-77"),
         title: "The Show".into(),
         ep_no: "3".into(),
     };
     crate::commands::play_native_record::record_watch(&state, &watch, Some("42")).await;
     assert_eq!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp read"),
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77"))
+            .expect("stamp read"),
         None,
         "a watch that never reached the file must not be stamped"
     );
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77").expect("mapping read"),
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("the-show-77"))
+            .expect("mapping read"),
         None,
         "nor mapped"
     );
@@ -510,9 +457,9 @@ async fn a_watch_whose_row_cannot_be_written_leaves_no_stamp_and_no_mapping() {
 #[tokio::test]
 async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
     let dir = tempfile::tempdir().expect("tmp");
-    let state = state_for(dir.path(), "http://127.0.0.1:1");
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
     let watch = crate::commands::play_native_record::Watch {
-        show_id: "the-show-77".into(),
+        show_id: walked_key("the-show-77"),
         title: "The Show".into(),
         ep_no: "3".into(),
     };
@@ -520,13 +467,13 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
     let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
     assert!(hsts.contains("the-show-77"), "{hsts}");
     assert!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77")
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77"))
             .expect("stamp read")
             .is_some(),
         "the persisted watch is stamped"
     );
     assert_eq!(
-        crate::commands::kitsu::allmanga_kitsu_get(&state, "the-show-77")
+        crate::commands::kitsu::allmanga_kitsu_get(&state, &walked_key("the-show-77"))
             .expect("mapping read")
             .as_deref(),
         Some("42")
@@ -540,21 +487,13 @@ async fn a_watch_whose_row_is_written_is_stamped_and_mapped() {
 #[tokio::test]
 async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
     let mock = MockServer::start().await;
-    // Hold the resolve on its first request, ahead of the plain stub.
-    Mock::given(method("GET"))
-        .and(path("/browse"))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>")
-                .set_delay(std::time::Duration::from_millis(700)),
-        )
-        .with_priority(1)
-        .mount(&mock)
-        .await;
-    stub_provider(&mock, "the show").await;
+    // Hold the resolve on its first request.
+    let provider = Arc::new(
+        stub_provider(&mock, "the show").delaying_searches(std::time::Duration::from_millis(700)),
+    );
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
-    let state = std::sync::Arc::new(state_for(dir.path(), &mock.uri()));
+    let state = std::sync::Arc::new(state_for(dir.path(), &provider));
     std::fs::write(
         &state.config_path,
         format!("external_player = \"{}\"\n", player.display()),
@@ -564,7 +503,7 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
         &state.history_path,
         crate::history::HistoryEntry {
             ep_no: "1".into(),
-            id: "the-show-77".into(),
+            id: walked_key("the-show-77"),
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
@@ -577,7 +516,10 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
         tokio::spawn(async move { play_external(&state, &play_args()).await })
     };
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    assert!(
+        crate::commands::history::history_delete(&state, &walked_key("the-show-77"))
+            .expect("delete")
+    );
     play.await.expect("join").expect("plays");
     wait_for(&argv_file).await;
 
@@ -588,7 +530,7 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
         "the removed show has no row"
     );
     assert_eq!(
-        crate::commands::kitsu::watched_at_get(&state, "the-show-77").expect("stamp"),
+        crate::commands::kitsu::watched_at_get(&state, &walked_key("the-show-77")).expect("stamp"),
         None
     );
     let offsets = std::fs::read_to_string(dir.path().join("ani-gui-offsets")).unwrap_or_default();
@@ -608,10 +550,10 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
         .respond_with(ResponseTemplate::new(404).set_delay(std::time::Duration::from_millis(700)))
         .mount(&mock)
         .await;
-    stub_provider(&mock, "the show").await;
+    let provider = Arc::new(stub_provider(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
     let (player, argv_file) = stage_recorder(dir.path());
-    let state = std::sync::Arc::new(state_for(dir.path(), &mock.uri()));
+    let state = std::sync::Arc::new(state_for(dir.path(), &provider));
     std::fs::write(
         &state.config_path,
         format!(
@@ -637,7 +579,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
             referer: String::new(),
             media_kind: crate::proxy::MediaKind::Hls,
-            show_id: "the-show-77".into(),
+            show_id: walked_key("the-show-77"),
             show_title: "The Show".into(),
             resolved_slot: Some(2),
             subtitles: Vec::new(),
@@ -648,7 +590,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
         &state.history_path,
         crate::history::HistoryEntry {
             ep_no: "1".into(),
-            id: "the-show-77".into(),
+            id: walked_key("the-show-77"),
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
@@ -661,7 +603,10 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
         tokio::spawn(async move { play_external(&state, &play_args()).await })
     };
     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-    assert!(crate::commands::history::history_delete(&state, "the-show-77").expect("delete"));
+    assert!(
+        crate::commands::history::history_delete(&state, &walked_key("the-show-77"))
+            .expect("delete")
+    );
     play.await.expect("join").expect("plays");
     let argv = wait_for(&argv_file).await;
 

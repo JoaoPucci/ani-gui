@@ -2,9 +2,9 @@
 //!
 //! The renderer's detail page calls `POST /api/play` (or its sibling
 //! `/api/play/external`) with the canonical title + episode + mode.
-//! Resolution is native: the anidb client searches, disambiguates by
-//! episode count, and walks episode → languages → embed →
-//! master-playlist URL, which becomes a [`StreamSession`]. The
+//! Resolution is native: the walked providers' clients search,
+//! disambiguate by episode count, and walk episode → servers → embed
+//! → master-playlist URL, which becomes a [`StreamSession`]. The
 //! external and download siblings take the same walk and differ only
 //! in what they do with the result.
 //!
@@ -130,13 +130,13 @@ fn write_history_on_cache_hit(
     }
     // the history file speaks the provider's numbering; the offset was
     // stamped by the fresh resolve that wrote this cache row.
-    let offset = crate::commands::anidb_offset::get(state, &cached.show_id);
+    let offset = crate::commands::numbering_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
         // The row's own slot when it carries one; older rows fall
         // back to the stamp-aware translation.
         ep_no: cached.resolved_slot.map_or_else(
             || {
-                crate::commands::anidb_offset::write_ep_no(
+                crate::commands::numbering_offset::write_ep_no(
                     state,
                     &cached.show_id,
                     &args.episode,
@@ -295,7 +295,8 @@ where
                 .await;
                 return Ok(resp);
             }
-            // HEAD failed — the cached URL is dead. Evict the row and
+            // The row is not served: its provider is no longer walked,
+            // or HEAD failed and the cached URL is dead. Evict it and
             // fall through to a fresh resolve. Eviction is explicit (not
             // just overwrite-on-put) because if the fresh resolve ALSO
             // fails, we don't want the stale row to linger and bite the
@@ -304,13 +305,13 @@ where
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
-                "play: cache row stale (HEAD failed), evicted, resolving afresh",
+                "play: cache row unservable (provider not walked or HEAD failed), evicted, resolving afresh",
             );
         }
     }
 
-    // Resolve natively against anidb: alias walk, bounded probing,
-    // episode-to-master resolution. The subprocess never runs on the
+    // Resolve natively against the walked providers: alias walk,
+    // bounded probing, episode-to-master resolution. The subprocess never runs on the
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
     let request = NativeResolveRequest {
@@ -512,14 +513,9 @@ pub(crate) mod tests {
     pub(crate) fn state_with_proxy_origin() -> AppState {
         use crate::meta::kitsu::KitsuClient;
         use crate::proxy::{AppSecret, ProxyOrigin, SessionTable};
-        use std::sync::Arc;
         AppState {
-            // Unroutable: the fresh-resolve fallback must fail fast in
-            // tests instead of walking the live provider. Windows
-            // runners ship a system curl.exe, so a None base turns
-            // "the fallback errors" into a real network resolve that
-            // can succeed.
-            anidb_base: Some("http://127.0.0.1:1".into()),
+            // Unreachable: the fresh-resolve fallback must fail fast in
+            // tests instead of walking a live provider.
             secret: AppSecret::random(),
             sessions: SessionTable::new(),
             proxy_http: reqwest::Client::new(),
@@ -528,10 +524,9 @@ pub(crate) mod tests {
             bundled_bin: None,
             legacy_sweep: crate::legacy_script::SweepReport::default(),
             history_path: std::path::PathBuf::from("/tmp/ani-gui/history"),
-            anidb_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            hianime_base: None,
-            hianime_gate: Arc::new(crate::scraper::gate::ScraperGate::new()),
-            provider_order: vec![crate::scraper::provider::ProviderId::Anidb],
+            providers: crate::provider_set::ProviderSet::for_tests().with_stub(
+                std::sync::Arc::new(crate::scraper::table_provider::TableProvider::unreachable()),
+            ),
             image_cache_dir: std::path::PathBuf::from("/tmp/ani-gui-images"),
             cache_pool: crate::cache::open_in_memory().expect("in-mem pool"),
             kitsu: KitsuClient::new(reqwest::Client::new()),
@@ -576,7 +571,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
@@ -615,7 +610,7 @@ pub(crate) mod tests {
                 extra_episodes: vec!["999.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
-                provider: None,
+                provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             },
         );
         let args = PlayArgs {
@@ -640,7 +635,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
@@ -668,16 +663,11 @@ pub(crate) mod tests {
     /// distress.
     #[tokio::test]
     async fn a_clean_miss_streak_does_not_open_the_breaker() {
-        let server = wiremock::MockServer::start().await;
-        wiremock::Mock::given(wiremock::matchers::method("GET"))
-            .respond_with(
-                wiremock::ResponseTemplate::new(200)
-                    .set_body_string(r#"<div class="grid"><p>No results.</p></div>"#),
-            )
-            .mount(&server)
-            .await;
         let mut state = state_with_proxy_origin();
-        state.anidb_base = Some(server.uri());
+        // A catalogue that answers every search with nothing.
+        state.providers.set_stub(std::sync::Arc::new(
+            crate::scraper::table_provider::TableProvider::new(),
+        ));
         let mk = |title: &str| PlayArgs {
             title: title.into(),
             episode: "1".into(),
@@ -696,7 +686,8 @@ pub(crate) mod tests {
         }
         assert!(
             state
-                .anidb_gate
+                .providers
+                .gate(crate::scraper::provider::ProviderId::TestA)
                 .admit(crate::scraper::gate::ScrapePriority::Background)
                 .await
                 .is_ok(),
@@ -718,53 +709,19 @@ pub(crate) mod tests {
         (td, state)
     }
 
-    /// Mount the full native resolution surface for one show on
-    /// `mock` — browse, a one-episode listing, its jpn languages row,
-    /// the embed page and the master playlist — so `play_with_progress`
-    /// can run a complete successful resolve against wiremock. Mirrors
-    /// `play_external_command_test::stub_provider`, trimmed to one
-    /// episode.
-    async fn stub_provider_one_episode(mock: &wiremock::MockServer, query: &str) {
-        use wiremock::matchers::{method, path, query_param};
-        use wiremock::{Mock, ResponseTemplate};
-        Mock::given(method("GET"))
-            .and(path("/browse"))
-            .and(query_param("q", query))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string("<a href=\"/anime/the-show-77\"><img alt=\"The Show\"/></a>"),
-            )
-            .mount(mock)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/api/frontend/anime/77/episodes"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(r#"{"episodes":[{"id":701,"number":1}]}"#),
-            )
-            .mount(mock)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/api/frontend/episode/701/languages"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-                r#"{{"languages":[{{"code":"jpn","embed_url":"{}/e/x"}}]}}"#,
-                mock.uri()
-            )))
-            .mount(mock)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/e/x"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
-                "player.setup({{ file: '{}/x/master.m3u8' }});",
-                mock.uri()
-            )))
-            .mount(mock)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/x/master.m3u8"))
-            .respond_with(ResponseTemplate::new(200).set_body_string("#EXTM3U\n"))
-            .mount(mock)
-            .await;
+    /// One show a search for `query` finds, with one episode that
+    /// streams in sub — enough for `play_with_progress` to run a
+    /// complete successful resolve.
+    fn stub_provider_one_episode(
+        query: &str,
+    ) -> std::sync::Arc<crate::scraper::table_provider::TableProvider> {
+        std::sync::Arc::new(crate::scraper::table_provider::TableProvider::one_show(
+            query,
+            ("the-show-77", "The Show"),
+            &[(701, 1)],
+            &[701],
+            "https://cdn.example/x/master.m3u8",
+        ))
     }
 
     fn uncached_args(title: &str) -> PlayArgs {
@@ -848,7 +805,7 @@ pub(crate) mod tests {
         play_resolution_cache::put(
             &state.cache_pool,
             &setting_cache_key(&args),
-            &cached_blank(
+            &cached_walked(
                 format!("{}/x/master.m3u8", upstream.uri()),
                 upstream.uri(),
                 MediaKind::Hls,
@@ -870,11 +827,10 @@ pub(crate) mod tests {
     /// must survive the opt-out and only the replay reads are gated.
     #[tokio::test]
     async fn an_uncached_resolve_records_watch_metadata_without_replay() {
-        let mock = wiremock::MockServer::start().await;
-        stub_provider_one_episode(&mock, "the show").await;
+        let provider = stub_provider_one_episode("the show");
         let td = tempfile::tempdir().unwrap();
         let mut state = state_with_proxy_origin();
-        state.anidb_base = Some(mock.uri());
+        state.providers.set_stub(provider);
         state.config_path = td.path().join("config.toml");
         state.history_path = td.path().join("history");
         let args = uncached_args("the show");
@@ -885,7 +841,7 @@ pub(crate) mod tests {
         let row = play_resolution_cache::get(&state.cache_pool, &setting_cache_key(&args))
             .expect("cache readable")
             .expect("the resolve records its row for the watch bookkeeping");
-        assert_eq!(row.show_id, "the-show-77");
+        assert_eq!(row.show_id, walked_key("the-show-77"));
         let second = play_with_progress(&state, &args, |_| {})
             .await
             .expect("the second play resolves fresh");
@@ -939,7 +895,7 @@ pub(crate) mod tests {
         play_resolution_cache::put(
             &state.cache_pool,
             &setting_cache_key(&args),
-            &cached_blank(
+            &cached_walked(
                 format!("{}/x/master.m3u8", upstream.uri()),
                 upstream.uri(),
                 MediaKind::Hls,
@@ -961,8 +917,7 @@ pub(crate) mod tests {
     /// next play can serve it.
     #[tokio::test]
     async fn a_fresh_resolve_writes_the_row_when_caching_is_enabled() {
-        let mock = wiremock::MockServer::start().await;
-        stub_provider_one_episode(&mock, "the show").await;
+        let provider = stub_provider_one_episode("the show");
         let td = tempfile::tempdir().unwrap();
         let cfg = td.path().join("config.toml");
         std::fs::write(
@@ -972,7 +927,7 @@ pub(crate) mod tests {
         )
         .unwrap();
         let mut state = state_with_proxy_origin();
-        state.anidb_base = Some(mock.uri());
+        state.providers.set_stub(provider);
         state.config_path = cfg;
         state.history_path = td.path().join("history");
         let args = uncached_args("the show");
@@ -1005,6 +960,26 @@ pub(crate) mod tests {
         }
     }
 
+    /// [`cached_blank`] resolved through the provider the test state
+    /// walks — a row a replay may serve.
+    pub(crate) fn cached_walked(
+        upstream_url: String,
+        referer: String,
+        kind: MediaKind,
+    ) -> CachedResolution {
+        CachedResolution {
+            show_id: walked_key("cached-show-1"),
+            ..cached_blank(upstream_url, referer, kind)
+        }
+    }
+
+    /// The key a resolve through the test state's provider stamps on
+    /// `slug`.
+    pub(crate) fn walked_key(slug: &str) -> String {
+        crate::scraper::provider::ShowKey::new(crate::provider_set::ProviderSet::TEST_DEFAULT, slug)
+            .to_string()
+    }
+
     #[test]
     fn cache_hit_history_writes_the_providers_numbering() {
         // The history file speaks the provider's numbering — a reader greps
@@ -1022,7 +997,7 @@ pub(crate) mod tests {
         );
         cached.show_id = "the-sequel-88".into();
         cached.show_title = "The Sequel".into();
-        crate::commands::anidb_offset::put(&state, "the-sequel-88", 40);
+        crate::commands::numbering_offset::put(&state, "the-sequel-88", 40);
         let args = PlayArgs {
             title: "The Sequel".into(),
             episode: "1".into(),
@@ -1071,7 +1046,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let cached = cached_blank(
+        let cached = cached_walked(
             format!("{}/video.mp4", server.uri()),
             String::new(),
             MediaKind::Mp4,
@@ -1121,7 +1096,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let cached = cached_blank(
+        let cached = cached_walked(
             format!("{}/sub/1", server.uri()),
             "https://allmanga.to".into(),
             MediaKind::Mp4,
@@ -1241,7 +1216,7 @@ pub(crate) mod tests {
             .mount(&server)
             .await;
         let state = state_with_proxy_origin();
-        let mut cached = cached_blank(
+        let mut cached = cached_walked(
             format!("{}/video.mp4", server.uri()),
             "https://embed.example/".into(),
             MediaKind::Mp4,
@@ -1297,8 +1272,7 @@ pub(crate) mod tests {
     }
 
     /// A cached row whose show key names the provider it was
-    /// resolved through — a qualified key for any provider but
-    /// anidb, whose keys are bare.
+    /// resolved through — a qualified key; a bare one names none.
     fn seed_play_cache_from(state: &AppState, args: &PlayArgs, upstream: &str, show_id: &str) {
         let key = play_resolution_cache::cache_key(
             &args.title,
@@ -1362,7 +1336,7 @@ pub(crate) mod tests {
                 upstream_url: upstream.into(),
                 referer: referer.into(),
                 media_kind: MediaKind::Mp4,
-                show_id: "abc".into(),
+                show_id: walked_key("abc"),
                 show_title: "Test (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles,
@@ -1492,7 +1466,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The cached play is hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = PlayArgs {
             kitsu_id: Some("K9".into()),
             ..external_args("Remembered Show", "3")
@@ -1528,7 +1506,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The row and the cached play are hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = PlayArgs {
             kitsu_id: Some("K10".into()),
             ..external_args("Capped Show", "2")
@@ -1580,7 +1562,11 @@ pub(crate) mod tests {
             .respond_with(wiremock::ResponseTemplate::new(200))
             .mount(&server)
             .await;
-        let (_cfg_dir, state) = state_with_caching_on();
+        let (_cfg_dir, mut state) = state_with_caching_on();
+        // The cached play is hianime's, and so is the walk.
+        state
+            .providers
+            .set_order(vec![crate::scraper::provider::ProviderId::Hianime]);
         let args = external_args("Anonymous Show", "1");
         seed_play_cache_from(
             &state,
@@ -1744,7 +1730,7 @@ pub(crate) mod tests {
                 upstream_url: format!("{}/ep/3", server.uri()),
                 referer: "https://allmanga.to".into(),
                 media_kind: MediaKind::Mp4,
-                show_id: "x".into(),
+                show_id: walked_key("x"),
                 show_title: "Fast4 (12 episodes)".into(),
                 resolved_slot: None,
                 subtitles: Vec::new(),
@@ -2016,7 +2002,13 @@ pub(crate) mod tests {
 
         // The refresh answers first: bump + a positive write.
         state.availability_refreshes.bump(&row);
-        crate::commands::availability::write_cache(&state, "race-1", "sub", true, None);
+        crate::commands::availability::write_cache(
+            &state,
+            "race-1",
+            "sub",
+            true,
+            Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+        );
 
         // The stale resolution now tries to stamp a negative.
         stamp_availability_after_native(&state, &args, false, None, &at_start, None, &[]).await;
@@ -2061,7 +2053,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(2),
             &[],
@@ -2160,7 +2152,7 @@ pub(crate) mod tests {
             &state,
             &args,
             true,
-            Some(crate::scraper::provider::ProviderId::Anidb),
+            Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(12),
             &[],

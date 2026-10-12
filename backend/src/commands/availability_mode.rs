@@ -26,10 +26,11 @@
 //!
 //! That last part is a step back from allanime, which returned
 //! per-mode episode arrays in the show payload and so capped each
-//! mode exactly for one fetch. anidb publishes no audio on the
-//! listing at all, which is what makes the same answer cost a
-//! request per episode. `docs/deferred-work.md` carries the
-//! refinement and what a real fix would need.
+//! mode exactly for one fetch. hianime publishes no audio on the
+//! listing — each episode's own server list types it — which is
+//! what makes the same answer cost a request per episode.
+//! `docs/deferred-work.md` carries the refinement and what a real
+//! fix would need.
 
 use crate::error::{AniError, Result};
 use crate::scraper::provider::{EpisodeRef, Provider};
@@ -54,7 +55,7 @@ const SCAN_BUDGET: usize = 8;
 /// [`SCAN_BUDGET`] of them.
 ///
 /// # Errors
-/// The transport's own failures, as in [`AnidbClient::has_mode`].
+/// The provider's own failures, as [`Provider::has_mode`] gives them.
 /// An answered-not-found row is NOT an error — it is the unknown
 /// verdict above.
 pub(crate) async fn mode_present<P: Provider + ?Sized>(

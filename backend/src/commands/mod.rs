@@ -8,7 +8,6 @@
 pub mod account;
 pub mod account_edit;
 pub mod airing;
-pub mod anidb_offset;
 pub mod anilist_eps_thumbs;
 pub mod aniskip;
 pub mod app_info;
@@ -22,6 +21,7 @@ mod cour_keyword_form;
 mod cour_ordinal_form;
 pub mod download;
 mod download_names;
+pub mod numbering_offset;
 
 #[cfg(test)]
 #[path = "download_lock_prop_test.rs"]
@@ -70,6 +70,7 @@ pub mod play_native_resolve;
 mod play_native_span;
 mod play_native_split;
 #[cfg(test)]
+#[path = "play_native_test_provider_test.rs"]
 pub(crate) mod play_native_test_provider;
 mod play_native_title_grammar;
 pub(crate) mod play_native_title_marker;
