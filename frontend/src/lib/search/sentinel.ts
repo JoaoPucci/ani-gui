@@ -31,8 +31,10 @@ export interface SentinelWatch {
 export function watchSentinel(
 	node: Element,
 	onChange: (inReach: boolean) => void,
-	Observer: ObserverCtor | undefined = globalThis.IntersectionObserver
+	Observer: ObserverCtor | undefined = globalThis.IntersectionObserver,
+	now: () => number = () => performance.now()
 ): SentinelWatch {
+	void now;
 	if (!Observer) {
 		onChange(false);
 		return { stop: () => {}, remeasure: () => {} };

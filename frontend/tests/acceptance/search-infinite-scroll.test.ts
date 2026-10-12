@@ -100,7 +100,13 @@ class ControlledObserver {
 		if (inReach) {
 			queueMicrotask(() =>
 				this.entry.cb(
-					[{ target: el, isIntersecting: true } as IntersectionObserverEntry],
+					[
+						{
+							target: el,
+							isIntersecting: true,
+							time: performance.now()
+						} as IntersectionObserverEntry
+					],
 					{} as IntersectionObserver
 				)
 			);
@@ -118,7 +124,14 @@ class ControlledObserver {
 function reachBottom(inReach = true) {
 	for (const o of observers.slice()) {
 		o.cb(
-			o.targets.map((target) => ({ target, isIntersecting: inReach }) as IntersectionObserverEntry),
+			o.targets.map(
+				(target) =>
+					({
+						target,
+						isIntersecting: inReach,
+						time: performance.now()
+					}) as IntersectionObserverEntry
+			),
 			{} as IntersectionObserver
 		);
 	}
@@ -593,5 +606,43 @@ describe('/search infinite scroll', () => {
 		await until(() => screen().includes('Show 1'), 'the filter to come off');
 		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
 		expect(offsets).toEqual([0]);
+	});
+
+	it('turning a type filter off over a still-short grid loads one page', async () => {
+		// The no-stall half of the filter path: the restored grid is
+		// measured afresh, and when it is still short a page loads.
+		// Tall until the filter comes off, short after, until the page
+		// it asks for has landed.
+		let restored = false;
+		inReachOnObserve = () => restored && !screen().includes('Show 21');
+		const offsets: number[] = [];
+		server.use(
+			...baseHandlers(),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset } = (await request.json()) as { offset: number };
+				offsets.push(offset);
+				return HttpResponse.json({
+					hits: [
+						{ ...ref(String(offset + 1), `Show ${offset + 1}`), subtype: 'TV' },
+						{ ...ref(String(offset + 2), `Film ${offset + 2}`), subtype: 'movie' }
+					],
+					next_offset: offset < 100 ? offset + 20 : null
+				});
+			})
+		);
+
+		setQuery('dragon ball');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Show 1'), 'the first page');
+		const movie = buttonNamed(subtypeLabel('movie'))!;
+		movie.click();
+		await until(() => !screen().includes('Show 1'), 'the movie filter to apply');
+		for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 10));
+		expect(offsets).toEqual([0]);
+		restored = true;
+		movie.click();
+		await until(() => screen().includes('Show 21'), 'the page the short restored grid asks for');
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(offsets).toEqual([0, 20]);
 	});
 });

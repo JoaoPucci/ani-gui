@@ -21,6 +21,9 @@ class FakeObserver {
 	disconnect() {
 		this.disconnected = true;
 	}
+	fireAt(...entries: { isIntersecting: boolean; time: number }[]) {
+		this.cb(entries as IntersectionObserverEntry[], this as unknown as IntersectionObserver);
+	}
 	fire(...states: boolean[]) {
 		this.cb(
 			states.map((isIntersecting) => ({ isIntersecting }) as IntersectionObserverEntry),
@@ -70,5 +73,26 @@ describe('watchSentinel', () => {
 		watch.remeasure();
 		expect(o.unobserved).toEqual([node]);
 		expect(o.observed).toEqual([node, node]);
+	});
+
+	it('after remeasuring, ignores entries measured before it', () => {
+		// unobserve does not drop entries the observer already queued:
+		// one computed against the layout before the page landed can
+		// still arrive after the remeasure, and must not count as news.
+		let clock = 100;
+		const onChange = vi.fn();
+		const watch = watchSentinel({} as Element, onChange, FakeObserver, () => clock);
+		const o = FakeObserver.last!;
+		clock = 200;
+		watch.remeasure();
+
+		o.fireAt({ isIntersecting: true, time: 150 });
+		expect(onChange).not.toHaveBeenCalled();
+
+		o.fireAt({ isIntersecting: true, time: 150 }, { isIntersecting: false, time: 250 });
+		expect(onChange.mock.calls).toEqual([[false]]);
+
+		o.fireAt({ isIntersecting: true, time: 300 });
+		expect(onChange.mock.calls).toEqual([[false], [true]]);
 	});
 });
