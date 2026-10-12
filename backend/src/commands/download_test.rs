@@ -4021,7 +4021,7 @@ async fn a_tool_that_cannot_be_started_is_the_tool_failing_not_the_network() {
     assert!(
         matches!(
             got,
-            Err(AniError::Scraper { key }) if key == "error.download.tool_spawn_failed"
+            Err(ref e @ AniError::Scraper { .. }) if e.key() == "error.download.tool_spawn_failed"
         ),
         "a spawn failure must be the tool failing with its own key, got {got:?}"
     );

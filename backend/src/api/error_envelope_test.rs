@@ -14,7 +14,7 @@ use crate::error::AniError;
 fn every_variant() -> Vec<AniError> {
     let all = vec![
         AniError::Scraper {
-            key: "error.scraper.custom_test_key",
+            failure: crate::error::DownloadToolFailure::Exited,
         },
         AniError::Timeout,
         AniError::NoResults,

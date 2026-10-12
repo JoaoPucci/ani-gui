@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
 use crate::commands::play_native_resolve::NativeResolveRequest;
-use crate::error::{AniError, Result};
+use crate::error::{AniError, DownloadToolFailure, Result};
 use crate::scraper::provider::StreamSource;
 
 /// Wire payload for the download endpoint. A near-clone of [`PlayArgs`]
@@ -1720,7 +1720,7 @@ fn a_download_tool_exists(path_env: &str) -> bool {
 ///
 /// # Errors
 /// [`AniError::Timeout`] past the deadline; [`AniError::Scraper`] on a
-/// non-zero exit, and with the `DOWNLOAD_TOOL_SPAWN_FAILED` key when the
+/// non-zero exit, and with [`DownloadToolFailure::NotStarted`] when the
 /// tool cannot be started at all (a tool that will not start is the
 /// tool failing, not the network).
 async fn run_tool<F>(
@@ -1766,7 +1766,7 @@ where
             }
             Err(_) => {
                 return Err(AniError::Scraper {
-                    key: crate::i18n::keys::DOWNLOAD_TOOL_SPAWN_FAILED,
+                    failure: DownloadToolFailure::NotStarted,
                 })
             }
         }
@@ -1804,7 +1804,7 @@ where
         Ok(())
     } else {
         Err(AniError::Scraper {
-            key: crate::i18n::keys::SCRAPER_PARSE_FAILED,
+            failure: DownloadToolFailure::Exited,
         })
     }
 }

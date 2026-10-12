@@ -63,7 +63,7 @@ fn every_variant_has_a_stable_key() {
     // about its i18n key.
     let cases = [
         AniError::Scraper {
-            key: "error.scraper.custom_test_key",
+            failure: crate::error::DownloadToolFailure::Exited,
         },
         AniError::Timeout,
         AniError::NoResults,

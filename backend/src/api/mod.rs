@@ -2594,7 +2594,7 @@ mod tests {
             AniError::Config,
             AniError::Metadata,
             AniError::Scraper {
-                key: "error.scraper.example",
+                failure: crate::error::DownloadToolFailure::Exited,
             },
         ] {
             assert_eq!(

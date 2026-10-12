@@ -19,19 +19,17 @@ pub type Result<T, E = AniError> = std::result::Result<T, E>;
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AniError {
-    /// A download tool failed: yt-dlp or ffmpeg exited non-zero (key
-    /// `error.scraper.parse_failed`), or was found but could not be
-    /// started (key `error.download.tool_spawn_failed`). The only thing
-    /// that raises this is `spawn_download_tool`, in ways that are not a
-    /// missing tool and not a timeout — provider resolution has its own
-    /// variants and constructs none of these. The name is older than
-    /// that narrowing.
+    /// A download tool failed: yt-dlp or ffmpeg exited non-zero, or was
+    /// found but could not be started. The only thing that raises this
+    /// is `spawn_download_tool`, in ways that are not a missing tool and
+    /// not a timeout — provider resolution has its own variants and
+    /// constructs none of these. The name is older than that narrowing.
     #[error("scraper error")]
     Scraper {
-        /// i18n key: `error.scraper.parse_failed` for a tool that ran
-        /// and failed, `error.download.tool_spawn_failed` for one that
-        /// could not be started.
-        key: &'static str,
+        /// Which way the tool failed; each has its own key. Not
+        /// serialized: the envelope's `key` already says which.
+        #[serde(skip)]
+        failure: DownloadToolFailure,
     },
 
     /// A deadline elapsed. The shared one: a bounded resolve and an
@@ -178,6 +176,19 @@ pub enum AniError {
     InvalidToken,
 }
 
+/// How a download tool failed, for [`AniError::Scraper`]. A closed set,
+/// so the keys the backend can answer with are too: each value has one
+/// key, chosen in [`AniError::key`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadToolFailure {
+    /// The tool ran and exited non-zero.
+    Exited,
+    /// The tool was found but could not be started: gone since it was
+    /// found, not executable, or refused by the OS.
+    NotStarted,
+}
+
 impl AniError {
     /// Stable i18n key used by the frontend to look up a localized message.
     /// Variants without their own key fall back to a top-level key by
@@ -185,7 +196,12 @@ impl AniError {
     #[must_use]
     pub fn key(&self) -> &'static str {
         match self {
-            Self::Scraper { key } => key,
+            Self::Scraper {
+                failure: DownloadToolFailure::Exited,
+            } => crate::i18n::keys::SCRAPER_PARSE_FAILED,
+            Self::Scraper {
+                failure: DownloadToolFailure::NotStarted,
+            } => crate::i18n::keys::DOWNLOAD_TOOL_SPAWN_FAILED,
             Self::Timeout => "error.scraper.timeout",
             Self::NoResults => "error.search.no_results",
             Self::EpisodeUnavailable => crate::i18n::keys::PLAY_EPISODE_UNAVAILABLE,
