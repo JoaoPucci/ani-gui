@@ -724,4 +724,41 @@ describe('/search infinite scroll', () => {
 			m.search_sort_rating()
 		]);
 	});
+
+	// A new order can open on a page the availability filter empties —
+	// newest first puts unreleased titles at the top. The chip the
+	// reader just pressed must stay where it is while the search looks
+	// further, or keyboard focus falls to the page body.
+	it('a reorder whose first page filters to nothing keeps focus on the chosen chip', async () => {
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };
+				return HttpResponse.json({
+					cached: Object.fromEntries(kitsu_ids.map((id) => [id, !id.startsWith('gone')])),
+					playable_episode_counts: {}
+				});
+			}),
+			...baseHandlers().filter((h) => !String(h.info.path).includes('availability')),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset, sort } = (await request.json()) as { offset: number; sort?: string };
+				if (sort === 'year') {
+					return offset === 0
+						? HttpResponse.json({ hits: [ref('gone-1', 'Not Out Yet')], next_offset: 20 })
+						: HttpResponse.json({ hits: [ref('2', 'Beta')], next_offset: null });
+				}
+				return HttpResponse.json({ hits: [ref('1', 'Alpha')], next_offset: null });
+			})
+		);
+
+		setQuery('show');
+		app = mount(SearchPage, { target });
+		await until(() => screen().includes('Alpha'), 'the ranked results');
+
+		const year = buttonNamed(m.search_sort_year())!;
+		year.focus();
+		year.click();
+		await until(() => screen().includes('Beta'), 'the first available show by year');
+		expect(screen()).not.toContain('Not Out Yet');
+		expect(document.activeElement).toBe(year);
+	});
 });
