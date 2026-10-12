@@ -1,0 +1,38 @@
+{
+ "kitsu": {
+  "id": "41046",
+  "name": "Dragon Ball Super: Broly",
+  "canonical": "Dragon Ball Super: Broly",
+  "alt_titles": ["ドラゴンボール超 ブロリー"],
+  "episode_count": 1,
+  "year": 2018,
+  "subtype": "movie"
+ },
+ "searches": {
+  "Dragon Ball Super: Broly": [
+    ["dragon-ball-super-broly-2763", "Dragon Ball Super: Broly", "MOVIE"],
+    ["dragon-ball-super-broly-skytree-super-5426", "Dragon Ball Super: Broly - Skytree Super", "SPECIAL"],
+    ["dragon-ball-z-broly-the-legendary-super-saiyan-2879", "Dragon Ball Z: Broly – The Legendary Super Saiyan", "MOVIE"],
+    ["dragon-ball-z-broly-second-coming-2877", "Dragon Ball Z: Broly – Second Coming", "MOVIE"]
+  ],
+  "ドラゴンボール超 ブロリー": [
+    ["dragon-ball-super-broly-skytree-super-5426", "Dragon Ball Super: Broly - Skytree Super", "SPECIAL"]
+  ]
+ },
+ "episodes": {
+  "dragon-ball-super-broly-2763": [
+    [36373, 1, null]
+  ],
+  "dragon-ball-z-broly-second-coming-2877": [
+    [37411, 1, null]
+  ],
+  "dragon-ball-z-broly-the-legendary-super-saiyan-2879": [
+    [37413, 1, null]
+  ]
+ },
+ "years": {
+  "dragon-ball-super-broly-2763": 2018,
+  "dragon-ball-z-broly-second-coming-2877": 1994,
+  "dragon-ball-z-broly-the-legendary-super-saiyan-2879": 1993
+ }
+}

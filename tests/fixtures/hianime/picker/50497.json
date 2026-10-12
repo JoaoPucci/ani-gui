@@ -1,0 +1,27 @@
+{
+ "kitsu": {
+  "id": "50497",
+  "name": "Dragon Ball Super: Beerus",
+  "canonical": "Dragon Ball Super: Beerus",
+  "alt_titles": ["ドラゴンボール超 ビルス"],
+  "episode_count": 19,
+  "year": 2026,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Dragon Ball Super: Beerus": [
+    ["dragon-ball-super-beerus-10542", "Dragon Ball Super: Beerus", "TV"]
+  ],
+  "ドラゴンボール超 ビルス": [
+    ["dragon-ball-super-beerus-10542", "Dragon Ball Super: Beerus", "TV"]
+  ]
+ },
+ "episodes": {
+  "dragon-ball-super-beerus-10542": [
+    [150144, 1, null]
+  ]
+ },
+ "years": {
+  "dragon-ball-super-beerus-10542": 2026
+ }
+}

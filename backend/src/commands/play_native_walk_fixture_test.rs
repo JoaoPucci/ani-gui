@@ -393,6 +393,23 @@ async fn an_announced_part_is_refused_rather_than_resolved_to_the_series_before_
     assert_picks(&[("47181", None)]).await;
 }
 
+/// Dragon Ball Super and the entries named for it: every search for one
+/// of them answers with the series, its two films, the Beerus remake
+/// and the Super Dragon Ball Heroes shows. Each entry the catalogue
+/// carries picks its own listing — the series by its count and year,
+/// a film by its format, the remake airing short of its count by its
+/// year.
+#[tokio::test]
+async fn entries_named_for_a_series_pick_their_own_listings() {
+    assert_picks(&[
+        ("10879", Some(("dragon-ball-super-1101", 131))),
+        ("41046", Some(("dragon-ball-super-broly-2763", 1))),
+        ("44544", Some(("dragon-ball-super-super-hero-1402", 1))),
+        ("50497", Some(("dragon-ball-super-beerus-10542", 1))),
+    ])
+    .await;
+}
+
 /// Slime's second season: hianime lists "Season 2" and "2nd Season
 /// Part 2" at twelve episodes each, both from 2021, Part 2 first. The
 /// entry names no second part, so provider order must not decide.
