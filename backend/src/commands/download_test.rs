@@ -6527,6 +6527,792 @@ mod relay_exception_props {
     }
 }
 
+mod download_rate {
+    use crate::commands::download_progress::{
+        ffmpeg_progress_bytes, ytdlp_progress_bytes, RateMeter, RATE_WINDOW,
+    };
+    use proptest::prelude::*;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    #[test]
+    fn yt_dlps_progress_line_reads_as_the_bytes_downloaded() {
+        assert_eq!(
+            ytdlp_progress_bytes("ani-gui-progress 1048576"),
+            Some(1_048_576)
+        );
+        // yt-dlp prints NA before it knows.
+        assert_eq!(ytdlp_progress_bytes("ani-gui-progress NA"), None);
+        assert_eq!(ytdlp_progress_bytes("[download]  12.0% of 300MiB"), None);
+        assert_eq!(ytdlp_progress_bytes("WARNING: something"), None);
+    }
+
+    #[test]
+    fn ffmpegs_progress_lines_read_as_the_bytes_written() {
+        assert_eq!(ffmpeg_progress_bytes("total_size=2097152"), Some(2_097_152));
+        assert_eq!(ffmpeg_progress_bytes("total_size=N/A"), None);
+        assert_eq!(ffmpeg_progress_bytes("out_time_us=1000000"), None);
+        assert_eq!(ffmpeg_progress_bytes("progress=continue"), None);
+    }
+
+    #[test]
+    fn the_rate_is_the_bytes_gained_over_the_window() {
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(5 * 1024 * 1024, start + RATE_WINDOW);
+        let rate = meter.rate_at(start + RATE_WINDOW);
+        let expected = 5.0 * 1024.0 * 1024.0 / RATE_WINDOW.as_secs_f64();
+        assert!((rate - expected).abs() < 1.0, "{rate} vs {expected}");
+    }
+
+    #[test]
+    fn a_stalled_download_decays_to_zero() {
+        // Nothing gained for a whole window: the rate is zero, not the
+        // last speed seen.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(1_000_000, start + Duration::from_secs(1));
+        assert!(meter.rate_at(start + Duration::from_secs(1)) > 0.0);
+        assert_eq!(
+            meter.rate_at(start + Duration::from_secs(1) + RATE_WINDOW + Duration::from_millis(1)),
+            0.0
+        );
+    }
+
+    #[test]
+    fn a_count_that_falls_is_not_a_negative_speed() {
+        // A count that falls — yt-dlp counting again from a lower
+        // figure — is not a negative speed.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(10_000_000, start);
+        meter.observe(100, start + Duration::from_secs(1));
+        meter.observe(1_100, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!(rate > 0.0 && rate <= 1_000.0 + 1.0, "{rate}");
+    }
+
+    #[test]
+    fn a_recount_carries_the_speed_on_rather_than_flashing_zero() {
+        // yt-dlp's own count can step back — a fragment retried counts
+        // its bytes again. The speed carries on from the bytes gained
+        // since, rather than reading zero until the window refills.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(1_000_000, start + Duration::from_secs(1));
+        meter.observe(2_000_000, start + Duration::from_secs(2));
+        meter.observe(1_500_000, start + Duration::from_secs(3));
+        assert!(
+            meter.rate_at(start + Duration::from_secs(3)) > 0.0,
+            "the speed carried on through the recount"
+        );
+    }
+
+    #[test]
+    fn the_bytes_before_a_count_falls_stay_in_the_speed() {
+        // A count that falls to zero after ten mebibytes — a retried
+        // fragment counted from its start — takes nothing back from
+        // what was transferred before it: those bytes arrived.
+        let start = Instant::now();
+        let mut meter = RateMeter::default();
+        meter.observe(0, start);
+        meter.observe(10 * 1024 * 1024, start + Duration::from_secs(1));
+        meter.observe(0, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        let expected = 10.0 * 1024.0 * 1024.0 / 2.0;
+        assert!((rate - expected).abs() < 1.0, "{rate} vs {expected}");
+    }
+
+    proptest! {
+        /// Whatever the tool's count does, the speed is what it gained
+        /// — every rise counted, every fall counted as nothing — since
+        /// the newest count before the window, or the oldest within it,
+        /// over the time since, never below a second.
+        #[test]
+        fn any_count_reads_as_its_gains_over_the_window(
+            steps in proptest::collection::vec((0u64..5_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut gained = 0u64;
+            let mut last: Option<u64> = None;
+            let mut seen = Vec::new();
+            for (count, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                if let Some(prev) = last {
+                    gained += count.saturating_sub(prev);
+                }
+                last = Some(*count);
+                meter.observe(*count, at);
+                seen.push((at, gained));
+            }
+            let now = at + Duration::from_millis(asked_after_ms);
+            let cutoff = now.checked_sub(RATE_WINDOW).unwrap_or(now);
+            let (since, from) = seen
+                .iter()
+                .rev()
+                .find(|(t, _)| *t < cutoff)
+                .or_else(|| seen.first())
+                .copied()
+                .expect("a count");
+            let elapsed = now.saturating_duration_since(since).max(Duration::from_secs(1));
+            #[allow(clippy::cast_precision_loss)]
+            let expected = (gained - from) as f64 / elapsed.as_secs_f64();
+            prop_assert!((meter.rate_at(now) - expected).abs() < 1e-6);
+        }
+
+        /// For a count that only grows, the speed is the bytes gained
+        /// since the newest count before the window, or the oldest
+        /// within it, over the time since — never below a second.
+        #[test]
+        fn a_growing_count_reads_as_the_window_formula(
+            steps in proptest::collection::vec((0u64..5_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut bytes = 0u64;
+            let mut seen = Vec::new();
+            for (gain, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                bytes += gain;
+                meter.observe(bytes, at);
+                seen.push((at, bytes));
+            }
+            let now = at + Duration::from_millis(asked_after_ms);
+            let cutoff = now.checked_sub(RATE_WINDOW).unwrap_or(now);
+            let (since, from) = seen
+                .iter()
+                .rev()
+                .find(|(t, _)| *t < cutoff)
+                .or_else(|| seen.first())
+                .copied()
+                .expect("a count");
+            let elapsed = now.saturating_duration_since(since).max(Duration::from_secs(1));
+            let expected = (bytes - from) as f64 / elapsed.as_secs_f64();
+            prop_assert!((meter.rate_at(now) - expected).abs() < 1e-6);
+        }
+
+        /// Asked more than a window after the count last grew, the
+        /// speed is zero, whatever came before.
+        #[test]
+        fn a_whole_window_without_growth_reads_as_zero(
+            steps in proptest::collection::vec((0u64..50_000_000, 1u64..3_000), 1..30),
+            beyond_ms in 1u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            for (bytes, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                meter.observe(*bytes, at);
+            }
+            let now = at + RATE_WINDOW + Duration::from_millis(beyond_ms);
+            prop_assert_eq!(meter.rate_at(now), 0.0);
+        }
+
+        /// Whatever the tool reports, the speed is never negative and
+        /// never more than everything it gained, over a second.
+        #[test]
+        fn the_rate_is_never_negative_nor_more_than_a_second_of_all_it_gained(
+            steps in proptest::collection::vec((0u64..50_000_000, 1u64..3_000), 1..30),
+            asked_after_ms in 0u64..20_000,
+        ) {
+            let start = Instant::now();
+            let mut meter = RateMeter::default();
+            let mut at = start;
+            let mut gained = 0u64;
+            let mut last: Option<u64> = None;
+            for (bytes, gap_ms) in &steps {
+                at += Duration::from_millis(*gap_ms);
+                meter.observe(*bytes, at);
+                if let Some(prev) = last {
+                    gained += bytes.saturating_sub(prev);
+                }
+                last = Some(*bytes);
+            }
+            let rate = meter.rate_at(at + Duration::from_millis(asked_after_ms));
+            prop_assert!(rate >= 0.0 && rate.is_finite());
+            #[allow(clippy::cast_precision_loss)]
+            let most = gained as f64;
+            prop_assert!(rate <= most + 1e-6);
+        }
+    }
+}
+
+/// The rates a run reported to the dock, in bytes a second.
+#[cfg(unix)]
+fn reported_rates(lines: &[String]) -> Vec<u64> {
+    lines
+        .iter()
+        .filter_map(|l| l.strip_prefix("status.download.rate "))
+        .filter_map(|r| r.parse().ok())
+        .collect()
+}
+
+/// yt-dlp prints its progress on stdout, which the app threw away, so
+/// the dock never had a speed. It is asked for a progress line of the
+/// app's shape on stdout, the app reads it, and reports the run's speed
+/// to the dock once a second — the progress lines themselves are not
+/// the dock's to show.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_yt_dlp_run_reports_its_speed_to_the_dock() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "echo \"yt-dlp $*\" >&2\n\
+         for b in 0 1048576 2097152 3145728 4194304; do echo \"ani-gui-progress $b\"; sleep 0.4; done\n\
+         exit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(run.contains("--newline"), "{run}");
+    assert!(
+        run.contains(
+            "--progress-template download:ani-gui-progress %(info.format_id)s %(progress.downloaded_bytes)s"
+        ),
+        "{run}"
+    );
+    let rates = reported_rates(&lines);
+    assert!(
+        rates.iter().any(|&r| r > 0),
+        "a speed was reported: {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.starts_with("ani-gui-progress")),
+        "the progress lines are not the dock's text: {lines:?}"
+    );
+}
+
+/// A run that reports progress and ends inside a second — a nearly
+/// finished resume — still shows a speed: the meter is read once more
+/// as the run's output closes, ahead of the zero its end reports.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_run_shorter_than_a_report_still_reports_a_speed() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "echo \"ani-gui-progress 137 1048576\"\nexit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let rates = reported_rates(&lines);
+    assert!(
+        rates.iter().any(|&r| r > 0),
+        "a speed was reported before the run's zero: {lines:?}"
+    );
+    assert_eq!(
+        rates.last(),
+        Some(&0),
+        "and the run ends at zero: {lines:?}"
+    );
+}
+
+/// A user's yt-dlp configuration applies to every run it does not
+/// override, and a run's progress line is only one of what it can
+/// change: `--no-progress` or `--quiet` in a configuration file
+/// silenced the line the meter reads, so the indicators read zero for
+/// the whole download, and a configured downloader silenced it even
+/// past `--progress`. Every run is told to load no configuration, so
+/// it is the run the app built.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_yt_dlp_run_loads_no_user_configuration() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2\nexit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(
+        run.split_whitespace().any(|a| a == "--ignore-config"),
+        "the run loads no user configuration: {run}"
+    );
+}
+
+/// ffmpeg's -stats line is one carriage-return-separated run the app
+/// read whole at the end. The fallback asks for its key=value progress
+/// on stdout instead and reports the speed the same way.
+#[cfg(unix)]
+#[tokio::test]
+async fn an_ffmpeg_run_reports_its_speed_to_the_dock() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "echo \"ffmpeg $*\" >&2\n\
+         for b in 0 1048576 2097152 3145728 4194304; do echo \"total_size=$b\"; echo progress=continue; sleep 0.4; done\n\
+         exit 0",
+    );
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("ffmpeg "))
+        .expect("ran");
+    assert!(run.contains("-progress pipe:1"), "{run}");
+    assert!(run.contains("-nostats"), "{run}");
+    assert!(!run.contains(" -stats"), "{run}");
+    let rates = reported_rates(&lines);
+    assert!(
+        rates.iter().any(|&r| r > 0),
+        "a speed was reported: {lines:?}"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.starts_with("total_size=") || l.starts_with("progress=")),
+        "the progress lines are not the dock's text: {lines:?}"
+    );
+}
+
+/// A run that reported a speed reports zero when it ends, however it
+/// ends: between runs — the next episode resolving, a paced run
+/// waiting for the lane, the fallback starting — nothing is moving, and
+/// the indicators must not keep showing the last speed.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_run_that_measured_reports_zero_when_it_ends() {
+    for exit in ["exit 0", "exit 1"] {
+        let bin = tempfile::tempdir().expect("bin");
+        let dest = tempfile::tempdir().expect("dest");
+        stage_tool(
+            bin.path(),
+            "yt-dlp",
+            &format!(
+                "for b in 0 1048576 2097152 3145728; do echo \"ani-gui-progress $b\"; sleep 0.4; done\n{exit}"
+            ),
+        );
+        let mut lines = Vec::new();
+        let _ = spawn_download_tool(
+            &StreamSource {
+                master_url: "https://cdn.example/x/master.m3u8".into(),
+                referer: None,
+                subtitles: Vec::new(),
+            },
+            dest.path(),
+            "Show Episode 1",
+            None,
+            &bin.path().display().to_string(),
+            std::time::Duration::from_secs(10),
+            &mut |l: &str| lines.push(l.to_string()),
+        )
+        .await;
+        let rates = reported_rates(&lines);
+        assert!(
+            rates.iter().any(|&r| r > 0),
+            "{exit}: a speed was reported: {lines:?}"
+        );
+        assert_eq!(
+            rates.last(),
+            Some(&0),
+            "{exit}: the run ended on zero: {lines:?}"
+        );
+    }
+}
+
+/// Every download is a finished episode, never a live broadcast, but
+/// yt-dlp guesses live from the first variant it checks — a guess the
+/// relay's episodes met — and a live stream gets no progress line and
+/// can be handed to an ffmpeg run without the app's extension option,
+/// which the relay's addresses fail. yt-dlp is told the stream is not
+/// live, on every run.
+#[cfg(unix)]
+#[tokio::test]
+async fn yt_dlp_is_told_the_episode_is_not_live() {
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    let mut lines = Vec::new();
+    spawn_download_tool(
+        &StreamSource {
+            master_url: "https://cdn.example/x/master.m3u8".into(),
+            referer: None,
+            subtitles: Vec::new(),
+        },
+        dest.path(),
+        "Show Episode 1",
+        None,
+        &bin.path().display().to_string(),
+        std::time::Duration::from_secs(10),
+        &mut |l: &str| lines.push(l.to_string()),
+    )
+    .await
+    .expect("the run completes");
+    let run = lines
+        .iter()
+        .find(|l| l.starts_with("yt-dlp "))
+        .expect("ran");
+    assert!(
+        run.contains("--extractor-args generic:is_live=false"),
+        "{run}"
+    );
+}
+
+/// A run's speed counts from the run's start: the first progress a tool
+/// reports already carries a block, and that block is part of the
+/// speed — but only what this run fetched, not what an earlier run of
+/// the same transfer left for it to resume from.
+mod rate_from_the_runs_start {
+    use crate::commands::download_progress::RateMeter;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    #[test]
+    fn a_fresh_runs_first_block_counts() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(0, start);
+        meter.observe(2_000_000, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - 1_000_000.0).abs() < 1.0, "{rate}");
+    }
+
+    #[test]
+    fn a_resumed_runs_first_count_counts_only_what_it_fetched() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(50_000_000, start);
+        meter.observe(52_000_000, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - 1_000_000.0).abs() < 1.0, "{rate}");
+    }
+
+    #[test]
+    fn what_a_run_resumes_from_is_the_partial_file_ytdlp_keeps() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        let resumed = super::super::resumed_partials(&out);
+        assert_eq!(
+            (resumed.whole, resumed.formats.len()),
+            (0, 0),
+            "nothing to resume"
+        );
+        std::fs::write(dir.path().join("episode.part.mp4.part"), vec![0u8; 4096]).expect("write");
+        assert_eq!(super::super::resumed_partials(&out).whole, 4096);
+    }
+
+    /// A stream whose video and audio yt-dlp fetches apart keeps a
+    /// partial file per format, named for the format beside the
+    /// output's stem, and a partial per fragment that was in flight
+    /// beside it; what the run resumes from is, by format, its partial
+    /// and its fragments' partials together — yt-dlp reports both as
+    /// downloaded — and nothing of another output's.
+    #[test]
+    fn what_a_run_resumes_from_is_each_format_it_keeps_apart() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        let write = |name: &str, len: usize| {
+            std::fs::write(dir.path().join(name), vec![0u8; len]).expect("write");
+        };
+        write("episode.part.f137.mp4.part", 4096);
+        write("episode.part.f140.m4a.part", 1024);
+        write("episode.part.f137.mp4.part-Frag7.part", 512);
+        write("other.part.f137.mp4.part", 2048);
+        let resumed = super::super::resumed_partials(&out);
+        assert_eq!(resumed.whole, 0);
+        assert_eq!(
+            resumed.formats,
+            std::collections::HashMap::from([("137".to_string(), 4608), ("140".to_string(), 1024)])
+        );
+    }
+
+    /// A single format's fragments in flight leave partials beside its
+    /// own, and those count toward what the run resumes from as well.
+    #[test]
+    fn what_a_run_resumes_from_counts_its_fragments_in_flight() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(dir.path().join("episode.part.mp4.part"), vec![0u8; 8000]).expect("write");
+        std::fs::write(
+            dir.path().join("episode.part.mp4.part-Frag7.part"),
+            vec![0u8; 1500],
+        )
+        .expect("write");
+        std::fs::write(
+            dir.path().join("episode.part.mp4.part-Frag8.part"),
+            vec![0u8; 500],
+        )
+        .expect("write");
+        assert_eq!(super::super::resumed_partials(&out).whole, 10_000);
+    }
+
+    /// A partial on disk that yt-dlp never reports — a fragment whose
+    /// server ignored the range and started over, a fragment partial
+    /// behind the index yt-dlp resumed from — leaves a starting point the
+    /// count may never reach. It is held for one window from the
+    /// format's start, the time every fragment in flight has to give its
+    /// first report, and no longer: the run's speed shows after it.
+    #[test]
+    fn a_starting_point_the_count_never_reaches_is_let_go_after_a_window() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(1_000_000, start);
+        let mut at = start;
+        for second in 1..=12u64 {
+            at = start + Duration::from_secs(second);
+            meter.observe(second * 10_000, at);
+        }
+        let rate = meter.rate_at(at);
+        assert!(
+            (rate - 10_000.0).abs() < 1.0,
+            "the run's speed shows: {rate}"
+        );
+    }
+
+    /// yt-dlp reports a resumed fragment's partial as downloaded when
+    /// that fragment's thread first reports, which with fragments in
+    /// flight is not all at once: counts below what the run resumes from
+    /// are the resumed bytes arriving, not a fall to measure from, and
+    /// only what passes it is the run's.
+    #[test]
+    fn counts_below_what_a_run_resumes_from_gain_nothing_and_do_not_lower_it() {
+        let start = Instant::now();
+        let mut meter = RateMeter::starting_from(10_000, start);
+        meter.observe(8_500, start + Duration::from_millis(500));
+        meter.observe(10_500, start + Duration::from_secs(1));
+        let rate = meter.rate_at(start + Duration::from_secs(1));
+        assert!((rate - 500.0).abs() < 1.0, "{rate}");
+    }
+
+    /// A format's id is read whole whatever it holds: the count is the
+    /// progress line's last word and the id everything before it, so the
+    /// reading does not rest on yt-dlp having replaced the spaces of an
+    /// HLS rendition's name, as it does today; the partial's name is
+    /// read by the whole id too.
+    #[test]
+    fn a_format_whose_id_has_spaces_is_read_by_its_whole_id() {
+        use crate::commands::download_progress::ytdlp_progress;
+        assert_eq!(
+            ytdlp_progress("ani-gui-progress hls-English 2.0 2048"),
+            Some((Some("hls-English 2.0".to_string()), 2048))
+        );
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(
+            dir.path().join("episode.part.fhls-English 2.0.m4a.part"),
+            vec![0u8; 512],
+        )
+        .expect("write");
+        assert_eq!(
+            super::super::resumed_partials(&out).formats,
+            std::collections::HashMap::from([("hls-English 2.0".to_string(), 512)])
+        );
+    }
+
+    /// A format's id may carry dots — an HLS rendition's name flows into
+    /// it — and its partial is read by the whole id, up to the
+    /// extension.
+    #[test]
+    fn a_format_whose_id_has_dots_is_read_by_its_whole_id() {
+        let dir = tempfile::tempdir().expect("dir");
+        let out = dir.path().join("episode.part.mp4");
+        std::fs::write(
+            dir.path().join("episode.part.fhls-English_2.0.m4a.part"),
+            vec![0u8; 2048],
+        )
+        .expect("write");
+        assert_eq!(
+            super::super::resumed_partials(&out).formats,
+            std::collections::HashMap::from([("hls-English_2.0".to_string(), 2048)])
+        );
+    }
+
+    /// yt-dlp fetches the formats it keeps apart one after another, and
+    /// counts each from its own partial: each format's count is measured
+    /// from that format's partial, so a resumed format's growth is its
+    /// speed however large another format's partial is, and a format
+    /// starting after another is measured from its own.
+    #[test]
+    fn each_resumed_format_is_measured_from_its_own_partial() {
+        const MIB: u64 = 1024 * 1024;
+        let start = Instant::now();
+        let resumed = crate::commands::download_progress::Resumed {
+            whole: 0,
+            formats: std::collections::HashMap::from([
+                ("137".to_string(), 4 * MIB),
+                ("140".to_string(), MIB),
+            ]),
+        };
+        let mut meter = RateMeter::starting_from_partials(resumed, start);
+        meter.observe_format(
+            Some("137"),
+            4 * MIB + MIB / 2,
+            start + Duration::from_secs(1),
+        );
+        let rate = meter.rate_at(start + Duration::from_secs(1));
+        assert!((rate - (MIB / 2) as f64).abs() < 1.0, "{rate}");
+        meter.observe_format(Some("140"), MIB + MIB / 2, start + Duration::from_secs(2));
+        let rate = meter.rate_at(start + Duration::from_secs(2));
+        assert!((rate - MIB as f64 / 2.0).abs() < 1.0, "{rate}");
+    }
+
+    /// yt-dlp's progress line names the format it is fetching ahead of
+    /// its count.
+    #[test]
+    fn a_progress_line_names_its_format() {
+        use crate::commands::download_progress::{ytdlp_progress, ytdlp_progress_bytes};
+        assert_eq!(
+            ytdlp_progress("ani-gui-progress 137 2048"),
+            Some((Some("137".to_string()), 2048))
+        );
+        assert_eq!(
+            ytdlp_progress_bytes("ani-gui-progress 137 2048"),
+            Some(2048)
+        );
+        assert_eq!(ytdlp_progress("ani-gui-progress 137 NA"), None);
+    }
+}
+
+mod progress_props {
+    use crate::commands::download_progress::{
+        ffmpeg_progress_bytes, progress, rate_report, ytdlp_progress, RateMeter, Resumed,
+        RATE_STATUS,
+    };
+    use proptest::prelude::*;
+    use std::time::Duration;
+    use tokio::time::Instant;
+
+    proptest! {
+        /// Whatever format yt-dlp names and whatever count it has, its
+        /// progress line reads back as them; a line with the count alone
+        /// names no format; ffmpeg's reads as its bytes, for no format.
+        #[test]
+        fn a_progress_line_reads_back_as_written(
+            format in "[A-Za-z0-9_+-][A-Za-z0-9_+. -]{0,14}[A-Za-z0-9_+-]",
+            bytes in proptest::num::u64::ANY,
+        ) {
+            prop_assert_eq!(
+                ytdlp_progress(&format!("ani-gui-progress {format} {bytes}")),
+                Some((Some(format.clone()), bytes))
+            );
+            prop_assert_eq!(ytdlp_progress(&format!("ani-gui-progress {bytes}")), Some((None, bytes)));
+            prop_assert_eq!(ffmpeg_progress_bytes(&format!("total_size={bytes}")), Some(bytes));
+            prop_assert_eq!(progress(&format!("total_size={bytes}")), Some((None, bytes)));
+        }
+
+        /// A speed report carries the speed rounded to whole bytes, and
+        /// none below zero.
+        #[test]
+        fn a_speed_report_is_the_speed_rounded_and_never_negative(speed in -1.0e12f64..1.0e12) {
+            let line = rate_report(speed);
+            let number: u64 = line
+                .strip_prefix(RATE_STATUS)
+                .expect("the status")
+                .trim()
+                .parse()
+                .expect("a number");
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let expected = speed.max(0.0).round() as u64;
+            prop_assert_eq!(number, expected);
+        }
+
+        /// Whatever a format resumes from and whatever it fetches next,
+        /// the first count of it reads as what it fetched, not its
+        /// partial, and a format after it starts from its own.
+        #[test]
+        fn each_formats_first_count_reads_as_what_it_fetched(
+            first in 0u64..1 << 40,
+            second in 0u64..1 << 40,
+            got_first in 0u64..1 << 30,
+            got_second in 0u64..1 << 30,
+        ) {
+            let start = Instant::now();
+            let resumed = Resumed {
+                whole: 0,
+                formats: std::collections::HashMap::from([
+                    ("v".to_string(), first),
+                    ("a".to_string(), second),
+                ]),
+            };
+            let mut meter = RateMeter::starting_from_partials(resumed, start);
+            let one = start + Duration::from_secs(1);
+            meter.observe_format(Some("v"), first + got_first, one);
+            #[allow(clippy::cast_precision_loss)]
+            let expected = got_first as f64;
+            prop_assert!((meter.rate_at(one) - expected).abs() < 1.0);
+            let two = start + Duration::from_secs(2);
+            meter.observe_format(Some("a"), second + got_second, two);
+            #[allow(clippy::cast_precision_loss)]
+            let expected = (got_first + got_second) as f64 / 2.0;
+            prop_assert!((meter.rate_at(two) - expected).abs() < 1.0);
+        }
+    }
+}
+
 /// A download tool that cannot be started at all — not on disk where it
 /// was found, not executable, refused by the OS — is the download
 /// tool failing, not the network. The dock words a `network` payload
