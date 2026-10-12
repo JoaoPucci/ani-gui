@@ -266,7 +266,7 @@ describe('/search infinite scroll', () => {
 				}
 				return HttpResponse.json({
 					hits: [{ ...ref('3', 'Dragon Ball Super: Broly'), subtype: 'movie' }],
-					next_offset: null
+					next_offset: 40
 				});
 			})
 		);
