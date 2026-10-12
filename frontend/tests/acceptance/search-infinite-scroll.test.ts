@@ -761,4 +761,49 @@ describe('/search infinite scroll', () => {
 		expect(screen()).not.toContain('Not Out Yet');
 		expect(document.activeElement).toBe(year);
 	});
+
+	// The controls appear while a search with nothing to show yet looks
+	// deeper. If it ends with nothing, they must not vanish from under a
+	// chip the reader pressed meanwhile: they stay above the empty state.
+	it('a search that ends with nothing keeps the controls and the focus on them', async () => {
+		let releaseSecond: () => void = () => {};
+		const secondHeld = new Promise<void>((r) => (releaseSecond = r));
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const { kitsu_ids } = (await request.json()) as { kitsu_ids: string[] };
+				return HttpResponse.json({
+					cached: Object.fromEntries(kitsu_ids.map((id) => [id, false])),
+					playable_episode_counts: {}
+				});
+			}),
+			...baseHandlers().filter((h) => !String(h.info.path).includes('availability')),
+			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
+				const { offset } = (await request.json()) as { offset: number };
+				if (offset === 0) {
+					return HttpResponse.json({ hits: [ref('gone-1', 'Gone One')], next_offset: 20 });
+				}
+				await secondHeld;
+				return HttpResponse.json({ hits: [ref('gone-2', 'Gone Two')], next_offset: null });
+			})
+		);
+
+		setQuery('nothing here');
+		app = mount(SearchPage, { target });
+		await until(
+			() => buttonNamed(subtypeLabel('TV')) !== null,
+			'the controls while it looks deeper'
+		);
+		const tv = buttonNamed(subtypeLabel('TV'))!;
+		tv.focus();
+		tv.click();
+
+		releaseSecond();
+		await until(
+			() => !screen().includes(m.search_paging_loading()) && screen().includes('0'),
+			'the search to end with nothing'
+		);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(buttonNamed(subtypeLabel('TV'))).toBe(tv);
+		expect(document.activeElement).toBe(tv);
+	});
 });
