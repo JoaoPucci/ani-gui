@@ -500,7 +500,13 @@ pub fn title_match_put(
 ///   "Second Half War" to Shirogane no Tamashii-hen — where the
 ///   sibling's title carries no cour marker the guard could refuse
 ///   it on; re-keying lets the next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 4;
+/// - v5: names vouch for a countless or single-video pick. A v4 row
+///   can bind another show's key to the entry the user asked for —
+///   Dragon Ball Super's to Dragon Ball Super: Ginga Patrol, picked
+///   for an entry with no count or year — where the title carries no
+///   cour marker the guard could refuse it on; re-keying lets the
+///   next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 5;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
@@ -1592,6 +1598,25 @@ mod tests {
             &state.cache_pool,
             &format!("allmanga2kitsu:v3:{key}"),
             "14095",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
+    fn a_mapping_stamped_before_names_vouched_for_countless_picks_is_not_read() {
+        // Dragon Ball Super: Ginga Patrol, with no count or year, was
+        // resolved to Dragon Ball Super's listing, and a play stamps
+        // the picked show's key with the entry asked for: the series'
+        // key bound to the sequel. Nothing in a row says which pick
+        // wrote it.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:dragon-ball-super-1101";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v4:{key}"),
+            "50496",
             60,
         )
         .expect("put");

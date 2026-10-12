@@ -5,7 +5,8 @@
 use super::*;
 
 /// What the decision table decides beside the candidate `m` read as W,
-/// and whether the entry heads it; `None` when `m` is no W or no row
+/// and whether the entry heads it — names it ([`EntryTitles::names`]),
+/// the words past its name included; `None` when `m` is no W or no row
 /// applies beside it.
 pub(super) fn beside(
     probed: &[Probed<'_>],
@@ -20,7 +21,7 @@ pub(super) fn beside(
         return None;
     }
     let own = |k: usize| entry.names_own_part(&probed[k].0.title, &h.title);
-    let head = entry.heads(&h.title);
+    let head = entry.names(&h.title);
     let own_fits: Vec<usize> = (0..probed.len())
         .filter(|&k| k != m && admitted[k] && probed[k].2 == 0 && own(k))
         .collect();

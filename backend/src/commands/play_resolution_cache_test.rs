@@ -201,7 +201,7 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v16:"), "got {k}");
+    assert!(k.starts_with("play:v17:"), "got {k}");
 }
 
 #[test]
@@ -369,4 +369,27 @@ fn get_treats_corrupt_payload_as_miss() {
     let key = "play:v4:Garbage:sub:best:1:-:-";
     meta_cache_put(&pool, key, "{ not valid json", 60).unwrap();
     assert!(get(&pool, key).expect("ok").is_none());
+}
+
+#[test]
+fn a_row_resolved_before_names_vouched_for_countless_and_single_video_picks_is_not_served() {
+    // An entry with no count or year took the provider's first hit,
+    // and a single video was picked on its count of one: a v16 row
+    // can hold another show's stream under the entry's key — Dragon
+    // Ball Super's episode 1 cached as Ginga Patrol's.
+    let pool = pool();
+    let current = cache_key(
+        "Dragon Ball Super: Ginga Patrol",
+        "sub",
+        "best",
+        "1",
+        None,
+        None,
+        Some("TV"),
+    );
+    let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v16:", 1);
+    assert_ne!(previous, current, "the schema must have moved past v16");
+    let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+    meta_cache_put(&pool, &previous, &body, 60).unwrap();
+    assert!(get(&pool, &current).expect("ok").is_none());
 }

@@ -1,0 +1,56 @@
+{
+ "kitsu": {
+  "id": "44661",
+  "name": "Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai",
+  "canonical": "Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai",
+  "alt_titles": ["ドラゴンボールZ ザ・リアル4-D at 超天下一武道会"],
+  "episode_count": 1,
+  "year": 2017,
+  "subtype": "special"
+ },
+ "searches": {
+  "Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai": [
+    ["dragon-ball-z-broly-the-legendary-super-saiyan-2879", "Dragon Ball Z: Broly – The Legendary Super Saiyan", "MOVIE"],
+    ["looking-back-at-it-all-the-dragon-ball-z-year-end-show-5219", "Looking Back at it All: The Dragon Ball Z Year-End Show!", "TV"],
+    ["dragon-ball-z-the-tree-of-might-2885", "Dragon Ball Z: The Tree of Might", "MOVIE"],
+    ["dragon-ball-z-the-return-of-cooler-2876", "Dragon Ball Z: The Return of Cooler", "MOVIE"],
+    ["dragon-ball-z-the-worlds-strongest-2888", "Dragon Ball Z: The World's Strongest", "MOVIE"],
+    ["dragon-ball-z-kai-the-final-chapters-3848", "Dragon Ball Z Kai: The Final Chapters", "TV"],
+    ["dragon-ball-z-wrath-of-the-dragon-2880", "Dragon Ball Z: Wrath of the Dragon", "MOVIE"],
+    ["dragon-ball-z-the-history-of-trunks-2883", "Dragon Ball Z Special 2: The History of Trunks", "SPECIAL"],
+    ["dragon-ball-z-bardock-the-father-of-goku-1405", "Dragon Ball Z Special 1: Bardock, The Father of Goku", "SPECIAL"],
+    ["dragon-ball-z-kai-bring-peace-to-the-future-gokus-spirit-is-eternal-5424", "Dragon Ball Z Kai: Bring Peace to the Future! Goku's Spirit is Eternal", "TV"]
+  ],
+  "ドラゴンボールZ ザ・リアル4-D at 超天下一武道会": [
+    ["dragon-ball-z-1380", "Dragon Ball Z", "TV"],
+    ["dragon-ball-z-battle-of-gods-1404", "Dragon Ball Z: Battle of Gods", "MOVIE"],
+    ["dragon-ball-z-resurrection-f-3364", "Dragon Ball Z: Resurrection 'F'", "MOVIE"],
+    ["dragon-ball-z-broly-the-legendary-super-saiyan-2879", "Dragon Ball Z: Broly – The Legendary Super Saiyan", "MOVIE"],
+    ["dragon-ball-z-fusion-reborn-2882", "Dragon Ball Z: Fusion Reborn", "MOVIE"],
+    ["dragon-ball-z-coolers-revenge-2875", "Dragon Ball Z: Cooler's Revenge", "MOVIE"],
+    ["dragon-ball-z-the-tree-of-might-2885", "Dragon Ball Z: The Tree of Might", "MOVIE"],
+    ["dragon-ball-z-wrath-of-the-dragon-2880", "Dragon Ball Z: Wrath of the Dragon", "MOVIE"],
+    ["dragon-ball-z-broly-second-coming-2877", "Dragon Ball Z: Broly – Second Coming", "MOVIE"],
+    ["dragon-ball-z-the-return-of-cooler-2876", "Dragon Ball Z: The Return of Cooler", "MOVIE"],
+    ["dragon-ball-z-super-android-13-2878", "Dragon Ball Z: Super Android 13!", "MOVIE"],
+    ["dragon-ball-z-bio-broly-2881", "Dragon Ball Z: Bio-Broly", "MOVIE"],
+    ["dragon-ball-z-dead-zone-2887", "Dragon Ball Z: Dead Zone", "MOVIE"],
+    ["dragon-ball-z-bojack-unbound-1403", "Dragon Ball Z: Bojack Unbound", "MOVIE"],
+    ["dragon-ball-z-lord-slug-2886", "Dragon Ball Z: Lord Slug", "MOVIE"],
+    ["dragon-ball-z-the-worlds-strongest-2888", "Dragon Ball Z: The World's Strongest", "MOVIE"],
+    ["dragon-ball-z-plan-to-eradicate-the-saiyans-2884", "Dragon Ball Z: Saiya-jin Zetsumetsu Keikaku", "OVA"]
+  ]
+ },
+ "episodes": {
+  "dragon-ball-z-bardock-the-father-of-goku-1405": [
+    [24726, 1, null]
+  ],
+  "dragon-ball-z-the-history-of-trunks-2883": [
+    [37417, 1, null]
+  ]
+ },
+ "years": {
+  "dragon-ball-z-bardock-the-father-of-goku-1405": 1990,
+  "dragon-ball-z-the-history-of-trunks-2883": 1993
+ }
+}
