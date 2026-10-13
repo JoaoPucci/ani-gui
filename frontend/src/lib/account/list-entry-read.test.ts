@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { AccountApiError } from './api';
-import { readEntryWithRetry, type ReadDeps } from './list-entry-read';
+import {
+	readEntryWithRetry,
+	readFailureNotice,
+	type ReadDeps,
+	type ReadOutcome
+} from './list-entry-read';
 import type { EntryView } from './types';
+import { m } from '$lib/paraglide/messages';
+
+/** The failed arm of the outcome, for building fixtures. */
+type ReadOutcomeFailure = Extract<ReadOutcome, { kind: 'failed' }>;
 
 /** Deps whose `readAll` answers from a script, one entry per attempt,
  *  and whose `sleep` records what it was asked and returns at once. */
@@ -159,5 +168,40 @@ describe('readEntryWithRetry on a rate limit', () => {
 		]);
 		await expect(readEntryWithRetry(deps)).resolves.toEqual({ kind: 'ok', entry: null });
 		expect(sleeps).toEqual([1000, 20_000]);
+	});
+});
+
+describe('readFailureNotice', () => {
+	const failed = (last: ReadOutcomeFailure['last']): ReadOutcomeFailure => ({
+		kind: 'failed',
+		last
+	});
+
+	it('says nothing for an answer or a superseded read', () => {
+		expect(readFailureNotice({ kind: 'ok', entry: null })).toBeNull();
+		expect(readFailureNotice({ kind: 'superseded' })).toBeNull();
+	});
+
+	it('says nothing for a plain failure — the control is disabled as before', () => {
+		expect(
+			readFailureNotice(failed({ rateLimited: false, retryAfterSecs: null, envelope: null }))
+		).toBeNull();
+	});
+
+	it('names the wait the tracker asked for, in the envelope’s words', () => {
+		const envelope = {
+			kind: 'rate_limited',
+			retry_after_secs: 42,
+			key: 'error.network.rate_limited'
+		};
+		expect(readFailureNotice(failed({ rateLimited: true, retryAfterSecs: 42, envelope }))).toBe(
+			m.errors_reason_busy_wait({ seconds: 42 })
+		);
+	});
+
+	it('falls back to the rate-limit sentence when the body carried no envelope', () => {
+		expect(
+			readFailureNotice(failed({ rateLimited: true, retryAfterSecs: null, envelope: null }))
+		).toBe(m.detail_list_rate_limited());
 	});
 });

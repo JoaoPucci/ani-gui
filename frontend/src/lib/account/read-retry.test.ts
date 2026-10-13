@@ -18,6 +18,10 @@ describe('planReadRetry', () => {
 		expect(planReadRetry(Array<ReadFailure>(5).fill(plain))).toBeNull();
 		expect(planReadRetry(Array<ReadFailure>(10).fill(plain))).toBeNull();
 	});
+
+	it('plans the first step before any failure has been recorded', () => {
+		expect(planReadRetry([])).toBe(1000);
+	});
 });
 
 describe('classifyReadFailure', () => {
