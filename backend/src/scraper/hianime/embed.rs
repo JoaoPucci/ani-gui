@@ -141,6 +141,21 @@ pub fn decode_embed(html: &str) -> Result<EmbedPayload> {
     })
 }
 
+/// Whether `html` is the embed host's own not-found page: zokoanime's
+/// answer for an episode it has nothing for, served with HTTP 200 —
+/// an error card whose code reads 404 and no player payload. The host
+/// is answering, in its body, what a 404 status would have said, so
+/// the client reads it as that status and not as a page it does not
+/// recognise. The card's code is the one mark looked for: the page
+/// carries no payload marker (or [`decode_embed`] would have read
+/// it) and its prose may be reworded, but the code is what the card
+/// is for. A page without the card and without a payload is still a
+/// page the client does not recognise.
+#[must_use]
+pub fn is_not_found_page(html: &str) -> bool {
+    html.contains(r#"class="code">404<"#)
+}
+
 /// Whether the transport can fetch `src`: an absolute URL under
 /// http or https, nothing else.
 fn is_fetchable(src: &str) -> bool {

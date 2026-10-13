@@ -34,7 +34,7 @@ pub use ajax::{
     CHAIN_REQUESTS,
 };
 pub use detail::parse_detail_year;
-pub use embed::{decode_embed, embed_origin, EmbedPayload};
+pub use embed::{decode_embed, embed_origin, is_not_found_page, EmbedPayload};
 pub use megaplay::{media_id, sources_url};
 pub use megaplay_sources::{lang_of_track, parse_sources};
 pub use parse::{parse_search, slug_id};
@@ -245,8 +245,13 @@ impl<F: Fetch> HianimeClient<F> {
     /// page carrying the payload decodes in place; a page without it
     /// that names its media — megaplay's — has the site asked for the
     /// sources, with the page's own origin as the referer and the
-    /// header its player sends; a page with neither shape is a host
-    /// the client does not read, an answered "nothing here".
+    /// header its player sends; a page that is the host's own
+    /// not-found card ([`is_not_found_page`]) is the host answering,
+    /// under a 200 status, what a 404 would have — and is read as that
+    /// status, so the walk steps over it as a server's own dead end
+    /// and the episode step reads it as the episode's absence; a page
+    /// with none of those shapes is a host the client does not read,
+    /// an answered "nothing here".
     ///
     /// `served_by` is the URL the page came from, which is where the
     /// sources are asked for: megaplay's endpoint sits under the
@@ -262,7 +267,8 @@ impl<F: Fetch> HianimeClient<F> {
     /// what order, and what is asked for.
     ///
     /// # Errors
-    /// [`AniError::NoResults`] for a page of neither shape; the
+    /// [`AniError::Upstream`] with 404 for the host's own not-found
+    /// page; [`AniError::NoResults`] for a page of no known shape; the
     /// sources fetch's own refusals and transport failures; a parse
     /// failure for a payload or a sources answer the client cannot
     /// use.
@@ -272,7 +278,11 @@ impl<F: Fetch> HianimeClient<F> {
             decoded => return decoded,
         }
         let Some(id) = media_id(page) else {
-            return Err(AniError::NoResults);
+            return Err(if is_not_found_page(page) {
+                AniError::Upstream { status: 404 }
+            } else {
+                AniError::NoResults
+            });
         };
         let url = sources_url(served_by, id).ok_or_else(|| AniError::ParseFailed {
             detail: "megaplay embed page from a URL without an origin".into(),
