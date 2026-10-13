@@ -75,15 +75,15 @@ export function classifyReadFailure(e: unknown): ReadFailure {
  */
 export function planReadRetry(failures: readonly ReadFailure[]): number | null {
 	const last = failures.at(-1);
-	if (last === undefined) return RATE_LIMIT_MIN_WAIT_MS;
-	if (last.rateLimited) {
-		const earlierLimits = failures.slice(0, -1).some((f) => f.rateLimited);
-		if (earlierLimits) return null;
+	if (last?.rateLimited) {
+		if (failures.slice(0, -1).some((f) => f.rateLimited)) return null;
 		const advertised =
 			last.retryAfterSecs === null ? RATE_LIMIT_DEFAULT_WAIT_MS : last.retryAfterSecs * 1000;
 		return Math.min(RATE_LIMIT_MAX_WAIT_MS, Math.max(RATE_LIMIT_MIN_WAIT_MS, advertised));
 	}
-	const plainAttempt = failures.filter((f) => !f.rateLimited).length - 1;
-	if (plainAttempt >= MAX_READ_RETRIES) return null;
-	return 1000 * 2 ** plainAttempt;
+	// The schedule's step is the count of plain failures so far; before
+	// the first failure, the first step.
+	const plainFailures = failures.filter((f) => !f.rateLimited).length;
+	if (plainFailures > MAX_READ_RETRIES) return null;
+	return 1000 * 2 ** Math.max(0, plainFailures - 1);
 }
