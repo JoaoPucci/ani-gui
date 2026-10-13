@@ -462,7 +462,13 @@ async fn get_image(State(state): State<Arc<AppState>>, Query(q): Query<ImageQuer
     if !q.url.starts_with("https://") {
         return (StatusCode::BAD_REQUEST, "url must be https://").into_response();
     }
-    match crate::meta::images::get_or_fetch(&state.meta_http, &state.image_cache_dir, &q.url).await
+    match crate::meta::images::get_or_fetch(
+        &state.meta_http,
+        &state.image_cache_dir,
+        &state.cache_pool,
+        &q.url,
+    )
+    .await
     {
         Ok((bytes, mime)) => {
             // Opportunistic LRU prune — fire-and-forget, only walks

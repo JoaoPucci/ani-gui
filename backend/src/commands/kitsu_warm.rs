@@ -62,8 +62,9 @@ pub fn warm_signed_image_urls(state: &AppState, body: &str) {
     for url in urls {
         let client = state.meta_http.clone();
         let cache_dir = state.image_cache_dir.clone();
+        let pool = state.cache_pool.clone();
         tokio::spawn(async move {
-            match crate::meta::images::get_or_fetch(&client, &cache_dir, &url).await {
+            match crate::meta::images::get_or_fetch(&client, &cache_dir, &pool, &url).await {
                 Ok(_) => {
                     crate::meta::images::schedule_prune(cache_dir, cap_bytes);
                 }

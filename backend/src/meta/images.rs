@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
+use crate::cache::SqlitePool;
 use crate::error::{AniError, Result};
 
 /// Stable 32-hex-char hash for a URL. First 16 bytes of SHA-256.
@@ -140,6 +141,7 @@ pub async fn fetch_and_store(
 pub async fn get_or_fetch(
     client: &reqwest::Client,
     cache_dir: &Path,
+    _pool: &SqlitePool,
     url: &str,
 ) -> Result<(Vec<u8>, &'static str)> {
     if let Some(cached) = read_cached(cache_dir, url) {
@@ -155,6 +157,22 @@ pub async fn get_or_fetch(
         return Ok(cached);
     }
     fetch_and_store(client, cache_dir, url).await
+}
+
+/// Record that the upstream says `url` is gone.
+pub fn mark_dead(_pool: &SqlitePool, _url: &str) {
+    todo!("the next commit records the mark")
+}
+
+/// Whether the upstream has said `url` is gone.
+#[must_use]
+pub fn is_dead(_pool: &SqlitePool, _url: &str) -> bool {
+    todo!("the next commit reads the mark")
+}
+
+/// Drop the mark on `url`, so it is tried again.
+pub fn forget_dead(_pool: &SqlitePool, _url: &str) {
+    todo!("the next commit drops the mark")
 }
 
 /// Total bytes used by every regular file under `cache_dir`. Walks
@@ -263,6 +281,10 @@ pub fn clear_all(cache_dir: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "images_dead_test.rs"]
+mod dead_tests;
 
 #[cfg(test)]
 mod tests {

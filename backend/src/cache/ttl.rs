@@ -55,6 +55,11 @@ pub const PLAY_RESOLUTION_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 /// request the app made anyway, so a long life costs no traffic.
 pub const ANILIST_BANNER_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
 
+/// TTL for the mark on an image URL the upstream said is gone. As long
+/// as a remembered banner lives, so that a banner forgotten for being
+/// dead is not remembered again from a row older than the verdict.
+pub const DEAD_IMAGE_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
+
 #[cfg(test)]
 mod tests {
     use super::*;

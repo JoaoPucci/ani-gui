@@ -412,3 +412,123 @@ async fn a_null_cover_backfilled_from_anilist_names_the_banner_as_anilists() {
     assert_eq!(detail.anilist_banner.as_deref(), Some(BANNER));
     anilist.verify().await;
 }
+
+/// Kitsu's detail of anime 12, from the fixture (it has a cover).
+async fn mount_detail(kitsu: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/anime/12"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/vnd.api+json")
+                .set_body_bytes(DETAIL_FIXTURE),
+        )
+        .mount(kitsu)
+        .await;
+}
+
+#[tokio::test]
+async fn a_remembered_banner_the_proxy_found_dead_is_forgotten() {
+    let (anilist, kitsu) = trending_fixture().await;
+    mount_detail(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+    // The renderer asked the proxy for the banner; AniList's CDN said
+    // it is gone.
+    crate::meta::images::mark_dead(&state.cache_pool, BANNER);
+
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+
+    assert_eq!(detail.anilist_banner, None);
+    assert_eq!(
+        crate::cache::meta_cache_get(&state.cache_pool, "anilist:banner:v1:k12").expect("row"),
+        None,
+        "the row is forgotten, not merely skipped"
+    );
+    // Still exactly the trending request: a dead banner is not a
+    // reason to ask AniList while Kitsu has a cover.
+    anilist.verify().await;
+}
+
+#[tokio::test]
+async fn a_banner_the_proxy_found_dead_is_not_offered_again_while_anilist_still_lists_it() {
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .expect(2)
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    mount_detail(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("first trending");
+    crate::meta::images::mark_dead(&state.cache_pool, BANNER);
+    // The feed's own hour runs out. AniList still lists the URL, but
+    // its CDN is the word on the bytes, and it said they are gone.
+    crate::cache::meta_cache_delete(&state.cache_pool, "kitsu:v6:trending_anilist")
+        .expect("expire trending");
+
+    let refs = kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("second trending");
+
+    assert_eq!(refs[0].anilist_banner, None, "the trending row drops it");
+    // Kitsu's own cover is still the row's cover.
+    assert!(refs[0].cover_image.is_some());
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+    assert_eq!(detail.anilist_banner, None, "the detail reads none");
+    anilist.verify().await;
+}
+
+#[tokio::test]
+async fn a_null_cover_show_whose_remembered_banner_is_dead_asks_anilist_once_and_refuses_the_same_url(
+) {
+    // A replaced banner is a new URL, so AniList is still worth asking;
+    // the same dead URL back is not a cover to serve.
+    let anilist = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Page": { "media": [anilist_entry(101, 21, Some(BANNER))] } }
+        })))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": { "Media": { "bannerImage": BANNER } }
+        })))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let kitsu = MockServer::start().await;
+    mount_mapping(&kitsu, 21, "12").await;
+    mount_null_cover_detail(&kitsu).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    kitsu_trending_anilist_with_base(&state, Some(&anilist.uri()))
+        .await
+        .expect("trending");
+    crate::meta::images::mark_dead(&state.cache_pool, BANNER);
+
+    let detail = kitsu_anime_detail_page_with_anilist_base(&state, "12", Some(&anilist.uri()))
+        .await
+        .expect("detail");
+
+    assert_eq!(
+        detail.cover_image, None,
+        "no cover is better than a dead one"
+    );
+    assert_eq!(detail.anilist_banner, None);
+    anilist.verify().await;
+}
