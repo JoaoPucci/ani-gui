@@ -1,0 +1,38 @@
+{
+ "kitsu": {
+  "id": "44544",
+  "name": "Dragon Ball Super: Super Hero",
+  "canonical": "Dragon Ball Super: Super Hero",
+  "alt_titles": ["ドラゴンボール超：スーパーヒーロー", "Dragon Ball Super: SUPER HERO"],
+  "episode_count": 1,
+  "year": 2022,
+  "subtype": "movie"
+ },
+ "searches": {
+  "Dragon Ball Super: SUPER HERO": [
+    ["dragon-ball-super-super-hero-1402", "Dragon Ball Super: Super Hero", "MOVIE"],
+    ["super-dragon-ball-heroes-6951", "Super Dragon Ball Heroes", "ONA"],
+    ["super-dragon-ball-heroes-big-bang-mission-9851", "Super Dragon Ball Heroes: Big Bang Mission!!!", "TV"],
+    ["super-dragon-ball-heroes-ultra-god-mission-9850", "Super Dragon Ball Heroes: Ultra God Mission", "TV"],
+    ["super-dragon-ball-heroes-meteor-mission-9529", "Super Dragon Ball Heroes: Meteor Mission", "TV"]
+  ],
+  "Dragon Ball Super: Super Hero": [
+    ["dragon-ball-super-super-hero-1402", "Dragon Ball Super: Super Hero", "MOVIE"],
+    ["super-dragon-ball-heroes-6951", "Super Dragon Ball Heroes", "ONA"],
+    ["super-dragon-ball-heroes-big-bang-mission-9851", "Super Dragon Ball Heroes: Big Bang Mission!!!", "TV"],
+    ["super-dragon-ball-heroes-ultra-god-mission-9850", "Super Dragon Ball Heroes: Ultra God Mission", "TV"],
+    ["super-dragon-ball-heroes-meteor-mission-9529", "Super Dragon Ball Heroes: Meteor Mission", "TV"]
+  ],
+  "ドラゴンボール超：スーパーヒーロー": [
+    ["dragon-ball-super-super-hero-1402", "Dragon Ball Super: Super Hero", "MOVIE"]
+  ]
+ },
+ "episodes": {
+  "dragon-ball-super-super-hero-1402": [
+    [24723, 1, null]
+  ]
+ },
+ "years": {
+  "dragon-ball-super-super-hero-1402": 2022
+ }
+}

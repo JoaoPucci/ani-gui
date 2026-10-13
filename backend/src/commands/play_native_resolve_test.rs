@@ -702,14 +702,23 @@ async fn an_answered_episode_dead_end_keeps_the_alias_walk_going() {
     // although the surrounding loop exists precisely to walk those
     // aliases. Blocks and refusals still stop the walk; transport
     // failures stay transient.
+    // Each pool's hit is named as the entry by the title searched: with
+    // no count and no year, nothing else vouches for a hit.
     let provider = scripted(&[
-        ("first", THE_SHOW),
-        ("second", Pool::Hits(&[("the-sequel-88", "The Sequel")])),
+        ("The Show", THE_SHOW),
+        ("The Sequel", Pool::Hits(&[("the-sequel-88", "The Sequel")])),
     ]);
     // Episode 1 on the-show-77 maps to id 701, whose languages
     // route the stub does not serve (404); the sequel's provider
     // number 41 (kitsu 1 + offset 40) resolves via 8841.
-    let (got, _) = run(&provider, "first", &["second".to_string()], "1", None).await;
+    let (got, _) = run(
+        &provider,
+        "The Show",
+        &["The Sequel".to_string()],
+        "1",
+        None,
+    )
+    .await;
     let resolved = got.expect("the alias walk must reach the sequel");
     assert_eq!(resolved.slug, key("the-sequel-88"));
 }

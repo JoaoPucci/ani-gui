@@ -68,7 +68,7 @@ pub(crate) fn names_past_stem(title: &str, wide: &str) -> bool {
 /// ("Seventh", not "Seventh Season", "VII" or "7th") with something
 /// other than divisions after it — a word of the name, as in "The
 /// Seventh Son", not the title's division.
-fn inside_the_name(words: &[String], i: usize) -> bool {
+pub(crate) fn inside_the_name(words: &[String], i: usize) -> bool {
     let w = &words[i];
     let word_ordinal = spelled_ordinal(w).is_some()
         && w.chars().all(|c| c.is_ascii_alphabetic())

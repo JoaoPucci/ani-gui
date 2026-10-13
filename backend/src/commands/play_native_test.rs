@@ -287,7 +287,15 @@ async fn unknown_expected_count_prefers_exact_title_then_first() {
         .expect("picked");
     assert_eq!(picked.hit.slug, "wanted-77");
 
-    let picked = pick_candidate(&client, &hits, None, "no such title", None, None)
+    // With no year either, nothing vouches for a hit not named as the
+    // entry: the provider's first hit is not taken on position.
+    let err = pick_candidate(&client, &hits, None, "no such title", None, None)
+        .await
+        .expect_err("nothing named as the entry");
+    assert!(matches!(err, AniError::NoResults));
+
+    // A year that disproved nothing keeps the provider's order.
+    let picked = pick_candidate(&client, &hits, None, "no such title", Some(2026), None)
         .await
         .expect("falls back to first");
     assert_eq!(picked.hit.slug, "first-66");
@@ -787,7 +795,9 @@ async fn a_non_movie_badge_is_disproof_against_a_movie_subtype() {
         typed_hit("franchise-special-1", "The Title", "Special"),
         typed_hit("the-movie-2", "The Title", "Movie"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(1), "unrelated", None, Some("movie"))
+    // Both cards carry the title searched: a single video's count is
+    // no identity, so only its name or its year vouches for it.
+    let picked = pick_candidate(&client, &hits, Some(1), "The Title", None, Some("movie"))
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "the-movie-2");

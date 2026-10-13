@@ -393,6 +393,173 @@ async fn an_announced_part_is_refused_rather_than_resolved_to_the_series_before_
     assert_picks(&[("47181", None)]).await;
 }
 
+/// Dragon Ball Super and the entries named for it: every search for one
+/// of them answers with the series, its two films, the Beerus remake
+/// and the Super Dragon Ball Heroes shows. Each entry the catalogue
+/// carries picks its own listing — the series by its count and year,
+/// a film by its format, the remake airing short of its count by its
+/// year.
+#[tokio::test]
+async fn entries_named_for_a_series_pick_their_own_listings() {
+    assert_picks(&[
+        ("10879", Some(("dragon-ball-super-1101", 131))),
+        ("41046", Some(("dragon-ball-super-broly-2763", 1))),
+        ("44544", Some(("dragon-ball-super-super-hero-1402", 1))),
+        ("50497", Some(("dragon-ball-super-beerus-10542", 1))),
+    ])
+    .await;
+}
+
+/// Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai is a 2017
+/// one-episode special hianime does not list: its searches answer with
+/// the series, its films, and the Bardock and Trunks specials, which
+/// premiered decades before it. The walk refuses every pool.
+#[tokio::test]
+async fn a_special_the_catalogue_does_not_list_is_refused() {
+    assert_picks(&[("44661", None)]).await;
+}
+
+/// Dragon Ball Z: The Real 4-D is a 2016 one-episode special hianime
+/// does not list. Its Japanese title's search answers with One Piece 4D,
+/// a one-episode special from 2015 — a year the filter tolerates as a
+/// December premiere, and a count of one that fits — and the pick
+/// played it. Nothing but the count vouches for it, so the pool is
+/// refused; the refusal overrides a fit on how the hit is named, so it
+/// is not the clean miss the availability cache persists.
+#[tokio::test]
+async fn a_one_episode_special_from_another_show_is_not_the_entry() {
+    match walk("13123").await {
+        Ok(p) => panic!("picked {} ({})", p.hit.slug, p.hit.title),
+        Err(e) => assert!(!e.clean_miss, "a refusal by name persisted: {:?}", e.error),
+    }
+}
+
+/// The same pool with a one-episode crossover special in it — the
+/// franchise's name among other shows' — whose entry page names no
+/// year. A single video's count is one, so the count says nothing of
+/// which video it is: without the entry's name or its year, the
+/// special is not the entry, and the pool is refused rather than
+/// played. Dropped as an inference, the refusal is no clean miss.
+/// Where the entry page does name the special's year, the year rules
+/// it out, as it does Bardock and Trunks.
+#[tokio::test]
+async fn a_single_video_with_neither_the_entry_s_name_nor_its_year_is_not_the_entry() {
+    for (year, clean) in [(None, false), (Some(2013), true)] {
+        let mut site = Recorded::load("44661");
+        let slug = "dream-9-toriko-one-piece-dragon-ball-z-super-collaboration-special-1";
+        site.doc
+            .searches
+            .get_mut("Dragon Ball Z: The Real 4-D at Super Tenkaichi Budokai")
+            .expect("the canonical pool")
+            .insert(
+                0,
+                (
+                    slug.to_string(),
+                    "Dream 9 Toriko & One Piece & Dragon Ball Z Super Collaboration Special"
+                        .to_string(),
+                    Some("SPECIAL".to_string()),
+                ),
+            );
+        site.doc
+            .episodes
+            .insert(slug.to_string(), vec![(9, 1, None)]);
+        site.doc.years.insert(slug.to_string(), year);
+        match walk_over(site).await {
+            Ok(p) => panic!("year {year:?}: picked {}", p.hit.slug),
+            Err(e) => assert_eq!(e.clean_miss, clean, "year {year:?}: {:?}", e.error),
+        }
+    }
+}
+
+/// A single video the entry names, or one whose year is the entry's,
+/// is still the entry when its entry page says nothing more.
+#[tokio::test]
+async fn a_single_video_named_as_the_entry_or_from_its_year_is_picked() {
+    let named = r#"{
+ "kitsu": {"canonical": "Show: The Movie", "alt_titles": ["Show Gekijouban"],
+            "episode_count": 1, "year": 2017, "subtype": "movie"},
+ "searches": {"Show: The Movie": [["other-1", "Other Film", "MOVIE"],
+                                  ["show-gekijouban-2", "Show Gekijouban", "MOVIE"]]},
+ "episodes": {"other-1": [[1, 1, null]], "show-gekijouban-2": [[2, 1, null]]},
+ "years": {"other-1": null, "show-gekijouban-2": null}
+}"#;
+    let picked = walk_over(Recorded::inline("inline", named))
+        .await
+        .expect("the film named as the entry");
+    assert_eq!(picked.hit.slug, "show-gekijouban-2");
+
+    let dated = r#"{
+ "kitsu": {"canonical": "Show: The Movie", "alt_titles": [],
+            "episode_count": 1, "year": 2017, "subtype": "movie"},
+ "searches": {"Show: The Movie": [["other-1", "Other Film", "MOVIE"],
+                                  ["show-film-2", "Show Film", "MOVIE"]]},
+ "episodes": {"other-1": [[1, 1, null]], "show-film-2": [[2, 1, null]]},
+ "years": {"other-1": null, "show-film-2": 2017}
+}"#;
+    let picked = walk_over(Recorded::inline("inline", dated))
+        .await
+        .expect("the film from the entry's year");
+    assert_eq!(picked.hit.slug, "show-film-2");
+}
+
+/// Dragon Ball Super: Ginga Patrol is announced: Kitsu has no count
+/// and no premiere date for it, and hianime does not list it yet. Every
+/// search for it answers with Dragon Ball Super's pool, and the
+/// countless pick took the series — its 131 episodes — as the
+/// provider's first hit. With neither a count nor a year, nothing
+/// vouches for a hit not named as the entry: the series, the remake
+/// and the Heroes shows are other shows, and the pool is refused.
+#[tokio::test]
+async fn an_announced_entry_with_no_count_or_year_takes_no_hit_not_named_as_it() {
+    assert_picks(&[("50496", None)]).await;
+}
+
+/// The same pool once the catalogue lists the entry, under the English
+/// title Kitsu gives it rather than the one searched: the countless pick
+/// takes it, behind the series and named only by an alias.
+#[tokio::test]
+async fn an_entry_with_no_count_or_year_takes_the_hit_named_as_it() {
+    let mut site = Recorded::load("50496");
+    let pool = site
+        .doc
+        .searches
+        .get_mut("Dragon Ball Super: Ginga Patrol")
+        .expect("the canonical pool");
+    pool.insert(
+        3,
+        (
+            "dragon-ball-super-the-galactic-patrol-1".to_string(),
+            "Dragon Ball Super: The Galactic Patrol".to_string(),
+            Some("TV".to_string()),
+        ),
+    );
+    site.doc.episodes.insert(
+        "dragon-ball-super-the-galactic-patrol-1".to_string(),
+        vec![(1, 1, None)],
+    );
+    let picked = walk_over(site).await.expect("the entry's listing");
+    assert_eq!(picked.hit.slug, "dragon-ball-super-the-galactic-patrol-1");
+}
+
+/// Named as the entry is its name and the divisions it reads as, not
+/// the words they are written in: "Show Season 2" is "Show 2nd
+/// Season", and an unrelated hit before it is not.
+#[tokio::test]
+async fn a_hit_reading_as_the_entry_is_named_as_it() {
+    let json = r#"{
+ "kitsu": {"canonical": "Show 2nd Season", "alt_titles": [], "episode_count": null,
+            "year": null, "subtype": "TV"},
+ "searches": {"Show 2nd Season": [["other-1", "Other Show", "TV"],
+                                  ["show-season-2-2", "Show Season 2", "TV"]]},
+ "episodes": {"other-1": [[1, 1, null]], "show-season-2-2": [[2, 1, null]]},
+ "years": {}
+}"#;
+    let picked = walk_over(Recorded::inline("inline", json))
+        .await
+        .expect("the hit reading as the entry");
+    assert_eq!(picked.hit.slug, "show-season-2-2");
+}
+
 /// Slime's second season: hianime lists "Season 2" and "2nd Season
 /// Part 2" at twelve episodes each, both from 2021, Part 2 first. The
 /// entry names no second part, so provider order must not decide.
@@ -578,6 +745,236 @@ async fn a_stitched_chain_is_led_by_the_cour_whose_part_agrees() {
         12,
         "both parts of the agreeing chain"
     );
+}
+
+/// A broad listing that carries a subtitle the entry's titles do not is
+/// another show, and the entry does not head it: "Show 2nd Season:
+/// Extra Arc" (24) beside its "Part 2" (12) is not cut for a 12-episode
+/// "Show 2nd Season" — its first twelve episodes are the extra arc's,
+/// not the season's. Nothing else fits, so nothing plays.
+#[tokio::test]
+async fn a_broad_listing_with_a_subtitle_the_entry_lacks_is_never_cut_for_it() {
+    let rows = [
+        ("extra-1", "Show 2nd Season: Extra Arc", 24),
+        ("extra-p2-2", "Show 2nd Season: Extra Arc Part 2", 12),
+    ];
+    let site = pool_of(
+        &["Show 2nd Season"],
+        Some(12),
+        2020,
+        "Show 2nd Season",
+        &rows,
+    );
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} ({} episodes)", p.hit.slug, p.episodes.len());
+    }
+}
+
+/// A pool written out inline: an entry known by `titles` with `count`
+/// and `year`, every title's search answering with the rows `(slug,
+/// title, episodes, the year its page names)`.
+fn inline_pool(
+    titles: &[&str],
+    count: Option<u32>,
+    year: Option<u32>,
+    subtype: &str,
+    rows: &[(&str, &str, u32, Option<u32>)],
+) -> Recorded {
+    let listing = |n: u32| {
+        serde_json::Value::Array((1..=n).map(|k| serde_json::json!([k, k, null])).collect())
+    };
+    let json = serde_json::json!({
+        "kitsu": {
+            "canonical": titles[0],
+            "alt_titles": titles[1..],
+            "episode_count": count,
+            "year": year,
+            "subtype": subtype,
+        },
+        "searches": titles.iter().map(|q| ((*q).to_string(), serde_json::json!(rows.iter().map(|(s, t, _, _)| [*s, *t, subtype]).collect::<Vec<_>>()))).collect::<serde_json::Map<_, _>>(),
+        "episodes": rows.iter().map(|(s, _, n, _)| ((*s).to_string(), listing(*n))).collect::<serde_json::Map<_, _>>(),
+        "years": rows.iter().map(|(s, _, _, y)| ((*s).to_string(), serde_json::json!(y))).collect::<serde_json::Map<_, _>>(),
+    });
+    Recorded::inline("inline", &json.to_string())
+}
+
+/// The marks a title is written with are part of what names it. A
+/// prime tells Gintama' from the Gintama before it, and a release year
+/// in brackets a film from its remake; neither is a word, and reading
+/// titles by their words alone named the earlier show as the entry.
+/// With no count and no year, a pool holding only "Gintama" is refused
+/// for "Gintama'"; a one-video "Film (2020)" refuses "Film (2019)" whose
+/// page names no year; the spanning cut does not head "Show" (24) for
+/// "Show'" beside its Part 2 (12). Where the marks agree, each is still
+/// taken.
+#[tokio::test]
+async fn a_title_s_marks_and_release_year_are_part_of_what_names_it() {
+    let refused = [
+        inline_pool(
+            &["Gintama'"],
+            None,
+            None,
+            "TV",
+            &[("gintama-1", "Gintama", 201, None)],
+        ),
+        inline_pool(
+            &["Gintama’"],
+            None,
+            None,
+            "TV",
+            &[("gintama-1", "Gintama", 201, None)],
+        ),
+        inline_pool(
+            &["Film (2020)", "Film Gekijouban"],
+            Some(1),
+            Some(2020),
+            "movie",
+            &[("film-1", "Film (2019)", 1, None)],
+        ),
+        inline_pool(
+            &["Show'"],
+            Some(12),
+            Some(2020),
+            "TV",
+            &[
+                ("show-1", "Show", 24, Some(2020)),
+                ("show-p2-2", "Show Part 2", 12, Some(2020)),
+            ],
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for site in refused {
+        let entry = site.doc.kitsu.canonical.clone();
+        if let Ok(p) = walk_over(site).await {
+            wrong.push(format!("{entry}: picked {}", p.hit.slug));
+        }
+    }
+    let taken = [
+        (
+            inline_pool(
+                &["Gintama'"],
+                None,
+                None,
+                "TV",
+                &[
+                    ("gintama-1", "Gintama", 201, None),
+                    ("gintama-2-2", "Gintama′", 51, None),
+                ],
+            ),
+            "gintama-2-2",
+        ),
+        (
+            inline_pool(
+                &["Film (2020)", "Film Gekijouban"],
+                Some(1),
+                Some(2020),
+                "movie",
+                &[
+                    ("film-1", "Film (2019)", 1, None),
+                    ("film-2", "Film Gekijouban", 1, None),
+                ],
+            ),
+            "film-2",
+        ),
+    ];
+    for (site, want) in taken {
+        let entry = site.doc.kitsu.canonical.clone();
+        match walk_over(site).await {
+            Ok(p) if p.hit.slug == want => {}
+            Ok(p) => wrong.push(format!("{entry}: picked {}, want {want}", p.hit.slug)),
+            Err(e) => wrong.push(format!("{entry}: {:?}, want {want}", e.error)),
+        }
+    }
+    assert!(wrong.is_empty(), "wrong picks:\n{}", wrong.join("\n"));
+}
+
+/// Only the marks that tell shows apart count: a prime, and a release
+/// year where both titles carry one and they differ. Catalogues drift
+/// on the rest — an exclamation or question mark, a decorative symbol,
+/// a wave dash written one way or the other, a release year one side
+/// leaves off, quotes single or double, an elision opening a word —
+/// and a broad listing written without them is still the one the entry
+/// heads, as an entry with no count or year still takes a hit written
+/// without them.
+#[tokio::test]
+async fn marks_catalogues_drift_on_do_not_part_a_title_from_the_entry() {
+    let spanning = |entry: &str, wide: &str| {
+        let part2 = format!("{wide} Part 2");
+        inline_pool(
+            &[entry],
+            Some(12),
+            Some(2020),
+            "TV",
+            &[
+                ("w-1", wide, 24, Some(2020)),
+                ("p2-2", &part2, 12, Some(2020)),
+            ],
+        )
+    };
+    let cases = [
+        (spanning("Remake (2020)", "Remake"), "w-1"),
+        (spanning("Haikyuu!!", "Haikyuu"), "w-1"),
+        (spanning("Lucky☆Star", "Lucky Star"), "w-1"),
+        (spanning("Show 〜Arc〜", "Show ~Arc~"), "w-1"),
+        (
+            inline_pool(
+                &["Toradora!"],
+                None,
+                None,
+                "TV",
+                &[
+                    ("other-1", "Other Show", 12, None),
+                    ("toradora-2", "Toradora", 25, None),
+                ],
+            ),
+            "toradora-2",
+        ),
+        (
+            inline_pool(
+                &["Is It Wrong to Pick Up Girls in a Dungeon?"],
+                None,
+                None,
+                "TV",
+                &[(
+                    "dungeon-1",
+                    "Is It Wrong to Pick Up Girls in a Dungeon",
+                    13,
+                    None,
+                )],
+            ),
+            "dungeon-1",
+        ),
+        (
+            inline_pool(
+                &["'Tis Time for \"Torture,\" Princess"],
+                None,
+                None,
+                "TV",
+                &[("tis-1", "Tis Time for Torture Princess", 12, None)],
+            ),
+            "tis-1",
+        ),
+        (
+            inline_pool(
+                &["Show 'Arc'"],
+                None,
+                None,
+                "TV",
+                &[("arc-1", "Show \"Arc\"", 12, None)],
+            ),
+            "arc-1",
+        ),
+    ];
+    let mut wrong = Vec::new();
+    for (site, want) in cases {
+        let entry = site.doc.kitsu.canonical.clone();
+        match walk_over(site).await {
+            Ok(p) if p.hit.slug == want => {}
+            Ok(p) => wrong.push(format!("{entry}: picked {}, want {want}", p.hit.slug)),
+            Err(e) => wrong.push(format!("{entry}: {:?}, want {want}", e.error)),
+        }
+    }
+    assert!(wrong.is_empty(), "wrong picks:\n{}", wrong.join("\n"));
 }
 
 /// A spanning listing twice the entry's length beside an exact
