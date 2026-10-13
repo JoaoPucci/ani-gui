@@ -282,3 +282,28 @@ async fn a_failed_batch_remembers_nothing() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn a_batch_skips_an_id_anilist_is_known_not_to_index() {
+    // The single translation learned that AniList has no media for the
+    // id; the batch, asked about it within the day, neither asks AniList
+    // nor lists it.
+    let anilist = anilist_answering(
+        ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+        1,
+    )
+    .await;
+    let state = state();
+
+    media_id_for_mal(&state, 63404, Some(&anilist.uri()))
+        .await
+        .expect("single");
+    let map = media_ids_for_mals(&state, &[63404], Some(&anilist.uri()))
+        .await
+        .expect("batch");
+    assert!(
+        map.is_empty(),
+        "a known negative is not in the map: {map:?}"
+    );
+    // `.expect(1)`: the batch made no request of its own.
+}

@@ -158,3 +158,36 @@ async fn a_show_with_no_mapping_at_all_is_kept_for_a_day_too() {
         .expect("row written");
     assert_eq!(row.ttl_seconds, DAY);
 }
+
+#[tokio::test]
+async fn a_row_this_build_cannot_read_is_fetched_again_and_overwritten() {
+    // The key is versioned for a change of shape; a row that still does
+    // not parse — a hand-edited database, a half-written body — is not
+    // an answer, and must not strand the show on it.
+    let body = mappings_body("12", &[("myanimelist/anime", 21), ("anilist/anime", 21)]);
+    let kitsu = kitsu_answering("12", ResponseTemplate::new(200).set_body_string(body), 1).await;
+    let state = state_with_kitsu(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "kitsu:external-ids:v1:k12",
+        "not the shape",
+        DAY,
+    )
+    .expect("seed");
+
+    let ids = external_ids_for(&state, "12").await.expect("read");
+    assert_eq!(
+        ids,
+        ExternalIds {
+            mal: Some(21),
+            anilist: Some(21),
+        }
+    );
+    let row = meta_cache_row(&state.cache_pool, "kitsu:external-ids:v1:k12")
+        .expect("cache read")
+        .expect("row");
+    assert_eq!(
+        serde_json::from_str::<ExternalIds>(&row.body).expect("overwritten with the shape"),
+        ids
+    );
+}
