@@ -21,11 +21,12 @@ pub(super) enum ChainOutcome {
     /// playlist on a stale candidate, a not-found-shaped status: the
     /// next alias may carry the real show.
     DeadEnd,
-    /// Transport weather, or an upstream status that is neither a
-    /// block nor absence: proves nothing about the show, so the walk
-    /// goes on, and the error is kept — an exhausted walk surfaces an
-    /// answered status as the status, which the breaker reads as the
-    /// provider answering rather than as a transport failure.
+    /// The stream server not serving, or an upstream status that is
+    /// neither a block nor absence: proves nothing about the show, so
+    /// the walk goes on, and the error is kept under its own name —
+    /// an exhausted walk surfaces an answered status as the status,
+    /// which the breaker reads as the provider answering rather than
+    /// as distress.
     Transient(NativeError),
 }
 
@@ -46,14 +47,30 @@ pub(super) fn classify_chain_failure(ne: NativeError) -> ChainOutcome {
 /// end — the listing without the episode, the embed step without a
 /// stream, a page the host answered with a not-found-shaped status,
 /// 404 or 410 — is the episode's own verdict, since the show was
-/// picked and only this episode is missing. A provider block, a gate
-/// refusal, transport weather and any other upstream status pass
-/// through as they are; they say nothing about the episode — a 400
-/// or 401 is the provider rejecting this request, and told to try
-/// another episode on it the user would be misled.
+/// picked and only this episode is missing. A failure that is not an
+/// answer — the connection to a host dropped, a host timed out, a
+/// page or payload or playlist the client could not read — is the
+/// stream server not serving ([`AniError::StreamServerFailed`]):
+/// past the searches that found the show it is neither the user's
+/// connection nor the app failing to read the provider, and told
+/// either the user would be misled. The provider's client names the
+/// stage and host when it can; one that reaches this step unnamed is
+/// named for the chain as a whole. A provider block, a gate refusal
+/// and any other upstream status pass through as they are; they say
+/// nothing about the episode — a 400 or 401 is the provider rejecting
+/// this request, and told to try another episode on it the user
+/// would be misled too.
 pub(super) fn episode_verdict(error: AniError) -> AniError {
     if matches!(error, AniError::NoResults) || error.is_not_found_shaped() {
         AniError::EpisodeUnavailable
+    } else if matches!(
+        error,
+        AniError::Network | AniError::Timeout | AniError::ParseFailed { .. }
+    ) {
+        AniError::StreamServerFailed {
+            stage: "stream",
+            host: None,
+        }
     } else {
         error
     }

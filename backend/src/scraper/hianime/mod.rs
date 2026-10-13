@@ -379,21 +379,32 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         mode: &str,
         quality: &str,
     ) -> Result<ResolvedStream> {
-        let listing = self.servers(episode_id).await?;
+        // The listing is the site's own, and a failure to read it or
+        // reach it is the chain failing at its first step
+        // ([`stream_server_verdict`]).
+        let listing = self
+            .servers(episode_id)
+            .await
+            .map_err(|e| stream_server_verdict(e, Site::servers(&self.base)))?;
         // The listing's attempt, read before any host's fetch moves
         // the transport's stamp: the doubt below is this attempt's
         // finding, and the gate is told when it was observed.
         let listing_at = self.fetch.last_attempt_at();
         // The mode's rows the client could not read are a parse
         // failure before any embed page is asked for.
-        listing.mode_readable(mode)?;
+        listing
+            .mode_readable(mode)
+            .map_err(|e| stream_server_verdict(e, Site::servers(&self.base)))?;
         // A row of the mode the client could not read, or a row typed
         // with a mode it does not know, stays a doubt through the
         // walk: should no server serve a stream, the verdict is the
         // mode's uncertainty, never the answered absence — that row
         // may have been the server. The doubt rides with the listing
-        // attempt's instant, as a host's failure rides with its own.
-        let doubt_at = listing.uncertain_for(mode).then_some(listing_at);
+        // attempt's instant and is named for the listing, as a host's
+        // failure rides with its own and is named for the host.
+        let doubt = listing
+            .uncertain_for(mode)
+            .then(|| (listing_at, Site::servers(&self.base)));
         let servers = listing.servers;
         // The first server whose page yields a stream that serves the
         // play wins ([`Self::read_server`], [`Self::resolved`]);
@@ -506,7 +517,9 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // reserve this walk had set aside and could afford, leaving
         // a chain that was answering to be cancelled with the
         // attempt.
-        let mut kept: Option<(AniError, Option<tokio::time::Instant>)> = None;
+        // Beside each kept failure: the instant of the attempt that
+        // produced it, and where the chain stood when it did.
+        let mut kept: Option<(AniError, (Option<tokio::time::Instant>, Site))> = None;
         let ordered = servers_for(&servers, mode);
         let unbounded = remainder_index(&ordered);
         let deadline = *self.attempt_deadline.lock().expect("attempt deadline");
@@ -533,10 +546,22 @@ impl<F: Fetch> Provider for HianimeClient<F> {
             // URL keys what is decided before the page exists — which
             // servers are tried and in what order ([`servers_for`]),
             // and what the request asks for.
+            // Where the chain stands — the step, and the host it is
+            // asking — kept beside it and moved as it advances, so a
+            // failure is named for the host that failed: the embed
+            // host the page came from (not the one the listing named,
+            // when a redirect moved it), then the playlist's. Read
+            // once the chain has ended or been cut off, which is why
+            // it lives beside the future rather than in its result.
+            let site = std::sync::Mutex::new(Site::embed(&server.embed_url));
             let chain = async {
                 let (outcome, served_by) = self.read_server(server).await;
+                *site.lock().expect("site") = Site::embed(&served_by);
                 let outcome = match outcome {
-                    Ok(payload) => self.resolved(&served_by, payload, quality).await,
+                    Ok(payload) => {
+                        *site.lock().expect("site") = Site::playlist(&payload.src);
+                        self.resolved(&served_by, payload, quality).await
+                    }
                     Err(e) => Err(e),
                 };
                 (outcome, served_by)
@@ -561,8 +586,10 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 }
             };
             // The attempt that produced this outcome, read before the
-            // next server's fetch moves the transport's stamp.
+            // next server's fetch moves the transport's stamp, and
+            // where the chain stood when it did.
             let at = self.fetch.last_attempt_at();
+            let site = site.into_inner().expect("site");
             let weather = match outcome {
                 Ok(stream) => return Ok(stream),
                 Err(AniError::NoResults) => match payload_missing_verdict(&served_by) {
@@ -573,18 +600,18 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 Err(e) => e,
             };
             kept = Some(match kept.take() {
-                Some(so_far) => weightier(so_far, (weather, at)),
-                None => (weather, at),
+                Some(so_far) => weightier(so_far, (weather, (at, site))),
+                None => (weather, (at, site)),
             });
         }
-        let (verdict, at) = final_verdict(kept, doubt_at, mode);
+        let (verdict, (at, site)) = final_verdict(kept, doubt, mode);
         if let Some(at) = at {
             *self.kept_attempt_at.lock().expect("kept attempt lock") = Some(KeptAttempt {
                 at,
                 transport_then: self.fetch.last_attempt_at(),
             });
         }
-        Err(verdict)
+        Err(stream_server_verdict(verdict, site))
     }
 
     async fn playlist(&self, url: &str, referer: Option<&str>) -> Result<String> {
@@ -664,13 +691,87 @@ fn payload_missing_verdict(served_by: &str) -> Option<AniError> {
     if !ajax::readable(served_by) {
         return None;
     }
-    let host = url::Url::parse(served_by)
-        .ok()
-        .and_then(|u| u.host_str().map(str::to_string))
-        .unwrap_or_else(|| served_by.to_string());
+    let host = host_of(served_by);
     Some(AniError::ParseFailed {
         detail: format!("hianime embed page on {host}: the payload marker is missing"),
     })
+}
+
+/// Where an episode's chain stands: the step, and the host it is
+/// asking at that step. What a failure that ends the walk is named
+/// for ([`stream_server_verdict`]), so the log can say which host
+/// failed where.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Site {
+    /// `servers`, `embed` or `playlist` — the stages of
+    /// [`AniError::StreamServerFailed`] this client names.
+    stage: &'static str,
+    host: String,
+}
+
+impl Site {
+    /// The site's own listing of the episode's servers.
+    fn servers(base: &str) -> Self {
+        Self {
+            stage: "servers",
+            host: host_of(base),
+        }
+    }
+
+    /// A server's player page, and what that page has the client ask
+    /// its host for.
+    fn embed(url: &str) -> Self {
+        Self {
+            stage: "embed",
+            host: host_of(url),
+        }
+    }
+
+    /// The master, and the rendition chosen from it.
+    fn playlist(url: &str) -> Self {
+        Self {
+            stage: "playlist",
+            host: host_of(url),
+        }
+    }
+}
+
+/// The host a URL names, or the URL itself when it names none.
+fn host_of(url: &str) -> String {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .unwrap_or_else(|| url.to_string())
+}
+
+/// The verdict the client answers for an episode its chain did not
+/// serve, by what the kept failure was. A dropped connection, a
+/// timeout, or a page, payload or playlist the client could not use
+/// is the stream server not serving, named for where the chain stood
+/// — the host that was asked and the step it was asked at — and
+/// logged with its cause: the user is told the source's video server
+/// did not serve the episode, where the failure under its own name
+/// would tell them to check a connection the site answered on, or
+/// that the app could not read a provider it read all the way to this
+/// host. A block, a rate limit, an answered status and the answered
+/// absence stand as they are: each is a host answering, and the walk
+/// above and the breaker read them for what they say.
+fn stream_server_verdict(weather: AniError, site: Site) -> AniError {
+    match weather {
+        AniError::Network | AniError::Timeout | AniError::ParseFailed { .. } => {
+            tracing::warn!(
+                stage = site.stage,
+                host = %site.host,
+                cause = %weather,
+                "hianime: the stream server did not serve the episode"
+            );
+            AniError::StreamServerFailed {
+                stage: site.stage,
+                host: Some(site.host),
+            }
+        }
+        answered => answered,
+    }
 }
 
 /// The verdict when no server served a stream: the loudest failure
@@ -681,10 +782,10 @@ fn payload_missing_verdict(served_by: &str) -> Option<AniError> {
 /// absence only when every page merely lacked the payload and every
 /// row was read. The lift ranks like any parse failure, so a
 /// provider block still outranks it. Whatever rides with a failure —
-/// the instant of the attempt that produced it — rides with the
-/// verdict: the kept failure's, or the listing attempt's when the
-/// doubt stands (`doubt` carries it when the mode had such a row),
-/// and nothing when the absence is the verdict.
+/// the instant of the attempt that produced it, and where the chain
+/// stood — rides with the verdict: the kept failure's, or the listing
+/// attempt's when the doubt stands (`doubt` carries it when the mode
+/// had such a row), and nothing when the absence is the verdict.
 fn final_verdict<T: Default>(
     kept: Option<(AniError, T)>,
     doubt: Option<T>,

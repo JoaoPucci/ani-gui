@@ -11,6 +11,7 @@
   "error.network.unreachable",
   "error.network.upstream",
   "error.play.episode_unavailable",
+  "error.play.stream_server_failed",
   "error.player.spawn_failed",
   "error.request.invalid_body",
   "error.request.invalid_kitsu_id",

@@ -99,7 +99,10 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Attempted<'_, T> {
 /// Whether a failed attempt is the provider being unreachable,
 /// refusing, or broken — the shapes that send the walk to the next
 /// provider — as opposed to an answer. A parse failure is the site
-/// having changed shape: broken, not answering.
+/// having changed shape: broken, not answering. A stream server that
+/// did not serve stands for the transport and parse failures of an
+/// episode's chain, which failed over under their own names: the
+/// provider found the show and could not serve it, and another may.
 #[must_use]
 pub fn fails_over(error: &AniError) -> bool {
     matches!(
@@ -109,6 +112,7 @@ pub fn fails_over(error: &AniError) -> bool {
             | AniError::GateRefused
             | AniError::RateLimited { .. }
             | AniError::ParseFailed { .. }
+            | AniError::StreamServerFailed { .. }
     ) || error.is_provider_block()
 }
 

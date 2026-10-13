@@ -7,7 +7,14 @@
 //! did not serve. None ends the walk — the next alias may carry the
 //! show — and when every alias is spent, one of them is the verdict
 //! the caller sees and the breaker hears. This module keeps them and
-//! chooses.
+//! chooses: the one from furthest along the walk, since a chain that
+//! did not serve says the show was found, which a search that died on
+//! another alias cannot unsay — and the connection that search would
+//! blame is the one the other search got through on; within a stage,
+//! the one that says most — a status a host answered over a page the
+//! client could not read over a connection that dropped — and of
+//! equals the first. The walk never substitutes one failure for
+//! another: what it met is what it reports.
 
 use crate::error::AniError;
 use crate::scraper::provider::Provider;
@@ -30,13 +37,8 @@ pub(super) enum WalkStage {
 /// that will be its verdict.
 #[derive(Debug, Default)]
 pub(super) struct Transients {
-    /// Whether any transient failure was met at all.
-    met: bool,
-    /// A non-blocking status an episode chain answered, kept for the
-    /// exhausted walk to surface as itself: the breaker reads it as
-    /// the provider answering, where the transport failure
-    /// substituted for it would read as distress.
-    chain_status: Option<AniError>,
+    /// The failure kept so far, with the stage it was met at.
+    kept: Option<(WalkStage, AniError)>,
     /// The instant of the last failing attempt — the moment the
     /// breaker record carries, whichever failure is surfaced
     /// ([`NativeError::failed_at`]).
@@ -45,26 +47,44 @@ pub(super) struct Transients {
 
 impl Transients {
     /// Note a transient failure met at `stage`, observed by the
-    /// attempt that started at `at`.
+    /// attempt that started at `at`. It replaces the failure kept so
+    /// far when it comes from further along the walk, or from the
+    /// same stage and says more ([`rank`]); of equals the first stays.
     pub(super) fn note(&mut self, stage: WalkStage, error: AniError, at: tokio::time::Instant) {
-        self.met = true;
         self.last_failure_at = Some(at);
-        if stage == WalkStage::Chain && matches!(error, AniError::Upstream { .. }) {
-            self.chain_status = Some(error);
+        let louder = match &self.kept {
+            None => true,
+            Some((kept_stage, kept)) => (stage, rank(&error)) > (*kept_stage, rank(kept)),
+        };
+        if louder {
+            self.kept = Some((stage, error));
         }
     }
 
     /// The exhausted walk's transient verdict: `None` when no
-    /// transient failure was met, else a transport failure — or the
-    /// status an episode chain answered, which stands as itself —
-    /// stamped with the last failing attempt's instant and never a
-    /// clean miss.
+    /// transient failure was met, else the failure kept, under its
+    /// own name, stamped with the last failing attempt's instant and
+    /// never a clean miss.
     pub(super) fn verdict(self) -> Option<NativeError> {
-        self.met.then(|| NativeError {
-            error: self.chain_status.unwrap_or(AniError::Network),
+        self.kept.map(|(_, error)| NativeError {
+            error,
             clean_miss: false,
             failed_at: self.last_failure_at,
         })
+    }
+}
+
+/// How much a transient failure says, among those met at one stage:
+/// a status a host answered says the provider answered — the breaker
+/// hears health where every other kind is distress — a page the
+/// client could not read says the site answered, and a connection
+/// that dropped, a timeout, or a stream server that did not serve say
+/// the least.
+fn rank(error: &AniError) -> u8 {
+    match error {
+        AniError::Upstream { .. } => 2,
+        AniError::ParseFailed { .. } => 1,
+        _ => 0,
     }
 }
 
