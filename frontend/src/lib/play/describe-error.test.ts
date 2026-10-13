@@ -82,6 +82,24 @@ describe('describeError resolves the key before the kind', () => {
 		}
 	});
 
+	it('never shows the stream server’s host or stage, which are for the log', () => {
+		// The verdict for an episode chain that did not serve carries
+		// where it failed so the backend log can say; the sentence the
+		// user sees is the catalogue's, in every locale, with neither.
+		for (const locale of locales) {
+			overwriteGetLocale(() => locale);
+			const shown = describeError({
+				kind: 'stream_server_failed',
+				key: 'error.play.stream_server_failed',
+				stage: 'embed',
+				host: 'zokoanime.video'
+			});
+			expect(shown, locale).toBe(catalogue(locale).error_play_stream_server_failed);
+			expect(shown, locale).not.toContain('zokoanime.video');
+			expect(shown, locale).not.toContain('embed');
+		}
+	});
+
 	it('fills a message’s placeholders from the envelope’s fields', () => {
 		expect(
 			describeError({ kind: 'upstream', key: 'error.network.upstream', status: 400 })
