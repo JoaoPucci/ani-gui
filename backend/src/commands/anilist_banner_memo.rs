@@ -24,9 +24,16 @@ pub(crate) fn remember(pool: &SqlitePool, refs: &[KitsuAnimeRef]) {
     }
 }
 
-/// The banner remembered for a Kitsu id, if any.
+/// The banner remembered for a Kitsu id, if any. A remembered URL the
+/// image proxy has since found gone is forgotten here rather than
+/// handed out again.
 pub(crate) fn remembered(pool: &SqlitePool, kitsu_id: &str) -> Option<String> {
-    meta_cache_get(pool, &key(kitsu_id)).ok().flatten()
+    let url = meta_cache_get(pool, &key(kitsu_id)).ok().flatten()?;
+    if crate::meta::images::is_dead(pool, &url) {
+        let _ = meta_cache_delete(pool, &key(kitsu_id));
+        return None;
+    }
+    Some(url)
 }
 
 /// Set `detail.anilist_banner` from a remembered row, when there is one

@@ -162,8 +162,14 @@ pub(super) async fn bridge_anilist_to_kitsu(
     let mut futures = FuturesOrdered::new();
     for entry in anilist {
         let kitsu = state.kitsu.clone();
-        let banner = entry.banner_image.clone();
+        let pool = state.cache_pool.clone();
         futures.push_back(async move {
+            // AniList may still list a banner its CDN has told the
+            // image proxy is gone; that one is not offered again.
+            let banner = entry
+                .banner_image
+                .clone()
+                .filter(|url| !crate::meta::images::is_dead(&pool, url));
             let by_mal = match entry.id_mal {
                 Some(mal_id) => kitsu.lookup_by_mal_id(mal_id).await.ok().flatten(),
                 None => None,
@@ -1180,7 +1186,11 @@ async fn anime_detail_read(
         let banner = match super::anilist_banner_memo::remembered(&state.cache_pool, id) {
             Some(b) => Some(b),
             None => anilist_banner_for(state, id, anilist_base).await,
-        };
+        }
+        // AniList can answer with a URL its CDN has said is gone; no
+        // cover is better than a dead one, and the renderer's poster
+        // treatment takes over without a failed request.
+        .filter(|url| !crate::meta::images::is_dead(&state.cache_pool, url));
         if let Some(banner) = banner {
             detail.anilist_banner = Some(banner.clone());
             detail.cover_image = Some(KitsuCoverImage {
