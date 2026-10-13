@@ -745,10 +745,11 @@ activity over the past hour) behind the home hero and Trending strip; the `id` a
 Kitsu and resolve tracker ids; the airing status and schedule
 (`status`, `episodes`, `nextAiringEpisode`, `airingSchedule`) that gate
 and date episode tiles; the signed-in account's profile (name, avatar,
-list count and mean score) and list sync; and two artwork fields used
-only to fill gaps Kitsu leaves: the banner stands in for a show's cover
-when Kitsu has none (on the detail page and on trending entries), and
-per-episode thumbnails fill episodes Kitsu has no thumbnail for.
+list count and mean score) and list sync; and two artwork fields: the
+banner, which the home and detail heroes show first, with Kitsu's cover
+as the fallback, and which stands in for the cover where Kitsu has none;
+and per-episode thumbnails, which fill episodes Kitsu has no thumbnail
+for.
 
 - **Accent colour.** AniList `coverImage.color` gives a show's colour as
   a hex string (`#bbf1a1` for Frieren) where AniList has one; the field
