@@ -373,6 +373,59 @@ impl crate::scraper::fetch::Fetch for DeadEmbedHost {
     }
 }
 
+/// Serves the server list for one episode whose only server sits on
+/// an embed host that answers HTTP 200 with its own not-found card —
+/// zokoanime's page for an episode it has nothing for, as recorded.
+struct NotFoundPage;
+
+#[async_trait::async_trait]
+impl crate::scraper::fetch::Fetch for NotFoundPage {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str().to_string();
+        let body = if url.contains("/api/theme/episode/servers?episodeId=12") {
+            r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC81NDE5Ni8xL3N1Yg==\"></div>"}"#.to_string()
+        } else if url == "https://zokoanime.video/stream/mal/54196/1/sub" {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("repo root")
+                .join("tests/fixtures/hianime/embed/zokoanime-not-found.html");
+            std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+        } else {
+            return Ok(FetchResponse {
+                status: 404,
+                body: String::new(),
+                url,
+            });
+        };
+        Ok(FetchResponse {
+            status: 200,
+            body,
+            url,
+        })
+    }
+}
+
+/// The stream server answering, on its own page, that it has nothing
+/// for the episode is the episode's own verdict — the show is listed,
+/// this episode has no stream — not the server failing, and not the
+/// user's connection.
+#[tokio::test]
+async fn the_episode_step_reads_the_stream_servers_own_not_found_page_as_the_episodes_absence() {
+    let picked = show(vec![ep(12, 1, None)]);
+    let client =
+        crate::scraper::hianime::HianimeClient::with_base(NotFoundPage, "https://hianime.test");
+    let ne = resolve_episode(&client, &picked, "1", "sub", "best")
+        .await
+        .expect_err("the host has nothing for the episode");
+    assert!(
+        matches!(ne.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss, "the show was found; nothing persists");
+}
+
 /// Through hianime's client the verdict names the host whose
 /// connection died and the stage it died at — what the log line that
 /// reports the failed play needs to make the next such report

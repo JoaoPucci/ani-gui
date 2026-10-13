@@ -1502,6 +1502,17 @@ fn from_an_origin_that_served_the_page(req: &FetchRequest) -> bool {
     )
 }
 
+/// A recorded embed page under `tests/fixtures/hianime/embed/`, as
+/// the host served it.
+fn embed_fixture(name: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("repo root")
+        .join("tests/fixtures/hianime/embed")
+        .join(name);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
 fn ok(body: impl Into<String>) -> crate::error::Result<FetchResponse> {
     Ok(FetchResponse {
         status: 200,
@@ -1823,6 +1834,31 @@ impl Fetch for Site {
                 } else {
                     refused(403)
                 }
+            }
+            // The one server of a show whose embed host has nothing
+            // for it: the host answers HTTP 200 with its own not-found
+            // card and no payload — the recorded page.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21480") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC81NDE5Ni8xL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The same page first, then a server whose page decodes.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21483") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC81NDE5Ni8xL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/54196/1/sub" => {
+                ok(embed_fixture("zokoanime-not-found.html"))
             }
             "https://zokoanime.video/stream/mal/9/htmlmaster/sub" => ok(embed_page(
                 r#"{"src":"https://hls.example/v/html/master.m3u8","subtitles":[]}"#,
@@ -4268,6 +4304,40 @@ async fn every_server_stalling_is_the_stream_servers_failure() {
         matches!(&err, AniError::StreamServerFailed { stage: "playlist", host: Some(h) } if h == "hls.example"),
         "{err:?}"
     );
+}
+
+/// A host the client reads can answer HTTP 200 with its own not-found
+/// card — zokoanime's page for an episode it has nothing for, as
+/// recorded — and no payload. That is the host answering that the
+/// episode is not there, as a 404 status would have: the server's own
+/// dead end, which the episode step reads as the episode's absence
+/// and the breaker as the provider answering. Read as a page the
+/// client cannot read, the user was told the stream server failed —
+/// and, before that verdict existed, to check their connection.
+#[tokio::test]
+async fn a_stream_servers_own_not_found_page_is_the_hosts_absence_not_a_failure_to_read_it() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21480, "sub")
+        .await
+        .expect_err("the host has nothing for the episode");
+    assert!(
+        matches!(err, AniError::Upstream { status: 404 }),
+        "the host answered absence: {err:?}"
+    );
+    assert!(err.is_not_found_shaped());
+}
+
+/// Like any answered status, the not-found page is that host's own
+/// dead end and the next server is tried.
+#[tokio::test]
+async fn a_stream_servers_own_not_found_page_is_stepped_over_when_a_later_server_decodes() {
+    let c = client();
+    let source = c
+        .master_playlist_url(21483, "sub")
+        .await
+        .expect("the second server decodes");
+    assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
 }
 
 /// The site's own listing of an episode's servers does not answer:
