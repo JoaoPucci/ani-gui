@@ -27,6 +27,7 @@ fn detail(id: &str, status: Option<&str>) -> KitsuAnimeRef {
         age_rating: None,
         popularity_rank: None,
         poster_image: None,
+        anilist_banner: None,
         cover_image: Some(KitsuCoverImage {
             tiny: None,
             small: None,

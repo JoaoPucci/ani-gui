@@ -52,6 +52,7 @@ fn cache_detail(state: &AppState, id: &str, slug: &str) {
         age_rating: None,
         popularity_rank: None,
         poster_image: None,
+        anilist_banner: None,
         cover_image: None,
     };
     crate::cache::meta_cache_put(
