@@ -107,9 +107,10 @@
 		color: var(--bone-300);
 	}
 	button {
-		padding: 6px 8px;
+		padding: 6px var(--space-2);
 		border: 0;
-		border-radius: 4px;
+		/* Concentric with the pill's radius inside its 3px pad. */
+		border-radius: calc(var(--radius-control) - 2px);
 		background: transparent;
 		color: var(--bone-300);
 		cursor: pointer;
@@ -131,7 +132,7 @@
 	.sep {
 		inline-size: 1px;
 		block-size: 1rem;
-		margin-inline: 4px;
+		margin-inline: var(--space-1);
 		background: var(--ink-200);
 	}
 	/* A fact beside the controls, in the app's voice for metadata; the
