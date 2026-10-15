@@ -2570,3 +2570,91 @@ async fn the_evidence_reaches_as_far_as_the_five() {
         panic!("picked {} ({})", p.hit.slug, p.episodes.len());
     }
 }
+
+/// Without a count, an entry with a year took every hit its year did
+/// not disprove, in the provider's order: a hit a year off (the
+/// December allowance) or with no year on its page, however it was
+/// named. The year tolerated such a hit without vouching for it. Now a
+/// hit is taken only when something vouches for it — the title
+/// searched, its own year, or the entry's name under any alias — so a
+/// subtitled sequel the provider does not list yet, airing the year
+/// after its series, is no longer played as the series. The pool is
+/// then the plain miss: nothing — count, year or name — spoke for any
+/// hit, so a walk that finds nothing is the clean verdict. A hit the
+/// year or the name vouches for is taken from behind one it merely
+/// tolerated, and whether the year disproved some other hit in the
+/// pool changes nothing.
+#[tokio::test]
+async fn a_countless_entry_with_a_year_takes_only_a_hit_its_year_or_name_vouches_for() {
+    let entry = ["Show: Arc", "Show: The Arc"];
+    // Alone in the pool: (the hit's title, its page's year, taken?).
+    for (title, year, want) in [
+        ("Show: The Arc", Some(2016), true),
+        ("Show", Some(2016), true),
+        ("Show: The Arc", Some(2015), true),
+        ("Show", Some(2015), false),
+        ("Show: The Arc", None, true),
+        ("Show", None, false),
+    ] {
+        let site = inline_pool(&entry, None, Some(2016), "TV", &[("x", title, 12, year)]);
+        match (walk_over(site).await, want) {
+            (Ok(p), true) => assert_eq!(p.hit.slug, "x", "{title} {year:?}"),
+            (Err(e), false) => assert!(e.clean_miss, "{title} {year:?}: {:?}", e.error),
+            (Ok(p), false) => panic!("{title} {year:?}: picked {}", p.hit.slug),
+            (Err(e), true) => panic!("{title} {year:?}: refused: {:?}", e.error),
+        }
+    }
+    // Behind the series the year tolerates, a hit something vouches
+    // for is the pick: named with no page year, named a year off, or
+    // unnamed from the entry's own year.
+    for (title, year) in [
+        ("Show: The Arc", None),
+        ("Show: The Arc", Some(2015)),
+        ("Other", Some(2016)),
+    ] {
+        let site = inline_pool(
+            &entry,
+            None,
+            Some(2016),
+            "TV",
+            &[("s", "Show", 12, Some(2015)), ("x", title, 12, year)],
+        );
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{title} {year:?} behind the series: {:?}", e.error));
+        assert_eq!(picked.hit.slug, "x", "{title} {year:?}");
+    }
+    // The year disproving another hit changes nothing: a named hit a
+    // year off is taken beside one decades off.
+    let site = inline_pool(
+        &entry,
+        None,
+        Some(2016),
+        "TV",
+        &[
+            ("o", "Old", 12, Some(1990)),
+            ("x", "Show: The Arc", 12, Some(2015)),
+        ],
+    );
+    assert_eq!(walk_over(site).await.expect("named").hit.slug, "x");
+}
+
+/// A subtitled sequel the provider does not list yet, announced with a
+/// premiere the year after its series and no count on Kitsu: every
+/// search for it answers with the series, whose page names the year
+/// before. The series is not the entry, and the pool is the clean
+/// miss.
+#[tokio::test]
+async fn a_subtitled_sequel_the_provider_does_not_list_is_not_played_as_its_series() {
+    let site = inline_pool(
+        &["Show: Arc"],
+        None,
+        Some(2016),
+        "TV",
+        &[("show-1", "Show", 12, Some(2015))],
+    );
+    match walk_over(site).await {
+        Ok(p) => panic!("played the series: {}", p.hit.slug),
+        Err(e) => assert!(e.clean_miss, "{:?}", e.error),
+    }
+}

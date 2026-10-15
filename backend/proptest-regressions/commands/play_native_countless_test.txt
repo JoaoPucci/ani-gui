@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc f507094d5df141365c2804b46d6b1c39a8ec2f95596d11c42e200e07d452169f # shrinks to pool = [6], searched = 0
+cc 4fcf5a4e0da029a64e99b8056df4312dcddb3aa6e9db6ae46f9301cb9afcabc1 # shrinks to pool = [(3, 1)], searched = 0
