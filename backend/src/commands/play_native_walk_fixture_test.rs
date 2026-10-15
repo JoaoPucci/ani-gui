@@ -2605,11 +2605,12 @@ async fn a_countless_entry_with_a_year_takes_only_a_hit_its_year_or_name_vouches
         }
     }
     // Behind the series the year tolerates, a hit something vouches
-    // for is the pick: named with no page year, named a year off, or
-    // unnamed from the entry's own year.
+    // for is the pick: named, whatever its page year, or unnamed from
+    // the entry's own year.
     for (title, year) in [
-        ("Show: The Arc", None),
+        ("Show: The Arc", Some(2016)),
         ("Show: The Arc", Some(2015)),
+        ("Show: The Arc", None),
         ("Other", Some(2016)),
     ] {
         let site = inline_pool(
@@ -2623,6 +2624,24 @@ async fn a_countless_entry_with_a_year_takes_only_a_hit_its_year_or_name_vouches
             .await
             .unwrap_or_else(|e| panic!("{title} {year:?} behind the series: {:?}", e.error));
         assert_eq!(picked.hit.slug, "x", "{title} {year:?}");
+    }
+    // A second hit the year merely tolerates, named by nothing, is no
+    // more than the first: the pool is still the clean miss.
+    for year in [Some(2015), None] {
+        let site = inline_pool(
+            &entry,
+            None,
+            Some(2016),
+            "TV",
+            &[
+                ("s", "Show", 12, Some(2015)),
+                ("x", "Show Remake", 12, year),
+            ],
+        );
+        match walk_over(site).await {
+            Err(e) => assert!(e.clean_miss, "{year:?}: {:?}", e.error),
+            Ok(p) => panic!("{year:?}: picked {}", p.hit.slug),
+        }
     }
     // The year disproving another hit changes nothing: a named hit a
     // year off is taken beside one decades off.

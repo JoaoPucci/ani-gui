@@ -118,3 +118,7 @@ pub(super) fn rejection(
 pub(super) fn refused_by_title() -> crate::error::AniError {
     crate::error::AniError::Upstream { status: 404 }
 }
+
+#[cfg(test)]
+#[path = "play_native_title_verdict_test.rs"]
+mod tests;
