@@ -134,14 +134,20 @@ pub(crate) const BANNER_BY_MAL_GQL: &str = "query BannerByMal($idMal: Int!) { \
 /// a full fingerprint — an app-style identifier passes through.
 const ANILIST_UA: &str = "ani-gui/0.1 (https://github.com/pucci/ani-gui)";
 
+/// The longest a public request sleeps before its one retry, and the
+/// wait it assumes when a 429 carries no `Retry-After`.
+const PUBLIC_RETRY_CAP: std::time::Duration = std::time::Duration::from_secs(3);
+const PUBLIC_RETRY_DEFAULT: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// Shared POST to AniList's public GraphQL endpoint. The public
 /// fetchers (`trending`, the banner lookups, the id lookups) only
 /// differ in query body + parser, so the request build + status
 /// mapping live here once.
 ///
 /// # Errors
-/// [`AniError::Network`] on transport failure, [`AniError::Upstream`]
-/// on non-2xx.
+/// [`AniError::Network`] on transport failure, [`AniError::RateLimited`]
+/// on a 429 that is not retried or persists through the retry,
+/// [`AniError::Upstream`] on any other non-2xx.
 pub(crate) async fn post_graphql_public(
     client: &reqwest::Client,
     url: &str,
@@ -160,19 +166,21 @@ pub(crate) async fn post_graphql_public(
     // AniList rate-limits aggressively (the public API runs degraded
     // at 30 req/min) and the app's own fan-out — trending, episode
     // thumbs, airing lookups, availability seeds — can burst past it
-    // right after launch. One bounded retry absorbs the burst; the
-    // Retry-After honor is capped so a handler never stalls behind a
-    // hostile header.
+    // right after launch. One bounded retry absorbs a burst whose
+    // advertised wait is short. A wait past the cap is not retried: a
+    // retry before the window ends is a request spent to be told the
+    // same thing, so the rate limit surfaces at once with its wait
+    // for the caller to honour (`graphql_body`).
     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        let wait = resp
-            .headers()
-            .get("retry-after")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(1)
-            .min(3);
-        tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
-        resp = send().await.map_err(|_| AniError::Network)?;
+        let advertised = crate::meta::rate_limit::retry_after_secs(resp.headers());
+        if let Some(wait) = crate::meta::rate_limit::retry_wait_within(
+            advertised,
+            PUBLIC_RETRY_CAP,
+            PUBLIC_RETRY_DEFAULT,
+        ) {
+            tokio::time::sleep(wait).await;
+            resp = send().await.map_err(|_| AniError::Network)?;
+        }
     }
     crate::meta::anilist_media::graphql_body(resp).await
 }

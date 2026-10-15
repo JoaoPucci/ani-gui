@@ -84,7 +84,7 @@ async fn fetch_and_store(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Result<AiringStatus> {
-    let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await?;
+    let ids = super::external_ids::external_ids_for(state, kitsu_id).await?;
     let status = if ids.anilist.is_none() && ids.mal.is_none() {
         AiringStatus::default()
     } else {

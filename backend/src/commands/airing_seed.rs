@@ -28,7 +28,7 @@ pub(crate) async fn seed_airing_rows_batch(
         if matches!(meta_cache_get(&state.cache_pool, &key), Ok(Some(_))) {
             continue;
         }
-        let Ok(ids) = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await else {
+        let Ok(ids) = crate::commands::external_ids::external_ids_for(state, kitsu_id).await else {
             continue;
         };
         match (ids.anilist, ids.mal) {

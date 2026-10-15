@@ -140,6 +140,8 @@ When Kitsu's `coverImage` is null (common for shows currently airing — roughly
 | Availability probe (negative) — ongoing show, or one with no airing schedule known | SQLite `meta_cache` | 24 hours at most: with the next airing known — when the row is written, or once the schedule is cached after it — until 3 hours after it when that is sooner, and 1 hour when that airing time has already passed |
 | Availability probe (negative) — unreleased show with a known premiere | SQLite `meta_cache` | until 3 hours after the premiere, within 1 hour to 7 days |
 | aniskip OP/ED skip-time intervals (per Kitsu id + MAL id + episode) | SQLite `meta_cache` | 7 days |
+| A show's MAL and AniList ids from Kitsu's mappings (per Kitsu id) | SQLite `meta_cache` | 30 days when both are present; 24 hours when either is missing |
+| An id AniList translated to or from MAL's (per id, each direction) | SQLite `meta_cache` | 30 days; 24 hours for an id AniList does not index |
 | Title matches (search text → Kitsu/AniList ids) | SQLite `title_match` | 30 days |
 | Long-term play resolution (resolved stream URLs) | SQLite `meta_cache` (`play:` rows) | 7 days, or until upstream rotates |
 | In-flight play-resolution coalescer (`play-cache.getOrFire`) | Renderer-side `Map` | 4 hours (also dedupes concurrent calls) |

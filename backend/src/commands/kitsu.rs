@@ -1177,7 +1177,9 @@ async fn anilist_banner_for(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> Option<String> {
-    let ids = state.kitsu.external_ids_for_kitsu_id(kitsu_id).await.ok()?;
+    let ids = super::external_ids::external_ids_for(state, kitsu_id)
+        .await
+        .ok()?;
     crate::meta::anilist_media::banner_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
         .await
         .ok()
