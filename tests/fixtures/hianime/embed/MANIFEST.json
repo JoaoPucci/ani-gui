@@ -1,6 +1,6 @@
 {
   "zokoanime-not-found.html": {
-    "source": "GET https://zokoanime.video/stream/mal/54196/1/sub with a browser User-Agent and Referer: https://hianime.to/ — the embed URL hianime's server listing named for its only server (HD-1) of the one episode of 'One Piece 4D', which its picker chose for Kitsu 13123 (Dragon Ball Z: The Real 4-D)",
+    "source": "GET https://zokoanime.video/stream/mal/54196/1/sub — the embed URL hianime's server listing named for its only server (HD-1) of the one episode of 'One Piece 4D', the show its picker chose for Kitsu 13123 (Dragon Ball Z: The Real 4-D) before #232 refused that pick. Fetched with a browser User-Agent and Referer: https://hianime.to/; the client sends the origin it is pointed at as the referer (https://hianime.at/ in production), and the host answered the same card for the referer used here.",
     "captured": "2026-10-13",
     "size": 1011,
     "sha256": "af7ee43d8b0df32dd1952dd104f457d4857a64b2b0b18744359a56733f2da557",

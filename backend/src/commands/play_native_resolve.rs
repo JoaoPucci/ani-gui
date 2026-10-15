@@ -80,10 +80,13 @@ pub struct NativeError {
     /// The instant the failure behind an AGGREGATED transient
     /// verdict was observed. The walk can fail one alias and finish
     /// a later one cleanly; the breaker record for the resulting
-    /// `Network` must carry the failing attempt's moment, or the
+    /// verdict must carry the failing attempt's moment, or the
     /// gate's staleness filter cannot discard it after a recovery
     /// recorded in between. `None` when the error IS the chain's
-    /// last attempt — the transport's own stamp is then correct.
+    /// last attempt — the transport's own stamp is then correct —
+    /// and for a deadline's elapse, which no attempt is stamped on;
+    /// the breaker tells a stall the walk kept from the deadline's
+    /// `Timeout` by this stamp.
     pub failed_at: Option<tokio::time::Instant>,
 }
 

@@ -64,11 +64,15 @@ pub enum AniError {
     /// the searches before it got through on, and a parse failure
     /// there is not the app failing to read the provider, which it
     /// read all the way to that host — so neither surfaces under its
-    /// own name from the chain. Distinct from
-    /// [`Self::EpisodeUnavailable`], a host answering that the
-    /// episode is not there. Transient to every walk — the next alias
-    /// or provider may serve — and distress to the breaker, like the
-    /// failures it stands for.
+    /// own name from the chain. It therefore also covers the client
+    /// no longer reading a host — the site having changed shape under
+    /// it — which from the chain is told from a host serving nothing
+    /// only by the cause the log carries; the copy's advice, later or
+    /// another episode, is the best the renderer can give for either.
+    /// Distinct from [`Self::EpisodeUnavailable`], a host answering
+    /// that the episode is not there. Transient to every walk — the
+    /// next alias or provider may serve — and distress to the breaker,
+    /// like the failures it stands for.
     ///
     /// Both fields are for the log: the renderer shows one sentence
     /// whatever they say, and never the host.

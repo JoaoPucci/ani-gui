@@ -97,7 +97,10 @@ pub mod keys {
     pub const PLAY_EPISODE_UNAVAILABLE: &str = "error.play.episode_unavailable";
     /// The show was found and its stream server did not serve the
     /// episode — did not answer, timed out, or served nothing the
-    /// client could play (`AniError::StreamServerFailed`).
+    /// client could play (`AniError::StreamServerFailed`). The copy
+    /// names the source's video server; the chain's first step, the
+    /// provider's own listing of the episode's servers, is reported
+    /// under the same sentence, the stage in the log saying which.
     pub const PLAY_STREAM_SERVER_FAILED: &str = "error.play.stream_server_failed";
 
     // --- error.search.* ---
