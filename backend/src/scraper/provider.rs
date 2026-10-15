@@ -308,7 +308,12 @@ pub trait Provider: Send + Sync {
 
     /// The post-admission start of this provider's most recent
     /// attempt, when its transport tracks one. The walk stamps
-    /// aggregate failure verdicts with it.
+    /// aggregate failure verdicts with it. A provider may also answer
+    /// `None` after a verdict no attempt produced — its own walk cutting
+    /// a server off while the gate still held the chain's request, as
+    /// hianime's does — and the episode step reads a timeout by it:
+    /// stamped, a host stalled on an admitted request; unstamped, the
+    /// time ran out with the request at the gate, and no host failed.
     fn last_attempt_at(&self) -> Option<tokio::time::Instant>;
 
     /// The deadline the walk's attempt against this provider runs

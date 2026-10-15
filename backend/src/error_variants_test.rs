@@ -46,6 +46,10 @@ fn pairs() -> Vec<Pair> {
         AniError::Timeout => AniError::Timeout,
         AniError::NoResults => AniError::NoResults,
         AniError::EpisodeUnavailable => AniError::EpisodeUnavailable,
+        AniError::StreamServerFailed { .. } => AniError::StreamServerFailed {
+            stage: "embed",
+            host: Some("zokoanime.video".into()),
+        },
         AniError::RateLimited { .. } => AniError::RateLimited {
             retry_after_secs: Some(9),
         },

@@ -11,6 +11,7 @@
 	"error_network_unreachable": "Couldn't reach the service. Check your connection and try again.",
 	"error_network_upstream": "The service answered with an error (HTTP {status}). Try again later.",
 	"error_play_episode_unavailable": "The source lists this show but has no stream for this episode in the chosen audio.",
+	"error_play_stream_server_failed": "The source lists this show, but its video server didn't serve a playable stream for this episode. Try again later, or try another episode.",
 	"error_player_spawn_failed": "Couldn't start {binary}. Check the external player in Settings.",
 	"error_request_invalid_body": "The app sent a request that couldn't be read. Restart the app and try again.",
 	"error_request_invalid_kitsu_id": "The app asked for an anime by an id that isn't valid. Go back and open it again.",

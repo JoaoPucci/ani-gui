@@ -364,11 +364,14 @@ where
                 )
                 .await;
             }
+            // The error's own account, so a stream server that did
+            // not serve names its stage and host here, where the
+            // failed play is reported.
             tracing::info!(
                 title = %args.title,
                 episode = %args.episode,
                 clean_miss = ne.clean_miss,
-                error = ?ne.error,
+                error = %ne.error,
                 "play: native resolution failed",
             );
             return Err(ne.error);
