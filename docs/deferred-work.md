@@ -144,16 +144,30 @@ starting it, and delete it when you find it done.
   Repro: entry ["怪獣８号"], count 12, a pool of "怪獣８号" (24), "Kaiju
   No. 8 Season 2" (12) and "Kaiju No. 8 Recap" (12), picks the recap.
 
-- **A subtitled sequel with a count but no year can play as its
-  series.** With an episode count and no premiere date, the count is
-  all that vouches for a hit, so a sequel within the count tolerance
-  of its series fits the series' listing: entry ["Show: Arc"], count
-  12, no year, a pool of "Show" (12) alone, picks "Show". Without a
-  count a hit the year does not vouch for has to be named by the
-  entry; with one, asking for the name too would refuse the real shows
-  the provider names differently from every Kitsu title, which the
-  count alone resolves today. It waits on Kitsu knowing a count but
-  not a premiere, which it rarely does.
+- **A dated entry the provider does not list can play as a same-year
+  show whose count fits.** For a dated entry, a hit whose page names
+  the entry's year and whose count sits within the tolerance is picked
+  on those two alone — and a search for a title the provider does not
+  list answers with a page of other shows, among which a same-year
+  show of the right length is common. The recorded shape: Zai Xia Ying
+  Tai (Kitsu 45500, 12 episodes), which hianime does not list, given
+  the 2025 AniList names for it, picks "Even Given the Worthless
+  Appraiser Class, I'm Actually the Strongest" (2025, 12) from the pool
+  its alias "I'm Ying Tai" answers with; the fixture test
+  `a_dated_walk_over_the_same_pools_takes_the_year_confirmed_fit` pins
+  it. Requiring the entry's name as well, the way an undated entry
+  now does, would refuse fourteen of the recorded dated entries whose
+  own listings are named by none of their titles — JoJo's
+  "(Uncensored)" listings, "My Star" for [Oshi no Ko], "Attack on
+  Titan: Final Season, Part 1" — so the year has to go on vouching
+  until something finer than a year tells those apart. The undated
+  case this grew out of is closed: an entry with a count and no year
+  takes only a hit named for it, and the pools of the seven such
+  entries hianime does not list are recorded under
+  `tests/fixtures/hianime/picker/` and refused. Its cost is that such
+  an entry is probed on every look — the refusal is an inference and
+  is not persisted — which is bounded by how few such entries Kitsu
+  holds (fourteen with a count, 2026-10-15).
 
 ## Testing and CI
 
