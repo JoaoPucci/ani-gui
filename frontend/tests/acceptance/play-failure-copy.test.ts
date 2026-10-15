@@ -7,7 +7,7 @@
 // message, so a dropped call or a wrong option at either Svelte
 // adapter cannot hide behind green unit tests.
 
-import { describe, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
@@ -221,6 +221,30 @@ describe('detail — play failures render the shared copy with the override', ()
 			() => (target.textContent ?? '').includes(m.play_play_failure_episode_unavailable()),
 			'the episode-unavailable copy on the play failure overlay'
 		);
+	});
+
+	it("a stream server that did not serve names the source's video server, not the connection", async () => {
+		// The chain's verdict for a host that did not answer, or
+		// answered nothing playable, past searches that answered. The
+		// payload carries the stage and host for the backend log;
+		// neither reaches the overlay, and nor does the connection copy
+		// the same failure used to be shown as.
+		useDetailHandlers();
+		await mountAndFailEpisode(
+			6,
+			JSON.stringify({
+				kind: 'stream_server_failed',
+				key: 'error.play.stream_server_failed',
+				stage: 'embed',
+				host: 'zokoanime.video'
+			})
+		);
+		await until(
+			() => (target.textContent ?? '').includes(m.backend_error_play_stream_server_failed()),
+			'the stream-server copy on the play failure overlay'
+		);
+		expect(target.textContent).not.toContain('zokoanime.video');
+		expect(target.textContent).not.toContain(m.play_play_failure_network());
 	});
 
 	it("a catalogue miss keeps this surface's definitive phrasing", async () => {
