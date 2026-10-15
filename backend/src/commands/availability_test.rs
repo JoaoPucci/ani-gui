@@ -2037,8 +2037,22 @@ async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_noth
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v17:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v17:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v18:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v18:kid-1:dub");
+}
+
+/// A verdict the picker stamped before an entry with a count and no
+/// year took only a hit named for it is not served: seven of Kitsu's
+/// fourteen such entries were played as another show whose count fit
+/// — Mo Du Zhe's row holds Girlfriend, Girlfriend's twelve episodes as
+/// its own — and nothing in a row says whether its entry was dated.
+#[test]
+fn a_verdict_stamped_before_a_counted_undated_entry_needed_a_name_is_not_read() {
+    let current = cache_key("45637", "sub");
+    assert!(
+        !current.starts_with("availability:v17:"),
+        "the key must have moved past v17: {current}"
+    );
 }
 
 /// A verdict the picker stamped before an entry with no count or year
