@@ -21,6 +21,7 @@ fn body(available: bool) -> String {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: None,
     })
     .expect("serializes")
@@ -225,6 +226,7 @@ fn positive_with(count: u32) -> String {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: None,
     })
     .expect("serializes")

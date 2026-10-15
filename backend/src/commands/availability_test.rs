@@ -135,6 +135,7 @@ fn warm_backoff_keeps_the_pacing_gap_for_other_outcomes() {
         episode_count: None,
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         extra_episodes: Vec::new(),
     });
@@ -166,6 +167,7 @@ fn response_round_trips_with_episode_count_and_extras() {
         episode_count: Some(1160),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         extra_episodes: vec!["1061.5".into()],
     };
@@ -1183,6 +1185,7 @@ fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_re
                     extra_episodes: Vec::new(),
                     episode_count_approximate: false,
                     gate_refused: false,
+                    unsettled: false,
                     provider,
                 };
                 let a_refusing = a_broken || a_paused;
@@ -1213,6 +1216,7 @@ fn the_remembered_provider_is_read_off_a_positive_row_alone() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider,
     };
     write_cache_full(
@@ -1847,6 +1851,7 @@ fn write_cache_full_round_trips_via_batch_cached() {
             extra_episodes: vec!["1061.5".into()],
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -1878,6 +1883,7 @@ fn write_cache_full_skips_empty_kitsu_id() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2109,6 +2115,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2123,6 +2130,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2138,6 +2146,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2199,6 +2208,7 @@ async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2276,6 +2286,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2349,6 +2360,7 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2419,6 +2431,7 @@ fn an_approximate_cached_count_is_not_a_usable_hit() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
@@ -2429,6 +2442,7 @@ fn an_approximate_cached_count_is_not_a_usable_hit() {
     let approximate = AvailabilityResponse {
         episode_count_approximate: true,
         gate_refused: false,
+        unsettled: false,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         ..exact.clone()
     };
@@ -2454,6 +2468,7 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
@@ -2467,6 +2482,7 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
@@ -2522,6 +2538,7 @@ fn usability_is_negative_or_a_confirmed_count() {
                 extra_episodes: extras,
                 episode_count_approximate: approximate,
                 gate_refused: false,
+                unsettled: false,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             };
             proptest::prop_assert_eq!(
@@ -2552,6 +2569,7 @@ fn an_unconfirmed_available_row_is_never_served() {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: approximate,
                 gate_refused: false,
+                unsettled: false,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             };
             proptest::prop_assert!(!cache_hit_is_usable(&state, &row));
@@ -2577,6 +2595,7 @@ fn write_cache_full_round_trips_the_approximate_flag() {
             extra_episodes: Vec::new(),
             episode_count_approximate: true,
             gate_refused: false,
+            unsettled: false,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );

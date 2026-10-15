@@ -155,6 +155,37 @@ pub struct AvailabilityResponse {
     /// field existed.
     #[serde(default)]
     pub provider: Option<crate::scraper::provider::ProviderId>,
+    /// True when the probe reached the provider and came back without
+    /// a verdict: a pool refused on how its hits are named, dead
+    /// listings on a healthy provider, a mode nobody answered for, an
+    /// absence answered past a provider whose live record has not
+    /// denied the show, or a negative that yielded to a positive row
+    /// written while the probe was out. `available` is false and means
+    /// nothing; readers treat the answer as unknown — the card stays,
+    /// the page keeps its lazy play — where an error status sent them
+    /// to the same place by way of the console. Nothing is persisted:
+    /// the next look asks again. Absent from every settled answer and
+    /// from every cached row, which hold verdicts.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unsettled: bool,
+}
+
+impl AvailabilityResponse {
+    /// The answer of a probe that reached no verdict
+    /// ([`Self::unsettled`]): not available, no count, no extras, no
+    /// provider, and nothing to persist.
+    #[must_use]
+    pub fn unsettled() -> Self {
+        Self {
+            available: false,
+            episode_count: None,
+            extra_episodes: Vec::new(),
+            episode_count_approximate: false,
+            gate_refused: false,
+            provider: None,
+            unsettled: true,
+        }
+    }
 }
 
 /// Whether a cached response may be served as-is, or has to re-probe.
@@ -446,6 +477,7 @@ pub async fn stamp_after_native(
                             extra_episodes: verdict.extra_tags.to_vec(),
                             episode_count_approximate: false,
                             gate_refused: false,
+                            unsettled: false,
                             provider: verdict.provider,
                         },
                     );
@@ -759,7 +791,7 @@ pub async fn check_availability(
                 // for the day an inconclusive answer reaches here
                 // regardless — nothing about this mode was said,
                 // which is not absence, so persist nothing.
-                return Err(crate::error::AniError::NoResults);
+                return Ok(AvailabilityResponse::unsettled());
             };
             if present {
                 (
@@ -778,8 +810,9 @@ pub async fn check_availability(
                 // listed.
                 // Persisted, it would be backed by a healthy primary
                 // and outlive the row's provider's recovery. Surface
-                // it, persist nothing; the row stands.
-                return Err(crate::error::AniError::NoResults);
+                // it as the unknown it is, persist nothing; the row
+                // stands.
+                return Ok(AvailabilityResponse::unsettled());
             } else {
                 // The provider ANSWERED absence for this mode.
                 // Cacheable, like the clean search miss, and named as
@@ -795,6 +828,13 @@ pub async fn check_availability(
         // into the cache write below, naming the provider whose miss
         // it is, under the same read rule.
         Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by),
+        // An answered dead end — a pool refused on how its hits are
+        // named, dead listings on a healthy provider — proves nothing
+        // about the show and is no failure of the probe: the unknown
+        // answer, persisting nothing.
+        Err(ne) if matches!(ne.error, crate::error::AniError::NoResults) => {
+            return Ok(AvailabilityResponse::unsettled());
+        }
         // Weather (transport failures, upstream refusals, a refused
         // background admit): surface typed, persist nothing.
         Err(ne) => return Err(ne.error),
@@ -828,6 +868,7 @@ pub async fn check_availability(
                 extra_episodes,
                 episode_count_approximate,
                 gate_refused,
+                unsettled: false,
                 provider,
             });
         };
@@ -838,7 +879,7 @@ pub async fn check_availability(
         // yields to a replay served meanwhile as well (see
         // `RowAtStart`).
         if !available && at_start.positive_row_appeared_since(state, &row) {
-            return Err(crate::error::AniError::NoResults);
+            return Ok(AvailabilityResponse::unsettled());
         }
         if available && at_start.positive_row_written_since(state, &row) {
             return Ok(AvailabilityResponse {
@@ -847,6 +888,7 @@ pub async fn check_availability(
                 extra_episodes,
                 episode_count_approximate,
                 gate_refused,
+                unsettled: false,
                 provider,
             });
         }
@@ -863,6 +905,7 @@ pub async fn check_availability(
                 episode_count_approximate,
                 // Not cached: it describes this request, not the show.
                 gate_refused: false,
+                unsettled: false,
                 // Cached: a cache hit must still say whose catalogue
                 // carries the show.
                 provider,
@@ -876,6 +919,7 @@ pub async fn check_availability(
         extra_episodes,
         episode_count_approximate,
         gate_refused,
+        unsettled: false,
         provider,
     })
 }
@@ -1011,6 +1055,7 @@ pub fn write_cache(
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
+            unsettled: false,
             provider,
         },
     );
