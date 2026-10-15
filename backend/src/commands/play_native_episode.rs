@@ -86,7 +86,9 @@ pub(super) fn episode_verdict(error: AniError) -> AniError {
 /// `NativeError` (never `clean_miss`): the show matched, so nothing
 /// here is evidence of absence. An answered dead end is the
 /// episode's own verdict, [`AniError::EpisodeUnavailable`]
-/// ([`episode_verdict`]), for every caller alike.
+/// ([`episode_verdict`]), for every caller alike. A timeout the
+/// provider stamps no attempt on ([`Provider::last_attempt_at`]) is
+/// the one failure the verdict does not rename: no host failed.
 pub async fn resolve_episode<P: Provider + ?Sized>(
     client: &P,
     picked: &PickedShow,
@@ -95,7 +97,18 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
     quality: &str,
 ) -> std::result::Result<ResolvedEpisode, NativeError> {
     let dead_end = |error: AniError| NativeError {
-        error: episode_verdict(error),
+        error: match error {
+            // A timeout the provider stamps no attempt on is its
+            // walk's bound cutting a server off while the gate still
+            // held the request: the request the window cut off
+            // reached no host, so no host failed. It keeps its name
+            // — the deadline's shape, which the
+            // breaker reads by its stamp — where the stream server's
+            // failure would say a host did not serve, and be distress
+            // on every priority.
+            AniError::Timeout if client.last_attempt_at().is_none() => AniError::Timeout,
+            error => episode_verdict(error),
+        },
         clean_miss: false,
         failed_at: None,
     };

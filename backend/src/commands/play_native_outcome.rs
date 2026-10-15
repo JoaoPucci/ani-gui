@@ -32,7 +32,9 @@ pub fn breaker_outcome<T>(
             AniError::GateRefused => None,
             // A Timeout no failing attempt is stamped on is a
             // deadline's elapse — the whole resolve's or the
-            // attempt's, the only Timeout a walk constructs itself.
+            // attempt's, or a provider's walk cutting a server off
+            // while the gate still held its request: the Timeouts a
+            // walk constructs itself, none of them a host's.
             // For a paced background resolve that duration includes
             // the gate's own queueing — a page warm's dozen prefetch
             // chains can burn the deadline on pacing alone — so the

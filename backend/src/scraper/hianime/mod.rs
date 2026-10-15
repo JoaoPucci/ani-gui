@@ -113,7 +113,9 @@ pub struct HianimeClient<F> {
     /// server than the walk's last fetch, and the gate must be told
     /// when that failure was observed, not when the walk finished. A
     /// fetch after the walk moves the transport's stamp, and the
-    /// kept instant no longer applies.
+    /// kept instant no longer applies. A verdict no attempt produced
+    /// — the walk ended on servers whose chains the gate held past
+    /// their windows — is kept the same way, with no instant.
     kept_attempt_at: std::sync::Mutex<Option<KeptAttempt>>,
     /// The URL of the client's latest request: the URL asked, until it
     /// answers, then the URL it answered from. The transport follows
@@ -129,7 +131,10 @@ pub struct HianimeClient<F> {
 /// See [`HianimeClient::kept_attempt_at`].
 #[derive(Clone, Copy)]
 struct KeptAttempt {
-    at: tokio::time::Instant,
+    /// The attempt that produced the kept failure, or `None` for a
+    /// verdict no attempt produced: the walk's bound cut a server off
+    /// while the gate still held its request.
+    at: Option<tokio::time::Instant>,
     transport_then: Option<tokio::time::Instant>,
 }
 
@@ -573,6 +578,10 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         // listed URL can redirect onto a host whose chain is longer.
         let bound = chain_reserve(self.server_budget);
         let caps = ServerCaps::for_walk(bound, remaining(), unbounded.unwrap_or(0));
+        // How many servers went untried: each cut off at its window
+        // while the gate still held its chain's latest request, so
+        // the request the window cut off reached no host.
+        let mut held_at_gate = 0usize;
         for (i, server) in ordered.into_iter().enumerate() {
             // A page is judged by the host that served it, which is
             // not always the host the listing named: the transport
@@ -626,6 +635,17 @@ impl<F: Fetch> Provider for HianimeClient<F> {
                 };
                 match tokio::time::timeout(cap, chain).await {
                     Ok(outcome) => outcome,
+                    // Cut off while the gate still held the chain's
+                    // latest request — a paced background resolve
+                    // queued behind a page warm's other chains.
+                    // Whatever the chain asked before was answered,
+                    // and the request the window cut off reached no
+                    // host: no host failed. Nothing is kept for the
+                    // server; the walk counts it untried and steps on.
+                    Err(_elapsed) if self.fetch.awaiting_admission() => {
+                        held_at_gate += 1;
+                        continue;
+                    }
                     // Cut off: the listing's URL stands in for the host
                     // that served the page, which nothing reads for a
                     // timeout — the failure is named for the URL last
@@ -657,9 +677,29 @@ impl<F: Fetch> Provider for HianimeClient<F> {
             });
         }
         let (verdict, (at, site)) = final_verdict(kept, doubt, mode);
+        if held_at_gate > 0 && !outranks_an_untried_server(&verdict) {
+            // A server whose chain the gate held past its window may
+            // carry the stream, so the walk's end is neither the
+            // answered absence nor a host's own dead end: it is the
+            // attempt's time running out, under its own name and
+            // stamped with no attempt, since no host failed — the
+            // deadline's shape, which the breaker reads as ambiguous
+            // for a paced background resolve and records nothing on.
+            // Logged, since the caller's line for it reads like the
+            // attempt budget's elapse.
+            tracing::debug!(
+                untried = held_at_gate,
+                "hianime: the gate held a server's request past its window; the attempt's time ran out at the gate"
+            );
+            *self.kept_attempt_at.lock().expect("kept attempt lock") = Some(KeptAttempt {
+                at: None,
+                transport_then: self.fetch.last_attempt_at(),
+            });
+            return Err(AniError::Timeout);
+        }
         if let Some(at) = at {
             *self.kept_attempt_at.lock().expect("kept attempt lock") = Some(KeptAttempt {
-                at,
+                at: Some(at),
                 transport_then: self.fetch.last_attempt_at(),
             });
         }
@@ -697,8 +737,9 @@ impl<F: Fetch> Provider for HianimeClient<F> {
         let transport = self.fetch.last_attempt_at();
         match *self.kept_attempt_at.lock().expect("kept attempt lock") {
             // The walk's kept failure, while no fetch has moved the
-            // transport's stamp since the walk ended.
-            Some(kept) if kept.transport_then == transport => Some(kept.at),
+            // transport's stamp since the walk ended — or none, for a
+            // verdict no attempt produced.
+            Some(kept) if kept.transport_then == transport => kept.at,
             _ => transport,
         }
     }
@@ -858,6 +899,17 @@ fn weather_rank(weather: &AniError) -> u8 {
         AniError::Network | AniError::Timeout => 1,
         _ => 0,
     }
+}
+
+/// Whether a kept failure outranks a server the gate held past its
+/// window: anything that is evidence about the provider does — a host that
+/// did not answer or answered what the client cannot use, a block, a
+/// rate limit, the listing's doubt — while an answered status and the
+/// answered absence do not, by the walk's own rule that a server never
+/// heard from may carry the stream where an answered status is that
+/// host's own dead end.
+fn outranks_an_untried_server(verdict: &AniError) -> bool {
+    weather_rank(verdict) > 0
 }
 
 #[cfg(test)]

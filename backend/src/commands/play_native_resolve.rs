@@ -232,7 +232,19 @@ where
                                     continue;
                                 }
                                 ChainOutcome::Transient(ne) => {
-                                    transients.note(WalkStage::Chain, ne.error, attempt_at(client));
+                                    // Stamped as the provider stamps
+                                    // it: with the attempt that
+                                    // produced it, or with none when
+                                    // no attempt did — its walk cut a
+                                    // server off while the gate still
+                                    // held the request — which the
+                                    // breaker reads as a deadline's
+                                    // elapse.
+                                    transients.note_at(
+                                        WalkStage::Chain,
+                                        ne.error,
+                                        client.last_attempt_at(),
+                                    );
                                     continue;
                                 }
                             },

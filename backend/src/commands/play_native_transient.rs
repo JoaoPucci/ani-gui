@@ -15,9 +15,14 @@
 //! blame is the one the other search got through on; within a stage,
 //! the one that says most — a status a host answered over a page the
 //! client could not read over a connection that dropped — and of
-//! equals the first. Neither walk substitutes one failure for
-//! another: what it met is what it reports, so the connection is
-//! blamed when a transport failure is the furthest a walk got.
+//! equals the first. A chain's failures arrive as one verdict, the
+//! stream server's, whatever their cause — the provider's client
+//! logged each cause and host as it kept them — and rank alike; a
+//! failure no attempt produced, a server the provider's walk cut off
+//! while the gate still held its request, ranks below any an attempt
+//! did. Neither walk substitutes one failure for another: what it met
+//! is what it reports, so the connection is blamed when a transport
+//! failure is the furthest a walk got.
 
 use crate::error::AniError;
 use crate::scraper::provider::Provider;
@@ -40,8 +45,9 @@ pub(super) enum WalkStage {
 /// that will be its verdict.
 #[derive(Debug, Default)]
 pub(super) struct Transients {
-    /// The failure kept so far, with the stage it was met at.
-    kept: Option<(WalkStage, AniError)>,
+    /// The failure kept so far, with the stage it was met at and
+    /// whether an attempt produced it.
+    kept: Option<(WalkStage, AniError, bool)>,
     /// The instant of the last failing attempt — the moment the
     /// breaker record carries, whichever failure is surfaced
     /// ([`NativeError::failed_at`]).
@@ -58,21 +64,29 @@ impl Transients {
     }
 
     /// [`Self::note`] for a failure that may have been produced by no
-    /// attempt — `at` is `None` when the provider stamps none on it.
+    /// attempt: `at` is `None` when the provider stamps none on it —
+    /// its walk cut a server off while the gate still held the
+    /// request, and no host failed. Such a failure says less than
+    /// any an attempt did at its stage and rank, and leaves the last
+    /// failing attempt's instant where it was.
     pub(super) fn note_at(
         &mut self,
         stage: WalkStage,
         error: AniError,
         at: Option<tokio::time::Instant>,
     ) {
-        let at = at.unwrap_or_else(tokio::time::Instant::now);
-        self.last_failure_at = Some(at);
+        if at.is_some() {
+            self.last_failure_at = at;
+        }
+        let stamped = at.is_some();
         let louder = match &self.kept {
             None => true,
-            Some((kept_stage, kept)) => (stage, rank(&error)) > (*kept_stage, rank(kept)),
+            Some((kept_stage, kept, kept_stamped)) => {
+                (stage, rank(&error), stamped) > (*kept_stage, rank(kept), *kept_stamped)
+            }
         };
         if louder {
-            self.kept = Some((stage, error));
+            self.kept = Some((stage, error, stamped));
         }
     }
 
@@ -81,7 +95,7 @@ impl Transients {
     /// own name, stamped with the last failing attempt's instant and
     /// never a clean miss.
     pub(super) fn verdict(self) -> Option<NativeError> {
-        self.kept.map(|(_, error)| NativeError {
+        self.kept.map(|(_, error, _)| NativeError {
             error,
             clean_miss: false,
             failed_at: self.last_failure_at,
@@ -94,7 +108,10 @@ impl Transients {
 /// hears health where every other kind is distress — a page the
 /// client could not read says the site answered, and a connection
 /// that dropped, a timeout, or a stream server that did not serve say
-/// the least.
+/// the least — the stream server's verdict alike whatever cause the
+/// provider's client logged for it, since what the walk decides by the
+/// rank, the copy and the breaker's reading, is the same for every
+/// cause of it.
 fn rank(error: &AniError) -> u8 {
     match error {
         AniError::Upstream { .. } => 2,
@@ -104,8 +121,10 @@ fn rank(error: &AniError) -> u8 {
 }
 
 /// The post-admission start of the client's most recent attempt — the
-/// moment a transient failure is stamped with — or now, for a
-/// transport that tracks none.
+/// moment a search's or a probe's transient failure is stamped with —
+/// or now, for a transport that tracks none. A chain's verdict is
+/// stamped as the provider stamps it ([`Provider::last_attempt_at`]),
+/// since it can be one no attempt produced.
 pub(super) fn attempt_at<P: Provider + ?Sized>(client: &P) -> tokio::time::Instant {
     client
         .last_attempt_at()
