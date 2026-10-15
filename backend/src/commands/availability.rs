@@ -603,6 +603,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v18: an entry with a count and no year takes only a hit the
+    //      title searched or one of its own names vouches for. A v17
+    //      row for such an entry can be a positive for a show the
+    //      provider does not list, capped at another show's count
+    //      whose count merely fit (Mo Du Zhe holding Girlfriend,
+    //      Girlfriend's 12); nothing in a row says whether its entry
+    //      was dated, so re-keying re-probes.
     // v17: a countless entry with a year takes only a hit its year or
     //      its name vouches for, and the probe head's evidence reaches
     //      as far as its five. A v16 row can be a positive for a
@@ -704,7 +711,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v17:{kitsu_id}:{m}")
+    format!("availability:v18:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
