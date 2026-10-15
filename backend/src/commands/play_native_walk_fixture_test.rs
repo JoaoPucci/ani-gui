@@ -2520,3 +2520,53 @@ async fn a_title_as_written_carries_its_tags_wherever_they_stand() {
         );
     }
 }
+
+/// The probe head's evidence reaches as far as its five: with a count,
+/// the hits that cannot be picked are probed as evidence up to the
+/// fifth that can, so a broad listing's completing sibling behind four
+/// other seasons and the listing itself is probed, and the listing is
+/// cut. The sixth such hit is not: a pool still costs at most ten
+/// probes, and a sibling past that many is left unread — its listing
+/// is not recorded, so reading it fails the test.
+#[tokio::test]
+async fn the_evidence_reaches_as_far_as_the_five() {
+    let site = pool_of(
+        &["Show Season 3"],
+        Some(12),
+        2020,
+        "Show Season 3",
+        &[
+            ("a", "Show Season 2", 12),
+            ("b", "Show Season 1", 12),
+            ("c", "Show", 12),
+            ("d", "Show 2", 12),
+            ("e", "Show Season 2 Part 2", 12),
+            ("w", "Show Season 3", 24),
+            ("l", "Show Season 3 Part 2", 12),
+        ],
+    );
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!(picked.hit.slug, "w");
+    assert_eq!(picked.episodes.len(), 12);
+
+    let mut site = pool_of(
+        &["Show Season 3"],
+        Some(12),
+        2020,
+        "Show Season 3",
+        &[
+            ("a", "Show Season 2", 12),
+            ("b", "Show Season 1", 12),
+            ("d", "Show 2", 12),
+            ("e", "Show Season 2 Part 2", 12),
+            ("f", "Other Show Season 2", 12),
+            ("w", "Show Season 3", 24),
+            ("l", "Show Season 3 Part 2", 12),
+        ],
+    );
+    site.doc.episodes.remove("l");
+    site.doc.years.remove("l");
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} ({})", p.hit.slug, p.episodes.len());
+    }
+}
