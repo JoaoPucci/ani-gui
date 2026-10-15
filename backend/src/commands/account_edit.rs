@@ -168,3 +168,7 @@ async fn remove_entry_via(
 #[cfg(test)]
 #[path = "account_edit_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "account_edit_rate_limit_test.rs"]
+mod rate_limit_tests;

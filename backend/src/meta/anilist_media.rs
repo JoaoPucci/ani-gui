@@ -63,14 +63,18 @@ pub(crate) fn media_is_absent(body: &[u8]) -> bool {
 /// for. A 2xx is the body. A 404 whose body says `data.Media: null` is
 /// also the body: that is how AniList answers a single-`Media` query
 /// for an id it does not index, and every parser reads it as absence.
-/// Any other status, a 404 without that shape included, is
-/// [`AniError::Upstream`].
+/// A 429 is [`AniError::RateLimited`] with the advertised wait
+/// ([`super::rate_limit`]). Any other status, a 404 without that
+/// shape included, is [`AniError::Upstream`].
 ///
 /// # Errors
-/// [`AniError::Upstream`] as above; [`AniError::Network`] when the
-/// body cannot be read.
+/// [`AniError::RateLimited`] and [`AniError::Upstream`] as above;
+/// [`AniError::Network`] when the body cannot be read.
 pub(crate) async fn graphql_body(resp: reqwest::Response) -> Result<bytes::Bytes> {
     let status = resp.status();
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(super::rate_limit::rate_limited("anilist", &resp));
+    }
     if !status.is_success() && status != reqwest::StatusCode::NOT_FOUND {
         return Err(AniError::Upstream {
             status: status.as_u16(),
