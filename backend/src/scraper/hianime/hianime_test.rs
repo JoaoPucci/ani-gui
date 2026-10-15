@@ -1566,6 +1566,18 @@ const REDIRECTS: &[(&str, &str)] = &[
         "https://hls.example/v/old/master.m3u8",
         "https://hls.example/v/new/master.m3u8",
     ),
+    // A master the CDN has moved to another host altogether, which
+    // answers a page rather than a playlist.
+    (
+        "https://hls.example/v/elsewhere/master.m3u8",
+        "https://cdn3.example/v/master.m3u8",
+    ),
+    // megaplay's sources request sent to another host, which answers
+    // something the client cannot read.
+    (
+        "https://megaplay.buzz/stream/getSourcesNew?id=20&s=bcdn",
+        "https://api.elsewhere.example/sources?id=20",
+    ),
 ];
 
 /// Where a request for `url` actually ends.
@@ -1865,6 +1877,59 @@ impl Fetch for Site {
             )),
             "https://hls.example/v/html/master.m3u8" => {
                 ok("<html><body>the player page, not a playlist</body></html>")
+            }
+            // A lone server whose payload names a master the CDN has
+            // moved to another host (see REDIRECTS), where a page
+            // answers instead of a playlist.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21484") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2Vsc2V3aGVyZS9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/elsewhere/sub" => ok(embed_page(
+                r#"{"src":"https://hls.example/v/elsewhere/master.m3u8","subtitles":[]}"#,
+            )),
+            "https://cdn3.example/v/master.m3u8" => {
+                ok("<html><body>moved: the CDN's own page</body></html>")
+            }
+            // A lone server whose master answers, naming its rendition
+            // on another CDN whose connection dies.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21485") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L3JlbW90ZS9zdWI=\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/remote/sub" => ok(embed_page(
+                r#"{"src":"https://hls.example/v/remote/master.m3u8","subtitles":[]}"#,
+            )),
+            "https://hls.example/v/remote/master.m3u8" => ok(
+                "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720\nhttps://cdn4.example/v/720/index.m3u8\n",
+            ),
+            "https://cdn4.example/v/720/index.m3u8" => Err(AniError::Network),
+            // A lone megaplay server whose sources request is sent to
+            // another host (see REDIRECTS) that answers no JSON.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21486") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzEwL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://megaplay.buzz/stream/s-2/734310/sub" => {
+                ok(MEGAPLAY_PAGE.replace("179411", "20"))
+            }
+            "https://api.elsewhere.example/sources?id=20" => {
+                ok("<html>not the sources, nor any JSON</html>")
             }
             // The same undecodable page first, then a host whose page
             // decodes.
@@ -4338,6 +4403,55 @@ async fn a_stream_servers_own_not_found_page_is_stepped_over_when_a_later_server
         .await
         .expect("the second server decodes");
     assert_eq!(source.master_url, "https://hls.example/v/master.m3u8");
+}
+
+/// The payload named a master the CDN has moved: the transport follows
+/// the redirect, and the page that answers — not a playlist — comes
+/// from the host it landed on. The verdict names that host, the one
+/// that failed, not the one the payload named.
+#[tokio::test]
+async fn a_master_the_cdn_sends_elsewhere_is_named_for_the_host_that_answered() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21484, "sub")
+        .await
+        .expect_err("the landed page is not a playlist");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "playlist", host: Some(h) } if h == "cdn3.example"),
+        "{err:?}"
+    );
+}
+
+/// The master answers and names its rendition on another CDN, whose
+/// connection dies: the rendition's host is the one that failed, and
+/// the one named.
+#[tokio::test]
+async fn a_rendition_on_another_cdn_that_does_not_answer_is_named_for_that_cdn() {
+    let c = client();
+    let err = c
+        .stream_for(21485, "sub", "720")
+        .await
+        .expect_err("the rendition's host died");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "playlist", host: Some(h) } if h == "cdn4.example"),
+        "{err:?}"
+    );
+}
+
+/// megaplay's page has the client ask its host for the sources, and
+/// that request is sent to another host, which answers something the
+/// client cannot read: the embed stage names the host that answered.
+#[tokio::test]
+async fn a_sources_request_sent_elsewhere_is_named_for_the_host_that_answered() {
+    let c = client();
+    let err = c
+        .master_playlist_url(21486, "sub")
+        .await
+        .expect_err("the sources could not be read");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "api.elsewhere.example"),
+        "{err:?}"
+    );
 }
 
 /// The site's own listing of an episode's servers does not answer:
