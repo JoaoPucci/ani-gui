@@ -30,7 +30,7 @@ says which pool.
 | `oracle.py` | The model and the comparison. Standard library only. |
 | `test_oracle.py` | The model's own tests: rows transcribed from the docs' tables predict as the tables say; the generated set is reproducible; the comparison refuses what it must. |
 | `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row; the others are the shapes that surfaced while reviewing picker changes. |
-| `allowlist.json` | Disagreements accepted for now, each with its reason and the outcome it accepts. Empty at the time of writing. |
+| `allowlist.json` | Disagreements accepted for now, each with its reason and the outcome it accepts. |
 | `fixtures-golden.json` | Every recorded fixture's outcome, one show per line. |
 
 The driver is `backend/src/commands/play_native_walk_oracle_test.rs`,
@@ -70,7 +70,7 @@ function of `oracle.py` and `cases/`, so committing it would store the
 generator's output beside the generator. The whole set runs on every
 relevant pull request.
 
-`cmp` prints one line per family and then every problem: a pool whose
+`cmp` prints a summary line, one line per family and then every problem: a pool whose
 outcome differs from the model and is not allowlisted, an allowlisted
 pool whose outcome moved from the one recorded, an allowlist entry gone
 stale (its pool agrees now), one naming no pool, or one giving no
@@ -125,7 +125,8 @@ the season before, the sequel guard, the probe head, the pick by count
 when no listing is broader than the entry, and the countless order
 through the one reader that decides whether the entry names a hit.
 Pools the predicates do not compute — a broad listing a sibling could
-complete (the spanning cut), parts that could stitch, a dead listing,
+complete (the spanning cut), a bare title beside parts of it whose
+counts could together explain the entry's (stitching), a dead listing,
 a one-video entry — are tabled: `gen()` writes their expectations row
 by row from the decision tables, and `cases/doc-table.json` carries
 the table itself. `predict()` answers `NOT_MODELLED` for those shapes,

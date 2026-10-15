@@ -63,9 +63,9 @@ fn site_of(case: &Case) -> Recorded {
     });
     let mut site = Recorded::inline(&case.id, &json.to_string());
     // The recording names its dead listings as static strings, as the
-    // fixture tests write them in source. A case's arrive at run time,
-    // and the driver runs each case once per process, so leaking them
-    // is the whole cost.
+    // fixture tests write them in source. A case's dead listings arrive
+    // at run time, and the driver runs each case once per process, so
+    // leaking them is the whole cost.
     site.dead = case
         .dead
         .iter()
