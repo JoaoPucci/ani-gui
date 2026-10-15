@@ -37,7 +37,7 @@ describe('the defaults', () => {
 	it('fill the height with AniList’s banner first, controls hidden', () => {
 		expect(HERO_PREFS_DEFAULT).toEqual({ framing: 'pillar', source: 'anilist', controls: false });
 	});
-	it('are kept under a key of their own, not the experiment’s', () => {
+	it('are kept under a key of their own', () => {
 		expect(HERO_PREFS_STORAGE_KEY).toBe('ani-gui:hero-framing');
 	});
 });

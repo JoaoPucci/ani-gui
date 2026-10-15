@@ -75,7 +75,9 @@ function store(framing: string, source: string, controls = false) {
 	localStorage.setItem(HERO_PREFS_STORAGE_KEY, JSON.stringify({ framing, source, controls }));
 }
 
-/** A production build: `import.meta.env.DEV` is false. */
+/** A production build: `import.meta.env.DEV` is false. Nothing in the
+ *  hero code reads it any more; the cases that use this guard against
+ *  a gate on it coming back. */
 function production() {
 	vi.stubEnv('DEV', false);
 	vi.stubEnv('PROD', true);
