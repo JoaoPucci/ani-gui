@@ -507,9 +507,11 @@ pub fn title_match_put(
 ///   cour marker the guard could refuse it on; re-keying lets the
 ///   next resolve re-derive it.
 /// - v6: a countless entry with a year takes only a hit its year or
-///   its name vouches for. A v5 row can bind the series' key to a
+///   its name vouches for, and the probe head's evidence reaches as
+///   far as its five. A v5 row can bind the series' key to a
 ///   subtitled sequel the provider does not list, taken without a
-///   count on a year the filter only tolerated — where the subtitle
+///   count on a year the filter only tolerated, or a spinoff's key to
+///   an entry whose broad listing went uncut — where the title
 ///   carries no cour marker the guard could refuse it on; re-keying
 ///   lets the next resolve re-derive it.
 pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 6;

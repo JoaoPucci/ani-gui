@@ -50,9 +50,10 @@ pub struct AvailabilityArgs {
     pub alt_titles: Vec<String>,
     /// Kitsu's authoritative episode count — feeds the same picker
     /// disambiguation the play path uses (Stone Ocean Part 6 etc.).
-    /// Without it, the picker falls back to first-hit, which means
-    /// availability says "yes" for any show with a colliding name
-    /// even when the provider does not carry the actual show.
+    /// Without it, the pick has only the entry's year and its titles
+    /// to go on: a hit is taken when the title searched, its own year
+    /// or the entry's name vouches for it, and a pool with none is a
+    /// miss rather than a "yes" for a show with a colliding name.
     #[serde(default)]
     pub episode_count: Option<u32>,
     /// Year the show first aired, parsed from Kitsu's `start_date`.
@@ -676,11 +677,11 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
 
 /// Reuses the play path's `pick_title_and_index` so the cache
 /// reflects the SAME disambiguation play does. Returns `available:
-/// true` only when the picker lands on a specific candidate (shows
-/// with name collisions but no Kitsu episode_count to disambiguate
-/// fall back to first-hit; the picker still returns it via the
-/// chosen Option, so available stays true — but at least the
-/// signal matches what play would do at the same time).
+/// true` only when the picker lands on a specific candidate (without
+/// a Kitsu episode_count to disambiguate, only one the title
+/// searched, its own year or the entry's name vouches for — the rule
+/// play applies, so the signal matches what play would do at the
+/// same time).
 ///
 /// # Errors
 /// - Network errors from the underlying provider search propagate;

@@ -96,7 +96,7 @@ What each rule reads of a candidate, and what it decides. "Admitted" is the titl
 
 **The probe head** — which hits the pick considers at all: at most five that could be picked and, with a count, at most five more as evidence — the first five that could not be picked, up to the fifth that could — so at most ten probes per pool. The evidence reaches as far as the five: a broad listing's completing sibling listed behind the other seasons a search ranks first is read, while one behind five hits that cannot be picked is still never read. *Another entry* is an admitted hit that is the entry before this one or the season before it (above): admitted, but never picked, so it is never charged to the five:
 
-| Count known | Admitted | Raw position | Considered |
+| Count known | Admitted | Position | Considered |
 |---|---|---|---|
 | yes | yes, not another entry | any | yes — probed, until five such are taken |
 | yes | yes, another entry | before the fifth that could be picked, and among the first five that could not | yes — probed as evidence only (read for a broad listing), never picked, and not one of the five |
@@ -237,7 +237,7 @@ Not decided by this rule: what follows the divisions a title opens with is read 
 
 So a numbered spinoff ("Show Side Story 2") or a recap of W's own season ("Show Season 3 Recap") never completes a span, and a spinoff never stops one.
 
-**Choosing among candidates** — part agreement sits in every selector's order, below an exact title where the selector reads one, and the provider's order breaks only a full tie. Every selector chooses only among candidates that could be picked — a broad listing cut to the entry's episodes included, so a W that is another entry of the same show is never cut: a candidate the entry's titles refuse, another entry of the same show (the entry before this one, or the season before it), for an entry one video long a probed candidate nothing but its count vouches for (above), or without a count a hit nothing but its position vouches for (below), is in none of them — never a winner, never rescued, never a chain's lead, never the countless pick, and its probe dying blocks no winner, though it still leaves the pool unheard:
+**Choosing among candidates** — part agreement sits in every selector's order, below an exact title where the selector reads one, and the provider's order breaks only a full tie. Without a count, a hit nothing but its position vouches for is never the countless pick (below): its page is read, and nothing more. Every selector chooses only among candidates that could be picked — a broad listing cut to the entry's episodes included, so a W that is another entry of the same show is never cut: a candidate the entry's titles refuse, another entry of the same show (the entry before this one, or the season before it), or for an entry one video long a probed candidate nothing but its count vouches for (above), is in none of them — never a winner, never rescued, never a chain's lead, never the countless pick, and its probe dying blocks no winner, though it still leaves the pool unheard:
 
 | Selector | Order |
 |---|---|

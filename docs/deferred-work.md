@@ -144,6 +144,17 @@ starting it, and delete it when you find it done.
   Repro: entry ["怪獣８号"], count 12, a pool of "怪獣８号" (24), "Kaiju
   No. 8 Season 2" (12) and "Kaiju No. 8 Recap" (12), picks the recap.
 
+- **A subtitled sequel with a count but no year can play as its
+  series.** With an episode count and no premiere date, the count is
+  all that vouches for a hit, so a sequel within the count tolerance
+  of its series fits the series' listing: entry ["Show: Arc"], count
+  12, no year, a pool of "Show" (12) alone, picks "Show". Without a
+  count a hit the year does not vouch for has to be named by the
+  entry; with one, asking for the name too would refuse the real shows
+  the provider names differently from every Kitsu title, which the
+  count alone resolves today. It waits on Kitsu knowing a count but
+  not a premiere, which it rarely does.
+
 ## Testing and CI
 
 - **The CRAP ratchet can disagree between CI and local.** Coverage
