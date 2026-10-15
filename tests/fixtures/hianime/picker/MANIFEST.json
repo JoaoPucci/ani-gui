@@ -211,8 +211,8 @@
   },
   "43745.json": {
     "source": "kitsu.io /api/edge/anime/43745; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
-    "captured": "2026-10-15",
-    "sha256": "5c3eb6521509878750d1dcb954cd034dfcf6e7e0e73275eca2d7db46d164a7e8"
+    "captured": "2026-10-16",
+    "sha256": "3c664352356574799b1c151240ff28351c8765a62d4c287e7f84490480e299be"
   },
   "43907.json": {
     "source": "kitsu.io /api/edge/anime/43907; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
@@ -291,8 +291,8 @@
   },
   "45500.json": {
     "source": "kitsu.io /api/edge/anime/45500; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the premiere year graphql.anilist.co names for the entry Kitsu's mappings bridge it to, read as the app will read it where Kitsu knows no date",
-    "captured": "2026-10-15",
-    "sha256": "4669dfed54e33f777f6b3474f317ab60d6eb96e14075bb2d1f83b766cc4b43bd"
+    "captured": "2026-10-16",
+    "sha256": "e939329e11a37aeef8be032ab6ca839154a65b99dfc34e95d7d8489955a136ba"
   },
   "45556.json": {
     "source": "kitsu.io /api/edge/anime/45556; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
@@ -306,8 +306,8 @@
   },
   "45637.json": {
     "source": "kitsu.io /api/edge/anime/45637; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
-    "captured": "2026-10-15",
-    "sha256": "81011ded29b7d7f787dc15e50c20ead52dc695b1da8622d23c9d355391d9ff50"
+    "captured": "2026-10-16",
+    "sha256": "8ce3d1ae92585f18f79e60d3d84d004e7a1542fa618da3a358fd2e02cfa8dbbc"
   },
   "45857.json": {
     "source": "kitsu.io /api/edge/anime/45857; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
