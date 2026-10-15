@@ -144,21 +144,16 @@ starting it, and delete it when you find it done.
   Repro: entry ["怪獣８号"], count 12, a pool of "怪獣８号" (24), "Kaiju
   No. 8 Season 2" (12) and "Kaiju No. 8 Recap" (12), picks the recap.
 
-- **A countless entry with a year still takes a hit its year only
-  tolerates.** Without a count, an entry with no year takes only a hit
-  named as it, but one with a year keeps the provider's order among
-  hits the year did not disprove: a hit one year off (the December
-  allowance) or with no year on its page. So a subtitled sequel the
-  provider does not list yet, airing the year after its series, still
-  plays as the series. Repro: entry ["Show: Arc"], no count, year 2016,
-  a pool of "Show" (2015, 12) alone, picks "Show". It waited because
-  that fallback exists for real shows: an airing entry whose listing
-  page names no year and goes by a name none of Kitsu's titles carry
-  would be refused if names had to vouch there too, and how often
-  hianime's pages lack a year has not been measured. The same gap with
-  a count and no year — a sequel within the count tolerance of its
-  series — needs Kitsu to know a count but not a premiere, which it
-  rarely does.
+- **A subtitled sequel with a count but no year can play as its
+  series.** With an episode count and no premiere date, the count is
+  all that vouches for a hit, so a sequel within the count tolerance
+  of its series fits the series' listing: entry ["Show: Arc"], count
+  12, no year, a pool of "Show" (12) alone, picks "Show". Without a
+  count a hit the year does not vouch for has to be named by the
+  entry; with one, asking for the name too would refuse the real shows
+  the provider names differently from every Kitsu title, which the
+  count alone resolves today. It waits on Kitsu knowing a count but
+  not a premiere, which it rarely does.
 
 ## Testing and CI
 

@@ -145,7 +145,12 @@ use crate::proxy::MediaKind;
 // video only one named as the entry or from its year. A v16 row can
 // hold another show's stream under the entry's key (Dragon Ball
 // Super's episode 1 cached as Ginga Patrol's); bumping re-resolves.
-const SCHEMA: &str = "v17";
+// v18: a countless entry with a year takes only a hit its year or its
+// name vouches for, and the probe head's evidence reaches as far as
+// its five. A v17 row can hold the series' stream under a subtitled
+// sequel's key — taken without a count on a year the filter only
+// tolerated — or an uncut pool's pick; bumping re-resolves.
+const SCHEMA: &str = "v18";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

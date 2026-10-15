@@ -506,7 +506,15 @@ pub fn title_match_put(
 ///   for an entry with no count or year — where the title carries no
 ///   cour marker the guard could refuse it on; re-keying lets the
 ///   next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 5;
+/// - v6: a countless entry with a year takes only a hit its year or
+///   its name vouches for, and the probe head's evidence reaches as
+///   far as its five. A v5 row can bind the series' key to a
+///   subtitled sequel the provider does not list, taken without a
+///   count on a year the filter only tolerated, or a spinoff's key to
+///   an entry whose broad listing went uncut — where the title
+///   carries no cour marker the guard could refuse it on; re-keying
+///   lets the next resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 6;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
@@ -1619,6 +1627,25 @@ mod tests {
             &state.cache_pool,
             &format!("allmanga2kitsu:v4:{key}"),
             "50496",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
+    fn a_mapping_stamped_before_the_countless_year_vouched_is_not_read() {
+        // A subtitled sequel with a year but no count was resolved to
+        // the series its searches answer with, a hit its year only
+        // tolerated, and a play stamps the picked show's key with the
+        // entry asked for: the series' key bound to the sequel, under
+        // a title the cross-cour guard has no cour to refuse on.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:show-1";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v5:{key}"),
+            "50600",
             60,
         )
         .expect("put");

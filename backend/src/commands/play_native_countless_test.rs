@@ -1,42 +1,44 @@
-//! Property coverage for the countless pick: what the entry's year
-//! says about a pool, and what an entry with no year may take.
+//! Property coverage for the countless pick: what vouches for a hit
+//! when no count can — the title searched, the hit's own year, or the
+//! entry's name for it — whatever the entry's year said of the rest of
+//! the pool.
 
-use super::{pick_without_count, YearEvidence};
-use crate::commands::play_native_title_grammar::normalized;
-use crate::commands::play_native_title_marker::EntryTitles;
+use crate::commands::play_native::{pick_candidate_titled, PickedShow};
 use crate::scraper::provider::BrowseHit;
 use crate::scraper::table_provider::TableProvider;
 use proptest::prelude::*;
 
 const ENTRY: [&str; 2] = ["Show 2nd Season", "Show Zoku"];
+const YEAR: u32 = 2021;
 
-/// Hit titles with whether the entry names them: the entry's own
-/// titles, a division written otherwise ("Show Season 2"), and titles
-/// it does not name — the season before, another show, a later season,
-/// and a title carrying a subtitle the entry does not.
-const TITLES: [(&str, bool); 8] = [
+/// Hit titles the pick considers, with whether the entry names them:
+/// the entry's own titles, a division written otherwise ("Show Season
+/// 2"), and titles it does not name — another show, a title carrying a
+/// subtitle the entry does not, and an unrelated one. Every title here
+/// is admitted and is not another entry of the same show, so each
+/// reaches the pick.
+const TITLES: [(&str, bool); 6] = [
     ("Show 2nd Season", true),
     ("Show Zoku", true),
     ("Show Season 2", true),
-    ("Show", false),
     ("Other Show", false),
-    ("Show Season 3", false),
     ("Show 2nd Season: Extra Arc", false),
     ("Unrelated Thing", false),
 ];
 
-fn evidence(year: Option<u32>, excluded_any: bool) -> YearEvidence {
-    YearEvidence::of(year, excluded_any)
+/// What a hit's entry page names as its year: the entry's own, a year
+/// off either way (the December allowance), no year, or one the year
+/// filter excludes.
+const PAGE_YEARS: [Option<u32>; 5] = [Some(YEAR), Some(YEAR - 1), Some(YEAR + 1), None, Some(1999)];
+
+fn pool() -> impl Strategy<Value = Vec<(usize, usize)>> {
+    proptest::collection::vec((0..TITLES.len(), 0..PAGE_YEARS.len()), 1..6)
 }
 
-fn pool() -> impl Strategy<Value = Vec<usize>> {
-    proptest::collection::vec(0..TITLES.len(), 1..6)
-}
-
-fn hits(pool: &[usize]) -> Vec<BrowseHit> {
+fn hits(pool: &[(usize, usize)]) -> Vec<BrowseHit> {
     pool.iter()
         .enumerate()
-        .map(|(i, t)| BrowseHit {
+        .map(|(i, (t, _))| BrowseHit {
             slug: format!("hit-{}", i + 1),
             title: TITLES[*t].0.to_string(),
             kind: None,
@@ -44,51 +46,65 @@ fn hits(pool: &[usize]) -> Vec<BrowseHit> {
         .collect()
 }
 
+/// The countless pick over `pool`, searched as `ENTRY[searched]`, for
+/// an entry premiering in `entry_year`.
 fn pick(
-    hits: &[BrowseHit],
-    needle: &str,
-    year: YearEvidence,
-) -> crate::error::Result<super::PickedShow> {
-    pick_confirmed(hits, &vec![false; hits.len()], needle, year)
-}
-
-/// [`pick`] with each hit's own year matched or not.
-fn pick_confirmed(
-    hits: &[BrowseHit],
-    confirmed: &[bool],
-    needle: &str,
-    year: YearEvidence,
-) -> crate::error::Result<super::PickedShow> {
-    let client = TableProvider::counted(
-        &(1..=hits.len() as u64)
-            .map(|id| (id, 1))
-            .collect::<Vec<_>>(),
-    );
-    let head: Vec<(&BrowseHit, bool)> = hits.iter().zip(confirmed).map(|(h, c)| (h, *c)).collect();
+    pool: &[(usize, usize)],
+    searched: usize,
+    entry_year: Option<u32>,
+) -> crate::error::Result<PickedShow> {
+    let shows: Vec<(u64, u32, Option<u32>)> = pool
+        .iter()
+        .enumerate()
+        .map(|(i, (_, y))| (i as u64 + 1, 1, PAGE_YEARS[*y]))
+        .collect();
+    let client = TableProvider::counted_with_years(&shows);
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("runtime")
-        .block_on(pick_without_count(
+        .block_on(pick_candidate_titled(
             &client,
-            &head,
-            &normalized(needle),
-            year,
-            EntryTitles::new(&ENTRY),
+            &hits(pool),
+            None,
+            ENTRY[searched],
+            &ENTRY,
+            entry_year,
+            None,
         ))
 }
 
+/// Whether the year filter keeps a hit whose page names `year`.
+fn survives(year: Option<u32>) -> bool {
+    year.is_none_or(|y| y.abs_diff(YEAR) <= 1)
+}
+
+/// Whether something vouches for a hit: it is the title searched, its
+/// own year is the entry's, or the entry names it.
+fn vouched(title: usize, year: Option<u32>, searched: usize) -> bool {
+    TITLES[title].0 == ENTRY[searched] || year == Some(YEAR) || TITLES[title].1
+}
+
 proptest! {
-    /// The evidence is unknown exactly when the entry has no year,
-    /// and otherwise says whether the year disproved any hit.
+    /// With a year, a hit is taken only when something vouches for it
+    /// — the title searched, its own year, or the entry's name — and
+    /// whenever the year filter leaves such a hit, one is taken.
+    /// Whether the year disproved some other hit changes nothing.
     #[test]
-    fn the_year_s_evidence_reads_the_year_and_the_filter(year in proptest::option::of(1960u32..2030), excluded in any::<bool>()) {
-        let want = match (year, excluded) {
-            (None, _) => YearEvidence::Unknown,
-            (Some(_), true) => YearEvidence::DisprovedSome,
-            (Some(_), false) => YearEvidence::DisprovedNone,
-        };
-        prop_assert_eq!(evidence(year, excluded), want);
+    fn a_hit_is_taken_only_when_something_vouches_for_it(pool in pool(), searched in 0..ENTRY.len()) {
+        let any = pool.iter().any(|(t, y)| survives(PAGE_YEARS[*y]) && vouched(*t, PAGE_YEARS[*y], searched));
+        match pick(&pool, searched, Some(YEAR)) {
+            Ok(p) => {
+                let i = p.hit.slug.strip_prefix("hit-").and_then(|n| n.parse::<usize>().ok()).expect("a pool slug") - 1;
+                let (t, y) = pool[i];
+                prop_assert!(survives(PAGE_YEARS[y]), "took {} from {:?}", p.hit.title, PAGE_YEARS[y]);
+                prop_assert!(vouched(t, PAGE_YEARS[y], searched), "took {} on position", p.hit.title);
+            }
+            Err(e) => {
+                prop_assert!(!any, "refused a pool holding a vouched hit: {e:?}");
+                prop_assert!(matches!(e, crate::error::AniError::NoResults), "{e:?}");
+            }
+        }
     }
 
     /// With no year, the pick takes a hit only when the entry names
@@ -96,9 +112,8 @@ proptest! {
     /// it — whichever of the entry's titles was searched.
     #[test]
     fn an_entry_with_no_year_takes_only_a_hit_it_names(pool in pool(), searched in 0..ENTRY.len()) {
-        let hits = hits(&pool);
-        let any_named = pool.iter().any(|t| TITLES[*t].1);
-        match pick(&hits, ENTRY[searched], YearEvidence::Unknown) {
+        let any_named = pool.iter().any(|(t, _)| TITLES[*t].1);
+        match pick(&pool, searched, None) {
             Ok(p) => {
                 let t = TITLES.iter().find(|(t, _)| *t == p.hit.title).expect("a pool title");
                 prop_assert!(t.1, "took {} which the entry does not name", p.hit.title);
@@ -110,36 +125,14 @@ proptest! {
         }
     }
 
-    /// A year that disproved nothing keeps the provider's order: some
-    /// hit is always taken, the searched title first when it is there.
+    /// The title searched comes first: wherever the pool holds it with
+    /// a year the filter keeps, it is the pick, whatever else is there.
     #[test]
-    fn a_year_that_disproved_nothing_keeps_the_fallback(pool in pool(), searched in 0..ENTRY.len()) {
-        let hits = hits(&pool);
-        let p = pick(&hits, ENTRY[searched], YearEvidence::DisprovedNone).expect("a hit is taken");
-        if hits.iter().any(|h| h.title == ENTRY[searched]) {
+    fn the_searched_title_is_taken_first(pool in pool(), searched in 0..ENTRY.len()) {
+        let exact = pool.iter().any(|(t, y)| TITLES[*t].0 == ENTRY[searched] && survives(PAGE_YEARS[*y]));
+        if exact {
+            let p = pick(&pool, searched, Some(YEAR)).expect("the searched title is taken");
             prop_assert_eq!(p.hit.title.as_str(), ENTRY[searched]);
-        }
-    }
-
-    /// When the year disproved part of the pool, a hit is taken only
-    /// when it is the title searched or its own year matched — never
-    /// on the provider's order — and one such is always taken.
-    #[test]
-    fn a_year_that_disproved_some_takes_only_the_searched_title_or_a_matched_year(
-        pool in pool(),
-        searched in 0..ENTRY.len(),
-        confirmed in proptest::collection::vec(any::<bool>(), 6),
-    ) {
-        let hits = hits(&pool);
-        let confirmed = &confirmed[..hits.len()];
-        let vouched = |h: &BrowseHit, c: bool| c || h.title == ENTRY[searched];
-        let any = hits.iter().zip(confirmed).any(|(h, c)| vouched(h, *c));
-        match pick_confirmed(&hits, confirmed, ENTRY[searched], YearEvidence::DisprovedSome) {
-            Ok(p) => {
-                let i = hits.iter().position(|h| h.slug == p.hit.slug).expect("a pool hit");
-                prop_assert!(vouched(&hits[i], confirmed[i]), "took {} on position", p.hit.title);
-            }
-            Err(_) => prop_assert!(!any, "refused a pool holding a vouched hit"),
         }
     }
 }

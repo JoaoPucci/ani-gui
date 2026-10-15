@@ -15,7 +15,7 @@ use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
 use super::play_native_choice::{entry_rank, select_winner, strongest_dead};
-use super::play_native_countless::{pick_without_count, YearEvidence};
+use super::play_native_countless::pick_without_count;
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
@@ -30,10 +30,10 @@ pub use titled::pick_candidate_titled;
 
 /// How many browse hits the entry's titles admit get an episodes
 /// probe. Beyond this the match was not a match; the request budget
-/// is better spent on the next alias. With a count, the refused hits
-/// among the first this many are probed besides, as evidence about
-/// the pool — at most twice this many probes per pool (see
-/// `play_native_title_verdict::probe_head`).
+/// is better spent on the next alias. With a count, the first this
+/// many hits that cannot be picked, before the fifth that can, are
+/// probed besides, as evidence about the pool — at most twice this
+/// many probes per pool (see `play_native_title_verdict::probe_head`).
 pub const MAX_PROBED_CANDIDATES: usize = 5;
 
 /// A picked show: the hit plus the episode list the probe already
@@ -71,9 +71,10 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// Pick the show a query meant from browse `hits`, using Kitsu's
 /// `expected` episode count and premiere `year` when known.
 ///
-/// - Considers at most [`MAX_PROBED_CANDIDATES`] hits the entry's
-///   titles admit — plus, with a count, the refused ones among the
-///   first [`MAX_PROBED_CANDIDATES`] as evidence about the pool.
+/// - Considers at most [`MAX_PROBED_CANDIDATES`] hits that could be
+///   picked — plus, with a count, the first [`MAX_PROBED_CANDIDATES`]
+///   hits that cannot be, before the fifth that can, as evidence
+///   about the pool.
 /// - With `year = Some(y)`: candidates whose detail page names a
 ///   premiere year more than one off `y` are excluded before any
 ///   scoring — the identity signal that separates cour and
@@ -97,10 +98,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// - With `expected = None`: an exact title match wins; else a
 ///   candidate whose part agrees with the entry's comes before one
 ///   naming another part, and within each a matched year before the
-///   rest, the provider's order breaking ties — only a year-matched
-///   candidate when the year disproved part of the pool, and only a
-///   hit the entry names when the entry has no year (see
-///   `pick_without_count`).
+///   rest, the provider's order breaking ties — among hits something
+///   vouches for: the title searched, a matched year, or the entry's
+///   name for the hit (see `pick_without_count`).
 /// - A candidate the searched title names a later part of ("X" when
 ///   asked for "X Season 2") is the season before, and never picked;
 ///   [`pick_candidate_titled`] reads every title the entry goes by.
