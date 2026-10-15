@@ -477,7 +477,9 @@ def pickable(titles, cand):
 
 # --- "One reading of a title": the reader the entry names a hit through
 
-_WORD = re.compile(r"\d+(?:\+\d+)+|[0-9a-z]+|[" + JP + r"0-9]+")
+_WORD = re.compile(
+    r"\d+(?:\+\d+)+|[0-9a-z]+|[" + JP + r"]+(?:[0-9]+[" + JP + r"]+)*(?:[0-9]{1,2}(?![0-9]))?"
+)
 _JP_DIV = re.compile(r"第([0-9]+|[〇零一二三四五六七八九十百]+)(期|部|クール)")
 _SPAN = re.compile(r"^(\d+)(?:\+(\d+))+$")
 
@@ -487,7 +489,8 @@ def _tokenize(n):
     A Japanese run keeps the digits inside it and splits into the word,
     each 第N期 glued to it, and a one- or two-digit number glued to its
     end ("ショー第2期第2部" → ショー, 第2期, 第2部; "ショー２" → ショー, 2;
-    "怪獣８号" stays one word)."""
+    "怪獣８号" stays one word); a longer number glued to its end is a word
+    of its own, as it is written apart ("ショー200" → ショー, 200)."""
     out = []
     for m in _WORD.finditer(n):
         w = m.group(0)
@@ -802,11 +805,13 @@ def predict(case):
             # a broad listing a sibling could complete: the spanning cut
             if w[2] > count and admitted(titles, w[1]) and kin:
                 return NOT_MODELLED
-            # a bare title beside parts of it — the title followed by one
-            # short part marker — whose counts could together explain the
-            # entry's, within the tolerance or short of it: stitching
-            parts = [r for r in rows if r is not w and part_after(r[1], _word_ordinals(w[1])) is not None]
-            if parts and w[2] + min(r[2] for r in parts) <= count + tol:
+            # an admitted bare title beside later parts of it — the title
+            # followed by one short part marker — whose counts could
+            # together explain the entry's, within the tolerance or short
+            # of it: stitching. A refused lead heads no chain, and a first
+            # part completes none.
+            parts = [r for r in rows if r is not w and part_after(r[1], _word_ordinals(w[1])) not in (None, 1)]
+            if admitted(titles, w[1]) and parts and w[2] + min(r[2] for r in parts) <= count + tol:
                 return NOT_MODELLED
     for searched in titles:
         if count is None:
