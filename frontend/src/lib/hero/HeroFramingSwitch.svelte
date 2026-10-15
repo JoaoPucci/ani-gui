@@ -109,7 +109,7 @@
 	button {
 		padding: 6px var(--space-2);
 		border: 0;
-		/* Concentric with the pill's radius inside its 3px pad. */
+		/* The 4px the buttons had, written against the pill's radius. */
 		border-radius: calc(var(--radius-control) - 2px);
 		background: transparent;
 		color: var(--bone-300);
