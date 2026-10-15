@@ -1,6 +1,8 @@
 //! The transient verdict of an exhausted alias walk — split from
 //! `play_native_resolve` so each file stays inside the complexity
-//! ratchet's per-file bar.
+//! ratchet's per-file bar, and shared with the pick walk the
+//! availability probes and the range download's start resolve through
+//! (`play_native_walk`).
 //!
 //! A walk meets failures it does not stop on: a search that died or
 //! could not be read, a pick whose probes died, an episode chain that
@@ -13,8 +15,9 @@
 //! blame is the one the other search got through on; within a stage,
 //! the one that says most — a status a host answered over a page the
 //! client could not read over a connection that dropped — and of
-//! equals the first. The walk never substitutes one failure for
-//! another: what it met is what it reports.
+//! equals the first. Neither walk substitutes one failure for
+//! another: what it met is what it reports, so the connection is
+//! blamed when a transport failure is the furthest a walk got.
 
 use crate::error::AniError;
 use crate::scraper::provider::Provider;

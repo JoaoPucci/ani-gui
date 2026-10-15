@@ -7,13 +7,16 @@ use crate::scraper::provider::Provider;
 
 use super::play_native::{pick_candidate_titled, PickedShow};
 use super::play_native_resolve::NativeError;
+use super::play_native_transient::{attempt_at, Transients, WalkStage};
 
-/// The walk's pick half, shared with the availability probes: search
-/// canonical then fallbacks, pick per pool, and classify the miss —
-/// the same alias-recovery, walk-stopping, and clean-miss semantics
-/// as [`resolve_native`], without the episode chain. Gate admission
-/// is the transport's job here exactly as there: callers pass a
-/// client whose fetch is gated.
+/// The walk's pick half, shared with the availability probes and the
+/// range download's start: search canonical then fallbacks, pick per
+/// pool, and classify the miss — the same alias-recovery,
+/// walk-stopping, clean-miss and transient-verdict semantics as
+/// [`resolve_native`], without the episode chain: a transient failure
+/// is reported as what it was ([`Transients`]), never substituted.
+/// Gate admission is the transport's job here exactly as there:
+/// callers pass a client whose fetch is gated.
 ///
 /// # Errors
 /// [`NativeError`] with `clean_miss` set only for the
@@ -29,14 +32,11 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
     let entry_titles: Vec<&str> = std::iter::once(title)
         .chain(alt_titles.iter().map(String::as_str))
         .collect();
-    let mut any_search_succeeded = false;
-    let mut any_search_errored = false;
+    let mut transients = Transients::default();
     let mut any_answered_dead_end = false;
-    let mut last_failure_at: Option<tokio::time::Instant> = None;
     for t in std::iter::once(title).chain(alt_titles.iter().map(String::as_str)) {
         match client.search(t).await {
             Ok(hits) => {
-                any_search_succeeded = true;
                 if hits.is_empty() {
                     continue;
                 }
@@ -67,13 +67,8 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                     Err(AniError::Upstream { .. }) => {
                         any_answered_dead_end = true;
                     }
-                    Err(_) => {
-                        any_search_errored = true;
-                        last_failure_at = Some(
-                            client
-                                .last_attempt_at()
-                                .unwrap_or_else(tokio::time::Instant::now),
-                        );
+                    Err(e) => {
+                        transients.note(WalkStage::Pick, e, attempt_at(client));
                     }
                 }
             }
@@ -91,22 +86,13 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                     failed_at: None,
                 });
             }
-            Err(_) => {
-                any_search_errored = true;
-                last_failure_at = Some(
-                    client
-                        .last_attempt_at()
-                        .unwrap_or_else(tokio::time::Instant::now),
-                );
+            Err(e) => {
+                transients.note(WalkStage::Search, e, attempt_at(client));
             }
         }
     }
-    if !any_search_succeeded || any_search_errored {
-        return Err(NativeError {
-            error: AniError::Network,
-            clean_miss: false,
-            failed_at: last_failure_at,
-        });
+    if let Some(ne) = transients.verdict() {
+        return Err(ne);
     }
     if any_answered_dead_end {
         return Err(NativeError {
