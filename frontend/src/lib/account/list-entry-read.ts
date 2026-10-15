@@ -35,14 +35,16 @@ export interface ReadDeps {
  * What the list control says beside itself when a read ends: the
  * tracker's rate limit, in the backend envelope's words — "busy, try
  * again in about N s" when it named a wait — or the generic
- * rate-limit sentence when the body carried no envelope to read.
- * Nothing for any other outcome: a plain failure disables the control
- * as before, an answer needs no caption.
+ * rate-limit sentence when the body carried no envelope to read. The
+ * status already said 429; only the backend's own `rate_limited`
+ * envelope can say more than that, and nothing may say less. Nothing
+ * for any other outcome: a plain failure disables the control as
+ * before, an answer needs no caption.
  */
 export function readFailureNotice(outcome: ReadOutcome): string | null {
 	if (outcome.kind !== 'failed' || !outcome.last.rateLimited) return null;
 	const { envelope } = outcome.last;
-	return envelope === null ? m.detail_list_rate_limited() : describeError(envelope);
+	return envelope?.kind === 'rate_limited' ? describeError(envelope) : m.detail_list_rate_limited();
 }
 
 /** Run the read to an outcome, retrying on the plan in `read-retry`. */
