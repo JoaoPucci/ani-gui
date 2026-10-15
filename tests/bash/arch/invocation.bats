@@ -17,7 +17,6 @@ setup() {
     ARCH_DIR="$REPO_ROOT/tests/arch"
     WORKFLOW="$REPO_ROOT/.github/workflows/arch-lint.yml"
     BASH_WORKFLOW="$REPO_ROOT/.github/workflows/bash.yml"
-    RUST_WORKFLOW="$REPO_ROOT/.github/workflows/rust.yml"
 }
 
 # Run a script by relative path from a directory, passing both as
@@ -89,20 +88,6 @@ relevance_pattern() {
     _governing=$(grep -F 'if grep -qE' "$1" | grep -F '<<<"$changed"' || true)
     [ "$(printf '%s\n' "$_governing" | grep -c .)" -eq 1 ] || return 1
     printf '%s\n' "$_governing" | sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p"
-}
-
-# A workflow whose filter sets several outputs carries one governing
-# line per output. Each is read by the output it sets on the line
-# right after it — `if grep … <<<"$changed"; then` followed by
-# `echo "<output>=true"` — so the pattern for one output is never
-# mistaken for another's, and a workflow with one output reads the
-# same as through relevance_pattern.
-relevance_pattern_for() {
-    awk -v out="$2" '
-        /if grep -qE/ && /<<<"\$changed"/ { governing = $0; next }
-        governing != "" && index($0, "echo \"" out "=true\"") { print governing; exit }
-        { governing = "" }
-    ' "$1" | sed -n "s/.*grep -qE '\(\^(.*)\)'.*/\1/p"
 }
 
 # The exclusion extraction and its refusal, as functions so a fixture
@@ -710,38 +695,6 @@ FLAP
     done
 }
 
-@test "the cargo test job runs when the picker golden changes" {
-    # `recorded_fixtures_pick_as_the_golden_dump_records` reads
-    # tests/picker-oracle/fixtures-golden.json, which makes the golden
-    # an input of the `cargo test` job: a change touching only it must
-    # select that job, or a golden edited to match nothing lands with
-    # the test that reads it skipped as irrelevant.
-    pattern=$(relevance_pattern_for "$RUST_WORKFLOW" relevant)
-    [ -n "$pattern" ]
-    run grep -qE "^($pattern)" <<<'tests/picker-oracle/fixtures-golden.json'
-    [ "$status" -eq 0 ]
-}
-
-@test "the picker oracle job runs when any of its inputs changes" {
-    # The oracle reads the picker, its recorded pools, its own model and
-    # cases, the document the model transcribes and the workflow that
-    # runs it; a change touching only one of them must select the job.
-    pattern=$(relevance_pattern_for "$RUST_WORKFLOW" picker)
-    [ -n "$pattern" ]
-    for input in backend/src/commands/play_native_walk.rs \
-        tests/fixtures/hianime/picker/11.json \
-        tests/picker-oracle/oracle.py \
-        tests/picker-oracle/cases/doc-table.json \
-        docs/title-resolution.md \
-        .github/workflows/rust.yml; do
-        grep -qE "^($pattern)" <<<"$input" || {
-            echo "rust.yml's picker filter does not select on $input"
-            return 1
-        }
-    done
-    run ! grep -qE "^($pattern)" <<<'frontend/src/routes/+page.svelte'
-}
-
 @test "the bats job runs when the snapshot generator changes" {
     # workflows_match_snapshot executes tools/workflow-snapshot.py,
     # which makes the generator a subject under test: a change touching
@@ -751,6 +704,18 @@ FLAP
     pattern=$(relevance_pattern "$BASH_WORKFLOW")
     [ -n "$pattern" ]
     run grep -qE "^($pattern)" <<<'tools/workflow-snapshot.py'
+    [ "$status" -eq 0 ]
+}
+
+@test "the bats job runs when the rust workflow filter changes" {
+    # rust_workflow_filter.bats executes tools/rust-workflow-filter.sh,
+    # which makes the script a subject under test: a change touching
+    # only it must select the bats job, or a filter that selects the
+    # wrong jobs lands with the cases that run it skipped as
+    # irrelevant.
+    pattern=$(relevance_pattern "$BASH_WORKFLOW")
+    [ -n "$pattern" ]
+    run grep -qE "^($pattern)" <<<'tools/rust-workflow-filter.sh'
     [ "$status" -eq 0 ]
 }
 
