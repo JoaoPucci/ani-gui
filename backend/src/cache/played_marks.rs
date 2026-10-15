@@ -15,7 +15,9 @@
 //! mapping is read. The mark takes the mapping's moment and lifetime,
 //! and expires with it. Each later re-key — v4 when the entry's titles
 //! came to rule the pick, v5 when names came to vouch for a countless
-//! or single-video pick — retires the mappings before it: their marks
+//! or single-video pick, v6 when a countless entry's year stopped
+//! vouching for a hit it only tolerated — retires the mappings before
+//! it: their marks
 //! then name rows nothing reads, until they expire, and the next play
 //! of a show stores a fresh mapping and mark.
 //!
