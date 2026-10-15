@@ -1,0 +1,77 @@
+{
+ "kitsu": {
+  "id": "50237",
+  "name": "Yi Ren Zhi Xia 6th Season",
+  "canonical": "Yi Ren Zhi Xia 6th Season",
+  "alt_titles": ["The Outcast 6th Season", "一人之下6", "Hitori No Shita: The Outcast 6th Season"],
+  "episode_count": 26,
+  "year": null,
+  "anilist_year": 2026,
+  "subtype": "ONA"
+ },
+ "searches": {
+  "Yi Ren Zhi Xia 6th Season": [
+    ["the-outcast-season-5-2975", "The Outcast 5th Season", "ONA"],
+    ["yi-ren-zhi-xia-fanwai-pian-5201", "Yi Ren Zhi Xia: Fanwai Pian", "ONA"],
+    ["the-outcast-season-6-3813", "The Outcast 6", "ONA"],
+    ["the-outcast-movie-the-rusted-blade-resurfaces-10258", "The Outcast Movie: The Rusted Blade Resurfaces", "ONA"]
+  ]
+ },
+ "episodes": {
+  "the-outcast-movie-the-rusted-blade-resurfaces-10258": [
+    [147460, 1, null]
+  ],
+  "the-outcast-season-5-2975": [
+    [39996, 1, null],
+    [39997, 2, null],
+    [39998, 3, null],
+    [39999, 4, null],
+    [40000, 5, null],
+    [40001, 6, null],
+    [40002, 7, null],
+    [40003, 8, null],
+    [40004, 9, null],
+    [40005, 10, null],
+    [40006, 11, null],
+    [40007, 12, null]
+  ],
+  "the-outcast-season-6-3813": [
+    [49512, 1, null],
+    [49513, 2, null],
+    [49514, 3, null],
+    [49515, 4, null],
+    [49516, 5, null],
+    [49517, 6, null],
+    [49518, 7, null],
+    [49519, 8, null],
+    [49520, 9, null],
+    [49521, 10, null],
+    [49522, 11, null],
+    [49523, 12, null],
+    [49524, 13, null],
+    [49525, 14, null],
+    [49526, 15, null],
+    [49527, 16, null],
+    [49528, 17, null],
+    [49529, 18, null],
+    [49530, 19, null],
+    [49531, 20, null],
+    [49532, 21, null],
+    [49533, 22, null],
+    [49534, 23, null],
+    [49535, 24, null],
+    [49536, 25, null],
+    [49537, 26, null]
+  ],
+  "yi-ren-zhi-xia-fanwai-pian-5201": [
+    [68280, 1, null],
+    [68281, 2, null]
+  ]
+ },
+ "years": {
+  "the-outcast-movie-the-rusted-blade-resurfaces-10258": 2024,
+  "the-outcast-season-5-2975": 2022,
+  "the-outcast-season-6-3813": 2026,
+  "yi-ren-zhi-xia-fanwai-pian-5201": 2018
+ }
+}

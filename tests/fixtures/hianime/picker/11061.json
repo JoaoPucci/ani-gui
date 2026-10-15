@@ -1,0 +1,22 @@
+{
+ "kitsu": {
+  "id": "11061",
+  "name": "Jidou Bungaku Library",
+  "canonical": "Jidou Bungaku Library",
+  "alt_titles": [],
+  "episode_count": 6,
+  "year": null,
+  "subtype": "OVA"
+ },
+ "searches": {
+  "Jidou Bungaku Library": [
+    ["reborn-as-a-vending-machine-i-now-wander-the-dungeon-season-3-35", "Reborn as a Vending Machine, I Now Wander the Dungeon Season 3", "TV"],
+    ["violet-evergarden-eternity-and-the-auto-memory-doll-1986", "Violet Evergarden: Eternity and the Auto Memory Doll", "MOVIE"],
+    ["reborn-as-a-vending-machine-i-now-wander-the-dungeon-3885", "Reborn as a Vending Machine, Now I Wander the Dungeon", "TV"],
+    ["reborn-as-a-vending-machine-i-now-wander-the-dungeon-season-2-306", "Reborn as a Vending Machine, I Now Wander the Dungeon Season 2", "TV"]
+  ]
+ },
+ "episodes": {
+ },
+ "years": {}
+}
