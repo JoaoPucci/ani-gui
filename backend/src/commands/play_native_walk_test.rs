@@ -125,6 +125,65 @@ async fn the_pick_walk_aggregates_transport_deaths_with_a_stamp() {
     );
 }
 
+/// Every alias's search answered a page the client could not read:
+/// the site answered, so the verdict is the parse failure under its
+/// own name — stamped like any transient verdict — and never the
+/// transport failure, whose copy tells the user to check a connection
+/// the site answered on. The range download's start resolves through
+/// this walk, so its dock row was that copy until this held here as
+/// it does in the resolve walk.
+#[tokio::test]
+async fn the_pick_walk_reports_an_unreadable_search_as_itself_not_as_the_connection() {
+    let stamp = tokio::time::Instant::now();
+    let unreadable = || {
+        Answer::fails(|| AniError::ParseFailed {
+            detail: "the page is not the search shape".into(),
+        })
+    };
+    let provider = TableProvider::new()
+        .hits("title", unreadable())
+        .hits("alias", unreadable())
+        .stamped(stamp);
+    let ne = walk(&provider, "title", &["alias".to_string()], None)
+        .await
+        .expect_err("nothing was read");
+    assert!(
+        matches!(ne.error, AniError::ParseFailed { .. }),
+        "the failure met, under its own name: {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
+    assert_eq!(ne.failed_at, Some(stamp));
+}
+
+/// Of a search that died and a search the client could not read, the
+/// one that says the site answered is the verdict, whichever alias
+/// came first — the same rule the resolve walk applies.
+#[tokio::test]
+async fn the_pick_walk_keeps_the_failure_that_says_most_across_aliases() {
+    let unreadable = || {
+        Answer::fails(|| AniError::ParseFailed {
+            detail: "the page is not the search shape".into(),
+        })
+    };
+    for (first, second) in [
+        (Answer::fails(|| AniError::Network), unreadable()),
+        (unreadable(), Answer::fails(|| AniError::Network)),
+    ] {
+        let provider = TableProvider::new()
+            .hits("title", first)
+            .hits("alias", second);
+        let ne = walk(&provider, "title", &["alias".to_string()], None)
+            .await
+            .expect_err("nothing was read");
+        assert!(
+            matches!(ne.error, AniError::ParseFailed { .. }),
+            "the unreadable answer outranks the dropped connection: {:?}",
+            ne.error
+        );
+    }
+}
+
 #[tokio::test]
 async fn the_pick_walk_stops_typed_on_a_gate_refusal() {
     // The gate's refusal is its OWN answer: the walk surfaces it
