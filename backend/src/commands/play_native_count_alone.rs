@@ -56,7 +56,25 @@ pub(super) fn unvouched_counted(
     if !count_stands_alone(expected, year) {
         return false;
     }
-    let tolerance = ep_count_threshold(expected);
+    score_out_unvouched(probed, ep_count_threshold(expected), needle, entry)
+}
+
+/// Scores [`UNFIT`] every probed candidate nothing but its count
+/// vouches for: not the title searched, not named as one of the
+/// entry's titles ([`EntryTitles::names`]), and without its own year
+/// matching the entry's. Candidates already out are left as they are,
+/// and every candidate keeps its place, listing and year. Shared by
+/// the single-video rule and the count-alone rule, which read the pool
+/// the same way and differ only in which entries they read it for.
+///
+/// Returns whether a candidate within `tolerance` — one the count
+/// alone would have accepted — was scored out.
+pub(super) fn score_out_unvouched(
+    probed: &mut [Probed<'_>],
+    tolerance: u32,
+    needle: &str,
+    entry: EntryTitles<'_>,
+) -> bool {
     let mut refused_a_fit = false;
     for (h, _, distance, confirmed) in probed.iter_mut() {
         let vouched = *confirmed || normalized(&h.title) == needle || entry.names(&h.title);

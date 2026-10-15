@@ -8,11 +8,12 @@
 //! crossover that carries the franchise's name among other shows'.
 
 use super::play_native::ep_count_threshold;
-use super::play_native_title_grammar::normalized;
+use super::play_native_count_alone::score_out_unvouched;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_wide_listing::{Probed, UNFIT};
+use super::play_native_wide_listing::Probed;
 
-/// For an entry one video long, scores [`UNFIT`] every probed
+/// For an entry one video long, scores
+/// [`UNFIT`](super::play_native_wide_listing::UNFIT) every probed
 /// candidate that carries no identity beyond its count: not the title
 /// searched, not named as one of the entry's titles
 /// ([`EntryTitles::names`]), and without its own year matching the
@@ -32,17 +33,7 @@ pub(super) fn unvouched_single_videos(
     if expected != 1 {
         return false;
     }
-    let tolerance = ep_count_threshold(expected);
-    let mut refused_a_fit = false;
-    for (h, _, distance, confirmed) in probed.iter_mut() {
-        let vouched = *confirmed || normalized(&h.title) == needle || entry.names(&h.title);
-        if vouched || *distance == UNFIT {
-            continue;
-        }
-        refused_a_fit |= *distance <= tolerance;
-        *distance = UNFIT;
-    }
-    refused_a_fit
+    score_out_unvouched(probed, ep_count_threshold(expected), needle, entry)
 }
 
 #[cfg(test)]
