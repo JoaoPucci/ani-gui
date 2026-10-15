@@ -48,7 +48,7 @@ class Generation(unittest.TestCase):
         self.assertEqual(len(ids), len(set(ids)))
 
     def test_a_generated_id_follows_the_pool_not_its_position(self):
-        case = next(c for c in oracle.gen() if c["family"].startswith("admission"))
+        case = next(c for c in oracle.gen() if c["family"].startswith("admission") and len(c["rows"]) > 1)
         again = oracle.case_id(
             case["family"], case["titles"], case["count"], case["entry_year"], case["rows"], case.get("dead", [])
         )
@@ -246,10 +246,16 @@ class TheModelReadsTheDocs(unittest.TestCase):
         self.assertGreater(covered, 60)
 
 
-def outcome_of(expect):
+def outcome_of(case):
+    """The outcome the driver would report for a pool the picker agrees on:
+    the pick, or a refusal carrying the clean-miss verdict the docs give."""
+    expect = case["expect"]
     if expect is None:
-        return {"err": "NoResults", "clean_miss": True}
+        return {"err": "NoResults", "clean_miss": oracle.clean_miss_expected(case)}
     return {"ok": expect["pick"], "count": expect["count"], "episodes": [[k, k, None] for k in range(1, expect["count"] + 1)]}
+
+
+REFUSED = {"refused": "NoResults", "clean_miss": True}
 
 
 class Comparison(unittest.TestCase):
@@ -260,7 +266,7 @@ class Comparison(unittest.TestCase):
             dict(pool(["Show"], E, [("x", "Show 2", E)]), id="b", expect=None),
             dict(pool(["Show 2"], E, [("x", "Show", E)]), id="c", expect=None),
         ]
-        self.got = {"a": outcome_of(pick("x")), "b": {"err": "NoResults", "clean_miss": False}, "c": outcome_of(None)}
+        self.got = {c["id"]: outcome_of(c) for c in self.cases}
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -294,37 +300,37 @@ class Comparison(unittest.TestCase):
         self.assertEqual(code, 1)
 
     def test_an_unlisted_disagreement_fails_and_is_named(self):
-        got = dict(self.got, a=outcome_of(None))
+        got = dict(self.got, a={"err": "NoResults", "clean_miss": True})
         code, out = self.run_cmp(got=got)
         self.assertEqual(code, 1)
         self.assertIn("a [test]", out)
         self.assertIn("not in the allowlist", out)
 
     def test_a_listed_disagreement_with_the_recorded_outcome_passes(self):
-        got = dict(self.got, a=outcome_of(None))
-        code, out = self.run_cmp(allowlist=[{"id": "a", "got": None, "reason": "known"}], got=got)
+        got = dict(self.got, a={"err": "NoResults", "clean_miss": True})
+        code, out = self.run_cmp(allowlist=[{"id": "a", "got": REFUSED, "reason": "known"}], got=got)
         self.assertEqual(code, 0, out)
         self.assertIn("accepted 1", out)
 
     def test_a_listed_disagreement_that_moved_fails(self):
-        got = dict(self.got, a=outcome_of(pick("x", 11)))
-        code, out = self.run_cmp(allowlist=[{"id": "a", "got": None, "reason": "known"}], got=got)
+        got = dict(self.got, a=outcome_of(dict(self.cases[0], expect=pick("x", 11))))
+        code, out = self.run_cmp(allowlist=[{"id": "a", "got": REFUSED, "reason": "known"}], got=got)
         self.assertEqual(code, 1)
         self.assertIn("recorded", out)
 
     def test_a_stale_allowlist_entry_fails(self):
-        code, out = self.run_cmp(allowlist=[{"id": "a", "got": None, "reason": "fixed since"}])
+        code, out = self.run_cmp(allowlist=[{"id": "a", "got": REFUSED, "reason": "fixed since"}])
         self.assertEqual(code, 1)
         self.assertIn("stale", out)
 
     def test_an_allowlist_entry_for_no_case_fails(self):
-        code, out = self.run_cmp(allowlist=[{"id": "zz", "got": None, "reason": "gone"}])
+        code, out = self.run_cmp(allowlist=[{"id": "zz", "got": REFUSED, "reason": "gone"}])
         self.assertEqual(code, 1)
         self.assertIn("zz", out)
 
     def test_an_entry_without_a_reason_fails(self):
-        got = dict(self.got, a=outcome_of(None))
-        code, out = self.run_cmp(allowlist=[{"id": "a", "got": None}], got=got)
+        got = dict(self.got, a={"err": "NoResults", "clean_miss": True})
+        code, out = self.run_cmp(allowlist=[{"id": "a", "got": REFUSED}], got=got)
         self.assertEqual(code, 1)
         self.assertIn("reason", out)
 
@@ -344,17 +350,26 @@ class Comparison(unittest.TestCase):
         with open(cases, encoding="utf-8") as fh:
             generated = json.load(fh)
         self.assertEqual(generated, oracle.gen())
+        # every pool agrees but one picked pool, which the allowlist carries
+        at, first = next((i, c) for i, c in enumerate(generated) if c["expect"])
+        outcomes = [{"id": c["id"], "got": outcome_of(c)} for c in generated]
+        outcomes[at]["got"] = {"err": "Network", "clean_miss": False}
         with open(out, "w", encoding="utf-8") as fh:
-            json.dump([{"id": c["id"], "got": outcome_of(c["expect"])} for c in generated], fh)
+            json.dump(outcomes, fh)
+        allow = os.path.join(self.tmp.name, "allow.json")
+        with open(allow, "w", encoding="utf-8") as fh:
+            json.dump([{"id": first["id"], "got": {"refused": "Network", "clean_miss": False}, "reason": "a probe dies here"}], fh)
         cmp = subprocess.run(
-            [sys.executable, "-I", os.path.join(HERE, "oracle.py"), "cmp", cases, out, "--allowlist", os.path.join(HERE, "allowlist.json")],
+            [sys.executable, "-I", os.path.join(HERE, "oracle.py"), "cmp", cases, out, "--allowlist", allow],
             capture_output=True,
             text=True,
         )
-        # the committed allowlist records disagreements the code has; an
-        # outcome file that agrees everywhere makes every entry stale
+        self.assertEqual(cmp.returncode, 0, cmp.stdout)
+        self.assertIn("disagreements 1 accepted 1", cmp.stdout)
+        # without the allowlist the same outcomes fail, naming the pool
+        cmp = subprocess.run([sys.executable, "-I", os.path.join(HERE, "oracle.py"), "cmp", cases, out], capture_output=True, text=True)
         self.assertEqual(cmp.returncode, 1, cmp.stdout)
-        self.assertIn("stale", cmp.stdout)
+        self.assertIn(first["id"], cmp.stdout)
 
 
 if __name__ == "__main__":
