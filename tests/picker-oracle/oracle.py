@@ -39,7 +39,8 @@ E = 12
 LISTING_YEAR = 2020
 
 #: What `predict` answers for a pool the predicates do not read: a
-#: broad listing (the spanning cut), parts that could stitch, a dead
+#: broad listing (the spanning cut), a bare title beside parts of it
+#: whose counts could together explain the entry's (stitching), a dead
 #: listing, a one-video entry. Those pools are tabled, not computed.
 NOT_MODELLED = object()
 
@@ -168,6 +169,8 @@ def named(titles):
             if k is not None:
                 out.add(k)
         for m in re.finditer(r"(?<![0-9a-z])(\d{1,2})(?![0-9a-z])", n):
+            out.add(int(m.group(1)))
+        for m in re.finditer(r"(?<![0-9a-z])(\d{1,2})(?:st|nd|rd|th)(?![0-9a-z])", n):
             out.add(int(m.group(1)))
         for w in re.findall(r"[a-z]+", n):
             if w in ROMAN:
@@ -406,6 +409,11 @@ def season_before_entry(titles, cand):
         if lead_t and lead_c and int(lead_c.group(1)) < int(lead_t.group(1)):
             return True
         if lead_t and not lead_c:
+            # the bare number the entry's stem ends on is the season it
+            # carries for a candidate read past the stem without it
+            season = max([int(lead_t.group(1))] + _seasons(rest_t[len(lead_t.group(0)) :]))
+            if any(x < season for x in _seasons(rest_c)):
+                return True
             continue
         same_lead = lead_t and lead_c and lead_c.group(1) == lead_t.group(1)
         ts = _seasons(rest_t[len(lead_t.group(0)) :] if same_lead else rest_t)
@@ -419,39 +427,40 @@ def season_before_entry(titles, cand):
 _ONE_MARKER = re.compile(
     r"^(?:"
     + MARKER
-    + r" (\d+)|(\d+)(?:st|nd|rd|th) (?:"
+    + r" (\d+)|(\d+)(?:st|nd|rd|th) "
     + MARKER
-    + r"|half)|(ii|iii|iv|v|vi|vii|viii|ix)|第([0-9]+|[〇零一二三四五六七八九十百]+)(?:期|部|クール))$"
+    + r"|(ii|iii|iv|v|vi|vii|viii|ix)|第([0-9]+|[〇零一二三四五六七八九十百]+)(?:期|部|クール))$"
 )
+
+
+def part_after(title, stem):
+    """The ordinal of the one short part marker — "2nd Stage", "Part 3",
+    "Season 2", "II", 第2期 — that `title` adds to `stem`, or `None` when
+    `title` is not the stem followed by exactly one."""
+    n = _word_ordinals(title)
+    if not n.startswith(stem) or len(n) == len(stem):
+        return None
+    tail = n[len(stem) :]
+    if tail[0].isalnum() and tail[0] != "第":
+        return None
+    m = _ONE_MARKER.match(tail.lstrip(" :-–—~,.・、"))
+    if not m:
+        return None
+    g = next(x for x in m.groups() if x is not None)
+    k = ROMAN.get(g)
+    return _jp_ordinal(g) if k is None else k
 
 
 def later_part_of(titles, cand):
     """The sequel guard: a candidate that a title the entry goes by names a
     later part of — the candidate's title followed by one short part
-    marker ("2nd Stage", "Part 3", "Season 2", "II": "Show Season 3" for
-    "Show Season 3 Part 2", "Lucky 2" for "Lucky 2 Season 2") — is dropped
-    from the pool before probing. It is another entry of the same show, as
-    the entry before is. A bare number is no such marker: "Show" beside
-    "Show 2" is the entry before's shape, with that rule's allowance for an
-    alias naming no later division."""
+    marker ("Show Season 3" for "Show Season 3 Part 2", "Lucky 2" for
+    "Lucky 2 Season 2") — is dropped from the pool before probing. It is
+    another entry of the same show, as the entry before is. A bare number
+    is no such marker: "Show" beside "Show 2" is the entry before's shape,
+    with that rule's allowance for an alias naming no later division."""
     c = _word_ordinals(cand)
-    for t in titles:
-        n = _word_ordinals(t)
-        if not n.startswith(c) or len(n) == len(c):
-            continue
-        tail = n[len(c) :]
-        if tail[0].isalnum() and tail[0] != "第":
-            continue
-        m = _ONE_MARKER.match(tail.lstrip(" :-–—~,.・、"))
-        if not m:
-            continue
-        g = next(x for x in m.groups() if x is not None)
-        k = ROMAN.get(g)
-        if k is None:
-            k = _jp_ordinal(g)
-        if k is not None and k != 1:
-            return True
-    return False
+    return any(part_after(t, c) not in (None, 1) for t in titles)
 
 
 def pickable(titles, cand):
@@ -468,15 +477,17 @@ def pickable(titles, cand):
 
 # --- "One reading of a title": the reader the entry names a hit through
 
-_WORD = re.compile(r"[0-9a-z]+|[" + JP + r"]+")
+_WORD = re.compile(r"\d+(?:\+\d+)+|[0-9a-z]+|[" + JP + r"0-9]+")
 _JP_DIV = re.compile(r"第([0-9]+|[〇零一二三四五六七八九十百]+)(期|部|クール)")
 _SPAN = re.compile(r"^(\d+)(?:\+(\d+))+$")
 
 
 def _tokenize(n):
-    """Words and Japanese divisions, in order. A Japanese run splits into
-    the word, each 第N期 glued to it, and a one- or two-digit number glued
-    to its end ("ショー第2期第2部" → ショー, 第2期, 第2部; "ショー２" → ショー, 2)."""
+    """Words and Japanese divisions, in order. A span ("1+2") is one word.
+    A Japanese run keeps the digits inside it and splits into the word,
+    each 第N期 glued to it, and a one- or two-digit number glued to its
+    end ("ショー第2期第2部" → ショー, 第2期, 第2部; "ショー２" → ショー, 2;
+    "怪獣８号" stays one word)."""
     out = []
     for m in _WORD.finditer(n):
         w = m.group(0)
@@ -711,9 +722,9 @@ def head(titles, rows, counted):
     picked, evidence = [], []
     for r in rows:
         if pickable(titles, r[1]):
+            picked.append(r)
             if len(picked) == 5:
                 break
-            picked.append(r)
         elif counted and len(evidence) < 5:
             evidence.append(r)
     return picked, evidence
@@ -784,15 +795,18 @@ def predict(case):
         for w in rows:
             stem = _stem_text(w[1])
             # a title that does not start with W's whole stem is read past
-            # it without the bare number the stem ends on
-            short = re.sub(r"\s*\d{1,2}$", "", stem)
+            # it without the one- or two-digit bare number the stem ends on
+            short = re.sub(r"\s*(?<!\d)\d{1,2}$", "", stem)
             stems = {stem, short} if short.strip() else {stem}
             kin = [r for r in rows if r is not w and any(_opens_past_stem(r[1], s) for s in stems)]
             # a broad listing a sibling could complete: the spanning cut
             if w[2] > count and admitted(titles, w[1]) and kin:
                 return NOT_MODELLED
-            # parts that together could explain the count: stitching
-            if kin and any(abs(w[2] + k[2] - count) <= tol for k in kin):
+            # a bare title beside parts of it — the title followed by one
+            # short part marker — whose counts could together explain the
+            # entry's, within the tolerance or short of it: stitching
+            parts = [r for r in rows if r is not w and part_after(r[1], _word_ordinals(w[1])) is not None]
+            if parts and w[2] + min(r[2] for r in parts) <= count + tol:
                 return NOT_MODELLED
     for searched in titles:
         if count is None:

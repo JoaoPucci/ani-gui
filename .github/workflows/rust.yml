@@ -48,7 +48,9 @@ jobs:
           # gets killed by SIGPIPE, the pipeline exits non-zero, and the
           # if-condition wrongly takes the else branch on relevant PRs.
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
+          # The picker golden is an input of the test job: the recorded
+          # fixtures are compared against it.
+          if grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|tests/picker-oracle/fixtures-golden\.json$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -208,7 +210,11 @@ jobs:
         env:
           PICKER_ORACLE_CASES: ${{ runner.temp }}/cases.json
           PICKER_ORACLE_OUT: ${{ runner.temp }}/out.json
-        run: cargo test --lib run_the_oracle_cases -- --ignored
+        # The exact test name, and the outcome file has to exist after:
+        # a filter that matches no test exits 0 having run nothing.
+        run: |
+          cargo test --lib -- --ignored --exact commands::play_native_walk::fixture_tests::oracle::run_the_oracle_cases
+          test -s "$PICKER_ORACLE_OUT"
       - if: needs.filter.outputs.picker == 'true'
         name: Compare with the model
         run: >
