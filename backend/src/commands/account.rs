@@ -485,6 +485,11 @@ pub(crate) async fn kitsu_for_mal_ids_with_anilist_base(
         // got written as a dead end for a day — so one blip hid those
         // cards long after AniList recovered. `None` here means nobody
         // said anything, and nothing about these ids is recorded.
+        // `Some` is an answer, whether AniList gave it to this request
+        // or the id cache (`anilist_ids`) kept it from an earlier one —
+        // at most a day old for a negative — so a dead end recorded
+        // below may rest on a negative up to a day older than the rail
+        // load that writes it.
         let mal_to_anilist = super::anilist_ids::media_ids_for_mals(state, &miss_ids, anilist_base)
             .await
             .ok();
