@@ -58,6 +58,7 @@ const MESSAGE_BY_KEY: Readonly<Record<string, KeyedMessage>> = {
 	'error.network.unreachable': m.backend_error_network_unreachable,
 	'error.network.upstream': withStatus(m.backend_error_network_upstream),
 	'error.play.episode_unavailable': m.backend_error_play_episode_unavailable,
+	'error.play.stream_server_failed': m.backend_error_play_stream_server_failed,
 	'error.player.spawn_failed': withBinary(m.backend_error_player_spawn_failed),
 	'error.request.invalid_body': m.backend_error_request_invalid_body,
 	'error.request.invalid_kitsu_id': m.backend_error_request_invalid_kitsu_id,
