@@ -165,6 +165,17 @@ pub trait Fetch: Send + Sync {
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
         None
     }
+
+    /// Whether this transport's latest request is still waiting on
+    /// the gate: asked for, and not yet admitted to a host. A walk
+    /// that bounds a server's chain reads it when the bound cuts the
+    /// chain off, to tell a host that is not answering an admitted
+    /// request from a request no host has seen. A transport that
+    /// paces nothing never holds a request back, which is what this
+    /// default says.
+    fn awaiting_admission(&self) -> bool {
+        false
+    }
 }
 
 /// Production transport: a curl-impersonate binary spawned per

@@ -74,6 +74,20 @@ fn parse_failure<T: std::fmt::Debug>(got: crate::error::Result<T>, what: &str) {
     }
 }
 
+/// Asked for a stream, the same refusal is the chain failing at its
+/// first step — the site's own listing of the episode's servers — and
+/// named for it: the stream server not serving, which the walk moves
+/// past as it did the parse failure.
+fn listing_failure<T: std::fmt::Debug>(got: crate::error::Result<T>, what: &str) {
+    match got {
+        Err(AniError::StreamServerFailed {
+            stage: "servers",
+            host: Some(host),
+        }) if host == "hianime.example" => {}
+        other => panic!("{what}: expected the stream server failing at the listing, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn a_search_answered_from_another_origin_is_no_answer() {
     // Even a body that reads exactly like hianime's own no-results
@@ -95,7 +109,7 @@ async fn every_origin_endpoint_answered_from_another_origin_fails() {
         landed_elsewhere(NO_SERVERS).has_mode(21418, "sub").await,
         "servers",
     );
-    parse_failure(
+    listing_failure(
         landed_elsewhere(NO_SERVERS)
             .master_playlist_url(21418, "sub")
             .await,
@@ -277,7 +291,7 @@ async fn an_embed_url_that_names_no_origin_is_never_requested() {
             BASE,
         );
         parse_failure(client.has_mode(21418, "sub").await, hash);
-        parse_failure(client.master_playlist_url(21418, "sub").await, hash);
+        listing_failure(client.master_playlist_url(21418, "sub").await, hash);
         let asked = client.transport().asked.lock().expect("log").clone();
         assert!(
             asked

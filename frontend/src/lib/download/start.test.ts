@@ -238,6 +238,31 @@ describe('startDownload', () => {
 		}
 	});
 
+	it('words a stream server that did not serve as the play page does', async () => {
+		// A download resolves through the same chain as play, so the
+		// stream server not serving reads the same in the dock: the
+		// source's video server, never the user's connection — and the
+		// host the verdict carries for the log stays out of the row.
+		const failure = {
+			kind: 'stream_server_failed',
+			key: 'error.play.stream_server_failed',
+			stage: 'embed',
+			host: 'zokoanime.video'
+		};
+		apiMock.downloadStream.mockRejectedValueOnce(failure);
+		startDownload(baseArgs);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			describePlayFailure(failure)
+		);
+		const shown = storeMock.downloadStore.markError.mock.calls[0][1] as string;
+		expect(shown).toMatch(/video server/i);
+		expect(shown).not.toContain('zokoanime.video');
+		expect(shown).not.toBe(describeError({ kind: 'network' }));
+	});
+
 	it('words the failures a download has of its own for the download, not a service', async () => {
 		// In a download these kinds mean something the general sentence
 		// gets wrong: `timeout` includes the transfer's own one-hour

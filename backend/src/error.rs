@@ -54,6 +54,41 @@ pub enum AniError {
     #[error("episode unavailable")]
     EpisodeUnavailable,
 
+    /// The show was found and its stream server did not serve the
+    /// episode: a host the episode's chain asked — the provider's own
+    /// listing of the episode's servers, a server's embed host, the
+    /// playlist's CDN — did not answer, timed out, or answered a
+    /// page, payload or playlist the client could not play. The
+    /// chain's verdict for every failure that is not an answer. A
+    /// transport failure there is not the user's connection, which
+    /// the searches before it got through on, and a parse failure
+    /// there is not the app failing to read the provider, which it
+    /// read all the way to that host — so neither surfaces under its
+    /// own name from the chain. It therefore also covers the client
+    /// no longer reading a host — the site having changed shape under
+    /// it — which from the chain is told from a host serving nothing
+    /// only by the cause the log carries; the copy's advice, later or
+    /// another episode, is the best the renderer can give for either.
+    /// Distinct from [`Self::EpisodeUnavailable`], a host answering
+    /// that the episode is not there. Transient to every walk — the
+    /// next alias or provider may serve — and distress to the breaker,
+    /// like the failures it stands for.
+    ///
+    /// Both fields are for the log: the renderer shows one sentence
+    /// whatever they say, and never the host.
+    #[error("stream server failed: stage={stage} host={}", .host.as_deref().unwrap_or("unnamed"))]
+    StreamServerFailed {
+        /// Where in the chain the host failed: `servers` (the
+        /// provider's listing of the episode's servers), `embed` (a
+        /// server's player page and what that page has the client ask
+        /// its host for), `playlist` (the master or the rendition on
+        /// the CDN), or `stream` when the provider named no stage and
+        /// the episode step named the chain as a whole.
+        stage: &'static str,
+        /// The host asked at that stage, when the provider named it.
+        host: Option<String>,
+    },
+
     /// An upstream is refusing this client for a while. Two ways in:
     /// the streaming provider answering HTTP 200 with an in-band "Too
     /// many requests" payload — an application-level rate limit the
@@ -236,6 +271,7 @@ impl AniError {
             Self::Timeout => "error.scraper.timeout",
             Self::NoResults => "error.search.no_results",
             Self::EpisodeUnavailable => crate::i18n::keys::PLAY_EPISODE_UNAVAILABLE,
+            Self::StreamServerFailed { .. } => crate::i18n::keys::PLAY_STREAM_SERVER_FAILED,
             Self::ParseFailed { .. } => "error.scraper.parse_failed",
             Self::FfmpegMissing => crate::i18n::keys::DOWNLOAD_FFMPEG_MISSING,
             Self::PlayerSpawnFailed { .. } => "error.player.spawn_failed",
@@ -300,7 +336,9 @@ impl AniError {
             // apart from a generic bad gateway and tell the user to retry.
             Self::Upstream { status: 429 } => 429,
             Self::RateLimited { .. } => 429,
-            Self::Upstream { .. } => 502,
+            // The stream server is the gateway's upstream too: it was
+            // asked and did not serve.
+            Self::Upstream { .. } | Self::StreamServerFailed { .. } => 502,
             Self::Network => 503,
             Self::GateRefused => 503,
             Self::Timeout => 504,

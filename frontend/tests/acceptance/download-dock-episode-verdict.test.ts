@@ -120,4 +120,43 @@ describe('the download dock renders the episode verdict', () => {
 		expect(marker?.getAttribute('title')).not.toBe(m.errors_failed_default());
 		expect(pop.textContent).toContain('Frieren');
 	});
+
+	it("a stream server that did not serve names the source's video server on its failed row", async () => {
+		// The chain's other verdict: the show was found and its stream
+		// server did not serve the episode. The sidecar sends the stage
+		// and host for its log; the row shows the one sentence every
+		// surface shows, with neither, and not the connection copy.
+		const id = startDownload({
+			title: 'Frieren',
+			episode: '8',
+			mode: 'sub',
+			quality: '1080',
+			destDir: '/dl'
+		});
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('/api/download/stream?')),
+			'the download stream'
+		);
+		const stream = FakeEventSource.instances.find((i) => i.url.includes('/api/download/stream?'))!;
+		stream.dispatch(
+			'error',
+			JSON.stringify({
+				kind: 'stream_server_failed',
+				key: 'error.play.stream_server_failed',
+				stage: 'embed',
+				host: 'zokoanime.video'
+			})
+		);
+		await until(
+			() => downloadStore.items.find((i) => i.id === id)?.status === 'error',
+			'the row to fail'
+		);
+
+		const pop = openDock();
+		const marker = pop.querySelector<HTMLElement>('span.dl-row-error');
+		expect(marker, 'the failed row carries its error marker').not.toBeNull();
+		expect(marker?.getAttribute('title')).toBe(m.backend_error_play_stream_server_failed());
+		expect(marker?.getAttribute('title')).not.toContain('zokoanime.video');
+		expect(marker?.getAttribute('title')).not.toBe(m.backend_error_network_unreachable());
+	});
 });

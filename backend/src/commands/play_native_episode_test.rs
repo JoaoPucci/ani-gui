@@ -269,19 +269,245 @@ async fn the_episode_step_asks_hianime_for_the_master_once() {
     assert_eq!(masters, 1, "the master is validated once, inside the walk");
 }
 
+// ── the episode step's verdict ─────────────────────────────────────
+
+/// The chain met a failure that is not an answer — the connection to
+/// a host dropped, a host timed out, a page or payload or playlist
+/// could not be read. Past the searches that found the show, none of
+/// those is the user's connection or the app failing to read the
+/// provider: they are the stream server not serving, and the verdict
+/// says so, naming the chain as a whole when the provider named no
+/// stage.
+#[test]
+fn a_chain_failure_that_is_not_an_answer_is_the_stream_servers_failure() {
+    for error in [
+        AniError::Network,
+        AniError::Timeout,
+        AniError::ParseFailed {
+            detail: "the payload marker is missing".into(),
+        },
+    ] {
+        let shown = format!("{error:?}");
+        match episode_verdict(error) {
+            AniError::StreamServerFailed {
+                stage: "stream",
+                host: None,
+            } => {}
+            other => panic!("{shown} should be the stream server's failure, got {other:?}"),
+        }
+    }
+}
+
+/// A provider that names the stage and host itself keeps them: the
+/// episode step adds a name only where there is none.
+#[test]
+fn a_stream_server_failure_the_provider_named_keeps_its_stage_and_host() {
+    let named = episode_verdict(AniError::StreamServerFailed {
+        stage: "embed",
+        host: Some("zokoanime.video".into()),
+    });
+    assert!(
+        matches!(
+            &named,
+            AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "zokoanime.video"
+        ),
+        "{named:?}"
+    );
+}
+
+/// What the chain answered, refused or had refused by the gate passes
+/// through as it is — a 400 or 401 is the host rejecting this request,
+/// a block or rate limit speaks for the provider, the gate speaks for
+/// itself — and absence is the episode's own verdict.
+#[test]
+fn answers_blocks_and_refusals_pass_through_the_episode_step_as_they_are() {
+    for error in [
+        AniError::Upstream { status: 400 },
+        AniError::Upstream { status: 401 },
+        AniError::Upstream { status: 403 },
+        AniError::Upstream { status: 429 },
+        AniError::Upstream { status: 503 },
+        AniError::RateLimited {
+            retry_after_secs: Some(3),
+        },
+        AniError::GateRefused,
+    ] {
+        let shown = format!("{error:?}");
+        assert_eq!(format!("{:?}", episode_verdict(error)), shown);
+    }
+    for absent in [
+        AniError::NoResults,
+        AniError::Upstream { status: 404 },
+        AniError::Upstream { status: 410 },
+    ] {
+        assert!(matches!(
+            episode_verdict(absent),
+            AniError::EpisodeUnavailable
+        ));
+    }
+}
+
+/// Serves the server list for one episode whose only server sits on
+/// an embed host the connection to which dies.
+struct DeadEmbedHost;
+
+#[async_trait::async_trait]
+impl crate::scraper::fetch::Fetch for DeadEmbedHost {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str().to_string();
+        if url.contains("/api/theme/episode/servers?episodeId=11") {
+            return Ok(FetchResponse {
+                status: 200,
+                body: r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC8xLzEvc3Vi\"></div>"}"#.to_string(),
+                url,
+            });
+        }
+        if url == "https://zokoanime.video/stream/mal/1/1/sub" {
+            return Err(AniError::Network);
+        }
+        Ok(FetchResponse {
+            status: 404,
+            body: String::new(),
+            url,
+        })
+    }
+}
+
+/// Serves the server list for one episode whose only server sits on
+/// an embed host that answers HTTP 200 with its own not-found card —
+/// zokoanime's page for an episode it has nothing for, as recorded.
+struct NotFoundPage;
+
+#[async_trait::async_trait]
+impl crate::scraper::fetch::Fetch for NotFoundPage {
+    async fn fetch(&self, req: &FetchRequest) -> crate::error::Result<FetchResponse> {
+        let url = req.url.as_str().to_string();
+        let body = if url.contains("/api/theme/episode/servers?episodeId=12") {
+            r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC81NDE5Ni8xL3N1Yg==\"></div>"}"#.to_string()
+        } else if url == "https://zokoanime.video/stream/mal/54196/1/sub" {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("repo root")
+                .join("tests/fixtures/hianime/embed/zokoanime-not-found.html");
+            std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+        } else {
+            return Ok(FetchResponse {
+                status: 404,
+                body: String::new(),
+                url,
+            });
+        };
+        Ok(FetchResponse {
+            status: 200,
+            body,
+            url,
+        })
+    }
+}
+
+/// The stream server answering, on its own page, that it has nothing
+/// for the episode is the episode's own verdict — the show is listed,
+/// this episode has no stream — not the server failing, and not the
+/// user's connection.
+#[tokio::test]
+async fn the_episode_step_reads_the_stream_servers_own_not_found_page_as_the_episodes_absence() {
+    let picked = show(vec![ep(12, 1, None)]);
+    let client =
+        crate::scraper::hianime::HianimeClient::with_base(NotFoundPage, "https://hianime.test");
+    let ne = resolve_episode(&client, &picked, "1", "sub", "best")
+        .await
+        .expect_err("the host has nothing for the episode");
+    assert!(
+        matches!(ne.error, AniError::EpisodeUnavailable),
+        "{:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss, "the show was found; nothing persists");
+}
+
+/// Through hianime's client the verdict names the host whose
+/// connection died and the stage it died at — what the log line that
+/// reports the failed play needs to make the next such report
+/// traceable — and is never the transport failure under its own name.
+#[tokio::test]
+async fn the_episode_step_names_the_host_whose_connection_died() {
+    let picked = show(vec![ep(11, 1, None)]);
+    let client =
+        crate::scraper::hianime::HianimeClient::with_base(DeadEmbedHost, "https://hianime.test");
+    let ne = resolve_episode(&client, &picked, "1", "sub", "best")
+        .await
+        .expect_err("nothing served");
+    assert!(
+        matches!(
+            &ne.error,
+            AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "zokoanime.video"
+        ),
+        "{:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
+}
+
+/// A provider's walk can end in a timeout no attempt produced: its
+/// own bound cut a server off while the gate still held the request,
+/// so no host failed. The provider stamps no attempt on that
+/// verdict, and the episode step leaves it its name — the deadline's
+/// shape, which the breaker reads as ambiguous for a paced background
+/// resolve — rather than the stream server's failure, which would say
+/// a host did not serve and is distress on every priority. A timeout
+/// the provider does stamp is a host that stalled on a request the
+/// gate had admitted, and is the stream server's.
+#[tokio::test]
+async fn a_timeout_the_provider_stamps_no_attempt_on_keeps_its_name() {
+    let picked = show(vec![ep(702, 1, None)]);
+    let timed_out = || {
+        crate::scraper::table_provider::TableProvider::new().stream_from(
+            702,
+            "sub",
+            crate::scraper::table_provider::Answer::fails(|| AniError::Timeout),
+        )
+    };
+    let ne = resolve_episode(&timed_out(), &picked, "1", "sub", "best")
+        .await
+        .expect_err("nothing served");
+    assert!(
+        matches!(ne.error, AniError::Timeout),
+        "unstamped, the timeout is the deadline's shape: {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
+    let stalled = timed_out().stamped(tokio::time::Instant::now());
+    let ne = resolve_episode(&stalled, &picked, "1", "sub", "best")
+        .await
+        .expect_err("nothing served");
+    assert!(
+        matches!(
+            ne.error,
+            AniError::StreamServerFailed {
+                stage: "stream",
+                host: None
+            }
+        ),
+        "stamped, a host stalled: {:?}",
+        ne.error
+    );
+}
+
 proptest::proptest! {
     /// The chain-failure decision table over every error shape: a
     /// provider block or gate refusal stops the walk with the error
     /// intact, answered dead ends (the episode's own verdict,
     /// NoResults, not-found-shaped upstream statuses) move to the
-    /// next alias, and everything else — transport weather and an
+    /// next alias, and everything else — the stream server's failure,
+    /// transport weather that reached the walk unnamed, and an
     /// upstream status that is neither a block nor absence — stays
     /// transient, with the error intact too: an exhausted walk
     /// surfaces an answered status as the status, which the breaker
     /// reads as the provider answering, not as a transport failure.
     #[test]
     fn chain_failures_classify_by_the_decision_table(
-        kind in 0u8..7,
+        kind in 0u8..8,
         status in 100u16..600,
     ) {
         let error = match kind {
@@ -291,6 +517,10 @@ proptest::proptest! {
             3 => AniError::Network,
             4 => AniError::Timeout,
             5 => AniError::EpisodeUnavailable,
+            6 => AniError::StreamServerFailed {
+                stage: "embed",
+                host: Some("zokoanime.video".into()),
+            },
             _ => AniError::RateLimited {
                 retry_after_secs: None,
             },
@@ -422,67 +652,106 @@ mod verdict_props {
     use crate::error::AniError;
     use proptest::prelude::*;
 
+    /// What the episode step makes of a failure its chain met.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Verdict {
+        /// Left as it came.
+        Kept,
+        /// The episode's own absence.
+        Absent,
+        /// The stream server not serving, named for the chain as a
+        /// whole.
+        StreamServer,
+    }
+
     /// A failure the episode chain can hand the verdict, paired with
-    /// whether the verdict leaves it as it came. The set is what the
-    /// step can actually meet: the seven kinds the provider layer
-    /// constructs — transport failure, timeout, gate refusal, rate
-    /// limit, parse failure, upstream status, empty answer — plus the
-    /// verdict itself, which the step raises on a listing without the
-    /// row and which a second classification must leave alone.
+    /// what the verdict makes of it. The set is what the step can
+    /// actually meet: the kinds the provider layer constructs —
+    /// transport failure, timeout, gate refusal, rate limit, parse
+    /// failure, upstream status, empty answer, the stream server's
+    /// own named failure — plus the verdict itself, which the step
+    /// raises on a listing without the row and which a second
+    /// classification must leave alone.
     ///
     /// The expectation is stated by the rule rather than asked of the
     /// production helpers: an answered dead end — a title miss or a
-    /// not-found-shaped status, 404 or 410 — becomes the verdict, and
-    /// every other kind stays as it came. A parse failure is one of
-    /// those: the provider having changed shape is not an answer
-    /// about this episode, and the walk reads it ([`fails_over`]) as
-    /// grounds to try the next provider. So is any other upstream
-    /// status: a 400 or 401 is the provider rejecting this request,
-    /// and told to try another episode the user would be misled.
-    fn error_and_whether_the_verdict_keeps_it() -> impl Strategy<Value = (AniError, bool)> {
+    /// not-found-shaped status, 404 or 410 — becomes the episode's
+    /// absence; a failure that is not an answer — a transport
+    /// failure, a timeout, a parse failure — becomes the stream
+    /// server not serving, since past the searches that found the
+    /// show it is neither the connection nor the app failing to read
+    /// the provider; everything else stays as it came. A block or a
+    /// gate refusal speaks for the provider or the gate; any other
+    /// upstream status is the provider rejecting this request — a 400
+    /// or 401 — and told to try another episode the user would be
+    /// misled; a stream server failure the provider named keeps its
+    /// name.
+    fn error_and_the_verdicts_reading() -> impl Strategy<Value = (AniError, Verdict)> {
         prop_oneof![
-            any::<()>().prop_map(|()| (AniError::Network, true)),
-            any::<()>().prop_map(|()| (AniError::Timeout, true)),
-            any::<()>().prop_map(|()| (AniError::GateRefused, true)),
-            prop::option::of(0u64..100_000)
-                .prop_map(|retry_after_secs| (AniError::RateLimited { retry_after_secs }, true)),
-            "[a-z ]{0,24}".prop_map(|detail| (AniError::ParseFailed { detail }, true)),
+            any::<()>().prop_map(|()| (AniError::Network, Verdict::StreamServer)),
+            any::<()>().prop_map(|()| (AniError::Timeout, Verdict::StreamServer)),
+            any::<()>().prop_map(|()| (AniError::GateRefused, Verdict::Kept)),
+            prop::option::of(0u64..100_000).prop_map(|retry_after_secs| {
+                (AniError::RateLimited { retry_after_secs }, Verdict::Kept)
+            }),
+            "[a-z ]{0,24}"
+                .prop_map(|detail| (AniError::ParseFailed { detail }, Verdict::StreamServer)),
             (0u16..1000).prop_map(|status| {
                 // Only a not-found-shaped status is an answer about
                 // the episode; a block, and a 400 or 401 rejecting
                 // this request, say nothing about it and pass through.
                 let absent = status == 404 || status == 410;
-                (AniError::Upstream { status }, !absent)
+                (
+                    AniError::Upstream { status },
+                    if absent {
+                        Verdict::Absent
+                    } else {
+                        Verdict::Kept
+                    },
+                )
             }),
-            any::<()>().prop_map(|()| (AniError::NoResults, false)),
-            any::<()>().prop_map(|()| (AniError::EpisodeUnavailable, true)),
+            any::<()>().prop_map(|()| (AniError::NoResults, Verdict::Absent)),
+            any::<()>().prop_map(|()| (AniError::EpisodeUnavailable, Verdict::Kept)),
+            prop::option::of("[a-z.]{1,12}").prop_map(|host| {
+                (
+                    AniError::StreamServerFailed {
+                        stage: "embed",
+                        host,
+                    },
+                    Verdict::Kept,
+                )
+            }),
         ]
     }
 
     proptest! {
         /// An answered dead end — a title miss or a not-found-shaped
-        /// status — becomes the episode's verdict; a block, a gate
-        /// refusal, transport weather and a page the parser no longer
-        /// reads pass through as they came. And whichever of the two
-        /// it is, the walk's reading of the failure survives it: one
-        /// the walk would have moved on from still moves it on, so no
-        /// classification here can strand a caller on a provider that
-        /// has stopped working.
+        /// status — becomes the episode's absence; a failure that is
+        /// not an answer becomes the stream server not serving; a
+        /// block, a gate refusal, any other status and a failure the
+        /// provider already named pass through as they came. And
+        /// whichever it is, the walk's reading of the failure survives
+        /// it: one the walk would have moved on from still moves it
+        /// on, so no classification here can strand a caller on a
+        /// provider that has stopped working.
         #[test]
-        fn an_answered_dead_end_is_the_episodes_verdict_and_nothing_else_changes(
-            (error, kept) in error_and_whether_the_verdict_keeps_it(),
+        fn the_episode_step_reads_each_failure_by_the_rule_and_nothing_else_changes(
+            (error, reading) in error_and_the_verdicts_reading(),
         ) {
             let before = format!("{error:?}");
             let moved_on = fails_over(&error);
             let after = episode_verdict(error);
             let after_dbg = format!("{after:?}");
-            if kept {
-                prop_assert_eq!(&after_dbg, &before);
-            } else {
-                prop_assert!(
+            match reading {
+                Verdict::Kept => prop_assert_eq!(&after_dbg, &before),
+                Verdict::Absent => prop_assert!(
                     matches!(after, AniError::EpisodeUnavailable),
                     "{before} -> {after_dbg}"
-                );
+                ),
+                Verdict::StreamServer => prop_assert!(
+                    matches!(after, AniError::StreamServerFailed { stage: "stream", host: None }),
+                    "{before} -> {after_dbg}"
+                ),
             }
             prop_assert_eq!(
                 fails_over(&after),

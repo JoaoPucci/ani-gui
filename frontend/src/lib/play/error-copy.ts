@@ -45,6 +45,7 @@ function classifierText(e: unknown): string {
 }
 
 export { describeError } from './describe-error';
+import { describeError } from './describe-error';
 
 export { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
 import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
@@ -54,9 +55,12 @@ import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './s
  *  the upstream's own retry hint when it sent one); upstream 5xx →
  *  source down; upstream 404/410 → catalogue miss; other upstream →
  *  the source answered with an error; episode_unavailable → the show
- *  is there and this episode is not; no_results → catalogue miss;
- *  scraper → upstream unhappy; timeout → slow upstream; network /
- *  gate_refused → connection trouble; default → generic retry. */
+ *  is there and this episode is not; stream_server_failed → the show
+ *  is there and its video server did not serve the episode (the
+ *  key's own sentence, shared with every other surface); no_results →
+ *  catalogue miss; scraper → upstream unhappy; timeout → slow
+ *  upstream; network / gate_refused → connection trouble; default →
+ *  generic retry. */
 export function describePlayFailure(e: unknown, opts?: { noResults?: () => string }): string {
 	const rateLimited = describeRateLimit(e);
 	if (rateLimited !== null) return rateLimited;
@@ -71,6 +75,16 @@ export function describePlayFailure(e: unknown, opts?: { noResults?: () => strin
 		// detail page's catalogue-miss phrasing is for a title the
 		// catalogue lacks, which this is not.
 		return m.play_play_failure_episode_unavailable();
+	}
+	if (raw.includes('stream_server_failed')) {
+		// The show is in the catalogue and its stream server did not
+		// serve this episode — unreachable, timing out, or answering
+		// nothing playable — past searches that answered. The key's own
+		// sentence names the source's video server and the episode,
+		// which is what every surface should say, so no play-surface
+		// variant; and it must be read before the broader branches
+		// below, whose kinds this one stands for.
+		return describeError(e);
 	}
 	if (raw.includes('no_results')) {
 		// The one deliberate per-surface difference: the detail page

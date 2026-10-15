@@ -142,12 +142,14 @@ fn a_background_deadline_elapse_is_no_evidence() {
     // in the gate's paced background queue: a page warm launches a
     // dozen prefetch resolves whose chained requests can burn the
     // whole 60 seconds on pacing alone, upstream perfectly healthy.
-    // A Timeout at the outcome level uniquely identifies the
-    // whole-resolve deadline (per-fetch stalls become Network in the
-    // walk), so for a paced background resolve it is ambiguous —
-    // pacing or weather — and ambiguity records nothing. Interactive
-    // resolves are never paced: their elapse is a real stall and
-    // stays distress, as do background transport failures.
+    // A Timeout no failing attempt is stamped on is a deadline's
+    // elapse — the resolve's, the attempt's, or a provider's walk
+    // cutting a server off while the gate still held its request:
+    // the Timeouts a walk constructs itself, none a host's — so for a
+    // paced background resolve it is ambiguous — pacing or weather —
+    // and ambiguity records nothing. Interactive resolves are never
+    // paced: their elapse is a real stall and stays distress, as do
+    // background transport failures.
     let elapsed = || NativeError {
         error: AniError::Timeout,
         clean_miss: false,
@@ -172,6 +174,57 @@ fn a_background_deadline_elapse_is_no_evidence() {
     ));
 }
 
+/// A stream server that did not serve stands for a transport failure,
+/// a timeout or an unplayable answer in the episode chain, which the
+/// breaker heard as distress when they surfaced under their own
+/// names; naming them for the user changes nothing the breaker hears.
+#[test]
+fn a_stream_server_that_did_not_serve_is_distress() {
+    for priority in [ScrapePriority::Interactive, ScrapePriority::Background] {
+        let ne = NativeError {
+            error: AniError::StreamServerFailed {
+                stage: "embed",
+                host: Some("zokoanime.video".into()),
+            },
+            clean_miss: false,
+            failed_at: None,
+        };
+        assert!(
+            matches!(
+                breaker_outcome::<()>(priority, &Err(ne)),
+                Some(ScrapeOutcome::Failure)
+            ),
+            "{priority:?}"
+        );
+    }
+}
+
+/// The transport times out one request at a time, and a walk keeps
+/// such a stall under its own name, stamped with the attempt that
+/// stalled: a host not answering a request the gate had admitted,
+/// which is distress like a dropped connection on every priority. The
+/// stamp is what tells it from a deadline's elapse, which no attempt
+/// is stamped on — the walk substituted a transport failure for the
+/// stall before, and the breaker heard that as distress; naming the
+/// stall for the user must not quieten it.
+#[test]
+fn a_stall_the_walk_kept_is_distress_on_every_priority() {
+    for priority in [ScrapePriority::Interactive, ScrapePriority::Background] {
+        let stalled = NativeError {
+            error: AniError::Timeout,
+            clean_miss: false,
+            failed_at: Some(tokio::time::Instant::now()),
+        };
+        assert!(
+            matches!(
+                breaker_outcome::<()>(priority, &Err(stalled)),
+                Some(ScrapeOutcome::Failure)
+            ),
+            "{priority:?}"
+        );
+    }
+}
+
 fn arb_error() -> impl proptest::strategy::Strategy<Value = AniError> {
     use proptest::strategy::Strategy as _;
     proptest::prop_oneof![
@@ -185,35 +238,43 @@ fn arb_error() -> impl proptest::strategy::Strategy<Value = AniError> {
         (0u16..1000).prop_map(|status| AniError::Upstream { status }),
         proptest::option::of(0u64..100_000)
             .prop_map(|retry_after_secs| AniError::RateLimited { retry_after_secs }),
+        proptest::option::of("[a-z.]{1,12}").prop_map(|host| AniError::StreamServerFailed {
+            stage: "embed",
+            host,
+        }),
     ]
 }
 
 proptest::proptest! {
-    /// The complete classification over arbitrary errors, priorities
-    /// and clean-miss flags: clean misses and answered verdicts are
-    /// health; refusals record nothing; a background deadline elapse
-    /// records nothing; rate limits map with their hint; and the
-    /// upstream split follows is_provider_block exactly — 429 is the
-    /// rate limit, other block shapes are distress, the rest are
-    /// answered health.
+    /// The complete classification over arbitrary errors, priorities,
+    /// clean-miss flags and stamps: clean misses and answered verdicts
+    /// are health; refusals record nothing; a background deadline
+    /// elapse — a Timeout no attempt is stamped on — records nothing,
+    /// while a stall a walk kept, stamped with its attempt, is
+    /// distress on every priority; rate limits map with their hint;
+    /// and the upstream split follows is_provider_block exactly — 429
+    /// is the rate limit, other block shapes are distress, the rest
+    /// are answered health.
     #[test]
     fn classification_holds_over_arbitrary_outcomes(
         error in arb_error(),
         clean_miss in proptest::bool::ANY,
         background in proptest::bool::ANY,
+        stamped in proptest::bool::ANY,
     ) {
         let priority = if background {
             ScrapePriority::Background
         } else {
             ScrapePriority::Interactive
         };
+        let failed_at = stamped.then(tokio::time::Instant::now);
         let expected = if clean_miss {
             Some(ScrapeOutcome::Success)
         } else {
             match &error {
                 AniError::GateRefused => None,
                 AniError::NoResults | AniError::EpisodeUnavailable => Some(ScrapeOutcome::Success),
-                AniError::Timeout if background => None,
+                AniError::Timeout if background && !stamped => None,
                 AniError::RateLimited { retry_after_secs } => {
                     Some(ScrapeOutcome::RateLimited {
                         retry_after: retry_after_secs
@@ -229,7 +290,7 @@ proptest::proptest! {
                 _ => Some(ScrapeOutcome::Failure),
             }
         };
-        let got = breaker_outcome::<()>(priority, &Err(NativeError { error, clean_miss, failed_at: None }));
+        let got = breaker_outcome::<()>(priority, &Err(NativeError { error, clean_miss, failed_at }));
         proptest::prop_assert_eq!(got, expected);
     }
 }
