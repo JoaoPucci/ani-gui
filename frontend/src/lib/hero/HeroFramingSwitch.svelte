@@ -89,11 +89,13 @@
 		   and the strips' right edge. */
 		inset-inline-end: calc(var(--space-7) + var(--space-8));
 		display: flex;
-		flex-wrap: wrap;
-		justify-content: flex-end;
+		/* One row, always: the band is full-bleed and never narrower than
+		   the window, and a second row sat over the home title and the
+		   detail masthead at the window's minimum width. The readout is
+		   the one item that gives way. */
+		flex-wrap: nowrap;
 		align-items: center;
 		gap: 2px;
-		max-inline-size: min(48rem, 60vw);
 		padding: 3px;
 		border-radius: var(--radius-control);
 		background: var(--ink-050);
@@ -132,8 +134,12 @@
 		margin-inline: 4px;
 		background: var(--ink-200);
 	}
-	/* A fact beside the controls, in the app's voice for metadata. */
+	/* A fact beside the controls, in the app's voice for metadata; the
+	   one item that shrinks when the row is short of room. */
 	.origin {
+		min-inline-size: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
 		padding-inline: 6px;
 		font-family: var(--font-mono);
 		letter-spacing: var(--tracking-meta);
