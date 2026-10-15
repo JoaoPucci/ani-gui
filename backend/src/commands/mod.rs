@@ -64,6 +64,7 @@ mod play_handoff_prop_test;
 mod play_handoff_test;
 pub mod play_native;
 mod play_native_choice;
+mod play_native_count_alone;
 mod play_native_countless;
 pub mod play_native_episode;
 pub mod play_native_format;
