@@ -30,9 +30,10 @@ pub use titled::pick_candidate_titled;
 
 /// How many browse hits the entry's titles admit get an episodes
 /// probe. Beyond this the match was not a match; the request budget
-/// is better spent on the next alias. With a count, the refused hits
-/// among the first this many are probed besides, as evidence about
-/// the pool — at most twice this many probes per pool (see
+/// is better spent on the next alias. With a count, the first this
+/// many hits that cannot be picked, up to the last of the admitted
+/// ones, are probed besides, as evidence about the pool — at most
+/// twice this many probes per pool (see
 /// `play_native_title_verdict::probe_head`).
 pub const MAX_PROBED_CANDIDATES: usize = 5;
 
@@ -72,8 +73,9 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 /// `expected` episode count and premiere `year` when known.
 ///
 /// - Considers at most [`MAX_PROBED_CANDIDATES`] hits the entry's
-///   titles admit — plus, with a count, the refused ones among the
-///   first [`MAX_PROBED_CANDIDATES`] as evidence about the pool.
+///   titles admit — plus, with a count, the first
+///   [`MAX_PROBED_CANDIDATES`] hits that cannot be picked, up to the
+///   last of those, as evidence about the pool.
 /// - With `year = Some(y)`: candidates whose detail page names a
 ///   premiere year more than one off `y` are excluded before any
 ///   scoring — the identity signal that separates cour and
