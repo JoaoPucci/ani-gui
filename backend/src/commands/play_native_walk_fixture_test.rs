@@ -179,7 +179,8 @@ async fn assert_picks(rows: &[Expectation]) {
     assert!(wrong.is_empty(), "wrong picks:\n{}", wrong.join("\n"));
 }
 
-/// Entries a real-data audit found picked right, which must stay so.
+/// Entries a real-data audit found picked right — or, for a show the
+/// catalogue does not list, rightly refused — which must stay so.
 const AUDITED_RIGHT: &[Expectation] = &[
     ("7158", Some(("jojos-bizarre-adventure-2012-708", 26))), // JoJo (2012)
     (
@@ -190,8 +191,21 @@ const AUDITED_RIGHT: &[Expectation] = &[
         "11459",
         Some(("jojos-bizarre-adventure-diamond-is-unbreakable-1388", 39)),
     ),
+    (
+        "44294",
+        Some(("jojos-bizarre-adventure-stone-ocean-1460", 12)),
+    ),
+    (
+        "46010",
+        Some(("jojos-bizarre-adventure-stone-ocean-part-2-1464", 12)),
+    ),
+    (
+        "46598",
+        Some(("jojos-bizarre-adventure-stone-ocean-part-3-2834", 14)),
+    ),
     ("7442", Some(("attack-on-titan-240", 25))),
     ("8671", Some(("attack-on-titan-season-2-865", 12))),
+    ("13569", Some(("attack-on-titan-season-3-866", 12))), // cut from 22, Part 2 behind
     ("41982", Some(("attack-on-titan-season-3-part-2-1895", 10))),
     ("42422", Some(("attack-on-titan-final-season-1372", 16))),
     (
@@ -251,8 +265,13 @@ const AUDITED_RIGHT: &[Expectation] = &[
     ("44875", Some(("vinland-saga-season-2-902", 24))),
     ("41373", Some(("kaguya-sama-love-is-war-1-437", 12))),
     ("42632", Some(("kaguya-sama-love-is-war-416", 12))), // Love is War Season 2
+    ("46170", Some(("oshi-no-ko-675", 11))),              // [Oshi no Ko], listed as "My Star"
     ("47659", Some(("oshi-no-ko-season-2-682", 13))),
     ("49264", Some(("oshi-no-ko-season-3-672", 11))),
+    (
+        "45217",
+        Some(("mobile-suit-gundam-the-witch-from-mercury-3596", 12)),
+    ),
     (
         "46561",
         Some((
@@ -280,6 +299,7 @@ const AUDITED_RIGHT: &[Expectation] = &[
     ),
     ("818", Some(("gintama-1237", 201))),
     ("5971", Some(("gintama-season-2-1153", 51))), // Gintama'
+    ("14095", Some(("gintama-silver-soul-arc-1155", 12))), // cut from 26, Second Half War behind
     (
         "41079",
         Some(("gintama-silver-soul-arc-second-half-war-1157", 14)),
@@ -287,7 +307,13 @@ const AUDITED_RIGHT: &[Expectation] = &[
     ("11", Some(("naruto-1335", 220))),
     ("1555", Some(("naruto-shippuden-600", 500))),
     ("13051", Some(("boruto-naruto-next-generations-650", 293))),
+    ("47181", None), // Boruto Part 2: not listed, refused
+    ("42059", Some(("haikyu-to-the-top-933", 13))), // cut from 25 "(Part 1+2)"
     ("42938", Some(("haikyu-to-the-top-2nd-cour-934", 12))),
+    (
+        "42196",
+        Some(("that-time-i-got-reincarnated-as-a-slime-season-2-487", 12)),
+    ),
     (
         "43361",
         Some((
