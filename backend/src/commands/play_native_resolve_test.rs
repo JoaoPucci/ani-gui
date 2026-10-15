@@ -627,7 +627,14 @@ async fn a_failure_in_the_episode_chain_that_is_not_an_answer_is_the_stream_serv
     // stands for were.
     for (what, fate) in [
         ("a dropped connection", chain_fate(None)),
-        ("a timeout", chain_fails(|| AniError::Timeout)),
+        // A host that stalled on a request the gate had admitted: the
+        // provider stamps the attempt, as the production transport
+        // does. Unstamped, a timeout is one no attempt produced, and
+        // keeps its name.
+        (
+            "a timeout",
+            chain_fails(|| AniError::Timeout).stamped(tokio::time::Instant::now()),
+        ),
         (
             "an unreadable page",
             chain_fails(|| AniError::ParseFailed {

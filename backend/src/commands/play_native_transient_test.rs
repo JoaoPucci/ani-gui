@@ -155,6 +155,53 @@ fn the_verdict_carries_the_last_failing_attempts_instant() {
     assert_eq!(ne.failed_at, Some(last));
 }
 
+/// A failure no attempt produced — a provider's walk cut a server off
+/// while the gate still held its request — says less than any failure
+/// an attempt did, at its stage and rank: the stream server that did
+/// not serve is evidence about the provider, and the held server is
+/// not. In either order, the attempt's failure is the verdict.
+#[test]
+fn a_failure_no_attempt_produced_yields_to_one_an_attempt_did() {
+    let want = shown(&stream_server());
+    let mut t = Transients::default();
+    t.note_at(WalkStage::Chain, AniError::Timeout, None);
+    t.note_at(WalkStage::Chain, stream_server(), Some(at(1)));
+    let ne = t.verdict().expect("failures were met");
+    assert_eq!(shown(&ne.error), want, "the attempt's failure, met later");
+    let mut t = Transients::default();
+    t.note_at(WalkStage::Chain, stream_server(), Some(at(1)));
+    t.note_at(WalkStage::Chain, AniError::Timeout, None);
+    let ne = t.verdict().expect("failures were met");
+    assert_eq!(shown(&ne.error), want, "the attempt's failure, met first");
+}
+
+/// The verdict's instant is the last failing attempt's: a failure no
+/// attempt produced leaves it where it was, and a verdict nothing but
+/// such failures make carries none — a Timeout no attempt is stamped
+/// on, which the breaker reads as a deadline's elapse.
+#[test]
+fn a_failure_no_attempt_produced_leaves_the_last_failing_attempts_instant() {
+    let mut t = Transients::default();
+    t.note_at(WalkStage::Chain, AniError::Timeout, None);
+    let ne = t.verdict().expect("a failure was met");
+    assert_eq!(ne.failed_at, None, "no attempt produced the verdict");
+    let first = at(1);
+    let mut t = Transients::default();
+    t.note_at(WalkStage::Search, AniError::Network, Some(first));
+    t.note_at(WalkStage::Chain, AniError::Timeout, None);
+    let ne = t.verdict().expect("failures were met");
+    assert_eq!(
+        shown(&ne.error),
+        shown(&AniError::Timeout),
+        "the chain's failure is the verdict, from further along"
+    );
+    assert_eq!(
+        ne.failed_at,
+        Some(first),
+        "stamped with the search attempt that did fail"
+    );
+}
+
 mod props {
     use super::*;
     use proptest::prelude::*;

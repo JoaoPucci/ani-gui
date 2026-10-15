@@ -179,3 +179,50 @@ async fn the_wrapper_passes_the_url_the_transfer_ended_on_through() {
         .expect("passthrough");
     assert_eq!(resp.url, "https://landed.test/e/1");
 }
+
+/// A background request waits on the gate for its paced slot before
+/// it is admitted to a host, and the walk that bounds a server's
+/// chain needs to know which of the two it cut off: a request the
+/// gate admitted and a host is not answering, or one the gate was
+/// still holding, which no host has seen. The transport says whether
+/// its latest request is still waiting on the gate — and keeps saying
+/// so once the wait is cancelled, since the request never left the
+/// gate — until the next request is admitted.
+#[tokio::test(start_paused = true)]
+async fn the_transport_says_whether_its_latest_request_waits_on_the_gate() {
+    let (inner, calls) = counting();
+    let gate = ScraperGate::new();
+    let fetch = GatedFetch::new(inner, Some(&gate), ScrapePriority::Background);
+    assert!(!fetch.awaiting_admission(), "nothing asked yet");
+    fetch.get("http://s/one").await.expect("first");
+    assert!(
+        !fetch.awaiting_admission(),
+        "the first request took the slot that was free"
+    );
+    // The second takes the slot 500 ms on; cut off a tenth of the way
+    // there, it is still waiting on the gate.
+    let cut = tokio::time::timeout(
+        std::time::Duration::from_millis(50),
+        fetch.get("http://s/two"),
+    )
+    .await;
+    assert!(cut.is_err(), "the paced request was cut off while waiting");
+    assert!(
+        fetch.awaiting_admission(),
+        "the cut-off request never left the gate"
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "no host saw it");
+    fetch.get("http://s/three").await.expect("third");
+    assert!(!fetch.awaiting_admission(), "the next request was admitted");
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+/// Without a gate nothing waits: every request a passthrough starts
+/// is at a host.
+#[tokio::test]
+async fn a_passthrough_never_waits_on_a_gate() {
+    let (inner, _calls) = counting();
+    let fetch = GatedFetch::new(inner, None, ScrapePriority::Background);
+    fetch.get("http://s/one").await.expect("through");
+    assert!(!fetch.awaiting_admission());
+}

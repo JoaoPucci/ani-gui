@@ -449,6 +449,51 @@ async fn the_episode_step_names_the_host_whose_connection_died() {
     assert!(!ne.clean_miss);
 }
 
+/// A provider's walk can end in a timeout no attempt produced: its
+/// own bound cut a server off while the gate still held the request,
+/// and no host was asked. The provider stamps no attempt on that
+/// verdict, and the episode step leaves it its name — the deadline's
+/// shape, which the breaker reads as ambiguous for a paced background
+/// resolve — rather than the stream server's failure, which would say
+/// a host did not serve and is distress on every priority. A timeout
+/// the provider does stamp is a host that stalled on a request the
+/// gate had admitted, and is the stream server's.
+#[tokio::test]
+async fn a_timeout_the_provider_stamps_no_attempt_on_keeps_its_name() {
+    let picked = show(vec![ep(702, 1, None)]);
+    let timed_out = || {
+        crate::scraper::table_provider::TableProvider::new().stream_from(
+            702,
+            "sub",
+            crate::scraper::table_provider::Answer::fails(|| AniError::Timeout),
+        )
+    };
+    let ne = resolve_episode(&timed_out(), &picked, "1", "sub", "best")
+        .await
+        .expect_err("nothing served");
+    assert!(
+        matches!(ne.error, AniError::Timeout),
+        "unstamped, the timeout is the deadline's shape: {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
+    let stalled = timed_out().stamped(tokio::time::Instant::now());
+    let ne = resolve_episode(&stalled, &picked, "1", "sub", "best")
+        .await
+        .expect_err("nothing served");
+    assert!(
+        matches!(
+            ne.error,
+            AniError::StreamServerFailed {
+                stage: "stream",
+                host: None
+            }
+        ),
+        "stamped, a host stalled: {:?}",
+        ne.error
+    );
+}
+
 proptest::proptest! {
     /// The chain-failure decision table over every error shape: a
     /// provider block or gate refusal stops the walk with the error

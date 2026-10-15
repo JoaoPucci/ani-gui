@@ -1931,6 +1931,31 @@ impl Fetch for Site {
             "https://api.elsewhere.example/sources?id=20" => {
                 ok("<html>not the sources, nor any JSON</html>")
             }
+            // Two servers for a walk the gate paces: a megaplay server
+            // the walk prefers and bounds, held at the gate past its
+            // window, then a zokoanime server — the remainder's — that
+            // answers its own not-found card.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21487") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzIwL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC81NDE5Ni8xL3N1Yg==\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            // The same held server, then a zokoanime server whose
+            // connection drops.
+            u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21488") => {
+                if ajax {
+                    ok(
+                        r#"{"status":true,"html":"<div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-1\" data-hash=\"aHR0cHM6Ly9tZWdhcGxheS5idXp6L3N0cmVhbS9zLTIvNzM0MzIwL3N1Yg==\"></div><div class=\"item server-item\" data-type=\"sub\" data-server-name=\"HD-2\" data-hash=\"aHR0cHM6Ly96b2tvYW5pbWUudmlkZW8vc3RyZWFtL21hbC85L2Ryb3BwZWQvc3Vi\"></div>"}"#,
+                    )
+                } else {
+                    refused(403)
+                }
+            }
+            "https://zokoanime.video/stream/mal/9/dropped/sub" => Err(AniError::Network),
             // The same undecodable page first, then a host whose page
             // decodes.
             u if u == format!("{BASE}/api/theme/episode/servers?episodeId=21423") => {
@@ -4451,6 +4476,77 @@ async fn a_sources_request_sent_elsewhere_is_named_for_the_host_that_answered() 
     assert!(
         matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "api.elsewhere.example"),
         "{err:?}"
+    );
+}
+
+/// A client whose every request takes a paced slot at a fresh gate,
+/// as a background resolve's does.
+fn paced_client(
+    gate: &crate::scraper::gate::ScraperGate,
+) -> HianimeClient<crate::scraper::gated::GatedFetch<'_, Site>> {
+    HianimeClient::with_base(
+        crate::scraper::gated::GatedFetch::new(
+            Site::new(),
+            Some(gate),
+            crate::scraper::gate::ScrapePriority::Background,
+        ),
+        BASE,
+    )
+    .with_server_budget(std::time::Duration::from_millis(100))
+}
+
+/// A background walk's requests each wait for the gate's paced slot,
+/// and a page warm's dozen chains can hold one past the window the
+/// walk gives its server. Cut off there, the server was never asked:
+/// no host failed, and the chain stood at the gate. The walk steps
+/// on, and when the servers it did ask answered nothing louder than
+/// a status — here the remainder's own not-found card — the verdict
+/// is neither that answered absence, since the held server may carry
+/// the stream, nor a stream server failing, since none was asked: it
+/// is the attempt's time running out, under its own name and stamped
+/// with no attempt — the deadline's shape, which the breaker reads as
+/// ambiguous for a paced background resolve and records nothing on.
+#[tokio::test(start_paused = true)]
+async fn a_server_the_gate_holds_past_its_window_is_no_hosts_failure_and_no_absence() {
+    let gate = crate::scraper::gate::ScraperGate::new();
+    let c = paced_client(&gate);
+    let err = c
+        .master_playlist_url(21487, "sub")
+        .await
+        .expect_err("nobody served it");
+    assert!(
+        matches!(err, AniError::Timeout),
+        "the walk's time ran out at the gate, not at a host: {err:?}"
+    );
+    assert_eq!(
+        c.last_attempt_at(),
+        None,
+        "no attempt produced the verdict: the gate held the request"
+    );
+}
+
+/// The control: a host that did fail outranks a server the gate held.
+/// The remainder's connection drops, and that is the verdict — named
+/// for the host and stamped with its attempt, admitted one paced slot
+/// after the listing's — since it is evidence about the provider and
+/// the held server is not.
+#[tokio::test(start_paused = true)]
+async fn a_host_that_failed_outranks_a_server_the_gate_held() {
+    let gate = crate::scraper::gate::ScraperGate::new();
+    let began = tokio::time::Instant::now();
+    let c = paced_client(&gate);
+    let err = c
+        .master_playlist_url(21488, "sub")
+        .await
+        .expect_err("nobody served it");
+    assert!(
+        matches!(&err, AniError::StreamServerFailed { stage: "embed", host: Some(h) } if h == "zokoanime.video"),
+        "{err:?}"
+    );
+    assert_eq!(
+        c.last_attempt_at(),
+        Some(began + crate::scraper::gate::BACKGROUND_INTERVAL),
+        "the remainder's attempt, the one that failed"
     );
 }
 

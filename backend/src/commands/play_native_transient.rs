@@ -54,6 +54,18 @@ impl Transients {
     /// far when it comes from further along the walk, or from the
     /// same stage and says more ([`rank`]); of equals the first stays.
     pub(super) fn note(&mut self, stage: WalkStage, error: AniError, at: tokio::time::Instant) {
+        self.note_at(stage, error, Some(at));
+    }
+
+    /// [`Self::note`] for a failure that may have been produced by no
+    /// attempt — `at` is `None` when the provider stamps none on it.
+    pub(super) fn note_at(
+        &mut self,
+        stage: WalkStage,
+        error: AniError,
+        at: Option<tokio::time::Instant>,
+    ) {
+        let at = at.unwrap_or_else(tokio::time::Instant::now);
         self.last_failure_at = Some(at);
         let louder = match &self.kept {
             None => true,
