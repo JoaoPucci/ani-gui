@@ -130,6 +130,19 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		expect(apiMock.checkAvailability).not.toHaveBeenCalled();
 	});
 
+	it('keeps a finished show whose probe answers unsettled, and remembers no verdict for it', async () => {
+		// An unsettled answer is the probe reaching no verdict — the
+		// provider's listing refused on how it is named — delivered as a
+		// normal answer instead of the error it used to be. Its
+		// `available: false` means nothing: the card stays, as it did
+		// when the request threw, and nothing is cached against the id.
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled: true });
+		const emit = vi.fn();
+		await filterAvailableProgressive([ref('a', { status: 'finished' })], 'sub', emit);
+		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a']);
+	});
+
 	it('keeps an item whose probe throws (defer to lazy path)', async () => {
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 		apiMock.checkAvailability.mockRejectedValue(new Error('upstream 520'));

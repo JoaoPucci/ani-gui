@@ -107,6 +107,24 @@ describe('startAvailabilityLookup', () => {
 		expect(h.resolved).toEqual([false, true]);
 	});
 
+	it('establishes nothing from an unsettled answer, but stops saying it is open', async () => {
+		// The probe reached the provider and came back without a verdict:
+		// the pool it found was refused on how its hits are named. The
+		// answer says `available: false` and means nothing by it — the
+		// backend persists nothing either — so the page keeps what it
+		// had, exactly as it does when the lookup fails, and the question
+		// is still over.
+		const h = harness(() =>
+			Promise.resolve(answer({ available: false, episode_count: null, unsettled: true }))
+		);
+		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
+		await settled();
+
+		expect(h.applied).toEqual([]);
+		expect(h.listed).toEqual([null]);
+		expect(h.resolved).toEqual([false, true]);
+	});
+
 	it('says nothing at all once cancelled', async () => {
 		// The page it was asked for has moved on — a different show, a
 		// different mode, or gone. Reporting the question answered would

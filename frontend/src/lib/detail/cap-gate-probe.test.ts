@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 
-import { createCapGateProbe, type CapGateAnswer, type CapGateRefresh } from './cap-gate-probe';
+import {
+	capGateAnswerFrom,
+	createCapGateProbe,
+	type CapGateAnswer,
+	type CapGateRefresh
+} from './cap-gate-probe';
 
 /** Drain the microtask queue. Counting `await Promise.resolve()`
  *  ticks is brittle — the settle path runs through then/catch/finally
@@ -445,5 +450,38 @@ describe('createCapGateProbe', () => {
 		// The shared request is only shared while it is in flight; a
 		// click after it settled deserves a current answer.
 		expect(d.calls).toHaveLength(2);
+	});
+});
+
+describe('capGateAnswerFrom', () => {
+	it('reads a settled answer whole, the extras defaulting to none', () => {
+		expect(
+			capGateAnswerFrom({ available: true, episode_count: 7, extra_episodes: ['7.5'] })
+		).toEqual({ count: 7, approximate: false, available: true, extraEpisodes: ['7.5'] });
+		expect(
+			capGateAnswerFrom({
+				available: true,
+				episode_count: 4,
+				extra_episodes: [],
+				episode_count_approximate: true
+			})
+		).toEqual({ count: 4, approximate: true, available: true, extraEpisodes: [] });
+	});
+
+	it('reads an unsettled answer as no answer at all', () => {
+		// The probe reached the provider and came back without a
+		// verdict. Its `available: false` means nothing, and the
+		// controller's word for "nothing was established" is null —
+		// the same path the request's failure took before this answer
+		// existed, so the tile reports it could not tell rather than
+		// that the show is gone.
+		expect(
+			capGateAnswerFrom({
+				available: false,
+				episode_count: null,
+				extra_episodes: [],
+				unsettled: true
+			})
+		).toBeNull();
 	});
 });
