@@ -95,16 +95,13 @@
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import {
-		browserStorage,
 		failedHeroImages,
-		loadHeroPrefs,
 		naturalRatio,
 		noteHeroImageFailed,
 		pickHeroImage,
-		saveHeroPrefs,
-		type HeroOrigin,
-		type HeroPrefs
+		type HeroOrigin
 	} from '$lib/hero/framing';
+	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
@@ -742,7 +739,7 @@
 		}
 	});
 
-	// Hero framing preferences — see $lib/hero/framing. A choice made in
+	// Hero framing preferences — see $lib/hero/prefs. A choice made in
 	// the switch applies to the hero at once and is kept for the next load.
 	let heroPrefs = $state(loadHeroPrefs(browserStorage()));
 	function chooseHeroPrefs(next: HeroPrefs) {

@@ -15,7 +15,7 @@
 		type HistoryEntry
 	} from '$lib/api';
 	import { legacySweepView } from '$lib/diagnostics/legacy-sweep';
-	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/framing';
+	import { browserStorage, loadHeroPrefs, saveHeroPrefs } from '$lib/hero/prefs';
 	import { m } from '$lib/paraglide/messages';
 	import { describeError } from '$lib/play/error-copy';
 
@@ -35,7 +35,7 @@
 	// Whether the home and detail pages show their banner framing
 	// switch. Kept with the framing preferences themselves, so turning
 	// the controls on or off leaves a chosen framing as it is — see
-	// $lib/hero/framing.
+	// $lib/hero/prefs.
 	let heroPrefs = $state(loadHeroPrefs(browserStorage()));
 	function setFramingControls(shown: boolean) {
 		heroPrefs = { ...heroPrefs, controls: shown };

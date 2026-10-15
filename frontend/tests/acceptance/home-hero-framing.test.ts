@@ -25,7 +25,8 @@ vi.mock('$app/navigation', () => ({
 
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
-import { HERO_PREFS_STORAGE_KEY, failedHeroImages } from '../../src/lib/hero/framing';
+import { failedHeroImages } from '../../src/lib/hero/framing';
+import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
 const COVER = 'https://media.kitsu.app/anime/1/cover_image/large.jpg';

@@ -6,14 +6,14 @@
 -->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
+	import type { HeroOrigin } from './framing';
 	import {
 		HERO_FRAMINGS,
 		HERO_SOURCES,
 		type HeroFraming,
-		type HeroOrigin,
 		type HeroPrefs,
 		type HeroSource
-	} from './framing';
+	} from './prefs';
 
 	let {
 		prefs,

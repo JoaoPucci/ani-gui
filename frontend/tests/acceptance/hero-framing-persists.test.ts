@@ -26,7 +26,7 @@ import HomePage from '../../src/routes/+page.svelte';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
-import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/framing';
+import { HERO_PREFS_STORAGE_KEY } from '../../src/lib/hero/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
 const KITSU_ID = '7';

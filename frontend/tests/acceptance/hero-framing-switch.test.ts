@@ -6,11 +6,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, unmount } from 'svelte';
 
 import HeroFramingSwitch from '../../src/lib/hero/HeroFramingSwitch.svelte';
-import {
-	HERO_PREFS_STORAGE_KEY,
-	type HeroOrigin,
-	type HeroPrefs
-} from '../../src/lib/hero/framing';
+import type { HeroOrigin } from '../../src/lib/hero/framing';
+import { HERO_PREFS_STORAGE_KEY, type HeroPrefs } from '../../src/lib/hero/prefs';
 import { m } from '../../src/lib/paraglide/messages';
 
 let app: ReturnType<typeof mount> | null = null;
