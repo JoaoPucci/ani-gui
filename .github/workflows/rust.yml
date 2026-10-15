@@ -214,7 +214,10 @@ jobs:
         # a filter that matches no test exits 0 having run nothing.
         run: |
           cargo test --lib -- --ignored --exact commands::play_native_walk::fixture_tests::oracle::run_the_oracle_cases
-          test -s "$PICKER_ORACLE_OUT"
+          test -s "$PICKER_ORACLE_OUT" || {
+            echo "run_the_oracle_cases wrote no outcomes to $PICKER_ORACLE_OUT"
+            exit 1
+          }
       - if: needs.filter.outputs.picker == 'true'
         name: Compare with the model
         run: >
