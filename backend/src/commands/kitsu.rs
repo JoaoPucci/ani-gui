@@ -1624,6 +1624,25 @@ mod tests {
     }
 
     #[test]
+    fn a_mapping_stamped_before_the_countless_year_vouched_is_not_read() {
+        // A subtitled sequel with a year but no count was resolved to
+        // the series its searches answer with, a hit its year only
+        // tolerated, and a play stamps the picked show's key with the
+        // entry asked for: the series' key bound to the sequel, under
+        // a title the cross-cour guard has no cour to refuse on.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:show-1";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v5:{key}"),
+            "50600",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
     fn allmanga_kitsu_cache_round_trips_for_a_given_show_id() {
         let state = state_with_kitsu_at("http://unused");
         allmanga_kitsu_put(&state, "vDTSJHSpYnrkZnAvG", "11469").expect("put ok");
