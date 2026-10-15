@@ -881,6 +881,15 @@ export interface AvailabilityResponse {
 	 *  answered `available`. Absent on negative rows and on rows from
 	 *  before the backend named it. */
 	provider?: StreamProvider;
+	/** True when the probe reached the provider and came back without
+	 *  a verdict — the show found under none of the entry's names, a
+	 *  hit the count fit refused on how it is named, a mode nobody
+	 *  answered for. `available` is then false and means nothing, the
+	 *  count is absent, and the backend persisted nothing. Readers
+	 *  treat the answer as unknown: the card stays, the page keeps its
+	 *  lazy play, exactly as when the request fails. Absent from every
+	 *  settled answer. */
+	unsettled?: boolean;
 }
 
 /** "Is this title in the provider's catalog?" probe. The detail page hits

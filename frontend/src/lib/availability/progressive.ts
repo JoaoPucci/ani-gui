@@ -46,7 +46,10 @@ async function probeInline<T extends KitsuAnimeRef>(
 					// paced background slots would turn a cold ~20-hit
 					// search into a ~20-second wait.
 				});
-				cached[item.id] = r.available;
+				// An unsettled answer established nothing — its
+				// `available: false` is no verdict — so, like a failed
+				// probe, it leaves the card and remembers nothing.
+				if (!r.unsettled) cached[item.id] = r.available;
 			} catch {
 				// Probe failed — leave unset so we render the card
 				// (lazy click path will surface the real error).
