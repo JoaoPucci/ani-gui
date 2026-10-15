@@ -43,12 +43,12 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     let filtered = year_filtered(client, &hits, year).await;
     let Some(expected) = expected else {
         let picked = match filtered {
-            Ok((head, _)) => pick_without_count(client, &head, &needle, entry).await,
+            Ok(head) => pick_without_count(client, &head, &needle, entry).await,
             Err(e) => Err(e),
         };
         return countless_miss(picked, refused_dropped);
     };
-    let (head, _) = filtered?;
+    let head = filtered?;
     if head.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
