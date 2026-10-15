@@ -90,11 +90,11 @@ const listTrigger = () =>
 		(b.textContent ?? '').includes(m.detail_list_add())
 	) ?? null;
 
-/** Every status line the page shows. */
-const statusText = () =>
-	Array.from(target.querySelectorAll('[role="status"]'))
-		.map((el) => el.textContent ?? '')
-		.join('\n');
+/** The list control's own status line — the notice beside its trigger,
+ *  not the page's other status elements (the unavailable banner, the
+ *  action notice, toasts). */
+const listNotice = () =>
+	listTrigger()?.parentElement?.querySelector('[role="status"]')?.textContent ?? '';
 
 function useShowHandlers(entryReads: { count: number }) {
 	server.use(
@@ -147,7 +147,7 @@ describe('detail route — the tracker answers 429 to the live-entry read', () =
 		// The first refusal, the wait, the second refusal — and then the
 		// page stops, with the tracker's own wait in the sentence it shows.
 		const busy = m.errors_reason_busy_wait({ seconds: RETRY_AFTER_S });
-		await until(() => statusText().includes(busy), `the rate-limit notice "${busy}"`);
+		await until(() => listNotice().includes(busy), `the rate-limit notice "${busy}"`);
 
 		expect(entryReads.count).toBe(2);
 		// Unknown, not absent: the control is disabled rather than offering
