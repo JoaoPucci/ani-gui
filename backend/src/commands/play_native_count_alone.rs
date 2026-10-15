@@ -68,3 +68,7 @@ pub(super) fn unvouched_counted(
     }
     refused_a_fit
 }
+
+#[cfg(test)]
+#[path = "play_native_count_alone_test.rs"]
+mod tests;
