@@ -216,6 +216,57 @@ class TheModelReadsTheDocs(unittest.TestCase):
         ]:
             self.assertEqual(oracle.predict(pool(titles, None, rows, year=None)), want, (titles, rows))
 
+    def test_the_probe_head_stops_at_the_fifth_that_could_be_picked(self):
+        rows = [(f"r{i}", f"Show 2 Arc {c}", 50) for i, c in enumerate("ABCDE")] + [("x", "Show 3", E)]
+        picked, evidence = oracle.head(["Show 2"], rows, True)
+        self.assertEqual([r[0] for r in picked], ["r0", "r1", "r2", "r3", "r4"])
+        self.assertEqual(evidence, [], "a hit behind the fifth that could be picked is never read")
+        self.assertTrue(oracle.clean_miss_expected(pool(["Show 2"], E, rows)))
+        before = [("x", "Show 3", E)] + rows[:5]
+        self.assertEqual([r[0] for r in oracle.head(["Show 2"], before, True)[1]], ["x"])
+        self.assertFalse(oracle.clean_miss_expected(pool(["Show 2"], E, before)))
+
+    def test_a_japanese_division_reads_alike_glued_or_apart(self):
+        self.assertTrue(oracle.names(["ショー 第2期"], "ショー第2期"))
+        self.assertTrue(oracle.names(["ショー第2期"], "ショー 第2期"))
+        self.assertEqual(oracle.Reading("ショー第2期第2部").ords, [2, 2])
+        self.assertEqual(oracle.Reading("ショー第2期第2部").name, ["ショー"])
+        self.assertEqual(oracle.Reading("ショー 第2期 第2部").ords, [2, 2])
+        self.assertEqual(oracle.Reading("ショー２").ords, [2])
+        self.assertEqual(oracle.Reading("ショー２").name, ["ショー"])
+        self.assertEqual(oracle.Reading("怪獣８号").ords, [], "the ８ inside 怪獣８号 is no division")
+        self.assertEqual(oracle.Reading("ショー 第十期").ords, [10])
+
+    def test_a_span_through_the_first_part_reads_as_the_whole(self):
+        self.assertEqual(oracle.Reading("Haikyuu!!: To the Top (Part 1+2)").ords, [])
+        self.assertTrue(oracle.names(["Haikyuu!!: To the Top"], "Haikyuu!!: To the Top (Part 1+2)"))
+        self.assertEqual(oracle.Reading("Show Part 2+3").ords, [(2, 3)])
+
+    def test_a_marker_season_below_an_entry_s_bare_number_is_the_season_before(self):
+        self.assertFalse(oracle.pickable(["Show 3 Part 2"], "Show Season 2 Part 2"))
+        self.assertFalse(oracle.pickable(["Show 3"], "Show Season 2"))
+        self.assertTrue(oracle.pickable(["Show 2"], "Show Season 2"))
+        self.assertTrue(oracle.pickable(["Show 3 Part 2"], "Show 3rd Season Part 2"))
+
+    def test_parts_that_could_stitch_are_tabled_not_predicted(self):
+        for rows in [
+            [("a", "Show", 4), ("b", "Show Part 2", 3)],
+            [("a", "Show", 4), ("b", "Show Part 2", 4), ("c", "Show Part 3", 4)],
+            [("a", "Show", 11), ("b", "Show 2nd Stage", 1)],
+            [("a", "Show", 1), ("b", "Show 2nd Stage", 11)],
+        ]:
+            self.assertIs(oracle.predict(pool(["Show"], E, rows)), oracle.NOT_MODELLED, rows)
+        # two whole listings of the entry's length together explain nothing
+        self.assertEqual(oracle.predict(pool(["Show"], E, [("a", "Show", E), ("b", "Show Part 1", E)])), pick("a"))
+        # a three-digit stem keeps its number: "Mob Psycho 1 …" is no kin of it
+        self.assertIsNone(oracle.predict(pool(["Mob Psycho 100"], E, [("w", "Mob Psycho 100", 24), ("x", "Mob Psycho 1 Part 2", E)])))
+
+    def test_a_half_names_its_ordinal_and_is_no_sequel_guard_marker(self):
+        self.assertTrue(oracle.admitted(["Show 2nd Half"], "Show Season 2"))
+        self.assertTrue(oracle.admitted(["Show Second Half"], "Show Season 2"))
+        self.assertFalse(oracle.later_part_of(["Show 2nd Half"], "Show"))
+        self.assertFalse(oracle.pickable(["Show 2nd Half"], "Show"), "the entry before, by every title naming a later division")
+
     def test_the_pools_a_broad_listing_shapes_are_tabled_not_predicted(self):
         self.assertIs(oracle.predict(pool(["Show 2"], E, [("w", "Show 2", 24), ("x", "Show 2 Part 2", E)])), oracle.NOT_MODELLED)
         self.assertIs(oracle.predict(pool(["Show 2"], E, [("d", "Show 2", E)], dead=["d"])), oracle.NOT_MODELLED)
