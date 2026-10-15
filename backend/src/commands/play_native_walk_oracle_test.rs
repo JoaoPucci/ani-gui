@@ -14,6 +14,165 @@
 
 use super::*;
 
+/// One pool as the oracle writes it: an entry known by `titles` with
+/// `count` and `entry_year`, every title's search answering with the
+/// rows `(slug, title, episodes)`. Every listing numbers its rows from
+/// 1 with no tag and its page names [`LISTING_YEAR`]; `dead` names the
+/// slugs whose probe dies in transport.
+#[derive(Debug, serde::Deserialize)]
+struct Case {
+    id: String,
+    titles: Vec<String>,
+    count: Option<u32>,
+    entry_year: Option<u32>,
+    rows: Vec<(String, String, u32)>,
+    #[serde(default)]
+    dead: Vec<String>,
+}
+
+/// The year every listing a case writes names on its page — the
+/// entry's own year wherever the case gives it one, so the year
+/// vouches for every hit and the titles alone decide.
+const LISTING_YEAR: u32 = 2020;
+
+/// The site as one case records it.
+fn site_of(case: &Case) -> Recorded {
+    let canonical = case
+        .titles
+        .first()
+        .unwrap_or_else(|| panic!("case {}: no titles", case.id));
+    let listing = |n: u32| {
+        serde_json::Value::Array((1..=n).map(|k| serde_json::json!([k, k, null])).collect())
+    };
+    let hits: Vec<serde_json::Value> = case
+        .rows
+        .iter()
+        .map(|(slug, title, _)| serde_json::json!([slug, title, "TV"]))
+        .collect();
+    let json = serde_json::json!({
+        "kitsu": {
+            "canonical": canonical,
+            "alt_titles": case.titles[1..],
+            "episode_count": case.count,
+            "year": case.entry_year,
+            "subtype": "TV",
+        },
+        "searches": case.titles.iter().map(|t| (t.clone(), serde_json::Value::Array(hits.clone()))).collect::<serde_json::Map<_, _>>(),
+        "episodes": case.rows.iter().map(|(slug, _, n)| (slug.clone(), listing(*n))).collect::<serde_json::Map<_, _>>(),
+        "years": case.rows.iter().map(|(slug, _, _)| (slug.clone(), serde_json::json!(LISTING_YEAR))).collect::<serde_json::Map<_, _>>(),
+    });
+    let mut site = Recorded::inline(&case.id, &json.to_string());
+    // The recording names its dead listings as static strings, as the
+    // fixture tests write them in source. A case's arrive at run time,
+    // and the driver runs each case once per process, so leaking them
+    // is the whole cost.
+    site.dead = case
+        .dead
+        .iter()
+        .map(|slug| -> &'static str { slug.clone().leak() })
+        .collect();
+    site
+}
+
+/// What the walk did, in the shape the oracle compares: a pick as its
+/// slug, regular count and every episode's `(id, number, tag)`; a
+/// refusal as the error's name and whether the pool was the clean miss.
+fn outcome(result: std::result::Result<PickedShow, NativeError>) -> serde_json::Value {
+    match result {
+        Ok(p) => {
+            let count = crate::commands::play_native_numbering::regular_episode_count(&p.episodes);
+            let episodes: Vec<serde_json::Value> = p
+                .episodes
+                .iter()
+                .map(|e| serde_json::json!([e.id, e.number, e.number2]))
+                .collect();
+            serde_json::json!({"ok": p.hit.slug, "count": count, "episodes": episodes})
+        }
+        Err(e) => serde_json::json!({"err": format!("{:?}", e.error), "clean_miss": e.clean_miss}),
+    }
+}
+
+/// The committed dump of every recorded fixture's outcome.
+fn golden_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("repo root")
+        .join("tests/picker-oracle/fixtures-golden.json")
+}
+
+/// Every recorded fixture's outcome, by id. A fixture whose walk
+/// panics is reported as such rather than ending the dump.
+async fn dump_fixtures() -> BTreeMap<String, serde_json::Value> {
+    let ids = std::fs::read_dir(fixture_dir())
+        .expect("list fixtures")
+        .filter_map(|entry| {
+            let name = entry.expect("dir entry").file_name();
+            let id = name.to_string_lossy().strip_suffix(".json")?.to_string();
+            (!id.is_empty() && id.chars().all(|c| c.is_ascii_digit())).then_some(id)
+        });
+    let mut out = BTreeMap::new();
+    for id in ids {
+        let run = id.clone();
+        let got = tokio::spawn(async move { outcome(walk(&run).await) })
+            .await
+            .unwrap_or_else(|_| serde_json::json!({"panic": true}));
+        out.insert(id, got);
+    }
+    out
+}
+
+/// The dump as text: one fixture per line, in id order, so a diff
+/// between two names the shows whose picks changed and nothing else.
+fn render(dump: &BTreeMap<String, serde_json::Value>) -> String {
+    let mut out = String::from("{\n");
+    let last = dump.len().saturating_sub(1);
+    for (i, (id, got)) in dump.iter().enumerate() {
+        let comma = if i < last { "," } else { "" };
+        out.push_str(&format!(
+            "  {}: {got}{comma}\n",
+            serde_json::Value::String(id.clone())
+        ));
+    }
+    out.push_str("}\n");
+    out
+}
+
+/// Runs every pool the file `PICKER_ORACLE_CASES` holds and writes
+/// each outcome to `PICKER_ORACLE_OUT` as `[{"id": …, "got": …}, …]`,
+/// for the oracle's `cmp` to read against its predictions.
+#[tokio::test]
+#[ignore = "driven by tests/picker-oracle: reads PICKER_ORACLE_CASES, writes PICKER_ORACLE_OUT"]
+async fn run_the_oracle_cases() {
+    let input =
+        std::env::var("PICKER_ORACLE_CASES").expect("PICKER_ORACLE_CASES names the case file");
+    let output =
+        std::env::var("PICKER_ORACLE_OUT").expect("PICKER_ORACLE_OUT names the outcome file");
+    let cases: Vec<Case> = serde_json::from_str(
+        &std::fs::read_to_string(&input).unwrap_or_else(|e| panic!("read {input}: {e}")),
+    )
+    .unwrap_or_else(|e| panic!("parse {input}: {e}"));
+    let mut out = Vec::with_capacity(cases.len());
+    for case in cases {
+        let id = case.id.clone();
+        let got = tokio::spawn(async move { outcome(walk_over(site_of(&case)).await) })
+            .await
+            .unwrap_or_else(|_| serde_json::json!({"panic": true}));
+        out.push(serde_json::json!({"id": id, "got": got}));
+    }
+    std::fs::write(&output, serde_json::to_string(&out).expect("serialise"))
+        .unwrap_or_else(|e| panic!("write {output}: {e}"));
+}
+
+/// Rewrites the golden from the fixtures as they pick now. Run it in
+/// the change that means to alter a recorded show's pick, and say why
+/// in that commit's body.
+#[tokio::test]
+#[ignore = "rewrites tests/picker-oracle/fixtures-golden.json"]
+async fn write_the_fixture_golden() {
+    std::fs::write(golden_path(), render(&dump_fixtures().await))
+        .unwrap_or_else(|e| panic!("write {}: {e}", golden_path().display()));
+}
+
 const SHOW: &str = r#"{"id": "one", "titles": ["Show"], "count": 12, "entry_year": 2020,
     "rows": [["x", "Show", 12]]}"#;
 
