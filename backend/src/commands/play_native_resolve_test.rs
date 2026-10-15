@@ -71,10 +71,15 @@ async fn canonical_title_resolves_to_the_master_url() {
         .any(|e| matches!(e, ProgressLine::LinksFetched { provider } if provider == crate::provider_set::ProviderSet::TEST_DEFAULT.label())));
 }
 
+// The three alias-walk tests below search an entry with a count and no
+// year, and the alias that carries the show is the show's own title:
+// such an entry takes a hit named for it, and these are about the walk
+// reaching that alias, not about what vouches for the hit there.
+
 #[tokio::test]
 async fn alt_title_recovers_when_canonical_finds_nothing() {
-    let provider = scripted(&[("romanized", THE_SHOW)]);
-    let alts = vec!["romanized name".to_string()];
+    let provider = scripted(&[("the show", THE_SHOW)]);
+    let alts = vec!["the show".to_string()];
     let (got, _) = run(&provider, "english name", &alts, "2", Some(3)).await;
     assert_eq!(got.expect("resolved").slug, key("the-show-77"));
 }
@@ -85,9 +90,9 @@ async fn a_rejected_pool_keeps_the_walk_going() {
     // the real show. The picker's rejection must not end the walk.
     let provider = scripted(&[
         ("english", Pool::Hits(&[("wrong-99", "Wrong")])),
-        ("romanized", THE_SHOW),
+        ("the show", THE_SHOW),
     ]);
-    let alts = vec!["romanized".to_string()];
+    let alts = vec!["the show".to_string()];
     let (got, _) = run(&provider, "english", &alts, "2", Some(3)).await;
     assert_eq!(got.expect("resolved").slug, key("the-show-77"));
 }
@@ -101,9 +106,9 @@ async fn a_transient_pick_failure_keeps_the_walk_going() {
     // if nothing recovers.
     let provider = scripted(&[
         ("english", Pool::Hits(&[("broken-55", "Broken")])),
-        ("romanized", THE_SHOW),
+        ("the show", THE_SHOW),
     ]);
-    let alts = vec!["romanized".to_string()];
+    let alts = vec!["the show".to_string()];
     let (got, _) = run(&provider, "english", &alts, "2", Some(3)).await;
     assert_eq!(got.expect("resolved").slug, key("the-show-77"));
 }
