@@ -81,6 +81,19 @@ fn asked_the_mode(provider: &TableProvider) -> bool {
     provider.count(|a| matches!(a, Asked::Mode(..))) > 0
 }
 
+/// Whether a probe answered without a verdict: a normal answer whose
+/// wire shape says `unsettled`, saying the show is not available and
+/// meaning nothing by it. Read as the renderer reads it — from the
+/// serialized answer — since that shape is what the route sends.
+pub(super) fn unsettled(got: &Result<AvailabilityResponse>) -> bool {
+    got.as_ref().is_ok_and(|r| {
+        let wire = serde_json::to_value(r).expect("serializes");
+        wire["unsettled"] == serde_json::Value::Bool(true)
+            && !r.available
+            && r.episode_count.is_none()
+    })
+}
+
 /// [`check_availability`] with `table` answering in the slot of the
 /// provider it answers as: the state's own cache, rows and gates, one
 /// provider's answers swapped for the call.
@@ -873,8 +886,8 @@ async fn a_reprobe_keeps_the_positive_row_when_its_provider_is_down_and_the_rest
     .expect("args");
     let got = check_with(&state, &args, &primary).await;
     assert!(
-        matches!(got, Err(crate::error::AniError::NoResults)),
-        "the primary's absence is the verdict the caller sees, unpersisted: {got:?}"
+        unsettled(&got),
+        "the primary's absence is the verdict the caller sees, unpersisted and not an error: {got:?}"
     );
     assert!(
         asked_the_mode(&primary),
@@ -1036,8 +1049,8 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
     .expect("args");
     let got = check_with(&state, &args, &primary).await;
     assert!(
-        matches!(got, Err(crate::error::AniError::NoResults)),
-        "nobody answered for the mode: {got:?}"
+        unsettled(&got),
+        "nobody answered for the mode — unknown, not an error: {got:?}"
     );
     assert!(asked_the_mode(&fallback), "the fallback was asked too");
     assert!(
@@ -1075,8 +1088,8 @@ async fn an_inconclusive_primary_outranks_the_fallbacks_clean_miss() {
     .expect("args");
     let got = check_with(&state, &args, &primary).await;
     assert!(
-        matches!(got, Err(crate::error::AniError::NoResults)),
-        "the verdict is unknown, not the fallback's miss: {got:?}"
+        unsettled(&got),
+        "the verdict is unknown, not the fallback's miss and not an error: {got:?}"
     );
     assert!(!fallback.searched().is_empty(), "the fallback was asked");
     assert!(
@@ -1965,6 +1978,51 @@ fn batch_cached_skips_empty_ids_in_input() {
     );
     assert_eq!(resp.cached.len(), 1);
     assert_eq!(resp.cached.get("kid-4"), Some(&true));
+}
+
+/// An entry with a count and no year whose every search answers with
+/// other shows, one of them fitting the count: the pool is refused on
+/// how the hit is named, which the walk reports as the dead end rather
+/// than the clean miss. The probe answers that as what it is — nothing
+/// established, nothing persisted — and not as an error the renderer
+/// has to swallow: a normal answer that says `unsettled`, so a card
+/// keeps rendering and a page keeps its lazy play.
+#[tokio::test]
+async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_nothing() {
+    let other = Arc::new(one_show(
+        ProviderId::TestA,
+        ("other-7", "Other", Some("TV")),
+        &[
+            7001, 7002, 7003, 7004, 7005, 7006, 7007, 7008, 7009, 7010, 7011, 7012,
+        ],
+        true,
+        false,
+    ));
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Show: Arc",
+        "mode": "sub",
+        "kitsu_id": "591",
+        "episode_count": 12,
+        "subtype": "TV"
+    }))
+    .expect("args");
+    let got = check_with(&state, &args, &other).await;
+    assert!(
+        unsettled(&got),
+        "a refusal by name is unknown, not an error: {got:?}"
+    );
+    assert!(
+        other.count(|a| matches!(a, Asked::Episodes(_))) > 0,
+        "the fitting hit was probed before it was refused"
+    );
+    assert!(
+        meta_cache_get(&state.cache_pool, &cache_key("591", "sub"))
+            .expect("cache read")
+            .is_none(),
+        "a refusal by name persists nothing"
+    );
 }
 
 /// `cache_key` is what makes the schema bumps self-heal possible —
