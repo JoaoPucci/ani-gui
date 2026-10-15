@@ -4497,8 +4497,9 @@ fn paced_client(
 
 /// A background walk's requests each wait for the gate's paced slot,
 /// and a page warm's dozen chains can hold one past the window the
-/// walk gives its server. Cut off there, the server was never asked:
-/// no host failed, and the chain stood at the gate. The walk steps
+/// walk gives its server. Cut off there, the request the window cut
+/// off had reached no host: no host failed, and the chain stood at
+/// the gate. The walk steps
 /// on, and when the servers it did ask answered nothing louder than
 /// a status — here the remainder's own not-found card — the verdict
 /// is neither that answered absence, since the held server may carry

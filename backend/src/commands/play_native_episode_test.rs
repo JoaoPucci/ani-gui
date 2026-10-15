@@ -451,7 +451,7 @@ async fn the_episode_step_names_the_host_whose_connection_died() {
 
 /// A provider's walk can end in a timeout no attempt produced: its
 /// own bound cut a server off while the gate still held the request,
-/// and no host was asked. The provider stamps no attempt on that
+/// so no host failed. The provider stamps no attempt on that
 /// verdict, and the episode step leaves it its name — the deadline's
 /// shape, which the breaker reads as ambiguous for a paced background
 /// resolve — rather than the stream server's failure, which would say

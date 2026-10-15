@@ -668,6 +668,39 @@ async fn a_failure_in_the_episode_chain_that_is_not_an_answer_is_the_stream_serv
     }
 }
 
+/// A chain verdict the provider stamps no attempt on — its own walk
+/// cut a server off while the gate still held the request, so no host
+/// failed — reaches the breaker as the deadline's shape: the resolve
+/// walk keeps its name and its missing stamp, moves on to the next
+/// alias as it does for any transient failure, and a paced background
+/// resolve records nothing on it, where the stream server's verdict
+/// would have been distress without a request reaching the provider.
+#[tokio::test]
+async fn a_chain_timeout_no_attempt_produced_records_nothing_on_a_background_walk() {
+    let fate = chain_fails(|| AniError::Timeout);
+    let ne = run_chain(&fate).await.expect_err("nothing resolved");
+    assert!(
+        matches!(ne.error, AniError::Timeout),
+        "the deadline's shape, under its own name: {:?}",
+        ne.error
+    );
+    assert!(ne.failed_at.is_none(), "no attempt produced the verdict");
+    assert!(!ne.clean_miss);
+    let log = fate.searched();
+    assert!(
+        log.iter().any(|u| u.contains("fallback")),
+        "the walk went on to the next alias: {log:?}"
+    );
+    assert!(
+        crate::commands::play_native_outcome::breaker_outcome::<()>(
+            crate::scraper::gate::ScrapePriority::Background,
+            &Err(ne),
+        )
+        .is_none(),
+        "a paced background resolve records nothing on it"
+    );
+}
+
 /// The searches themselves answered pages the client could not read
 /// — the site changed shape, or a redirect served another site's page
 /// — on every alias. The site answered, so the verdict is the parse

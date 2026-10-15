@@ -143,7 +143,9 @@ fn a_background_deadline_elapse_is_no_evidence() {
     // dozen prefetch resolves whose chained requests can burn the
     // whole 60 seconds on pacing alone, upstream perfectly healthy.
     // A Timeout no failing attempt is stamped on is a deadline's
-    // elapse — the only Timeout a walk constructs itself — so for a
+    // elapse — the resolve's, the attempt's, or a provider's walk
+    // cutting a server off while the gate still held its request:
+    // the Timeouts a walk constructs itself, none a host's — so for a
     // paced background resolve it is ambiguous — pacing or weather —
     // and ambiguity records nothing. Interactive resolves are never
     // paced: their elapse is a real stall and stays distress, as do
