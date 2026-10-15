@@ -2,6 +2,9 @@
 // language, shows which is in force, says which image is on screen,
 // and hands a choice to the page that owns it instead of reloading.
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, unmount } from 'svelte';
 
@@ -70,6 +73,33 @@ describe('hero framing switch', () => {
 			app = null;
 			target?.remove();
 		}
+	});
+
+	it('keeps to one row, the readout giving way, so it never grows into the hero’s copy', () => {
+		// At the window's minimum width a wrapped second row sat over the
+		// home title and the detail masthead. happy-dom has no cascade to
+		// compute the layout from, so this is a syntactic constraint on
+		// the component's style block, in the shape of tests/lint: the
+		// group's rule does not wrap and nothing caps its width, and the
+		// readout is the one item that shrinks, clipping with an ellipsis.
+		// Vitest runs from frontend/; happy-dom's import.meta.url is not a
+		// file URL, so the path is resolved from the working directory.
+		const source = readFileSync(
+			resolve(process.cwd(), 'src/lib/hero/HeroFramingSwitch.svelte'),
+			'utf8'
+		);
+		const style = source.slice(source.indexOf('<style>'));
+		const rule = (selector: string) => {
+			const at = style.indexOf(`${selector} {`);
+			expect(at, selector).toBeGreaterThan(-1);
+			return style.slice(at, style.indexOf('}', at));
+		};
+		expect(rule('.hero-framing-switch')).toContain('flex-wrap: nowrap;');
+		expect(rule('.hero-framing-switch')).not.toContain('max-inline-size');
+		const origin = rule('.origin');
+		expect(origin).toContain('min-inline-size: 0;');
+		expect(origin).toContain('overflow: hidden;');
+		expect(origin).toContain('text-overflow: ellipsis;');
 	});
 
 	it('hands a framing choice to the page, keeping the rest, without a reload', () => {
