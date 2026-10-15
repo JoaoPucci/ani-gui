@@ -70,8 +70,9 @@ function of `oracle.py` and `cases/`, so committing it would store the
 generator's output beside the generator. The whole set runs on every
 relevant pull request.
 
-`cmp` prints a summary line, one line per family and then every problem: a pool whose
-outcome differs from the model and is not allowlisted, an allowlisted
+`cmp` prints a summary line, one line per family and then every
+problem: a pool whose outcome differs from the model and is not
+allowlisted, an allowlisted
 pool whose outcome moved from the one recorded, an allowlist entry gone
 stale (its pool agrees now), one naming no pool, or one giving no
 reason, a pool the walk panicked on, a pool with no outcome. It exits
