@@ -30,15 +30,23 @@ pub fn breaker_outcome<T>(
         Err(ne) if ne.clean_miss => Some(ScrapeOutcome::Success),
         Err(ne) => match ne.error {
             AniError::GateRefused => None,
-            // A Timeout here is the whole-resolve deadline (the
-            // walk turns per-fetch stalls into Network). For a paced
-            // background resolve that duration includes the gate's
-            // own queueing — a page warm's dozen prefetch chains can
-            // burn the deadline on pacing alone — so the elapse is
-            // ambiguous evidence and records nothing. Interactive
-            // resolves are never paced: their elapse is a real
-            // stall and falls through to the failure arm.
-            AniError::Timeout if priority == ScrapePriority::Background => None,
+            // A Timeout no failing attempt is stamped on is a
+            // deadline's elapse — the whole resolve's or the
+            // attempt's, the only Timeout a walk constructs itself.
+            // For a paced background resolve that duration includes
+            // the gate's own queueing — a page warm's dozen prefetch
+            // chains can burn the deadline on pacing alone — so the
+            // elapse is ambiguous evidence and records nothing. A
+            // Timeout the walk kept carries the attempt that stalled:
+            // a host not answering a request the gate had admitted,
+            // distress like a dropped connection on every priority.
+            // Interactive resolves are never paced: their elapse is a
+            // real stall and falls through to the failure arm.
+            AniError::Timeout
+                if priority == ScrapePriority::Background && ne.failed_at.is_none() =>
+            {
+                None
+            }
             AniError::NoResults | AniError::EpisodeUnavailable => Some(ScrapeOutcome::Success),
             AniError::RateLimited { retry_after_secs } => Some(ScrapeOutcome::RateLimited {
                 retry_after: retry_after_secs.map(std::time::Duration::from_secs),
