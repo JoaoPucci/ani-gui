@@ -261,6 +261,22 @@ class TheModelReadsTheDocs(unittest.TestCase):
         # a three-digit stem keeps its number: "Mob Psycho 1 …" is no kin of it
         self.assertIsNone(oracle.predict(pool(["Mob Psycho 100"], E, [("w", "Mob Psycho 100", 24), ("x", "Mob Psycho 1 Part 2", E)])))
 
+    def test_a_longer_number_glued_to_a_japanese_word_is_a_word_of_its_own(self):
+        # the docs read a one- or two-digit number glued to a Japanese word
+        # as a division; a longer one is no division, and glued or apart it
+        # is the same word
+        self.assertEqual(oracle.Reading("ショー200").name, ["ショー", "200"])
+        self.assertEqual(oracle.Reading("ショー 200").name, ["ショー", "200"])
+        self.assertTrue(oracle.names(["ショー 200"], "ショー200"))
+        self.assertEqual(oracle.Reading("怪獣８号").name, ["怪獣8号"])
+
+    def test_a_refused_lead_or_a_first_part_stitches_nothing(self):
+        # a candidate the titles refuse may stitch as a later part, never as
+        # the lead, and a first part completes no bare title: both pools are
+        # decided by the rules the predicates read
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show 2", 6), ("b", "Show 2 Part 2", 6)])))
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [("a", "Show", 6), ("b", "Show Part 1", 6)])))
+
     def test_a_half_names_its_ordinal_and_is_no_sequel_guard_marker(self):
         self.assertTrue(oracle.admitted(["Show 2nd Half"], "Show Season 2"))
         self.assertTrue(oracle.admitted(["Show Second Half"], "Show Season 2"))
