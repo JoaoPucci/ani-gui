@@ -1437,3 +1437,46 @@ async fn watch_later_bridge_remembers_a_conclusive_miss_and_asks_neither_route_a
         "the second load must not re-run the AniList batch either"
     );
 }
+
+#[tokio::test]
+async fn the_rails_dead_end_may_rest_on_a_cached_anilist_negative() {
+    // The detail page's single translation learned that AniList has no
+    // media for MAL id 21 and kept that for a day. A rail load the same
+    // day finds Kitsu has no mapping either, and the batch answers from
+    // the cache without asking AniList. Both routes have spoken — one
+    // of them earlier — so the dead end is recorded, as it would have
+    // been with a live page answer.
+    use wiremock::matchers::{method, path, query_param};
+    let kitsu = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("GET"))
+        .and(path("/mappings"))
+        .and(query_param("filter[externalSite]", "myanimelist/anime"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(KITSU_MAPPINGS_EMPTY_BODY),
+        )
+        .mount(&kitsu)
+        .await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":null}}"#),
+        )
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let single = crate::commands::anilist_ids::media_id_for_mal(&state, 21, Some(&anilist.uri()))
+        .await
+        .expect("single translation");
+    assert_eq!(single, None);
+    let refs = kitsu_for_mal_ids_with_anilist_base(&state, vec![21], Some(&anilist.uri())).await;
+    assert!(refs.is_empty(), "nothing maps this id");
+
+    let dead_end = crate::cache::meta_cache_get(&state.cache_pool, "kitsu:mal-map:v1:21")
+        .expect("cache read")
+        .expect("the dead end is recorded");
+    assert_eq!(dead_end, "", "an empty body is the known-unmappable marker");
+    // `.expect(1)`: the batch asked AniList nothing; the page's earlier
+    // answer stood in.
+}
