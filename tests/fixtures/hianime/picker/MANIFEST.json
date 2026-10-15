@@ -131,8 +131,8 @@
   },
   "42080.json": {
     "source": "kitsu.io /api/edge/anime/42080; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
-    "captured": "2026-10-06",
-    "sha256": "fae7c220fe59e167620d4dede74c8a2476e52b61b861e2aba1818be80c14b9c6"
+    "captured": "2026-10-15",
+    "sha256": "fa8a0475fae936aa772a1217c91902e7bd9d651381cd44098571d6fc43d18d4c"
   },
   "42196.json": {
     "source": "kitsu.io /api/edge/anime/42196; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
@@ -376,8 +376,8 @@
   },
   "6589.json": {
     "source": "kitsu.io /api/edge/anime/6589; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
-    "captured": "2026-10-06",
-    "sha256": "22edd796964d02ae40d21707569fa329c4f104a02ade2da9b354dcc0a5e223cd"
+    "captured": "2026-10-15",
+    "sha256": "d01f2b6e3f0c126114a1b156145afedb6ce7912e3b32abe993ad272d31ea8f28"
   },
   "7158.json": {
     "source": "kitsu.io /api/edge/anime/7158; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
@@ -386,8 +386,8 @@
   },
   "7442.json": {
     "source": "kitsu.io /api/edge/anime/7442; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
-    "captured": "2026-10-06",
-    "sha256": "1e75a49bb47d19f027e28bd5e9bfa961fbe840217b9fb53f757e3ba85e6e763c"
+    "captured": "2026-10-15",
+    "sha256": "0a72962e79efe27a623338909fcbb0779553f11474db3feb28237ee138ebfa73"
   },
   "7658.json": {
     "source": "kitsu.io /api/edge/anime/7658; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",

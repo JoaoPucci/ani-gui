@@ -15,9 +15,11 @@
 //! mapping is read. The mark takes the mapping's moment and lifetime,
 //! and expires with it. Each later re-key — v4 when the entry's titles
 //! came to rule the pick, v5 when names came to vouch for a countless
-//! or single-video pick — retires the mappings before it: their marks
-//! then name rows nothing reads, until they expire, and the next play
-//! of a show stores a fresh mapping and mark.
+//! or single-video pick, v6 when a countless entry stopped taking a
+//! hit its year only tolerated and the probe head's evidence came to
+//! reach as far as its five — retires the mappings before it: their
+//! marks then name rows nothing reads, until they expire, and the
+//! next play of a show stores a fresh mapping and mark.
 //!
 //! It runs once per cache file, gated by SQLite's `user_version`, which
 //! clearing the cache's rows leaves standing: a rerun would read the

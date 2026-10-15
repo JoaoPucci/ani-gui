@@ -22,15 +22,14 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
     client: &P,
     hits: &'a [BrowseHit],
     year: Option<u32>,
-) -> Result<(Vec<(&'a BrowseHit, bool)>, bool)> {
+) -> Result<Vec<(&'a BrowseHit, bool)>> {
     // The caller bounds the head (`probe_head`); every hit given is
     // one the pick means to consider.
     let head = hits.iter();
     let Some(year) = year else {
-        return Ok((head.map(|h| (h, false)).collect(), false));
+        return Ok(head.map(|h| (h, false)).collect());
     };
     let mut kept = Vec::new();
-    let mut excluded_any = false;
     for h in head {
         // `?`: a refusal, rate limit, or transport failure on a
         // detail page is the provider blocking this client — probing
@@ -44,12 +43,12 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
             // not ride them past a large count mismatch).
             Some(y) if y == year => kept.push((h, true)),
             Some(y) if y.abs_diff(year) <= 1 => kept.push((h, false)),
-            Some(_) => excluded_any = true,
+            Some(_) => {}
             None => kept.push((h, false)),
         }
     }
     if kept.is_empty() {
         return Err(crate::error::AniError::NoResults);
     }
-    Ok((kept, excluded_any))
+    Ok(kept)
 }

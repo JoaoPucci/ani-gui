@@ -179,7 +179,8 @@ async fn assert_picks(rows: &[Expectation]) {
     assert!(wrong.is_empty(), "wrong picks:\n{}", wrong.join("\n"));
 }
 
-/// Entries a real-data audit found picked right, which must stay so.
+/// Entries a real-data audit found picked right — or, for a show the
+/// catalogue does not list, rightly refused — which must stay so.
 const AUDITED_RIGHT: &[Expectation] = &[
     ("7158", Some(("jojos-bizarre-adventure-2012-708", 26))), // JoJo (2012)
     (
@@ -190,8 +191,21 @@ const AUDITED_RIGHT: &[Expectation] = &[
         "11459",
         Some(("jojos-bizarre-adventure-diamond-is-unbreakable-1388", 39)),
     ),
+    (
+        "44294",
+        Some(("jojos-bizarre-adventure-stone-ocean-1460", 12)),
+    ),
+    (
+        "46010",
+        Some(("jojos-bizarre-adventure-stone-ocean-part-2-1464", 12)),
+    ),
+    (
+        "46598",
+        Some(("jojos-bizarre-adventure-stone-ocean-part-3-2834", 14)),
+    ),
     ("7442", Some(("attack-on-titan-240", 25))),
     ("8671", Some(("attack-on-titan-season-2-865", 12))),
+    ("13569", Some(("attack-on-titan-season-3-866", 12))), // cut from 22, Part 2 behind
     ("41982", Some(("attack-on-titan-season-3-part-2-1895", 10))),
     ("42422", Some(("attack-on-titan-final-season-1372", 16))),
     (
@@ -251,8 +265,13 @@ const AUDITED_RIGHT: &[Expectation] = &[
     ("44875", Some(("vinland-saga-season-2-902", 24))),
     ("41373", Some(("kaguya-sama-love-is-war-1-437", 12))),
     ("42632", Some(("kaguya-sama-love-is-war-416", 12))), // Love is War Season 2
+    ("46170", Some(("oshi-no-ko-675", 11))),              // [Oshi no Ko], listed as "My Star"
     ("47659", Some(("oshi-no-ko-season-2-682", 13))),
     ("49264", Some(("oshi-no-ko-season-3-672", 11))),
+    (
+        "45217",
+        Some(("mobile-suit-gundam-the-witch-from-mercury-3596", 12)),
+    ),
     (
         "46561",
         Some((
@@ -280,6 +299,7 @@ const AUDITED_RIGHT: &[Expectation] = &[
     ),
     ("818", Some(("gintama-1237", 201))),
     ("5971", Some(("gintama-season-2-1153", 51))), // Gintama'
+    ("14095", Some(("gintama-silver-soul-arc-1155", 12))), // cut from 26, Second Half War behind
     (
         "41079",
         Some(("gintama-silver-soul-arc-second-half-war-1157", 14)),
@@ -287,7 +307,13 @@ const AUDITED_RIGHT: &[Expectation] = &[
     ("11", Some(("naruto-1335", 220))),
     ("1555", Some(("naruto-shippuden-600", 500))),
     ("13051", Some(("boruto-naruto-next-generations-650", 293))),
+    ("47181", None), // Boruto Part 2: not listed, refused
+    ("42059", Some(("haikyu-to-the-top-933", 13))), // cut from 25 "(Part 1+2)"
     ("42938", Some(("haikyu-to-the-top-2nd-cour-934", 12))),
+    (
+        "42196",
+        Some(("that-time-i-got-reincarnated-as-a-slime-season-2-487", 12)),
+    ),
     (
         "43361",
         Some((
@@ -2518,5 +2544,162 @@ async fn a_title_as_written_carries_its_tags_wherever_they_stand() {
             "own",
             "{count:?}"
         );
+    }
+}
+
+/// The probe head's evidence reaches as far as its five: with a count,
+/// the hits that cannot be picked are probed as evidence up to the
+/// fifth that can, so a broad listing's completing sibling behind four
+/// other seasons and the listing itself is probed, and the listing is
+/// cut. The sixth such hit is not: a pool still costs at most ten
+/// probes, and a sibling past that many is left unread — its listing
+/// is not recorded, so reading it fails the test.
+#[tokio::test]
+async fn the_evidence_reaches_as_far_as_the_five() {
+    let site = pool_of(
+        &["Show Season 3"],
+        Some(12),
+        2020,
+        "Show Season 3",
+        &[
+            ("a", "Show Season 2", 12),
+            ("b", "Show Season 1", 12),
+            ("c", "Show", 12),
+            ("d", "Show 2", 12),
+            ("e", "Show Season 2 Part 2", 12),
+            ("w", "Show Season 3", 24),
+            ("l", "Show Season 3 Part 2", 12),
+        ],
+    );
+    let picked = walk_over(site).await.expect("the cut listing");
+    assert_eq!(picked.hit.slug, "w");
+    assert_eq!(picked.episodes.len(), 12);
+
+    let mut site = pool_of(
+        &["Show Season 3"],
+        Some(12),
+        2020,
+        "Show Season 3",
+        &[
+            ("a", "Show Season 2", 12),
+            ("b", "Show Season 1", 12),
+            ("d", "Show 2", 12),
+            ("e", "Show Season 2 Part 2", 12),
+            ("f", "Other Show Season 2", 12),
+            ("w", "Show Season 3", 24),
+            ("l", "Show Season 3 Part 2", 12),
+        ],
+    );
+    site.doc.episodes.remove("l");
+    site.doc.years.remove("l");
+    if let Ok(p) = walk_over(site).await {
+        panic!("picked {} ({})", p.hit.slug, p.episodes.len());
+    }
+}
+
+/// Without a count, an entry with a year took every hit its year did
+/// not disprove, in the provider's order: a hit a year off (the
+/// December allowance) or with no year on its page, however it was
+/// named. The year tolerated such a hit without vouching for it. Now a
+/// hit is taken only when something vouches for it — the title
+/// searched, its own year, or the entry's name under any alias — so a
+/// subtitled sequel the provider does not list yet, airing the year
+/// after its series, is no longer played as the series. The pool is
+/// then the plain miss: nothing — count, year or name — spoke for any
+/// hit, so a walk that finds nothing is the clean verdict. A hit the
+/// year or the name vouches for is taken from behind one it merely
+/// tolerated, and whether the year disproved some other hit in the
+/// pool changes nothing.
+#[tokio::test]
+async fn a_countless_entry_with_a_year_takes_only_a_hit_its_year_or_name_vouches_for() {
+    let entry = ["Show: Arc", "Show: The Arc"];
+    // Alone in the pool: (the hit's title, its page's year, taken?).
+    for (title, year, want) in [
+        ("Show: The Arc", Some(2016), true),
+        ("Show", Some(2016), true),
+        ("Show: The Arc", Some(2015), true),
+        ("Show", Some(2015), false),
+        ("Show: The Arc", None, true),
+        ("Show", None, false),
+    ] {
+        let site = inline_pool(&entry, None, Some(2016), "TV", &[("x", title, 12, year)]);
+        match (walk_over(site).await, want) {
+            (Ok(p), true) => assert_eq!(p.hit.slug, "x", "{title} {year:?}"),
+            (Err(e), false) => assert!(e.clean_miss, "{title} {year:?}: {:?}", e.error),
+            (Ok(p), false) => panic!("{title} {year:?}: picked {}", p.hit.slug),
+            (Err(e), true) => panic!("{title} {year:?}: refused: {:?}", e.error),
+        }
+    }
+    // Behind the series the year tolerates, a hit something vouches
+    // for is the pick: named, whatever its page year, or unnamed from
+    // the entry's own year.
+    for (title, year) in [
+        ("Show: The Arc", Some(2016)),
+        ("Show: The Arc", Some(2015)),
+        ("Show: The Arc", None),
+        ("Other", Some(2016)),
+    ] {
+        let site = inline_pool(
+            &entry,
+            None,
+            Some(2016),
+            "TV",
+            &[("s", "Show", 12, Some(2015)), ("x", title, 12, year)],
+        );
+        let picked = walk_over(site)
+            .await
+            .unwrap_or_else(|e| panic!("{title} {year:?} behind the series: {:?}", e.error));
+        assert_eq!(picked.hit.slug, "x", "{title} {year:?}");
+    }
+    // A second hit the year merely tolerates, named by nothing, is no
+    // more than the first: the pool is still the clean miss.
+    for year in [Some(2015), None] {
+        let site = inline_pool(
+            &entry,
+            None,
+            Some(2016),
+            "TV",
+            &[
+                ("s", "Show", 12, Some(2015)),
+                ("x", "Show Remake", 12, year),
+            ],
+        );
+        match walk_over(site).await {
+            Err(e) => assert!(e.clean_miss, "{year:?}: {:?}", e.error),
+            Ok(p) => panic!("{year:?}: picked {}", p.hit.slug),
+        }
+    }
+    // The year disproving another hit changes nothing: a named hit a
+    // year off is taken beside one decades off.
+    let site = inline_pool(
+        &entry,
+        None,
+        Some(2016),
+        "TV",
+        &[
+            ("o", "Old", 12, Some(1990)),
+            ("x", "Show: The Arc", 12, Some(2015)),
+        ],
+    );
+    assert_eq!(walk_over(site).await.expect("named").hit.slug, "x");
+}
+
+/// A subtitled sequel the provider does not list yet, announced with a
+/// premiere the year after its series and no count on Kitsu: every
+/// search for it answers with the series, whose page names the year
+/// before. The series is not the entry, and the pool is the clean
+/// miss.
+#[tokio::test]
+async fn a_subtitled_sequel_the_provider_does_not_list_is_not_played_as_its_series() {
+    let site = inline_pool(
+        &["Show: Arc"],
+        None,
+        Some(2016),
+        "TV",
+        &[("show-1", "Show", 12, Some(2015))],
+    );
+    match walk_over(site).await {
+        Ok(p) => panic!("played the series: {}", p.hit.slug),
+        Err(e) => assert!(e.clean_miss, "{:?}", e.error),
     }
 }

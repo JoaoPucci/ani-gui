@@ -457,6 +457,13 @@ fn what_fails_over_is_the_provider_being_unreachable_refusing_or_broken() {
         fails_over(&AniError::ParseFailed { detail: "x".into() }),
         "a parse failure is the site having changed shape — broken, not answering"
     );
+    assert!(
+        fails_over(&AniError::StreamServerFailed {
+            stage: "embed",
+            host: None,
+        }),
+        "a stream server that did not serve stands for the transport and parse failures that failed over under their own names"
+    );
     assert!(!fails_over(&AniError::NoResults));
     assert!(
         !fails_over(&AniError::EpisodeUnavailable),
@@ -759,9 +766,9 @@ mod failover_props {
     /// An error a walk can meet, paired with whether it is the provider
     /// being unreachable, refusing or broken: transport failures, a
     /// timeout, a gate refusal, a rate limit with any hint, a page the
-    /// parser no longer reads, and an upstream block — 403, 429 or a
-    /// server error — move the walk on; an answer, whatever its kind,
-    /// does not. The expectation is stated by that rule, not by the
+    /// parser no longer reads, a stream server that did not serve, and
+    /// an upstream block — 403, 429 or a server error — move the walk
+    /// on; an answer, whatever its kind, does not. The expectation is stated by that rule, not by the
     /// predicate under test.
     fn error_and_whether_it_fails_over() -> impl Strategy<Value = (AniError, bool)> {
         prop_oneof![
@@ -771,6 +778,15 @@ mod failover_props {
             prop::option::of(0u64..100_000)
                 .prop_map(|retry_after_secs| (AniError::RateLimited { retry_after_secs }, true)),
             "[a-z ]{0,24}".prop_map(|detail| (AniError::ParseFailed { detail }, true)),
+            prop::option::of("[a-z.]{1,16}").prop_map(|host| {
+                (
+                    AniError::StreamServerFailed {
+                        stage: "embed",
+                        host,
+                    },
+                    true,
+                )
+            }),
             (100u16..600).prop_map(|status| {
                 let block = status == 403 || status == 429 || status >= 500;
                 (AniError::Upstream { status }, block)

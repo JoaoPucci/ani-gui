@@ -83,9 +83,7 @@ async fn fetch_anilist_eps_thumbs(
     kitsu_id: &str,
     anilist_base: Option<&str>,
 ) -> std::result::Result<HashMap<u32, String>, ()> {
-    let ids = state
-        .kitsu
-        .external_ids_for_kitsu_id(kitsu_id)
+    let ids = super::external_ids::external_ids_for(state, kitsu_id)
         .await
         .map_err(
             |e| tracing::warn!(kitsu_id, error = ?e, "anilist thumbs: mappings lookup failed"),

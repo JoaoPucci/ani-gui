@@ -1986,3 +1986,92 @@ proptest! {
         prop_assert!(ajax::readable(&embed), "{}", embed);
     }
 }
+
+// ── the stream server's verdict, the not-found card, the host of a URL ──
+
+/// A failure the server walk can end on: everything a host can hand
+/// the loop, the gate's refusal, and the answered absence.
+fn arb_chain_end() -> impl Strategy<Value = AniError> {
+    prop_oneof![
+        arb_weather(),
+        any::<()>().prop_map(|()| AniError::GateRefused),
+        any::<()>().prop_map(|()| AniError::NoResults),
+    ]
+}
+
+/// A host as a URL names one: labels of letters and digits, each
+/// starting with a letter so the last is never read as a number.
+fn arb_host() -> impl Strategy<Value = String> {
+    "[a-z][a-z0-9]{0,11}(\\.[a-z][a-z0-9]{0,11}){0,3}"
+}
+
+/// Where a chain can stand: the listing on the site's own origin, an
+/// embed page, a playlist on the CDN.
+fn arb_site() -> impl Strategy<Value = Site> {
+    prop_oneof![
+        arb_host().prop_map(|h| Site::at("servers", &format!("https://{h}"))),
+        arb_host().prop_map(|h| Site::at("embed", &format!("https://{h}/stream/mal/1/1/sub"))),
+        arb_host().prop_map(|h| Site::at("playlist", &format!("https://{h}/v/master.m3u8"))),
+    ]
+}
+
+proptest::proptest! {
+    /// Exactly the failures that are not an answer — a dropped
+    /// connection, a timeout, a page the client could not read —
+    /// become the stream server not serving, named for where the
+    /// chain stood; every other end of the walk is handed back as it
+    /// came, so a block, a rate limit, an answered status, the gate's
+    /// refusal and the answered absence keep their meaning.
+    #[test]
+    fn the_stream_server_verdict_names_exactly_the_failures_that_are_not_answers(
+        weather in arb_chain_end(),
+        site in arb_site(),
+    ) {
+        let before = format!("{weather:?}");
+        let not_an_answer = matches!(
+            weather,
+            AniError::Network | AniError::Timeout | AniError::ParseFailed { .. }
+        );
+        let verdict = stream_server_verdict(weather, site.clone());
+        if not_an_answer {
+            match verdict {
+                AniError::StreamServerFailed { stage, host } => {
+                    prop_assert_eq!(stage, site.stage);
+                    prop_assert_eq!(host, Some(site.host));
+                }
+                other => prop_assert!(false, "{} -> {:?}", before, other),
+            }
+        } else {
+            prop_assert_eq!(format!("{verdict:?}"), before);
+        }
+    }
+
+    /// The host of a URL is the host it names, whatever its scheme or
+    /// path; text that is not a URL stands as itself, so a failure is
+    /// never named for an empty host.
+    #[test]
+    fn the_host_of_a_url_is_its_host_and_of_anything_else_the_text_itself(
+        host in arb_host(),
+        path in "[a-z0-9/._-]{0,24}",
+        bare in "[a-z ]{1,24}",
+    ) {
+        prop_assert_eq!(host_of(&format!("https://{host}/{path}")), host.clone());
+        prop_assert_eq!(host_of(&format!("http://{host}")), host);
+        prop_assert_eq!(host_of(&bare), bare);
+    }
+
+    /// The card's code is the one mark: a page carrying it is the
+    /// card whatever surrounds it, and a page without it is not,
+    /// whatever else it says.
+    #[test]
+    fn the_not_found_card_is_recognised_by_its_code_alone(
+        before in ".{0,64}",
+        after in ".{0,64}",
+        other in ".{0,120}",
+    ) {
+        let card = format!("{before}class=\"code\">404<{after}");
+        prop_assert!(is_not_found_page(&card));
+        prop_assume!(!other.contains("class=\"code\">404<"));
+        prop_assert!(!is_not_found_page(&other));
+    }
+}

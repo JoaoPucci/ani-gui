@@ -160,7 +160,9 @@ async fn trending_propagates_5xx_as_upstream() {
 }
 
 #[tokio::test]
-async fn trending_surfaces_429_for_rate_limit() {
+async fn trending_surfaces_429_as_a_rate_limit() {
+    // No `Retry-After`: the rate limit is still one, with no wait to
+    // pass on.
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(wiremock::ResponseTemplate::new(429))
@@ -168,7 +170,15 @@ async fn trending_surfaces_429_for_rate_limit() {
         .await;
     let client = reqwest::Client::new();
     let err = trending(&client, 5, Some(&server.uri())).await.unwrap_err();
-    assert!(matches!(err, AniError::Upstream { status: 429 }));
+    assert!(
+        matches!(
+            err,
+            AniError::RateLimited {
+                retry_after_secs: None
+            }
+        ),
+        "{err:?}"
+    );
 }
 
 /// `parse_banner_response` is the pure half of the banner-
@@ -542,8 +552,47 @@ async fn post_graphql_public_gives_up_after_one_429_retry() {
     )
     .await
     .expect_err("persistent 429 must still fail");
-    assert!(matches!(err, AniError::Upstream { status: 429 }));
+    assert!(
+        matches!(
+            err,
+            AniError::RateLimited {
+                retry_after_secs: Some(0)
+            }
+        ),
+        "{err:?}"
+    );
     // MockServer verifies expect(2) on drop — exactly one retry.
+}
+
+#[tokio::test]
+async fn post_graphql_public_does_not_retry_a_wait_it_cannot_honour() {
+    // AniList's window is a minute and its `Retry-After` says so. A
+    // retry three seconds in is a request spent to be told the same
+    // thing; the answer is the rate limit, with the wait, at once.
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "60"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let err = post_graphql_public(
+        &reqwest::Client::new(),
+        &server.uri(),
+        &serde_json::json!({}),
+    )
+    .await
+    .expect_err("a 429 with a long wait fails at once");
+    assert!(
+        matches!(
+            err,
+            AniError::RateLimited {
+                retry_after_secs: Some(60)
+            }
+        ),
+        "{err:?}"
+    );
+    // MockServer verifies expect(1) on drop — no retry.
 }
 
 #[tokio::test]

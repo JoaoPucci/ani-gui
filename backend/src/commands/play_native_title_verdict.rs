@@ -23,14 +23,17 @@ pub(super) fn rescuable(row: &Probed<'_>, expected: u32) -> bool {
 /// another entry of the same show (the entry before this one, or the
 /// season before it) — so listings named for other seasons never
 /// crowd the entry's own out of the bounded head. With a count, the
-/// refused hits and the other entries among the first
-/// [`MAX_PROBED_CANDIDATES`] are kept too — probed as evidence (a
-/// span's later part, a split's parts, a broad listing) and never
-/// picked. Without one they are dropped: the titles are the only
-/// identity, and another entry is no refusal. Alongside the head,
-/// whether a refused hit was dropped — a countless pick that then
-/// finds nothing was narrowed by the title inference, and answers
-/// [`refused_by_title`] ([`countless_miss`]).
+/// hits that cannot be picked — refused, or another entry — are kept
+/// too, probed as evidence (a span's later part, a split's parts, a
+/// broad listing) and never picked: the first [`MAX_PROBED_CANDIDATES`]
+/// such hits before the fifth that can be picked, so a completing
+/// sibling listed behind the other seasons a search ranks first is
+/// still read, and a pool still costs at most twice
+/// [`MAX_PROBED_CANDIDATES`] probes. Without a count they are dropped:
+/// the titles are the only identity, and another entry is no refusal.
+/// Alongside the head, whether a refused hit was dropped — a countless
+/// pick that then finds nothing was narrowed by the title inference,
+/// and answers [`refused_by_title`] ([`countless_miss`]).
 ///
 /// # Errors
 /// [`refused_by_title`] when, without a count to probe them for, the
@@ -40,12 +43,12 @@ pub(super) fn probe_head(
     counted: bool,
     entry: EntryTitles<'_>,
 ) -> crate::error::Result<(Vec<BrowseHit>, bool)> {
-    let mut admitted = 0;
+    let mut pickable = 0;
+    let mut evidence = 0;
     let mut refused_dropped = false;
     let head: Vec<BrowseHit> = hits
         .into_iter()
-        .enumerate()
-        .filter(|(pos, h)| {
+        .filter(|h| {
             // Another entry of the same show
             // ([`EntryTitles::another_entry`]) is never picked, so it is
             // never charged to the five: with a count it is evidence as
@@ -53,14 +56,19 @@ pub(super) fn probe_head(
             // refusal, so it leaves the miss clean.
             let admits = entry.admits(&h.title);
             if admits && !entry.another_entry(&h.title) {
-                admitted += 1;
-                admitted <= MAX_PROBED_CANDIDATES
+                pickable += 1;
+                pickable <= MAX_PROBED_CANDIDATES
             } else {
                 refused_dropped |= !counted && !admits;
-                counted && *pos < MAX_PROBED_CANDIDATES
+                // Evidence reaches as far as the five that can be
+                // picked: the first five such hits, before the fifth
+                // pickable one is taken.
+                let read =
+                    counted && pickable < MAX_PROBED_CANDIDATES && evidence < MAX_PROBED_CANDIDATES;
+                evidence += usize::from(read);
+                read
             }
         })
-        .map(|(_, h)| h)
         .collect();
     if head.is_empty() && refused_dropped {
         return Err(refused_by_title());
@@ -110,3 +118,7 @@ pub(super) fn rejection(
 pub(super) fn refused_by_title() -> crate::error::AniError {
     crate::error::AniError::Upstream { status: 404 }
 }
+
+#[cfg(test)]
+#[path = "play_native_title_verdict_test.rs"]
+mod tests;

@@ -10,6 +10,7 @@ pub mod account_edit;
 pub mod airing;
 mod anilist_banner_memo;
 pub mod anilist_eps_thumbs;
+pub(crate) mod anilist_ids;
 pub mod aniskip;
 pub mod app_info;
 pub mod availability;
@@ -22,6 +23,7 @@ mod cour_keyword_form;
 mod cour_ordinal_form;
 pub mod download;
 mod download_names;
+pub(crate) mod external_ids;
 pub mod numbering_offset;
 
 #[cfg(test)]
@@ -85,6 +87,7 @@ mod play_native_title_marks;
 mod play_native_title_number;
 mod play_native_title_reading;
 mod play_native_title_verdict;
+mod play_native_transient;
 pub mod play_native_walk;
 mod play_native_wide_listing;
 pub mod play_native_year;

@@ -32,6 +32,14 @@ pub struct GatedFetch<'g, F> {
     /// that actually observed the outcome. Post-admission, so paced
     /// queueing never backdates it.
     last_attempt_at: std::sync::Mutex<Option<tokio::time::Instant>>,
+    /// Whether the chain's latest request is still waiting on the
+    /// gate: set as a request is asked for, cleared as the gate
+    /// answers for it, admitting or refusing. Never reset by a
+    /// cancellation — a request cut off mid-wait never left the gate,
+    /// and the walk that cut it reads this afterwards to tell that
+    /// from a host not answering an admitted request
+    /// ([`Fetch::awaiting_admission`]).
+    latest_queued: std::sync::atomic::AtomicBool,
 }
 
 impl<'g, F> GatedFetch<'g, F> {
@@ -45,6 +53,7 @@ impl<'g, F> GatedFetch<'g, F> {
             priority,
             sanction: std::sync::Mutex::new(None),
             last_attempt_at: std::sync::Mutex::new(None),
+            latest_queued: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -62,6 +71,10 @@ impl<F: Fetch> Fetch for GatedFetch<'_, F> {
         GatedFetch::last_attempt_at(self)
     }
 
+    fn awaiting_admission(&self) -> bool {
+        self.latest_queued.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     async fn fetch(&self, req: &FetchRequest) -> Result<FetchResponse> {
         if let Some(gate) = self.gate {
             // A refusal only happens for background priority while
@@ -70,10 +83,12 @@ impl<F: Fetch> Fetch for GatedFetch<'_, F> {
             // and every background warmup would refresh the open
             // breaker's cooldown without contacting the provider.
             let held = *self.sanction.lock().expect("sanction lock");
-            let granted = gate
-                .admit_chained(self.priority, held)
-                .await
-                .map_err(|_| crate::error::AniError::GateRefused)?;
+            self.latest_queued
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            let answered = gate.admit_chained(self.priority, held).await;
+            self.latest_queued
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            let granted = answered.map_err(|_| crate::error::AniError::GateRefused)?;
             *self.sanction.lock().expect("sanction lock") = granted;
         }
         *self.last_attempt_at.lock().expect("attempt stamp lock") =

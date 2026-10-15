@@ -897,3 +897,87 @@ async fn current_entry_keeps_anilists_not_found_reply_an_error() {
         .unwrap_err();
     assert!(matches!(err, AniError::Upstream { status: 404 }));
 }
+
+// --- 429 from the authenticated endpoint ------------------------------
+// AniList's public API runs degraded at 30 requests a minute per IP,
+// shared by trending, airing, thumbnails and the banner backfill. When
+// the account's own query is the one over the line, the answer is a
+// rate limit with a `Retry-After`, and the envelope has to say so —
+// `error.network.rate_limited` with the wait — rather than the generic
+// "answered with an error (HTTP 429)" that `Upstream` becomes, so the
+// renderer can wait the advertised time instead of retrying at once.
+
+#[tokio::test]
+async fn me_surfaces_429_as_rate_limited_with_the_advertised_wait() {
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(429)
+                .insert_header("retry-after", "30")
+                .set_body_string(r#"{"errors":[{"message":"Too Many Requests."}]}"#),
+        )
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .me(&dummy_tokens())
+        .await
+        .expect_err("429 must surface as Err");
+    assert!(
+        matches!(
+            err,
+            AniError::RateLimited {
+                retry_after_secs: Some(30)
+            }
+        ),
+        "expected RateLimited {{ retry_after_secs: Some(30) }}, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn current_entry_surfaces_429_without_a_wait_as_rate_limited() {
+    use wiremock::matchers::method;
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(429))
+        .mount(&server)
+        .await;
+    let provider = make_provider(&server.uri(), "http://unused-token");
+    let err = provider
+        .current_entry(&dummy_tokens(), ProviderMediaId(21))
+        .await
+        .expect_err("429 must surface as Err");
+    assert!(
+        matches!(
+            err,
+            AniError::RateLimited {
+                retry_after_secs: None
+            }
+        ),
+        "expected RateLimited {{ retry_after_secs: None }}, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn exchange_code_surfaces_429_as_rate_limited() {
+    // The token endpoint is the same host under the same limit.
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(429).insert_header("retry-after", "60"))
+        .mount(&server)
+        .await;
+    let provider = make_provider("http://unused-api", &server.uri());
+    let err = provider
+        .exchange_code("the-code", &Pkce::new_plain())
+        .await
+        .expect_err("429 must surface as Err");
+    assert!(
+        matches!(
+            err,
+            AniError::RateLimited {
+                retry_after_secs: Some(60)
+            }
+        ),
+        "expected RateLimited {{ retry_after_secs: Some(60) }}, got {err:?}"
+    );
+}

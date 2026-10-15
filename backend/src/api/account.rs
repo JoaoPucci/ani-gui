@@ -77,13 +77,19 @@ use account_wire::{
 /// internal secret). Codex P2 #3370011855 opened the path for
 /// `InvalidToken`; Codex P2 #3370096596 extends it to `Network` and
 /// `Upstream` so an offline disconnect can still clear the local cache
-/// rows the docs/PRIVACY.md promise to drop. Other variants (Io, etc.)
-/// still propagate as before — they indicate the backend itself is
-/// broken, not that the upstream identity can't be reached.
+/// rows the docs/PRIVACY.md promise to drop. A tracker's rate limit
+/// (`RateLimited`, its HTTP 429) is an answer of the same kind as a
+/// 5xx — about the tracker's willingness, not the identity — and opens
+/// the path too. Other variants (Io, etc.) still propagate as before —
+/// they indicate the backend itself is broken, not that the upstream
+/// identity can't be reached.
 fn me_failure_allows_renderer_fallback(e: &AniError) -> bool {
     matches!(
         e,
-        AniError::InvalidToken | AniError::Network | AniError::Upstream { .. }
+        AniError::InvalidToken
+            | AniError::Network
+            | AniError::Upstream { .. }
+            | AniError::RateLimited { .. }
     )
 }
 

@@ -294,11 +294,13 @@ async fn unknown_expected_count_prefers_exact_title_then_first() {
         .expect_err("nothing named as the entry");
     assert!(matches!(err, AniError::NoResults));
 
-    // A year that disproved nothing keeps the provider's order.
-    let picked = pick_candidate(&client, &hits, None, "no such title", Some(2026), None)
+    // With a year the pool's pages do not contradict, the provider's
+    // order still vouches for nothing: a hit neither named as the
+    // entry nor from its year is not taken on position either.
+    let err = pick_candidate(&client, &hits, None, "no such title", Some(2026), None)
         .await
-        .expect("falls back to first");
-    assert_eq!(picked.hit.slug, "first-66");
+        .expect_err("nothing vouched for");
+    assert!(matches!(err, AniError::NoResults));
 }
 
 #[tokio::test]
@@ -628,16 +630,28 @@ async fn a_countless_garbage_pool_with_only_unknown_survivors_is_rejected() {
 }
 
 #[tokio::test]
-async fn a_countless_clean_pool_with_an_unknown_year_still_picks_first() {
-    // The year stays a soft hint when it disproved nothing: a pool
-    // with no exclusions and an unknown-year first hit keeps the
-    // provider's own ranking, so pages without season links don't
-    // become unresolvable.
+async fn a_countless_hit_with_no_page_year_is_taken_only_when_the_entry_names_it() {
+    // A page without a year disproves nothing and vouches for nothing:
+    // a countless entry with a year takes such a hit only when one of
+    // its titles names it — under any alias — never on the provider's
+    // order alone.
     let client = TableProvider::counted_with_years(&[(1, 12, None)]);
     let hits = [hit("plain-show-1", "Plain Show")];
-    let picked = pick_candidate(&client, &hits, None, "unrelated", Some(2026), None)
+    let err = pick_candidate(&client, &hits, None, "unrelated", Some(2026), None)
         .await
-        .expect("picked");
+        .expect_err("nothing vouched for");
+    assert!(matches!(err, AniError::NoResults));
+    let picked = pick_candidate_titled(
+        &client,
+        &hits,
+        None,
+        "unrelated",
+        &["unrelated", "Plain Show"],
+        Some(2026),
+        None,
+    )
+    .await
+    .expect("named by an alias");
     assert_eq!(picked.hit.slug, "plain-show-1");
 }
 

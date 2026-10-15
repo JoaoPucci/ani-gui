@@ -441,10 +441,15 @@ async fn a_decimal_episode_tag_resolves_through_number2() {
 /// for a transport death. The query log tells the walk-continuation
 /// story.
 fn chain_fate(chain: Option<u16>) -> TableProvider {
-    let fate = match chain {
-        Some(status) => Answer::fails(move || AniError::Upstream { status }),
-        None => Answer::fails(|| AniError::Network),
-    };
+    match chain {
+        Some(status) => chain_fails(move || AniError::Upstream { status }),
+        None => chain_fails(|| AniError::Network),
+    }
+}
+
+/// [`chain_fate`] with the stream route failing however `make` says.
+fn chain_fails(make: impl Fn() -> AniError + Send + Sync + 'static) -> TableProvider {
+    let fate = Answer::fails(make);
     TableProvider::new()
         .hits("the show", hits(&[("the-show-77", "The Show")]))
         .listing(
@@ -608,24 +613,164 @@ async fn a_blocked_episode_chain_stops_the_walk() {
 }
 
 #[tokio::test]
-async fn a_transport_death_in_the_episode_chain_stays_transient() {
-    // A connection dying mid-chain proves nothing about the show:
-    // the walk moves to the next alias, and an exhausted walk with
-    // a transport death in it reports the transient Network verdict
-    // the caller must never persist.
-    let fate = chain_fate(None);
+async fn a_failure_in_the_episode_chain_that_is_not_an_answer_is_the_stream_servers() {
+    // A connection dying mid-chain, a host timing out, a page the
+    // client could not read: none proves anything about the show, so
+    // the walk moves to the next alias. When no alias resolves, the
+    // verdict is the stream server not serving — the show was found,
+    // which is what the user is told — and never the failure under
+    // its own name: the transport failure's copy sends the user after
+    // a connection the searches got through on, and the parse
+    // failure's says the app could not read a provider it read all
+    // the way to the stream server. The verdict stays transient, so
+    // the caller never persists it, and distress, as the failures it
+    // stands for were.
+    for (what, fate) in [
+        ("a dropped connection", chain_fate(None)),
+        // A host that stalled on a request the gate had admitted: the
+        // provider stamps the attempt, as the production transport
+        // does. Unstamped, a timeout is one no attempt produced, and
+        // keeps its name.
+        (
+            "a timeout",
+            chain_fails(|| AniError::Timeout).stamped(tokio::time::Instant::now()),
+        ),
+        (
+            "an unreadable page",
+            chain_fails(|| AniError::ParseFailed {
+                detail: "hianime embed page on zokoanime.video: the payload marker is missing"
+                    .into(),
+            }),
+        ),
+    ] {
+        let ne = run_chain(&fate).await.expect_err("nothing resolved");
+        assert!(
+            matches!(ne.error, AniError::StreamServerFailed { .. }),
+            "{what}: expected the stream server's failure, got {:?}",
+            ne.error
+        );
+        assert!(!ne.clean_miss, "{what}");
+        let log = fate.searched();
+        assert!(
+            log.iter().any(|u| u.contains("fallback")),
+            "{what} keeps the walk going: {log:?}"
+        );
+        assert!(
+            matches!(
+                crate::commands::play_native_outcome::breaker_outcome::<()>(
+                    crate::scraper::gate::ScrapePriority::Interactive,
+                    &Err(ne),
+                ),
+                Some(crate::scraper::gate::ScrapeOutcome::Failure)
+            ),
+            "{what}: the breaker hears distress, as it did under the failure's own name"
+        );
+    }
+}
+
+/// A chain verdict the provider stamps no attempt on — its own walk
+/// cut a server off while the gate still held the request, so no host
+/// failed — reaches the breaker as the deadline's shape: the resolve
+/// walk keeps its name and its missing stamp, moves on to the next
+/// alias as it does for any transient failure, and a paced background
+/// resolve records nothing on it, where the stream server's verdict
+/// would have been distress without a request reaching the provider.
+#[tokio::test]
+async fn a_chain_timeout_no_attempt_produced_records_nothing_on_a_background_walk() {
+    let fate = chain_fails(|| AniError::Timeout);
     let ne = run_chain(&fate).await.expect_err("nothing resolved");
     assert!(
-        matches!(ne.error, crate::error::AniError::Network),
-        "expected the transient verdict, got {:?}",
+        matches!(ne.error, AniError::Timeout),
+        "the deadline's shape, under its own name: {:?}",
         ne.error
     );
+    assert!(ne.failed_at.is_none(), "no attempt produced the verdict");
     assert!(!ne.clean_miss);
     let log = fate.searched();
     assert!(
         log.iter().any(|u| u.contains("fallback")),
-        "a transport death keeps the walk going: {log:?}"
+        "the walk went on to the next alias: {log:?}"
     );
+    assert!(
+        crate::commands::play_native_outcome::breaker_outcome::<()>(
+            crate::scraper::gate::ScrapePriority::Background,
+            &Err(ne),
+        )
+        .is_none(),
+        "a paced background resolve records nothing on it"
+    );
+}
+
+/// The searches themselves answered pages the client could not read
+/// — the site changed shape, or a redirect served another site's page
+/// — on every alias. The site answered, so the verdict is the parse
+/// failure under its own name, never the transport failure whose copy
+/// tells the user to check a connection that reached the site.
+#[tokio::test]
+async fn a_search_the_client_could_not_read_is_not_the_connection() {
+    let fetch = TableProvider::new()
+        .hits(
+            "title",
+            Answer::fails(|| AniError::ParseFailed {
+                detail: "the page is not the search shape".into(),
+            }),
+        )
+        .hits(
+            "alias",
+            Answer::fails(|| AniError::ParseFailed {
+                detail: "the page is not the search shape".into(),
+            }),
+        );
+    let (got, _) = run(&fetch, "title", &["alias".to_string()], "1", Some(2)).await;
+    let ne = got.expect_err("nothing resolved");
+    assert!(
+        matches!(ne.error, AniError::ParseFailed { .. }),
+        "expected the parse failure under its own name, got {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
+    assert_eq!(fetch.searched().len(), 2, "both aliases were searched");
+}
+
+/// One alias's search died on transport; another alias found the show
+/// and its chain did not serve. Whichever came first, the verdict is
+/// the chain's: the show was found, and the connection the search
+/// blames is the one the other search got through on.
+#[tokio::test]
+async fn a_chain_failure_outranks_a_search_failure_on_another_alias() {
+    let dead_then_found =
+        chain_fails(|| AniError::Network).hits("dead", Answer::fails(|| AniError::Network));
+    let (got, _) = run(
+        &dead_then_found,
+        "dead alias",
+        &["the show".to_string()],
+        "2",
+        Some(2),
+    )
+    .await;
+    let ne = got.expect_err("nothing resolved");
+    assert!(
+        matches!(ne.error, AniError::StreamServerFailed { .. }),
+        "search died first: {:?}",
+        ne.error
+    );
+    let found_then_dead =
+        chain_fails(|| AniError::Network).hits("dead", Answer::fails(|| AniError::Network));
+    let (got, _) = run(
+        &found_then_dead,
+        "the show",
+        &["dead alias".to_string()],
+        "2",
+        Some(2),
+    )
+    .await;
+    let ne = got.expect_err("nothing resolved");
+    assert!(
+        matches!(ne.error, AniError::StreamServerFailed { .. }),
+        "chain failed first: {:?}",
+        ne.error
+    );
+    assert!(!ne.clean_miss);
 }
 
 #[tokio::test]

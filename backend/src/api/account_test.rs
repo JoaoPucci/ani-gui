@@ -568,3 +568,23 @@ async fn delete_list_cache_fallback_rejects_when_secret_header_wrong() {
         .unwrap();
     assert!(!r.status().is_success());
 }
+
+#[test]
+fn me_failure_allows_fallback_for_a_tracker_rate_limit() {
+    // A tracker's 429 on the profile read is the tracker refusing this
+    // client for a while, as a 5xx is — not a word about the identity.
+    // A disconnect during it must still clear the cache rows
+    // docs/PRIVACY.md promises to drop, and a cached-list read must
+    // still serve the cache, so the renderer's id stands in as it does
+    // for an outage.
+    assert!(me_failure_allows_renderer_fallback(
+        &AniError::RateLimited {
+            retry_after_secs: Some(60)
+        }
+    ));
+    assert!(me_failure_allows_renderer_fallback(
+        &AniError::RateLimited {
+            retry_after_secs: None
+        }
+    ));
+}

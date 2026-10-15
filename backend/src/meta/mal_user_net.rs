@@ -67,16 +67,21 @@ impl MalRefreshState {
 }
 
 impl MalProvider {
-    /// Map an authed-endpoint response status into the trait's error
+    /// Map an authed-endpoint response into the trait's error
     /// contract: 401 → [`AniError::InvalidToken`] (revoked / expired —
-    /// route layer surfaces "Sign in again"), any other non-2xx →
-    /// [`AniError::Upstream`]. Shared by the bearer-authed request
-    /// helpers so the branch pair lives in one place. NOT used for the
-    /// OAuth token endpoint, where a 401 means "bad code / refresh
+    /// route layer surfaces "Sign in again"), 429 →
+    /// [`AniError::RateLimited`] with the advertised wait, any other
+    /// non-2xx → [`AniError::Upstream`]. Shared by the bearer-authed
+    /// request helpers so the branches live in one place. NOT used for
+    /// the OAuth token endpoint, where a 401 means "bad code / refresh
     /// token" and must surface as `Upstream`, not `InvalidToken`.
-    fn check_status(status: reqwest::StatusCode) -> Result<()> {
+    fn check_response(resp: &reqwest::Response) -> Result<()> {
+        let status = resp.status();
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(AniError::InvalidToken);
+        }
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(super::rate_limit::rate_limited("mal", resp));
         }
         if !status.is_success() {
             return Err(AniError::Upstream {
@@ -98,8 +103,9 @@ impl MalProvider {
 
     /// Shared form-encoded POST to MAL's OAuth token endpoint. Both
     /// `exchange_code` and `refresh` use it — only the form body
-    /// differs. Returns parsed `Tokens` on 2xx, `AniError::Upstream`
-    /// for non-2xx, `AniError::Network` for transport failures.
+    /// differs. Returns parsed `Tokens` on 2xx, `AniError::RateLimited`
+    /// on 429, `AniError::Upstream` for any other non-2xx,
+    /// `AniError::Network` for transport failures.
     pub(super) async fn post_token_form(&self, form: &[(&str, &str)]) -> Result<Tokens> {
         let resp = self
             .client()
@@ -110,6 +116,9 @@ impl MalProvider {
             .await
             .map_err(|_| AniError::Network)?;
         let status = resp.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(super::rate_limit::rate_limited("mal", &resp));
+        }
         if !status.is_success() {
             return Err(AniError::Upstream {
                 status: status.as_u16(),
@@ -133,7 +142,7 @@ impl MalProvider {
             .send()
             .await
             .map_err(|_| AniError::Network)?;
-        Self::check_status(resp.status())?;
+        Self::check_response(&resp)?;
         resp.bytes().await.map_err(|_| AniError::Network)
     }
 
@@ -148,7 +157,7 @@ impl MalProvider {
             .send()
             .await
             .map_err(|_| AniError::Network)?;
-        Self::check_status(resp.status())
+        Self::check_response(&resp)
     }
 
     /// Shared GET that attaches the bearer + the mandatory
@@ -160,7 +169,7 @@ impl MalProvider {
             .send()
             .await
             .map_err(|_| AniError::Network)?;
-        Self::check_status(resp.status())?;
+        Self::check_response(&resp)?;
         resp.bytes().await.map_err(|_| AniError::Network)
     }
 }

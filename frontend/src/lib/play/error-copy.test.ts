@@ -284,6 +284,36 @@ describe('describePlayFailure — the provider being down names itself', () => {
 	});
 });
 
+describe('describePlayFailure — a stream server that did not serve', () => {
+	it('names the source’s video server and the episode, not the user’s connection', () => {
+		// The backend's verdict for an episode chain that did not serve
+		// — the embed host unreachable or timing out, a page or payload
+		// or playlist it could not play — past searches that answered.
+		// It carries the stage and host for the log; the copy names
+		// neither. Shown as the transport failure it stands for, it
+		// sent the user after a connection the searches got through on.
+		const e = {
+			kind: 'stream_server_failed',
+			key: 'error.play.stream_server_failed',
+			stage: 'embed',
+			host: 'zokoanime.video'
+		};
+		const msg = describePlayFailure(e);
+		expect(msg).toBe(describeError(e));
+		expect(msg).toMatch(/video server/i);
+		expect(msg).toMatch(/episode/i);
+		expect(msg).not.toBe(m.play_play_failure_network());
+		expect(msg).not.toBe(m.play_play_failure_generic());
+		expect(msg).not.toBe(describeError({ kind: 'network' }));
+		expect(msg).not.toBe(describeError({ kind: 'parse_failed' }));
+		expect(msg).not.toContain('zokoanime.video');
+		expect(msg).not.toContain('embed');
+		// Every play surface, and the override point, read it the same.
+		expect(describeExternalLaunchFailure(e)).toBe(msg);
+		expect(describePlayFailure(e, { noResults: () => 'NOT IN CATALOGUE' })).toBe(msg);
+	});
+});
+
 describe('describeSourceDown', () => {
 	it('is the shared first-chance branch every play surface calls', () => {
 		// The detail and home pages keep their own failure mappers;
