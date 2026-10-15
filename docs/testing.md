@@ -106,9 +106,9 @@ Every PR runs all gating workflows; merge blocks until they're green:
 
 | Workflow | Triggers | Gating |
 |---|---|---|
-| `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, or a workflow | yes |
-| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json` or the workflow | yes |
-| `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md` or the workflow | not in the ruleset's required list yet |
+| `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, a script the suites execute, or a workflow | yes |
+| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
+| `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | not in the ruleset's required list yet |
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
