@@ -2009,9 +2009,9 @@ fn arb_host() -> impl Strategy<Value = String> {
 /// embed page, a playlist on the CDN.
 fn arb_site() -> impl Strategy<Value = Site> {
     prop_oneof![
-        arb_host().prop_map(|h| Site::servers(&format!("https://{h}"))),
-        arb_host().prop_map(|h| Site::embed(&format!("https://{h}/stream/mal/1/1/sub"))),
-        arb_host().prop_map(|h| Site::playlist(&format!("https://{h}/v/master.m3u8"))),
+        arb_host().prop_map(|h| Site::at("servers", &format!("https://{h}"))),
+        arb_host().prop_map(|h| Site::at("embed", &format!("https://{h}/stream/mal/1/1/sub"))),
+        arb_host().prop_map(|h| Site::at("playlist", &format!("https://{h}/v/master.m3u8"))),
     ]
 }
 
