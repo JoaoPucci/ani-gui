@@ -8,6 +8,7 @@
 pub mod account;
 pub mod account_edit;
 pub mod airing;
+mod anilist_banner_memo;
 pub mod anilist_eps_thumbs;
 pub(crate) mod anilist_ids;
 pub mod aniskip;

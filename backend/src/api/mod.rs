@@ -256,7 +256,9 @@ async fn get_kitsu_anime_detail(
     Path(id): Path<String>,
 ) -> Result<Json<KitsuAnimeRef>, AniError> {
     let id = crate::kitsu_id::require(&id)?;
-    Ok(Json(kitsu_inner::kitsu_anime_detail(&state, id).await?))
+    Ok(Json(
+        kitsu_inner::kitsu_anime_detail_page(&state, id).await?,
+    ))
 }
 
 async fn get_kitsu_anime_by_slug(
@@ -460,7 +462,13 @@ async fn get_image(State(state): State<Arc<AppState>>, Query(q): Query<ImageQuer
     if !q.url.starts_with("https://") {
         return (StatusCode::BAD_REQUEST, "url must be https://").into_response();
     }
-    match crate::meta::images::get_or_fetch(&state.meta_http, &state.image_cache_dir, &q.url).await
+    match crate::meta::images::get_or_fetch(
+        &state.meta_http,
+        &state.image_cache_dir,
+        &state.cache_pool,
+        &q.url,
+    )
+    .await
     {
         Ok((bytes, mime)) => {
             // Opportunistic LRU prune — fire-and-forget, only walks
@@ -1986,6 +1994,7 @@ mod tests {
             age_rating: None,
             popularity_rank: None,
             poster_image: None,
+            anilist_banner: None,
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
@@ -2085,6 +2094,7 @@ mod tests {
             age_rating: None,
             popularity_rank: None,
             poster_image: None,
+            anilist_banner: None,
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");
@@ -2175,6 +2185,7 @@ mod tests {
             age_rating: None,
             popularity_rank: None,
             poster_image: None,
+            anilist_banner: None,
             cover_image: None,
         };
         let body = serde_json::to_string(&detail).expect("ser");

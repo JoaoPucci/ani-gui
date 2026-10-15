@@ -12,6 +12,15 @@
     Play / Download / External are wired to TODOs with inline notice.
 -->
 <script lang="ts">
+	import {
+		failedHeroImages,
+		naturalRatio,
+		noteHeroImageFailed,
+		pickHeroImage,
+		type HeroOrigin
+	} from '$lib/hero/framing';
+	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -1090,16 +1099,37 @@
 		return sharedDescribePlayFailure(e, { noResults: m.detail_error_play_no_results });
 	}
 
-	function heroFor(d: KitsuAnimeRef): { url: string | null; isCover: boolean } {
+	// Hero framing preferences — see $lib/hero/prefs. A choice made in
+	// the switch applies to the hero at once and is kept for the next load.
+	let heroPrefs = $state(loadHeroPrefs(browserStorage()));
+	function chooseHeroPrefs(next: HeroPrefs) {
+		heroPrefs = next;
+		saveHeroPrefs(browserStorage(), next);
+	}
+
+	// `raw` is the upstream URL `url` proxies; a load failure is noted
+	// against it, and the next pick passes it over.
+	function heroFor(d: KitsuAnimeRef): {
+		url: string | null;
+		raw: string | null;
+		isCover: boolean;
+		origin: HeroOrigin | null;
+	} {
 		// `original` last as defense — backend's eager-warm caches
 		// signed-URL bytes under a canonical hash so the proxy serves
 		// them regardless of staleness. See PosterCard for full
-		// rationale.
-		const cover = d.cover_image?.large ?? d.cover_image?.small ?? d.cover_image?.original ?? null;
-		if (cover) return { url: imageProxyUrl(cover), isCover: true };
-		const poster =
-			d.poster_image?.large ?? d.poster_image?.medium ?? d.poster_image?.original ?? null;
-		return { url: imageProxyUrl(poster), isCover: false };
+		// rationale. (The slot order lives in $lib/hero/framing.)
+		const p = pickHeroImage(d, heroPrefs, 'detail', failedHeroImages);
+		return { url: imageProxyUrl(p.url), raw: p.url, isCover: p.isCover, origin: p.origin };
+	}
+
+	// Natural aspect ratio per show, once its hero image decodes — the
+	// never-crop framing sizes the image box from it.
+	let heroRatios = $state<Record<string, number>>({});
+	function onHeroLoad(id: string, e: Event) {
+		const img = e.currentTarget as HTMLImageElement;
+		const r = naturalRatio(img.naturalWidth, img.naturalHeight);
+		if (r !== null) heroRatios[id] = r;
 	}
 	function posterFor(d: KitsuAnimeRef): string | null {
 		return imageProxyUrl(
@@ -1408,22 +1438,43 @@
 		</div>
 	{:else}
 		{@const hero = heroFor(detail)}
+		{@const heroId = detail.id}
 		{@const poster = posterFor(detail)}
 		{@const rating = ratingDisplay(detail.average_rating)}
 		{@const year = yearOf(detail)}
 
-		<section class="hero" class:hero-fallback={!hero.isCover}>
+		<section
+			class="hero"
+			class:hero-fallback={!hero.isCover}
+			class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
+			class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
+			class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
+		>
+			{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
+				<img
+					class="hero-backdrop"
+					src={hero.url}
+					alt=""
+					style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
+				/>
+			{/if}
 			{#if hero.url}
 				<img
 					class="hero-img"
 					src={hero.url}
 					alt=""
 					style:transform={heroTransform(scrollY, hero.isCover)}
+					style:--ratio={heroRatios[heroId]}
+					onload={(e) => onHeroLoad(heroId, e)}
+					onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
 				/>
 			{/if}
 			<div class="hero-scrim" aria-hidden="true"></div>
 			{#if !hero.isCover}
 				<div class="hero-grain" aria-hidden="true"></div>
+			{/if}
+			{#if heroPrefs.controls}
+				<HeroFramingSwitch prefs={heroPrefs} origin={hero.origin} onchoose={chooseHeroPrefs} />
 			{/if}
 		</section>
 
@@ -2145,6 +2196,71 @@
 				color-mix(in oklab, var(--ink-000) 0%, transparent) 35%
 			);
 		pointer-events: none;
+	}
+	/* Under the framings beyond the top crop ($lib/hero/framing) the
+	   band's fade shortens to the strip the masthead's text sits on,
+	   and the darkening keeps to that strip plus a thin band under the
+	   topbar. */
+	.hero.framing-contain,
+	.hero.framing-pillar,
+	.hero.framing-focus {
+		mask-image: linear-gradient(180deg, #000 0%, #000 84%, transparent 100%);
+		-webkit-mask-image: linear-gradient(180deg, #000 0%, #000 84%, transparent 100%);
+		container-type: size;
+	}
+	.framing-contain .hero-scrim,
+	.framing-pillar .hero-scrim,
+	.framing-focus .hero-scrim {
+		background:
+			linear-gradient(
+				180deg,
+				color-mix(in oklab, var(--ink-000) 45%, transparent) 0%,
+				transparent calc(var(--topbar-h) * 2)
+			),
+			linear-gradient(
+				180deg,
+				transparent 70%,
+				color-mix(in oklab, var(--ink-000) 55%, transparent) 100%
+			);
+	}
+	.hero.framing-focus:not(.hero-fallback) .hero-img {
+		object-position: 50% 50%;
+	}
+	.hero-backdrop {
+		position: absolute;
+		inset: 0;
+		inline-size: 100%;
+		block-size: 100%;
+		object-fit: cover;
+		filter: blur(44px) brightness(0.28) saturate(1.1);
+		animation: hero-in var(--dur-slow) var(--ease-out-soft) both;
+	}
+	/* Fill the height: the whole upload at the band's full height,
+	   centred — pillarboxed over its backdrop when narrower than the
+	   band, cropped at the sides only when wider. */
+	.hero.framing-pillar:not(.hero-fallback) .hero-img {
+		--ratio: 4.2;
+		inset-block: 0;
+		inset-inline-start: calc(50% - 100cqb * var(--ratio) / 2);
+		block-size: 100cqb;
+		inline-size: calc(100cqb * var(--ratio));
+		max-inline-size: none;
+		object-fit: cover;
+		mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+	}
+	.hero.framing-contain:not(.hero-fallback) .hero-img {
+		inset: 0;
+		margin: auto;
+		/* Until the image decodes and its own ratio arrives inline. */
+		--ratio: 4.2;
+		inline-size: min(100cqi, 100cqb * var(--ratio));
+		block-size: auto;
+		aspect-ratio: auto var(--ratio);
+		object-fit: cover;
+		mask-image:
+			linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent),
+			linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+		mask-composite: intersect;
 	}
 	.hero-grain {
 		position: absolute;

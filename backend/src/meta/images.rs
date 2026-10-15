@@ -10,11 +10,21 @@
 //!
 //! All writes are atomic (`tmp` file + `rename`) so partially-downloaded
 //! bytes never become a cached entry.
+//!
+//! A URL the upstream answers 404 or 410 for is marked dead in the
+//! metadata cache, under the same canonical key as its bytes would
+//! have, for [`DEAD_IMAGE_TTL`]. Readers that hand image URLs to the
+//! renderer — the AniList banner memo, the trending bridge, the
+//! null-cover backfill — ask [`is_dead`] first, so a URL the CDN has
+//! given up on is not offered again. A later successful fetch of the
+//! same URL drops the mark: the CDN's latest word wins either way.
 
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
+use crate::cache::ttl::DEAD_IMAGE_TTL;
+use crate::cache::{meta_cache_delete, meta_cache_get, meta_cache_put, SqlitePool};
 use crate::error::{AniError, Result};
 
 /// Stable 32-hex-char hash for a URL. First 16 bytes of SHA-256.
@@ -140,6 +150,7 @@ pub async fn fetch_and_store(
 pub async fn get_or_fetch(
     client: &reqwest::Client,
     cache_dir: &Path,
+    pool: &SqlitePool,
     url: &str,
 ) -> Result<(Vec<u8>, &'static str)> {
     if let Some(cached) = read_cached(cache_dir, url) {
@@ -154,7 +165,42 @@ pub async fn get_or_fetch(
         }
         return Ok(cached);
     }
-    fetch_and_store(client, cache_dir, url).await
+    match fetch_and_store(client, cache_dir, url).await {
+        Ok(served) => {
+            forget_dead(pool, url);
+            Ok(served)
+        }
+        // Gone is a verdict on the URL; anything else is the weather.
+        Err(e @ AniError::Upstream { status: 404 | 410 }) => {
+            mark_dead(pool, url);
+            Err(e)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn dead_key(url: &str) -> String {
+    format!("image:dead:v1:{}", hash_url(url))
+}
+
+/// Record that the upstream says `url` is gone. A cache write failure
+/// is ignored: the mark is an economy, not a correctness condition.
+pub fn mark_dead(pool: &SqlitePool, url: &str) {
+    let _ = meta_cache_put(pool, &dead_key(url), "gone", DEAD_IMAGE_TTL.as_secs());
+}
+
+/// Whether the upstream has said `url` is gone.
+#[must_use]
+pub fn is_dead(pool: &SqlitePool, url: &str) -> bool {
+    meta_cache_get(pool, &dead_key(url))
+        .ok()
+        .flatten()
+        .is_some()
+}
+
+/// Drop the mark on `url`, so it is offered again.
+pub fn forget_dead(pool: &SqlitePool, url: &str) {
+    let _ = meta_cache_delete(pool, &dead_key(url));
 }
 
 /// Total bytes used by every regular file under `cache_dir`. Walks
@@ -263,6 +309,10 @@ pub fn clear_all(cache_dir: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "images_dead_test.rs"]
+mod dead_tests;
 
 #[cfg(test)]
 mod tests {
