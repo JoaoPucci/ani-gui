@@ -2781,3 +2781,40 @@ async fn a_season_the_catalogue_stops_short_of_is_a_dead_end_not_a_miss() {
         }
     }
 }
+
+/// The other seven undated entries hianime does not list under any of
+/// their titles — its searches answer with other shows, and one of them
+/// sits within the count tolerance of the entry: a hentai OVA two
+/// episodes long for a five-episode idol OVA, a twelve-episode romance
+/// for a twelve-episode donghua. With a count and no year, the count is
+/// all that vouches for a hit, so each is played as the entry. Nothing
+/// but its count fits any of them — not the title searched, not a name
+/// of the entry's, not a year — and every pool should be refused.
+const UNDATED_REFUSED: &[Expectation] = &[
+    ("8404", None),  // Tsubu★Doll (5): picks a 2-episode OVA
+    ("43745", None), // Chuan Shu Zijiu Zhinan 2nd Season (10): picks Fei Ren Zai 2nd Season (12)
+    ("45637", None), // Mo Du Zhe (12): picks Girlfriend, Girlfriend (12)
+    ("45049", None), // Lady Napoleon (13): picks a 12-episode isekai
+    ("45494", None), // Liu Yao (13): picks Zhen Dao Ge: Qian li bu Liu Xing (12)
+    ("40684", None), // Ohanashi de Te Koi (5): picks a 4-episode hentai OVA
+    ("45500", None), // Zai Xia Ying Tai (12): picks Hero Return (12)
+];
+
+#[tokio::test]
+async fn undated_entries_the_catalogue_does_not_list_are_refused() {
+    assert_picks(UNDATED_REFUSED).await;
+}
+
+/// Zai Xia Ying Tai is the one of the seven AniList dates (2025) where
+/// Kitsu does not. The year excludes Hero Return (2020) and every other
+/// dated hit of the first pool, and the alias pool then holds a
+/// twelve-episode show from 2025 — year-confirmed, count fitting, named
+/// by nothing — so the year alone moves the pick from one unrelated
+/// show to another. Refused is still the only right answer.
+#[tokio::test]
+async fn an_undated_entry_anilist_dates_is_still_refused_under_that_year() {
+    match walk_under_anilist_year("45500").await {
+        Ok(p) => panic!("picked {} ({})", p.hit.slug, p.hit.title),
+        Err(e) => assert!(e.clean_miss, "{:?}", e.error),
+    }
+}
