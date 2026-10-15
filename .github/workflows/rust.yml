@@ -20,9 +20,12 @@ env:
 
 jobs:
   filter:
-    # Outputs `relevant = true|false` based on whether the PR diff
-    # touches anything Rust-shaped. On push events (merge to master)
-    # we always run the real pipeline.
+    # Outputs `relevant = true|false` — whether the diff touches
+    # anything Rust-shaped — and `picker = true|false` — whether it
+    # touches anything the picker oracle reads. tools/rust-workflow-
+    # filter.sh decides both, and the bats suite runs it over every
+    # shape of change it has to tell apart. On push events (merge to
+    # master) both are true and the whole pipeline runs.
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.detect.outputs.relevant }}
@@ -35,35 +38,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-            echo "picker=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Capture the diff first, then grep the result via a here-string.
-          # The naive `git diff | grep -q` pipeline interacts badly with
-          # pipefail: grep -q closes the pipe on first match and `git diff`
-          # gets killed by SIGPIPE, the pipeline exits non-zero, and the
-          # if-condition wrongly takes the else branch on relevant PRs.
-          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          # The picker golden is an input of the test job: the recorded
-          # fixtures are compared against it.
-          if grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|tests/picker-oracle/fixtures-golden\.json$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "relevant=false" >> "$GITHUB_OUTPUT"
-          fi
-          # The picker oracle reads the picker, its recorded pools, its
-          # own model and the document the model transcribes: a change to
-          # any of them is a question for it, while a change to the docs
-          # alone is no reason to run the rest of this pipeline.
-          if grep -qE '^(backend/|tests/fixtures/hianime/picker/|tests/picker-oracle/|docs/title-resolution\.md$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
-            echo "picker=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "picker=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: tools/rust-workflow-filter.sh "${{ github.event_name }}" "$BASE_SHA" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
   fmt:
     needs: filter
