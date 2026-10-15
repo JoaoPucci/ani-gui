@@ -426,6 +426,10 @@
 	   quiet, one line, no box of its own. */
 	.le-notice {
 		margin: 0;
+		/* A flex item keeps its content width unless told otherwise; a
+		   long sentence would widen the row rather than wrap. */
+		min-inline-size: 0;
+		max-inline-size: 36ch;
 		font-size: var(--type-meta);
 		color: var(--bone-300);
 		text-wrap: balance;
