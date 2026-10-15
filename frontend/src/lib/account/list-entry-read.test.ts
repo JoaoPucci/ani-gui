@@ -204,4 +204,14 @@ describe('readFailureNotice', () => {
 			readFailureNotice(failed({ rateLimited: true, retryAfterSecs: null, envelope: null }))
 		).toBe(m.detail_list_rate_limited());
 	});
+
+	it('falls back to the rate-limit sentence when the body is JSON but not an envelope', () => {
+		// The status already said 429; a body that names no `kind` cannot
+		// say more, and must not say less.
+		expect(
+			readFailureNotice(
+				failed({ rateLimited: true, retryAfterSecs: null, envelope: { message: 'slow down' } })
+			)
+		).toBe(m.detail_list_rate_limited());
+	});
 });
