@@ -191,3 +191,34 @@ async fn a_row_this_build_cannot_read_is_fetched_again_and_overwritten() {
         ids
     );
 }
+
+#[tokio::test]
+async fn two_concurrent_cold_reads_of_one_show_cost_one_kitsu_request() {
+    // The detail page reads both trackers' entries in one go, and its
+    // airing and banner lookups start from the same mappings; on a
+    // cold show all of them miss the cache in the same instant. The
+    // second read waits for the first and takes its row.
+    let body = mappings_body("12", &[("myanimelist/anime", 21), ("anilist/anime", 21)]);
+    let kitsu = kitsu_answering(
+        "12",
+        ResponseTemplate::new(200)
+            .set_body_string(body)
+            .set_delay(std::time::Duration::from_millis(300)),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu(&kitsu.uri());
+
+    let (first, second) = tokio::join!(
+        external_ids_for(&state, "12"),
+        external_ids_for(&state, "12")
+    );
+
+    let want = ExternalIds {
+        mal: Some(21),
+        anilist: Some(21),
+    };
+    assert_eq!(first.expect("first read"), want);
+    assert_eq!(second.expect("second read"), want);
+    // `.expect(1)`: one Kitsu request served both.
+}
