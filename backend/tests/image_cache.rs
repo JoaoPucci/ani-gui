@@ -59,8 +59,13 @@ async fn get_or_fetch_serves_second_call_from_cache_without_upstream_hit() {
     let url = format!("{}/once.png", mock.uri());
     let client = reqwest::Client::new();
 
-    let (b1, _) = get_or_fetch(&client, cache.path(), &url).await.unwrap();
-    let (b2, _) = get_or_fetch(&client, cache.path(), &url).await.unwrap();
+    let pool = ani_gui::cache::open_in_memory().unwrap();
+    let (b1, _) = get_or_fetch(&client, cache.path(), &pool, &url)
+        .await
+        .unwrap();
+    let (b2, _) = get_or_fetch(&client, cache.path(), &pool, &url)
+        .await
+        .unwrap();
     assert_eq!(b1, b2);
 }
 
@@ -94,7 +99,8 @@ async fn get_or_fetch_returns_cached_bytes_when_upstream_is_offline() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, b"\x89PNGcached-bytes").unwrap();
 
-    let (bytes, mime) = get_or_fetch(&reqwest::Client::new(), cache.path(), url)
+    let pool = ani_gui::cache::open_in_memory().unwrap();
+    let (bytes, mime) = get_or_fetch(&reqwest::Client::new(), cache.path(), &pool, url)
         .await
         .expect("cache hit, no network");
     assert_eq!(bytes, b"\x89PNGcached-bytes");

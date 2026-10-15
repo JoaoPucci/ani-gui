@@ -1,0 +1,14 @@
+{
+	"framing_group_label": "Banner framing",
+	"framing_top": "Top crop",
+	"framing_contain": "Fit",
+	"framing_pillar": "Fill height",
+	"framing_focus": "Centre crop",
+	"framing_source_kitsu": "Kitsu cover",
+	"framing_source_anilist": "AniList banner",
+	"framing_origin_prefix": "On screen:",
+	"framing_origin_anilist": "AniList banner",
+	"framing_origin_kitsu": "Kitsu cover",
+	"framing_origin_poster": "Poster",
+	"framing_origin_none": "No image"
+}

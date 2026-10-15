@@ -26,5 +26,8 @@
 	"cache_clear_success": "Caché de metadatos borrada.",
 	"cache_clear_error": "No se pudo borrar la caché.",
 	"section_legacy_sweep": "Eliminado al actualizar",
-	"legacy_sweep_description": "Estos archivos ya no se usan, así que se eliminaron:"
+	"legacy_sweep_description": "Estos archivos ya no se usan, así que se eliminaron:",
+	"section_banner_framing": "Encuadre del banner",
+	"banner_framing_description": "Muestra un control pequeño en la página de inicio y en la página de cada anime para elegir cómo se encuadra el banner y qué imagen usa primero. La elección se guarda en esta computadora y sigue vigente después de ocultar los controles de nuevo.",
+	"banner_framing_toggle_label": "Mostrar los controles de encuadre del banner"
 }

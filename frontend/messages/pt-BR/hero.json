@@ -1,0 +1,14 @@
+{
+	"framing_group_label": "Enquadramento do banner",
+	"framing_top": "Corte superior",
+	"framing_contain": "Ajustar",
+	"framing_pillar": "Preencher a altura",
+	"framing_focus": "Corte central",
+	"framing_source_kitsu": "Capa do Kitsu",
+	"framing_source_anilist": "Banner do AniList",
+	"framing_origin_prefix": "Na tela:",
+	"framing_origin_anilist": "Banner do AniList",
+	"framing_origin_kitsu": "Capa do Kitsu",
+	"framing_origin_poster": "Pôster",
+	"framing_origin_none": "Sem imagem"
+}

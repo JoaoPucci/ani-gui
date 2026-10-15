@@ -94,6 +94,15 @@
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
 	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
+	import {
+		failedHeroImages,
+		naturalRatio,
+		noteHeroImageFailed,
+		pickHeroImage,
+		type HeroOrigin
+	} from '$lib/hero/framing';
+	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
+	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { filterAvailable } from '$lib/availability/filter';
@@ -730,12 +739,33 @@
 		}
 	});
 
-	function heroFor(d: KitsuAnimeRef): { url: string | null; isCover: boolean } {
-		const cover = d.cover_image?.large ?? d.cover_image?.original ?? d.cover_image?.small ?? null;
-		if (cover) return { url: imageProxyUrl(cover), isCover: true };
-		const poster =
-			d.poster_image?.large ?? d.poster_image?.original ?? d.poster_image?.medium ?? null;
-		return { url: imageProxyUrl(poster), isCover: false };
+	// Hero framing preferences — see $lib/hero/prefs. A choice made in
+	// the switch applies to the hero at once and is kept for the next load.
+	let heroPrefs = $state(loadHeroPrefs(browserStorage()));
+	function chooseHeroPrefs(next: HeroPrefs) {
+		heroPrefs = next;
+		saveHeroPrefs(browserStorage(), next);
+	}
+
+	// `raw` is the upstream URL `url` proxies; a load failure is noted
+	// against it, and the next pick passes it over.
+	function heroFor(d: KitsuAnimeRef): {
+		url: string | null;
+		raw: string | null;
+		isCover: boolean;
+		origin: HeroOrigin | null;
+	} {
+		const p = pickHeroImage(d, heroPrefs, 'home', failedHeroImages);
+		return { url: imageProxyUrl(p.url), raw: p.url, isCover: p.isCover, origin: p.origin };
+	}
+
+	// Natural aspect ratio per show, once its hero image decodes — the
+	// never-crop framing sizes the image box from it.
+	let heroRatios = $state<Record<string, number>>({});
+	function onHeroLoad(id: string, e: Event) {
+		const img = e.currentTarget as HTMLImageElement;
+		const r = naturalRatio(img.naturalWidth, img.naturalHeight);
+		if (r !== null) heroRatios[id] = r;
 	}
 
 	function snippetOf(syn: string | null): string | null {
@@ -781,7 +811,22 @@
 		{#key featured.id}
 			{@const hero = heroFor(featured)}
 			{@const synopsis = snippetOf(featured.synopsis)}
-			<div class="hero-layer" in:fade={{ duration: 480 }} out:fade={{ duration: 480 }}>
+			<div
+				class="hero-layer"
+				class:framing-contain={hero.isCover && heroPrefs.framing === 'contain'}
+				class:framing-pillar={hero.isCover && heroPrefs.framing === 'pillar'}
+				class:framing-focus={hero.isCover && heroPrefs.framing === 'focus'}
+				in:fade={{ duration: 480 }}
+				out:fade={{ duration: 480 }}
+			>
+				{#if hero.url && hero.isCover && (heroPrefs.framing === 'contain' || heroPrefs.framing === 'pillar')}
+					<img
+						class="hero-backdrop"
+						src={hero.url}
+						alt=""
+						style:transform={`${heroTransform(scrollY, true)} scale(1.22)`}
+					/>
+				{/if}
 				{#if hero.url}
 					<img
 						class="hero-img"
@@ -789,6 +834,9 @@
 						src={hero.url}
 						alt=""
 						style:transform={heroTransform(scrollY, hero.isCover)}
+						style:--ratio={heroRatios[featured.id]}
+						onload={(e) => onHeroLoad(featured.id, e)}
+						onerror={() => hero.raw && noteHeroImageFailed(hero.raw)}
 					/>
 				{/if}
 				<div class="hero-scrim" aria-hidden="true"></div>
@@ -821,6 +869,13 @@
 				</div>
 			</div>
 		{/key}
+		{#if heroPrefs.controls}
+			<HeroFramingSwitch
+				prefs={heroPrefs}
+				origin={heroFor(featured).origin}
+				onchoose={chooseHeroPrefs}
+			/>
+		{/if}
 		{#if heroRotation.length > 1}
 			<div class="hero-pager" aria-label={m.home_hero_pager_aria_label()}>
 				{#each heroRotation as item, i (item.id)}
@@ -1347,6 +1402,83 @@
 		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 		background-size: 160px 160px;
 		mix-blend-mode: overlay;
+	}
+
+	/* The framings beyond the top crop ($lib/hero/framing) keep the
+	   darkening to where text sits: a field under the copy at the
+	   lower left, a thin band under the topbar, and a short hand-off
+	   into the page at the bottom edge. */
+	.framing-contain .hero-scrim,
+	.framing-pillar .hero-scrim,
+	.framing-focus .hero-scrim {
+		background:
+			linear-gradient(
+				180deg,
+				color-mix(in oklab, var(--ink-000) 45%, transparent) 0%,
+				transparent calc(var(--topbar-h) * 2)
+			),
+			linear-gradient(180deg, transparent 72%, var(--ink-000) 100%),
+			linear-gradient(
+				90deg,
+				color-mix(in oklab, var(--ink-000) 72%, transparent) 0%,
+				color-mix(in oklab, var(--ink-000) 40%, transparent) 40%,
+				transparent 65%
+			),
+			radial-gradient(
+				ellipse 72% 92% at 0% 100%,
+				color-mix(in oklab, var(--ink-000) 88%, transparent) 0%,
+				color-mix(in oklab, var(--ink-000) 60%, transparent) 50%,
+				transparent 100%
+			);
+	}
+	/* Smarter crop: still fills the band, anchored at the centre —
+	   Kitsu's sized covers are centre crops of the upload already. */
+	.framing-focus .hero-img:not(.fallback) {
+		object-position: 50% 50%;
+	}
+	/* Never crop: the whole image, centred, over a blurred, dimmed
+	   copy of itself that carries its colour to the band's edges. */
+	.hero-layer.framing-contain,
+	.hero-layer.framing-pillar {
+		container-type: size;
+	}
+	.hero-backdrop {
+		position: absolute;
+		inset: 0;
+		inline-size: 100%;
+		block-size: 100%;
+		object-fit: cover;
+		filter: blur(44px) brightness(0.28) saturate(1.1);
+		animation: hero-in var(--dur-slow) var(--ease-out-soft) both;
+	}
+	/* Fill the height: the whole upload at the band's full height,
+	   centred — pillarboxed over its backdrop when narrower than the
+	   band, cropped at the sides only when wider. */
+	.framing-pillar .hero-img:not(.fallback) {
+		--ratio: 4.2;
+		inset-block: 0;
+		inset-inline-start: calc(50% - 100cqb * var(--ratio) / 2);
+		block-size: 100cqb;
+		inline-size: calc(100cqb * var(--ratio));
+		max-inline-size: none;
+		object-fit: cover;
+		mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+	}
+	.framing-contain .hero-img:not(.fallback) {
+		inset: 0;
+		margin: auto;
+		/* Until the image decodes and its own ratio arrives inline. */
+		--ratio: 4.2;
+		inline-size: min(100cqi, 100cqb * var(--ratio));
+		block-size: auto;
+		aspect-ratio: auto var(--ratio);
+		object-fit: cover;
+		/* Feathered edges so the image settles into its backdrop
+		   instead of sitting on it as a hard-edged card. */
+		mask-image:
+			linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent),
+			linear-gradient(180deg, transparent, #000 12%, #000 88%, transparent);
+		mask-composite: intersect;
 	}
 
 	.hero-body,

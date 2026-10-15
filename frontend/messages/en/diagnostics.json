@@ -26,5 +26,8 @@
 	"cache_clear_success": "Metadata cache cleared.",
 	"cache_clear_error": "Couldn't clear cache.",
 	"section_legacy_sweep": "Removed on upgrade",
-	"legacy_sweep_description": "These files are no longer used, so they were deleted:"
+	"legacy_sweep_description": "These files are no longer used, so they were deleted:",
+	"section_banner_framing": "Banner framing",
+	"banner_framing_description": "Shows a small control on the home page and on each show's page for choosing how the banner is framed and which image it uses first. The choice is kept on this computer and stays in effect after the controls are hidden again.",
+	"banner_framing_toggle_label": "Show banner framing controls"
 }

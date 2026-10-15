@@ -24,6 +24,7 @@ fn hit(canonical: &str, titles: &[(&str, &str)], slug: Option<&str>) -> KitsuAni
         age_rating: None,
         popularity_rank: None,
         poster_image: None,
+        anilist_banner: None,
         cover_image: None,
     }
 }
