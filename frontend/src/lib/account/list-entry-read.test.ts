@@ -1,0 +1,217 @@
+import { describe, expect, it } from 'vitest';
+import { AccountApiError } from './api';
+import {
+	readEntryWithRetry,
+	readFailureNotice,
+	type ReadDeps,
+	type ReadOutcome
+} from './list-entry-read';
+import type { EntryView } from './types';
+import { m } from '$lib/paraglide/messages';
+
+/** The failed arm of the outcome, for building fixtures. */
+type ReadOutcomeFailure = Extract<ReadOutcome, { kind: 'failed' }>;
+
+/** Deps whose `readAll` answers from a script, one entry per attempt,
+ *  and whose `sleep` records what it was asked and returns at once. */
+function scripted(
+	script: (() => Promise<(EntryView | null)[]>)[],
+	opts: { isCurrent?: () => boolean } = {}
+) {
+	const sleeps: number[] = [];
+	let attempt = 0;
+	const deps: ReadDeps = {
+		readAll: () => {
+			const step = script[Math.min(attempt, script.length - 1)];
+			attempt += 1;
+			return step();
+		},
+		isCurrent: opts.isCurrent ?? (() => true),
+		sleep: async (ms) => {
+			sleeps.push(ms);
+		}
+	};
+	return { deps, sleeps, attempts: () => attempt };
+}
+
+const fails = (e: unknown) => () => Promise.reject(e);
+const answers = (views: (EntryView | null)[]) => () => Promise.resolve(views);
+
+describe('readEntryWithRetry', () => {
+	it('folds every tracker into the seed entry when all answer', async () => {
+		const { deps, sleeps } = scripted([
+			answers([
+				{ status: 'watching', progress: 5 },
+				{ status: 'planning', progress: 0 }
+			])
+		]);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({
+			kind: 'ok',
+			entry: { status: 'watching', progress: 5 }
+		});
+		expect(sleeps).toEqual([]);
+	});
+
+	it('answers null when no tracker has the show', async () => {
+		const { deps } = scripted([answers([null, null])]);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({ kind: 'ok', entry: null });
+	});
+
+	it('waits the schedule between failures and takes the answer when one comes', async () => {
+		const { deps, sleeps, attempts } = scripted([
+			fails(new Error('no bearer for mal')),
+			fails(new AccountApiError(502, '')),
+			answers([{ status: 'completed', progress: 12 }])
+		]);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({
+			kind: 'ok',
+			entry: { status: 'completed', progress: 12 }
+		});
+		expect(sleeps).toEqual([1000, 2000]);
+		expect(attempts()).toBe(3);
+	});
+
+	it('gives up after the schedule runs out, naming the last failure', async () => {
+		const { deps, sleeps, attempts } = scripted([fails(new AccountApiError(503, ''))]);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({
+			kind: 'failed',
+			last: { rateLimited: false, retryAfterSecs: null, envelope: null }
+		});
+		expect(sleeps).toEqual([1000, 2000, 4000, 8000]);
+		expect(attempts()).toBe(5);
+	});
+
+	it('is superseded when the page moves on while a read is in flight', async () => {
+		let current = true;
+		const { deps } = scripted(
+			[
+				() => {
+					current = false;
+					return Promise.resolve([{ status: 'watching', progress: 1 }]);
+				}
+			],
+			{ isCurrent: () => current }
+		);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({ kind: 'superseded' });
+	});
+
+	it('is superseded when the page moves on while a failed read is in flight', async () => {
+		let current = true;
+		const { deps, sleeps } = scripted(
+			[
+				() => {
+					current = false;
+					return Promise.reject(new Error('gone'));
+				}
+			],
+			{ isCurrent: () => current }
+		);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({ kind: 'superseded' });
+		expect(sleeps).toEqual([]);
+	});
+
+	it('is superseded when the page moves on during the wait', async () => {
+		let current = true;
+		const { deps, attempts } = scripted([fails(new Error('transient'))], {
+			isCurrent: () => current
+		});
+		deps.sleep = async () => {
+			current = false;
+		};
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({ kind: 'superseded' });
+		expect(attempts()).toBe(1);
+	});
+});
+
+describe('readEntryWithRetry on a rate limit', () => {
+	const limited = (secs: number | null) =>
+		new AccountApiError(
+			429,
+			JSON.stringify({
+				kind: 'rate_limited',
+				retry_after_secs: secs,
+				key: 'error.network.rate_limited'
+			})
+		);
+
+	it('waits the advertised seconds, then takes the answer', async () => {
+		const { deps, sleeps, attempts } = scripted([
+			fails(limited(7)),
+			answers([{ status: 'watching', progress: 3 }])
+		]);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({
+			kind: 'ok',
+			entry: { status: 'watching', progress: 3 }
+		});
+		expect(sleeps).toEqual([7000]);
+		expect(attempts()).toBe(2);
+	});
+
+	it('gives up on the second rate limit, naming it with its wait', async () => {
+		const { deps, sleeps, attempts } = scripted([fails(limited(60))]);
+		const outcome = await readEntryWithRetry(deps);
+		expect(outcome.kind).toBe('failed');
+		if (outcome.kind !== 'failed') return;
+		expect(outcome.last.rateLimited).toBe(true);
+		expect(outcome.last.retryAfterSecs).toBe(60);
+		expect(outcome.last.envelope).toMatchObject({ kind: 'rate_limited', retry_after_secs: 60 });
+		// One wait, two attempts — not five attempts in fifteen seconds.
+		expect(sleeps).toEqual([60_000]);
+		expect(attempts()).toBe(2);
+	});
+
+	it('switches from the plain schedule to the advertised wait when a 429 arrives', async () => {
+		const { deps, sleeps } = scripted([
+			fails(new Error('no bearer for mal')),
+			fails(limited(20)),
+			answers([null])
+		]);
+		await expect(readEntryWithRetry(deps)).resolves.toEqual({ kind: 'ok', entry: null });
+		expect(sleeps).toEqual([1000, 20_000]);
+	});
+});
+
+describe('readFailureNotice', () => {
+	const failed = (last: ReadOutcomeFailure['last']): ReadOutcomeFailure => ({
+		kind: 'failed',
+		last
+	});
+
+	it('says nothing for an answer or a superseded read', () => {
+		expect(readFailureNotice({ kind: 'ok', entry: null })).toBeNull();
+		expect(readFailureNotice({ kind: 'superseded' })).toBeNull();
+	});
+
+	it('says nothing for a plain failure — the control is disabled as before', () => {
+		expect(
+			readFailureNotice(failed({ rateLimited: false, retryAfterSecs: null, envelope: null }))
+		).toBeNull();
+	});
+
+	it('names the wait the tracker asked for, in the envelope’s words', () => {
+		const envelope = {
+			kind: 'rate_limited',
+			retry_after_secs: 42,
+			key: 'error.network.rate_limited'
+		};
+		expect(readFailureNotice(failed({ rateLimited: true, retryAfterSecs: 42, envelope }))).toBe(
+			m.errors_reason_busy_wait({ seconds: 42 })
+		);
+	});
+
+	it('falls back to the rate-limit sentence when the body carried no envelope', () => {
+		expect(
+			readFailureNotice(failed({ rateLimited: true, retryAfterSecs: null, envelope: null }))
+		).toBe(m.detail_list_rate_limited());
+	});
+
+	it('falls back to the rate-limit sentence when the body is JSON but not an envelope', () => {
+		// The status already said 429; a body that names no `kind` cannot
+		// say more, and must not say less.
+		expect(
+			readFailureNotice(
+				failed({ rateLimited: true, retryAfterSecs: null, envelope: { message: 'slow down' } })
+			)
+		).toBe(m.detail_list_rate_limited());
+	});
+});

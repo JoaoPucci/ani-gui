@@ -40,6 +40,33 @@ pub const ANILIST_STREAMING_EPS_ERROR_TTL: Duration = Duration::from_secs(5 * 60
 /// TTL for title-match cache (Kitsu/AniList → provider id).
 pub const TITLE_MATCH_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60); // 30d
 
+/// TTL for a show's external ids from Kitsu's mappings when both the
+/// MAL and the AniList id are present. An id mapping does not move:
+/// a Kitsu entry points at the same MAL and AniList entries for as
+/// long as all three exist, so this matches [`TITLE_MATCH_TTL`].
+pub const EXTERNAL_IDS_TTL: Duration = TITLE_MATCH_TTL;
+
+/// TTL for a show's external ids when one or both are missing. What
+/// is present does not move; what is missing may appear — Kitsu adds
+/// the MAL mapping for a fresh seasonal show within days — so an
+/// incomplete answer is re-asked daily. Kitsu is not the constrained
+/// budget; AniList is, and the translations the missing id forces are
+/// kept on their own under [`ANILIST_ID_MAP_TTL`].
+pub const EXTERNAL_IDS_PARTIAL_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
+
+/// TTL for an id AniList translated — a MAL id's AniList `mediaId`,
+/// or an AniList media's `idMal`. The same reasoning as
+/// [`EXTERNAL_IDS_TTL`]: the pairing is stable for as long as both
+/// entries exist.
+pub const ANILIST_ID_MAP_TTL: Duration = TITLE_MATCH_TTL;
+
+/// TTL for "AniList does not index this id" — a MAL id with no media,
+/// or a media with no `idMal` recorded. AniList indexes new shows and
+/// links their MAL ids within days, so a month-long negative would
+/// leave a new show unwritable on one tracker for a month; a day
+/// keeps the detail page from re-asking on every open meanwhile.
+pub const ANILIST_ID_MAP_MISS_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 1d
+
 /// TTL for cached play resolutions (canonical_title + mode + quality +
 /// episode → upstream URL + referer + media_kind). 7d is
 /// generous because the *real* validity gate is the per-read HEAD

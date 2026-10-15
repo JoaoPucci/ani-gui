@@ -9,6 +9,7 @@ pub mod account;
 pub mod account_edit;
 pub mod airing;
 pub mod anilist_eps_thumbs;
+pub(crate) mod anilist_ids;
 pub mod aniskip;
 pub mod app_info;
 pub mod availability;
@@ -21,6 +22,7 @@ mod cour_keyword_form;
 mod cour_ordinal_form;
 pub mod download;
 mod download_names;
+pub(crate) mod external_ids;
 pub mod numbering_offset;
 
 #[cfg(test)]
