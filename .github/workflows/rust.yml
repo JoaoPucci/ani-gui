@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.detect.outputs.relevant }}
+      picker: ${{ steps.detect.outputs.picker }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +39,7 @@ jobs:
           set -euo pipefail
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "picker=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Capture the diff first, then grep the result via a here-string.
@@ -50,6 +52,15 @@ jobs:
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+          # The picker oracle reads the picker, its recorded pools, its
+          # own model and the document the model transcribes: a change to
+          # any of them is a question for it, while a change to the docs
+          # alone is no reason to run the rest of this pipeline.
+          if grep -qE '^(backend/|tests/fixtures/hianime/picker/|tests/picker-oracle/|docs/title-resolution\.md$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
+            echo "picker=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "picker=false" >> "$GITHUB_OUTPUT"
           fi
 
   fmt:
@@ -162,6 +173,48 @@ jobs:
         env:
           RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-D warnings -C target-feature=+crt-static' || '-D warnings' }}
         run: cargo test --workspace --all-features
+
+  picker-oracle:
+    needs: filter
+    name: picker oracle agreement
+    # The season picker against the model of docs/title-resolution.md
+    # under tests/picker-oracle/: every generated pool and every row of
+    # the docs' own table must pick as the model says, or be carried by
+    # the allowlist with a reason. The recorded fixtures' golden is the
+    # ordinary `recorded_fixtures_pick_as_the_golden_dump_records` test
+    # the `test` job already runs. The model is standard-library Python,
+    # run with the runner's python3.
+    runs-on: ubuntu-latest
+    steps:
+      - if: needs.filter.outputs.picker != 'true'
+        run: 'echo "Not required: no picker, fixture, oracle or title-resolution changes in this PR"'
+      - if: needs.filter.outputs.picker == 'true'
+        uses: actions/checkout@v4
+      - if: needs.filter.outputs.picker == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: needs.filter.outputs.picker == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - if: needs.filter.outputs.picker == 'true'
+        name: The model's own tests
+        run: python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
+      - if: needs.filter.outputs.picker == 'true'
+        name: Generate the pools
+        run: python3 -I tests/picker-oracle/oracle.py gen "$RUNNER_TEMP/cases.json"
+      - if: needs.filter.outputs.picker == 'true'
+        name: Run the picker over them
+        working-directory: backend
+        env:
+          PICKER_ORACLE_CASES: ${{ runner.temp }}/cases.json
+          PICKER_ORACLE_OUT: ${{ runner.temp }}/out.json
+        run: cargo test --lib run_the_oracle_cases -- --ignored
+      - if: needs.filter.outputs.picker == 'true'
+        name: Compare with the model
+        run: >
+          python3 -I tests/picker-oracle/oracle.py cmp
+          "$RUNNER_TEMP/cases.json" "$RUNNER_TEMP/out.json"
+          --allowlist tests/picker-oracle/allowlist.json
 
   coverage:
     needs: filter
