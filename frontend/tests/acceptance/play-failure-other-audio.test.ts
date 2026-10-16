@@ -702,4 +702,110 @@ describe('a play for one show that answers after the page moved on', () => {
 		expect(target.textContent).not.toContain(SUGGESTS());
 		expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
 	});
+
+	it('play, away and back: a failure from the earlier visit says nothing', async () => {
+		const asked = useHandlers(HAS_IT);
+		useOtherShowAndRecord();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await clickMoveAndAnswer(
+			2,
+			async () => {
+				setParams({ id: OTHER_ID });
+				await new Promise((r) => setTimeout(r, 20));
+				setParams({ id: KITSU_ID });
+				await new Promise((r) => setTimeout(r, 20));
+			},
+			['error', VERDICT]
+		);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(target.textContent).not.toContain(PLAIN());
+		expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
+	});
+
+	/** Hold the other-audio lookup a failure waits on, so the move can
+	 *  land while the message is being worded. */
+	function holdOtherAudioLookup() {
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let asked = false;
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { mode: string };
+				if (body.mode === 'dub') {
+					asked = true;
+					await held;
+					return HttpResponse.json(HAS_IT);
+				}
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			})
+		);
+		return { release: () => release(), asked: () => asked };
+	}
+
+	it('detail: a failure whose message is still being worded when the viewer moves says nothing', async () => {
+		useHandlers(HAS_IT);
+		useOtherShowAndRecord();
+		const lookup = holdOtherAudioLookup();
+		app = mount(DetailPage, { target });
+		await clickMoveAndAnswer(5, () => {}, ['error', VERDICT]);
+		await until(lookup.asked, 'the other-audio lookup');
+		await toOther();
+		lookup.release();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(target.textContent).not.toContain(SUGGESTS());
+		await until(() => playButton() !== null && !playButton()!.disabled, 'Play to be usable');
+	});
+
+	it('play: a failure whose message is still being worded when the viewer moves says nothing', async () => {
+		useHandlers(HAS_IT);
+		useOtherShowAndRecord();
+		const lookup = holdOtherAudioLookup();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await clickMoveAndAnswer(2, () => {}, ['error', VERDICT]);
+		await until(lookup.asked, 'the other-audio lookup');
+		setParams({ id: OTHER_ID });
+		setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+		await new Promise((r) => setTimeout(r, 20));
+		lookup.release();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(target.textContent).not.toContain(SUGGESTS());
+	});
+
+	for (const [handoff, label] of [
+		['external', () => m.play_external_label()],
+		['syncplay', () => m.play_hamburger_syncplay_label()]
+	] as const) {
+		it(`play: a ${handoff} launch that fails after the viewer moved says nothing`, async () => {
+			useHandlers(HAS_IT);
+			useOtherShowAndRecord();
+			let release!: () => void;
+			const held = new Promise<void>((r) => (release = r));
+			let launched = false;
+			server.use(
+				http.post(`${API_BASE}/api/play/${handoff}`, async () => {
+					launched = true;
+					await held;
+					return HttpResponse.json(JSON.parse(VERDICT), { status: 404 });
+				})
+			);
+			setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '3', kind: 'mp4' });
+			app = mount(PlayPage, { target });
+			await until(() => moreButton() !== null, 'the More actions button');
+			moreButton()!.click();
+			await until(() => menuItem(label()) !== undefined, `the "${label()}" item`);
+			menuItem(label())!.click();
+			await until(() => launched, 'the launch');
+			setParams({ id: OTHER_ID });
+			setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+			await new Promise((r) => setTimeout(r, 20));
+			release();
+			await new Promise((r) => setTimeout(r, 50));
+			expect(target.textContent).not.toContain(SUGGESTS());
+			expect(target.textContent).not.toContain(PLAIN());
+		});
+	}
 });
