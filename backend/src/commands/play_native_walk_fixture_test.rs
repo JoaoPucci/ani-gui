@@ -728,6 +728,33 @@ async fn a_refused_candidate_s_dead_probe_blocks_no_winner() {
     assert_eq!(picked.hit.slug, "show-tv-2");
 }
 
+/// For a dated entry with a count, a candidate no name vouches for
+/// could never have won either, so its probe dying unheard blocks no
+/// winner — though its page named the entry's year and it ranked ahead
+/// of the winner, whose card carries the entry's name.
+#[tokio::test]
+async fn an_unnamed_candidate_s_dead_probe_blocks_no_winner() {
+    let rows = (1..=12)
+        .map(|n| format!("[{n}, {n}, null]"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let json = format!(
+        r#"{{
+ "kitsu": {{"canonical": "Show", "alt_titles": [], "episode_count": 12,
+            "year": 2020, "subtype": "TV"}},
+ "searches": {{"Show": [["other-1", "Other", "TV"],
+                       ["different-2", "Different", "TV"]]}},
+ "episodes": {{"different-2": [{rows}]}},
+ "years": {{"other-1": 2020, "different-2": 2020}},
+ "jnames": {{"other-1": "Other", "different-2": "Show"}}
+}}"#
+    );
+    let mut site = Recorded::inline("inline", &json);
+    site.dead = vec!["other-1"];
+    let picked = walk_over(site).await.expect("the named candidate wins");
+    assert_eq!(picked.hit.slug, "different-2");
+}
+
 /// A pool written out as `(slug, title, aired episodes)` rows, every
 /// listing from `year`, for an entry known by `titles`. Every card
 /// carries the entry's canonical title as its romanized name, as the
@@ -2865,59 +2892,87 @@ async fn undated_entries_the_catalogue_does_not_list_are_refused() {
 }
 
 /// Zai Xia Ying Tai is the one of the seven AniList dates (2025) where
-/// Kitsu does not. Given that year the walk is a dated one, and picks
-/// as a dated walk does: Hero Return (2020) and every other dated hit
-/// of the first pool are excluded, and the alias pool holds a
-/// twelve-episode show from 2025 — year-confirmed, count fitting,
-/// named by nothing — which the dated walk takes, as it takes the
-/// fourteen recorded dated entries whose own listings nothing but
-/// their year and count vouch for (JoJo's "(Uncensored)" listings, "My
-/// Star" for [Oshi no Ko]). So a year alone moves this pick rather
-/// than stopping it, and only a hit named for the entry refuses it.
+/// Kitsu does not. Given that year the walk is a dated one: Hero Return
+/// (2020) and every other dated hit of the first pool are excluded, and
+/// the alias pool holds a twelve-episode show from 2025 — year-confirmed,
+/// count fitting — that no name vouches for: not its title, not its
+/// card's romanized name, not the Japanese title its page gives
+/// (不遇職【鑑定士】が実は最強だった). A dated entry with a count takes only
+/// a hit a name vouches for, so the walk refuses it, as the dead end a
+/// refusal by name is.
 #[tokio::test]
-async fn a_dated_walk_over_the_same_pools_takes_the_year_confirmed_fit() {
-    let picked = walk_under_anilist_year("45500").await.expect("picked");
-    assert_eq!(
-        picked.hit.slug,
-        "even-given-the-worthless-appraiser-class-im-actually-the-strongest-531"
-    );
+async fn a_dated_walk_over_the_same_pools_refuses_the_unnamed_fit() {
+    match walk_under_anilist_year("45500").await {
+        Ok(p) => panic!("picked {} ({})", p.hit.slug, p.hit.title),
+        Err(e) => {
+            assert!(!e.clean_miss, "a refusal by name persisted");
+            assert!(
+                matches!(e.error, crate::error::AniError::NoResults),
+                "{:?}",
+                e.error
+            );
+        }
+    }
 }
 
-/// What vouches for a hit depends on what the entry knows. A dated
-/// entry takes a hit nothing names on its count, whether the hit's
-/// page names the entry's year or none — the path every dated entry
-/// takes today, unchanged. An entry with a count and no year has only
-/// the count to go on, and a count fits many shows: a hit neither the
-/// title searched nor one of the entry's names vouches for is refused,
-/// as the dead end a refusal by name is; a hit an alias names is still
+/// Dated entries hianime does not list under any of their titles,
+/// whose searches answer with a same-year show of the right length —
+/// one year off, which the year filter tolerates as a December
+/// premiere. Each played as the entry on its year and count alone;
+/// nothing names either: HenSemi (2010, two episodes) took the
+/// two-episode Zan Sayonara Zetsubou Sensei Bangaichi (2009) from the
+/// pool its own title answers with, HenSemi (TV) (2011, 13) took Medaka
+/// Box Abnormal (2012, 12), which its alias "Abnormal Physiology
+/// Seminar" surfaced. Both are refused as the dead end a refusal by
+/// name is, which the availability cache does not persist.
+const DATED_REFUSED: &[&str] = &[
+    "5196", // HenSemi (2): picked Zan Sayonara Zetsubou Sensei Bangaichi (2)
+    "6067", // HenSemi (TV) (13): picked Medaka Box Abnormal (12)
+];
+
+#[tokio::test]
+async fn dated_entries_the_catalogue_does_not_list_are_refused() {
+    assert_refused_unpersisted(DATED_REFUSED).await;
+}
+
+/// What vouches for a hit depends on what the entry knows. An entry
+/// with a count takes only a hit a name vouches for, dated or not: a
+/// year and a count fit many shows as a count alone does, so a hit
+/// neither the title searched nor one of the entry's names vouches for
+/// is refused, as the dead end a refusal by name is — whether its page
+/// names the entry's year or none — and a hit an alias names is still
 /// taken on its count. Without a count the pool is refused as before,
 /// and as the clean miss it was.
 #[tokio::test]
-async fn only_an_entry_with_a_count_and_no_year_needs_a_hit_named_for_it() {
+async fn an_entry_with_a_count_takes_only_a_hit_named_for_it() {
     let other = |year: Option<u32>| ("other-1", "Other", 12, year);
-    let dated = inline_pool(
-        &["Show: Arc"],
+    for (label, year) in [
+        ("dated, year confirmed", Some(2016)),
+        ("dated, year unknown", None),
+    ] {
+        let dated = inline_pool(&["Show: Arc"], Some(12), Some(2016), "TV", &[other(year)]);
+        match walk_over(dated).await {
+            Ok(p) => panic!("{label}: picked {}", p.hit.slug),
+            Err(e) => {
+                assert!(!e.clean_miss, "{label}: a refusal by name persisted");
+                assert!(
+                    matches!(e.error, crate::error::AniError::NoResults),
+                    "{label}: {:?}",
+                    e.error
+                );
+            }
+        }
+    }
+    let dated_named = inline_pool(
+        &["Show: Arc", "Shou Arc"],
         Some(12),
         Some(2016),
         "TV",
-        &[other(Some(2016))],
+        &[other(Some(2016)), ("shou-2", "Shou Arc", 12, Some(2016))],
     );
     assert_eq!(
-        walk_over(dated)
-            .await
-            .expect("dated, year confirmed")
-            .hit
-            .slug,
-        "other-1"
-    );
-    let dated_unknown = inline_pool(&["Show: Arc"], Some(12), Some(2016), "TV", &[other(None)]);
-    assert_eq!(
-        walk_over(dated_unknown)
-            .await
-            .expect("dated, year unknown")
-            .hit
-            .slug,
-        "other-1"
+        walk_over(dated_named).await.expect("dated, named").hit.slug,
+        "shou-2"
     );
     let undated = inline_pool(&["Show: Arc"], Some(12), None, "TV", &[other(None)]);
     match walk_over(undated).await {
