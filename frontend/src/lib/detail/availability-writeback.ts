@@ -27,6 +27,9 @@ export interface AvailabilityAnswer {
 	available: boolean;
 	count: number | null;
 	extraEpisodes: string[];
+	/** True when `available: false` is the provider refusing the title
+	 *  by name. Not carried yet. */
+	refused?: boolean;
 }
 
 /**
@@ -37,6 +40,9 @@ export interface AvailabilityPatch {
 	available?: boolean;
 	count?: number | null;
 	extraEpisodes?: string[];
+	/** Whether the verdict this patch writes is a refusal by name. Not
+	 *  carried yet. */
+	refused?: boolean;
 }
 
 export interface AvailabilityWriteback {

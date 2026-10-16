@@ -25,7 +25,6 @@ function harness(respond?: () => Promise<AvailabilityResponse>) {
 	const applied: AvailabilityPatch[] = [];
 	const resolved: boolean[] = [];
 	const listed: (boolean | null)[] = [];
-	const refused: boolean[] = [];
 	const sent: unknown[] = [];
 	const deps: AvailabilityLookupDeps = {
 		check: (args) => {
@@ -37,14 +36,14 @@ function harness(respond?: () => Promise<AvailabilityResponse>) {
 		begin: () => (a) => ({
 			available: a.available,
 			count: a.count,
-			extraEpisodes: a.extraEpisodes
+			extraEpisodes: a.extraEpisodes,
+			...(a.refused ? { refused: true } : {})
 		}),
 		apply: (p) => applied.push(p),
 		setResolved: (r) => resolved.push(r),
-		setListed: (l) => listed.push(l),
-		setRefused: (r) => refused.push(r)
+		setListed: (l) => listed.push(l)
 	};
-	return { deps, applied, resolved, listed, refused, sent };
+	return { deps, applied, resolved, listed, sent };
 }
 
 const settled = () => new Promise((r) => setTimeout(r, 0));
@@ -137,28 +136,24 @@ describe('startAvailabilityLookup', () => {
 		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
 		await settled();
 
-		expect(h.applied).toEqual([{ available: false, count: null, extraEpisodes: [] }]);
+		expect(h.applied).toEqual([
+			{ available: false, count: null, extraEpisodes: [], refused: true }
+		]);
 		expect(h.listed).toEqual([null, false]);
 		expect(h.resolved).toEqual([false, true]);
 	});
 
-	it('says whether the answer was a refusal by name', async () => {
+	it('hands the writeback whether the answer was a refusal by name', async () => {
 		// The page keeps the "not in the catalogue" sentence for a
-		// refusal — the title is in neither audio — so it has to know.
-		// Cleared when the question opens, set by the answer.
-		const refusing = harness(() =>
-			Promise.resolve(answer({ available: false, episode_count: null, unsettled: 'refused' }))
-		);
-		startAvailabilityLookup(SUBJECT, 'sub', refusing.deps);
-		await settled();
-		expect(refusing.refused).toEqual([false, true]);
-
+		// refusal — the title is in neither audio — so the answer says
+		// so, and the writeback, which owns the verdict, decides whether
+		// it is still this lookup's to write.
 		const settledFalse = harness(() =>
 			Promise.resolve(answer({ available: false, episode_count: null }))
 		);
 		startAvailabilityLookup(SUBJECT, 'sub', settledFalse.deps);
 		await settled();
-		expect(settledFalse.refused).toEqual([false, false]);
+		expect(settledFalse.applied).toEqual([{ available: false, count: null, extraEpisodes: [] }]);
 	});
 
 	it('establishes nothing from an answer unsettled for any other reason', async () => {
