@@ -237,3 +237,14 @@ proptest::proptest! {
         }
     }
 }
+
+#[test]
+fn a_finale_beside_a_larger_total_on_a_row_complete_at_that_total_writes_nothing() {
+    assert_eq!(
+        reconcile_monotonic(
+            fit_to_tracker_total(finale(12), Some(13)),
+            row(ListStatus::Completed, 13)
+        ),
+        None
+    );
+}
