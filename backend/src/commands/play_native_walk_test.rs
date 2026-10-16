@@ -587,3 +587,26 @@ async fn a_dead_refused_listing_beside_a_live_misfit_is_a_refusal_by_name() {
     assert!(!ne.clean_miss);
     assert!(ne.refused_by_name);
 }
+
+/// The completing sibling the span table would have taken need not be
+/// one the titles refuse: for a dated entry one video long, "Show 2
+/// Part 2" is admitted and the single-video rule refuses it — nothing
+/// but its count would vouch for it — yet answered with the rest of
+/// the dated "Show 2"'s five episodes it would have had that broad
+/// listing cut and picked. Dead, the pool is the dead end on it, not
+/// the refusal by name.
+#[tokio::test]
+async fn a_dead_sibling_the_name_rule_refuses_still_completes_a_broad_listing() {
+    let site = TableProvider::counted_with_years(&[(5, 5, Some(2021))]).hits(
+        "show 2",
+        named_hits(&[("show-2-5", "Show 2"), ("ghost-1", "Show 2 Part 2")]),
+    );
+    let ne = pick_native_walk(&site, "show 2", &[], Some(1), Some(2021), None)
+        .await
+        .expect_err("nothing picked");
+    assert!(!ne.clean_miss);
+    assert!(
+        !ne.refused_by_name,
+        "the dead sibling may have completed the broad listing"
+    );
+}
