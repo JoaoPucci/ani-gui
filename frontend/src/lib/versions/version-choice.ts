@@ -104,16 +104,18 @@ function forgetChoice(kitsuId: string, storage: ChoiceStorage | null): void {
 	}
 }
 
-/** The versions to offer a choice between: all of them when there are
- *  several, the uncensored one first and the rest in the provider's
- *  order — the provider lists a season's copies in no fixed order, and
- *  the control should not flip between seasons of one show; none
- *  otherwise. */
+/** The versions to offer a choice between: every one the answer does
+ *  not say lacks the requested mode, when there are several of those,
+ *  the uncensored one first and the rest in the provider's order — the
+ *  provider lists a season's copies in no fixed order, and the control
+ *  should not flip between seasons of one show; none otherwise, a play
+ *  finding the mode in the copy that carries it. */
 export function versionsToOffer(versions: VersionInfo[] | null | undefined): VersionInfo[] {
-	if (!versions || versions.length < 2) return [];
+	const carrying = (versions ?? []).filter((v) => v.has_mode !== false);
+	if (carrying.length < 2) return [];
 	return [
-		...versions.filter((v) => v.kind === 'uncensored'),
-		...versions.filter((v) => v.kind !== 'uncensored')
+		...carrying.filter((v) => v.kind === 'uncensored'),
+		...carrying.filter((v) => v.kind !== 'uncensored')
 	];
 }
 
