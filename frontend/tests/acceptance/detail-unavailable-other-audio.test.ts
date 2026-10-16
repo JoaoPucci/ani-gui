@@ -279,3 +279,51 @@ describe('detail — a music title never names the other audio', () => {
 		expect(asked.batch.filter((b) => b.mode === 'sub')).toEqual([]);
 	});
 });
+
+describe('detail — an answer for a show the page has left', () => {
+	it('is not shown on the next show', async () => {
+		// The page moves to another show (a Similar-title link reuses
+		// the component) while the question about the first show's
+		// other audio is out. The first show's answer must not name an
+		// audio for the second.
+		const OTHER_ID = '777';
+		useHandlers('dub', { cached: {}, playable_episode_counts: {} });
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let askedFirst = false;
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(OTHER_ID, 'Another Show', 12), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
+				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			),
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
+				if (body.mode === 'sub' && body.kitsu_ids[0] === KITSU_ID) {
+					askedFirst = true;
+					await held;
+					// The first show has it subtitled — and answers with
+					// the id of the show the page is now on as well, so a
+					// late answer applied to the wrong question would show.
+					return HttpResponse.json({
+						cached: { [KITSU_ID]: true, [OTHER_ID]: true },
+						playable_episode_counts: {}
+					});
+				}
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			})
+		);
+		app = mount(DetailPage, { target });
+		await until(() => askedFirst, "the lookup for the first show's other audio");
+		setParams({ id: OTHER_ID });
+		await until(
+			() => (target.textContent ?? '').includes('Another Show'),
+			'the second show to load'
+		);
+		await until(() => notice() !== null, "the second show's notice");
+		release();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(notice()).toContain(m.detail_unavailable_message());
+	});
+});
