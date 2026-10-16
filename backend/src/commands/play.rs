@@ -989,12 +989,11 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn cache_hit_history_writes_the_providers_numbering() {
-        // The history file speaks the provider's numbering — a reader greps
-        // the stored ep_no in the provider's episode list — so a
-        // Kitsu-relative "1" written for a continuation cour (whose
-        // provider list starts at 41) vanishes from the resume list.
-        // The writer adds the offset stamped at resolve time.
+    fn cache_hit_history_writes_the_entrys_own_numbering() {
+        // A continuation cour listed cumulatively (offset 40): the row
+        // records the entry's own episode 1, marked as the app's number,
+        // rather than the provider's 41 translated back through an
+        // offset a re-listing can change.
         let tmp = tempfile::tempdir().unwrap();
         let mut state = state_with_proxy_origin();
         state.history_path = tmp.path().join("history");
@@ -1026,7 +1025,10 @@ pub(crate) mod tests {
         );
         let rows = crate::history::read_all(&state.history_path).expect("rows");
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].ep_no, "41", "provider numbering, not Kitsu's");
+        // The app's own number, marked, whatever the offset: a row in
+        // the provider's numbering reads wrong once the offset changes.
+        assert_eq!(rows[0].ep_no, "1");
+        assert!(rows[0].own_number);
     }
 
     #[tokio::test]
