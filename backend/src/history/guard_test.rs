@@ -9,6 +9,7 @@ fn entry(id: String) -> HistoryEntry {
         title: "T".into(),
         watched_at: None,
         kitsu_id: None,
+        own_number: false,
     }
 }
 

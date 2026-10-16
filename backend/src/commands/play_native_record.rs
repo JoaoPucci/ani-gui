@@ -176,6 +176,7 @@ pub(crate) async fn record_watch_requested_at(
         title: watch.title.clone(),
         watched_at: Some(now),
         kitsu_id: judged.clone(),
+        own_number: false,
     };
     // The row, its stamp and the moment the recording begins are one
     // step with the history held: a removal runs wholly before it —
@@ -259,6 +260,7 @@ pub(crate) fn write_history(
         // watch before it, if any.
         watched_at: None,
         kitsu_id: None,
+        own_number: false,
     };
     let wrote = crate::history::guard::hold(&state.history_path, |held| {
         if held.overtaken_since(asked, &native.slug) {

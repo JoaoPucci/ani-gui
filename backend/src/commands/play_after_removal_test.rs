@@ -31,6 +31,7 @@ fn seed_row(state: &AppState, id: &str) {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -175,6 +176,7 @@ fn seed_row_of_page(state: &AppState, id: &str, page: &str) {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: Some(page.into()),
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -749,6 +751,7 @@ fn a_delete_takes_the_title_match_stored_under_the_rows_old_title() {
             title: "The Show: Renamed".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .unwrap();
@@ -778,6 +781,7 @@ fn a_play_begun_before_a_watch_leaves_the_watchs_row() {
             title: "The Show".into(),
             watched_at: Some(1_000),
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("the later watch");

@@ -215,6 +215,7 @@ async fn a_refused_play_clears_a_stale_id_the_title_disagrees_with() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: Some("44294".into()),
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -245,6 +246,7 @@ async fn a_refused_play_keeps_an_id_the_title_agrees_with() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: Some("45412".into()),
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -360,6 +362,7 @@ async fn removing_another_show_leaves_a_pending_recording_whole() {
             title: "One Piece".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed another row");
@@ -419,6 +422,7 @@ async fn a_handoff_whose_show_was_removed_under_another_key_records_nothing() {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: Some("77".into()),
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -583,6 +587,7 @@ async fn a_resolve_written_while_a_watch_waits_does_not_drop_it() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("resolve row");
@@ -624,6 +629,7 @@ async fn a_history_unreadable_before_the_write_keeps_the_rows_id() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: Some("45412".into()),
+            own_number: false,
         },
     )
     .expect("seed row");

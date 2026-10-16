@@ -1154,6 +1154,7 @@ mod tests {
                 title: title.into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         )
         .expect("seed row");

@@ -149,6 +149,7 @@ fn write_history_on_cache_hit(
         title: cached.show_title.clone(),
         watched_at: None,
         kitsu_id: None,
+        own_number: false,
     };
     // A show removed from history while the cached stream was being
     // checked, or watched since the play began, gets no row from it.

@@ -50,6 +50,7 @@ fn two_rows_for_one_show(s: &AppState, path: &std::path::Path) {
                 title: "The Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "7".into(),
@@ -57,6 +58,7 @@ fn two_rows_for_one_show(s: &AppState, path: &std::path::Path) {
                 title: "The Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -131,6 +133,7 @@ fn two_rows_on_different_numberings(s: &AppState, path: &std::path::Path) {
                 title: "The Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "2".into(),
@@ -138,6 +141,7 @@ fn two_rows_on_different_numberings(s: &AppState, path: &std::path::Path) {
                 title: "The Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -192,6 +196,7 @@ fn a_row_without_an_offset_compares_by_its_own_number() {
                 title: "The Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "3".into(),
@@ -199,6 +204,7 @@ fn a_row_without_an_offset_compares_by_its_own_number() {
                 title: "The Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -231,6 +237,7 @@ fn equal_on_every_count_file_order_stands() {
                 title: "The Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "5".into(),
@@ -238,6 +245,7 @@ fn equal_on_every_count_file_order_stands() {
                 title: "The Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -284,6 +292,7 @@ async fn a_stale_mapping_the_guard_refuses_does_not_outrank_a_correct_row() {
                 title: "One Piece".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "3".into(),
@@ -291,6 +300,7 @@ async fn a_stale_mapping_the_guard_refuses_does_not_outrank_a_correct_row() {
                 title: "One Piece Part 2".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -427,6 +437,7 @@ fn the_later_of_the_files_stamp_and_the_caches_is_the_rows_moment() {
                 title: "The Show".into(),
                 watched_at: Some(1_700_000_005_000),
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "7".into(),
@@ -434,6 +445,7 @@ fn the_later_of_the_files_stamp_and_the_caches_is_the_rows_moment() {
                 title: "The Show".into(),
                 watched_at: Some(1_700_000_002_000),
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )

@@ -92,6 +92,11 @@ pub struct HistoryEntry {
     /// before the column, or a play no page stood behind, has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kitsu_id: Option<String>,
+    /// Whether `ep_no` is the app's own number for the episode — the
+    /// tile's, "8" or "7.5" — rather than a provider slot the read
+    /// boundary translates back through the numbering sidecar.
+    #[serde(default)]
+    pub own_number: bool,
 }
 
 /// Parse the entire history file into a `Vec<HistoryEntry>`.
@@ -130,6 +135,7 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
                 title: title.to_string(),
                 watched_at,
                 kitsu_id,
+                own_number: false,
             })
         })
         .collect()
@@ -348,6 +354,7 @@ mod tests {
             title: format!("Test ({id})"),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }
     }
 
@@ -552,6 +559,7 @@ mod tests {
             title: "New Title".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         };
         upsert(&mut v, updated);
         assert_eq!(v.len(), 3);
@@ -608,6 +616,7 @@ mod tests {
                 title: "Attack on Titan (25 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "3".into(),
@@ -615,6 +624,7 @@ mod tests {
                 title: "Demon Slayer (26 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "1".into(),
@@ -622,6 +632,7 @@ mod tests {
                 title: "Spy x Family (12 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ];
         let our_bytes = serialize(&entries);
@@ -669,6 +680,7 @@ mod tests {
                 title: "Test (a)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         )
         .unwrap();
@@ -726,6 +738,7 @@ mod tests {
                 title,
                 watched_at,
                 kitsu_id: None,
+                own_number: false,
             })
     }
 
@@ -762,7 +775,7 @@ mod tests {
             // window narrows but cannot close; it is not a claim
             // this property makes.
             prop_assume!(watched_at.is_some() || !tail_reads_as_a_watch(&title));
-            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None };
+            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None, own_number: false };
             let parsed = parse(&serialize(std::slice::from_ref(&entry)));
             prop_assert_eq!(parsed, vec![entry]);
         }
