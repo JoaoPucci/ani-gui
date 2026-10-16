@@ -7,7 +7,7 @@ use crate::commands::play_native_count_alone::unvouched_counted;
 use crate::commands::play_native_dated_name::{may_win, unnamed_dated};
 use crate::commands::play_native_single_video::unvouched_single_videos;
 use crate::commands::play_native_title_grammar::normalized;
-use crate::commands::play_native_versions::{copy_died, versions_of, with_versions};
+use crate::commands::play_native_versions::{note_dead, versions_of, with_versions};
 use crate::commands::play_native_year::PageNames;
 
 /// [`pick_candidate`] told every title the requested entry goes by —
@@ -111,9 +111,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                         pos,
                         could_win,
                     );
-                    if could_win && entry.admits(&h.title) && !entry.another_entry(&h.title) {
-                        dead.push(h);
-                    }
+                    note_dead(&mut dead, h, could_win, entry);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
@@ -209,9 +207,13 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         return Err(rejection(any_transport_failure, refused_a_fit));
     }
     let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
-    if dead_outranks(best_failed, winner_rank, positions[winner_idx])
-        || copy_died(&dead, probed_ok[winner_idx].0)
-    {
+    if winner_unheard(
+        best_failed,
+        winner_rank,
+        positions[winner_idx],
+        &dead,
+        probed_ok[winner_idx].0,
+    ) {
         return Err(crate::error::AniError::Network);
     }
     // Copies of the winner under another version tag are versions of

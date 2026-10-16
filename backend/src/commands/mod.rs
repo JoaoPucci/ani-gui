@@ -90,6 +90,7 @@ mod play_native_title_number;
 mod play_native_title_reading;
 mod play_native_title_verdict;
 mod play_native_transient;
+mod play_native_version_copies;
 pub mod play_native_versions;
 pub mod play_native_walk;
 mod play_native_wide_listing;

@@ -67,6 +67,22 @@ fn dead_outranks(best_failed: Option<(u8, usize)>, winner_rank: u8, winner_pos: 
     rank < winner_rank || (rank == winner_rank && identity && pos < winner_pos)
 }
 
+/// Whether the winner at `winner_pos` with `winner_rank` cannot be
+/// told from what died unheard: a stronger dead candidate
+/// ([`dead_outranks`]), or a copy of it under another version tag
+/// among the `dead` that could have been picked
+/// (`play_native_versions::copy_died`).
+fn winner_unheard(
+    best_failed: Option<(u8, usize)>,
+    winner_rank: u8,
+    winner_pos: usize,
+    dead: &[&BrowseHit],
+    winner: &BrowseHit,
+) -> bool {
+    dead_outranks(best_failed, winner_rank, winner_pos)
+        || super::play_native_versions::copy_died(dead, winner)
+}
+
 /// Distance tolerance: long-running shows get proportional slack,
 /// short shows a hard floor of 3 — the same rule the provider picker
 /// converged on after the sibling-mispick rounds.
