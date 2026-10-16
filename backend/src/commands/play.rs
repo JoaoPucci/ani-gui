@@ -128,28 +128,16 @@ fn write_history_on_cache_hit(
     if args.prefetch || cached.show_id.is_empty() {
         return;
     }
-    // the history file speaks the provider's numbering; the offset was
-    // stamped by the fresh resolve that wrote this cache row.
-    let offset = crate::commands::numbering_offset::get(state, &cached.show_id);
     let entry = crate::history::HistoryEntry {
-        // The row's own slot when it carries one; older rows fall
-        // back to the stamp-aware translation.
-        ep_no: cached.resolved_slot.map_or_else(
-            || {
-                crate::commands::numbering_offset::write_ep_no(
-                    state,
-                    &cached.show_id,
-                    &args.episode,
-                    offset,
-                )
-            },
-            |slot| slot.to_string(),
-        ),
+        // The episode played, as the app numbers it, marked as such:
+        // neither the cached slot nor the sidecar's stamps decide what
+        // the row reads back as.
+        ep_no: args.episode.trim().to_string(),
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
         watched_at: None,
         kitsu_id: None,
-        own_number: false,
+        own_number: true,
     };
     // A show removed from history while the cached stream was being
     // checked, or watched since the play began, gets no row from it.

@@ -37,25 +37,11 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: 
     });
 }
 
-/// The offset, with the (slot, display tag) pair when they differ.
+/// The offset. A display stamp is no longer written: rows record the
+/// app's own number, and the stamps rows from before read through stay
+/// as they are, so a later resolve cannot move one under them.
 fn put_numbering(state: &AppState, native: &NativeResolved) {
-    match &native.resolved_tag {
-        Some(tag)
-            if !crate::commands::play_native_episode::tag_matches(
-                tag,
-                &native.resolved_slot.to_string(),
-            ) =>
-        {
-            crate::commands::numbering_offset::put_display(
-                state,
-                &native.slug,
-                native.numbering_offset,
-                native.resolved_slot,
-                tag,
-            );
-        }
-        _ => crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset),
-    }
+    crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset);
 }
 
 /// The wall clock's moment, in milliseconds since the epoch.
@@ -96,18 +82,19 @@ pub struct Watch {
     pub show_id: String,
     /// The provider's title for the row.
     pub title: String,
-    /// The row's episode number, in the provider's numbering.
+    /// The episode watched, as the app numbers it: the number the play
+    /// asked for.
     pub ep_no: String,
 }
 
 impl Watch {
-    /// The watch a fresh resolve describes.
+    /// The watch a fresh resolve of `episode` describes.
     #[must_use]
-    pub fn of(native: &NativeResolved) -> Self {
+    pub fn of(native: &NativeResolved, episode: &str) -> Self {
         Self {
             show_id: native.slug.clone(),
             title: native.title.clone(),
-            ep_no: native.resolved_slot.to_string(),
+            ep_no: episode.trim().to_string(),
         }
     }
 }
@@ -176,7 +163,7 @@ pub(crate) async fn record_watch_requested_at(
         title: watch.title.clone(),
         watched_at: Some(now),
         kitsu_id: judged.clone(),
-        own_number: false,
+        own_number: true,
     };
     // The row, its stamp and the moment the recording begins are one
     // step with the history held: a removal runs wholly before it —
@@ -240,8 +227,9 @@ pub(crate) async fn record_watch_requested_at(
 /// write is logged and swallowed: the stream is resolved and the
 /// user is waiting on it.
 ///
-/// `requested` is the episode the caller asked for, for the log line
-/// only; it is the display number and must never reach the file.
+/// `requested` is the episode the caller asked for, as the app numbers
+/// it: the row records it, marked as the app's own number, so it reads
+/// back as itself whatever the provider's slots or the sidecar say.
 ///
 /// `asked` is the play's request: a show removed from history while
 /// the play resolved, or watched since it began, gets no row from it
@@ -253,14 +241,14 @@ pub(crate) fn write_history(
     asked: Asked<'_>,
 ) {
     let entry = crate::history::HistoryEntry {
-        ep_no: native.resolved_slot.to_string(),
+        ep_no: requested.trim().to_string(),
         id: native.slug.clone(),
         title: native.title.clone(),
         // A resolve is not a watch: the row keeps the moment of the
         // watch before it, if any.
         watched_at: None,
         kitsu_id: None,
-        own_number: false,
+        own_number: true,
     };
     let wrote = crate::history::guard::hold(&state.history_path, |held| {
         if held.overtaken_since(asked, &native.slug) {

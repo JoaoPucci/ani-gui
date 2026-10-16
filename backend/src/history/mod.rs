@@ -62,12 +62,14 @@ use crate::error::Result;
 /// One row of the history file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
-    /// Episode number the user last watched, in the provider's
-    /// numbering. Written after each play — by
-    /// `play_native_record::write_history` on a fresh resolve, and
-    /// directly by `play::write_history_on_cache_hit` when the
-    /// resolution came from cache — so on the next launch the
-    /// "Continue Watching" row knows where to resume.
+    /// Episode number the user last watched. Every write since rows
+    /// carried [`Self::own_number`] stores the app's own number for it
+    /// — the number the play asked for, "8" or "7.5" — by
+    /// `play_native_record::write_history` on a fresh resolve,
+    /// `play::write_history_on_cache_hit` on a cache hit, and the
+    /// watch a handoff or mark-watched records. A row from before holds
+    /// the provider slot it resolved to, which the read boundary
+    /// translates through the numbering sidecar.
     pub ep_no: String,
     /// The provider's show id — a slug on every row written since the
     /// migration. Older rows carry the retired provider's opaque id
@@ -127,6 +129,7 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
             if ep_no.is_empty() || id.is_empty() {
                 return None;
             }
+            let (rest, own_number) = split_own_number(rest);
             let (rest, kitsu_id) = split_kitsu_id(rest);
             let (title, watched_at) = split_moment(rest);
             Some(HistoryEntry {
@@ -135,7 +138,7 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
                 title: title.to_string(),
                 watched_at,
                 kitsu_id,
-                own_number: false,
+                own_number,
             })
         })
         .collect()
@@ -154,6 +157,20 @@ const WATCHED_AT_CEILING_MS: i64 = 4_102_444_800_000;
 
 /// The marker the fifth column starts with.
 const KITSU_MARK: &str = "kitsu:";
+
+/// The last column of a row whose episode is the app's own number
+/// ([`HistoryEntry::own_number`]); a row without it holds a provider
+/// slot. Written after every other column, so the columns before it
+/// read as they always have.
+const OWN_NUMBER_MARK: &str = "ep:own";
+
+/// Split the own-number marker off what follows the id column.
+fn split_own_number(rest: &str) -> (&str, bool) {
+    match rest.rsplit_once('\t') {
+        Some((before, OWN_NUMBER_MARK)) => (before, true),
+        _ => (rest, false),
+    }
+}
 
 /// A Kitsu id as the row may record it: digits and nothing else, once
 /// surrounding whitespace is trimmed. Anything else is not one.
@@ -257,6 +274,10 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
             out.push_str(KITSU_MARK);
             out.push_str(id);
         }
+        if e.own_number {
+            out.push('\t');
+            out.push_str(OWN_NUMBER_MARK);
+        }
         out.push('\n');
     }
     out
@@ -271,6 +292,7 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
 pub fn upsert(entries: &mut Vec<HistoryEntry>, new: HistoryEntry) {
     if let Some(existing) = entries.iter_mut().find(|e| e.id == new.id) {
         existing.ep_no = new.ep_no;
+        existing.own_number = new.own_number;
         existing.title = new.title;
         if new.watched_at.is_some() {
             existing.watched_at = new.watched_at;

@@ -103,7 +103,7 @@ pub async fn resolve_launch_args(
             }
         };
     crate::commands::play_native_record::stamp_numbering(state, &native, asked);
-    let watch = crate::commands::play_native_record::Watch::of(&native);
+    let watch = crate::commands::play_native_record::Watch::of(&native, &args.episode);
     Ok((launch_args_for(native, args, &cfg), watch))
 }
 
