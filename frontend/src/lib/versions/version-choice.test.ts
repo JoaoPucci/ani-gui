@@ -157,8 +157,12 @@ describe('the versions a show offers', () => {
 		expect(versionsToOffer([uncensored])).toEqual([]);
 	});
 
-	it("are every version, in the provider's order, when it has several", () => {
-		expect(versionsToOffer([standard, uncensored])).toEqual([standard, uncensored]);
+	it('are every version, the uncensored one first, when it has several', () => {
+		// The provider lists the copies in no fixed order — JoJo (2012)
+		// lists the plain one first, its later seasons the tagged one —
+		// and the control should not flip between seasons of one show.
+		expect(versionsToOffer([standard, uncensored])).toEqual([uncensored, standard]);
+		expect(versionsToOffer([uncensored, standard])).toEqual([uncensored, standard]);
 	});
 });
 
