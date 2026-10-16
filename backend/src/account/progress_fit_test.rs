@@ -26,11 +26,17 @@ fn finale(ep: u32) -> EntryUpdate {
 }
 
 #[test]
-fn the_last_episode_of_a_finished_show_fills_a_tracker_that_counts_a_prologue() {
+fn the_last_episode_beside_a_larger_tracker_total_is_not_filled_or_completed() {
     // Air: Kitsu numbers 12 episodes, MAL and AniList count 13 with the
-    // prologue as their episode 1. Finishing Kitsu's 12 completes the
-    // tracker's 13.
-    assert_eq!(fit_to_tracker_total(finale(12), Some(13)), finale(13));
+    // prologue as their episode 1. A count gap alone says nothing about
+    // which episodes the tracker has that Kitsu lacks — a prologue, or
+    // recaps a long show lists as 0.5s — so the watched number goes as
+    // it is, and the tracker is not told the show is complete when it
+    // counts episodes the user is not credited with. Filling the gap
+    // waits on per-show evidence.
+    assert_eq!(fit_to_tracker_total(finale(12), Some(13)), episode(12));
+    // Haruhi (2009) on AniList: 28, the whole series in story order.
+    assert_eq!(fit_to_tracker_total(finale(14), Some(28)), episode(14));
 }
 
 #[test]
@@ -41,7 +47,8 @@ fn the_last_episode_sends_its_own_number_when_the_totals_agree() {
 #[test]
 fn the_last_episode_never_sends_more_than_a_smaller_tracker_total() {
     // Ranma ½: Kitsu's 161-episode show maps to an 18-episode MAL entry.
-    assert_eq!(fit_to_tracker_total(finale(161), Some(18)), finale(18));
+    // Clamped, and — the totals differing — not completed either.
+    assert_eq!(fit_to_tracker_total(finale(161), Some(18)), episode(18));
 }
 
 #[test]
@@ -87,37 +94,47 @@ fn row(status: ListStatus, progress_episodes: u32) -> Option<CurrentEntry> {
 }
 
 #[test]
-fn a_row_stuck_one_short_of_a_prologue_total_completes_on_the_finale() {
-    // A row written before the rule, at Kitsu's 12 of the tracker's 13.
+fn a_row_already_completed_one_short_of_a_larger_total_is_left_alone() {
+    // A row an earlier finale wrote at Kitsu's 12 of the tracker's 13:
+    // nothing advances, and its status is the user's.
     assert_eq!(
         reconcile_monotonic(
             fit_to_tracker_total(finale(12), Some(13)),
             row(ListStatus::Completed, 12)
         ),
-        Some(finale(13))
+        None
     );
 }
 
 #[test]
-fn a_rewatch_finale_reaches_the_tracker_total_and_stays_a_rewatch() {
+fn a_rewatch_finale_beside_a_larger_total_sends_its_number_and_stays_a_rewatch() {
     assert_eq!(
         reconcile_monotonic(
             fit_to_tracker_total(finale(12), Some(13)),
             row(ListStatus::Rewatching, 11)
         ),
-        Some(episode(13))
+        Some(episode(12))
     );
 }
 
 #[test]
-fn a_finale_on_a_row_already_complete_at_the_total_sends_no_progress() {
+fn a_rewatch_finale_at_equal_totals_stays_a_rewatch() {
     assert_eq!(
         reconcile_monotonic(
-            fit_to_tracker_total(finale(12), Some(13)),
-            row(ListStatus::Completed, 13)
+            fit_to_tracker_total(finale(12), Some(12)),
+            row(ListStatus::Rewatching, 11)
         ),
+        Some(episode(12))
+    );
+}
+
+#[test]
+fn a_finale_beside_a_larger_total_adds_an_unlisted_show_as_watching() {
+    assert_eq!(
+        reconcile_monotonic(fit_to_tracker_total(finale(12), Some(13)), None),
         Some(EntryUpdate {
-            status: Some(ListStatus::Completed),
+            status: Some(ListStatus::Watching),
+            progress_episodes: Some(12),
             ..Default::default()
         })
     );
@@ -153,15 +170,25 @@ proptest::proptest! {
         let update = EntryUpdate { status, progress_episodes: Some(ep), ..Default::default() };
         let fitted = fit_to_tracker_total(update, Some(total));
         proptest::prop_assert!(fitted.progress_episodes.unwrap() <= total);
-        proptest::prop_assert_eq!(fitted.status, status);
+        // Completed survives only where the totals agree.
+        let expected = if status == Some(ListStatus::Completed) && ep != total {
+            None
+        } else {
+            status
+        };
+        proptest::prop_assert_eq!(fitted.status, expected);
     }
 
-    /// The finale of a finished show is the tracker's last episode,
-    /// whatever either side counts.
+    /// The finale is never filled: it sends its own number, clamped,
+    /// and completes only where the tracker's total is that number.
     #[test]
-    fn the_finale_sends_the_tracker_total(ep in 0u32..2000, total in 1u32..2000) {
+    fn the_finale_is_its_own_number_and_completes_only_at_equal_totals(
+        ep in 0u32..2000,
+        total in 1u32..2000,
+    ) {
         let fitted = fit_to_tracker_total(finale(ep), Some(total));
-        proptest::prop_assert_eq!(fitted, finale(total));
+        let expected = if ep == total { finale(ep) } else { episode(ep.min(total)) };
+        proptest::prop_assert_eq!(fitted, expected);
     }
 
     /// Any other episode inside the tracker's count is sent as its own

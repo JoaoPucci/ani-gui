@@ -64,10 +64,27 @@ async fn push_to_mal(server: &wiremock::MockServer, update: EntryUpdate) -> Opti
     .expect("push ok")
 }
 
+/// The bodies of the PATCHes `server` received.
+async fn patch_bodies(server: &wiremock::MockServer) -> Vec<String> {
+    server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.method.as_str() == "PATCH")
+        .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+        .collect()
+}
+
 #[tokio::test]
-async fn mal_the_finale_completes_a_tracker_that_counts_a_prologue() {
-    let server = mal_server(13, 11, &["num_watched_episodes=13", "status=completed"], 1).await;
+async fn mal_the_finale_beside_a_prologue_total_sends_its_number_without_completing() {
+    let server = mal_server(13, 11, &["num_watched_episodes=12"], 1).await;
     assert!(push_to_mal(&server, finale(12)).await.is_some());
+    let bodies = patch_bodies(&server).await;
+    assert!(
+        bodies.iter().all(|b| !b.contains("status=")),
+        "no status beside a larger tracker total: {bodies:?}"
+    );
 }
 
 #[tokio::test]
@@ -97,7 +114,7 @@ async fn mal_an_unknown_total_sends_the_episode_as_is() {
 }
 
 #[tokio::test]
-async fn anilist_the_finale_completes_a_tracker_that_counts_a_prologue() {
+async fn anilist_the_finale_beside_a_prologue_total_sends_its_number_without_completing() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(method("POST"))
         .and(body_string_contains("mediaListEntry"))
@@ -110,10 +127,9 @@ async fn anilist_the_finale_completes_a_tracker_that_counts_a_prologue() {
         .await;
     wiremock::Mock::given(method("POST"))
         .and(body_string_contains("SaveMediaListEntry"))
-        .and(body_string_contains("\"progress\":13"))
-        .and(body_string_contains("\"status\":\"COMPLETED\""))
+        .and(body_string_contains("\"progress\":12"))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"SaveMediaListEntry":{"mediaId":21,"status":"COMPLETED","progress":13,"score":0,"updatedAt":1,"repeat":0,"media":{"idMal":21,"title":{"romaji":"Air","english":null,"userPreferred":"Air"}}}}}"#,
+            r#"{"data":{"SaveMediaListEntry":{"mediaId":21,"status":"CURRENT","progress":12,"score":0,"updatedAt":1,"repeat":0,"media":{"idMal":21,"title":{"romaji":"Air","english":null,"userPreferred":"Air"}}}}}"#,
         ))
         .expect(1)
         .mount(&server)
@@ -135,5 +151,19 @@ async fn anilist_the_finale_completes_a_tracker_that_counts_a_prologue() {
     .await
     .expect("push ok")
     .expect("written");
-    assert_eq!(entry.progress_episodes, 13);
+    assert_eq!(entry.progress_episodes, 12);
+    let saves: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| String::from_utf8_lossy(&r.body).into_owned())
+        .filter(|b| b.contains("SaveMediaListEntry"))
+        .collect();
+    assert!(
+        saves
+            .iter()
+            .all(|b| !b.contains("\"status\":\"COMPLETED\"")),
+        "no completed status beside a larger tracker total: {saves:?}"
+    );
 }
