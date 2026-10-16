@@ -131,9 +131,9 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
             if ep_no.is_empty() || id.is_empty() {
                 return None;
             }
-            let (rest, own_number) = split_own_number(rest);
             let (rest, kitsu_id) = split_kitsu_id(rest);
-            let (title, watched_at) = split_moment(rest);
+            let (rest, watched_at) = split_moment(rest);
+            let (title, own_number) = split_own_number(rest);
             Some(HistoryEntry {
                 ep_no,
                 id,
@@ -160,10 +160,12 @@ const WATCHED_AT_CEILING_MS: i64 = 4_102_444_800_000;
 /// The marker the fifth column starts with.
 const KITSU_MARK: &str = "kitsu:";
 
-/// The last column of a row whose episode is the app's own number
-/// ([`HistoryEntry::own_number`]); a row without it holds a provider
-/// slot. Written after every other column, so the columns before it
-/// read as they always have.
+/// The column right after the title of a row whose episode is the
+/// app's own number ([`HistoryEntry::own_number`]); a row without it
+/// holds a provider slot. Placed there, not last, because a build from
+/// before it splits the Kitsu id and the moment off the end of the row
+/// and reads the rest as the title: the marker then rides in that
+/// build's title, and the id and the moment still read.
 const OWN_NUMBER_MARK: &str = "ep:own";
 
 /// Split the own-number marker off what follows the id column.
@@ -267,6 +269,10 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
         out.push_str(&e.id);
         out.push('\t');
         out.push_str(&e.title);
+        if e.own_number {
+            out.push('\t');
+            out.push_str(OWN_NUMBER_MARK);
+        }
         if let Some(at) = e.watched_at {
             out.push('\t');
             out.push_str(&at.to_string());
@@ -275,10 +281,6 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
             out.push('\t');
             out.push_str(KITSU_MARK);
             out.push_str(id);
-        }
-        if e.own_number {
-            out.push('\t');
-            out.push_str(OWN_NUMBER_MARK);
         }
         out.push('\n');
     }
