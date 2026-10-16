@@ -86,21 +86,6 @@ pub fn extra_episode_tags(episodes: &[crate::scraper::provider::EpisodeRef]) -> 
         .collect()
 }
 
-/// The rows of `episodes` an earlier version tagged otherwise: each
-/// one's slot, the tag it had then and the tag it has now.
-pub fn former_tags_of(
-    episodes: &[crate::scraper::provider::EpisodeRef],
-) -> Vec<(u32, String, String)> {
-    episodes
-        .iter()
-        .filter_map(|e| {
-            let former = e.former_tag.clone()?;
-            let now = e.number2.clone().unwrap_or_else(|| e.number.to_string());
-            Some((e.number, former, now))
-        })
-        .collect()
-}
-
 /// A provider fraction in per-entry numbering: "41.5" under offset
 /// 40 advertises as "1.5", and "40.5" — a recap before the entry's
 /// first episode — as "0.5". Tags without a parseable integer part

@@ -1,9 +1,8 @@
 //! Tests for `crate::commands::play_native_split`.
 
 use super::*;
-use crate::commands::play_native_numbering::{
-    extra_episode_tags, former_tags_of, kitsu_episode_cap,
-};
+use crate::commands::play_native_merge::former_tags_of;
+use crate::commands::play_native_numbering::{extra_episode_tags, kitsu_episode_cap};
 
 const SBR: &str = "Steel Ball Run: JoJo no Kimyou na Bouken";
 

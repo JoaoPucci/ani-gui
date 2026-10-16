@@ -52,14 +52,18 @@ pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> st
 }
 
 /// Put a display stamp an earlier version wrote right: when the slug's
-/// stamp names `slot` with the tag `former` that version gave it,
-/// it names the tag the row has now. Any other stamp is left alone.
-pub fn retag_display(state: &AppState, slug: &str, slot: u32, former: &str, now: &str) {
+/// stamp names one of `former_tags`' slots with the tag that version
+/// gave it, it names the tag the row has now. Any other stamp is left
+/// alone.
+pub fn retag_display(state: &AppState, slug: &str, former_tags: &[(u32, String, String)]) {
     let Some((stamped, tag)) = display_stamp(state, slug) else {
         return;
     };
-    if stamped == slot && tag == former {
-        merge_row(state, slug, get(state, slug), Some((slot, now.to_string())));
+    if let Some((slot, _, now)) = former_tags
+        .iter()
+        .find(|(slot, former, _)| *slot == stamped && *former == tag)
+    {
+        merge_row(state, slug, get(state, slug), Some((*slot, now.clone())));
     }
 }
 
