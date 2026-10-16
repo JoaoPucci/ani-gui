@@ -6,11 +6,13 @@ use super::*;
 
 /// Pure parser for the `streamingEpisodes` response body.
 ///
-/// Entries with a null thumbnail or title are dropped, then entries
-/// whose title doesn't yield an integer episode number via
-/// [`split_episode_title`]. When several entries carry the same
-/// number the first one wins — AniList lists the subbed and dubbed
-/// tracks of an episode in that order.
+/// Entries with a null title are dropped, then entries whose title
+/// doesn't yield an integer episode number via
+/// [`split_episode_title`]. An entry without a still is kept: it
+/// still numbers and titles the episode for the fit rule, and fills
+/// nothing. When several entries carry the same number the first
+/// one's title wins — AniList lists the subbed and dubbed tracks of an
+/// episode in that order — and the first still among them.
 ///
 /// # Errors
 /// Returns [`AniError::ParseFailed`] when the body isn't the
@@ -52,16 +54,17 @@ pub fn parse_streaming_episodes_response(body: &[u8]) -> Result<StreamingListing
         entries: BTreeMap::new(),
     };
     for e in media.streaming_episodes.unwrap_or_default() {
-        let (Some(thumbnail), Some(title)) = (e.thumbnail, e.title) else {
-            continue;
-        };
+        let Some(title) = e.title else { continue };
         let Some((num, rest)) = split_episode_title(&title) else {
             continue;
         };
-        listing.entries.entry(num).or_insert(StreamingEntry {
+        let entry = listing.entries.entry(num).or_insert(StreamingEntry {
             title: rest.to_string(),
-            thumbnail: Some(thumbnail),
+            thumbnail: None,
         });
+        if entry.thumbnail.is_none() {
+            entry.thumbnail = e.thumbnail;
+        }
     }
     Ok(listing)
 }
