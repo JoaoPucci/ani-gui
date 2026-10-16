@@ -594,3 +594,32 @@ async fn the_2006_gintama_keeps_the_stills_of_its_own_listing() {
         .and_then(|t| t.original.as_ref())
         .is_some()));
 }
+
+#[tokio::test]
+async fn a_cached_row_that_is_not_a_listing_is_fetched_again() {
+    // A row this version cannot read (a hand-edited or truncated
+    // body) is a miss: the lookup runs and its listing replaces it.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(&anilist, serde_json::json!({ "idMal": 21 }), ONE_EP_BODY, 1).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    meta_cache_put(&state.cache_pool, &anilist_eps_thumbs_key("12"), "[1,2", 60).expect("put");
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    assert_eq!(got, one_ep_map());
+}
+
+#[tokio::test]
+async fn an_anilist_failure_is_cached_as_an_empty_listing() {
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(502))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let first = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let second = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    assert_eq!(first, StreamingListing::default());
+    assert_eq!(second, StreamingListing::default());
+}
