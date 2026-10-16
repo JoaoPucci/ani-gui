@@ -9,17 +9,31 @@ use super::{display_stamp, AppState};
 /// Put a display stamp an earlier version wrote right: when the slug's
 /// stamp names one of `former_tags`' slots with the tag that version
 /// gave it, it names the tag the row has now. Any other stamp is left
-/// alone.
+/// alone, and a show whose stamp names no such row is not written.
 pub fn retag_display(state: &AppState, slug: &str, former_tags: &[(u32, String, String)]) {
     let Some((stamped, tag)) = display_stamp(state, slug) else {
         return;
     };
-    if let Some((slot, _, now)) = former_tags
+    if former_tags
         .iter()
-        .find(|(slot, former, _)| *slot == stamped && *former == tag)
+        .any(|(slot, former, _)| *slot == stamped && *former == tag)
     {
-        retag_row(state, slug, *slot, now, &tag);
+        retag_row(state, slug, former_tags);
     }
+}
+
+/// [`retag_display`] from a listing at hand — a probe's, a
+/// download's — for the show `slug` keys.
+pub fn retag_from_listing(
+    state: &AppState,
+    slug: &str,
+    episodes: &[crate::scraper::provider::EpisodeRef],
+) {
+    retag_display(
+        state,
+        slug,
+        &crate::commands::play_native_merge::former_tags_of(episodes),
+    );
 }
 
 /// The (slot, tag) a repaired display stamp named its row by before
