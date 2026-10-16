@@ -12,6 +12,15 @@ import type { QualityView } from './quality-menu';
 const E = Hls.Events;
 const D = Hls.ErrorDetails;
 
+// What hls.js's error controller decided, as the error carries it:
+// another request of the same thing scheduled, or the level given up
+// on and the engine switched to `nextAutoLevel`. A playlist retry
+// still carries `levelRetry: true` — the level controller sets it to
+// tell other controllers a retry is happening — so that flag is no
+// verdict.
+const RETRY = { action: 5 };
+const SWITCHED = (nextAutoLevel: number) => ({ action: 2, nextAutoLevel, flags: 0 });
+
 // The engine double: the levels, the three ways of setting one, and
 // whether the engine has taken the choice back — which hls.js does
 // on its own after a level's error, before any listener runs.
@@ -182,14 +191,23 @@ describe('armQuality — trouble', () => {
 	it('a level whose playlist the engine gave up on is left, and the menu loses it', () => {
 		const s = arm();
 		s.parse();
-		// A retry still pending is not a verdict.
-		s.engine.emit(E.ERROR, { details: D.LEVEL_LOAD_ERROR, fatal: false, level: 2 });
+		// A retry still pending is not a verdict, though the engine
+		// flags it as a level retry.
+		s.engine.emit(E.ERROR, {
+			details: D.LEVEL_LOAD_ERROR,
+			fatal: false,
+			level: 2,
+			levelRetry: true,
+			errorAction: RETRY
+		});
 		expect(s.engine.loads).toEqual([2]);
+		expect(s.lastView()?.unavailable).toEqual([]);
 		s.engine.manual = -1;
 		s.engine.emit(E.ERROR, {
 			details: D.LEVEL_LOAD_TIMEOUT,
 			fatal: false,
 			levelRetry: true,
+			errorAction: SWITCHED(1),
 			context: { level: 2 }
 		});
 		expect(s.engine.loads).toEqual([2, 1]);
@@ -208,15 +226,47 @@ describe('armQuality — trouble', () => {
 	it('segments the engine gave up on step down from that level', () => {
 		const s = arm();
 		s.parse();
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_TIMEOUT,
+			fatal: false,
+			errorAction: RETRY,
+			frag: { type: 'main', level: 2 }
+		});
+		expect(s.engine.loads).toEqual([2]);
 		s.engine.manual = -1;
 		s.engine.emit(E.ERROR, {
 			details: D.FRAG_LOAD_TIMEOUT,
 			fatal: false,
 			levelRetry: true,
+			errorAction: SWITCHED(1),
 			frag: { type: 'main', level: 2 }
 		});
 		expect(s.engine.loads).toEqual([2, 1]);
 		expect(s.engine.autoLevelEnabled).toBe(false);
+	});
+
+	it('any error the engine switched levels for steps down rather than reclaiming the level it left', () => {
+		// An append or codec error on the level held: hls.js offers the
+		// next level with no load errors each time; putting it back on
+		// the failing level would fetch the same segment again and again.
+		const s = arm();
+		s.parse();
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_APPEND_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(1),
+			frag: { type: 'main', level: 2 }
+		});
+		expect(s.engine.loads).toEqual([2, 1]);
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_ADD_CODEC_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(0)
+		});
+		expect(s.engine.loads).toEqual([2, 1, 0]);
+		expect(s.logs.filter((l) => l.startsWith('fragments-failed'))).toHaveLength(2);
 	});
 
 	it("an audio rendition's segments failing do not move the video level", () => {
@@ -246,7 +296,7 @@ describe('armQuality — trouble', () => {
 		s.engine.emit(E.ERROR, {
 			details: D.FRAG_LOAD_ERROR,
 			fatal: false,
-			levelRetry: true,
+			errorAction: SWITCHED(1),
 			frag: { type: 'main', level: 0 }
 		});
 		expect(s.engine.loads).toEqual([0]);
@@ -333,7 +383,7 @@ describe('armQuality — the viewer chooses', () => {
 		expect(s.logs.join('\n')).toMatch(/pinned 1080p/);
 	});
 
-	it('the pin is the height the level is encoded at', () => {
+	it('the pin is the height the playlist lists for the level, which the next stream is matched by', () => {
 		const s = arm();
 		s.parse();
 		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
@@ -341,7 +391,7 @@ describe('armQuality — the viewer chooses', () => {
 			tracks: { video: { metadata: { width: 854, height: 480 } } }
 		});
 		s.control.pick(0);
-		expect(qualityPin.get()).toBe(480);
+		expect(qualityPin.get()).toBe(360);
 	});
 
 	it('a level with no height pins nothing, and a refused pick changes nothing', () => {
@@ -394,6 +444,20 @@ describe('armQuality — the edges', () => {
 		} finally {
 			debug.mockRestore();
 		}
+	});
+
+	it('a level whose playlist lists no height learns one without claiming the playlist said 0p', () => {
+		const s = arm('best', [
+			{ height: 0, bitrate: 800_000 },
+			{ height: 0, bitrate: 2_000_000 }
+		]);
+		s.parse();
+		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 1 },
+			tracks: { video: { metadata: { width: 1920, height: 1080 } } }
+		});
+		expect(s.lastView()?.levels[1]).toEqual({ height: 1080, bitrate: 2_000_000 });
+		expect(s.logs.join('\n')).not.toMatch(/says 0p/);
 	});
 
 	it('a manifest of no levels sets nothing', () => {
