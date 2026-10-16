@@ -53,5 +53,25 @@
   "tokyo-ghoul-a-891": 2015,
   "tokyo-ghoulre-2nd-season-893": 2018,
   "tokyo-ghoulre-892": 2018
+ },
+ "jnames": {
+  "tokyo-ghoul-890": "Tokyo Ghoul",
+  "tokyo-ghoul-a-891": "Tokyo Ghoul √A",
+  "tokyo-ghoul-jack-2773": "Tokyo Ghoul: \"Jack\"",
+  "tokyo-ghoul-pinto-2801": "Tokyo Ghoul: \"Pinto\"",
+  "tokyo-ghoulre-2nd-season-893": "Tokyo Ghoul:re 2nd Season",
+  "tokyo-ghoulre-892": "Tokyo Ghoul:re"
+ },
+ "page_names": {
+  "tokyo-ghoul-890": ["東京喰種-トーキョーグール-"],
+  "tokyo-ghoul-a-891": ["東京喰種√A"],
+  "tokyo-ghoulre-2nd-season-893": ["東京喰種トーキョーグール：re 第2期"],
+  "tokyo-ghoulre-892": ["東京喰種トーキョーグール：re"]
+ },
+ "genres": {
+  "tokyo-ghoul-890": ["Fantasy", "Seinen", "Drama", "Psychological", "Suspense", "Mystery", "Supernatural", "Horror", "Urban Fantasy", "Gore", "Action"],
+  "tokyo-ghoul-a-891": ["Fantasy", "Seinen", "Drama", "Psychological", "Suspense", "Mystery", "Supernatural", "Horror", "Urban Fantasy", "Gore", "Action"],
+  "tokyo-ghoulre-2nd-season-893": ["Fantasy", "Seinen", "Drama", "Psychological", "Suspense", "Mystery", "Supernatural", "Horror", "Urban Fantasy", "Gore", "Action"],
+  "tokyo-ghoulre-892": ["Fantasy", "Seinen", "Drama", "Psychological", "Suspense", "Mystery", "Supernatural", "Horror", "Urban Fantasy", "Gore", "Action"]
  }
 }

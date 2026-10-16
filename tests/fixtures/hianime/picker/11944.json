@@ -231,5 +231,14 @@
     [112478, 104, null]
   ]
  },
- "years": {}
+ "years": {},
+ "jnames": {
+  "astro-boy-1980-7802": "Tetsuwan Atom (1980)",
+  "astro-boy-2003-4317": "Astro Boy: Tetsuwan Atom",
+  "astro-boy-7819": "Tetsuwan Atom",
+  "astro-boy-the-brave-in-space-5598": "Tetsuwan Atom: Uchuu no Yuusha",
+  "little-astro-boy-8887": "Robot Atom"
+ },
+ "page_names": {},
+ "genres": {}
 }

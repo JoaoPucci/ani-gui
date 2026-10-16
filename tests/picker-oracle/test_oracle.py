@@ -23,7 +23,9 @@ import oracle  # noqa: E402
 E = 12
 
 
-def pool(titles, count, rows, year=2020, dead=()):
+def pool(titles, count, rows, year=2020, dead=(), **names):
+    """A pool; `names` may give the cards' romanized names (`jnames`) and
+    the pages' names (`page_names`), as a case does."""
     return {
         "id": "t",
         "titles": list(titles),
@@ -32,6 +34,7 @@ def pool(titles, count, rows, year=2020, dead=()):
         "rows": [list(r) for r in rows],
         "dead": list(dead),
         "family": "test",
+        **names,
     }
 
 
@@ -235,11 +238,54 @@ class TheModelReadsTheDocs(unittest.TestCase):
             count = 26 if titles[0].startswith("Yi Ren") else E
             self.assertEqual(oracle.predict(pool(titles, count, rows, year=None)), want, (titles, rows))
         self.assertEqual(oracle.refusal_expected(pool(["Show: Arc"], E, [other], year=None)), ("NoResults", False))
-        # a dated entry takes the hit on its year and count, as before
+        # a dated entry whose card carries the entry's name takes the hit
+        # on its year and count
         self.assertEqual(oracle.predict(pool(["Show: Arc"], E, [other])), pick("o"))
         # and a countless one with no year is the clean miss, as before
         self.assertIsNone(oracle.predict(pool(["Show: Arc"], None, [other], year=None)))
         self.assertEqual(oracle.refusal_expected(pool(["Show: Arc"], None, [other], year=None)), ("NoResults", True))
+
+    def test_a_year_and_a_count_take_only_what_a_name_vouches_for(self):
+        # "A year and a count are no identity either": with a count above
+        # one and a year, a hit is picked only when it is the title
+        # searched, or a name of the show — its listing's title, its
+        # card's romanized name, a name its page gives — is named by the
+        # entry or shares one of its titles' names; any other is refused,
+        # and the pool is the refusal by title, not the clean miss.
+        other = ("o", "Other", E)
+        bare = {"jnames": {}}
+        for titles, rows, names, want in [
+            (["Show: Arc"], [other], bare, None),
+            (["Show: Arc"], [other, ("s", "Show: Arc", E)], bare, pick("s")),
+            (["Show: Arc", "Shou Arc"], [other], {"jnames": {"o": "Shou Arc"}}, pick("o")),
+            (["Show: Arc"], [other], {"jnames": {}, "page_names": {"o": ["Show: Arc"]}}, pick("o")),
+            (["Show: Arc 2"], [("g", "Show: Arc - Second Half War", E)], bare, pick("g")),
+            (["Show: Arc Part 2"], [("j", "Show Part 6: Arc Part 2", E)], bare, pick("j")),
+            (["Show: Arc"], [("a", "Arcadia Show", E)], bare, None),
+            (
+                ["HenSemi (TV)", "変ゼミ", "Hentai Seiri Seminar", "Hen Zemi", "Abnormal Physiology Seminar"],
+                [("m", "Medaka Box Abnormal", 12)],
+                {"jnames": {"m": "Medaka Box Abnormal"}, "page_names": {"m": ["めだかボックス アブノーマル"]}},
+                None,
+            ),
+        ]:
+            self.assertEqual(oracle.predict(pool(titles, E, rows, **names)), want, (titles, rows, names))
+        self.assertEqual(oracle.refusal_expected(pool(["Show: Arc"], E, [other], **bare)), ("NoResults", False))
+        # a name is started at a word's end, or with a digit or 第 glued
+        # to it — no digit when the name itself ends in one
+        self.assertEqual(oracle.predict(pool(["Show"], E, [other], jnames={}, page_names={"o": ["Show2"]})), pick("o"))
+        self.assertEqual(oracle.predict(pool(["ショー"], E, [other], jnames={}, page_names={"o": ["ショー第2期"]})), pick("o"))
+        self.assertIsNone(oracle.predict(pool(["Show"], E, [other], jnames={}, page_names={"o": ["Showtime"]})))
+        self.assertIsNone(oracle.predict(pool(["86"], E, [other], jnames={}, page_names={"o": ["861"]})))
+        # a refused hit the airing rescue would have taken — from the
+        # entry's year, shorter than the entry — is no clean miss either
+        self.assertEqual(oracle.refusal_expected(pool(["Show"], E, [("x", "Other", 2)], **bare)), ("NoResults", False))
+        self.assertEqual(oracle.refusal_expected(pool(["Show"], E, [("x", "Other", 40)], **bare)), ("NoResults", True))
+        # a name of no words names no show
+        self.assertFalse(oracle.shares_name(["Season 2"], "Other Show"))
+        # the countless pick and an entry with no year read as before
+        self.assertEqual(oracle.predict(pool(["Show: Arc"], None, [other], **bare)), pick("o"))
+        self.assertIsNone(oracle.predict(pool(["Show: Arc"], E, [other], year=None, jnames={"o": "Show: Arc"})))
 
     def test_the_probe_head_stops_at_the_fifth_that_could_be_picked(self):
         rows = [(f"r{i}", f"Show 2 Arc {c}", 50) for i, c in enumerate("ABCDE")] + [("x", "Show 3", E)]

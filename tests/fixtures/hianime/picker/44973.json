@@ -46,5 +46,18 @@
  "years": {
   "blue-lock-964": 2022,
   "blue-lock-season-2-2614": 2024
+ },
+ "jnames": {
+  "blue-lock-964": "Blue Lock",
+  "blue-lock-episode-nagi-4693": "Blue Lock: Episode Nagi",
+  "blue-lock-season-2-2614": "Blue Lock vs. U-20 Japan"
+ },
+ "page_names": {
+  "blue-lock-964": ["ブルーロック"],
+  "blue-lock-season-2-2614": ["ブルーロック VS. U-20 JAPAN", "Blue Lock vs. U-20 Japan"]
+ },
+ "genres": {
+  "blue-lock-964": ["Shounen", "Sports", "Team Sports"],
+  "blue-lock-season-2-2614": ["Shounen", "Sports", "Team Sports"]
  }
 }

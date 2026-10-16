@@ -58,6 +58,7 @@ fn hits(pool: &[usize]) -> Vec<BrowseHit> {
             slug: format!("hit-{i}"),
             title: TITLES[*t].0.to_string(),
             kind: None,
+            jname: None,
         })
         .collect()
 }

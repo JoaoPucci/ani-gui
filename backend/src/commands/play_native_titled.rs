@@ -4,8 +4,10 @@
 
 use super::*;
 use crate::commands::play_native_count_alone::unvouched_counted;
+use crate::commands::play_native_dated_name::{may_win, unnamed_dated};
 use crate::commands::play_native_single_video::unvouched_single_videos;
 use crate::commands::play_native_title_grammar::normalized;
+use crate::commands::play_native_year::PageNames;
 
 /// [`pick_candidate`] told every title the requested entry goes by —
 /// the canonical title and its fallbacks, not only the one searched —
@@ -41,7 +43,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // The bounded head, by the entry's titles (see
     // play_native_title_verdict::probe_head).
     let (hits, refused_dropped) = probe_head(hits, expected.is_some(), entry)?;
-    let filtered = year_filtered(client, &hits, year).await;
+    let mut pages = PageNames::new();
+    let filtered = year_filtered(client, &hits, year, &mut pages).await;
     let Some(expected) = expected else {
         let picked = match filtered {
             Ok(head) => pick_without_count(client, &head, &needle, entry).await,
@@ -93,8 +96,15 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                 }
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
-                    best_failed =
-                        strongest_dead(best_failed, entry, &h.title, &needle, year_confirmed, pos);
+                    best_failed = strongest_dead(
+                        best_failed,
+                        entry,
+                        &h.title,
+                        &needle,
+                        year_confirmed,
+                        pos,
+                        may_win(h, expected, &needle, entry, year, &pages),
+                    );
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
@@ -116,6 +126,10 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // entry, or one a single video long, is not read here.
     let refused_a_fit =
         unvouched_counted(&mut probed_ok, expected, &needle, entry, year) || refused_a_fit;
+    // A year and a count fit many shows too: with both, only a name
+    // makes a candidate the entry (see play_native_dated_name).
+    let refused_a_fit =
+        unnamed_dated(&mut probed_ok, expected, &needle, entry, year, &pages) || refused_a_fit;
     // An empty pool splits by what killed the probes: any transport
     // death means nothing was learned (the transient Network), while
     // all-answered not-found means the pool is dead but the provider

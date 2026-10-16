@@ -55,5 +55,20 @@
   "fate-zero-remix-7186": 2012,
   "fatezero-1115": 2011,
   "fatezero-season-2-1117": 2012
+ },
+ "jnames": {
+  "fate-zero-remix-7186": "Fate/Zero Remix",
+  "fatezero-1115": "Fate/Zero",
+  "fatezero-cafe-3036": "Fate/Zero Cafe",
+  "fatezero-season-2-1117": "Fate/Zero 2nd Season"
+ },
+ "page_names": {
+  "fatezero-1115": ["フェイト/ゼロ"],
+  "fatezero-season-2-1117": ["フェイト/ゼロ 2ndシーズン", "Fate/Zero 2nd Season"]
+ },
+ "genres": {
+  "fate-zero-remix-7186": ["Fantasy", "Action"],
+  "fatezero-1115": ["Fantasy", "Supernatural", "Urban Fantasy", "Magic", "Action"],
+  "fatezero-season-2-1117": ["Fantasy", "Supernatural", "Urban Fantasy", "Magic", "Action"]
  }
 }

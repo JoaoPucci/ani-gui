@@ -477,6 +477,7 @@ fn a_chain_is_never_led_by_a_candidate_the_entry_s_titles_refuse() {
         slug: slug.into(),
         title: title.into(),
         kind: Some("TV".into()),
+        jname: None,
     };
     let (s2, s2p2) = (
         hit("x-s2-1", "X Season 2"),

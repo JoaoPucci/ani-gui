@@ -63,5 +63,17 @@
  "years": {
   "gintama-silver-soul-arc-1155": 2018,
   "gintama-silver-soul-arc-second-half-war-1157": 2018
+ },
+ "jnames": {
+  "gintama-silver-soul-arc-1155": "Gintama.: Shirogane no Tamashii-hen",
+  "gintama-silver-soul-arc-second-half-war-1157": "Gintama.: Shirogane no Tamashii-hen - Kouhan-sen"
+ },
+ "page_names": {
+  "gintama-silver-soul-arc-1155": ["銀魂. 銀ノ魂篇", "Gintama.: Shirogane no Tamashii-hen"],
+  "gintama-silver-soul-arc-second-half-war-1157": ["銀魂. 銀ノ魂篇 後半戦", "Gintama.: Shirogane no Tamashii-hen - Kouhan-sen"]
+ },
+ "genres": {
+  "gintama-silver-soul-arc-1155": ["Shounen", "Comedy", "Historical", "Sci-Fi", "Parody", "Gag Humor", "Samurai", "Action"],
+  "gintama-silver-soul-arc-second-half-war-1157": ["Shounen", "Comedy", "Historical", "Sci-Fi", "Parody", "Gag Humor", "Samurai", "Action"]
  }
 }

@@ -1229,5 +1229,45 @@
  "years": {
   "one-piece-1": 1999,
   "one-piece-film-gold-cine-mike-popcorn-advertisement-5303": 2016
+ },
+ "jnames": {
+  "one-piece-1": "One Piece",
+  "one-piece-3d-racing-trap-coaster-5299": "One Piece 3D: Gekisou! Trap Coaster",
+  "one-piece-3d-straw-hat-chase-5300": "One Piece 3D: Mugiwara Chase",
+  "one-piece-3d2y-overcoming-aces-death-luffys-pledge-to-his-friends-1466": "One Piece 3D2Y: Ace no shi wo Koete! Luffy Nakama Tono Chikai",
+  "one-piece-baron-omatsuri-and-the-secret-island-4372": "One Piece Movie 6: Omatsuri Danshaku to Himitsu no Shima",
+  "one-piece-chopper-kingdom-of-strange-animal-island-4353": "One Piece Movie 3: Chinjuu-jima no Chopper Oukoku",
+  "one-piece-clockwork-island-adventure-4360": "One Piece Movie 2: Nejimaki-jima no Daibouken",
+  "one-piece-dead-end-adventure-4354": "One Piece Movie 4: Dead End no Bouken",
+  "one-piece-departure-to-the-starry-sky-5345": "One Piece: Uchuu tte Omoshiree! Hoshizora Jima-hen",
+  "one-piece-episode-of-alabasta-the-desert-princess-and-the-pirates-5306": "One Piece Movie 8: Episode of Alabasta - Sabaku no Oujo to Kaizoku-tachi",
+  "one-piece-episode-of-chopper-plus-bloom-in-the-winter-miracle-sakura-5307": "One Piece Movie 9: Episode of Chopper Plus - Fuyu ni Saku, Kiseki no Sakura",
+  "one-piece-episode-of-luffy-adventure-on-hand-island-5326": "One Piece: Episode of Luffy - Hand Island no Bouken",
+  "one-piece-episode-of-merry-the-tale-of-one-more-friend-5329": "One Piece: Episode of Merry - Mou Hitori no Nakama no Monogatari",
+  "one-piece-episode-of-nami-tears-of-a-navigator-and-the-bonds-of-friends-5330": "One Piece: Episode of Nami - Koukaishi no Namida to Nakama no Kizuna",
+  "one-piece-episode-of-skypiea-5332": "One Piece: Episode of Sorajima",
+  "one-piece-fan-letter-1965": "One Piece Fan Letter",
+  "one-piece-film-gold-925": "One Piece Film: Gold",
+  "one-piece-film-gold-cine-mike-popcorn-advertisement-5303": "One Piece Film: Gold - Cine Mike Popcorn Kokuchi",
+  "one-piece-film-red-2825": "One Piece Film: Red",
+  "one-piece-film-strong-world-1431": "One Piece Film: Strong World",
+  "one-piece-film-strong-world-episode-0-5305": "One Piece Film: Strong World Episode 0",
+  "one-piece-film-z-1432": "One Piece Film: Z",
+  "one-piece-heart-of-gold-3203": "One Piece: Heart of Gold",
+  "one-piece-heroines-2827": "ONE PIECE HEROINES",
+  "one-piece-romance-dawn-story-5344": "One Piece: Romance Dawn Story",
+  "one-piece-stampede-1433": "One Piece: The Movie 14 - Stampede",
+  "one-piece-the-curse-of-the-sacred-sword-4359": "One Piece Movie 5: Norowareta Seiken",
+  "one-piece-the-giant-mechanical-soldier-of-karakuri-castle-4361": "One Piece Movie 7: Karakuri-jou no Mecha Kyohei",
+  "one-piece-the-movie-4164": "One Piece Movie 1",
+  "one-piece-the-planetarium-5309": "One Piece The Planetarium"
+ },
+ "page_names": {
+  "one-piece-1": ["ONE PIECE"],
+  "one-piece-film-gold-cine-mike-popcorn-advertisement-5303": ["「ONE PIECE FILM GOLD」シネマイクポップコーン告知", "One Piece Film: Gold - Cine Mike Popcorn Kokuchi"]
+ },
+ "genres": {
+  "one-piece-1": ["Adventure", "Fantasy", "Shounen", "Comedy", "Drama", "Super Power", "Action"],
+  "one-piece-film-gold-cine-mike-popcorn-advertisement-5303": ["Fantasy", "Shounen"]
  }
 }

@@ -2,6 +2,7 @@
 //! with the site's entities decoded; split from [`super`] so each file
 //! stays inside the CRAP gate's per-file bar.
 
+use super::super::markup::decode_entities;
 use super::*;
 
 /// One result card: the heading anchor's slug and title, and the
@@ -40,7 +41,18 @@ pub(super) fn parse_card(card: &str) -> Option<BrowseHit> {
         .map(str::trim)
         .filter(|k| !k.is_empty())
         .map(str::to_string);
-    Some(BrowseHit { slug, title, kind })
+    // The romanized name beside the display title; an empty one names
+    // nothing.
+    let jname = attr(anchor, "data-jname=\"")
+        .map(decode_entities)
+        .map(|j| j.trim().to_string())
+        .filter(|j| !j.is_empty());
+    Some(BrowseHit {
+        slug,
+        title,
+        kind,
+        jname,
+    })
 }
 
 /// The card's heading anchor, whole — the first `<a …>` open tag in
@@ -60,15 +72,4 @@ fn heading_anchor(detail: &str) -> Option<&str> {
         from = at + 2;
     }
     None
-}
-
-/// The entities the site's titles carry, `&amp;` last so it cannot
-/// re-form another entity.
-fn decode_entities(s: &str) -> String {
-    s.replace("&#039;", "'")
-        .replace("&apos;", "'")
-        .replace("&quot;", "\"")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
 }

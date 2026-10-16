@@ -33,7 +33,7 @@ pub use ajax::{
     remainder_index, request_of, servers_for, ServerCaps, ServerEmbed, ServerListing,
     CHAIN_REQUESTS,
 };
-pub use detail::parse_detail_year;
+pub use detail::{parse_detail_genres, parse_detail_names, parse_detail_year, parse_entry_page};
 pub use embed::{decode_embed, embed_origin, is_not_found_page, EmbedPayload};
 pub use megaplay::{media_id, sources_url};
 pub use megaplay_sources::{lang_of_track, parse_sources};
@@ -42,8 +42,8 @@ pub use parse::{parse_search, slug_id};
 use crate::error::{AniError, Result};
 use crate::scraper::fetch::{Fetch, FetchRequest};
 use crate::scraper::provider::{
-    encode_query, is_cloudflare_interstitial, BrowseHit, EpisodeRef, Provider, ProviderId,
-    ResolvedStream, StreamSource,
+    encode_query, is_cloudflare_interstitial, BrowseHit, EntryPage, EpisodeRef, Provider,
+    ProviderId, ResolvedStream, StreamSource,
 };
 
 /// Provider origin. Overridable at the client level for tests, and
@@ -722,12 +722,19 @@ impl<F: Fetch> Provider for HianimeClient<F> {
     }
 
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
+        self.detail_page(slug).await.map(|page| page.year)
+    }
+
+    /// The entry page read once: its Aired row's year, the names its
+    /// Japanese and Synonyms rows carry and its genres. A missing page is the
+    /// soft empty page, as a page without the rows is.
+    async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
         match self.content(&self.on_origin(&format!("/{slug}"))).await {
-            Ok(body) => Ok(parse_detail_year(&body)),
+            Ok(body) => Ok(parse_entry_page(&body)),
             Err(AniError::Upstream { status })
                 if !AniError::Upstream { status }.is_provider_block() =>
             {
-                Ok(None)
+                Ok(EntryPage::default())
             }
             Err(e) => Err(e),
         }

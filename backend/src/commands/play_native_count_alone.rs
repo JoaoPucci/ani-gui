@@ -15,11 +15,10 @@
 //! So for such an entry the count alone vouches for nothing: a probed
 //! candidate is picked only when it is the title searched or the entry
 //! names it, the rule the countless pick and the single-video pick
-//! already apply. A dated entry is not read here at all — its year
-//! vouches, and fourteen of the recorded dated entries are picked by
-//! their year and count under a name none of their titles carries —
-//! nor is an entry one video long, whose rule is
-//! [`super::play_native_single_video`]'s.
+//! already apply. A dated entry is not read here at all — its rule is
+//! [`super::play_native_dated_name`]'s, which lets the provider's own
+//! names for the show vouch as well — nor is an entry one video long,
+//! whose rule is [`super::play_native_single_video`]'s.
 
 use super::play_native::ep_count_threshold;
 use super::play_native_title_grammar::normalized;

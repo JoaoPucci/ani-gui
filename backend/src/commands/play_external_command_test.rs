@@ -42,6 +42,7 @@ fn stub_provider_with_a_recap(mock: &MockServer, query: &str) -> TableProvider {
                 slug: "the-show-77".into(),
                 title: "The Show".into(),
                 kind: None,
+                jname: None,
             }],
         )
         .listing(

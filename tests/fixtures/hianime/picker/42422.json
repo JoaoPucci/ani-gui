@@ -39,5 +39,20 @@
   "attack-on-titan-final-season-1372": 2020,
   "attack-on-titan-final-season-part-2-868": 2022,
   "attack-on-titan-final-season-the-final-chapters-867": 2023
+ },
+ "jnames": {
+  "attack-on-titan-final-season-1372": "Shingeki no Kyojin: Final Season, Part 1",
+  "attack-on-titan-final-season-part-2-868": "Shingeki no Kyojin: The Final Season Part 2",
+  "attack-on-titan-final-season-the-final-chapters-867": "Shingeki no Kyojin: The Final Season - Kanketsu-hen"
+ },
+ "page_names": {
+  "attack-on-titan-final-season-1372": ["進撃の巨人 The Final Season", "Shingeki no Kyojin: Final Season, Part 1"],
+  "attack-on-titan-final-season-part-2-868": ["進撃の巨人 The Final Season Part 2", "Shingeki no Kyojin: The Final Season Part 2"],
+  "attack-on-titan-final-season-the-final-chapters-867": ["進撃の巨人 The Final Season完結編", "Shingeki no Kyojin: The Final Season - Kanketsu-hen"]
+ },
+ "genres": {
+  "attack-on-titan-final-season-1372": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-final-season-part-2-868": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-final-season-the-final-chapters-867": ["Shounen", "Drama", "Suspense", "Gore", "Military", "Survival", "Action"]
  }
 }
