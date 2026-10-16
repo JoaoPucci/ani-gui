@@ -480,3 +480,79 @@ async fn a_dead_listing_in_any_pool_is_never_a_clean_miss_nor_a_refusal_by_name(
         );
     }
 }
+
+/// A dead listing that is another entry of the same show — "Show",
+/// the entry before "Show 2" — withdraws nothing: answered, it would be
+/// scored out and leave the clean miss, so dead it does the same. Alone,
+/// the pool is the clean miss; beside another alias's refusal by name,
+/// the refusal stands.
+#[tokio::test]
+async fn a_dead_listing_of_another_entry_withdraws_no_refusal() {
+    let alone = scripted(&[("show 2", Pool::Hits(&[("x-1", "Show")]))]);
+    let ne = pick_native_walk(&alone, "show 2", &[], Some(3), None, None)
+        .await
+        .expect_err("nothing picked");
+    assert!(
+        ne.clean_miss,
+        "the entry before, dead, is the clean miss it is alive"
+    );
+
+    // The longer needle first: a search matches the first needle it
+    // contains.
+    let beside = scripted(&[
+        ("show 2nd season", Pool::Hits(&[("the-show-77", "Other")])),
+        ("show 2", Pool::Hits(&[("x-1", "Show")])),
+    ]);
+    let ne = pick_native_walk(
+        &beside,
+        "show 2",
+        &["show 2nd season".to_string()],
+        Some(3),
+        None,
+        None,
+    )
+    .await
+    .expect_err("nothing picked");
+    assert!(!ne.clean_miss);
+    assert!(
+        ne.refused_by_name,
+        "the entry before could never be the show"
+    );
+}
+
+/// A dead listing the titles refuse can still decide the pick when it
+/// is a broad listing's completing sibling: "The Show Season 3 Part 2"
+/// dead beside "The Show Season 3", seven episodes against three. Had
+/// it answered, the broad listing might have been cut to the entry's
+/// episodes, so the pool is neither the clean miss nor — beside a hit
+/// refused by name in the same pool — a refusal by name.
+#[tokio::test]
+async fn a_dead_sibling_that_could_complete_a_broad_listing_is_a_dead_end() {
+    for (label, pool) in [
+        (
+            "alone",
+            Pool::Hits(&[
+                ("the-show-99", "The Show Season 3"),
+                ("ghost-1", "The Show Season 3 Part 2"),
+            ]),
+        ),
+        (
+            "beside a refusal",
+            Pool::Hits(&[
+                ("the-show-99", "The Show Season 3"),
+                ("ghost-1", "The Show Season 3 Part 2"),
+                ("the-show-77", "Some Other"),
+            ]),
+        ),
+    ] {
+        let site = scripted(&[("the show season 3", pool)]);
+        let ne = pick_native_walk(&site, "the show season 3", &[], Some(3), None, None)
+            .await
+            .expect_err("nothing picked");
+        assert!(
+            !ne.clean_miss,
+            "{label}: the dead sibling may have decided the pick"
+        );
+        assert!(!ne.refused_by_name, "{label}");
+    }
+}
