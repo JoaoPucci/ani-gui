@@ -139,6 +139,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl mpv ffmpeg aria2
       - if: needs.filter.outputs.relevant == 'true'
+        name: Fetch the crates before the network is refused
+        working-directory: backend
+        run: cargo fetch --locked
+      - if: needs.filter.outputs.relevant == 'true'
         name: cargo test --workspace
         working-directory: backend
         # A RUSTFLAGS environment variable replaces every rustflags
@@ -147,8 +151,31 @@ jobs:
         # static-CRT flag the config pins for MSVC. Windows re-adds
         # it here; the crt-static assertion in app.rs goes red in any
         # environment that loses the flag again.
+        #
+        # The run is offline. Every outside request goes to a proxy whose
+        # name never resolves, while the loopback mocks the tests stand
+        # up are reached directly, so a test that reaches a real host
+        # fails on every run rather than passing until that host
+        # answers differently: an AniList case once passed while
+        # graphql.anilist.co answered it and failed the day that host
+        # sent a 429 of its own. A name under `.invalid` fails at once
+        # on every OS, where a refused loopback port costs Windows a
+        # second or two per connection. reqwest (no client opts out of
+        # the environment's proxy) and the curl the transport spawns
+        # both honour these. So do cargo and rustup: the step before
+        # fetched every crate, cargo is told not to look, and the
+        # toolchain the run uses was installed before it.
         env:
           RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-D warnings -C target-feature=+crt-static' || '-D warnings' }}
+          HTTP_PROXY: http://proxy.invalid:9
+          HTTPS_PROXY: http://proxy.invalid:9
+          ALL_PROXY: http://proxy.invalid:9
+          http_proxy: http://proxy.invalid:9
+          https_proxy: http://proxy.invalid:9
+          all_proxy: http://proxy.invalid:9
+          NO_PROXY: 127.0.0.1,localhost,::1
+          no_proxy: 127.0.0.1,localhost,::1
+          CARGO_NET_OFFLINE: 'true'
         run: cargo test --workspace --all-features
 
   picker-oracle:
@@ -233,8 +260,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl mpv ffmpeg aria2
       - if: needs.filter.outputs.relevant == 'true'
+        name: Fetch the crates and llvm-tools before the network is refused
+        working-directory: backend
+        # cargo-llvm-cov asks rustup for llvm-tools-preview on the
+        # pinned toolchain the first time it runs, and rustup honours
+        # the proxy variables the next step sets.
+        run: |
+          rustup component add llvm-tools-preview
+          cargo fetch --locked
+      - if: needs.filter.outputs.relevant == 'true'
         name: Generate lcov
         working-directory: backend
+        # Offline, as the `test` job's run is; see there.
+        env:
+          HTTP_PROXY: http://proxy.invalid:9
+          HTTPS_PROXY: http://proxy.invalid:9
+          ALL_PROXY: http://proxy.invalid:9
+          http_proxy: http://proxy.invalid:9
+          https_proxy: http://proxy.invalid:9
+          all_proxy: http://proxy.invalid:9
+          NO_PROXY: 127.0.0.1,localhost,::1
+          no_proxy: 127.0.0.1,localhost,::1
+          CARGO_NET_OFFLINE: 'true'
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
       - if: needs.filter.outputs.relevant == 'true'
         name: Ratchet — fail if coverage drops
