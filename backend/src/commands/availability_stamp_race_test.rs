@@ -712,6 +712,7 @@ fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
             id: 5000 + u64::from(n),
             number: n,
             number2: None,
+            title: None,
         })
         .collect();
     let last = 5000 + u64::from(count);

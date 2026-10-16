@@ -31,6 +31,7 @@ fn numbered(ids: &[u64]) -> Vec<EpisodeRef> {
             id: *id,
             number,
             number2: None,
+            title: None,
         })
         .collect()
 }
@@ -1411,21 +1412,25 @@ async fn a_native_probe_reports_the_listings_fractional_extras() {
                         id: 311,
                         number: 1,
                         number2: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 312,
                         number: 2,
                         number2: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 313,
                         number: 3,
                         number2: Some("2.5".into()),
+                        title: None,
                     },
                     EpisodeRef {
                         id: 314,
                         number: 4,
                         number2: Some("3".into()),
+                        title: None,
                     },
                 ],
             )
@@ -1642,11 +1647,13 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
                         id: 941,
                         number: 41,
                         number2: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 942,
                         number: 42,
                         number2: None,
+                        title: None,
                     },
                 ],
             )

@@ -141,16 +141,19 @@ fn detail_refusing() -> TableProvider {
                     id: 701,
                     number: 1,
                     number2: None,
+                    title: None,
                 },
                 EpisodeRef {
                     id: 702,
                     number: 2,
                     number2: None,
+                    title: None,
                 },
                 EpisodeRef {
                     id: 703,
                     number: 3,
                     number2: None,
+                    title: None,
                 },
             ],
         )
@@ -464,11 +467,13 @@ fn chain_fails(make: impl Fn() -> AniError + Send + Sync + 'static) -> TableProv
                     id: 701,
                     number: 1,
                     number2: None,
+                    title: None,
                 },
                 EpisodeRef {
                     id: 702,
                     number: 2,
                     number2: None,
+                    title: None,
                 },
             ],
         )
@@ -949,6 +954,7 @@ impl crate::scraper::provider::Provider for RefererProvider {
             id: 1,
             number: 1,
             number2: None,
+            title: None,
         }])
     }
     async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
@@ -1043,6 +1049,7 @@ impl crate::scraper::provider::Provider for ListingProvider {
             id: 1,
             number: 1,
             number2: None,
+            title: None,
         }])
     }
     async fn has_mode(&self, _e: u64, _m: &str) -> crate::error::Result<bool> {
@@ -1232,6 +1239,7 @@ fn one_episode_show() -> crate::commands::play_native::PickedShow {
             id: 1,
             number: 1,
             number2: None,
+            title: None,
         }],
     }
 }
