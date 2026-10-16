@@ -299,6 +299,10 @@ fn a_count_of_one_reads_its_one_episode() {
 
 // ── where nothing may move ─────────────────────────────────────────
 
+/// One of Kitsu's episode rows as the corpus records it: number,
+/// canonical title, air date.
+type KitsuRow = (Option<u32>, Option<String>, Option<String>);
+
 #[derive(serde::Deserialize)]
 struct Corpus {
     shows: Vec<CorpusShow>,
@@ -311,8 +315,7 @@ struct CorpusShow {
     status: Option<String>,
     episode_count: Option<u32>,
     anilist: Option<CorpusAnilist>,
-    kitsu_pages:
-        std::collections::BTreeMap<String, Vec<(Option<u32>, Option<String>, Option<String>)>>,
+    kitsu_pages: std::collections::BTreeMap<String, Vec<KitsuRow>>,
     provider: CorpusProvider,
     appended: bool,
 }
