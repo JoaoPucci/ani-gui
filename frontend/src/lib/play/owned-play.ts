@@ -72,7 +72,8 @@ export async function runOwnedPlay<S>(
 
 /** The play request for `episode` of `show`, built once at the click
  *  so a late answer records the show the viewer clicked. `kitsuId` is
- *  left off when the play records none (a guessed match). */
+ *  left off when the play records none (a guessed match); `prefetch`
+ *  marks a warm, which records no Continue Watching. */
 export function playArgsFor(input: {
 	title: string;
 	episode: number;
@@ -93,22 +94,26 @@ export function playArgsFor(input: {
 		alt_titles: altTitlesFromKitsu(input.show)
 	};
 	if (input.kitsuId !== undefined) args.kitsu_id = input.kitsuId;
+	if (input.prefetch) args.prefetch = true;
 	return args;
 }
 
-/** Stub. */
+/** The audio a play asks for: anything but "dub" reads as sub. */
 export function playMode(config: { mode: string } | null | undefined): 'sub' | 'dub' {
-	void config;
-	return 'sub';
+	return config?.mode === 'dub' ? 'dub' : 'sub';
 }
 
-/** Stub. */
+/** The quality a play asks for; none set reads as "best". */
 export function playQuality(config: { quality: string } | null | undefined): string {
-	void config;
-	return '';
+	return config?.quality ?? 'best';
 }
 
-/** Stub. */
+/** Record a played episode for the clicked show: stamp Continue
+ *  Watching (the click may have reused a prefetch, which stamps
+ *  nothing; the backend op is idempotent), and mirror the progress to
+ *  the connected trackers unless the match was a guess (`mirror`).
+ *  Completion is decided against the show's full finite total, and only
+ *  for a finished series. Both are best-effort. */
 export function recordPlayed(
 	input: {
 		args: PlayArgs;
@@ -127,6 +132,14 @@ export function recordPlayed(
 		) => Promise<void>;
 	}
 ): void {
-	void input;
-	void deps;
+	void deps.markWatched(input.args).catch(() => {});
+	if (!input.mirror) return;
+	void deps
+		.syncTrackers(
+			input.showId,
+			input.episode,
+			input.show?.episode_count ?? null,
+			input.show?.status === 'finished'
+		)
+		.catch(() => {});
 }
