@@ -30,6 +30,15 @@ describe('unavailableMessage — the notice that replaces Play', () => {
 		// restores both.
 		expect(m.detail_unavailable_in_dub_message()).toMatch(/watch or download/);
 		expect(m.detail_unavailable_in_sub_message()).toMatch(/watch or download/);
+		const verbs = {
+			'pt-BR': /assistir ou baixar/,
+			'es-419': /verlo o descargarlo/,
+			ru: /посмотреть или скачать/
+		};
+		for (const [locale, verb] of Object.entries(verbs) as ['pt-BR' | 'es-419' | 'ru', RegExp][]) {
+			expect(m.detail_unavailable_in_dub_message({}, { locale }), locale).toMatch(verb);
+			expect(m.detail_unavailable_in_sub_message({}, { locale }), locale).toMatch(verb);
+		}
 	});
 
 	it('every locale names the audio that has the title, translated', () => {
