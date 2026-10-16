@@ -76,6 +76,23 @@ pub(super) fn episode_verdict(error: AniError) -> AniError {
     }
 }
 
+/// [`resolve_episode`] for a request from the user's history: `stamp`
+/// is the (slot, tag) display stamp the numbering sidecar keeps for
+/// the show.
+///
+/// # Errors
+/// As [`resolve_episode`].
+pub async fn resolve_episode_stamped<P: Provider + ?Sized>(
+    client: &P,
+    picked: &PickedShow,
+    episode: &str,
+    _stamp: Option<&(u32, String)>,
+    mode: &str,
+    quality: &str,
+) -> std::result::Result<ResolvedEpisode, NativeError> {
+    resolve_episode(client, picked, episode, mode, quality).await
+}
+
 /// Resolve the requested episode within a picked show down to the
 /// master URL. Split from the walk for the per-file complexity bar
 /// and because the orchestrator's cache-hit path may someday reuse

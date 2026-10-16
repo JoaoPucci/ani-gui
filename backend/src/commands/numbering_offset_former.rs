@@ -28,6 +28,14 @@ pub fn former_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
     former_of(&row_of(state, slug)?)
 }
 
+/// The display stamp the sidecar beside the history file at
+/// `history_path` keeps for the slug — [`super::display_stamp`] for a
+/// caller that holds the path rather than the state.
+pub fn stamp_beside(history_path: &std::path::Path, slug: &str) -> Option<(u32, String)> {
+    let body = std::fs::read_to_string(store_path(history_path)).unwrap_or_default();
+    parse(&body).into_iter().find(|r| r.slug == slug)?.display
+}
+
 fn row_of(state: &AppState, slug: &str) -> Option<Row> {
     let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
     parse(&body).into_iter().find(|r| r.slug == slug)

@@ -26,7 +26,7 @@ use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
 
 #[path = "numbering_offset_former.rs"]
 mod former;
-pub use former::{former_stamp, retag_display};
+pub use former::{former_stamp, retag_display, stamp_beside};
 
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
