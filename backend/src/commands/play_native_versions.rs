@@ -41,6 +41,10 @@ pub struct VersionInfo {
     pub kind: VersionKind,
     /// The show key the copy plays under (`hianime:<slug>`).
     pub show_key: String,
+    /// Whether the copy carries the audio mode an availability answer
+    /// was asked about; absent where nobody asked, or nobody answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_mode: Option<bool>,
 }
 
 /// One version of a pick: the copy's hit and the listing its probe
@@ -88,6 +92,7 @@ pub fn named_versions(
             kind: v.kind,
             show_key: crate::scraper::provider::ShowKey::new(provider, v.hit.slug.clone())
                 .to_string(),
+            has_mode: None,
         })
         .collect();
     let playing = picked

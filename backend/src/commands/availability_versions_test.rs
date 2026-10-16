@@ -61,10 +61,12 @@ fn both_versions() -> Vec<VersionInfo> {
         VersionInfo {
             kind: VersionKind::Standard,
             show_key: key("the-show-1"),
+            has_mode: None,
         },
         VersionInfo {
             kind: VersionKind::Uncensored,
             show_key: key("the-show-2"),
+            has_mode: None,
         },
     ]
 }
