@@ -37,5 +37,22 @@
   "mob-psycho-100-926": 2016,
   "mob-psycho-100-ii-918": 2019,
   "mob-psycho-100-iii-917": 2022
+ },
+ "jnames": {
+  "mob-psycho-100-926": "Mob Psycho 100",
+  "mob-psycho-100-ii-918": "Mob Psycho 100 II",
+  "mob-psycho-100-iii-917": "Mob Psycho 100 III",
+  "mob-psycho-100-reigen-the-miraculous-unknown-psychic-3185": "Mob Psycho 100: Reigen - Shirarezaru Kiseki no Reinouryokusha",
+  "mob-psycho-100-spirits-and-such-company-trip-a-journey-that-mends-the-heart-and-heals-the-soul-3745": "Mob Psycho 100: Dai Ikkai Rei toka Soudansho Ian Ryokou - Kokoro Mitasu Iyashi no Tabi"
+ },
+ "page_names": {
+  "mob-psycho-100-926": ["モブサイコ100"],
+  "mob-psycho-100-ii-918": ["モブサイコ100 II"],
+  "mob-psycho-100-iii-917": ["モブサイコ100 III"]
+ },
+ "genres": {
+  "mob-psycho-100-926": ["Comedy", "Supernatural", "Slice of Life", "Action"],
+  "mob-psycho-100-ii-918": ["Comedy", "Supernatural", "Slice of Life", "Action"],
+  "mob-psycho-100-iii-917": ["Comedy", "Psychological", "Supernatural", "Slice of Life", "Action"]
  }
 }

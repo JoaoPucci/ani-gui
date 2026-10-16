@@ -35,6 +35,28 @@ impl EntryTitles<'_> {
         })
     }
 
+    /// Whether `title` and one of the entry's titles share a name: one
+    /// starts with the other's name ([`starts_with_name_of`]: at a
+    /// word's end, or with a digit or 第 glued to it, no digit when the
+    /// name ends in one, so "Show2" starts with "Show" and "Showtime"
+    /// does not). What follows the shared name is not compared — a
+    /// subtitle, a story part numbered mid-title — so this is evidence
+    /// that a listing is the entry's show, never of which season:
+    /// "Gintama.: Silver Soul Arc - Second Half War" shares "Gintama.:
+    /// Silver Soul Arc 2"'s name, "JoJo's Bizarre Adventure Part 6: Stone
+    /// Ocean Part 2" is the show "JoJo's Bizarre Adventure: Stone Ocean
+    /// Part 2" is named for, and "Medaka Box Abnormal" shares nothing
+    /// with "Abnormal Physiology Seminar". A title whose name has no
+    /// words ("Season 2") shares none.
+    ///
+    /// [`starts_with_name_of`]: super::play_native_title_reading::starts_with_name_of
+    pub(crate) fn shares_name(&self, title: &str) -> bool {
+        // A name with no words — a title that is nothing but a division,
+        // "Season 2" — starts every title, and names no show.
+        let starts = |a: &str, b: &str| !name(b).is_empty() && starts_with_name_of(a, b);
+        self.all().any(|t| starts(title, t) || starts(t, title))
+    }
+
     /// Whether `title` reads as one of the entry's titles does and
     /// starts with that title's name ([`starts_with_name_of`]): "Show
     /// 2nd Season" and "Show Part 2" for "Show 2", but not "Other Show

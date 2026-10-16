@@ -45,5 +45,17 @@
  "years": {
   "dr-stone-new-world-1104": 2023,
   "dr-stone-new-world-part-2-1080": 2023
+ },
+ "jnames": {
+  "dr-stone-new-world-1104": "Dr. Stone 3rd Season",
+  "dr-stone-new-world-part-2-1080": "Dr. Stone: New World Part 2"
+ },
+ "page_names": {
+  "dr-stone-new-world-1104": ["Dr.STONE NEW WORLD", "Dr. Stone 3rd Season"],
+  "dr-stone-new-world-part-2-1080": ["Dr.STONE NEW WORLD", "Dr. Stone: New World Part 2"]
+ },
+ "genres": {
+  "dr-stone-new-world-1104": ["Adventure", "Shounen", "Comedy", "Sci-Fi"],
+  "dr-stone-new-world-part-2-1080": ["Adventure", "Shounen", "Comedy", "Sci-Fi", "Action"]
  }
 }

@@ -40,8 +40,10 @@ pub(super) fn entry_rank(entry: EntryTitles<'_>, title: &str, needle: &str, conf
 /// and then provider position, with the candidate that just died at
 /// `pos` weighed in. A candidate the entry's titles refuse, or another
 /// entry of the same show ([`EntryTitles::another_entry`]), could
-/// never have won, so its death blocks no winner; it still leaves the
-/// pool unheard, which the caller records apart.
+/// never have won, so its death blocks no winner, and neither does one
+/// the caller's rules otherwise rule out (`could_win` false: a dated
+/// entry's candidate no name vouches for); it still leaves the pool
+/// unheard, which the caller records apart.
 pub(super) fn strongest_dead(
     best: Option<(u8, usize)>,
     entry: EntryTitles<'_>,
@@ -49,8 +51,9 @@ pub(super) fn strongest_dead(
     needle: &str,
     confirmed: bool,
     pos: usize,
+    could_win: bool,
 ) -> Option<(u8, usize)> {
-    if !entry.admits(title) || entry.another_entry(title) {
+    if !could_win || !entry.admits(title) || entry.another_entry(title) {
         return best;
     }
     let failed = (entry_rank(entry, title, needle, confirmed), pos);

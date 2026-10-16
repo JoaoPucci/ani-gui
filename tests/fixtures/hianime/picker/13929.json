@@ -47,5 +47,17 @@
  "years": {
   "tokyo-ghoulre-2nd-season-893": 2018,
   "tokyo-ghoulre-892": 2018
+ },
+ "jnames": {
+  "tokyo-ghoulre-2nd-season-893": "Tokyo Ghoul:re 2nd Season",
+  "tokyo-ghoulre-892": "Tokyo Ghoul:re"
+ },
+ "page_names": {
+  "tokyo-ghoulre-2nd-season-893": ["東京喰種トーキョーグール：re 第2期"],
+  "tokyo-ghoulre-892": ["東京喰種トーキョーグール：re"]
+ },
+ "genres": {
+  "tokyo-ghoulre-2nd-season-893": ["Fantasy", "Seinen", "Drama", "Psychological", "Suspense", "Mystery", "Supernatural", "Horror", "Urban Fantasy", "Gore", "Action"],
+  "tokyo-ghoulre-892": ["Fantasy", "Seinen", "Drama", "Psychological", "Suspense", "Mystery", "Supernatural", "Horror", "Urban Fantasy", "Gore", "Action"]
  }
 }

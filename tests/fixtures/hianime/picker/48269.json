@@ -49,5 +49,19 @@
   "dan-da-dan-86": 2024,
   "dan-da-dan-season-2-521": 2025,
   "dandadan-3rd-7181": 2026
+ },
+ "jnames": {
+  "dan-da-dan-86": "Dandadan",
+  "dan-da-dan-season-2-521": "Dandadan 2nd Season",
+  "dandadan-3rd-7181": "Dandadan 3rd Season"
+ },
+ "page_names": {
+  "dan-da-dan-86": ["ダンダダン"],
+  "dan-da-dan-season-2-521": ["ダンダダン 第2期", "Dandadan 2nd Season"]
+ },
+ "genres": {
+  "dan-da-dan-86": ["Shounen", "Comedy", "Supernatural", "Action"],
+  "dan-da-dan-season-2-521": ["Shounen", "Comedy", "Drama", "Supernatural", "Sci-Fi", "Romance", "Action"],
+  "dandadan-3rd-7181": ["Fantasy", "Comedy", "Drama", "Supernatural", "Sci-Fi", "Action"]
  }
 }

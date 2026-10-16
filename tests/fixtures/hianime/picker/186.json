@@ -194,5 +194,31 @@
   "ranma-2024-2559": 2024,
   "ranma-2024-season-2-205": 2025,
   "ranma-3119": 1989
+ },
+ "jnames": {
+  "ranma-1-2-2024-season-3-10495": "Ranma ½ (2024) 3rd Season",
+  "ranma-12-hot-song-contest-4256": "Ranma ½: Nettou Uta Gassen",
+  "ranma-12-special-reawakening-memories-4242": "Ranma ½: Yomigaeru Kioku",
+  "ranma-2024-2559": "Ranma ½ (2024)",
+  "ranma-2024-season-2-205": "Ranma ½ (2024) 2nd Season",
+  "ranma-3119": "Ranma ½",
+  "ranma-akumu-shunmin-kou-4287": "Ranma ½: Akumu! Shunmin Kou",
+  "ranma-big-trouble-in-nekonron-china-4235": "Ranma ½: Chuugoku Nekonron Daikessen! Okite Yaburi no Gekitou-hen!!",
+  "ranma-ova-4243": "Ranma ½ OVA",
+  "ranma-super-4254": "Ranma ½ Super",
+  "ranma-team-ranma-vs-the-legendary-phoenix-4255": "Ranma ½: Chou Musabetsu Kessen! Ranma Team vs. Densetsu no Houou",
+  "ranma-the-movie-2-the-battle-of-togenkyo-rescue-the-brides-4253": "Ranma ½: Kessen Tougenkyou! Hanayome wo Torimodose!"
+ },
+ "page_names": {
+  "ranma-1-2-2024-season-3-10495": ["Ranma ½ (2024) 3rd Season"],
+  "ranma-2024-2559": ["らんま1/2", "Ranma ½ (2024)"],
+  "ranma-2024-season-2-205": ["らんま1/2 第2期"],
+  "ranma-3119": ["らんま1/2"]
+ },
+ "genres": {
+  "ranma-1-2-2024-season-3-10495": ["Comedy", "Ecchi", "Romance", "Action"],
+  "ranma-2024-2559": ["Shounen", "Comedy", "Ecchi", "Martial Arts", "Romance", "School", "Magical Sex Shift", "Action"],
+  "ranma-2024-season-2-205": ["Shounen", "Comedy", "Ecchi", "Martial Arts", "Romance", "School", "Magical Sex Shift", "Action"],
+  "ranma-3119": ["Fantasy", "Shounen", "Comedy", "Ecchi", "Slice of Life", "Martial Arts", "Romance", "School", "Magical Sex Shift", "Action"]
  }
 }

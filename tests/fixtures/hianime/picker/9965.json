@@ -63,5 +63,48 @@
   "overlord-ple-ple-pleiades-fugitive-clementine-4876": 2018,
   "overlord-the-maid-tea-party-5349": 2014,
   "overlord-ple-ple-pleiades-special-edition-4883": 2015
+ },
+ "jnames": {
+  "overlord-464": "Overlord",
+  "overlord-ii-856": "Overlord II",
+  "overlord-iii-1501": "Overlord III",
+  "overlord-iv-1502": "Overlord IV",
+  "overlord-movie-manner-movie-5348": "Overlord Movie: Manner Movie",
+  "overlord-movie-ple-ple-pleiades-4874": "Overlord Movie: Ple Ple Pleiades",
+  "overlord-ple-ple-pleiades-2-4878": "Overlord: Ple Ple Pleiades 2",
+  "overlord-ple-ple-pleiades-3-4879": "Overlord: Ple Ple Pleiades 3",
+  "overlord-ple-ple-pleiades-4-4880": "Overlord: Ple Ple Pleiades 4",
+  "overlord-ple-ple-pleiades-4877": "Overlord: Ple Ple Pleiades",
+  "overlord-ple-ple-pleiades-fugitive-clementine-4876": "Overlord: Ple Ple Pleiades - Clementine Toubou-hen",
+  "overlord-ple-ple-pleiades-nazaricks-greatest-crisis-2678": "Overlord: Ple Ple Pleiades - Nazarick Saidai no Kiki",
+  "overlord-ple-ple-pleiades-special-edition-4883": "Ple Ple Pleiades Special Edition",
+  "overlord-the-dark-hero-115": "Overlord Movie 2: Shikkoku no Eiyuu",
+  "overlord-the-maid-tea-party-5349": "Overlord: Oukoku no Kan-tachi - Drama CD-tsuki Tokusou-ban",
+  "overlord-the-sacred-kingdom-2701": "Overlord Movie 3: Sei Oukoku-hen",
+  "overlord-the-undead-king-2689": "Overlord Movie 1: Fushisha no Ou"
+ },
+ "page_names": {
+  "overlord-464": ["オーバーロード"],
+  "overlord-ii-856": ["オーバーロードⅡ"],
+  "overlord-iii-1501": ["オーバーロードⅢ"],
+  "overlord-iv-1502": ["オーバーロード IV"],
+  "overlord-ple-ple-pleiades-2-4878": ["オーバーロード　ぷれぷれぷれあです2"],
+  "overlord-ple-ple-pleiades-3-4879": ["オーバーロード　ぷれぷれぷれあです3"],
+  "overlord-ple-ple-pleiades-4-4880": ["オーバーロード　ぷれぷれぷれあです4"],
+  "overlord-ple-ple-pleiades-fugitive-clementine-4876": ["ぷれぷれぷれあです ～クレマンティーヌ逃亡編～"],
+  "overlord-ple-ple-pleiades-special-edition-4883": ["ぷれぷれぷれあです特別編", "Ple Ple Pleiades Special Edition"],
+  "overlord-the-maid-tea-party-5349": ["オーバーロード６ 王国の漢たち[下]【ドラマＣＤ付特装版】", "Overlord: Oukoku no Kan-tachi - Drama CD-tsuki Tokusou-ban"]
+ },
+ "genres": {
+  "overlord-464": ["Adventure", "Fantasy", "Isekai", "Supernatural", "Game", "Magic", "Action"],
+  "overlord-ii-856": ["Adventure", "Fantasy", "Isekai", "Supernatural", "Game", "Magic", "Action"],
+  "overlord-iii-1501": ["Adventure", "Fantasy", "Isekai", "Supernatural", "Game", "Magic", "Action"],
+  "overlord-iv-1502": ["Adventure", "Fantasy", "Isekai", "Supernatural", "Action"],
+  "overlord-ple-ple-pleiades-2-4878": ["Fantasy", "Comedy", "Isekai", "Magic", "Action"],
+  "overlord-ple-ple-pleiades-3-4879": ["Fantasy", "Comedy", "Isekai", "Magic", "Action"],
+  "overlord-ple-ple-pleiades-4-4880": ["Fantasy", "Comedy", "Isekai"],
+  "overlord-ple-ple-pleiades-fugitive-clementine-4876": ["Fantasy", "Comedy", "Magic", "Action"],
+  "overlord-ple-ple-pleiades-special-edition-4883": ["Comedy", "Parody"],
+  "overlord-the-maid-tea-party-5349": ["Comedy"]
  }
 }

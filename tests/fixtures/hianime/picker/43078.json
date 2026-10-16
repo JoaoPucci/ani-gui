@@ -60,5 +60,28 @@
   "bleach-thousand-year-blood-war-the-conflict-3859": 2024,
   "bleach-thousand-year-blood-war-the-separation-1009": 2023,
   "bleach-thousand-year-blood-war-the-separation-recap-3863": 2023
+ },
+ "jnames": {
+  "bleach-thousand-year-blood-war-1234": "Bleach: Sennen Kessen-hen",
+  "bleach-thousand-year-blood-war-the-calamity-1-7225": "BLEACH: Sennen Kessen-hen - Kashin-tan",
+  "bleach-thousand-year-blood-war-the-calamity-5": "Bleach: Sennen Kessen-hen - Kashin-tan",
+  "bleach-thousand-year-blood-war-the-conflict-3859": "Bleach: Sennen Kessen-hen - Soukoku-tan",
+  "bleach-thousand-year-blood-war-the-separation-1009": "Bleach: Sennen Kessen-hen - Ketsubetsu-tan",
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": "Bleach: Sennen Kessen-hen - Ketsubetsu-tan Recap",
+  "bleach-tybw-movie-5955": "BLEACH TYBW MOVIE"
+ },
+ "page_names": {
+  "bleach-thousand-year-blood-war-1234": ["BLEACH 千年血戦篇", "Bleach: Sennen Kessen-hen"],
+  "bleach-thousand-year-blood-war-the-calamity-5": ["BLEACH 千年血戦篇 第4クール", "Bleach: Sennen Kessen-hen - Kashin-tan"],
+  "bleach-thousand-year-blood-war-the-conflict-3859": ["BLEACH 千年血戦篇-相剋譚-", "Bleach: Sennen Kessen-hen - Soukoku-tan"],
+  "bleach-thousand-year-blood-war-the-separation-1009": ["BLEACH 千年血戦篇-訣別譚-", "Bleach: Sennen Kessen-hen - Ketsubetsu-tan"],
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": ["BLEACH 千年血戦篇-訣別譚-", "Bleach: Sennen Kessen-hen - Ketsubetsu-tan Recap"]
+ },
+ "genres": {
+  "bleach-thousand-year-blood-war-1234": ["Adventure", "Shounen", "Comedy", "Supernatural", "Super Power", "Action"],
+  "bleach-thousand-year-blood-war-the-calamity-5": ["Adventure", "Shounen", "Supernatural", "Action"],
+  "bleach-thousand-year-blood-war-the-conflict-3859": ["Adventure", "Fantasy", "Shounen", "Supernatural", "Action"],
+  "bleach-thousand-year-blood-war-the-separation-1009": ["Adventure", "Fantasy", "Shounen", "Supernatural", "Action"],
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": ["Adventure", "Fantasy", "Shounen", "Action"]
  }
 }

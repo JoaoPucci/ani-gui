@@ -240,5 +240,35 @@
   "super-dragon-ball-heroes-big-bang-mission-9851": null,
   "super-dragon-ball-heroes-meteor-mission-9529": 2023,
   "super-dragon-ball-heroes-ultra-god-mission-9850": 2022
+ },
+ "jnames": {
+  "dragon-ball-super-1101": "Dragon Ball Super",
+  "dragon-ball-super-beerus-10542": "ドラゴンボール超 ビルス",
+  "dragon-ball-super-broly-2763": "Dragon Ball Super Movie: Broly",
+  "dragon-ball-super-broly-skytree-super-5426": "Dragon Ball Super: Broly - Skytree Super",
+  "dragon-ball-super-super-hero-1402": "Dragon Ball Super: Super Hero",
+  "dragon-ball-z-bio-broly-2881": "Dragon Ball Z Movie 11: Super Senshi Gekiha!! Katsu no wa Ore da",
+  "dragon-ball-z-broly-second-coming-2877": "Dragon Ball Z Movie 10: Kiken na Futari! Super Senshi wa Nemurenai",
+  "dragon-ball-z-broly-the-legendary-super-saiyan-2879": "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen",
+  "dragon-ball-z-lord-slug-2886": "Dragon Ball Z Movie 04: Super Saiyajin da Son Gokuu",
+  "dragon-ball-z-plan-to-eradicate-the-super-saiyans-5221": "Dragon Ball: Super Saiya-jin Zetsumetsu Keikaku",
+  "dragon-ball-z-super-android-13-2878": "Dragon Ball Z Movie 07: Kyokugen Battle!! Sandai Super Saiyajin",
+  "super-dragon-ball-heroes-6951": "Super Dragon Ball Heroes",
+  "super-dragon-ball-heroes-big-bang-mission-9851": "Super Dragon Ball Heroes: Big Bang Mission!!!",
+  "super-dragon-ball-heroes-meteor-mission-9529": "Super Dragon Ball Heroes: Meteor Mission",
+  "super-dragon-ball-heroes-ultra-god-mission-9850": "Super Dragon Ball Heroes: Ultra God Mission"
+ },
+ "page_names": {
+  "dragon-ball-super-1101": ["ドラゴンボール超（スーパー）"],
+  "dragon-ball-super-beerus-10542": ["ドラゴンボール超 ビルス", "ドラゴンボール超 ビルス"],
+  "super-dragon-ball-heroes-6951": ["スーパードラゴンボールヒーローズ"]
+ },
+ "genres": {
+  "dragon-ball-super-1101": ["Adventure", "Fantasy", "Shounen", "Comedy", "Martial Arts", "Super Power", "Action"],
+  "dragon-ball-super-beerus-10542": ["Adventure", "Fantasy", "Shounen", "Martial Arts", "Action"],
+  "super-dragon-ball-heroes-6951": ["Fantasy", "Shounen", "Comedy", "Martial Arts", "Super Power", "Action"],
+  "super-dragon-ball-heroes-big-bang-mission-9851": ["Adventure", "Supernatural"],
+  "super-dragon-ball-heroes-meteor-mission-9529": ["Adventure", "Supernatural", "Action"],
+  "super-dragon-ball-heroes-ultra-god-mission-9850": ["Adventure", "Supernatural", "Action"]
  }
 }

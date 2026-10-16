@@ -17,8 +17,11 @@ use super::*;
 /// One pool as the oracle writes it: an entry known by `titles` with
 /// `count` and `entry_year`, every title's search answering with the
 /// rows `(slug, title, episodes)`. Every listing numbers its rows from
-/// 1 with no tag and its page names [`LISTING_YEAR`]; `dead` names the
-/// slugs whose probe dies in transport.
+/// 1 with no tag and its page names [`LISTING_YEAR`]; every card
+/// carries the entry's canonical title as its romanized name unless
+/// `jnames` gives the cards' names (a slug it leaves out carries none),
+/// and `page_names` gives the names a hit's page lists; `dead` names
+/// the slugs whose probe dies in transport.
 #[derive(Debug, serde::Deserialize)]
 struct Case {
     id: String,
@@ -28,6 +31,10 @@ struct Case {
     rows: Vec<(String, String, u32)>,
     #[serde(default)]
     dead: Vec<String>,
+    #[serde(default)]
+    jnames: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    page_names: BTreeMap<String, Vec<String>>,
 }
 
 /// The year every listing a case writes names on its page — the
@@ -60,6 +67,8 @@ fn site_of(case: &Case) -> Recorded {
         "searches": case.titles.iter().map(|t| (t.clone(), serde_json::Value::Array(hits.clone()))).collect::<serde_json::Map<_, _>>(),
         "episodes": case.rows.iter().map(|(slug, _, n)| (slug.clone(), listing(*n))).collect::<serde_json::Map<_, _>>(),
         "years": case.rows.iter().map(|(slug, _, _)| (slug.clone(), serde_json::json!(LISTING_YEAR))).collect::<serde_json::Map<_, _>>(),
+        "jnames": case.jnames.clone().unwrap_or_else(|| case.rows.iter().map(|(slug, _, _)| (slug.clone(), canonical.clone())).collect()),
+        "page_names": case.page_names,
     });
     let mut site = Recorded::inline(&case.id, &json.to_string());
     // The recording names its dead listings as static strings, as the
@@ -192,6 +201,26 @@ fn a_case_parses_from_the_oracle_s_shape() {
     )
     .expect("parse");
     assert_eq!(dead.dead, ["x"]);
+}
+
+/// Every card carries the entry's canonical title as its romanized
+/// name unless the case gives the cards' names, and a case's page names
+/// reach the hit's page.
+#[test]
+fn a_case_s_names_reach_the_cards_and_the_pages() {
+    let site = site_of(&serde_json::from_str(SHOW).expect("parse"));
+    assert_eq!(site.doc.jnames.get("x").map(String::as_str), Some("Show"));
+    assert!(site.doc.page_names.is_empty());
+    let named: Case = serde_json::from_str(
+        r#"{"id": "n", "titles": ["Show"], "count": 12, "entry_year": 2020,
+            "rows": [["x", "Other", 12], ["y", "Else", 12]],
+            "jnames": {"y": "Shou"}, "page_names": {"x": ["ショー"]}}"#,
+    )
+    .expect("parse");
+    let site = site_of(&named);
+    assert_eq!(site.doc.jnames.get("x"), None);
+    assert_eq!(site.doc.jnames.get("y").map(String::as_str), Some("Shou"));
+    assert_eq!(site.doc.page_names["x"], ["ショー"]);
 }
 
 /// A pick is reported as the slug, the regular count and every

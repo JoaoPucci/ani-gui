@@ -144,30 +144,51 @@ starting it, and delete it when you find it done.
   Repro: entry ["怪獣８号"], count 12, a pool of "怪獣８号" (24), "Kaiju
   No. 8 Season 2" (12) and "Kaiju No. 8 Recap" (12), picks the recap.
 
-- **A dated entry the provider does not list can play as a same-year
-  show whose count fits.** For a dated entry, a hit whose page names
-  the entry's year and whose count sits within the tolerance is picked
-  on those two alone — and a search for a title the provider does not
-  list answers with a page of other shows, among which a same-year
-  show of the right length is common. The recorded shape: Zai Xia Ying
-  Tai (Kitsu 45500, 12 episodes), which hianime does not list, given
-  the 2025 AniList names for it, picks "Even Given the Worthless
-  Appraiser Class, I'm Actually the Strongest" (2025, 12) from the pool
-  its alias "I'm Ying Tai" answers with; the fixture test
-  `a_dated_walk_over_the_same_pools_takes_the_year_confirmed_fit` pins
-  it. Requiring the entry's name as well, the way an undated entry
-  now does, would refuse fourteen of the recorded dated entries whose
-  own listings are named by none of their titles — JoJo's
-  "(Uncensored)" listings, "My Star" for [Oshi no Ko], "Attack on
-  Titan: Final Season, Part 1" — so the year has to go on vouching
-  until something finer than a year tells those apart. The undated
-  case this grew out of is closed: an entry with a count and no year
-  takes only a hit named for it, and the pools of the seven such
-  entries hianime does not list are recorded under
-  `tests/fixtures/hianime/picker/` and refused. Its cost is that such
-  an entry is probed on every look — the refusal is an inference and
-  is not persisted — which is bounded by how few such entries Kitsu
-  holds (fourteen with a count, 2026-10-15).
+- **A same-year show of the right length whose name an entry title
+  shares can still play for an entry the provider does not list.** An
+  entry with a count takes only a hit a name vouches for, dated or not,
+  and for a dated entry a name of the show it shares with one of the
+  entry's titles — one starting with the other's name, whatever follows
+  — is enough. That reach is what keeps Gintama.'s second Silver Soul
+  half ("… Silver Soul Arc - Second Half War" for "… Silver Soul Arc 2")
+  and Stone Ocean Part 2 ("JoJo's Bizarre Adventure Part 6: Stone Ocean
+  Part 2", named "JoJo's Bizarre Adventure") picked, neither carrying a
+  name of the entry's on its card or page; it also vouches for any
+  listing that goes on past a short entry title ("Show Other Thing" for
+  "Show"), so such a listing from the entry's year, within the count
+  tolerance, still plays when the entry itself is not listed. No
+  recorded pool has the shape. Something narrower than a shared name
+  would have to keep those two picks.
+
+- **The provider's server listing names the MyAnimeList id of the show
+  an embed streams, which the walk never compares with Kitsu's.** For a
+  server on zokoanime.video, the base64 `data-hash` of an item in
+  `/api/theme/episode/servers?episodeId=<id>` decodes to
+  `https://zokoanime.video/stream/mal/<MAL id>/<episode>/<mode>`. Ohanashi
+  de Te Koi (Kitsu 40684, MAL 35061) was played as a hentai OVA whose
+  listing names MAL 36256 (episode 33370, 2026-10-16); HenSemi (TV) was
+  played as Medaka Box Abnormal, whose listing names MAL 14527. Kitsu's mapping is
+  already cached per entry (`kitsu:external-ids:v1:k<id>`). It waited
+  because it is not free where it would decide: the listing is fetched
+  only after the pick — for the requested episode on the play path, for
+  sampled episodes in the availability probe — so choosing among
+  candidates by it would cost a listing per candidate, and the resolve
+  carries no Kitsu identity to compare with. As a check on the pick it
+  could only add to the name rule, not override it: the megaplay.buzz
+  servers name an id of their own (`/stream/s-2/21649/…` for Medaka
+  Box Abnormal), so only some listings carry a MAL id, and a stitched
+  pick or a cut broad listing streams under a MAL id that is not the
+  entry's.
+
+- **A refusal by name is probed again on every look.** A pool rejected
+  after a hit the count accepted was scored out on how it is named is
+  the refusal by title, which the availability cache does not persist,
+  so an entry refused that way is walked again whenever it is looked
+  at: an undated entry with a count (fourteen in Kitsu's catalogue,
+  2026-10-15) and a dated one with a count that the provider does not
+  list (HenSemi, HenSemi (TV)). The refusal is an inference, which is
+  why it is not persisted; nothing bounds the dated ones but how many
+  such entries a user opens.
 
 ## Testing and CI
 

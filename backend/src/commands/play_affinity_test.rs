@@ -52,6 +52,7 @@ fn fallback_with_one_episode() -> Arc<TableProvider> {
                 slug: "the-show-7".into(),
                 title: "The Show".into(),
                 kind: Some("TV".into()),
+                jname: None,
             }])
             .listing(
                 7,

@@ -51,5 +51,18 @@
  "years": {
   "mobile-suit-gundam-the-witch-from-mercury-3596": 2022,
   "mobile-suit-gundam-the-witch-from-mercury-season-2-5101": 2023
+ },
+ "jnames": {
+  "mobile-suit-gundam-the-witch-from-mercury-3596": "Mobile Suit Gundam: The Witch from Mercury",
+  "mobile-suit-gundam-the-witch-from-mercury-prologue-6715": "Mobile Suit Gundam: The Witch from Mercury - Prologue",
+  "mobile-suit-gundam-the-witch-from-mercury-season-2-5101": "Kidou Senshi Gundam: Suisei no Majo Season 2"
+ },
+ "page_names": {
+  "mobile-suit-gundam-the-witch-from-mercury-3596": ["機動戦士ガンダム 水星の魔女"],
+  "mobile-suit-gundam-the-witch-from-mercury-season-2-5101": ["機動戦士ガンダム 水星の魔女", "Kidou Senshi Gundam: Suisei no Majo Season 2"]
+ },
+ "genres": {
+  "mobile-suit-gundam-the-witch-from-mercury-3596": ["Sci-Fi", "School", "Mecha", "Space"],
+  "mobile-suit-gundam-the-witch-from-mercury-season-2-5101": ["Sci-Fi", "School", "Mecha", "Space", "Action"]
  }
 }

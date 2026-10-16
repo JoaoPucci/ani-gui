@@ -31,6 +31,7 @@ pub(crate) fn hits(entries: &[(&str, &str)]) -> Vec<BrowseHit> {
             slug: (*slug).to_string(),
             title: (*title).to_string(),
             kind: None,
+            jname: None,
         })
         .collect()
 }

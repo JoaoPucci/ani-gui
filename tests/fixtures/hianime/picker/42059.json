@@ -162,5 +162,38 @@
   "haikyu-3rd-season-1209": 2016,
   "haikyu-to-the-top-2nd-cour-934": 2020,
   "haikyu-to-the-top-933": 2020
+ },
+ "jnames": {
+  "haikyu-1208": "Haikyuu!!",
+  "haikyu-2nd-season-1210": "Haikyuu!! Second Season",
+  "haikyu-3rd-season-1209": "Haikyuu!!: Karasuno Koukou vs. Shiratorizawa Gakuen Koukou",
+  "haikyu-land-vs-air-1412": "Haikyuu!!: Riku vs. Kuu",
+  "haikyu-lev-appears-2951": "Haikyuu!!: Lev Genzan!",
+  "haikyu-movie-the-dumpster-battle-1993": "Haikyuu!! Movie: Gomisuteba no Kessen",
+  "haikyu-the-movie-battle-of-concepts-2960": "Haikyuu!! Movie 4: Concept no Tatakai",
+  "haikyu-the-movie-talent-and-sense-3535": "Haikyuu!! Movie 3: Sainou to Sense",
+  "haikyu-the-movie-the-end-and-the-beginning-4635": "Haikyuu!! Movie 1: Owari to Hajimari",
+  "haikyu-to-the-top-2nd-cour-934": "Haikyuu!!: To the Top 2nd Season",
+  "haikyu-to-the-top-933": "Haikyuu!!: To the Top (Part 1+2)",
+  "haikyu-vs-failing-marks-3033": "Haikyuu!!: vs. \"Akaten\"",
+  "haikyuu-movie-vs-chiisana-kyojin-2831": "Haikyuu!! Movie: vs. Chiisana Kyojin",
+  "haikyuu-ova-5406": "Haikyuu!! (OVA)",
+  "haikyuu-quest-picture-drama-5405": "Haikyuu!! Quest Picture Drama",
+  "haikyuu-special-feature-the-spring-tournament-of-their-youth-2950": "Haikyuu!!: Tokushuu! Haru-kou Volley ni Kaketa Seishun",
+  "haikyuu-the-movie-the-winner-and-the-loser-2967": "Haikyuu!! Movie 2: Shousha to Haisha"
+ },
+ "page_names": {
+  "haikyu-1208": ["ハイキュー!!", "Haikyuu!!"],
+  "haikyu-2nd-season-1210": ["ハイキュー!! セカンドシーズン", "Haikyuu!! Second Season"],
+  "haikyu-3rd-season-1209": ["ハイキュー!! 烏野高校 VS 白鳥沢学園高校", "Haikyuu!!: Karasuno Koukou vs. Shiratorizawa Gakuen Koukou"],
+  "haikyu-to-the-top-2nd-cour-934": ["ハイキュー TO THE TOP 第2クール"],
+  "haikyu-to-the-top-933": ["ハイキュー!! TO THE TOP"]
+ },
+ "genres": {
+  "haikyu-1208": ["Shounen", "Comedy", "Sports", "Drama", "School", "Team Sports"],
+  "haikyu-2nd-season-1210": ["Shounen", "Comedy", "Sports", "Drama", "School", "Team Sports"],
+  "haikyu-3rd-season-1209": ["Shounen", "Comedy", "Sports", "Drama", "School", "Team Sports"],
+  "haikyu-to-the-top-2nd-cour-934": ["Shounen", "Comedy", "Sports", "Drama", "School", "Team Sports"],
+  "haikyu-to-the-top-933": ["Shounen", "Comedy", "Sports", "Drama", "School", "Team Sports"]
  }
 }

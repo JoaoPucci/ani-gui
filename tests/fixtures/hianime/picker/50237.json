@@ -73,5 +73,23 @@
   "the-outcast-season-5-2975": 2022,
   "the-outcast-season-6-3813": 2026,
   "yi-ren-zhi-xia-fanwai-pian-5201": 2018
+ },
+ "jnames": {
+  "the-outcast-movie-the-rusted-blade-resurfaces-10258": "Yi Ren Zhi Xia: Xiu Tie Chong Xian",
+  "the-outcast-season-5-2975": "Yi Ren Zhi Xia 5th season",
+  "the-outcast-season-6-3813": "Yi Ren Zhi Xia 6",
+  "yi-ren-zhi-xia-fanwai-pian-5201": "Yi Ren Zhi Xia: Fanwai Pian"
+ },
+ "page_names": {
+  "the-outcast-movie-the-rusted-blade-resurfaces-10258": ["一人之下·锈铁重现", "Yi Ren Zhi Xia: Xiu Tie Chong Xian"],
+  "the-outcast-season-5-2975": ["一人之下5 决战！碧游村", "Yi Ren Zhi Xia 5th season"],
+  "the-outcast-season-6-3813": ["一人之下 第6季", "Yi Ren Zhi Xia 6"],
+  "yi-ren-zhi-xia-fanwai-pian-5201": ["一人之下 天师下山 番外篇"]
+ },
+ "genres": {
+  "the-outcast-movie-the-rusted-blade-resurfaces-10258": ["Supernatural", "Super Power", "Action"],
+  "the-outcast-season-5-2975": ["Supernatural", "Super Power", "Action"],
+  "the-outcast-season-6-3813": ["Supernatural", "Super Power", "Action"],
+  "yi-ren-zhi-xia-fanwai-pian-5201": ["Supernatural", "Super Power", "Action"]
  }
 }
