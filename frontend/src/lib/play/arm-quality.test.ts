@@ -287,12 +287,52 @@ describe('armQuality — trouble', () => {
 		expect(s.engine.loads).toEqual([2, 1]);
 		expect(s.logs.join('\n')).toMatch(/followed: 1080p.*720p/);
 		expect(s.logs.join('\n')).not.toMatch(/fragments-failed|held at/);
-		expect(s.lastView()?.unavailable).toEqual([]);
+		// The level left over its audio is left for the stream.
+		expect(s.lastView()?.unavailable).toEqual([2]);
 		// Not a step down: healthy playback has nothing to climb back from.
 		s.video.ahead = HEALTHY_BUFFER_S + 1;
 		s.at(10_000_000);
 		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 1 } });
 		expect(s.engine.loads).toEqual([2, 1]);
+	});
+
+	it('a level left over its audio is left for the stream, so a later climb never returns to it', () => {
+		const s = arm();
+		s.parse();
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		expect(s.engine.loads).toEqual([2, 1]);
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(0),
+			frag: { type: 'audio', level: 1 }
+		});
+		expect(s.engine.loads).toEqual([2, 1, 0]);
+		expect(s.lastView()?.unavailable).toEqual([1]);
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		for (const t of [1e6, 2e6, 3e6]) {
+			s.at(t);
+			s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 0 } });
+		}
+		expect(s.engine.loads.slice(3)).not.toContain(1);
+	});
+
+	it('an audio or subtitle playlist, or an audio buffer, failing is a side rendition the video follows', () => {
+		for (const failure of [
+			{ details: D.AUDIO_TRACK_LOAD_ERROR, context: { type: 'audioTrack' } },
+			{ details: D.SUBTITLE_TRACK_LOAD_TIMEOUT, context: { type: 'subtitleTrack' } },
+			{ details: D.BUFFER_ADD_CODEC_ERROR, sourceBufferName: 'audio' }
+		]) {
+			const s = arm();
+			s.parse();
+			s.engine.manual = -1;
+			s.engine.emit(E.ERROR, { ...failure, fatal: false, errorAction: SWITCHED(0) });
+			expect(s.engine.loads).toEqual([2, 0]);
+			expect(s.logs.join('\n')).toMatch(/followed/);
+			expect(s.logs.join('\n')).not.toMatch(/fragments-failed/);
+		}
 	});
 
 	it('an audio segment switch to a level the engine cannot use, or to the level held, follows nothing', () => {
