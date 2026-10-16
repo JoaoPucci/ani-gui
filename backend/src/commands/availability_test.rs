@@ -2047,8 +2047,21 @@ async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_noth
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v19:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v19:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v20:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v20:kid-1:dub");
+}
+
+/// A verdict stamped before the extras a provider appends after a
+/// show's last episode were read as extras is not served: Noragami's
+/// row can hold the listing's fourteen as its cap, the two OADs as
+/// episodes 13 and 14.
+#[test]
+fn a_verdict_stamped_before_appended_extras_were_extras_is_not_read() {
+    let current = cache_key("7881", "sub");
+    assert!(
+        !current.starts_with("availability:v19:"),
+        "the key must have moved past v19: {current}"
+    );
 }
 
 /// A verdict the picker stamped before a dated entry with a count
