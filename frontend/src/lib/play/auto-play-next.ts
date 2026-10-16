@@ -12,6 +12,8 @@
  * "best effort" stance as the existing prev/next buttons' hasNext
  * derivation.
  */
+import { nextEpisode } from './episode-number';
+
 export interface AutoPlayInput {
 	enabled: boolean;
 	episodeNum: number;
@@ -26,6 +28,7 @@ export function decideAutoPlayNext({
 	totalEpisodes
 }: AutoPlayInput): AutoPlayDecision {
 	if (!enabled) return { advance: false };
-	if (totalEpisodes !== null && episodeNum >= totalEpisodes) return { advance: false };
-	return { advance: true, target: episodeNum + 1 };
+	const target = nextEpisode(episodeNum);
+	if (totalEpisodes !== null && target > totalEpisodes) return { advance: false };
+	return { advance: true, target };
 }

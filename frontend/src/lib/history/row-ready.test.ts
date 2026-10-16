@@ -399,3 +399,45 @@ describe('makeContinueRowReadyHandler — an episode left part-way', () => {
 		expect(spy.calls.setEpisode).toEqual([['hist-a', makeKitsuEpisode(5)]]);
 	});
 });
+
+describe('makeContinueRowReadyHandler — a fractional extra in history', () => {
+	it('asks whether the recap itself was left part-way, and shows it if so', async () => {
+		const asked: number[] = [];
+		const entry = makeEntry('hist-r', '7.5', 'Show R');
+		const match = makeMatch('k-r', 12);
+		const spy = makeSpy(
+			[entry],
+			() => Promise.resolve([makeKitsuEpisode(7), makeKitsuEpisode(8)]),
+			(_id, ep) => {
+				asked.push(ep);
+				return ep === 7.5;
+			}
+		);
+		const handle = makeContinueRowReadyHandler(spy.deps);
+		handle('hist-r', match, 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		expect(asked).toEqual([7.5]);
+		// A recap has no Kitsu episode row of its own.
+		expect(spy.calls.setEpisode).toEqual([['hist-r', null]]);
+	});
+
+	it('goes on from a recap to the whole episode after it', async () => {
+		const entry = makeEntry('hist-r', '7.5', 'Show R');
+		const match = makeMatch('k-r', 12);
+		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(7), makeKitsuEpisode(8)]));
+		const handle = makeContinueRowReadyHandler(spy.deps);
+		handle('hist-r', match, 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		expect(spy.calls.setEpisode).toEqual([['hist-r', expect.objectContaining({ number: 8 })]]);
+	});
+});
+
+describe('makeContinueRowReadyHandler — a range-shaped row', () => {
+	it('reads "1-12" by its first episode and goes on to 2', async () => {
+		const entry = makeEntry('hist-g', '1-12', 'Show G');
+		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(1), makeKitsuEpisode(2)]));
+		makeContinueRowReadyHandler(spy.deps)('hist-g', makeMatch('k-g', 12), 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		expect(spy.calls.setEpisode).toEqual([['hist-g', expect.objectContaining({ number: 2 })]]);
+	});
+});

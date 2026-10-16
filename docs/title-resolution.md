@@ -304,6 +304,25 @@ Each version is its own listing with its own show key, so history, numbering sta
 
 The picked show's episode list arrives with the probe, so the availability cap is the highest listed episode number, normalised to the entry's own numbering — a continuation cour a provider lists with the franchise offset, as anidb.app did, has the offset subtracted — with no second fetch and no approximation. The cap is an integer. A recap row keeps a fractional display tag (`number2`: a `7.5` the listing numbers a recap with on hianime, where the row's position is its slot and the site's number its tag), and the resolver surfaces those as playable extras beside the cap rather than inside it. Providers can number differently — anidb.app counted continuously across a franchise's seasons, hianime counts within each season-split entry — which is why the cap is stamped per provider and never compared across them. A stitched pick's cap is counted across its parts, in Kitsu's numbering, and a cut spanning listing's cap is the entry's own count.
 
+## Episode numbers
+
+Several sources number a show's episodes, and they do not always agree about a recap or a special.
+
+- **Kitsu's episode list** labels the tiles. Its rows carry whole numbers only (`number`, and `relative_number` within a season), and a tile takes the title, thumbnail and air date of the Kitsu row with its number. Where Kitsu counts a recap, it is a regular episode in that list.
+- **AniList** fills in thumbnails Kitsu lacks from `streamingEpisodes`, matched by the whole number in the episode's title ("Episode 8"; a "7.5" is skipped), and gives the aired count the strips grey tiles past.
+- **The provider's listing** decides what plays. Each hianime row has a slot (its position) and, when it differs, a display tag (`number2`): a recap between 7 and 8 sits in slot 8 tagged `7.5`, and every row after it carries its own number as its tag. Availability reports the highest whole tag as the cap and the fractional tags as `extra_episodes`, translated to the entry's own numbering by the continuation offset (above). A request for a whole episode N plays the row whose display number is N (plus the offset) — its tag where it has one, its slot where it has none — so after a recap it is never slot N; a request for `7.5` plays the row tagged `7.5`.
+- **History** stores the slot a play resolved to and reads it back through the numbering sidecar: its offset, and one (slot, tag) stamp per show, the latest resolve whose row's tag differed from its slot. Warms stamp too. So after a recap, a later resolve of another displaced row replaces the stamp, and an earlier watch's row then reads back by its slot — one episode high.
+- **aniskip** is asked by MAL id and the tile's whole number; **tracker progress** is the tile's whole number.
+
+The app's own number for an episode is the tile's: Kitsu's whole numbers, plus the provider's fractional extras as tiles of their own beside the episode they follow (a `0.5` beside episode 1). A whole episode is requested, resumed and sent to the trackers by that number, and recorded through the history's slot and stamp (above); a fractional extra is requested and resumed by its own number (`7.5`) and recorded the same way, asks aniskip for nothing, and moves no tracker progress, since aniskip and the trackers count whole episodes. Prev and next step from a recap to the whole episodes either side.
+
+Nothing reconciles Kitsu's numbering with the provider's beyond the continuation offset. When they disagree about a recap:
+
+- **The provider lists a recap Kitsu does not** (hianime's `7.5`): every whole tile carries Kitsu's label and plays the provider's episode of that number, and the recap is a tile of its own.
+- **Kitsu counts the recap as a regular episode the provider lists as `7.5`** (Kitsu's 8 is the recap, the provider's 8 is Kitsu's 9): tile 8 carries the recap's Kitsu label but plays the provider's 8, every later tile is labelled one episode early, and Kitsu's last episode is past the provider's cap. The recap plays from its own `7.5` tile.
+- **Kitsu counts a recap the provider does not list**: the same one-early labels after it, and Kitsu's last episode past the provider's cap — a greyed tile where the strip reaches it, none where the strip stops at the cap — with no recap tile.
+- **MAL, or AniList's streaming list, counts a recap Kitsu does not**: from the recap on, aniskip's skip times and AniList's backfilled thumbnails are one episode early in that list (tile 8 gets the recap's), since both are asked by the tile's number.
+
 ## Kitsu → MAL and AniList via the mappings endpoint
 
 The Kitsu API exposes its known third-party ids on the `mappings` relationship of an anime resource. The backend queries `GET /anime/:id?include=mappings` and walks the `included` documents for the ones whose `attributes.externalSite` is `"myanimelist/anime"` or `"anilist/anime"`; their `attributes.externalId` values are the MAL and AniList ids.

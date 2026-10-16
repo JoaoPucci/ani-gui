@@ -142,6 +142,8 @@
 	"synopsis_toggle_less": "Leer menos",
 	"synopsis_toggle_more": "Leer más",
 	"unavailable_message": "Fuera del catálogo de streaming — reproducción y descarga no disponibles para este título.",
+	"unavailable_in_dub_message": "No disponible doblado — este título está disponible en SUB. Cambia el audio abajo para verlo o descargarlo.",
+	"unavailable_in_sub_message": "No disponible con subtítulos — este título está disponible en DUB. Cambia el audio abajo para verlo o descargarlo.",
 	"error_no_id_headline": "No hay ningún anime seleccionado.",
 	"error_no_id_detail": "A la dirección le falta el id del título.",
 	"version_group_aria_label": "Qué versión reproducir",

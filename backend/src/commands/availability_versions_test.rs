@@ -182,3 +182,16 @@ async fn a_mode_no_version_carries_is_absent() {
     let got = check_availability(&state, &dub).await.expect("answered");
     assert!(!got.available);
 }
+
+/// Another change re-keys availability rows to v20 for a reason of its
+/// own (a recap before a continuation cour); a v20 row may be written
+/// by that change's picker, which names no versions, so this key moves
+/// past it.
+#[test]
+fn a_row_keyed_v20_elsewhere_is_not_read() {
+    let current = cache_key("7158", "sub");
+    assert!(
+        !current.starts_with("availability:v20:"),
+        "the key must have moved past v20: {current}"
+    );
+}

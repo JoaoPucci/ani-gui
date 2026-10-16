@@ -8,7 +8,7 @@
 
 import type { PushArgs } from '$lib/toasts/store.svelte';
 import { m } from '$lib/paraglide/messages';
-import { describePlayFailure } from './error-copy';
+import { describePlayFailure, type OtherAudio } from './error-copy';
 
 /** Build the `PushArgs` for the success toast that announces a
  *  Syncplay launch on `episode`. Same 4s duration as the external-
@@ -38,8 +38,10 @@ export function syncplayLaunchSuccessToast(args: {
  *  the same polished message as the embedded play path.
  *
  *  Returns the body text only — the modal's headline and action
- *  link live on the play page (i18n keys + the syncplay.pl href). */
-export function describeSyncplayLaunchFailure(e: unknown): string {
+ *  link live on the play page (i18n keys + the syncplay.pl href).
+ *  `otherAudio` is what the availability cache says about the other
+ *  audio, for the episode verdict (see `describePlayFailure`). */
+export function describeSyncplayLaunchFailure(e: unknown, otherAudio: OtherAudio): string {
 	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
 	if (obj && obj.kind === 'syncplay_spawn_failed' && typeof obj.binary === 'string') {
 		// Empty-string is the "user cleared the path in Settings"
@@ -53,7 +55,7 @@ export function describeSyncplayLaunchFailure(e: unknown): string {
 	// Resolve-step failures (scraper / timeout / network) — reuse
 	// the embedded play path's copy so the user sees a polished
 	// message instead of a debug-y "Syncplay failed: <kind>".
-	return describePlayFailure(e);
+	return describePlayFailure(e, { otherAudio });
 }
 
 /** Predicate that gates the play page's "Get Syncplay" affordance.
