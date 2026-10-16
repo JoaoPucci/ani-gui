@@ -11,16 +11,17 @@ use super::play_native_wide_listing::{Probed, UNFIT};
 /// one of them could have won — the entry's titles admit it, it is not
 /// another entry, and the rule that reads its name would have let it
 /// stand ([`super::play_native_dated_name::may_win`]) — whether one was
-/// refused, by the titles or by that rule, and the titles of those the
-/// titles refused: with a count such a hit is probed as evidence, and
-/// as a broad listing's completing sibling it decides the pick. A dead
+/// refused, by the titles or by that rule, and the titles of every dead
+/// listing that could not have won: with a count such a hit is probed
+/// or kept as evidence, and as a broad listing's completing sibling it
+/// decides the pick. A dead
 /// listing that is another entry of the same show counts for none:
 /// answered, it would have been scored out.
 #[derive(Default)]
 pub(super) struct DeadListings {
     pub(super) could_win: bool,
     pub(super) refused: bool,
-    unadmitted: Vec<String>,
+    siblings: Vec<String>,
 }
 
 impl DeadListings {
@@ -32,13 +33,13 @@ impl DeadListings {
         let stands = could_win && admitted;
         self.could_win |= stands && !another;
         self.refused |= !(another || stands);
-        if !admitted {
-            self.unadmitted.push(title.to_string());
+        if !stands {
+            self.siblings.push(title.to_string());
         }
     }
 
     /// Whether the pool's dead listings may have decided its pick: one
-    /// could have won, or one the titles refused would, had it answered,
+    /// could have won, or one that could not would, had it answered,
     /// have been the completing sibling of a broad listing the span table
     /// cuts — a live candidate still in the running, from the entry's
     /// year, listing more episodes than the entry, headed by the entry,
@@ -56,7 +57,7 @@ impl DeadListings {
                     && regular_episode_count(eps) > expected
                     && entry.names(&w.title)
                     && self
-                        .unadmitted
+                        .siblings
                         .iter()
                         .any(|sibling| entry.names_later_part(sibling, &w.title))
             })
