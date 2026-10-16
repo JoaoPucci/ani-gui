@@ -49,7 +49,9 @@ async function probeInline<T extends KitsuAnimeRef>(
 				});
 				// An unsettled answer established nothing — its
 				// `available: false` is no verdict — so, like a failed
-				// probe, it leaves the card and remembers nothing.
+				// probe, it leaves the card and remembers nothing; a
+				// refusal by name is the verdict that the catalogue
+				// does not carry the show, and drops it.
 				const verdict = availabilityVerdict(r);
 				if (verdict !== null) cached[item.id] = verdict;
 			} catch {

@@ -61,8 +61,12 @@ export interface CapGateAnswer {
  * confirmed where confirmation matters.
  */
 export interface CapGateRefresh {
-	/** Always trustworthy: a search that could not be completed comes
-	 *  back as a failure, never as a false. */
+	/** A search that could not be completed comes back as a failure,
+	 *  never as a false. A false is the provider's answer: the show
+	 *  not listed, or listed under nothing named for it — the refusal
+	 *  by name, an inference from how the catalogue names its listings
+	 *  that the backend does not persist and asks again on the next
+	 *  look. */
 	available: boolean;
 	/** The confirmed cap, or null when the answer did not establish one
 	 *  — a count that can read one high must not replace a real cap.

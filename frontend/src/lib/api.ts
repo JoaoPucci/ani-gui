@@ -887,13 +887,14 @@ export interface AvailabilityResponse {
 	 *  before the backend named it. */
 	provider?: StreamProvider;
 	/** Present when the probe reached the provider and came back
-	 *  without a verdict — a hit the count fit refused on how it is
-	 *  named, dead listings on a healthy provider, a mode nobody
-	 *  answered for. (A show found nowhere is the clean miss: settled,
-	 *  and kept.) `available` is then false and means nothing, the count
-	 *  is absent, and the backend persisted nothing. Read it through
-	 *  `$lib/availability/verdict`. A backend before reasons sends
-	 *  `true`. Absent from every settled answer. */
+	 *  without a settled verdict, naming why ({@link UnsettledReason}).
+	 *  (A show found nowhere is the clean miss: settled, and kept.)
+	 *  `available` is then false, the count is absent, and the backend
+	 *  persisted nothing. For every reason but `'refused'` the false
+	 *  means nothing; `'refused'` says the catalogue lists nothing
+	 *  named for the show, and reads as it not being in the catalogue.
+	 *  Read it through `$lib/availability/verdict`. A backend before
+	 *  reasons sends `true`. Absent from every settled answer. */
 	unsettled?: boolean | UnsettledReason;
 }
 
