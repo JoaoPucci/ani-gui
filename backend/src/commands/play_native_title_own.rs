@@ -36,12 +36,14 @@ impl EntryTitles<'_> {
     }
 
     /// Whether `title` and one of the entry's titles share a name: one
-    /// starts with the other's name ([`starts_with_name_of`]), on the
-    /// words alone. What follows the shared name is not compared — a
+    /// starts with the other's name ([`starts_with_name_of`]: at a
+    /// word's end, or with a digit or 第 glued to it, no digit when the
+    /// name ends in one, so "Show2" starts with "Show" and "Showtime"
+    /// does not). What follows the shared name is not compared — a
     /// subtitle, a story part numbered mid-title — so this is evidence
-    /// that a listing is the entry's show, never of which season: "Gintama.:
-    /// Silver Soul Arc - Second Half War" shares "Gintama.: Silver
-    /// Soul Arc 2"'s name, "JoJo's Bizarre Adventure Part 6: Stone
+    /// that a listing is the entry's show, never of which season:
+    /// "Gintama.: Silver Soul Arc - Second Half War" shares "Gintama.:
+    /// Silver Soul Arc 2"'s name, "JoJo's Bizarre Adventure Part 6: Stone
     /// Ocean Part 2" is the show "JoJo's Bizarre Adventure: Stone Ocean
     /// Part 2" is named for, and "Medaka Box Abnormal" shares nothing
     /// with "Abnormal Physiology Seminar". A title whose name has no
