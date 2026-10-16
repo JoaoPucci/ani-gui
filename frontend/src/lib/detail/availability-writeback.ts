@@ -28,7 +28,7 @@ export interface AvailabilityAnswer {
 	count: number | null;
 	extraEpisodes: string[];
 	/** True when `available: false` is the provider refusing the title
-	 *  by name. Not carried yet. */
+	 *  by name. */
 	refused?: boolean;
 }
 
@@ -40,8 +40,9 @@ export interface AvailabilityPatch {
 	available?: boolean;
 	count?: number | null;
 	extraEpisodes?: string[];
-	/** Whether the verdict this patch writes is a refusal by name. Not
-	 *  carried yet. */
+	/** Present, and true, when the verdict this patch writes is a
+	 *  refusal by name; it travels only with the verdict, so whoever
+	 *  owns the verdict owns it too. */
 	refused?: boolean;
 }
 
@@ -74,7 +75,10 @@ export function createAvailabilityWriteback(currentContext: () => string): Avail
 				if (currentContext() !== asked) return {};
 				const patch: AvailabilityPatch = {};
 				const verdictStands = verdicts === verdictsAtStart;
-				if (verdictStands) patch.available = answer.available;
+				if (verdictStands) {
+					patch.available = answer.available;
+					if (answer.refused === true) patch.refused = true;
+				}
 				// A negative answer's count is not a measurement — it is
 				// the verdict restated, so it is superseded with it. Left
 				// in, it publishes a null cap on a show a re-ask has just
@@ -91,6 +95,7 @@ export function createAvailabilityWriteback(currentContext: () => string): Avail
 		refresh(refresh: CapGateRefresh) {
 			verdicts += 1;
 			const patch: AvailabilityPatch = { available: refresh.available };
+			if (refresh.refused === true) patch.refused = true;
 			if (refresh.count != null && refresh.extraEpisodes != null) {
 				counts += 1;
 				patch.count = refresh.count;

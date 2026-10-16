@@ -50,9 +50,6 @@ export interface AvailabilityLookupDeps {
 	 *  nothing is published here — the page's own handling of the
 	 *  re-ask's patch is what sets it then. */
 	setListed: (listed: boolean | null) => void;
-	/** Whether the answer was the provider refusing the title by name:
-	 *  false when the question opens, then the answer's word. */
-	setRefused?: (refused: boolean) => void;
 }
 
 /**
@@ -68,7 +65,6 @@ export function startAvailabilityLookup(
 	let cancelled = false;
 	deps.setResolved(false);
 	deps.setListed(null);
-	deps.setRefused?.(false);
 	const settle = deps.begin();
 	void deps
 		.check({
@@ -83,7 +79,6 @@ export function startAvailabilityLookup(
 		})
 		.then((r) => {
 			if (cancelled) return;
-			deps.setRefused?.(refusedByName(r));
 			// An unsettled answer reached the provider and established
 			// nothing: its `available: false` is not a verdict, so the
 			// page keeps what it had, as it does when the lookup fails —
@@ -97,7 +92,8 @@ export function startAvailabilityLookup(
 			const patch = settle({
 				available,
 				count: r.episode_count,
-				extraEpisodes: r.extra_episodes
+				extraEpisodes: r.extra_episodes,
+				...(refusedByName(r) ? { refused: true } : {})
 			});
 			if (patch.available !== undefined) deps.setListed(patch.available);
 			deps.apply(patch);

@@ -243,6 +243,9 @@
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
 		if (patch.available !== undefined) {
 			availability = patch.available;
+			// Whether that verdict is a refusal by name travels with it
+			// ($lib/detail/availability-writeback).
+			availabilityRefused = patch.refused === true;
 			// A patch that carries the verdict is the current lookup's
 			// or a re-ask's that won it — either way the warm's too.
 			warmListed = patch.available;
@@ -252,9 +255,6 @@
 	}
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
 		applyAvailabilityPatch(writeback.refresh(refresh));
-		// A fresh refusal by name words the notice as the page-load one
-		// does: no other audio to name.
-		availabilityRefused = refresh.refused === true;
 	}
 	const capGate = createCapGateProbe({
 		probe: async () => {
@@ -474,8 +474,9 @@
 	// title ($lib/detail/unavailable-copy). Re-asked when the title or
 	// the audio changes; a late answer to an old question is dropped.
 	let noticeOtherAudio = $state<OtherAudio>(null);
-	// Whether the page-load lookup's answer was the provider refusing
-	// the title by name ($lib/detail/availability-lookup).
+	// Whether `availability`'s verdict is the provider refusing the
+	// title by name: written with the verdict, by whoever owns it
+	// ($lib/detail/availability-writeback).
 	let availabilityRefused = $state(false);
 	// A music title is unavailable in both audios by this page's own
 	// rule, so it never names the other one, whatever the cache holds.
@@ -764,8 +765,7 @@
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
 					setResolved: (r) => (availabilityResolved = r),
-					setListed: (l) => (warmListed = l),
-					setRefused: (r) => (availabilityRefused = r)
+					setListed: (l) => (warmListed = l)
 				}
 			)
 		);
@@ -947,6 +947,7 @@
 		similar = null;
 		error = null;
 		availability = null;
+		availabilityRefused = false;
 		availabilityResolved = false;
 		warmListed = null;
 		playableEpisodeCount = null;
