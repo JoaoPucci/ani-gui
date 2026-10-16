@@ -453,9 +453,11 @@
 	// title ($lib/detail/unavailable-copy). Re-asked when the title or
 	// the audio changes; a late answer to an old question is dropped.
 	let noticeOtherAudio = $state<OtherAudio>(null);
+	// A music title is unavailable in both audios by this page's own
+	// rule, so it never names the other one, whatever the cache holds.
 	$effect(() => {
 		const q = { kitsuId: id, mode: availabilityMode };
-		const unavailable = cta === 'unavailable';
+		const unavailable = cta === 'unavailable' && !isMusicSubtype(detail?.subtype ?? null);
 		noticeOtherAudio = null;
 		if (!unavailable) return;
 		return watchOtherAudio(q, (answer) => (noticeOtherAudio = answer));

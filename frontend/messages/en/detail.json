@@ -106,8 +106,8 @@
 	"synopsis_toggle_less": "Read less",
 	"synopsis_toggle_more": "Read more",
 	"unavailable_message": "Not in the streaming catalogue — playback & download unavailable for this title.",
-	"unavailable_in_dub_message": "Not available dubbed — this title streams in SUB. Switch the audio below to watch it.",
-	"unavailable_in_sub_message": "Not available with subtitles — this title streams in DUB. Switch the audio below to watch it.",
+	"unavailable_in_dub_message": "Not available dubbed — this title streams in SUB. Switch the audio below to watch or download it.",
+	"unavailable_in_sub_message": "Not available with subtitles — this title streams in DUB. Switch the audio below to watch or download it.",
 	"error_no_id_headline": "No anime selected.",
 	"error_no_id_detail": "The address is missing the show's id."
 }
