@@ -57,6 +57,36 @@ pub struct EntryTail {
     /// Whether the pages read are the ones that would hold an episode
     /// past the count, had Kitsu one.
     pub read_past_count: bool,
+    /// The entries Kitsu relates the entry to.
+    pub related: Vec<Related>,
+    /// Whether `related` is every entry Kitsu relates it to.
+    pub related_complete: bool,
+}
+
+/// An entry Kitsu relates the entry to, as the evidence reads it.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Related {
+    /// How Kitsu relates it: `sequel`, `side_story`, `other`, ….
+    pub role: String,
+    /// Whether it is an anime entry (and not a manga's).
+    pub anime: bool,
+    /// Its subtype: `TV`, `OVA`, `ONA`, `special`, ….
+    pub subtype: Option<String>,
+    /// Its status: `finished`, `current`, ….
+    pub status: Option<String>,
+    /// Its episode count.
+    pub episode_count: Option<u32>,
+}
+
+/// A reading the evidence once proved, kept so a request whose
+/// evidence cannot be read reads the listing the same way: the count,
+/// and the ids of the rows past it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Remembered {
+    /// Kitsu's count the rows were read past.
+    pub count: u32,
+    /// The provider's ids of the rows read as extras, in order.
+    pub ids: Vec<u64>,
 }
 
 /// Where the evidence comes from. Asked only for a listing that runs
@@ -66,6 +96,15 @@ pub trait TailSource: Send + Sync + std::fmt::Debug {
     /// The entry's tail, as far as it is known for `count`; `None`
     /// when nothing could be read.
     async fn tail(&self, count: u32) -> Option<EntryTail>;
+
+    /// The reading the evidence last proved for the entry, if any.
+    fn remembered(&self) -> Option<Remembered> {
+        None
+    }
+
+    /// Keep `reading` as the one the evidence proved, or forget the
+    /// kept one when it is `None`.
+    fn remember(&self, _reading: Option<&Remembered>) {}
 }
 
 /// The count to ask the evidence about, when `listing` has the shape
@@ -83,103 +122,6 @@ pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u
         .all(|(e, slot)| e.number == slot && e.number2.is_none());
     let past = u32::try_from(listing.len()).ok()?.checked_sub(count)?;
     (plain && (1..=MAX_APPENDED).contains(&past)).then_some(count)
-}
-
-/// How many of the count's last episodes must carry the listing's own
-/// titles: three, or all of them for a shorter show.
-pub const ALIGNED: u32 = 3;
-
-/// `listing` with its rows past `count` tagged as extras — `count.1`,
-/// `count.2`, … in listing order, each row otherwise the row it was —
-/// when `tail` proves they are not episodes of the show:
-///
-/// - Kitsu calls the show finished at `count`, and AniList ends it at
-///   the same count;
-/// - Kitsu's rows for its last [`ALIGNED`] episodes are there, dated
-///   and named, the pages read reach past the count, and none of them
-///   lists an episode past it;
-/// - the listing names each of those episodes as Kitsu does
-///   ([`same_title`]), so its numbering is Kitsu's up to the count;
-/// - every row past the count has a name of its own: not missing, not
-///   just its number, not one of Kitsu's episodes.
-///
-/// `None` otherwise, and for a listing [`appended_count`] turns away.
-#[must_use]
-pub fn appended_extras(
-    listing: &[EpisodeRef],
-    count: u32,
-    tail: &EntryTail,
-) -> Option<Vec<EpisodeRef>> {
-    if appended_count(listing, Some(count)) != Some(count) || !ends_at(tail, count) {
-        return None;
-    }
-    let first = count.saturating_sub(ALIGNED - 1).max(1);
-    for n in first..=count {
-        let kitsu = tail.episodes.iter().find(|e| e.number == n)?;
-        kitsu.airdate.as_ref()?;
-        let row = listing.get(usize::try_from(n - 1).ok()?)?;
-        if !same_title(kitsu.title.as_deref()?, row.title.as_deref()?) {
-            return None;
-        }
-    }
-    let at = usize::try_from(count).ok()?;
-    let past = listing.get(at..)?;
-    let own = past.iter().all(|row| {
-        row.title.as_deref().is_some_and(|t| {
-            !is_generic(t)
-                && !tail
-                    .episodes
-                    .iter()
-                    .filter_map(|e| e.title.as_deref())
-                    .any(|k| same_title(k, t))
-        })
-    });
-    if !own {
-        return None;
-    }
-    let mut out = listing.to_vec();
-    for (row, i) in out.iter_mut().skip(at).zip(1u32..) {
-        row.number2 = Some(format!("{count}.{i}"));
-    }
-    Some(out)
-}
-
-/// Whether Kitsu and AniList both end the show at `count`, and Kitsu's
-/// rows read show nothing past it.
-fn ends_at(tail: &EntryTail, count: u32) -> bool {
-    tail.finished
-        && tail.count == Some(count)
-        && tail.anilist_count == Some(count)
-        && tail.read_past_count
-        && tail.episodes.iter().all(|e| e.number <= count)
-}
-
-/// A title reduced to what tells two titles apart: its letters and
-/// digits, lowercased. Case, spacing and punctuation are how two
-/// catalogues write one title differently.
-fn reduced(title: &str) -> String {
-    title
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
-/// Whether two titles are one title as the catalogues write it.
-#[must_use]
-pub fn same_title(a: &str, b: &str) -> bool {
-    let a = reduced(a);
-    !a.is_empty() && a == reduced(b)
-}
-
-/// Whether a title is only a number: "Episode 13", "EP 13", "13".
-fn is_generic(title: &str) -> bool {
-    let r = reduced(title);
-    let digits = r
-        .strip_prefix("episode")
-        .or_else(|| r.strip_prefix("ep"))
-        .unwrap_or(&r);
-    digits.chars().all(|c| c.is_ascii_digit())
 }
 
 /// `picked` with the extras its provider appended read as extras,
@@ -202,6 +144,22 @@ pub async fn fit_appended(
         None => picked,
     }
 }
+
+/// `listing` with its rows past `count` tagged `count.1`, `count.2`,
+/// … in listing order, each row otherwise the row it was.
+#[must_use]
+pub fn tag_past(listing: &[EpisodeRef], count: u32) -> Vec<EpisodeRef> {
+    let at = usize::try_from(count).unwrap_or(usize::MAX);
+    let mut out = listing.to_vec();
+    for (row, i) in out.iter_mut().skip(at).zip(1u32..) {
+        row.number2 = Some(format!("{count}.{i}"));
+    }
+    out
+}
+
+#[path = "play_native_appended_rule.rs"]
+mod rule;
+pub use rule::{appended_extras, same_title, ALIGNED};
 
 #[cfg(test)]
 #[path = "play_native_appended_test.rs"]

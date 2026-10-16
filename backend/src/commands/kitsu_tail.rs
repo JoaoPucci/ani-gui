@@ -84,6 +84,8 @@ pub fn entry_tail(
             })
             .collect(),
         read_past_count: true,
+        related: Vec::new(),
+        related_complete: false,
     }
 }
 

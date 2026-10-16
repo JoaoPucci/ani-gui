@@ -81,6 +81,8 @@ fn tail_for(rows: &[EpisodeRef], count: u32) -> impl Strategy<Value = EntryTail>
                 anilist_count: anilist,
                 episodes,
                 read_past_count: past,
+                related: Vec::new(),
+                related_complete: false,
             }
         })
 }
@@ -170,6 +172,8 @@ proptest! {
                 })
                 .collect(),
             read_past_count: true,
+            related: Vec::new(),
+            related_complete: false,
         };
         prop_assert_eq!(appended_count(&rows, Some(count)), Some(count));
         let fitted = appended_extras(&rows, count, &tail);

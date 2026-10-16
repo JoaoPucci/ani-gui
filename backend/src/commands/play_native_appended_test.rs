@@ -53,6 +53,8 @@ fn recorded_tail(kitsu: u32) -> EntryTail {
             })
             .collect(),
         read_past_count: true,
+        related: Vec::new(),
+        related_complete: false,
     }
 }
 
@@ -292,6 +294,8 @@ fn a_count_of_one_reads_its_one_episode() {
             airdate: Some("2020-01-01".into()),
         }],
         read_past_count: true,
+        related: Vec::new(),
+        related_complete: false,
     };
     let fitted = appended_extras(&rows, 1, &tail).expect("appended");
     assert_eq!(tags(&fitted), vec![None, Some("1.1")]);
@@ -370,6 +374,8 @@ impl CorpusShow {
                 })
                 .collect(),
             read_past_count: true,
+            related: Vec::new(),
+            related_complete: false,
         }
     }
 }
