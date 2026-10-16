@@ -106,16 +106,19 @@ impl Attempt for Scripted {
                 error: make(),
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             }),
             Behavior::Miss { clean } => Err(NativeError {
                 error: AniError::NoResults,
                 clean_miss: clean,
                 failed_at: None,
+                refused_by_name: false,
             }),
             Behavior::MissEpisode => Err(NativeError {
                 error: AniError::EpisodeUnavailable,
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             }),
             Behavior::Stall => std::future::pending().await,
         }
@@ -722,6 +725,7 @@ impl Attempt for Recording {
             error: AniError::Network,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         })
     }
 
@@ -964,7 +968,7 @@ mod surfaced_miss_props {
             clean_miss in any::<bool>(),
             error in error(),
         ) {
-            let miss = NativeError { error, clean_miss, failed_at: None };
+            let miss = NativeError { error, clean_miss, failed_at: None, refused_by_name: false };
             prop_assert_eq!(
                 miss_past_affinity(remembered_undenied, &miss),
                 clean_miss && remembered_undenied
@@ -985,7 +989,7 @@ mod surfaced_miss_props {
                         tokio::time::Instant::now() + std::time::Duration::from_millis(ms)
                     });
                     let before = format!("{error:?}");
-                    let got = unavailability(Some(NativeError { error, clean_miss, failed_at }));
+                    let got = unavailability(Some(NativeError { error, clean_miss, failed_at, refused_by_name: false }));
                     prop_assert_eq!(format!("{:?}", got.error), before);
                     prop_assert_eq!(got.clean_miss, clean_miss);
                     prop_assert_eq!(got.failed_at, failed_at);
@@ -1070,6 +1074,7 @@ mod negative_rank_props {
                     error: self.error(),
                     clean_miss: self.clean_miss && !self.is_episode_verdict(),
                     failed_at: None,
+                    refused_by_name: false,
                 },
                 self.by,
             )
@@ -1255,6 +1260,7 @@ mod episode_verdict_rank_props {
                     },
                     clean_miss: self.clean_miss,
                     failed_at: None,
+                    refused_by_name: false,
                 },
                 Some(ProviderId::TestB),
             )
@@ -2877,6 +2883,7 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
             error: AniError::EpisodeUnavailable,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         },
         Some(ProviderId::TestA),
     );
@@ -2885,6 +2892,7 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
             error: AniError::NoResults,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         },
         Some(ProviderId::TestB),
     );

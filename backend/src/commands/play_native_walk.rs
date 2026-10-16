@@ -60,6 +60,7 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                             error: e,
                             clean_miss: false,
                             failed_at: None,
+                            refused_by_name: false,
                         });
                     }
                     // All-answered-not-found: dead candidates on a
@@ -77,6 +78,7 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                     error: AniError::Upstream { status },
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             Err(AniError::GateRefused) => {
@@ -84,6 +86,7 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                     error: AniError::GateRefused,
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             Err(e) => {
@@ -99,12 +102,14 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
             error: AniError::NoResults,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         });
     }
     Err(NativeError {
         error: AniError::NoResults,
         clean_miss: true,
         failed_at: None,
+        refused_by_name: false,
     })
 }
 

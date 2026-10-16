@@ -1,5 +1,6 @@
 import type { AvailabilityResponse } from '$lib/api';
 import { beyondPlayable } from './episode-caps';
+import { establishesNothing } from '$lib/availability/verdict';
 
 /**
  * Re-asking availability when a user clicks a cap-gated episode tile.
@@ -89,7 +90,7 @@ export interface CapGateRefresh {
  * neither can take that false for the show being gone.
  */
 export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null {
-	if (r.unsettled) return null;
+	if (establishesNothing(r)) return null;
 	return {
 		count: r.episode_count,
 		approximate: r.episode_count_approximate === true,

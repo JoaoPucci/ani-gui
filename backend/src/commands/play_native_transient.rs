@@ -99,6 +99,7 @@ impl Transients {
             error,
             clean_miss: false,
             failed_at: self.last_failure_at,
+            refused_by_name: false,
         })
     }
 }

@@ -15,6 +15,7 @@ import {
 } from '$lib/api';
 import type { KitsuAnimeRef } from '$lib/api';
 import { keepCard } from './filter';
+import { availabilityVerdict } from './verdict';
 
 /** Inline probe pool: drains `uncached` with capped concurrency,
  *  writing each verdict into `cached`. `onVerdict` fires after
@@ -49,7 +50,8 @@ async function probeInline<T extends KitsuAnimeRef>(
 				// An unsettled answer established nothing — its
 				// `available: false` is no verdict — so, like a failed
 				// probe, it leaves the card and remembers nothing.
-				if (!r.unsettled) cached[item.id] = r.available;
+				const verdict = availabilityVerdict(r);
+				if (verdict !== null) cached[item.id] = verdict;
 			} catch {
 				// Probe failed — leave unset so we render the card
 				// (lazy click path will surface the real error).

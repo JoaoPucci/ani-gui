@@ -320,6 +320,7 @@ where
                 error: AniError::Network,
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             },
             None,
         ));
@@ -383,6 +384,7 @@ fn unavailability(unreachable: Option<NativeError>) -> NativeError {
         error: AniError::GateRefused,
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     })
 }
 
@@ -598,6 +600,7 @@ where
                 error,
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             });
             return Tried::FailedOver;
         }
@@ -617,6 +620,7 @@ where
             error: AniError::Timeout,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         }),
     };
     client.bound_attempt(None);
@@ -772,6 +776,7 @@ where
                 error: AniError::NoResults,
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             })
         }
     }

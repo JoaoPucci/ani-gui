@@ -886,16 +886,25 @@ export interface AvailabilityResponse {
 	 *  answered `available`. Absent on negative rows and on rows from
 	 *  before the backend named it. */
 	provider?: StreamProvider;
-	/** True when the probe reached the provider and came back without
-	 *  a verdict — a hit the count fit refused on how it is named, dead
-	 *  listings on a healthy provider, a mode nobody answered for.
-	 *  (A show found nowhere is the clean miss: settled, and kept.) `available` is then false and means nothing, the
-	 *  count is absent, and the backend persisted nothing. Readers
-	 *  treat the answer as unknown: the card stays, the page keeps its
-	 *  lazy play, exactly as when the request fails. Absent from every
-	 *  settled answer. */
-	unsettled?: boolean;
+	/** Present when the probe reached the provider and came back
+	 *  without a verdict — a hit the count fit refused on how it is
+	 *  named, dead listings on a healthy provider, a mode nobody
+	 *  answered for. (A show found nowhere is the clean miss: settled,
+	 *  and kept.) `available` is then false and means nothing, the count
+	 *  is absent, and the backend persisted nothing. Read it through
+	 *  `$lib/availability/verdict`. A backend before reasons sends
+	 *  `true`. Absent from every settled answer. */
+	unsettled?: boolean | UnsettledReason;
 }
+
+/** Why an availability probe reached no verdict
+ *  ({@link AvailabilityResponse.unsettled}). */
+export type UnsettledReason =
+	| 'refused'
+	| 'dead_end'
+	| 'no_mode_verdict'
+	| 'past_affinity'
+	| 'superseded';
 
 /** "Is this title in the provider's catalog?" probe. The detail page hits
  *  this on mount so it can gate the Play + Download CTAs ahead of a

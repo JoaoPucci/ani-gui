@@ -1,0 +1,26 @@
+/**
+ * What an availability answer establishes, read in one place.
+ *
+ * A settled answer is a verdict: `available` says whether the provider
+ * carries the show. An unsettled one reached the provider and came
+ * back without one; its `available: false` means nothing, and every
+ * surface that gates Play or Download on availability reads it as the
+ * unknown it is — the card stays, the page keeps its lazy play — as
+ * it reads a failed request.
+ */
+
+import type { AvailabilityResponse } from '$lib/api';
+
+/** Whether the answer establishes nothing about the show: its
+ *  `available` is no verdict, and the reader keeps what it had. */
+export function establishesNothing(r: Pick<AvailabilityResponse, 'unsettled'>): boolean {
+	return Boolean(r.unsettled);
+}
+
+/** The verdict the answer gives on whether the provider carries the
+ *  show, or null when it gives none ({@link establishesNothing}). */
+export function availabilityVerdict(
+	r: Pick<AvailabilityResponse, 'available' | 'unsettled'>
+): boolean | null {
+	return establishesNothing(r) ? null : r.available;
+}

@@ -88,6 +88,13 @@ pub struct NativeError {
     /// the breaker tells a stall the walk kept from the deadline's
     /// `Timeout` by this stamp.
     pub failed_at: Option<tokio::time::Instant>,
+    /// True when the verdict is the answered dead end and every pool
+    /// behind it was refused on how its hits are named
+    /// ([`AniError::RefusedByName`]): the catalogue answered, and lists
+    /// nothing named for the entry. Set by the availability walk
+    /// ([`super::play_native_walk::pick_native_walk`]); false on every
+    /// other verdict, a dead end on dead listings included.
+    pub refused_by_name: bool,
 }
 
 /// What a native resolution is asked for — the play-relevant slice
@@ -148,6 +155,7 @@ where
             error: AniError::Timeout,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         }),
     }
 }
@@ -283,6 +291,7 @@ where
                             error: e,
                             clean_miss: false,
                             failed_at: None,
+                            refused_by_name: false,
                         });
                     }
                     // An all-answered-not-found pool: dead candidates
@@ -304,6 +313,7 @@ where
                     error: AniError::Upstream { status },
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             // The gate refused this chain: every subsequent fetch
@@ -314,6 +324,7 @@ where
                     error: AniError::GateRefused,
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             Err(e) => {
@@ -342,12 +353,14 @@ where
             },
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         });
     }
     Err(NativeError {
         error: AniError::NoResults,
         clean_miss: true,
         failed_at: None,
+        refused_by_name: false,
     })
 }
 

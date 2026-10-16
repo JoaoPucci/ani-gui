@@ -970,6 +970,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
             error,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         })?;
     Ok((picked, present))
 }

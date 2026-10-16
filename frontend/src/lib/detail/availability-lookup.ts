@@ -16,6 +16,7 @@
 
 import type { AvailabilityArgs, AvailabilityResponse } from '$lib/api';
 import type { AvailabilityAnswer, AvailabilityPatch } from './availability-writeback';
+import { establishesNothing } from '$lib/availability/verdict';
 
 /** The show being asked about, in the shape the request wants. */
 export interface AvailabilitySubject {
@@ -81,7 +82,7 @@ export function startAvailabilityLookup(
 			// An unsettled answer reached the provider and established
 			// nothing: its `available: false` is not a verdict, so the
 			// page keeps what it had, as it does when the lookup fails.
-			if (r.unsettled) return;
+			if (establishesNothing(r)) return;
 			// Whatever a re-ask has since established is the re-ask's —
 			// it is newer and it bypassed the cache. Anything it left
 			// unanswered is still this lookup's to fill.
