@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { KitsuAnimeRef } from '$lib/api';
+import { altTitlesFromKitsu, type KitsuAnimeRef } from '$lib/api';
 import { claimPlay, playArgsFor, runOwnedPlay } from './owned-play';
 
 /** A route's visit counter, as the pages keep it: it advances on every
@@ -98,18 +98,35 @@ describe('runOwnedPlay', () => {
 	it('abandons a failure when the route moves while it is being worded', async () => {
 		const visits = routeVisits();
 		const owner = claimPlay('42', visits.read);
-		const worded = deferred<string>();
-		const pending = runOwnedPlay(
+		const describe = vi.fn(async () => {
+			// The viewer moves on while the message is being worded.
+			visits.move();
+			return 'the message';
+		});
+		const out = await runOwnedPlay(
 			owner,
 			async () => {
 				throw new Error('no stream');
 			},
-			() => worded.promise
+			describe
 		);
-		await Promise.resolve();
-		visits.move();
-		worded.resolve('the message');
-		expect(await pending).toEqual({ kind: 'abandoned' });
+		expect(describe).toHaveBeenCalled();
+		expect(out).toEqual({ kind: 'abandoned' });
+	});
+
+	it('lets a failure to word a failure through, as the pages did', async () => {
+		const owner = claimPlay('42', routeVisits().read);
+		await expect(
+			runOwnedPlay(
+				owner,
+				async () => {
+					throw new Error('no stream');
+				},
+				async () => {
+					throw new Error('wording broke');
+				}
+			)
+		).rejects.toThrow('wording broke');
 	});
 
 	it('abandons a round trip back to the same show too', async () => {
@@ -125,6 +142,50 @@ describe('runOwnedPlay', () => {
 		visits.move();
 		play.reject(new Error('no stream'));
 		expect(await pending).toEqual({ kind: 'abandoned' });
+	});
+});
+
+describe('a play whose page was destroyed', () => {
+	// Leaving the route destroys the page without changing its show id,
+	// so the visit counter does not move; the claim must still see it.
+	function page() {
+		let gone = false;
+		return {
+			gone: () => gone,
+			destroy: () => {
+				gone = true;
+			}
+		};
+	}
+
+	it('is no longer current once the page is destroyed on the same visit', () => {
+		const p = page();
+		const owner = claimPlay('42', routeVisits().read, p.gone);
+		expect(owner.isCurrent()).toBe(true);
+		p.destroy();
+		expect(owner.isCurrent()).toBe(false);
+	});
+
+	it('reports a success after the page was destroyed as not current', async () => {
+		const p = page();
+		const owner = claimPlay('42', routeVisits().read, p.gone);
+		const play = deferred<string>();
+		const pending = runOwnedPlay(owner, () => play.promise, vi.fn());
+		p.destroy();
+		play.resolve('session-1');
+		expect(await pending).toEqual({ kind: 'played', session: 'session-1', current: false });
+	});
+
+	it('abandons a failure after the page was destroyed, without wording it', async () => {
+		const p = page();
+		const owner = claimPlay('42', routeVisits().read, p.gone);
+		const play = deferred<string>();
+		const describe = vi.fn(async () => 'x');
+		const pending = runOwnedPlay(owner, () => play.promise, describe);
+		p.destroy();
+		play.reject(new Error('no stream'));
+		expect(await pending).toEqual({ kind: 'abandoned' });
+		expect(describe).not.toHaveBeenCalled();
 	});
 });
 
@@ -158,7 +219,8 @@ describe('playArgsFor', () => {
 			subtype: 'TV',
 			kitsu_id: '42'
 		});
-		expect(Array.isArray(args.alt_titles)).toBe(true);
+		expect(args.alt_titles).toEqual(altTitlesFromKitsu(show));
+		expect(args.alt_titles).toContain('Show EN');
 	});
 
 	it('carries no Kitsu id when the play records none', () => {
@@ -170,7 +232,7 @@ describe('playArgsFor', () => {
 			show,
 			kitsuId: undefined
 		});
-		expect(args.kitsu_id).toBeUndefined();
+		expect('kitsu_id' in args).toBe(false);
 	});
 
 	it('takes a missing show as no metadata', () => {

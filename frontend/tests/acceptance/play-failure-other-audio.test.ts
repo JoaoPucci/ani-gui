@@ -811,3 +811,34 @@ describe('a play for one show that answers after the page moved on', () => {
 		});
 	}
 });
+
+describe('a play whose page is left before it answers', () => {
+	it('detail: does not open the player from a page that is gone', async () => {
+		// Leaving the route (back, or the topbar) destroys the page
+		// without changing its show id; the late success must not take
+		// the viewer into the player from there.
+		useHandlers({ cached: {}, playable_episode_counts: {} });
+		app = mount(DetailPage, { target });
+		await until(() => tile(5) !== null, 'the tile for episode 5');
+		tile(5)!.click();
+		await until(
+			() =>
+				FakeEventSource.instances.some(
+					(i) => i.url.includes('episode=5') && !i.url.includes('prefetch=1')
+				),
+			"the click's interactive stream"
+		);
+		const stream = FakeEventSource.instances
+			.filter((i) => i.url.includes('episode=5') && !i.url.includes('prefetch=1'))
+			.pop()!;
+		unmount(app!);
+		app = null;
+		vi.mocked(goto).mockClear();
+		stream.dispatch(
+			'done',
+			JSON.stringify({ id: 's', kind: 'mp4', has_subtitles: false, quality: '1080', mode: 'sub' })
+		);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	});
+});
