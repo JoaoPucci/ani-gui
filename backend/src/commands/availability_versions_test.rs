@@ -79,12 +79,20 @@ async fn the_answer_names_the_versions_and_the_row_keeps_them() {
     state.providers.set_stub(Arc::clone(&provider));
     let got = check_availability(&state, &args()).await.expect("answered");
     assert!(got.available);
-    assert_eq!(got.versions, both_versions());
+    // Both copies carry sub, and the answer says so of each.
+    let carrying: Vec<VersionInfo> = both_versions()
+        .into_iter()
+        .map(|v| VersionInfo {
+            has_mode: Some(true),
+            ..v
+        })
+        .collect();
+    assert_eq!(got.versions, carrying);
     // A later look is served from the row, versions and all.
     let asked = provider.asked().len();
     let again = check_availability(&state, &args()).await.expect("answered");
     assert_eq!(provider.asked().len(), asked, "served from the row");
-    assert_eq!(again.versions, both_versions());
+    assert_eq!(again.versions, carrying);
 }
 
 #[tokio::test]
