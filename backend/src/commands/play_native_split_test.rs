@@ -152,6 +152,28 @@ fn stitching_moves_a_recap_tag_with_its_part() {
 }
 
 #[test]
+fn stitching_places_a_recap_before_a_cumulative_parts_first_episode() {
+    // A later part numbered cumulatively (13, 14 after a 12-episode
+    // first part listed on its own) with a recap before its first
+    // episode, tagged "12.5": in the stitched listing it sits between
+    // episodes 12 and 13, and asking for "12.5" plays it.
+    let first = listing(100, 12);
+    let second = vec![
+        row(201, 1, Some("12.5")),
+        row(202, 2, Some("13")),
+        row(203, 3, Some("14")),
+    ];
+    let merged = merge_parts(&[&first, &second]);
+    assert_eq!(kitsu_episode_cap(&merged), Some(14));
+    assert_eq!(extra_episode_tags(&merged), vec!["12.5".to_string()]);
+    let recap = merged
+        .iter()
+        .find(|e| e.number2.as_deref() == Some("12.5"))
+        .expect("the recap");
+    assert_eq!(recap.id, 201);
+}
+
+#[test]
 fn one_part_stitches_to_itself() {
     let only = listing(100, 3);
     assert_eq!(merge_parts(&[&only]), only);

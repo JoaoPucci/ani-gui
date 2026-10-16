@@ -232,9 +232,11 @@ fn fractional_episodes_translate_like_integers() {
     // the row it wrote. The read boundary maps it back for display.
     assert_eq!(provider_ep_no("1.5", 40), "41.5");
     assert_eq!(kitsu_ep_no("41.5", 40), "1.5");
-    // At or below the offset the stamp doesn't describe this row —
-    // same pass-through rule as integers.
+    // Below the offset the stamp doesn't describe this row, and it
+    // passes through; a fraction at the offset is the recap before
+    // the entry's first episode.
     assert_eq!(kitsu_ep_no("3.5", 40), "3.5");
+    assert_eq!(kitsu_ep_no("40.5", 40), "0.5");
 }
 
 #[test]

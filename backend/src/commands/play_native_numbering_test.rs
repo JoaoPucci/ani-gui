@@ -367,10 +367,23 @@ fn a_recap_before_a_continuations_first_episode_is_its_point_five() {
 }
 
 proptest::proptest! {
+    /// The round trip holds for the recap before episode 1 under any
+    /// offset.
+    #[test]
+    fn a_recap_at_the_offset_round_trips(
+        frac in 1u32..10,
+        offset in 1u32..40_000,
+    ) {
+        let provider = format!("{offset}.{frac}");
+        let advertised = per_entry_fraction(&provider, offset);
+        proptest::prop_assert_eq!(&advertised, &format!("0.{frac}"));
+        proptest::prop_assert_eq!(provider_fraction(&advertised, offset), provider);
+    }
+
     /// The round trip holds from the recap before episode 1 upward.
     #[test]
     fn fraction_translation_round_trips_from_the_first_episode(
-        n in 0u32..50_000,
+        n in proptest::prop_oneof![proptest::strategy::Just(0u32), 0u32..50_000],
         frac in 1u32..10,
         offset in 1u32..40_000,
     ) {
