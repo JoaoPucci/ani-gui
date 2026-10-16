@@ -374,19 +374,35 @@ async fn a_dead_listing_inside_a_refused_pool_is_no_refusal_by_name() {
 /// count, and without one, where the dead listing is the exact title.
 #[tokio::test]
 async fn a_dead_listing_in_any_pool_is_never_a_clean_miss_nor_a_refusal_by_name() {
-    let refused: (&str, Pool) = ("refused", Pool::Hits(&[("the-show-77", "Some Other")]));
-    for (label, pool, expected) in [
+    // Refused by name with a count (nothing names "Some Other") and
+    // without one (the title rule refuses a season the entry never
+    // names, leaving the countless pick nothing).
+    let refused_counted: (&str, Pool) = ("refused", Pool::Hits(&[("the-show-77", "Some Other")]));
+    let refused_countless: (&str, Pool) = (
+        "refused",
+        Pool::Hits(&[("the-show-77", "The Show Season 2")]),
+    );
+    for (label, pool, expected, refused) in [
         (
             "with a count",
             Pool::Hits(&[("ghost-1", "The Show"), ("the-show-99", "The Show")]),
             Some(3),
+            refused_counted,
         ),
         (
             "without a count",
             Pool::Hits(&[("ghost-1", "The Show")]),
             None,
+            refused_countless,
         ),
     ] {
+        // The refused pool alone is a refusal by name: what the dead
+        // listing beside it has to withdraw.
+        let only = scripted(&[refused]);
+        let ne = pick_native_walk(&only, "refused", &[], expected, None, None)
+            .await
+            .expect_err("refused");
+        assert!(ne.refused_by_name, "{label}: the refused pool alone");
         let alone = scripted(&[("the show", pool)]);
         let ne = pick_native_walk(&alone, "the show", &[], expected, None, None)
             .await
