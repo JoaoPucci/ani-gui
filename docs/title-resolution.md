@@ -296,11 +296,12 @@ Nothing reconciles Kitsu's numbering with the provider's beyond the continuation
 
 The trackers keep a count of their own, and the write-back reads it — MAL's `num_episodes`, AniList's `Media.episodes` — in the request that already reads the user's row before a write:
 
-- **The tracker counts a prologue Kitsu does not**: MyAnimeList and AniList count 13 episodes of Air, the first of them a prologue, where Kitsu and the provider number 12. Every tile sends its own number, so mid-show the tracker's count trails the tracker's own numbering by one, and the last episode of a finished show sends the tracker's total with the completed status — its prologue counted as watched though it was not played. The fill is not bounded by the difference: a finished show whose last episode is watched always sends the tracker's whole total.
-- **The tracker's entry is shorter than Kitsu's show** (Ranma ½'s 161 episodes against an 18-episode MyAnimeList entry): nothing past the entry's end is sent, and the completed status is sent only with Kitsu's last episode.
-- **The totals agree, or the tracker's is unknown** (an airing show): the tile's number is sent as it is. An airing show whose tracker total is known is clamped to it like any other.
+- **The tracker counts more episodes than Kitsu**: MyAnimeList and AniList count 13 episodes of Air, the first of them a prologue, where Kitsu and the provider number 12; a long show's tracker may count recaps the provider lists as 0.5s; AniList's Haruhi (2009) counts 28, the whole series in story order, against Kitsu's 14. The count alone does not say which of these the extra episodes are, so the gap is not filled: every tile sends its own number, and the last episode of a finished show sends its number without the completed status, leaving the tracker's row short of its total.
+- **The tracker's entry is shorter than Kitsu's show** (Ranma ½'s 161 episodes against an 18-episode MyAnimeList entry): nothing past the entry's end is sent, and, the totals differing, no completed status either.
+- **The totals agree**: the tile's number is sent as it is, and the last episode of a finished show completes the row.
+- **The tracker's total is unknown** (AniList's `null`, MAL's `0`, as for many airing shows): the tile's number is sent as it is, and the last episode of a finished show completes the row, as it did before the total was read.
 
-A watched episode never moves a tracker's progress backwards; a rewatch at its last episode sends the total and no completed status. These describe what the app sends: a tracker may apply rules of its own on receiving it. The detail page's list editor writes what the user sets, as it is.
+An airing show whose tracker total is known is clamped to it like any other. A watched episode never moves a tracker's progress backwards, and a rewatch's last episode sends no completed status, so the row stays a rewatch. These describe what the app sends: a tracker may apply rules of its own on receiving it. The detail page's list editor writes what the user sets, as it is.
 
 ## Kitsu → MAL and AniList via the mappings endpoint
 
