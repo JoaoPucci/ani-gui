@@ -148,15 +148,22 @@
 								</span>
 
 								<!-- Active/pending: thin indeterminate bar fills the
-								     remaining inline space + a single cancel (X). -->
-								{#if item.status === 'active' || item.status === 'pending'}
-									<span
-										class="dl-row-bar dl-row-bar-indet"
-										aria-hidden="true"
-										title={progressTitle(item)}
-									>
-										<span></span>
-									</span>
+								     remaining inline space + a single cancel (X).
+								     Queued: a label in the bar's place, same cancel. -->
+								{#if item.status === 'queued' || item.status === 'active' || item.status === 'pending'}
+									{#if item.status === 'queued'}
+										<!-- Waiting for one of the downloads running at once
+										     to end ($lib/download/queue). -->
+										<span class="dl-row-queued">{m.download_dock_queued()}</span>
+									{:else}
+										<span
+											class="dl-row-bar dl-row-bar-indet"
+											aria-hidden="true"
+											title={progressTitle(item)}
+										>
+											<span></span>
+										</span>
+									{/if}
 									<button
 										type="button"
 										class="dl-row-act"
@@ -427,6 +434,15 @@
 		white-space: nowrap;
 		flex-shrink: 0;
 	}
+	.dl-row-queued {
+		flex-shrink: 0;
+		inline-size: 5rem;
+		font-family: var(--font-body);
+		font-size: var(--type-micro);
+		color: var(--bone-300);
+		text-align: end;
+	}
+
 	.dl-row-bar {
 		position: relative;
 		/* Fixed width so every row's bar matches regardless of title

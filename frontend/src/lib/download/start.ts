@@ -47,6 +47,8 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 	});
 
 	const ctrl = new AbortController();
+	// Queued until the queue gives it a slot — at once when one is free.
+	downloadStore.markQueued(id, ctrl);
 
 	void downloadQueue
 		.run(() => downloadStream(args, (p) => downloadStore.setProgress(id, p.line), ctrl.signal), {
