@@ -167,8 +167,14 @@ pub async fn fit_appended(
 /// reading tagged: an earlier version recorded Noragami's first OAD as
 /// episode 13, which reads back as `12.1`.
 #[must_use]
-pub fn extra_for_slot(_reading: &Remembered, _show_key: &str, _ep_no: &str) -> Option<String> {
-    None
+pub fn extra_for_slot(reading: &Remembered, show_key: &str, ep_no: &str) -> Option<String> {
+    let key = crate::scraper::provider::ShowKey::parse(show_key);
+    if key.provider.is_none() || key.slug != reading.slug {
+        return None;
+    }
+    let slot: u32 = ep_no.trim().parse().ok()?;
+    let i = slot.checked_sub(reading.count).filter(|i| *i > 0)?;
+    (usize::try_from(i).ok()? <= reading.ids.len()).then(|| format!("{}.{i}", reading.count))
 }
 
 /// The provider's ids of the rows past `count`, in order.

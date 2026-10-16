@@ -19,8 +19,20 @@ pub use super::history_remove::{history_clear, history_delete};
 /// stamped for the row's slug. Rows without a stamp pass through
 /// unchanged: that is the no-shift case, and the pre-stamp behavior
 /// for shows the GUI never resolved.
+///
+/// A row whose episode is the slot of an extra the provider appended
+/// after the show's last episode reads back as that extra, under the
+/// reading the evidence proved for the row's Kitsu entry
+/// ([`super::play_native_appended::extra_for_slot`]).
 fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> HistoryEntry {
     entry.ep_no = crate::commands::numbering_offset::read_ep_no(state, &entry.id, &entry.ep_no);
+    let reading = super::kitsu_tail::KitsuTail::for_entry(state, entry.kitsu_id.as_deref())
+        .and_then(|t| super::play_native_appended::TailSource::remembered(&t));
+    if let Some(extra) = reading
+        .and_then(|r| super::play_native_appended::extra_for_slot(&r, &entry.id, &entry.ep_no))
+    {
+        entry.ep_no = extra;
+    }
     entry
 }
 
