@@ -294,7 +294,7 @@ describe('play — a handoff that meets the episode verdict and the other audio'
 		['syncplay', () => m.play_hamburger_syncplay_label()]
 	];
 	for (const [handoff, label] of labels) {
-		for (const [when, cache, expected] of CASES) {
+		for (const [when, cache, expected] of [...CASES, SHORT]) {
 			it(`${handoff}, when ${when}`, async () => {
 				const asked = useHandlers(cache);
 				setUrl(`/play/${KITSU_ID}`, { session: 'session-handoff', episode: '3', kind: 'mp4' });
@@ -310,40 +310,47 @@ describe('play — a handoff that meets the episode verdict and the other audio'
 	}
 });
 
+function useHomeHandlers(cache: CacheAnswer | 'fails', asked: Asked) {
+	server.use(
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig('sub'))),
+		http.get(`${API_BASE}/api/history`, () =>
+			HttpResponse.json([{ ep_no: '3', id: 'provider-1', title: TITLE }])
+		),
+		http.post(`${API_BASE}/api/kitsu/search`, () =>
+			HttpResponse.json([{ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' }])
+		),
+		...availabilityHandlers(cache, asked),
+		http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
+		http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
+		http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
+	);
+}
+
+const resumeButton = () =>
+	Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.includes(TITLE)) ?? null;
+
+/** Mount home, click the Continue card, and fail its resolve with the
+ *  episode verdict. */
+async function resumeAndFail() {
+	app = mount(HomePage, { target });
+	await until(() => resumeButton() !== null, 'the resolved Continue card');
+	const streamsBefore = FakeEventSource.instances.length;
+	resumeButton()!.click();
+	await until(() => FakeEventSource.instances.length > streamsBefore, 'the resume resolve stream');
+	FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch('error', VERDICT);
+}
+
 describe('home — a Continue Watching verdict and the other audio', () => {
 	for (const [when, cache, expected] of [...CASES, SHORT]) {
 		it(`when ${when}`, async () => {
 			const asked: Asked = { batch: [], probeModes: [], warms: 0 };
-			server.use(
-				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig('sub'))),
-				http.get(`${API_BASE}/api/history`, () =>
-					HttpResponse.json([{ ep_no: '3', id: 'provider-1', title: TITLE }])
-				),
-				http.post(`${API_BASE}/api/kitsu/search`, () =>
-					HttpResponse.json([{ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' }])
-				),
-				...availabilityHandlers(cache, asked),
-				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
-				http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
-				http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
-				http.get(`${API_BASE}/api/allmanga-kitsu-map/:showId`, () => HttpResponse.json(null)),
-				http.get(`${API_BASE}/api/title-match`, () => HttpResponse.json(null)),
-				http.put(`${API_BASE}/api/title-match`, () => new HttpResponse(null, { status: 204 })),
-				http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([]))
-			);
+			useHomeHandlers(cache, asked);
 
-			app = mount(HomePage, { target });
-			const resumeButton = () =>
-				Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.includes(TITLE)) ??
-				null;
-			await until(() => resumeButton() !== null, 'the resolved Continue card');
-			const streamsBefore = FakeEventSource.instances.length;
-			resumeButton()!.click();
-			await until(
-				() => FakeEventSource.instances.length > streamsBefore,
-				'the resume resolve stream'
-			);
-			FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch('error', VERDICT);
+			await resumeAndFail();
 			await expectCopy(expected);
 			expectCacheOnly(asked);
 		});
@@ -381,5 +388,38 @@ describe('detail — the page stays busy while the failure is worded', () => {
 		release();
 		await expectCopy(PLAIN);
 		await until(() => !play()!.disabled, 'Play to come back');
+	});
+});
+
+describe('home — the Continue card stays busy while the failure is worded', () => {
+	it('keeps the card resuming until the other-audio answer lands', async () => {
+		const asked: Asked = { batch: [], probeModes: [], warms: 0 };
+		useHomeHandlers({ cached: {}, playable_episode_counts: {} }, asked);
+		let release!: () => void;
+		const answered = new Promise<void>((r) => (release = r));
+		let held = false;
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { mode: string };
+				if (body.mode === 'dub') {
+					held = true;
+					await answered;
+				}
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			})
+		);
+		await resumeAndFail();
+		await until(() => held, 'the other-audio lookup');
+		expect(
+			resumeButton()!.classList.contains('resume-card-busy'),
+			'the card stays resuming while the message is worded'
+		).toBe(true);
+		expect(target.textContent).not.toContain(PLAIN());
+		release();
+		await expectCopy(PLAIN);
+		await until(
+			() => !resumeButton()!.classList.contains('resume-card-busy'),
+			'the card to settle'
+		);
 	});
 });
