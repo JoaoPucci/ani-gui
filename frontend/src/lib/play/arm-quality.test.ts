@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import Hls from 'hls.js';
 import { armQuality, qualityPin } from './arm-quality';
 import {
@@ -369,6 +369,70 @@ describe('armQuality — the viewer chooses', () => {
 		s.at(STEP_DOWN_COOLDOWN_MS * 10);
 		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
 		expect(s.engine.loads).toEqual([2]);
+	});
+});
+
+describe('armQuality — the edges', () => {
+	it('logs to the console at debug level by default', () => {
+		const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+		try {
+			const engine = new FakeEngine();
+			armQuality({
+				engine: engine as unknown as Hls,
+				events: E,
+				video: new FakeVideo(),
+				setting: () => undefined,
+				onView: () => {}
+			});
+			engine.emit(E.MANIFEST_PARSED, { levels: MASTER });
+			expect(engine.loads).toEqual([2]);
+			expect(debug).toHaveBeenCalledWith(expect.stringMatching(/^\[play\] quality: start: 1080p/));
+			expect(debug).toHaveBeenCalledWith('[play] quality: setting best, 3 levels');
+			// The clock is the page's own when none is given.
+			engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+			expect(engine.loads).toEqual([2, 1]);
+		} finally {
+			debug.mockRestore();
+		}
+	});
+
+	it('a manifest of no levels sets nothing', () => {
+		const s = arm('best', []);
+		s.parse();
+		expect(s.engine.loads).toEqual([]);
+		expect(s.logs).toEqual([]);
+		expect(s.lastView()?.levels).toEqual([]);
+	});
+
+	it('a fatal playlist failure naming its level leaves that level', () => {
+		const s = arm();
+		s.parse();
+		s.engine.emit(E.ERROR, { details: D.LEVEL_EMPTY_ERROR, fatal: true, level: 2 });
+		expect(s.engine.loads).toEqual([2, 1]);
+		expect(s.lastView()?.unavailable).toEqual([2]);
+	});
+
+	it('a segment failure naming no level moves nothing', () => {
+		const s = arm();
+		s.parse();
+		s.engine.emit(E.ERROR, { details: D.FRAG_PARSING_ERROR, fatal: true, frag: { type: 'main' } });
+		expect(s.engine.loads).toEqual([2]);
+	});
+
+	it('a segment buffered while healthy publishes nothing new', () => {
+		const s = arm();
+		s.parse();
+		const published = s.views.length;
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 2 } });
+		expect(s.views.length).toBe(published);
+	});
+
+	it('auto at the level already held logs the choice and switches nothing', () => {
+		const s = arm();
+		s.parse();
+		s.control.pick('auto');
+		expect(s.engine.nexts).toEqual([]);
+		expect(s.logs).toContain('auto');
 	});
 });
 

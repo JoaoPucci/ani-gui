@@ -273,6 +273,17 @@ describe('QualityGovernor — the viewer chooses', () => {
 		expect(g.pick('auto', 6_000)?.level).toBe(1);
 	});
 
+	it('auto with every level failed holds nothing', () => {
+		const g = governor();
+		g.start();
+		g.levelFailed(2);
+		g.levelFailed(1);
+		g.levelFailed(0);
+		expect(g.pick('auto', 5_000)).toBeNull();
+		expect(g.isEngaged).toBe(false);
+		expect(g.isPinned).toBe(false);
+	});
+
 	it('a pick takes the choice back from the engine', () => {
 		const g = governor();
 		g.start();
