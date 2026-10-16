@@ -86,8 +86,9 @@ async function readOtherAudioRow(
  *  audio's pages gate episodes by that count, so the episode would be
  *  disabled there. `null` otherwise: no row, a positive row without a
  *  count (a dub resolve stamps those; they prove the show, not the
- *  episode), no episode named (a range download), or a lookup that
- *  failed or stalled. */
+ *  episode), no episode named (a range download), a fractional extra
+ *  (the count covers integer episodes only), or a lookup that failed
+ *  or stalled. */
 export async function lookupOtherAudio(
 	q: OtherAudioQuery,
 	batch: Batch = availabilityBatch
@@ -96,6 +97,10 @@ export async function lookupOtherAudio(
 	if (row === null) return null;
 	if (!row.available) return false;
 	if (row.count === null || q.episode === null) return null;
+	// The count covers integer episodes only; a fractional extra (a
+	// 7.5 recap) is listed beside it, and the batch row carries no
+	// extras, so nothing here vouches for one.
+	if (!Number.isInteger(q.episode)) return null;
 	return q.episode <= row.count;
 }
 
