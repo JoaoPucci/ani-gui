@@ -16,7 +16,7 @@ async fn walk(
     alts: &[String],
     expected: Option<u32>,
 ) -> std::result::Result<PickedShow, NativeError> {
-    pick_native_walk(provider, title, alts, expected, None, None).await
+    pick_native_walk(provider, title, alts, expected, None, None, None).await
 }
 
 #[tokio::test]
@@ -113,6 +113,7 @@ async fn the_pick_walk_aggregates_transport_deaths_with_a_stamp() {
         None,
         None,
         None,
+        None,
     )
     .await
     .expect_err("weather is not a verdict");
@@ -193,6 +194,7 @@ async fn the_pick_walk_stops_typed_on_a_gate_refusal() {
         &provider,
         "anything",
         &["something else".to_string()],
+        None,
         None,
         None,
         None,

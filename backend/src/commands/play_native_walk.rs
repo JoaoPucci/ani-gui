@@ -28,6 +28,7 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
     expected_count: Option<u32>,
     year: Option<u32>,
     subtype: Option<&str>,
+    tail: Option<&dyn super::play_native_appended::TailSource>,
 ) -> std::result::Result<PickedShow, NativeError> {
     let entry_titles: Vec<&str> = std::iter::once(title)
         .chain(alt_titles.iter().map(String::as_str))
@@ -51,7 +52,14 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                 )
                 .await
                 {
-                    Ok(picked) => return Ok(picked),
+                    Ok(picked) => {
+                        return Ok(super::play_native_appended::fit_appended(
+                            picked,
+                            expected_count,
+                            tail,
+                        )
+                        .await)
+                    }
                     // A rejected pool is a clean verdict about THIS
                     // pool; the next alias may carry the real show.
                     Err(AniError::NoResults) => {}

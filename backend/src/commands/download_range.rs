@@ -58,6 +58,7 @@ impl Attempt for RangeStartAttempt<'_> {
             self.args.episode_count,
             self.args.year,
             self.args.subtype.as_deref(),
+            None,
         )
         .await?;
         let first = resolve_episode(

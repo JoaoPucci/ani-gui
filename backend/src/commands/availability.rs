@@ -969,6 +969,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         args.episode_count,
         args.year,
         args.subtype.as_deref(),
+        None,
     )
     .await?;
     let present = crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)

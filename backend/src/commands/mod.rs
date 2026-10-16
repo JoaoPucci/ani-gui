@@ -64,6 +64,7 @@ mod play_handoff_prop_test;
 #[path = "play_handoff_test.rs"]
 mod play_handoff_test;
 pub mod play_native;
+pub mod play_native_appended;
 mod play_native_choice;
 mod play_native_count_alone;
 mod play_native_countless;

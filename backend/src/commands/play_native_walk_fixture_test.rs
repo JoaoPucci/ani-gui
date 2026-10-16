@@ -176,6 +176,7 @@ async fn walk_over(site: Recorded) -> std::result::Result<PickedShow, NativeErro
         e.episode_count,
         e.year,
         e.subtype.as_deref(),
+        None,
     )
     .await
 }
@@ -2787,6 +2788,7 @@ async fn walk_under_anilist_year(id: &str) -> std::result::Result<PickedShow, Na
         e.episode_count,
         Some(year),
         e.subtype.as_deref(),
+        None,
     )
     .await
 }

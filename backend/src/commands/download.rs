@@ -214,6 +214,7 @@ where
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        tail: None,
     };
     let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {

@@ -325,6 +325,7 @@ where
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        tail: None,
     };
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider
