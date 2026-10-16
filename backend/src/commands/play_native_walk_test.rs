@@ -94,6 +94,43 @@ async fn the_pick_walk_marks_answered_dead_ends_non_persistable() {
         !ne.clean_miss,
         "an answered dead end proves nothing about the show's absence"
     );
+    assert!(
+        !ne.refused_by_name,
+        "a dead listing may have been the show's: no refusal by name"
+    );
+}
+
+#[tokio::test]
+async fn the_pick_walk_says_when_every_dead_end_was_a_refusal_by_name() {
+    // An entry with a count and no year takes only a hit named for it:
+    // "Some Other" fits the count and is named by nothing, so the pool
+    // is refused on how its hit is named — the answered dead end, and a
+    // refusal by name, which the verdict says.
+    let provider = scripted(&[("the show", Pool::Hits(&[("the-show-77", "Some Other")]))]);
+    let ne = walk(&provider, "the show", &[], Some(3))
+        .await
+        .expect_err("refused by name");
+    assert!(matches!(ne.error, AniError::NoResults));
+    assert!(!ne.clean_miss);
+    assert!(ne.refused_by_name, "every dead end was a refusal by name");
+}
+
+#[tokio::test]
+async fn a_dead_listing_beside_a_refusal_is_no_refusal_by_name() {
+    // One alias's pool is refused by name, the other's candidate
+    // answers its listing not-found: the dead one may have been the
+    // show, so the walk does not say the catalogue lists nothing
+    // named for it.
+    let provider = scripted(&[
+        ("the show", Pool::Hits(&[("the-show-77", "Some Other")])),
+        ("ghost", Pool::Hits(&[("ghost-1", "Ghost Entry")])),
+    ]);
+    let ne = walk(&provider, "the show", &["ghost".to_string()], Some(3))
+        .await
+        .expect_err("refused and dead");
+    assert!(matches!(ne.error, AniError::NoResults));
+    assert!(!ne.clean_miss);
+    assert!(!ne.refused_by_name);
 }
 
 #[tokio::test]
