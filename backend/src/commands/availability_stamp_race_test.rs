@@ -43,7 +43,7 @@ fn positive_row(provider: ProviderId, cap: Option<u32>) -> AvailabilityResponse 
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(provider),
     }
 }
