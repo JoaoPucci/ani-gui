@@ -2935,6 +2935,59 @@ async fn dated_entries_the_catalogue_does_not_list_are_refused() {
     assert_refused_unpersisted(DATED_REFUSED).await;
 }
 
+/// A hit its own entry page files under the genre Hentai is never a
+/// pick: the app reads Kitsu anonymously, and Kitsu serves no adult
+/// entry that way, so no entry the app shows is one. Ohanashi de Te Koi
+/// (40684) and Tsubu★Doll (8404) played hentai OVAs on master; undated,
+/// their walks read no entry page, and the count-alone rule is what
+/// refuses them (`UNDATED_REFUSED`). The pages are recorded beside
+/// them. Here each entry is given the hentai's own premiere year, and
+/// the hentai's title among its names — so its year, its count and a
+/// name all vouch for it — and the walk still takes nothing, the pool
+/// it answered from holding nothing else the entry could be; with the
+/// genre left off the page, the same walk takes the hentai.
+#[tokio::test]
+async fn a_hit_filed_under_hentai_is_never_picked() {
+    for (id, slug) in [
+        (
+            "40684",
+            "katainaka-ni-totsuidekita-ssia-musume-to-h-shimakuru-ohanashi-2166",
+        ),
+        (
+            "8404",
+            "muttsuri-dosukebe-tsuyu-gibo-shimai-no-honshitsu-minuite-sex-sanmai-2256",
+        ),
+    ] {
+        let vouched_for = |genres: bool| {
+            let mut site = Recorded::load(id);
+            let (query, title) = site
+                .doc
+                .searches
+                .iter()
+                .find_map(|(q, hits)| {
+                    let (_, title, _) = hits.iter().find(|(s, _, _)| s == slug)?;
+                    Some((q.clone(), title.clone()))
+                })
+                .unwrap_or_else(|| panic!("{id}: no search answers with {slug}"));
+            let pool = site.doc.searches[&query].clone();
+            site.doc.searches.insert(title.clone(), pool);
+            site.doc.kitsu.alt_titles.push(title);
+            site.doc.kitsu.year = site.doc.years[slug];
+            if !genres {
+                site.doc.genres.remove(slug);
+            }
+            site
+        };
+        if let Ok(p) = walk_over(vouched_for(true)).await {
+            panic!("{id}: picked {} ({})", p.hit.slug, p.hit.title);
+        }
+        let control = walk_over(vouched_for(false))
+            .await
+            .unwrap_or_else(|e| panic!("{id}: the control refused: {e:?}"));
+        assert_eq!(control.hit.slug, slug, "{id}: the control's pick");
+    }
+}
+
 /// What vouches for a hit depends on what the entry knows. An entry
 /// with a count takes only a hit a name vouches for, dated or not: a
 /// year and a count fit many shows as a count alone does, so a hit
