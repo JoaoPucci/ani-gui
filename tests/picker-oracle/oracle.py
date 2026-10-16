@@ -839,10 +839,9 @@ def clean_miss_expected(case):
 def refusal_expected(case):
     """The error and verdict a refused pool answers with. A pool with a
     listing whose probe dies is unheard — the transient network failure it
-    is, never the clean miss the availability cache persists (the only
-    dead pools the set refuses are those whose dying candidate ties the
-    winner's rank). Any other refusal is NoResults, clean unless the title
-    rule refused a fitting hit."""
+    is, never the clean miss the availability cache persists. Any other
+    refusal is NoResults, clean unless the title rule refused a fitting
+    hit."""
     if case.get("dead"):
         return "Network", False
     return "NoResults", clean_miss_expected(case)
@@ -853,7 +852,9 @@ def episodes_expected(count):
     listing numbers its rows 1..n as `[id, number, tag]` with id = number
     and no tag, and a pick plays the first `count` of them — a whole
     listing, or a broad one cut to the entry's own episodes from its start
-    with its own numbers kept."""
+    with its own numbers kept. A stitched pick lists otherwise — each row
+    keeps the id it streams from in its own part — so `expect` cannot
+    carry one: stitching is tabled out (`NOT_MODELLED`), never expected."""
     return [[k, k, None] for k in range(1, count + 1)]
 
 

@@ -156,6 +156,7 @@ title's search answers with the same `rows` of `(slug, title,
 episodes)`, in the provider's order. `count` and `entry_year` are
 Kitsu's, either `null` when unknown. `expect` is the pick the docs
 answer — the slug and its regular count — or `null` for a pool the walk
-must refuse. An optional `dead` lists slugs whose probe dies in
+must refuse. A pick is held to the first `count` rows of its listing, so
+a case cannot expect a stitched pick, whose rows keep each part's ids. An optional `dead` lists slugs whose probe dies in
 transport. Hand-written ids are given by hand; generated ones are the
 family and a hash of the pool.
