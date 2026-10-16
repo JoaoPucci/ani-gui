@@ -108,7 +108,7 @@ The full pyramid (unit → acceptance → e2e → property → architectural inv
 Known test debt (extract + unit-test next time you touch them):
 
 - Topbar live-results dropdown state machine in `+layout.svelte` (debounced search, ↑/↓ navigation, blur-dismiss timing, recent-search persistence).
-- Detail-page URL `$effect`s in `routes/anime/[id]/+page.svelte` (`?page=` → `episodesPage`, `?ep=` → `highlightEp` + scrollIntoView, `consumedEp` guard against re-firing).
+- Episode-tile spotlight `$effect`s in `routes/anime/[id]/+page.svelte` and `routes/play/[id]/+page.svelte` (a Jump-to-ep submit sets `highlightEp`; the effect waits for the tile to render, `scrollIntoView`s it and clears the highlight after 3.2 s). The `?page=` effect is already glue around `decideEpisodeFetchAction`.
 - Hero rotation timer in `routes/+page.svelte` (3-item cycle, pause on hover/focus, `prefers-reduced-motion` skip).
 
 ## 3. Provenance

@@ -117,6 +117,14 @@
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
 	import { isStaleDragCallback } from '$lib/play/drag-generation';
+	import {
+		extraOnPage,
+		nextEpisode,
+		parseEpisodeNumber,
+		previousEpisode,
+		stripColumns,
+		wholeEpisodeCount
+	} from '$lib/play/episode-number';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
 	import {
@@ -168,7 +176,9 @@
 	// show it names by then; every URL this page builds carries it on.
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
-	const episodeNum = $derived(parseInt(page.url.searchParams.get('episode') ?? '1', 10));
+	// A fractional extra (a 7.5 recap) stays itself: see
+	// $lib/play/episode-number.
+	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
 	// kind defaults to hls — the legacy URL shape didn't carry one. The
 	// detail page now always appends &kind=<hls|mp4>, so this default
 	// only kicks in when a refresh on a stale URL drops the param.
@@ -1220,7 +1230,7 @@
 			}
 			for (const tag of extraEpisodes) {
 				const n = parseFloat(tag);
-				if (!Number.isFinite(n) || n < start || n > end) continue;
+				if (!Number.isFinite(n) || !extraOnPage(n, episodesPage, UI_PAGE_SIZE)) continue;
 				out.push({
 					id: `__placeholder__${n}`,
 					number: n,
@@ -1243,8 +1253,10 @@
 	// so the next arrow and auto-play-next can't walk into a greyed
 	// tile. Unknown airing passes the cap through untouched.
 	const totalEpisodes = $derived(airedCap(episodeCap, airing));
-	const hasPrev = $derived(episodeNum > 1);
-	const hasNext = $derived(totalEpisodes === null || episodeNum < totalEpisodes);
+	const prevEpisodeNum = $derived(previousEpisode(episodeNum));
+	const nextEpisodeNum = $derived(nextEpisode(episodeNum));
+	const hasPrev = $derived(prevEpisodeNum >= 1);
+	const hasNext = $derived(totalEpisodes === null || nextEpisodeNum <= totalEpisodes);
 
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
 	// local boolean so the inline toggle on the player can flip the
@@ -1272,7 +1284,9 @@
 		return Math.max(1, Math.ceil(total / UI_PAGE_SIZE));
 	});
 	const epStart = $derived((episodesPage - 1) * UI_PAGE_SIZE + 1);
-	const epEnd = $derived((episodesPage - 1) * UI_PAGE_SIZE + (episodes?.length ?? 0));
+	// Whole episodes only: the recaps beside them are not in the run.
+	const pageWhole = $derived(episodes ? wholeEpisodeCount(episodes) : 0);
+	const epEnd = $derived((episodesPage - 1) * UI_PAGE_SIZE + pageWhole);
 
 	function kitsuPagesForUiPage(uiPage: number): number[] {
 		const start = (uiPage - 1) * UI_PAGE_SIZE + 1;
@@ -2115,11 +2129,11 @@
 
 	function onPrev() {
 		if (!hasPrev) return;
-		void switchToEpisode(episodeNum - 1);
+		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
 		if (!hasNext) return;
-		void switchToEpisode(episodeNum + 1);
+		void switchToEpisode(nextEpisodeNum);
 	}
 	function onPickEpisode(ep: KitsuEpisode) {
 		const n = ep.number ?? ep.relative_number ?? null;
@@ -3088,7 +3102,7 @@
 									stroke-linejoin="round"
 								/>
 							</svg>
-							<span>{m.play_episode_nav_prev_label({ episode: String(episodeNum - 1) })}</span>
+							<span>{m.play_episode_nav_prev_label({ episode: String(prevEpisodeNum) })}</span>
 						</button>
 						<button type="button" class="ep-btn ep-current-btn" disabled aria-current="true">
 							<span>{m.play_episode_nav_current_label({ episode: String(episodeNum) })}</span>
@@ -3103,7 +3117,7 @@
 							disabled={!hasNext || switchBusy || airingIsPending}
 							aria-label={m.play_episode_nav_next_aria_label()}
 						>
-							<span>{m.play_episode_nav_next_label({ episode: String(episodeNum + 1) })}</span>
+							<span>{m.play_episode_nav_next_label({ episode: String(nextEpisodeNum) })}</span>
 							<svg
 								class="ep-btn-icon"
 								viewBox="0 0 24 24"
@@ -3407,7 +3421,7 @@
 									onclick={() => gotoPage(episodesPage + 1)}
 									disabled={(totalEpisodePages !== null && episodesPage >= totalEpisodePages) ||
 										episodesLoading ||
-										(episodes !== null && episodes.length < UI_PAGE_SIZE)}
+										(episodes !== null && pageWhole < UI_PAGE_SIZE)}
 									aria-label={m.play_episodes_pager_next_aria_label()}
 								>
 									<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
@@ -3429,7 +3443,11 @@
 				{#if episodes && episodes.length > 0}
 					<!-- Single fluid row of 5 cards. No scroll: cards shrink/
 				     grow with the container so all 5 are always visible. -->
-					<ol class="ep-row" aria-label={m.play_episodes_section_aria_label()}>
+					<ol
+						class="ep-row"
+						aria-label={m.play_episodes_section_aria_label()}
+						style:--ep-columns={stripColumns(episodes.length, UI_PAGE_SIZE)}
+					>
 						{#each episodes as ep, i (ep.id)}
 							{@const n = ep.number ?? ep.relative_number ?? 0}
 							{@const isCurrent = n === episodeNum}
@@ -4895,10 +4913,11 @@
 	   sideways. Each card is a fixed width so the row reads as a
 	   strip of tiles, not a wrap-grid. Snap-stop on each card so
 	   a flick lands cleanly. */
-	/* Single fluid row of 5 cards. `repeat(5, 1fr)` keeps the count
-	   fixed regardless of viewport; cards shrink/grow with the
-	   container so all 5 always fit. Block padding gives breathing
-	   room so the active card's accent ring isn't shaved. */
+	/* Single fluid row: five cards a page, plus a column for each recap
+	   beside them (`--ep-columns`, from stripColumns), so the count is
+	   fixed regardless of viewport and nothing wraps; cards shrink/grow
+	   with the container so all always fit. Block padding gives
+	   breathing room so the active card's accent ring isn't shaved. */
 	.ep-row {
 		list-style: none;
 		margin: 0;
@@ -4909,7 +4928,7 @@
 		   for the active card's accent ring + hover lift. */
 		padding: var(--space-2) 0;
 		display: grid;
-		grid-template-columns: repeat(5, 1fr);
+		grid-template-columns: repeat(var(--ep-columns, 5), 1fr);
 		gap: var(--space-3);
 	}
 	.ep-row > li {

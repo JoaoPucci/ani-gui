@@ -64,6 +64,9 @@ export async function pushWatchedToTrackers(
 	seriesFinished: boolean = false
 ): Promise<void> {
 	if (!kitsuId || deps.connected.length === 0) return;
+	// Trackers count whole episodes; a fractional extra (a 7.5 recap)
+	// is not one of them and moves no progress.
+	if (!Number.isInteger(episode)) return;
 	const status = watchedStatus(episode, seriesTotal, seriesFinished);
 	const body = status
 		? { kitsu_id: kitsuId, progress: episode, status }
