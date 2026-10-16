@@ -378,3 +378,34 @@ async fn a_play_without_its_evidence_keeps_the_reading_availability_proved() {
     assert_eq!(mastered(&provider).last().copied(), Some(first_oad()));
     assert_eq!(stamped(&state), (Some(12), oads()));
 }
+
+/// A history row an earlier version wrote — Noragami's first OAD
+/// recorded as episode 13, with no numbering stamp to translate it —
+/// reads back as `12.1` once availability has proved the reading, so
+/// Continue resumes the OAD instead of offering an episode 13 nothing
+/// plays.
+#[tokio::test]
+async fn an_oad_an_earlier_version_recorded_as_episode_13_reads_back_as_12_1() {
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    let row = crate::history::HistoryEntry {
+        ep_no: "13".into(),
+        id: "hianime:noragami-916".into(),
+        title: "Noragami".into(),
+        watched_at: None,
+        kitsu_id: Some(KITSU.into()),
+    };
+    crate::history::write_atomic(&state.history_path, std::slice::from_ref(&row)).expect("history");
+    let read = |state: &crate::app::AppState| {
+        crate::commands::history::history_list(state).expect("history")[0]
+            .ep_no
+            .clone()
+    };
+    assert_eq!(read(&state), "13", "nothing proved yet");
+    seed_kitsu(&state, "finished");
+    check_availability(&state, &availability_args())
+        .await
+        .expect("answered");
+    assert_eq!(read(&state), "12.1");
+}

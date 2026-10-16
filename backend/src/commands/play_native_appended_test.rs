@@ -804,3 +804,42 @@ async fn evidence_that_no_longer_proves_the_reading_forgets_it() {
     assert_eq!(got.episodes, rows);
     assert_eq!(disproved.remembered(), None);
 }
+
+// ── history rows an earlier version wrote ──────────────────────────
+
+fn noragami_reading() -> Remembered {
+    let (rows, _) = noragami();
+    Remembered {
+        slug: "noragami-916".into(),
+        count: 12,
+        ids: rows[12..].iter().map(|e| e.id).collect(),
+    }
+}
+
+/// An earlier version recorded Noragami's OADs as episodes 13 and 14:
+/// under the kept reading those rows read back as the extras they are.
+#[test]
+fn a_slot_the_reading_tagged_reads_back_as_its_extra() {
+    let reading = noragami_reading();
+    let key = "hianime:noragami-916";
+    assert_eq!(extra_for_slot(&reading, key, "13"), Some("12.1".into()));
+    assert_eq!(extra_for_slot(&reading, key, " 14 "), Some("12.2".into()));
+}
+
+/// Anything else is read as it was written: an episode up to the
+/// count, a slot past the rows the reading tagged, an extra already,
+/// a range, another show.
+#[test]
+fn every_other_row_reads_back_as_written() {
+    let reading = noragami_reading();
+    let key = "hianime:noragami-916";
+    for ep in ["1", "12", "15", "12.1", "1-12", "", "x"] {
+        assert_eq!(extra_for_slot(&reading, key, ep), None, "{ep:?}");
+    }
+    assert_eq!(extra_for_slot(&reading, "hianime:other-show-1", "13"), None);
+    assert_eq!(
+        extra_for_slot(&reading, "noragami-916", "13"),
+        None,
+        "a bare id"
+    );
+}
