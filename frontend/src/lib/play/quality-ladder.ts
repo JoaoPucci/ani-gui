@@ -23,6 +23,11 @@ export interface LadderLevel {
 	readonly bitrate: number;
 }
 
+/** A level the viewer pinned, as the next stream is matched against
+ *  it: the height its playlist lists, or — for a level that lists
+ *  none — its rank by bandwidth from the top. */
+export type QualityPinChoice = number | { rank: number };
+
 /** The setting's target. Anything that is neither `worst` nor a
  *  height reads as `best`, the backend's own default. */
 export function parseQualitySetting(setting: string | null | undefined): QualityTarget {

@@ -10,6 +10,7 @@ import {
 	neighbourLevel,
 	targetLevel,
 	type LadderLevel,
+	type QualityPinChoice,
 	type QualityTarget
 } from './quality-ladder';
 
@@ -43,14 +44,12 @@ export abstract class QualityHold {
 	protected engaged: boolean;
 	protected readonly unavailable = new Set<number>();
 
-	constructor(levels: readonly LadderLevel[], target: QualityTarget, pinHeight: number | null) {
+	constructor(levels: readonly LadderLevel[], target: QualityTarget, pin: QualityPinChoice | null) {
 		this.ladder = ladderOrder(levels);
 		this.ceiling = targetLevel(target, levels);
-		this.pinned = pinHeight !== null;
+		this.pinned = typeof pin === 'number';
 		this.current =
-			pinHeight === null
-				? this.ceiling
-				: targetLevel({ kind: 'height', height: pinHeight }, levels);
+			typeof pin === 'number' ? targetLevel({ kind: 'height', height: pin }, levels) : this.ceiling;
 		this.engaged = levels.length > 1;
 	}
 

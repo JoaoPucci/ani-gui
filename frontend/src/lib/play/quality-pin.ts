@@ -6,12 +6,15 @@
  */
 
 import type { QualityGovernor } from './quality-governor';
+import type { QualityPinChoice } from './quality-ladder';
 import type { QualityTrack } from './quality-track';
 
 let pinnedHeight: number | null = null;
 
 export const qualityPin = {
 	get: (): number | null => pinnedHeight,
+	/** What the next stream is matched against. */
+	choice: (): QualityPinChoice | null => pinnedHeight,
 	/** Keeps `height`; a level of no known height pins nothing. */
 	set(height: number | null): void {
 		if (height !== null && height > 0) pinnedHeight = height;

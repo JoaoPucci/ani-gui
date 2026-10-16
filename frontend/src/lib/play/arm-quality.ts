@@ -80,7 +80,11 @@ export function armQuality(input: {
 	engine.on(events.MANIFEST_PARSED, (_event, data) => {
 		track.arrive(data.levels);
 		const setting = input.setting();
-		const g = new QualityGovernor(track.levels(), parseQualitySetting(setting), qualityPin.get());
+		const g = new QualityGovernor(
+			track.levels(),
+			parseQualitySetting(setting),
+			qualityPin.choice()
+		);
 		governor = g;
 		const start = g.start();
 		if (start) {
