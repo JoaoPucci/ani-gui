@@ -425,7 +425,10 @@ def outcome_of(case):
     if expect is None:
         err, clean = oracle.refusal_expected(case)
         return {"err": err, "clean_miss": clean}
-    return {"ok": expect["pick"], "count": expect["count"], "episodes": [[k, k, None] for k in range(1, expect["count"] + 1)]}
+    got = {"ok": expect["pick"], "count": expect["count"], "episodes": [[k, k, None] for k in range(1, expect["count"] + 1)]}
+    if "versions" in expect:
+        got["versions"] = expect["versions"]
+    return got
 
 
 REFUSED = {"refused": "NoResults", "clean_miss": True}
