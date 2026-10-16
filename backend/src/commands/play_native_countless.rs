@@ -30,17 +30,17 @@ use super::play_native_title_marker::EntryTitles;
 /// chance. The single probe still runs so the caller gets the episode
 /// list it needs.
 ///
-/// When the title rule narrowed the head (`narrowed`) and a candidate
-/// it took answered its listing not-found, the miss is the answered
-/// dead end on a dead listing, `Upstream { status: 404 }`, not the
-/// plain miss the caller would read as a refusal by name: the dead
-/// listing may have been the entry's.
+/// When a candidate it took answered its listing not-found, and no
+/// later one served, the miss is the answered dead end on a dead
+/// listing, `Upstream { status: 404 }`: the dead listing may have been
+/// the entry's, so it is neither the clean miss nor — when the title
+/// rule narrowed the head — the refusal by name the caller would read
+/// the plain miss as.
 pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     client: &P,
     head: &[(&BrowseHit, bool)],
     needle: &str,
     entry: EntryTitles<'_>,
-    narrowed: bool,
 ) -> Result<PickedShow> {
     let exact = head
         .iter()
@@ -85,7 +85,7 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
             Err(e) => return Err(e),
         }
     }
-    Err(if narrowed && dead {
+    Err(if dead {
         crate::error::AniError::Upstream { status: 404 }
     } else {
         crate::error::AniError::NoResults

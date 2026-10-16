@@ -47,7 +47,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     let filtered = year_filtered(client, &hits, year, &mut pages).await;
     let Some(expected) = expected else {
         let picked = match filtered {
-            Ok(head) => pick_without_count(client, &head, &needle, entry, refused_dropped).await,
+            Ok(head) => pick_without_count(client, &head, &needle, entry).await,
             Err(e) => Err(e),
         };
         return countless_miss(picked, refused_dropped);
