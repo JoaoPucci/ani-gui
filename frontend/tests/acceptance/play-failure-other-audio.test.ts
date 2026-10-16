@@ -232,6 +232,11 @@ const CASES: [string, CacheAnswer | 'fails', () => string][] = [
 		{ cached: {}, playable_episode_counts: {} },
 		PLAIN
 	],
+	[
+		'the cache has the other audio only as a count-less row',
+		{ cached: { [KITSU_ID]: true }, playable_episode_counts: {} },
+		PLAIN
+	],
 	['the cache lookup fails', 'fails', PLAIN]
 ];
 

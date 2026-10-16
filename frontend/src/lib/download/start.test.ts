@@ -198,6 +198,11 @@ describe('startDownload', () => {
 				m.play_play_failure_episode_unavailable()
 			],
 			[{ cached: {}, playable_episode_counts: {} }, m.play_play_failure_episode_unavailable()],
+			// A count-less positive row proves the show, not the episode.
+			[
+				{ cached: { '40684': true }, playable_episode_counts: {} },
+				m.play_play_failure_episode_unavailable()
+			],
 			[new Error('sidecar gone'), m.play_play_failure_episode_unavailable()]
 		];
 		for (const [answer, expected] of cases) {
@@ -211,6 +216,23 @@ describe('startDownload', () => {
 			expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', expected);
 			expect(apiMock.availabilityBatch).toHaveBeenCalledWith(['40684'], 'dub');
 		}
+	});
+
+	it('does not suggest the other audio for a range, whose failed episode is not named', async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({
+			cached: { '40684': true },
+			playable_episode_counts: { '40684': 12 }
+		});
+		apiMock.downloadStream.mockRejectedValueOnce({
+			kind: 'episode_unavailable',
+			key: 'error.play.episode_unavailable'
+		});
+		startDownload({ ...baseArgs, kitsu_id: '40684', episode: '1-12', mode: 'sub' });
+		await vi.waitFor(() => expect(storeMock.downloadStore.markError).toHaveBeenCalled());
+		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
+			'dl-1',
+			m.play_play_failure_episode_unavailable()
+		);
 	});
 
 	it('asks the cache nothing about the other audio for any other failure', async () => {

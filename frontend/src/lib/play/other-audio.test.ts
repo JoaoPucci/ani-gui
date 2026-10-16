@@ -49,9 +49,12 @@ describe('lookupOtherAudio — what the availability cache says, never a probe',
 		expect(batch).toHaveBeenCalledWith(['7'], 'sub');
 	});
 
-	it('is true when the cache has the other audio without a count', async () => {
+	it('is unknown when the cache has the other audio without a count', async () => {
+		// A count-less positive row (a dub resolve stamps one) proves
+		// the show is there, not that this episode is: no evidence for
+		// the suggestion.
 		const batch = batchAnswering({ cached: { '7': true }, playable_episode_counts: {} });
-		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: 30 }, batch)).toBe(true);
+		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: 30 }, batch)).toBeNull();
 	});
 
 	it('is false when the other audio carries fewer episodes than this one', async () => {
@@ -107,19 +110,25 @@ describe('lookupOtherAudio — what the availability cache says, never a probe',
 		expect(batch).not.toHaveBeenCalled();
 	});
 
-	it('takes the show-level answer when the episode is unknown', async () => {
-		// A range download does not say which of its episodes failed.
+	it('is unknown when no episode is named', async () => {
+		// A range download does not say which of its episodes failed,
+		// so no count can vouch for it.
 		const batch = batchAnswering({
 			cached: { '7': true },
 			playable_episode_counts: { '7': 4 }
 		});
-		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: null }, batch)).toBe(true);
+		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: null }, batch)).toBeNull();
+	});
+
+	it('still knows the other audio has nothing when no episode is named', async () => {
+		const batch = batchAnswering({ cached: { '7': false }, playable_episode_counts: {} });
+		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: null }, batch)).toBe(false);
 	});
 });
 
 describe('otherAudioForFailure', () => {
 	it('asks only about an episode missing from this audio', async () => {
-		const batch = batchAnswering({ cached: { '7': true }, playable_episode_counts: {} });
+		const batch = batchAnswering({ cached: { '7': true }, playable_episode_counts: { '7': 12 } });
 		for (const e of [{ kind: 'timeout' }, { kind: 'no_results' }, new Error('x'), null]) {
 			expect(await otherAudioForFailure(e, { kitsuId: '7', mode: 'sub', episode: 1 }, batch)).toBe(
 				null
@@ -141,7 +150,7 @@ describe('describePlayFailureFromCache', () => {
 	const q = { kitsuId: '7', mode: 'sub', episode: 3 };
 
 	it('suggests the other audio only when the cache vouches for it', async () => {
-		const yes = batchAnswering({ cached: { '7': true }, playable_episode_counts: {} });
+		const yes = batchAnswering({ cached: { '7': true }, playable_episode_counts: { '7': 12 } });
 		const no = batchAnswering({ cached: { '7': false }, playable_episode_counts: {} });
 		const unknown = batchAnswering({ cached: {}, playable_episode_counts: {} });
 		expect(await describePlayFailureFromCache(EPISODE_UNAVAILABLE, q, {}, yes)).toBe(
