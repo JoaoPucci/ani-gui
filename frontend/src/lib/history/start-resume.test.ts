@@ -393,3 +393,85 @@ describe('makeStartResume — a range-shaped row', () => {
 		);
 	});
 });
+
+describe('makeStartResume (the row as it reads now)', () => {
+	it('resumes from what the row reads as once the cap is settled, not what the card read', async () => {
+		// The card read "24.5" when the page loaded — a stitched recap
+		// numbered as an earlier version numbered it. The cap lookup
+		// pays for the listing that puts it right; asked after it, the
+		// row reads "12.5", and Continue goes on to 13, not to 25.
+		const log: string[] = [];
+		const h = makeHarness({
+			fetchInteractiveCount: vi.fn().mockImplementation(async () => {
+				log.push('interactive-count');
+				return { count: 36, approximate: false };
+			}),
+			currentNumber: vi.fn().mockImplementation(async () => {
+				log.push('current-number');
+				return { ep_no: '12.5', former_ep_no: '24.5' };
+			})
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
+		expect(log).toEqual(['interactive-count', 'current-number']);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 13 }),
+			expect.any(Function)
+		);
+	});
+
+	it('goes back to the row left part-way under the number it had before', async () => {
+		// The recap was left part-way when it was "24.5": its position
+		// moves to "12.5" before Continue asks whether it was.
+		const kept = new Set(['k1:24.5']);
+		const h = makeHarness({
+			currentNumber: vi.fn().mockResolvedValue({ ep_no: '12.5', former_ep_no: '24.5' }),
+			movePosition: vi.fn().mockImplementation((id: string, from: number, to: number) => {
+				if (kept.delete(`${id}:${from}`)) kept.add(`${id}:${to}`);
+			}),
+			leftPartWay: (id, ep) => kept.has(`${id}:${ep}`)
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
+		expect(h.deps.movePosition).toHaveBeenCalledWith('k1', 24.5, 12.5);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 12.5 }),
+			expect.any(Function)
+		);
+	});
+
+	it('resumes from what the card read when the row cannot be asked', async () => {
+		const h = makeHarness({
+			currentNumber: vi.fn().mockRejectedValue(new Error('offline'))
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, false);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 6 }),
+			expect.any(Function)
+		);
+	});
+
+	it('opens the session on the episode it plays, and syncs that', async () => {
+		const h = makeHarness({
+			fetchInteractiveCount: vi.fn().mockResolvedValue({ count: 36, approximate: false }),
+			resolvePlay: vi.fn().mockResolvedValue({ session_id: 's1', episode: '12.5' }),
+			followPlayed: vi.fn().mockReturnValue(12.5)
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '24', 'Show'), makeMatch('k1', 36), 36, false);
+		expect(h.deps.followPlayed).toHaveBeenCalledWith(
+			'k1',
+			expect.objectContaining({ episode: '12.5' }),
+			25
+		);
+		expect(h.deps.navigateToSession).toHaveBeenCalledWith(
+			'k1',
+			expect.anything(),
+			12.5,
+			false,
+			'h1'
+		);
+		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 12.5, 36, false);
+	});
+});
