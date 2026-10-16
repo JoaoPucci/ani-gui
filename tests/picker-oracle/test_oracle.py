@@ -216,6 +216,31 @@ class TheModelReadsTheDocs(unittest.TestCase):
         ]:
             self.assertEqual(oracle.predict(pool(titles, None, rows, year=None)), want, (titles, rows))
 
+    def test_a_count_with_no_year_takes_only_what_the_title_or_a_name_vouches_for(self):
+        # "A count with no year is no identity either": with a count above
+        # one and no year, a hit is picked only when it is the title
+        # searched or the entry names it; any other is refused, and the
+        # pool is the refusal by title, not the clean miss.
+        other = ("o", "Other", E)
+        for titles, rows, want in [
+            (["Show: Arc"], [other], None),
+            (["Show: Arc"], [other, ("s", "Show: Arc", E)], pick("s")),
+            (["Show: Arc", "Shou Arc"], [other, ("a", "Shou Arc", E)], pick("a")),
+            (
+                ["Yi Ren Zhi Xia 6th Season", "The Outcast 6th Season", "一人之下6", "Hitori No Shita: The Outcast 6th Season"],
+                [("s5", "The Outcast 5th Season", 12), ("s6", "The Outcast 6", 26), ("m", "The Outcast Movie: The Rusted Blade Resurfaces", 1), ("f", "Yi Ren Zhi Xia: Fanwai Pian", 2)],
+                pick("s6", 26),
+            ),
+        ]:
+            count = 26 if titles[0].startswith("Yi Ren") else E
+            self.assertEqual(oracle.predict(pool(titles, count, rows, year=None)), want, (titles, rows))
+        self.assertEqual(oracle.refusal_expected(pool(["Show: Arc"], E, [other], year=None)), ("NoResults", False))
+        # a dated entry takes the hit on its year and count, as before
+        self.assertEqual(oracle.predict(pool(["Show: Arc"], E, [other])), pick("o"))
+        # and a countless one with no year is the clean miss, as before
+        self.assertIsNone(oracle.predict(pool(["Show: Arc"], None, [other], year=None)))
+        self.assertEqual(oracle.refusal_expected(pool(["Show: Arc"], None, [other], year=None)), ("NoResults", True))
+
     def test_the_probe_head_stops_at_the_fifth_that_could_be_picked(self):
         rows = [(f"r{i}", f"Show 2 Arc {c}", 50) for i, c in enumerate("ABCDE")] + [("x", "Show 3", E)]
         picked, evidence = oracle.head(["Show 2"], rows, True)
