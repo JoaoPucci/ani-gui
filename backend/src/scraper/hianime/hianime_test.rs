@@ -43,7 +43,7 @@ fn search_cards_inside_the_result_list_become_hits() {
                 slug: "cowboy-bebop-1281".into(),
                 title: "Cowboy Bebop".into(),
                 kind: Some("TV".into()),
-                jname: None,
+                jname: Some("Cowboy Bebop".into()),
             },
             BrowseHit {
                 slug: "cowboy-bebop-the-movie-1282".into(),
@@ -52,8 +52,39 @@ fn search_cards_inside_the_result_list_become_hits() {
                 jname: None,
             },
         ],
-        "the widget and sidebar cards share the markup and are not results"
+        "the widget and sidebar cards share the markup and are not results; \
+         a card's romanized name is its anchor's data-jname, and a card \
+         without one carries none"
     );
+}
+
+/// The romanized name is the heading anchor's own `data-jname`,
+/// entity-decoded and trimmed; an empty one names nothing, and one on
+/// the poster link that leads the card is not read.
+#[test]
+fn a_card_s_romanized_name_is_its_heading_anchor_s() {
+    let page = |anchor: &str| {
+        format!(
+            r#"<div class="film_list-wrap"><div class="flw-item">
+            <div class="film-poster"><a href="https://hianime.at/watch/x-1" title="X" data-jname="Poster Name"></a></div>
+            <div class="film-detail"><h3 class="film-name">{anchor}X</a></h3></div>
+            </div></div><div id="main-sidebar"></div>"#
+        )
+    };
+    let read = |anchor: &str| {
+        parse_search(&page(anchor)).expect("parsed")[0]
+            .jname
+            .clone()
+    };
+    assert_eq!(
+        read(r#"<a href="https://hianime.at/x-1" title="X" data-jname=" Gintama&#039; ">"#),
+        Some("Gintama'".to_string())
+    );
+    assert_eq!(
+        read(r#"<a href="https://hianime.at/x-1" title="X" data-jname="">"#),
+        None
+    );
+    assert_eq!(read(r#"<a href="https://hianime.at/x-1" title="X">"#), None);
 }
 
 /// Each result card leads with its poster link — `href` and `title`
@@ -453,6 +484,83 @@ fn slug_id_is_the_trailing_number() {
 }
 
 // ── entry page ──────────────────────────────────────────────────────
+
+/// An entry page as hianime writes one: the Japanese, Synonyms, Aired
+/// and Genres rows, then a sidebar genre menu the show is not filed
+/// under.
+const ENTRY_PAGE: &str = r#"<div class="anisc-info">
+    <div class="item item-title"><span class="item-head">Japanese:</span>
+        <span class="name">銀魂&#039; 延長戦</span></div>
+    <div class="item item-title"><span class="item-head">Synonyms:</span>
+        <span class="name">Shingeki no Kyojin: Final Season, Part 1</span></div>
+    <div class="item item-title"><span class="item-head">Aired:</span>
+        <span class="name">Oct 3, 2021 to Mar 19, 2022</span></div>
+    <div class="item item-list"><span class="item-head">Genres:</span>
+        <a href="https://hianime.at/genres/drama" title="Drama">
+            Drama
+        </a>
+        <a href="https://hianime.at/genres/sci-fi" title="Sci-Fi">Sci-Fi</a>
+    </div>
+    <div class="item item-list"><span class="item-head">Studios:</span>
+        <a class="name" href="https://hianime.at/studios/a-1-pictures">A-1 Pictures</a></div>
+</div>
+<div id="main-sidebar"><a href="https://hianime.at/genres/hentai" title="Hentai">Hentai</a></div>"#;
+
+/// The page's other names are its Japanese row and its Synonyms row,
+/// decoded and trimmed, in that order; a synonyms row is one name,
+/// however many commas it carries.
+#[test]
+fn the_entry_page_names_are_its_japanese_and_synonyms_rows() {
+    assert_eq!(
+        parse_detail_names(ENTRY_PAGE),
+        vec![
+            "銀魂' 延長戦".to_string(),
+            "Shingeki no Kyojin: Final Season, Part 1".to_string()
+        ]
+    );
+    assert_eq!(
+        parse_detail_names("<div>Duration: 24m</div>"),
+        Vec::<String>::new()
+    );
+    let empty = r#"<div class="item item-title"><span class="item-head">Japanese:</span><span class="name"> </span></div>"#;
+    assert_eq!(
+        parse_detail_names(empty),
+        Vec::<String>::new(),
+        "an empty row names nothing"
+    );
+}
+
+/// The genres are the links of the Genres row, read inside it: the
+/// sidebar's genre menu, which links every genre the site has, is not
+/// the show's.
+#[test]
+fn the_entry_page_genres_are_its_genre_row_s_links() {
+    assert_eq!(
+        parse_detail_genres(ENTRY_PAGE),
+        vec!["Drama".to_string(), "Sci-Fi".to_string()]
+    );
+    assert_eq!(
+        parse_detail_genres("<div>Duration: 24m</div>"),
+        Vec::<String>::new()
+    );
+    let unclosed = r#"<span class="item-head">Genres:</span><a href="/genres/drama">Drama</a>
+        <span class="item-head">Studios:</span><a href="/studios/x">X</a>
+        <a href="https://hianime.at/genres/hentai">Hentai</a>"#;
+    assert_eq!(
+        parse_detail_genres(unclosed),
+        vec!["Drama".to_string()],
+        "a row that lost its closing tag ends at the next row's label"
+    );
+}
+
+/// The entry page read once: the year, the names and the genres.
+#[test]
+fn the_entry_page_is_its_year_names_and_genres() {
+    let page = parse_entry_page(ENTRY_PAGE);
+    assert_eq!(page.year, Some(2021));
+    assert_eq!(page.names.len(), 2);
+    assert_eq!(page.genres, vec!["Drama".to_string(), "Sci-Fi".to_string()]);
+}
 
 #[test]
 fn the_entry_page_year_is_the_aired_start() {

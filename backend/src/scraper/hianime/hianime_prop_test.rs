@@ -250,6 +250,51 @@ proptest::proptest! {
         proptest::prop_assert_eq!(parse_detail_year(&page), expected);
     }
 
+    /// The genres are the Genres row's links in order, whatever sits
+    /// after the row: a later row's links or a genre menu elsewhere on
+    /// the page never answer for the show.
+    #[test]
+    fn detail_genres_are_the_genre_row_s_links_alone(
+        genres in proptest::collection::vec("[A-Z][a-z]{2,8}( [A-Z][a-z]{2,6})?", 0..6),
+        decoys in proptest::collection::vec("[A-Z][a-z]{2,8}", 0..4),
+        closed in proptest::bool::ANY,
+    ) {
+        let links: String = genres
+            .iter()
+            .map(|g| format!(r#"<a href="https://hianime.at/genres/{}" title="{g}"> {g} </a>"#, g.to_lowercase()))
+            .collect();
+        let close = if closed { "</div>" } else { "" };
+        let menu: String = decoys
+            .iter()
+            .map(|g| format!(r#"<a href="https://hianime.at/genres/{}">{g}</a>"#, g.to_lowercase()))
+            .collect();
+        let page = format!(
+            r#"<div class="item item-list"><span class="item-head">Genres:</span>{links}{close}<div class="item"><span class="item-head">Studios:</span></div>{menu}"#
+        );
+        proptest::prop_assert_eq!(parse_detail_genres(&page), genres);
+    }
+
+    /// The page's names are its Japanese and Synonyms values as
+    /// written, trimmed, the Japanese first, a missing row giving none.
+    #[test]
+    fn detail_names_are_the_japanese_and_synonyms_values(
+        japanese in proptest::option::of("[ぁ-んァ-ン一-龯]{1,12}"),
+        synonyms in proptest::option::of("[A-Za-z][A-Za-z ,:]{0,30}[A-Za-z]"),
+    ) {
+        let row = |label: &str, value: &Option<String>| {
+            value.as_ref().map_or(String::new(), |v| {
+                format!(r#"<div class="item item-title"><span class="item-head">{label}:</span> <span class="name"> {v} </span></div>"#)
+            })
+        };
+        let page = format!(
+            r#"{}{}<div class="item"><span class="item-head">Aired:</span><span class="name">Apr 3, 1998</span></div>"#,
+            row("Japanese", &japanese),
+            row("Synonyms", &synonyms),
+        );
+        let expected: Vec<String> = japanese.into_iter().chain(synonyms).collect();
+        proptest::prop_assert_eq!(parse_detail_names(&page), expected);
+    }
+
     /// A card whose title is blank names nothing and refuses the
     /// listing naming that card, whatever its slug; a list whose
     /// cards all carry a title comes back in order.
