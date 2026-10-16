@@ -248,3 +248,46 @@ proptest::proptest! {
         proptest::prop_assert!(listing_fits(&listing(None, true, &pairs), &page));
     }
 }
+
+#[test]
+fn a_kitsu_placeholder_title_is_not_compared() {
+    // Kitsu titles some episodes "Episode N" until someone enters the
+    // real title; that says nothing about the listing, so a right
+    // listing within its count is kept.
+    let l = listing(
+        Some(4),
+        true,
+        &[(1, "Alpha"), (2, "Bravo"), (3, "Charlie"), (4, "Delta")],
+    );
+    let page = [
+        ep(1, Some("Episode 1")),
+        ep(2, Some("Episode 2")),
+        ep(3, Some("episode 3")),
+        ep(4, Some("Delta")),
+    ];
+    assert!(listing_fits(&l, &page));
+}
+
+#[test]
+fn a_title_of_one_or_two_characters_contains_nothing() {
+    // "Go" squashes to "go", which "Gintama Goes to the Sea" contains,
+    // and "Ha" to "ha", inside "Sharp Hand"; titles that short are no
+    // evidence either way, so the two cannot make half agree.
+    let l = listing(
+        Some(4),
+        true,
+        &[
+            (1, "Gintama Goes to the Sea"),
+            (2, "Sharp Hand"),
+            (3, "Charlie"),
+            (4, "Delta"),
+        ],
+    );
+    let page = [
+        ep(1, Some("Go")),
+        ep(2, Some("Ha")),
+        ep(3, Some("Something Else")),
+        ep(4, Some("Another Thing")),
+    ];
+    assert!(!listing_fits(&l, &page));
+}
