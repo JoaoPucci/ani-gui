@@ -122,6 +122,7 @@
 		nextEpisode,
 		parseEpisodeNumber,
 		previousEpisode,
+		stripColumns,
 		wholeEpisodeCount
 	} from '$lib/play/episode-number';
 	import { describeError, describePlayFailure } from '$lib/play/error-copy';
@@ -3408,7 +3409,11 @@
 				{#if episodes && episodes.length > 0}
 					<!-- Single fluid row of 5 cards. No scroll: cards shrink/
 				     grow with the container so all 5 are always visible. -->
-					<ol class="ep-row" aria-label={m.play_episodes_section_aria_label()}>
+					<ol
+						class="ep-row"
+						aria-label={m.play_episodes_section_aria_label()}
+						style:--ep-columns={stripColumns(episodes.length, UI_PAGE_SIZE)}
+					>
 						{#each episodes as ep, i (ep.id)}
 							{@const n = ep.number ?? ep.relative_number ?? 0}
 							{@const isCurrent = n === episodeNum}
@@ -4874,10 +4879,11 @@
 	   sideways. Each card is a fixed width so the row reads as a
 	   strip of tiles, not a wrap-grid. Snap-stop on each card so
 	   a flick lands cleanly. */
-	/* Single fluid row of 5 cards. `repeat(5, 1fr)` keeps the count
-	   fixed regardless of viewport; cards shrink/grow with the
-	   container so all 5 always fit. Block padding gives breathing
-	   room so the active card's accent ring isn't shaved. */
+	/* Single fluid row: five cards a page, plus a column for each recap
+	   beside them (`--ep-columns`, from stripColumns), so the count is
+	   fixed regardless of viewport and nothing wraps; cards shrink/grow
+	   with the container so all always fit. Block padding gives
+	   breathing room so the active card's accent ring isn't shaved. */
 	.ep-row {
 		list-style: none;
 		margin: 0;
@@ -4888,7 +4894,7 @@
 		   for the active card's accent ring + hover lift. */
 		padding: var(--space-2) 0;
 		display: grid;
-		grid-template-columns: repeat(5, 1fr);
+		grid-template-columns: repeat(var(--ep-columns, 5), 1fr);
 		gap: var(--space-3);
 	}
 	.ep-row > li {

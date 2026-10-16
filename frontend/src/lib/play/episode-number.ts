@@ -66,8 +66,9 @@ export function wholeEpisodeCount(
 	}).length;
 }
 
-/** Stub: how many columns a strip page's single row needs. */
+/** How many columns a strip page's single row needs: one per tile, so
+ *  a recap beside a full page does not wrap, and never fewer than a
+ *  page, so a short last page keeps the tiles' width. */
 export function stripColumns(tileCount: number, pageSize: number): number {
-	void tileCount;
-	return pageSize;
+	return Math.max(pageSize, tileCount);
 }
