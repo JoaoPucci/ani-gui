@@ -17,13 +17,12 @@ use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
 use super::play_native_choice::{entry_rank, select_winner, strongest_dead};
 use super::play_native_countless::pick_without_count;
+use super::play_native_dead_listings::DeadListings;
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_title_verdict::{
-    countless_miss, probe_head, rejection, rescuable, DeadListings,
-};
+use super::play_native_title_verdict::{countless_miss, probe_head, rejection, rescuable};
 use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
