@@ -189,11 +189,16 @@ starting it, and delete it when you find it done.
   (a 22-episode "Show Season 3" beside a dead "… Part 2" and a live
   14-episode hit, against 12), a confirmed split lead whose later part
   is dead is rescued alone, and a three-part chain with its last part
-  dead is stitched short as an airing one. The refusal-by-name verdicts
-  already read dead listings as they would have answered; the success
-  paths waited because blocking on a not-found answer turns every stale
-  slug into a pool that never picks, and the shape has not been seen in
-  a recorded pool.
+  dead is stitched short as an airing one. The success paths waited
+  because blocking on a not-found answer turns every stale slug into a
+  pool that never picks, and the shape has not been seen in a recorded
+  pool. The rejection verdicts read a dead completing sibling by
+  restating the spanning cut's conditions on the broad listing as it
+  stands, not by running the cut with the sibling put back: where
+  another broad listing wins the cut over it, or an exact listing of
+  the entry's own stands beside it, they can read the sibling
+  otherwise than the cut would — shapes no review has built a pool
+  for.
 
 - **A refusal by name is probed again on every look.** A pool rejected
   after a hit the count accepted was scored out on how it is named is
