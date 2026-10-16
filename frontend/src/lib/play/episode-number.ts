@@ -15,21 +15,32 @@ export function parseEpisodeNumber(raw: string | null | undefined): number | nul
 	return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** The episode before `episode`: one less for a whole episode, the
- *  whole episode below for a fractional extra (7.5 → 7). May be 0,
- *  which is no episode. `extras` are the fractional extras the
+/** The episode before `episode`: one less for a whole episode; for a
+ *  fractional extra, the listed extra before it beside the same
+ *  episode (12.2 → 12.1), else the whole episode below (7.5 → 7). May
+ *  be 0, which is no episode. `extras` are the fractional extras the
  *  provider lists. */
 export function previousEpisode(episode: number, extras: readonly number[] = []): number {
-	void extras;
-	return Number.isInteger(episode) ? episode - 1 : Math.floor(episode);
+	if (Number.isInteger(episode)) return episode - 1;
+	const before = siblings(episode, extras).filter((e) => e < episode);
+	return before.length > 0 ? Math.max(...before) : Math.floor(episode);
 }
 
-/** The episode after `episode`: one more for a whole episode, the
- *  whole episode above for a fractional extra (7.5 → 8). `extras` are
+/** The episode after `episode`: one more for a whole episode; for a
+ *  fractional extra, the listed extra after it beside the same episode
+ *  (12.1 → 12.2), else the whole episode above (7.5 → 8). `extras` are
  *  the fractional extras the provider lists. */
 export function nextEpisode(episode: number, extras: readonly number[] = []): number {
-	void extras;
-	return Number.isInteger(episode) ? episode + 1 : Math.ceil(episode);
+	if (Number.isInteger(episode)) return episode + 1;
+	const after = siblings(episode, extras).filter((e) => e > episode);
+	return after.length > 0 ? Math.min(...after) : Math.ceil(episode);
+}
+
+/** The listed extras beside the same whole episode as `extra` (12.1
+ *  and 12.2 both follow 12). */
+function siblings(extra: number, extras: readonly number[]): number[] {
+	const anchor = Math.floor(extra);
+	return extras.filter((e) => !Number.isInteger(e) && Math.floor(e) === anchor);
 }
 
 /** Whether stepping to `target` stays among what can be played: up to
@@ -39,8 +50,7 @@ export function stepAllowed(
 	cap: number | null,
 	extras: readonly number[] = []
 ): boolean {
-	void extras;
-	return cap === null || target <= cap;
+	return cap === null || target <= cap || extras.includes(target);
 }
 
 /** The provider's extra tags as numbers, dropping any that is not. */
