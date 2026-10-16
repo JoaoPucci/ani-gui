@@ -3,7 +3,8 @@
 //! is now — and putting them right. Split from [`super`] for the
 //! per-file complexity bar.
 
-use super::{display_stamp, get, merge_row, AppState};
+use super::numbering_offset_store::{parse, retag_row, store_path, Row};
+use super::{display_stamp, AppState};
 
 /// Put a display stamp an earlier version wrote right: when the slug's
 /// stamp names one of `former_tags`' slots with the tag that version
@@ -17,14 +18,25 @@ pub fn retag_display(state: &AppState, slug: &str, former_tags: &[(u32, String, 
         .iter()
         .find(|(slot, former, _)| *slot == stamped && *former == tag)
     {
-        merge_row(state, slug, get(state, slug), Some((*slot, now.clone())));
+        retag_row(state, slug, *slot, now, &tag);
     }
 }
 
 /// The (slot, tag) a repaired display stamp named its row by before
 /// [`retag_display`] put it right.
-pub fn former_stamp(_state: &AppState, _slug: &str) -> Option<(u32, String)> {
-    None
+pub fn former_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
+    former_of(&row_of(state, slug)?)
+}
+
+fn row_of(state: &AppState, slug: &str) -> Option<Row> {
+    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
+    parse(&body).into_iter().find(|r| r.slug == slug)
+}
+
+/// The row's former pair, while its stamp still names that slot.
+fn former_of(row: &Row) -> Option<(u32, String)> {
+    let (slot, _) = row.display.as_ref()?;
+    row.former.clone().filter(|(was, _)| was == slot)
 }
 
 #[cfg(test)]

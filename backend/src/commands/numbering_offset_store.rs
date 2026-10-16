@@ -40,6 +40,10 @@ pub(super) struct Row {
     pub(super) slug: String,
     pub(super) offset: u32,
     pub(super) display: Option<(u32, String)>,
+    /// The (slot, tag) the display stamp named its row by before a
+    /// repair put it right ([`super::retag_display`]); it describes
+    /// the stamp's row only while the stamp names the same slot.
+    pub(super) former: Option<(u32, String)>,
 }
 
 /// The locked read-merge-write every put shares.
@@ -59,10 +63,25 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
             slug: slug.to_string(),
             offset,
             display,
+            former: None,
         }),
     };
     if let Err(e) = rewrite(state, merge) {
         tracing::warn!(slug, offset, error = ?e, "numbering offset write failed");
+    }
+}
+
+/// Put the slug's display stamp right — `(slot, now)` — remembering
+/// the tag it replaced. A slug with no row is left alone.
+pub(super) fn retag_row(state: &AppState, slug: &str, slot: u32, now: &str, former: &str) {
+    let change = |rows: &mut Vec<Row>| {
+        if let Some(row) = rows.iter_mut().find(|r| r.slug == slug) {
+            row.display = Some((slot, now.to_string()));
+            row.former = Some((slot, former.to_string()));
+        }
+    };
+    if let Err(e) = rewrite(state, change) {
+        tracing::warn!(slug, slot, error = ?e, "numbering stamp repair failed");
     }
 }
 
