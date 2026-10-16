@@ -63,3 +63,14 @@ fn a_build_that_reads_four_columns_still_reads_a_repaired_row() {
     let cols: Vec<&str> = body.lines().next().expect("a row").split('\t').collect();
     assert_eq!(&cols[..4], &[SHOW, "0", "13", "12.5"]);
 }
+
+#[test]
+fn the_stamp_beside_a_history_file_is_the_one_its_sidecar_keeps() {
+    let state = state();
+    crate::commands::numbering_offset::put_display(&state, SHOW, 0, 13, "24.5");
+    assert_eq!(
+        stamp_beside(&state.history_path, SHOW),
+        Some((13, "24.5".to_string()))
+    );
+    assert_eq!(stamp_beside(&state.history_path, "hianime:unstamped"), None);
+}
