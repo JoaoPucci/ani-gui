@@ -46,6 +46,14 @@ describe('buildPlayArgs', () => {
 		expect('prefetch' in buildPlayArgs({ ...base, prefetch: false })).toBe(false);
 	});
 
+	it('names the version to play when the show has a remembered one, and only then', () => {
+		const base = { title: 'The Show', episode: 1, mode: 'sub', quality: 'best', show } as const;
+		expect(buildPlayArgs({ ...base, version: 'standard' }).version).toBe('standard');
+		expect(buildPlayArgs({ ...base, version: 'uncensored' }).version).toBe('uncensored');
+		expect('version' in buildPlayArgs(base)).toBe(false);
+		expect('version' in buildPlayArgs({ ...base, version: undefined })).toBe(false);
+	});
+
 	it('sends no Kitsu id when there is none to record, and nulls without a record', () => {
 		const args = buildPlayArgs({
 			title: 'The Show',

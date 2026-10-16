@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { startAvailabilityLookup, type AvailabilityLookupDeps } from './availability-lookup';
 import type { AvailabilityPatch } from './availability-writeback';
-import type { AvailabilityResponse } from '$lib/api';
+import type { AvailabilityResponse, VersionInfo } from '$lib/api';
 
 const SUBJECT = {
 	title: 'Ongoing Show',
@@ -25,6 +25,7 @@ function harness(respond?: () => Promise<AvailabilityResponse>) {
 	const applied: AvailabilityPatch[] = [];
 	const resolved: boolean[] = [];
 	const listed: (boolean | null)[] = [];
+	const versions: VersionInfo[][] = [];
 	const sent: unknown[] = [];
 	const deps: AvailabilityLookupDeps = {
 		check: (args) => {
@@ -40,9 +41,10 @@ function harness(respond?: () => Promise<AvailabilityResponse>) {
 		}),
 		apply: (p) => applied.push(p),
 		setResolved: (r) => resolved.push(r),
-		setListed: (l) => listed.push(l)
+		setListed: (l) => listed.push(l),
+		setVersions: (v) => versions.push(v)
 	};
-	return { deps, applied, resolved, listed, sent };
+	return { deps, applied, resolved, listed, versions, sent };
 }
 
 const settled = () => new Promise((r) => setTimeout(r, 0));
@@ -263,5 +265,42 @@ describe('startAvailabilityLookup — cancellation is idempotent', () => {
 		await settled();
 
 		expect(h.resolved).toEqual([false]);
+	});
+});
+
+describe("startAvailabilityLookup — the show's versions", () => {
+	it("reports the show's versions from a settled answer, and none when it names none", async () => {
+		const two: VersionInfo[] = [
+			{ kind: 'uncensored', show_key: 'hianime:show-uncensored-1' },
+			{ kind: 'standard', show_key: 'hianime:show-2' }
+		];
+		const h = harness(() => Promise.resolve(answer({ versions: two })));
+		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
+		await settled();
+		expect(h.versions).toEqual([two]);
+
+		const plain = harness();
+		startAvailabilityLookup(SUBJECT, 'sub', plain.deps);
+		await settled();
+		expect(plain.versions).toEqual([[]]);
+	});
+
+	it('reports no versions from an answer that settled nothing, a failure, or a cancelled lookup', async () => {
+		const versions: VersionInfo[] = [
+			{ kind: 'uncensored', show_key: 'a' },
+			{ kind: 'standard', show_key: 'b' }
+		];
+		const unsettled = harness(() =>
+			Promise.resolve(answer({ available: false, unsettled: true, versions }))
+		);
+		startAvailabilityLookup(SUBJECT, 'sub', unsettled.deps);
+		const failed = harness(() => Promise.reject(new Error('down')));
+		startAvailabilityLookup(SUBJECT, 'sub', failed.deps);
+		const cancelled = harness(() => Promise.resolve(answer({ versions })));
+		startAvailabilityLookup(SUBJECT, 'sub', cancelled.deps)();
+		await settled();
+		expect(unsettled.versions).toEqual([]);
+		expect(failed.versions).toEqual([]);
+		expect(cancelled.versions).toEqual([]);
 	});
 });
