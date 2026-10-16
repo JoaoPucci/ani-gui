@@ -111,6 +111,7 @@
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
 	import { armQuality, type QualityControl } from '$lib/play/arm-quality';
+	import { QUALITY_SETTING_WAIT_MS, settledWithin } from '$lib/play/quality-sink';
 	import { qualityMenu, type QualityView } from '$lib/play/quality-menu';
 	import { recoveryResume } from '$lib/play/resume-after-recovery';
 	import { stallMachine } from '$lib/play/stall-machine';
@@ -1693,7 +1694,7 @@
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				setting: () => qualitySetting,
+				setting: () => settledWithin(qualitySetting, QUALITY_SETTING_WAIT_MS),
 				holdsStart: true,
 				onView: (view) => {
 					qualityView = view;

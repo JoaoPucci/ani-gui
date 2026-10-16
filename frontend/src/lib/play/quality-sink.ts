@@ -31,11 +31,12 @@ export function whenSettled<T>(value: T | Promise<T>, then: (value: T | undefine
 }
 
 /** How long a stream's start waits for the settings. */
-export const QUALITY_SETTING_WAIT_MS = 0;
+export const QUALITY_SETTING_WAIT_MS = 3_000;
 
 /** The value, or undefined when it fails or does not come within
- *  `ms`. */
+ *  `ms`: settings that never answer cost the start level, not the
+ *  start. */
 export function settledWithin<T>(value: Promise<T>, ms: number): Promise<T | undefined> {
-	void ms;
-	return value;
+	const bound = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), ms));
+	return Promise.race([value.catch(() => undefined), bound]);
 }
