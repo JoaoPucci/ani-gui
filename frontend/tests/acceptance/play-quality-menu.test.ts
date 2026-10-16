@@ -56,7 +56,8 @@ vi.mock('hls.js', () => {
 		manual = -1;
 		loads: number[] = [];
 		nexts: number[] = [];
-		constructor() {
+		starts = 0;
+		constructor(readonly config: Record<string, unknown> = {}) {
 			FakeHls.instances.push(this);
 		}
 		get loadLevel() {
@@ -81,7 +82,9 @@ vi.mock('hls.js', () => {
 		on(event: string, handler: Handler) {
 			(this.handlers[event] ??= []).push(handler);
 		}
-		startLoad() {}
+		startLoad() {
+			this.starts += 1;
+		}
 		stopLoad() {}
 		destroy() {}
 		emit(event: string, data: unknown) {
@@ -97,6 +100,8 @@ import { __resetApiBaseForTests } from '../../src/lib/api';
 import { playerVideoInSlot } from './player-video';
 
 type FakeHlsT = InstanceType<typeof Hls> & {
+	config: Record<string, unknown>;
+	starts: number;
 	loads: number[];
 	nexts: number[];
 	startLevel: number;
@@ -202,6 +207,8 @@ describe('play route — the quality the setting names, and the menu that change
 	it('starts a master at its highest level and lets the viewer pin another', async () => {
 		const hls = await mountHls();
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		// The start level is chosen once the settings have answered.
+		await until(() => hls.starts === 1, 'the engine to start');
 		expect(hls.startLevel).toBe(2);
 		expect(hls.loads).toEqual([2]);
 		hls.emit(EVENTS.FRAG_CHANGED, { frag: { type: 'main', level: 2 } });
@@ -241,9 +248,38 @@ describe('play route — the quality the setting names, and the menu that change
 		expect(qualityRow()?.textContent).not.toContain(m.play_quality_auto());
 	});
 
+	it("waits for the settings before choosing the start level, and the setting's level is where it starts", async () => {
+		// The settings answer after the master's levels have arrived: the
+		// engine is made not to start on its own, and starts once the
+		// setting — `worst` here — has chosen its level.
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		useShowHandlers();
+		server.use(
+			http.get(`${API_BASE}/api/settings`, async () => {
+				await gate;
+				return HttpResponse.json({ ...appConfig(), quality: 'worst' });
+			})
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
+		app = mount(PlayPage, { target });
+		await until(() => hlsInstances().length > 0, 'the hls engine to attach');
+		const hls = hlsInstances()[hlsInstances().length - 1];
+		expect(hls.config.autoStartLoad).toBe(false);
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await tick();
+		expect(hls.loads).toEqual([]);
+		expect(hls.starts).toBe(0);
+		release();
+		await until(() => hls.starts === 1, 'the engine to start');
+		expect(hls.loads).toEqual([0]);
+		expect(hls.startLevel).toBe(0);
+	});
+
 	it('offers no quality row for a stream of one level', async () => {
 		const hls = await mountHls();
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[1]] });
+		await until(() => hls.starts === 1, 'the engine to start');
 		expect(hls.loads).toEqual([]);
 		await tick();
 		menuButton().click();

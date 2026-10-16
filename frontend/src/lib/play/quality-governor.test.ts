@@ -142,6 +142,44 @@ describe('QualityGovernor — healthy playback steps back up', () => {
 		}
 	});
 
+	it('a stall that cannot step down still restarts the healthy window', () => {
+		// At the lowest level a stall moves nothing, but playback is in
+		// trouble: the climb waits for a window without one.
+		const g = governor();
+		g.start();
+		g.stall(10_000);
+		g.stall(10_000 + STEP_DOWN_COOLDOWN_MS);
+		expect(g.level).toBe(0);
+		expect(g.stall(100_000)).toBeNull();
+		const window = HEALTHY_WINDOWS_MS[1];
+		expect(g.healthy(100_000 + window - 1, FULL)).toBeNull();
+		expect(g.healthy(100_000 + window, FULL)?.level).toBe(1);
+	});
+
+	it('a level failing, or a switch followed, restarts the healthy window for the level moved to', () => {
+		const failed = governor();
+		failed.start();
+		failed.stall(10_000);
+		expect(failed.levelFailed(1, 100_000)?.level).toBe(0);
+		expect(failed.healthy(100_000 + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
+		expect(failed.healthy(100_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(2);
+		const followed = governor();
+		followed.start();
+		followed.stall(10_000);
+		expect(followed.follow(0, 100_000)?.level).toBe(0);
+		expect(followed.healthy(100_000 + HEALTHY_WINDOWS_MS[0] - 1, FULL)).toBeNull();
+		expect(followed.healthy(100_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(2);
+	});
+
+	it('a stall inside the cooldown restarts the healthy window too', () => {
+		const g = governor();
+		g.start();
+		g.stall(10_000);
+		expect(g.stall(12_000)).toBeNull();
+		expect(g.healthy(10_000 + HEALTHY_WINDOWS_MS[0], FULL)).toBeNull();
+		expect(g.healthy(12_000 + HEALTHY_WINDOWS_MS[0], FULL)?.level).toBe(2);
+	});
+
 	it('never climbs past the level the setting names', () => {
 		const g = governor({ kind: 'height', height: 720 });
 		g.start();

@@ -30,6 +30,7 @@ class FakeEngine {
 	manual = -1;
 	loads: number[] = [];
 	nexts: number[] = [];
+	starts = 0;
 	private handlers = new Map<string, ((event: string, data: unknown) => void)[]>();
 	get loadLevel() {
 		return this.manual;
@@ -47,6 +48,9 @@ class FakeEngine {
 	}
 	get autoLevelEnabled() {
 		return this.manual === -1;
+	}
+	startLoad() {
+		this.starts += 1;
 	}
 	on(event: string, handler: (event: string, data: unknown) => void) {
 		this.handlers.set(event, [...(this.handlers.get(event) ?? []), handler]);
@@ -481,6 +485,37 @@ describe('armQuality — the viewer chooses', () => {
 		expect(qualityPin.get()).toBeNull();
 	});
 
+	it('pinning the level held while a lower one still plays switches at once', () => {
+		// Auto climbed with loadLevel: 720p segments still play from the
+		// buffer while 1080p is held. Picking 1080p asks for it now.
+		const s = arm();
+		s.parse();
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(10_000 + HEALTHY_WINDOWS_MS[0]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 1 } });
+		expect(s.engine.loads).toEqual([2, 1, 2]);
+		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 1 } });
+		s.control.pick(2);
+		expect(s.engine.nexts).toEqual([2]);
+		expect(s.lastView()?.pinned).toBe(2);
+		expect(qualityPin.get()).toBe(1080);
+	});
+
+	it('choosing Auto while a lower level than the one held plays switches at once', () => {
+		const s = arm();
+		s.parse();
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(10_000 + HEALTHY_WINDOWS_MS[0]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 1 } });
+		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 1 } });
+		s.control.pick('auto');
+		expect(s.engine.nexts).toEqual([2]);
+	});
+
 	it('a pick of the level already playing pins it without a switch', () => {
 		const s = arm();
 		s.parse();
@@ -621,6 +656,78 @@ describe('armQuality — the edges', () => {
 		s.control.pick('auto');
 		expect(s.engine.nexts).toEqual([]);
 		expect(s.logs).toContain('auto');
+	});
+});
+
+describe('armQuality — settings still on their way', () => {
+	function armHeld(setting: () => string | null | undefined | Promise<string | null | undefined>) {
+		const engine = new FakeEngine();
+		const views: (QualityView | null)[] = [];
+		const control = armQuality({
+			engine: engine as unknown as Hls,
+			events: E,
+			video: new FakeVideo(),
+			setting,
+			holdsStart: true,
+			onView: (v) => views.push(v),
+			now: () => 1_000,
+			log: () => {}
+		});
+		const parse = (levels = MASTER) => engine.emit(E.MANIFEST_PARSED, { levels });
+		return { engine, views, control, parse };
+	}
+	const settle = () => new Promise((r) => setTimeout(r, 0));
+
+	it('chooses the start level once the setting arrives, and only then starts the engine', async () => {
+		let answer: (q: string) => void = () => {};
+		const s = armHeld(() => new Promise((r) => (answer = r)));
+		s.parse();
+		await settle();
+		expect(s.engine.loads).toEqual([]);
+		expect(s.engine.starts).toBe(0);
+		expect(s.views).toEqual([]);
+		answer('worst');
+		await settle();
+		expect(s.engine.startLevel).toBe(0);
+		expect(s.engine.loads).toEqual([0]);
+		expect(s.engine.starts).toBe(1);
+		expect(s.views.at(-1)?.levels).toEqual(MASTER);
+	});
+
+	it('settings that fail read as best', async () => {
+		const s = armHeld(() => Promise.reject(new Error('settings down')));
+		s.parse();
+		await settle();
+		expect(s.engine.loads).toEqual([2]);
+		expect(s.engine.starts).toBe(1);
+	});
+
+	it('a setting in hand starts the engine at once, and a stream of one level is started too', () => {
+		const s = armHeld(() => '720');
+		s.parse();
+		expect(s.engine.loads).toEqual([1]);
+		expect(s.engine.starts).toBe(1);
+		const one = armHeld(() => 'best');
+		one.parse([MASTER[1]]);
+		expect(one.engine.loads).toEqual([]);
+		expect(one.engine.starts).toBe(1);
+	});
+
+	it('a stream retired before the setting arrives starts nothing', async () => {
+		let answer: (q: string) => void = () => {};
+		const s = armHeld(() => new Promise((r) => (answer = r)));
+		s.parse();
+		s.control.dispose();
+		answer('best');
+		await settle();
+		expect(s.engine.loads).toEqual([]);
+		expect(s.engine.starts).toBe(0);
+	});
+
+	it('without the option the engine is left to start itself', () => {
+		const s = arm('best');
+		s.parse();
+		expect(s.engine.starts).toBe(0);
 	});
 });
 
