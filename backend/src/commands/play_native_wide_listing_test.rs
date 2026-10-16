@@ -6,6 +6,7 @@ fn hit(slug: &str, title: &str) -> BrowseHit {
         slug: slug.into(),
         title: title.into(),
         kind: Some("TV".into()),
+        jname: None,
     }
 }
 

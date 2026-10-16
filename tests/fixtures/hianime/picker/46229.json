@@ -66,5 +66,24 @@
   "mashle-magic-and-muscles-picture-drama-6339": 2023,
   "mashle-magic-and-muscles-the-divine-visionary-candidate-exam-arc-593": 2024,
   "mashle-sanma-taisou-shinkakusha-saishuu-shiken-hen-7216": 2026
+ },
+ "jnames": {
+  "mashle-magic-and-muscles-591": "Mashle",
+  "mashle-magic-and-muscles-mash-burnedead-and-the-mysterious-letter-592": "Mashle Specials",
+  "mashle-magic-and-muscles-picture-drama-6339": "Mash Burnedead-tachi to School Life",
+  "mashle-magic-and-muscles-the-divine-visionary-candidate-exam-arc-593": "Mashle 2nd Season",
+  "mashle-sanma-taisou-shinkakusha-saishuu-shiken-hen-7216": "MASHLE: Sanma Taisou Shinkakusha Saishuu Shiken-hen"
+ },
+ "page_names": {
+  "mashle-magic-and-muscles-591": ["マッシュル-MASHLE-", "Mashle"],
+  "mashle-magic-and-muscles-picture-drama-6339": ["マッシュ・バーンデッドたちと寮生活[スクールライフ]", "Mash Burnedead-tachi to School Life"],
+  "mashle-magic-and-muscles-the-divine-visionary-candidate-exam-arc-593": ["マッシュル-MASHLE- 神覚者候補選抜試験編", "Mashle 2nd Season"],
+  "mashle-sanma-taisou-shinkakusha-saishuu-shiken-hen-7216": ["マッシュル-MASHLE- 第3期"]
+ },
+ "genres": {
+  "mashle-magic-and-muscles-591": ["Fantasy", "Shounen", "Comedy", "Parody", "School", "Gag Humor", "Action"],
+  "mashle-magic-and-muscles-picture-drama-6339": ["Shounen", "Comedy"],
+  "mashle-magic-and-muscles-the-divine-visionary-candidate-exam-arc-593": ["Fantasy", "Shounen", "Comedy", "Parody", "School", "Gag Humor", "Action"],
+  "mashle-sanma-taisou-shinkakusha-saishuu-shiken-hen-7216": ["Fantasy", "Comedy", "Action"]
  }
 }

@@ -52,5 +52,26 @@
   "the-rising-of-the-shield-hero-season-2-882": 2022,
   "the-rising-of-the-shield-hero-season-3-883": 2023,
   "the-rising-of-the-shield-hero-season-4-271": 2025
+ },
+ "jnames": {
+  "tate-no-yuusha-no-nariagari-season-5-4178": "Tate no Yuusha no Nariagari Season 5",
+  "the-rising-of-the-shield-hero-885": "Tate no Yuusha no Nariagari",
+  "the-rising-of-the-shield-hero-season-2-882": "Tate no Yuusha no Nariagari Season 2",
+  "the-rising-of-the-shield-hero-season-3-883": "Tate no Yuusha no Nariagari Season 3",
+  "the-rising-of-the-shield-hero-season-4-271": "Tate no Yuusha no Nariagari Season 4"
+ },
+ "page_names": {
+  "tate-no-yuusha-no-nariagari-season-5-4178": ["盾の勇者の成り上がり Season 5", "Tate no Yuusha no Nariagari Season 5"],
+  "the-rising-of-the-shield-hero-885": ["盾の勇者の成り上がり", "Tate no Yuusha no Nariagari"],
+  "the-rising-of-the-shield-hero-season-2-882": ["盾の勇者の成り上がり Season2", "Tate no Yuusha no Nariagari Season 2"],
+  "the-rising-of-the-shield-hero-season-3-883": ["盾の勇者の成り上がり Season 3", "Tate no Yuusha no Nariagari Season 3"],
+  "the-rising-of-the-shield-hero-season-4-271": ["盾の勇者の成り上がり Season 4", "Tate no Yuusha no Nariagari Season 4"]
+ },
+ "genres": {
+  "tate-no-yuusha-no-nariagari-season-5-4178": ["Adventure", "Fantasy", "Drama", "Isekai", "Action"],
+  "the-rising-of-the-shield-hero-885": ["Adventure", "Fantasy", "Drama", "Isekai", "Action"],
+  "the-rising-of-the-shield-hero-season-2-882": ["Adventure", "Fantasy", "Drama", "Isekai", "Action"],
+  "the-rising-of-the-shield-hero-season-3-883": ["Adventure", "Fantasy", "Drama", "Isekai", "Action"],
+  "the-rising-of-the-shield-hero-season-4-271": ["Adventure", "Fantasy", "Drama", "Isekai", "Action"]
  }
 }

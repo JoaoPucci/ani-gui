@@ -527,5 +527,22 @@
  },
  "years": {
   "naruto-shippuden-600": 2007
+ },
+ "jnames": {
+  "naruto-shippuden-600": "Naruto: Shippuuden",
+  "naruto-shippuden-konoha-gakuen-special-5295": "Naruto: Shippuuden - Shippuu! \"Konoha Gakuen\" Den",
+  "naruto-shippuden-sunny-side-battle-2802": "Naruto: Shippuuden - Sunny Side Battle",
+  "naruto-shippuden-the-movie-1-2013": "Naruto: Shippuuden Movie 1",
+  "naruto-shippuden-the-movie-2-bonds-2011": "Naruto: Shippuuden Movie 2 - Kizuna",
+  "naruto-shippuden-the-movie-3-the-will-of-fire-2014": "Naruto: Shippuuden Movie 3 - Hi no Ishi wo Tsugu Mono",
+  "naruto-shippuden-the-movie-4-the-lost-tower-2020": "Naruto: Shippuuden Movie 4 - The Lost Tower",
+  "naruto-shippuden-the-movie-5-blood-prison-2015": "Naruto: Shippuuden Movie 5 - Blood Prison",
+  "naruto-shippuden-the-movie-6-road-to-ninja-2019": "Naruto: Shippuuden Movie 6 - Road to Ninja"
+ },
+ "page_names": {
+  "naruto-shippuden-600": ["-ナルト- 疾風伝", "Naruto: Shippuuden"]
+ },
+ "genres": {
+  "naruto-shippuden-600": ["Adventure", "Fantasy", "Shounen", "Comedy", "Martial Arts", "Super Power", "Action"]
  }
 }

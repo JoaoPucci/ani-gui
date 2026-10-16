@@ -39,5 +39,16 @@
  },
  "years": {
   "jojos-bizarre-adventure-stone-ocean-part-2-1464": 2022
+ },
+ "jnames": {
+  "jojos-bizarre-adventure-stone-ocean-1460": "JoJo no Kimyou na Bouken Part 6: Stone Ocean",
+  "jojos-bizarre-adventure-stone-ocean-part-2-1464": "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2",
+  "jojos-bizarre-adventure-stone-ocean-part-3-2834": "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 3"
+ },
+ "page_names": {
+  "jojos-bizarre-adventure-stone-ocean-part-2-1464": ["ジョジョの奇妙な冒険 ストーンオーシャン", "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2"]
+ },
+ "genres": {
+  "jojos-bizarre-adventure-stone-ocean-part-2-1464": ["Adventure", "Shounen", "Super Power", "Action"]
  }
 }

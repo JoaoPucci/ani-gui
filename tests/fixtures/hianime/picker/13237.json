@@ -49,5 +49,17 @@
  "years": {
   "overlord-ii-856": 2018,
   "overlord-iii-1501": 2018
+ },
+ "jnames": {
+  "overlord-ii-856": "Overlord II",
+  "overlord-iii-1501": "Overlord III"
+ },
+ "page_names": {
+  "overlord-ii-856": ["オーバーロードⅡ"],
+  "overlord-iii-1501": ["オーバーロードⅢ"]
+ },
+ "genres": {
+  "overlord-ii-856": ["Adventure", "Fantasy", "Isekai", "Supernatural", "Game", "Magic", "Action"],
+  "overlord-iii-1501": ["Adventure", "Fantasy", "Isekai", "Supernatural", "Game", "Magic", "Action"]
  }
 }

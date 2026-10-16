@@ -69,5 +69,46 @@
   "sword-art-online-alternative-gun-gale-online-876": 2018,
   "sword-art-online-alternative-gun-gale-online-ii-2953": 2024,
   "sword-art-online-ii-877": 2014
+ },
+ "jnames": {
+  "sword-art-online-874": "Sword Art Online",
+  "sword-art-online-alicization-879": "Sword Art Online: Alicization",
+  "sword-art-online-alicization-recollection-3741": "Sword Art Online: Alicization - Recollection",
+  "sword-art-online-alicization-war-of-underworld-881": "Sword Art Online: Alicization - War of Underworld",
+  "sword-art-online-alicization-war-of-underworld-part-2-880": "Sword Art Online: Alicization - War of Underworld 2nd Season",
+  "sword-art-online-alicization-war-of-underworld-reflection-3743": "Sword Art Online: Alicization - War of Underworld Reflection",
+  "sword-art-online-alicization-war-of-underworld-reminiscence-6029": "Sword Art Online: Alicization - War of Underworld Recap",
+  "sword-art-online-alternative-gun-gale-online-876": "Sword Art Online Alternative: Gun Gale Online",
+  "sword-art-online-alternative-gun-gale-online-ii-2953": "Sword Art Online Alternative: Gun Gale Online II",
+  "sword-art-online-alternative-gun-gale-online-refrain-8300": "Sword Art Online Alternative: Gun Gale Online - Refrain",
+  "sword-art-online-extra-edition-3750": "Sword Art Online: Extra Edition",
+  "sword-art-online-ii-877": "Sword Art Online II",
+  "sword-art-online-ii-debriefing-6875": "Sword Art Online II: Debriefing",
+  "sword-art-online-movie-integral-domain-3274": "Sword Art Online Movie: Integral Domain",
+  "sword-art-online-movie-ordinal-scale-sword-art-offline-7868": "Sword Art Online Movie: Ordinal Scale - Sword Art Offline",
+  "sword-art-online-the-movie-ordinal-scale-3809": "Sword Art Online Movie: Ordinal Scale",
+  "sword-art-online-the-movie-progressive-aria-of-a-starless-night-1567": "Sword Art Online: Progressive Movie - Hoshi Naki Yoru no Aria",
+  "sword-art-online-the-movie-progressive-scherzo-of-deep-night-1568": "Sword Art Online: Progressive Movie - Kuraki Yuuyami no Scherzo",
+  "sword-art-online-unansweredbutterfly-5209": "Unanswered//butterfly: Sword Art Online"
+ },
+ "page_names": {
+  "sword-art-online-874": ["ソードアート・オンライン"],
+  "sword-art-online-alicization-879": ["ソードアート・オンライン アリシゼーション"],
+  "sword-art-online-alicization-war-of-underworld-881": ["ソードアート・オンライン アリシゼーション War of Underworld", "Sword Art Online: Alicization - War of Underworld"],
+  "sword-art-online-alicization-war-of-underworld-part-2-880": ["ソードアート・オンライン アリシゼーション War of Underworld", "Sword Art Online: Alicization - War of Underworld 2nd Season"],
+  "sword-art-online-alicization-war-of-underworld-reflection-3743": ["ソードアート・オンライン アリシゼーション War of Underworld 前半戦総集編特番「リフレクション」"],
+  "sword-art-online-alternative-gun-gale-online-876": ["ソードアート・オンライン オルタナティブ ガンゲイル・オンライン"],
+  "sword-art-online-alternative-gun-gale-online-ii-2953": ["ソードアート・オンライン オルタナティブ ガンゲイル・オンラインⅡ"],
+  "sword-art-online-ii-877": ["ソードアート・オンライン II"]
+ },
+ "genres": {
+  "sword-art-online-874": ["Adventure", "Fantasy", "Isekai", "Romance", "Video Game", "Game", "Action"],
+  "sword-art-online-alicization-879": ["Adventure", "Fantasy", "Isekai", "Romance", "Video Game", "Game", "Action"],
+  "sword-art-online-alicization-war-of-underworld-881": ["Adventure", "Fantasy", "Isekai", "Romance", "Video Game", "Game", "Action"],
+  "sword-art-online-alicization-war-of-underworld-part-2-880": ["Adventure", "Fantasy", "Romance", "Video Game", "Game", "Action"],
+  "sword-art-online-alicization-war-of-underworld-reflection-3743": ["Adventure", "Fantasy", "Video Game", "Action"],
+  "sword-art-online-alternative-gun-gale-online-876": ["Fantasy", "Isekai", "Sci-Fi", "Military", "Video Game", "Game", "Action"],
+  "sword-art-online-alternative-gun-gale-online-ii-2953": ["Military", "Video Game", "Action"],
+  "sword-art-online-ii-877": ["Adventure", "Fantasy", "Isekai", "Romance", "Video Game", "Game", "Action"]
  }
 }

@@ -68,5 +68,25 @@
   "anime-14-256": 2022,
   "spy-x-family-639": 2022,
   "spy-x-family-season-3-60": 2025
+ },
+ "jnames": {
+  "anime-13-255": "Spy x Family Season 2",
+  "anime-14-256": "Spy x Family Part 2",
+  "spy-x-family-639": "Spy x Family",
+  "spy-x-family-code-white-1990": "Spy x Family Movie: Code: White",
+  "spy-x-family-movie-code-white-manner-movie-6028": "Spy x Family Movie: Code: White Manner Movie",
+  "spy-x-family-season-3-60": "Spy x Family Season 3"
+ },
+ "page_names": {
+  "anime-13-255": ["SPY×FAMILY Season 2"],
+  "anime-14-256": ["SPY×FAMILY", "Spy x Family Part 2"],
+  "spy-x-family-639": ["SPY×FAMILY"],
+  "spy-x-family-season-3-60": ["SPY×FAMILY Season 3"]
+ },
+ "genres": {
+  "anime-13-255": ["Shounen", "Comedy", "Supernatural", "Slice of Life", "Super Power", "Childcare", "Action"],
+  "anime-14-256": ["Shounen", "Comedy", "Supernatural", "Slice of Life", "Super Power", "Childcare", "Action"],
+  "spy-x-family-639": ["Shounen", "Comedy", "Super Power", "Childcare", "Award Winning", "Action"],
+  "spy-x-family-season-3-60": ["Shounen", "Comedy", "Supernatural", "Slice of Life", "Super Power", "Childcare", "Action"]
  }
 }

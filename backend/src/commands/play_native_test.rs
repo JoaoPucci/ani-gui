@@ -8,7 +8,18 @@ fn hit(slug: &str, title: &str) -> BrowseHit {
         slug: slug.into(),
         title: title.into(),
         kind: None,
+        jname: None,
     }
+}
+
+/// `h` with the romanized name `jname` on its card — the name the
+/// provider's card carries beside its title. A dated entry with a
+/// count takes only a hit a name vouches for, and a test whose subject
+/// is not how a hit is named gives its hits the entry's own name, as
+/// the provider's cards for the entry's own listings do.
+fn known_as(mut h: BrowseHit, jname: &str) -> BrowseHit {
+    h.jname = Some(jname.into());
+    h
 }
 
 fn typed_hit(slug: &str, title: &str, kind: &str) -> BrowseHit {
@@ -16,6 +27,7 @@ fn typed_hit(slug: &str, title: &str, kind: &str) -> BrowseHit {
         slug: slug.into(),
         title: title.into(),
         kind: Some(kind.into()),
+        jname: None,
     }
 }
 
@@ -66,6 +78,7 @@ proptest::proptest! {
                     (false, true) => format!("Other {i} Part 2"),
                 },
                 kind: None,
+                jname: None,
             })
             .collect();
         let probed: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = hits
@@ -200,11 +213,13 @@ async fn a_dead_plain_candidate_ahead_of_a_plain_winner_still_picks() {
     // the probe-skip behavior exists precisely for that. Only
     // identity-bearing equal ranks block. The entry is dated, its
     // candidates' pages naming no year: a plain candidate is one
-    // without identity, and only a dated entry takes one on its count.
+    // without identity — no exact title, no matched year — and a
+    // dated entry takes one on its count when its card carries the
+    // entry's name, as both cards here do.
     let client = first_twin_dead();
     let hits = [
-        hit("unrelated-99", "Unrelated"),
-        hit("also-unrelated-88", "Also Unrelated"),
+        known_as(hit("unrelated-99", "Unrelated"), "Something Else"),
+        known_as(hit("also-unrelated-88", "Also Unrelated"), "Something Else"),
     ];
     let picked = pick_candidate(&client, &hits, Some(12), "something else", Some(2020), None)
         .await
@@ -430,9 +445,18 @@ async fn a_year_match_beats_count_tied_cour_siblings() {
     ]);
     let hits = [
         hit("tybw-675", "TYBW"),
-        hit("tybw-the-conflict-676", "TYBW - The Conflict"),
-        hit("tybw-the-separation-677", "TYBW - The Separation"),
-        hit("tybw-the-calamity-6378", "TYBW - The Calamity"),
+        known_as(
+            hit("tybw-the-conflict-676", "TYBW - The Conflict"),
+            "TYBW Soukoku-tan",
+        ),
+        known_as(
+            hit("tybw-the-separation-677", "TYBW - The Separation"),
+            "TYBW Ketsubetsu-tan",
+        ),
+        known_as(
+            hit("tybw-the-calamity-6378", "TYBW - The Calamity"),
+            "TYBW Kashin-tan",
+        ),
     ];
     let picked = pick_candidate(
         &client,
@@ -456,8 +480,14 @@ async fn year_mismatches_are_excluded_before_scoring() {
     // Neither title matches the search term exactly, so without the
     // year the count tie falls to provider order — the 1995 sibling.
     let hits = [
-        hit("mobile-suit-gundam-wing-2", "Mobile Suit Gundam Wing"),
-        hit("mobile-suit-gundam-1", "Mobile Suit Gundam"),
+        known_as(
+            hit("mobile-suit-gundam-wing-2", "Mobile Suit Gundam Wing"),
+            "Shin Kidou Senki Gundam Wing",
+        ),
+        known_as(
+            hit("mobile-suit-gundam-1", "Mobile Suit Gundam"),
+            "Kidou Senshi Gundam",
+        ),
     ];
     let picked = pick_candidate(
         &client,
@@ -478,7 +508,10 @@ async fn unknown_years_pass_the_identity_filter() {
     // candidate — the year is a soft hint, and a provider hiccup on
     // one page must not hide the right show.
     let client = TableProvider::counted_with_years(&[(2, 12, Some(1990)), (1, 14, None)]);
-    let hits = [hit("old-2", "Old"), hit("mystery-1", "Mystery")];
+    let hits = [
+        known_as(hit("old-2", "Old"), "Unrelated"),
+        known_as(hit("mystery-1", "Mystery"), "Unrelated"),
+    ];
     let picked = pick_candidate(&client, &hits, Some(12), "unrelated", Some(2020), None)
         .await
         .expect("picked");
@@ -553,7 +586,10 @@ async fn a_lone_airing_part_with_a_confirmed_year_survives_the_count_gap() {
     // a sibling pool must rescue it here, or exactly the
     // currently-airing show becomes unresolvable through that alias.
     let client = TableProvider::counted_with_years(&[(6378, 2, Some(2026))]);
-    let hits = [hit("tybw-the-calamity-6378", "TYBW - The Calamity")];
+    let hits = [known_as(
+        hit("tybw-the-calamity-6378", "TYBW - The Calamity"),
+        "TYBW Kashin-tan",
+    )];
     let picked = pick_candidate(
         &client,
         &hits,
@@ -707,8 +743,11 @@ async fn an_exact_year_breaks_a_count_tie_against_a_tolerated_neighbor() {
     // tie-break must spend before falling back to ranking.
     let client = TableProvider::counted_with_years(&[(11, 12, Some(2019)), (12, 12, Some(2020))]);
     let hits = [
-        hit("the-show-remake-11", "The Show Remake"),
-        hit("the-show-original-12", "The Show Original"),
+        known_as(hit("the-show-remake-11", "The Show Remake"), "Needle Title"),
+        known_as(
+            hit("the-show-original-12", "The Show Original"),
+            "Needle Title",
+        ),
     ];
     let picked = pick_candidate(&client, &hits, Some(12), "needle title", Some(2020), None)
         .await
@@ -737,12 +776,13 @@ async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
     // The browse card names its format. A Movie cannot be the
     // 12-episode series the caller expects, however well its count
     // or position scores — the same class of mispick the provider
-    // picker's type filter used to catch. The entry is dated, so the
-    // series, named by nothing, is still taken on its count.
+    // picker's type filter used to catch. The entry is dated and the
+    // series' card carries the entry's name, so the series is taken on
+    // its count.
     let client = TableProvider::counted(&[(1, 12), (2, 12)]);
     let hits = [
         typed_hit("recap-movie-1", "Recap Movie", "Movie"),
-        typed_hit("the-series-2", "The Series", "TV"),
+        known_as(typed_hit("the-series-2", "The Series", "TV"), "Unrelated"),
     ];
     let picked = pick_candidate(&client, &hits, Some(12), "unrelated", Some(2020), None)
         .await
@@ -1060,7 +1100,10 @@ async fn a_finished_split_is_stitched_when_the_provider_spells_it_differently() 
     const EN: &str = "Steel Ball Run: JoJo's Bizarre Adventure";
     const EN_2ND: &str = "Steel Ball Run: JoJo's Bizarre Adventure 2nd Stage";
     let client = TableProvider::counted_with_years(&[(4, 1, Some(2026)), (10465, 11, Some(2026))]);
-    let hits = [hit("sbr-1st-4", EN), hit("sbr-2nd-10465", EN_2ND)];
+    let hits = [
+        known_as(hit("sbr-1st-4", EN), SBR),
+        known_as(hit("sbr-2nd-10465", EN_2ND), SBR_2ND),
+    ];
     let picked = pick_candidate(&client, &hits, Some(12), SBR, Some(2026), Some("ONA"))
         .await
         .expect("picked");

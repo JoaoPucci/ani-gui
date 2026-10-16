@@ -57,5 +57,31 @@
   "rezero-starting-life-in-another-world-season-2-part-2-859": 2021,
   "rezero-starting-life-in-another-world-season-3-2551": 2024,
   "rezero-starting-life-in-another-world-season-4-4587": 2026
+ },
+ "jnames": {
+  "re-zero-petit-8179": "Re:Petit kara Hajimeru Isekai Seikatsu",
+  "rezero-starting-life-in-another-world-1387": "Re:Zero kara Hajimeru Isekai Seikatsu",
+  "rezero-starting-life-in-another-world-memory-snow-4096": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow",
+  "rezero-starting-life-in-another-world-memory-snow-manner-movie-5780": "Re:Zero kara Hajimeru Isekai Seikatsu - Memory Snow - Manner Movie",
+  "rezero-starting-life-in-another-world-season-2-858": "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season",
+  "rezero-starting-life-in-another-world-season-2-part-2-859": "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2",
+  "rezero-starting-life-in-another-world-season-3-2551": "Re:Zero kara Hajimeru Isekai Seikatsu 3rd Season",
+  "rezero-starting-life-in-another-world-season-4-4587": "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season",
+  "rezero-starting-life-in-another-world-the-frozen-bond-4168": "Re:Zero kara Hajimeru Isekai Seikatsu - Hyouketsu no Kizuna",
+  "rezero-starting-life-in-another-world-the-frozen-bond-manner-movie-6012": "Re:Zero kara Hajimeru Isekai Seikatsu - Hyouketsu no Kizuna - Manner Movie"
+ },
+ "page_names": {
+  "rezero-starting-life-in-another-world-1387": ["Re:ゼロから始める異世界生活", "Re:Zero kara Hajimeru Isekai Seikatsu"],
+  "rezero-starting-life-in-another-world-season-2-858": ["Re：ゼロから始める異世界生活 2", "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season"],
+  "rezero-starting-life-in-another-world-season-2-part-2-859": ["Re：ゼロから始める異世界生活 2 part 2", "Re:Zero kara Hajimeru Isekai Seikatsu 2nd Season Part 2"],
+  "rezero-starting-life-in-another-world-season-3-2551": ["Re:ゼロから始める異世界生活 3rd season", "Re:Zero kara Hajimeru Isekai Seikatsu 3rd Season"],
+  "rezero-starting-life-in-another-world-season-4-4587": ["ReZero Re:ゼロから始める異世界生活 4th season Re:Zero kara Hajimeru Isekai Seikatsu 4th Season", "Re:Zero kara Hajimeru Isekai Seikatsu 4th Season"]
+ },
+ "genres": {
+  "rezero-starting-life-in-another-world-1387": ["Fantasy", "Drama", "Isekai", "Psychological", "Suspense", "Time Travel", "Thriller"],
+  "rezero-starting-life-in-another-world-season-2-858": ["Fantasy", "Drama", "Isekai", "Psychological", "Suspense", "Time Travel", "Thriller"],
+  "rezero-starting-life-in-another-world-season-2-part-2-859": ["Fantasy", "Drama", "Isekai", "Psychological", "Suspense", "Time Travel", "Thriller"],
+  "rezero-starting-life-in-another-world-season-3-2551": ["Fantasy", "Drama", "Isekai", "Psychological", "Suspense", "Time Travel", "Thriller"],
+  "rezero-starting-life-in-another-world-season-4-4587": ["Fantasy", "Drama", "Isekai", "Psychological", "Suspense", "Time Travel", "Thriller"]
  }
 }

@@ -64,5 +64,34 @@
   "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-430": 2024,
   "demon-slayer-kimetsu-no-yaiba-mugen-train-arc-744": 2021,
   "demon-slayer-kimetsu-no-yaiba-swordsmith-village-arc-233": 2023
+ },
+ "jnames": {
+  "demon-slayer-kimetsu-no-yaiba-843": "Kimetsu no Yaiba",
+  "demon-slayer-kimetsu-no-yaiba-entertainment-district-arc-749": "Kimetsu no Yaiba: Yuukaku-hen",
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-1-9482": "Kimetsu no Yaiba: Hashira Geiko-hen",
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-430": "Kimetsu no Yaiba: Hashira Geiko-hen",
+  "demon-slayer-kimetsu-no-yaiba-infinity-castle-i-232": "Kimetsu no Yaiba Movie: Mugen Jou-hen",
+  "demon-slayer-kimetsu-no-yaiba-infinity-castle-ii-2835": "Kimetsu no Yaiba Movie 2: Mugenjou-hen",
+  "demon-slayer-kimetsu-no-yaiba-infinity-castle-iii-4740": "Kimetsu no Yaiba Movie 3: Mugenjou-hen",
+  "demon-slayer-kimetsu-no-yaiba-infinity-castle-part-2-7215": "Kimetsu no Yaiba: Mugenjou-hen Movie 2",
+  "demon-slayer-kimetsu-no-yaiba-mugen-train-arc-744": "Kimetsu no Yaiba: Mugen Ressha-hen",
+  "demon-slayer-kimetsu-no-yaiba-swordsmith-village-arc-233": "Kimetsu no Yaiba: Katanakaji no Sato-hen",
+  "demon-slayer-kimetsu-no-yaiba-the-movie-mugen-train-745": "Kimetsu no Yaiba Movie: Mugen Ressha-hen",
+  "demon-slayer-kimetsu-no-yaiba-to-the-swordsmith-village-9625": "Kimetsu no Yaiba: To the Katanakaji no Sato-hen",
+  "demon-slayer-sibling-s-bond-9730": "Kimetsu no Yaiba Kyōdai no Kizuna"
+ },
+ "page_names": {
+  "demon-slayer-kimetsu-no-yaiba-843": ["鬼滅の刃", "Kimetsu no Yaiba"],
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-1-9482": ["Kimetsu no Yaiba: Hashira Geiko-hen"],
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-430": ["鬼滅の刃 柱稽古編", "Kimetsu no Yaiba: Hashira Geiko-hen"],
+  "demon-slayer-kimetsu-no-yaiba-mugen-train-arc-744": ["鬼滅の刃 無限列車編", "Kimetsu no Yaiba: Mugen Ressha-hen"],
+  "demon-slayer-kimetsu-no-yaiba-swordsmith-village-arc-233": ["鬼滅の刃 刀鍛冶の里編", "Kimetsu no Yaiba: Katanakaji no Sato-hen"]
+ },
+ "genres": {
+  "demon-slayer-kimetsu-no-yaiba-843": ["Shounen", "Historical", "Supernatural", "Award Winning", "Demons", "Action"],
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-1-9482": ["Fantasy", "Action"],
+  "demon-slayer-kimetsu-no-yaiba-hashira-training-arc-430": ["Adventure", "Fantasy", "Shounen", "Historical", "Drama", "Supernatural", "Action"],
+  "demon-slayer-kimetsu-no-yaiba-mugen-train-arc-744": ["Shounen", "Historical", "Supernatural", "Demons", "Action"],
+  "demon-slayer-kimetsu-no-yaiba-swordsmith-village-arc-233": ["Adventure", "Shounen", "Historical", "Supernatural", "Super Power", "Demons", "Action"]
  }
 }

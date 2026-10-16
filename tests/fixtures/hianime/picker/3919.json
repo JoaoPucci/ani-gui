@@ -39,5 +39,17 @@
  "years": {
   "bakemonogatari-976": 2009,
   "bakemonogatari-recap-979": 2009
+ },
+ "jnames": {
+  "bakemonogatari-976": "Bakemonogatari",
+  "bakemonogatari-recap-979": "Bakemonogatari Recap"
+ },
+ "page_names": {
+  "bakemonogatari-976": ["化物語", "Bakemonogatari"],
+  "bakemonogatari-recap-979": ["化物語"]
+ },
+ "genres": {
+  "bakemonogatari-976": ["Mystery", "Supernatural", "Romance", "Vampire"],
+  "bakemonogatari-recap-979": ["Mystery", "Supernatural", "Romance"]
  }
 }
