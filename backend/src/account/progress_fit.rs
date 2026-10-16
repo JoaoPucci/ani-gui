@@ -2,7 +2,8 @@
 //!
 //! The app numbers a show's episodes by Kitsu's list; a tracker can count
 //! the same show differently. This is the seam where the count the
-//! write-back sends is translated into the tracker's numbering, before
+//! write-back sends is clamped to the tracker's total and the finale's
+//! completed status is kept or dropped against it, before
 //! [`crate::commands::account::reconcile_monotonic`] keeps it monotonic.
 
 use crate::account::provider::EntryUpdate;

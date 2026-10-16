@@ -48,9 +48,9 @@ export interface PushWatchedDeps {
  * the total is unknown — don't complete (Codex P2 #3386988961).
  *
  * The backend reads `completed` on the progress route as this finale
- * and keeps it only where the tracker's own episode total equals the
- * episode, so nothing else may send `completed` through
- * `updateProgress`.
+ * and drops it where the tracker's own episode total is known and
+ * differs from the episode (and, as before, for a rewatching row), so
+ * nothing else may send `completed` through `updateProgress`.
  */
 export function watchedStatus(
 	episode: number,

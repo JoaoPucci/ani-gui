@@ -795,8 +795,8 @@ async fn push_progress_via(
     let update = if update.progress_episodes.is_some() {
         // The same read carries the tracker's own episode total, so the
         // count is fitted to it — nothing exceeds a shorter entry, and a
-        // finale completes only where the totals agree — before the
-        // monotonic reconcile, at no extra request.
+        // finale completes only where the total is unknown or equals the
+        // episode — before the monotonic reconcile, at no extra request.
         let media = provider.tracked_media(tokens, native).await?;
         let update = fit_to_tracker_total(update, media.episodes);
         match reconcile_monotonic(update, media.entry) {
