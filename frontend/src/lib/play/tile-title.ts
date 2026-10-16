@@ -14,6 +14,6 @@ export function fallbackTileTitle(
 	episode: (num: string) => string,
 	extra: (num: string) => string
 ): string {
-	void extra;
+	if (num !== null && !Number.isInteger(num)) return extra(String(num));
 	return episode(String(num ?? ''));
 }
