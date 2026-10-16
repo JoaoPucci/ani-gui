@@ -994,6 +994,14 @@ def gen():
                 for pos, rows in (("alone", [x]), ("unrel-first", [UNREL, x]), ("unrel-last", [x, UNREL])):
                     case = dict(titles=titles, count=E, entry_year=LISTING_YEAR, rows=rows)
                     add(titles, E, LISTING_YEAR, rows, predict(case), f"admission/{tsname}/{pos}")
+                # with a count and no year: the count stands alone, so only
+                # the title searched or a name of the entry's vouches; an
+                # unrelated hit that fits the count sits beside the
+                # candidate so the refusal of what nothing names is seen
+                fit = ("u", "Zeta Thing", E)
+                for pos, rows in (("alone", [x]), ("fit-first", [fit, x]), ("fit-last", [x, fit])):
+                    case = dict(titles=titles, count=E, entry_year=None, rows=rows)
+                    add(titles, E, None, rows, predict(case), f"counted-noyear/{tsname}/{pos}")
                 # countless, with and without a year
                 for year in (LISTING_YEAR, None):
                     for pos, rows in (("alone", [x]), ("unrel-first", [UNREL, x]), ("unrel-last", [x, UNREL])):

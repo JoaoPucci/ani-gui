@@ -63,8 +63,8 @@ python3 -I tests/picker-oracle/oracle.py cmp \
 (cd backend && cargo test --lib write_the_fixture_golden -- --ignored)
 ```
 
-Generating the set takes about two seconds and writes some 21,000
-pools (5 MB); the picker walks them in about seven seconds in the debug
+Generating the set takes about two seconds and writes some 28,000
+pools (7 MB); the picker walks them in about eleven seconds in the debug
 profile. The generated set is not committed: it is a deterministic
 function of `oracle.py` and `cases/`, so committing it would store the
 generator's output beside the generator. The whole set runs on every
