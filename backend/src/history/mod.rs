@@ -790,6 +790,7 @@ mod tests {
             id in tsv_field(1, 32),
             segments in proptest::collection::vec(tsv_field(0, 12), 1..4),
             watched_at in proptest::option::of(WINDOW_START_MS..WINDOW_END_MS),
+            own_number in proptest::bool::ANY,
         ) {
             let title = segments.join("\t");
             // A stampless row whose title already ends in something
@@ -797,7 +798,9 @@ mod tests {
             // window narrows but cannot close; it is not a claim
             // this property makes.
             prop_assume!(watched_at.is_some() || !tail_reads_as_a_watch(&title));
-            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None, own_number: false };
+            // Nor does it claim a title ending in the marker column.
+            prop_assume!(!title.ends_with("\tep:own") && title != "ep:own");
+            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None, own_number };
             let parsed = parse(&serialize(std::slice::from_ref(&entry)));
             prop_assert_eq!(parsed, vec![entry]);
         }

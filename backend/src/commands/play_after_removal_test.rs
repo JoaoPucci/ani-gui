@@ -910,3 +910,51 @@ fn a_legacy_slot_row_keeps_reading_through_its_stamp_after_a_warm() {
     stamp_numbering(&state, &displaced(10, "9"), warm);
     assert_eq!(listed_episode(&state), "8");
 }
+
+#[test]
+fn a_legacy_continuation_row_keeps_its_offset_after_a_re_listing() {
+    // A row written before rows carried the app's own number holds the
+    // provider's 41 for the entry's episode 1, read through offset 40.
+    // The provider re-lists the cour from 1 (offset 0) and a warm
+    // resolves it: the row must still read as episode 1, not 41.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "41".into(),
+            id: SHOW.into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: false,
+        },
+    )
+    .expect("write");
+    crate::commands::numbering_offset::put(&state, SHOW, 40);
+    let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let mut relisted = native();
+    relisted.numbering_offset = 0;
+    stamp_numbering(&state, &relisted, warm);
+    assert_eq!(listed_episode(&state), "1");
+}
+
+#[test]
+fn a_row_in_the_apps_own_numbering_above_the_offset_reads_as_itself() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "45".into(),
+            id: SHOW.into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: true,
+        },
+    )
+    .expect("write");
+    crate::commands::numbering_offset::put(&state, SHOW, 40);
+    assert_eq!(listed_episode(&state), "45");
+}
