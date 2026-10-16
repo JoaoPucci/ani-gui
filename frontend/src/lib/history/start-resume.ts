@@ -92,6 +92,20 @@ export interface StartResumeDeps {
 	 *  forgets it (delete-controller.ts), by `row`, the clicked history
 	 *  row's id, whatever show the card names by then. */
 	markStarted?: (kitsuId: string, episode: number, row?: string) => void;
+	/** What the clicked history row reads as now, asked once the cap is
+	 *  settled — the lookup that settles it can put the row's numbering
+	 *  right. Omitted, the row reads as the card read it. */
+	currentNumber?: (entryId: string) => Promise<{ ep_no: string; former_ep_no?: string } | null>;
+	/** Keeps what was kept for `from` of `kitsuId` under `to` instead.
+	 *  Omitted, nothing moves. */
+	movePosition?: (kitsuId: string, from: number, to: number) => void;
+	/** The episode the opened session plays ({@link followPlayed}).
+	 *  Omitted, the one asked for. */
+	followPlayed?: (
+		kitsuId: string,
+		session: { episode?: string; former_episode?: string },
+		requested: number
+	) => number;
 }
 
 export function makeStartResume(

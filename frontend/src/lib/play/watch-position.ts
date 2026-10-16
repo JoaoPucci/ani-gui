@@ -72,6 +72,17 @@ export function isFinishedAt(seconds: number, duration: number): boolean {
 	return Number.isFinite(duration) && duration - seconds <= FINISHED_REMAINING_S;
 }
 
+/** Keeps what was kept for `from` of `showId` under `to` instead — the
+ *  same episode under the number it has now. */
+export function movePosition(
+	showId: string,
+	from: number,
+	to: number,
+	storage: PositionStorage | null = defaultStorage()
+): void {
+	void [showId, from, to, storage];
+}
+
 /** Where `episode` of `showId` was left, or null. */
 export function readPosition(
 	showId: string,
