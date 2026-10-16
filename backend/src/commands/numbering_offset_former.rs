@@ -26,3 +26,7 @@ pub fn retag_display(state: &AppState, slug: &str, former_tags: &[(u32, String, 
 pub fn former_stamp(_state: &AppState, _slug: &str) -> Option<(u32, String)> {
     None
 }
+
+#[cfg(test)]
+#[path = "numbering_offset_former_test.rs"]
+mod tests;
