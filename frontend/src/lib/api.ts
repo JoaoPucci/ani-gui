@@ -26,6 +26,9 @@
  */
 import type { StreamProvider } from '$lib/history/show-key';
 import { clearAllPositions } from '$lib/play/watch-position';
+import { laneBase, type Lane } from '$lib/backend/lanes';
+import { probeLimiter } from '$lib/availability/probe-limiter';
+import { probeScope } from '$lib/availability/probe-scope';
 
 let apiBaseCache: string | null = null;
 
@@ -33,6 +36,11 @@ declare global {
 	interface Window {
 		aniGui?: {
 			apiBase?: string;
+			/** The backend's other loopback origins, one per class of
+			 *  traffic, by lane name (`$lib/backend/lanes`). Absent in
+			 *  browser-only dev, where every lane falls back to
+			 *  `apiBase`. */
+			lanes?: Partial<Record<string, string>>;
 			/** Per-process random secret printed by the Rust backend at
 			 *  startup and threaded through Electron's preload. Sent as
 			 *  the `x-ani-gui-internal-secret` header on the few backend
@@ -124,9 +132,13 @@ export function __resetApiBaseForTests(next: string | null = null): void {
  * Internal: build a URL by joining the cached base with a path. Path
  * is taken verbatim, so callers control any query-string encoding.
  */
-async function url(path: string): Promise<string> {
-	const base = await apiBase();
-	return base.replace(/\/+$/, '') + path;
+async function url(path: string, lane: Lane = 'api'): Promise<string> {
+	return laneBase(windowLanes(), lane, await apiBase()) + path;
+}
+
+/** The lanes the preload bridge carries, if any. */
+function windowLanes(): Partial<Record<string, string>> | undefined {
+	return typeof window === 'undefined' ? undefined : window.aniGui?.lanes;
 }
 
 /**
@@ -161,12 +173,20 @@ async function getJson<T>(path: string): Promise<T> {
 	return expect2xx<T>(resp);
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-	const resp = await fetch(await url(path), {
+/** Where a request goes and what can cancel it. */
+interface RequestOptions {
+	lane?: Lane;
+	signal?: AbortSignal;
+}
+
+async function postJson<T>(path: string, body: unknown, opts: RequestOptions = {}): Promise<T> {
+	const init: RequestInit = {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify(body)
-	});
+	};
+	if (opts.signal) init.signal = opts.signal;
+	const resp = await fetch(await url(path, opts.lane), init);
 	return expect2xx<T>(resp);
 }
 
@@ -900,8 +920,15 @@ export interface AvailabilityResponse {
 /** "Is this title in the provider's catalog?" probe. The detail page hits
  *  this on mount so it can gate the Play + Download CTAs ahead of a
  *  click instead of letting the user discover the gap by clicking. */
-export function checkAvailability(args: AvailabilityArgs): Promise<AvailabilityResponse> {
-	return postJson<AvailabilityResponse>('/api/availability', args);
+export function checkAvailability(
+	args: AvailabilityArgs,
+	opts: { signal?: AbortSignal } = {}
+): Promise<AvailabilityResponse> {
+	const signal = opts.signal ?? probeScope.signal();
+	return probeLimiter.run(
+		(s) => postJson<AvailabilityResponse>('/api/availability', args, { signal: s }),
+		{ background: args.background === true, signal }
+	);
 }
 
 /** Cached-only batch lookup. List views (home / search) call this
