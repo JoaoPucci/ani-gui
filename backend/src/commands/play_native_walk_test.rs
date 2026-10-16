@@ -485,7 +485,8 @@ async fn a_dead_listing_in_any_pool_is_never_a_clean_miss_nor_a_refusal_by_name(
 /// the entry before "Show 2" — withdraws nothing: answered, it would be
 /// scored out and leave the clean miss, so dead it does the same. Alone,
 /// the pool is the clean miss; beside another alias's refusal by name,
-/// the refusal stands.
+/// the refusal stands. (The alias, "Other Name 2", names no part "Show"
+/// could be the part before, so "Show" is probed rather than dropped.)
 #[tokio::test]
 async fn a_dead_listing_of_another_entry_withdraws_no_refusal() {
     let alone = scripted(&[("show 2", Pool::Hits(&[("x-1", "Show")]))]);
@@ -497,22 +498,27 @@ async fn a_dead_listing_of_another_entry_withdraws_no_refusal() {
         "the entry before, dead, is the clean miss it is alive"
     );
 
-    // The longer needle first: a search matches the first needle it
-    // contains.
     let beside = scripted(&[
-        ("show 2nd season", Pool::Hits(&[("the-show-77", "Other")])),
+        ("other name 2", Pool::Hits(&[("the-show-77", "Other")])),
         ("show 2", Pool::Hits(&[("x-1", "Show")])),
     ]);
     let ne = pick_native_walk(
         &beside,
         "show 2",
-        &["show 2nd season".to_string()],
+        &["other name 2".to_string()],
         Some(3),
         None,
         None,
     )
     .await
     .expect_err("nothing picked");
+    assert!(
+        beside
+            .asked()
+            .iter()
+            .any(|a| matches!(a, crate::scraper::table_provider::Asked::Episodes(s) if s == "x-1")),
+        "the entry before was probed"
+    );
     assert!(!ne.clean_miss);
     assert!(
         ne.refused_by_name,
@@ -520,39 +526,64 @@ async fn a_dead_listing_of_another_entry_withdraws_no_refusal() {
     );
 }
 
-/// A dead listing the titles refuse can still decide the pick when it
-/// is a broad listing's completing sibling: "The Show Season 3 Part 2"
-/// dead beside "The Show Season 3", seven episodes against three. Had
-/// it answered, the broad listing might have been cut to the entry's
-/// episodes, so the pool is neither the clean miss nor — beside a hit
-/// refused by name in the same pool — a refusal by name.
+/// The hits of `(slug, title)` pairs, for a table of the test's own.
+fn named_hits(entries: &[(&str, &str)]) -> Vec<crate::scraper::provider::BrowseHit> {
+    super::super::play_native_test_provider::hits(entries)
+}
+
+/// A dead listing the titles refuse decides the pick exactly when, as
+/// a broad listing's completing sibling, it would have had the broad
+/// listing cut: "The Show Season 3 Part 2" dead beside "The Show Season
+/// 3", seven episodes against three, from the entry's year — the span
+/// table's W, which the entry heads and the sibling names a later part
+/// of. Then the pool is the dead end, alone and beside a hit refused by
+/// name in the same pool. For an undated entry no W exists, the year
+/// confirming none, so the dead sibling decides nothing: beside the
+/// refused hit the pool is the refusal by name it would have been.
 #[tokio::test]
-async fn a_dead_sibling_that_could_complete_a_broad_listing_is_a_dead_end() {
-    for (label, pool) in [
+async fn a_dead_sibling_decides_the_pick_only_as_a_broad_listings_completion() {
+    let wide = [
+        ("the-show-99", "The Show Season 3"),
+        ("ghost-1", "The Show Season 3 Part 2"),
+    ];
+    let with_refused = [
+        ("the-show-99", "The Show Season 3"),
+        ("ghost-1", "The Show Season 3 Part 2"),
+        ("the-show-77", "Some Other"),
+    ];
+    for (label, entries, year, refused) in [
+        ("dated, alone", &wide[..], Some(2020), false),
         (
-            "alone",
-            Pool::Hits(&[
-                ("the-show-99", "The Show Season 3"),
-                ("ghost-1", "The Show Season 3 Part 2"),
-            ]),
+            "dated, beside a refusal",
+            &with_refused[..],
+            Some(2020),
+            false,
         ),
-        (
-            "beside a refusal",
-            Pool::Hits(&[
-                ("the-show-99", "The Show Season 3"),
-                ("ghost-1", "The Show Season 3 Part 2"),
-                ("the-show-77", "Some Other"),
-            ]),
-        ),
+        ("undated, beside a refusal", &with_refused[..], None, true),
     ] {
-        let site = scripted(&[("the show season 3", pool)]);
-        let ne = pick_native_walk(&site, "the show season 3", &[], Some(3), None, None)
+        let site = TableProvider::counted_with_years(&[(99, 7, Some(2020)), (77, 2, Some(2020))])
+            .hits("the show season 3", named_hits(entries));
+        let ne = pick_native_walk(&site, "the show season 3", &[], Some(3), year, None)
             .await
             .expect_err("nothing picked");
-        assert!(
-            !ne.clean_miss,
-            "{label}: the dead sibling may have decided the pick"
-        );
-        assert!(!ne.refused_by_name, "{label}");
+        assert!(!ne.clean_miss, "{label}");
+        assert_eq!(ne.refused_by_name, refused, "{label}");
     }
+}
+
+/// A dead listing the titles or the name rule refuse is a refused hit
+/// the pool holds, as it would be had it answered within the count: a
+/// pool of a live "Show" three episodes long against twelve and a dead
+/// "Show Season 2" is the refusal by name, not the clean miss.
+#[tokio::test]
+async fn a_dead_refused_listing_beside_a_live_misfit_is_a_refusal_by_name() {
+    let site = TableProvider::counted_with_years(&[(5, 3, None)]).hits(
+        "show",
+        named_hits(&[("show-5", "Show"), ("ghost-1", "Show Season 2")]),
+    );
+    let ne = pick_native_walk(&site, "show", &[], Some(12), None, None)
+        .await
+        .expect_err("nothing picked");
+    assert!(!ne.clean_miss);
+    assert!(ne.refused_by_name);
 }
