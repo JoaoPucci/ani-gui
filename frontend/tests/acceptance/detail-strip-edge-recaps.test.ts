@@ -56,14 +56,21 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function useShow(count: number, extras: string[]) {
+function useShow(count: number, extras: string[], announced = count, airingKnown = true) {
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Ongoing Show', count), status: 'finished' })
+			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Ongoing Show', announced), status: 'finished' })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
-			HttpResponse.json({ aired: count, next_episode: null, next_airing_at: null, upcoming: [] })
+			airingKnown
+				? HttpResponse.json({
+						aired: count,
+						next_episode: null,
+						next_airing_at: null,
+						upcoming: []
+					})
+				: new HttpResponse(null, { status: 404 })
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
@@ -127,6 +134,27 @@ describe('detail route — recaps at the edges of a grid page', () => {
 		// The range counts episodes, not the recaps beside them.
 		expect(target.textContent).toContain(
 			m.detail_episodes_range_pagination({ epStart: '1', epEnd: '12', total: '24' })
+		);
+	});
+});
+
+describe('detail route — a short listing with a recap', () => {
+	it('counts the listed episodes, not the recap beside them', async () => {
+		// The provider lists five episodes and a 5.5 recap of a show
+		// Kitsu announces at 24, with no airing data to say more: the
+		// range reads "5 of 24 listed", not 6.
+		useShow(5, ['5.5'], 24, false);
+		app = mount(DetailPage, { target });
+		await until(() => target.querySelector('li[data-ep-num="5.5"]') !== null, 'the grid');
+		await until(
+			() =>
+				(target.textContent ?? '').includes(
+					m.detail_episodes_range_of({ aired: '5', total: '24' })
+				),
+			'the listed count'
+		);
+		expect(target.textContent).not.toContain(
+			m.detail_episodes_range_of({ aired: '6', total: '24' })
 		);
 	});
 });
