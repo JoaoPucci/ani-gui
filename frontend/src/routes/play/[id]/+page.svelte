@@ -2295,6 +2295,7 @@
 			// shaped by describeExternalLaunchFailure so the spawn
 			// case names the binary and the resolve-step branches
 			// reuse describePlayFailure copy.
+			if (visit !== askedVisit) return;
 			const otherAudio = await otherAudioForFailure(e, launch);
 			if (visit !== askedVisit) return;
 			externalError = { episode: ep, message: describeExternalLaunchFailure(e, otherAudio) };
@@ -2343,6 +2344,7 @@
 			// `isSpawnFailure` drives whether the modal renders the
 			// "Get Syncplay" install link — only when the binary
 			// itself was the problem.
+			if (visit !== askedVisit) return;
 			const otherAudio = await otherAudioForFailure(e, launch);
 			if (visit !== askedVisit) return;
 			syncplayError = {
