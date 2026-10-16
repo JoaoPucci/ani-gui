@@ -142,6 +142,16 @@ function windowLanes(): Partial<Record<string, string>> | undefined {
 }
 
 /**
+ * The origin `lane` is reached at, read synchronously off the preload
+ * bridge — for URLs a component renders eagerly (an `<img src>`, the
+ * player's media URL). `null` when the bridge carries no API origin.
+ */
+export function windowLaneBase(lane: Lane): string | null {
+	if (typeof window === 'undefined' || !window.aniGui?.apiBase) return null;
+	return laneBase(window.aniGui.lanes, lane, window.aniGui.apiBase);
+}
+
+/**
  * Read the JSON body or throw the parsed error payload. The backend
  * sends its error envelope as the error response's body — `kind`, the
  * variant's own fields and the stable `key` (see AniErrorPayload) —
@@ -553,14 +563,14 @@ export interface PlayArgs {
 /** Play an episode in the embedded player. Returns the session URLs
  *  the renderer feeds to hls.js after navigating to /play. */
 export function play(args: PlayArgs): Promise<CreateSessionResponse> {
-	return postJson<CreateSessionResponse>('/api/play', args);
+	return postJson<CreateSessionResponse>('/api/play', args, { lane: 'resolve' });
 }
 
 /** Play an episode in the user's external media player (default mpv).
  *  No session is registered — the player streams from the upstream
  *  directly with the resolved Referer. */
 export function playExternal(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/external', args);
+	return postJson<void>('/api/play/external', args, { lane: 'resolve' });
 }
 
 /** Launch the resolved episode in the user's Syncplay binary. Same
@@ -570,7 +580,7 @@ export function playExternal(args: PlayArgs): Promise<void> {
  *  Syncplay binary can't be spawned — caller surfaces the failure
  *  via the play page's `ErrorOverlay` with a syncplay.pl link. */
 export function playSyncplay(args: PlayArgs): Promise<void> {
-	return postJson<void>('/api/play/syncplay', args);
+	return postJson<void>('/api/play/syncplay', args, { lane: 'resolve' });
 }
 
 /** Drop the cached play resolution for `args` so the next play call
@@ -648,10 +658,9 @@ export function playStream(
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
 
-	return apiBase().then(
-		(base) =>
+	return url(`/api/play/stream?${params.toString()}`, 'resolve').then(
+		(url) =>
 			new Promise<CreateSessionResponse>((resolve, reject) => {
-				const url = `${base.replace(/\/+$/, '')}/api/play/stream?${params.toString()}`;
 				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
@@ -776,10 +785,9 @@ export function downloadStream(
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
 
-	return apiBase().then(
-		(base) =>
+	return url(`/api/download/stream?${params.toString()}`, 'download').then(
+		(url) =>
 			new Promise<DownloadResponse>((resolve, reject) => {
-				const url = `${base.replace(/\/+$/, '')}/api/download/stream?${params.toString()}`;
 				const es = new EventSource(url);
 				let settled = false;
 				const finish = (fn: () => void) => {
@@ -926,7 +934,7 @@ export function checkAvailability(
 ): Promise<AvailabilityResponse> {
 	const signal = opts.signal ?? probeScope.signal();
 	return probeLimiter.run(
-		(s) => postJson<AvailabilityResponse>('/api/availability', args, { signal: s }),
+		(s) => postJson<AvailabilityResponse>('/api/availability', args, { lane: 'probe', signal: s }),
 		{ background: args.background === true, signal }
 	);
 }
@@ -1264,16 +1272,19 @@ export function imageCacheClear(): Promise<void> {
  * Convert an `https://…` upstream image URL into a URL the renderer
  * can drop into `<img src=>`.
  *
- * The backend serves `/api/image?url=…` over HTTP; we need the
- * apiBase synchronously (Svelte renders the `src` attribute eagerly),
- * so we read it directly off `window.aniGui.apiBase` set by the
- * Electron preload before any component mounts.
+ * The backend serves `/api/image?url=…` over HTTP, on the image lane
+ * (a cold poster holds its connection for the upstream fetch, which
+ * must not queue the API or the player). We need the origin
+ * synchronously (Svelte renders the `src` attribute eagerly), so we
+ * read it directly off the bridge the Electron preload sets before any
+ * component mounts.
  *
  * Returns `null` for non-https input or when the apiBase isn't
  * available yet — components show a placeholder in that case.
  */
 export function imageProxyUrl(httpsUrl: string | null | undefined): string | null {
 	if (!httpsUrl || !httpsUrl.startsWith('https://')) return null;
-	if (typeof window === 'undefined' || !window.aniGui?.apiBase) return null;
-	return `${window.aniGui.apiBase}/api/image?url=${encodeURIComponent(httpsUrl)}`;
+	const base = windowLaneBase('image');
+	if (base === null) return null;
+	return `${base}/api/image?url=${encodeURIComponent(httpsUrl)}`;
 }

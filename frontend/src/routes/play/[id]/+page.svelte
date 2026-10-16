@@ -8,7 +8,7 @@
     - kitsu_id:  drives the show context (poster, title, episodes,
                  similar titles) via the existing Kitsu endpoints.
     - session:   the StreamSession id. The master playlist URL is
-                 reconstructed client-side from `apiBase` + the id;
+                 reconstructed client-side from the stream lane + the id;
                  hls.js loads that URL through the local proxy.
     - episode:   currently-playing episode number. Highlighted in the
                  strip below the player; consumed by the prev/next
@@ -42,6 +42,7 @@
 		downloadDefaultDir as downloadDefaultDirApi,
 		evictPlayCache,
 		imageProxyUrl,
+		windowLaneBase,
 		checkAvailability,
 		kitsuAnimeDetail,
 		kitsuEpisodes,
@@ -854,11 +855,13 @@
 	/** Reconstruct the proxy URL from the session id + kind. The proxy
 	 *  mounts each session at /s/<id>/master.m3u8 (HLS) or /s/<id>/file.mp4
 	 *  (MP4) — the pattern is stable, so we don't round-trip the backend
-	 *  just to learn the URL. window.aniGui.apiBase is set by Electron's
-	 *  preload script before the renderer mounts. */
+	 *  just to learn the URL. It is the stream lane's: the player's
+	 *  fetches have a connection budget nothing else draws on
+	 *  ($lib/backend/lanes). The bridge is set by Electron's preload
+	 *  script before the renderer mounts. */
 	const mediaUrl = $derived.by(() => {
 		if (!sessionId) return null;
-		const base = (typeof window !== 'undefined' && window.aniGui?.apiBase) || '';
+		const base = windowLaneBase('stream');
 		return base ? buildMediaUrl(base, sessionId, mediaKind) : null;
 	});
 
