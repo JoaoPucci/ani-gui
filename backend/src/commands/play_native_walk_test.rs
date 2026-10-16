@@ -85,7 +85,8 @@ async fn the_pick_walk_marks_answered_dead_ends_non_persistable() {
     // A pool whose every candidate answers not-found (stale slugs) is
     // dead candidates on a healthy provider: NoResults, but NOT the
     // persistable clean miss — the next probe should look again.
-    let provider = scripted(&[("ghost", Pool::Hits(&[("ghost-1", "Ghost Entry")]))]);
+    // "Ghost", the title searched: a listing that could have won.
+    let provider = scripted(&[("ghost", Pool::Hits(&[("ghost-1", "Ghost")]))]);
     let ne = walk(&provider, "ghost", &[], Some(3))
         .await
         .expect_err("dead candidates resolve nothing");
@@ -118,12 +119,12 @@ async fn the_pick_walk_says_when_every_dead_end_was_a_refusal_by_name() {
 #[tokio::test]
 async fn a_dead_listing_beside_a_refusal_is_no_refusal_by_name() {
     // One alias's pool is refused by name, the other's candidate
-    // answers its listing not-found: the dead one may have been the
-    // show, so the walk does not say the catalogue lists nothing
-    // named for it.
+    // answers its listing not-found — "Ghost", the alias itself, which
+    // could have won: the dead one may have been the show, so the walk
+    // does not say the catalogue lists nothing named for it.
     let provider = scripted(&[
         ("the show", Pool::Hits(&[("the-show-77", "Some Other")])),
-        ("ghost", Pool::Hits(&[("ghost-1", "Ghost Entry")])),
+        ("ghost", Pool::Hits(&[("ghost-1", "Ghost")])),
     ]);
     let ne = walk(&provider, "the show", &["ghost".to_string()], Some(3))
         .await
@@ -131,6 +132,55 @@ async fn a_dead_listing_beside_a_refusal_is_no_refusal_by_name() {
     assert!(matches!(ne.error, AniError::NoResults));
     assert!(!ne.clean_miss);
     assert!(!ne.refused_by_name);
+}
+
+/// A dead listing withdraws a refusal only when it could have won —
+/// when the rule that reads how a hit is named would have let it stand
+/// had it answered. Every pool here holds nothing but dead listings
+/// that rule refuses: "Other Entry", which no title of the entry names
+/// nor shares a name with,
+/// for an entry with a count and no year (the count-alone rule), one
+/// video long (the single-video rule), or dated with a count (the
+/// dated-name rule). Beside another alias's refusal by name, the walk
+/// is the refusal by name; alone, the pool is that refusal too, never
+/// the clean miss.
+#[tokio::test]
+async fn a_dead_listing_no_name_vouches_for_withdraws_no_refusal() {
+    for (rule, expected, year) in [
+        ("count-alone", Some(3), None),
+        ("single-video", Some(1), None),
+        ("dated-name", Some(3), Some(2020)),
+    ] {
+        let alone = scripted(&[("ghost", Pool::Hits(&[("ghost-1", "Other Entry")]))]);
+        let ne = pick_native_walk(&alone, "ghost", &[], expected, year, None)
+            .await
+            .expect_err("nothing picked");
+        assert!(!ne.clean_miss, "{rule}: alone");
+        assert!(
+            ne.refused_by_name,
+            "{rule}: alone, the dead hits are refused by name"
+        );
+
+        let beside = scripted(&[
+            ("the show", Pool::Hits(&[("the-show-77", "Some Other")])),
+            ("ghost", Pool::Hits(&[("ghost-1", "Other Entry")])),
+        ]);
+        let ne = pick_native_walk(
+            &beside,
+            "the show",
+            &["ghost".to_string()],
+            expected,
+            year,
+            None,
+        )
+        .await
+        .expect_err("nothing picked");
+        assert!(!ne.clean_miss, "{rule}");
+        assert!(
+            ne.refused_by_name,
+            "{rule}: the dead listing could not have won"
+        );
+    }
 }
 
 #[tokio::test]
