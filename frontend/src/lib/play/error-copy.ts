@@ -51,11 +51,12 @@ export { describeRateLimit, describeSourceAnswer, describeSourceDown } from './s
 import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
 
 /** What the availability cache says about the other audio of the
- *  show a play failed for: `true` when it has the show (and, where the
- *  cache carries a count, this episode), `false` when it is known to
- *  have nothing, `null` when nothing vouches either way — never
- *  probed, an answer the cache would not serve, or a lookup that
- *  failed. Learned from the cache only (./other-audio). */
+ *  show a play failed for: `true` only when a cached count covers the
+ *  failed episode, `false` when the other audio is known to have
+ *  nothing (or its count stops short of the episode), `null` when
+ *  nothing vouches either way — never probed, a row the cache will not
+ *  serve, a positive row without a count, no episode named, or a
+ *  lookup that failed. Learned from the cache only (./other-audio). */
 export type OtherAudio = boolean | null;
 
 /** What a surface tells `describePlayFailure` beyond the error. */
