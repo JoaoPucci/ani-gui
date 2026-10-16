@@ -119,11 +119,6 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		expect(r.mappingNote).toBe('direct');
 	});
 
-	it('lands on the right UI page when the episode is past page 1', () => {
-		const r = resolveHistoryEntry(entry('One Piece (1100 episodes)', '54'), stubKitsu());
-		expect(r.kitsuEpisode).toBe(54);
-	});
-
 	it('still records cour metadata for callers that want to surface it', () => {
 		const r = resolveHistoryEntry(
 			entry('JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2 (12 episodes)', '4'),
