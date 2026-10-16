@@ -174,6 +174,11 @@ describe('detail — play failures render the shared copy with the override', ()
 					episode_count_approximate: false
 				})
 			),
+			// The episode verdict asks the availability cache about the
+			// other audio; here it holds no answer.
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+			),
 			http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
 			http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
 		);
