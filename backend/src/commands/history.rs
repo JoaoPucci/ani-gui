@@ -24,9 +24,27 @@ pub use super::history_remove::{history_clear, history_delete};
 /// after the show's last episode reads back as that extra, under the
 /// reading the evidence proved for the row's Kitsu entry
 /// ([`super::play_native_appended::extra_for_slot`]).
-fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> HistoryEntry {
+///
+/// The row's Kitsu entry is the one it records, else `claimed_for` —
+/// the entry a lookup claimed the row for — else the one its show id
+/// maps to.
+fn to_kitsu_numbering(
+    state: &crate::app::AppState,
+    mut entry: HistoryEntry,
+    claimed_for: Option<&str>,
+) -> HistoryEntry {
     entry.ep_no = crate::commands::numbering_offset::read_ep_no(state, &entry.id, &entry.ep_no);
-    let reading = super::kitsu_tail::KitsuTail::for_entry(state, entry.kitsu_id.as_deref())
+    let mapped = || {
+        crate::commands::kitsu::allmanga_kitsu_get(state, &entry.id)
+            .ok()
+            .flatten()
+    };
+    let kitsu = entry
+        .kitsu_id
+        .clone()
+        .or_else(|| claimed_for.map(str::to_string))
+        .or_else(mapped);
+    let reading = super::kitsu_tail::KitsuTail::for_entry(state, kitsu.as_deref())
         .and_then(|t| super::play_native_appended::TailSource::remembered(&t));
     if let Some(extra) = reading
         .and_then(|r| super::play_native_appended::extra_for_slot(&r, &entry.id, &entry.ep_no))
@@ -49,7 +67,7 @@ fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> 
 pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
     Ok(read_all(&state.history_path)?
         .into_iter()
-        .map(|e| to_kitsu_numbering(state, e))
+        .map(|e| to_kitsu_numbering(state, e, None))
         .collect())
 }
 
@@ -121,7 +139,7 @@ pub fn history_by_kitsu(
             entry.watched_at,
             crate::commands::kitsu::watched_at_get(state, &entry.id)?,
         );
-        let entry = to_kitsu_numbering(state, entry);
+        let entry = to_kitsu_numbering(state, entry, Some(kitsu_id));
         let newer = match &best {
             None => true,
             Some((current, current_stamp)) => super::history_resume::resumes_over(

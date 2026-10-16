@@ -139,7 +139,17 @@ pub async fn fit_appended(
     expected: Option<u32>,
     source: Option<&dyn TailSource>,
 ) -> PickedShow {
-    let (Some(count), Some(source)) = (appended_count(&picked.episodes, expected), source) else {
+    let Some(source) = source else {
+        return picked;
+    };
+    let Some(count) = appended_count(&picked.episodes, expected) else {
+        // The show's listing no longer runs past a count — Kitsu took
+        // the rows in, or the listing changed shape — so a reading
+        // kept for it no longer stands.
+        let kept = source.remembered();
+        if expected.is_some() && kept.is_some_and(|k| k.slug == picked.hit.slug) {
+            source.remember(None);
+        }
         return picked;
     };
     let reading = Remembered {

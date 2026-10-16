@@ -78,21 +78,19 @@ fn related(r: KitsuRelation, episode_titles: Option<Vec<String>>) -> Related {
 
 impl KitsuTail<'_> {
     /// Kitsu's rows on the pages [`tail_pages`] names, and on the page
-    /// after the last of them when that one is full to its end with
-    /// nothing past the count on it: Kitsu's pages are not always
-    /// dense, so a full page says nothing about what follows it.
+    /// after the last of them when nothing past the count is on them:
+    /// Kitsu's pages are not always dense, and the placeholder rows the
+    /// reader drops hide how full a page was, so only the page after
+    /// says what follows.
     pub(super) async fn read_pages(&self, count: u32) -> Option<Vec<KitsuEpisode>> {
         let mut episodes = Vec::new();
-        let mut last = (0, 0);
+        let mut last = 0;
         for page in tail_pages(count) {
-            let rows = self.page(page).await?;
-            last = (page, rows.len());
-            episodes.extend(rows);
+            episodes.extend(self.page(page).await?);
+            last = page;
         }
-        let full = last.1 >= usize::try_from(KITSU_PAGE).unwrap_or(usize::MAX);
-        let nothing_past = episodes.iter().all(|e| e.number.is_none_or(|n| n <= count));
-        if full && nothing_past {
-            episodes.extend(self.page(last.0 + 1).await?);
+        if episodes.iter().all(|e| e.number.is_none_or(|n| n <= count)) {
+            episodes.extend(self.page(last + 1).await?);
         }
         Some(episodes)
     }
