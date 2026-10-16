@@ -262,6 +262,9 @@ export type VersionKind = 'uncensored' | 'standard';
 export interface VersionInfo {
 	kind: VersionKind;
 	show_key: string;
+	/** Whether the copy carries the audio mode an availability answer
+	 *  was asked about; absent where nobody asked or nobody answered. */
+	has_mode?: boolean;
 }
 
 /** Player flag-syntax flavor — controls the argv shape `build_argv`
