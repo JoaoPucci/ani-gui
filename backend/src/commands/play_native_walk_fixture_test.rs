@@ -213,6 +213,97 @@ async fn assert_picks(rows: &[Expectation]) {
     assert!(wrong.is_empty(), "wrong picks:\n{}", wrong.join("\n"));
 }
 
+/// The JoJo seasons hianime lists twice — an "(Uncensored)" copy and a
+/// plain one, the same count and numbering — as `(Kitsu id, uncensored
+/// copy, plain copy)`.
+const JOJO_COPIES: &[(&str, &str, &str)] = &[
+    (
+        "7158",
+        "jojos-bizarre-adventure-2012-708",
+        "jojo-s-bizarre-adventure-9761",
+    ),
+    (
+        "8063",
+        "jojos-bizarre-adventure-stardust-crusaders-718",
+        "jojo-s-bizarre-adventure-part-2-stardust-crusaders-9760",
+    ),
+    (
+        "8739",
+        "jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710",
+        "jojo-s-bizarre-adventure-part-3-stardust-crusaders-2nd-season-9759",
+    ),
+    (
+        "11459",
+        "jojos-bizarre-adventure-diamond-is-unbreakable-1388",
+        "jojo-s-bizarre-adventure-part-4-diamond-is-unbreakable-9758",
+    ),
+    (
+        "41410",
+        "jojos-bizarre-adventure-golden-wind-695",
+        "jojo-s-bizarre-adventure-part-5-golden-wind-9757",
+    ),
+];
+
+/// Every JoJo season the provider lists twice is picked as one show
+/// with two versions, the uncensored copy playing by default and the
+/// plain one beside it — in the provider's order, as the walk heard
+/// them.
+#[tokio::test]
+async fn every_jojo_season_listed_twice_offers_both_versions_uncensored_first() {
+    use super::super::play_native_versions::VersionKind;
+    let mut wrong = Vec::new();
+    for (id, uncensored, plain) in JOJO_COPIES {
+        let p = walk(id)
+            .await
+            .unwrap_or_else(|e| panic!("{id}: {:?}", e.error));
+        if p.hit.slug != *uncensored {
+            wrong.push(format!("{id}: plays {}, want {uncensored}", p.hit.slug));
+        }
+        let mut got: Vec<(VersionKind, &str)> = p
+            .versions
+            .iter()
+            .map(|v| (v.kind, v.hit.slug.as_str()))
+            .collect();
+        got.sort_by_key(|(k, _)| *k == VersionKind::Standard);
+        let want = vec![
+            (VersionKind::Uncensored, *uncensored),
+            (VersionKind::Standard, *plain),
+        ];
+        if got != want {
+            wrong.push(format!("{id}: versions {got:?}, want {want:?}"));
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// Golden Wind's alias "Jojo's Bizarre Adventure Part 5: Golden Wind"
+/// is the plain copy's exact title, which wins the pool's tie today;
+/// asked by that alias the pick is still the season's two versions,
+/// the uncensored one playing.
+#[tokio::test]
+async fn the_plain_copys_exact_title_still_plays_the_uncensored_version() {
+    let site = Recorded::load("41410");
+    let e = &site.doc.kitsu;
+    let titles: Vec<&str> = std::iter::once(e.canonical.as_str())
+        .chain(e.alt_titles.iter().map(String::as_str))
+        .collect();
+    let alias = "Jojo's Bizarre Adventure Part 5: Golden Wind";
+    let hits = site.search(alias).await.expect("recorded");
+    let p = pick_candidate_titled(
+        &site,
+        &hits,
+        e.episode_count,
+        alias,
+        &titles,
+        e.year,
+        e.subtype.as_deref(),
+    )
+    .await
+    .expect("picked");
+    assert_eq!(p.hit.slug, "jojos-bizarre-adventure-golden-wind-695");
+    assert_eq!(p.versions.len(), 2);
+}
+
 /// Entries a real-data audit found picked right — or, for a show the
 /// catalogue does not list, rightly refused — which must stay so.
 const AUDITED_RIGHT: &[Expectation] = &[
@@ -224,6 +315,17 @@ const AUDITED_RIGHT: &[Expectation] = &[
     (
         "11459",
         Some(("jojos-bizarre-adventure-diamond-is-unbreakable-1388", 39)),
+    ),
+    (
+        "8739",
+        Some((
+            "jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710",
+            24,
+        )),
+    ),
+    (
+        "41410",
+        Some(("jojos-bizarre-adventure-golden-wind-695", 39)),
     ),
     (
         "44294",

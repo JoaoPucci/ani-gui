@@ -31,3 +31,17 @@ pub struct ShowVersion {
     /// The copy's episodes, as its probe returned them.
     pub episodes: Vec<EpisodeRef>,
 }
+
+impl crate::commands::play_native::PickedShow {
+    /// The pick playing `version` when it is one of its versions; the
+    /// pick as it is otherwise — a show with one version plays it
+    /// whatever is asked.
+    #[must_use]
+    pub fn choose(self, _version: Option<VersionKind>) -> Self {
+        self
+    }
+}
+
+#[cfg(test)]
+#[path = "play_native_versions_test.rs"]
+mod tests;
