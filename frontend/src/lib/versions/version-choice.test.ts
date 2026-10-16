@@ -166,6 +166,23 @@ describe('the versions a show offers', () => {
 	});
 });
 
+describe('the versions a show offers in a mode', () => {
+	it('leave out a version the answer says lacks the mode', () => {
+		const dubbedPlain: VersionInfo[] = [
+			{ ...standard, has_mode: true },
+			{ ...uncensored, has_mode: false }
+		];
+		// One version carries the mode: nothing to choose between, and
+		// a play finds the mode in the copy that carries it.
+		expect(versionsToOffer(dubbedPlain)).toEqual([]);
+	});
+
+	it('keep a version the answer says carries the mode, or says nothing of', () => {
+		const both: VersionInfo[] = [{ ...standard, has_mode: true }, { ...uncensored }];
+		expect(versionsToOffer(both)).toEqual([{ ...uncensored }, { ...standard, has_mode: true }]);
+	});
+});
+
 describe('the version selected for a show', () => {
 	it('is none when nothing is offered', () => {
 		expect(selectedVersion([], undefined)).toBeUndefined();
