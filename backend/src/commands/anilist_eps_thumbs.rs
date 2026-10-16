@@ -16,6 +16,9 @@ use crate::meta::anilist_media::MediaRef;
 use crate::meta::anilist_streaming_eps::{streaming_listing_for_ids, StreamingListing};
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
+#[path = "anilist_eps_fit.rs"]
+mod fit;
+
 /// Stable key for the per-show AniList episode-thumbnail backfill.
 /// Versioned so a schema change orphans old rows: `v2` caches the
 /// whole [`StreamingListing`] (entry titles, AniList's episode count

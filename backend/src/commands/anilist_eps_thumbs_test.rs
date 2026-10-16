@@ -520,3 +520,77 @@ async fn both_ids_unknown_to_anilist_cache_empty_thumbs_after_two_requests() {
     assert!(first.entries.is_empty());
     assert!(second.entries.is_empty());
 }
+
+// --- A listing that is not the show's -----------------------------
+
+/// AniList's recorded reply for `slug` under
+/// `tests/fixtures/episode-thumbs/`.
+fn recorded_anilist(slug: &str) -> String {
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../tests/fixtures/episode-thumbs"
+    );
+    std::fs::read_to_string(format!("{dir}/{slug}.anilist.json")).expect("anilist fixture")
+}
+
+/// Kitsu's recorded first episode page for `slug`.
+fn recorded_kitsu_page(slug: &str) -> Vec<KitsuEpisode> {
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../tests/fixtures/episode-thumbs"
+    );
+    let body = std::fs::read(format!("{dir}/{slug}.kitsu-p1.json")).expect("kitsu fixture");
+    crate::meta::kitsu::parse_episodes_response(&body).expect("kitsu parses")
+}
+
+#[tokio::test]
+async fn gintama_dot_keeps_its_placeholders_instead_of_the_2006_stills() {
+    // Kitsu 12553 "Gintama." maps to MAL 34096; AniList answers with the
+    // 49-entry Crunchyroll listing of the 2006 series. Kitsu has no
+    // stills for the twelve episodes, so before the fit rule every one
+    // took a 2006 still.
+    let kitsu = kitsu_with_mappings("12553", &[("myanimelist/anime", 34096)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 34096 }),
+        &recorded_anilist("gintama-dot"),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let page = recorded_kitsu_page("gintama-dot");
+    assert!(needs_backfill(&page));
+    let got = thumbs_for_show_with_anilist_base(&state, "12553", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(page, &got);
+    assert!(
+        merged.iter().all(|e| e
+            .thumbnail
+            .as_ref()
+            .and_then(|t| t.original.as_ref())
+            .is_none()),
+        "a 2006 still landed on Gintama."
+    );
+}
+
+#[tokio::test]
+async fn the_2006_gintama_keeps_the_stills_of_its_own_listing() {
+    let kitsu = kitsu_with_mappings("818", &[("myanimelist/anime", 918)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 918 }),
+        &recorded_anilist("gintama"),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let page = recorded_kitsu_page("gintama");
+    let got = thumbs_for_show_with_anilist_base(&state, "818", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(page, &got);
+    assert!(merged.iter().all(|e| e
+        .thumbnail
+        .as_ref()
+        .and_then(|t| t.original.as_ref())
+        .is_some()));
+}

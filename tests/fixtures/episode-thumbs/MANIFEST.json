@@ -1,0 +1,162 @@
+{
+  "$comment": "Recorded AniList streamingEpisodes replies and the matching Kitsu episode page for each show, captured with the production queries and User-Agent. They drive the episode-thumbnail fit rule in backend/src/commands/anilist_eps_fit.rs.",
+  "captured_at": "2026-10-16",
+  "fixtures": {
+    "attack-on-titan.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 16498 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 4789,
+      "sha256": "f9f506bd20e72b18a8cd390547502d3774a5b2fef5d77db6d18e3fb70ee3e2bc",
+      "notes": "Attack on Titan (2013, 25 episodes) — right listing, worded differently from Kitsu"
+    },
+    "attack-on-titan.kitsu-p1.json": {
+      "request": "GET /anime/7442/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 12623,
+      "sha256": "4abea6b0cf14c1e5b1bebc00c0d0c63120a9dbf4957b3621106d554d6f0a79be",
+      "notes": "Attack on Titan (2013, 25 episodes) — right listing, worded differently from Kitsu"
+    },
+    "gintama-dash-enchousen.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 15417 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 9643,
+      "sha256": "04255e7790269dd026ab955d250d2d2139c2a169cc666c148b51e97df2bd7fad",
+      "notes": "Gintama': Enchousen (2012, 13 episodes) — same listing"
+    },
+    "gintama-dash-enchousen.kitsu-p1.json": {
+      "request": "GET /anime/7253/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 7982,
+      "sha256": "9529e952b0e6ca437b35f07ed17c7d93e68d34cdc0aca0f4f82292a30854d178",
+      "notes": "Gintama': Enchousen (2012, 13 episodes) — same listing"
+    },
+    "gintama-dash.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 9969 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 9643,
+      "sha256": "7eb7135e67e8a5ca61b05019000444a061a35920e924ef2f8a5dbbfdde0fb81e",
+      "notes": "Gintama' (2011, 51 episodes) — same listing, shorter than the count"
+    },
+    "gintama-dash.kitsu-p1.json": {
+      "request": "GET /anime/5971/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 15940,
+      "sha256": "15814b5c3a600eb2746d747e7ed7c97158d057459231f53ea4a6cb28f997143a",
+      "notes": "Gintama' (2011, 51 episodes) — same listing, shorter than the count"
+    },
+    "gintama-degree.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 28977 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 9643,
+      "sha256": "7eb7135e67e8a5ca61b05019000444a061a35920e924ef2f8a5dbbfdde0fb81e",
+      "notes": "Gintama° (2015, 51 episodes) — same listing, shorter than the count; Kitsu has no stills"
+    },
+    "gintama-degree.kitsu-p1.json": {
+      "request": "GET /anime/10083/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 13119,
+      "sha256": "1bc2065e40b4307b7ea844edbee44aefcef964b5ec39df99212fbafb83f9e5de",
+      "notes": "Gintama° (2015, 51 episodes) — same listing, shorter than the count; Kitsu has no stills"
+    },
+    "gintama-dot-porori.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 35843 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 9643,
+      "sha256": "04255e7790269dd026ab955d250d2d2139c2a169cc666c148b51e97df2bd7fad",
+      "notes": "Gintama.: Porori-hen (2017, 13 episodes) — same listing"
+    },
+    "gintama-dot-porori.kitsu-p1.json": {
+      "request": "GET /anime/13726/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 4220,
+      "sha256": "da1f33a04f96e9ccec9813e2665a26f0d392cc0782c593e05624583baf5c511f",
+      "notes": "Gintama.: Porori-hen (2017, 13 episodes) — same listing"
+    },
+    "gintama-dot-shirogane-2.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 37491 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 9643,
+      "sha256": "50c69bbc0f30b18ee841bd34f5121c2e6a5799a6f149d8919bccbb2dd8fb0541",
+      "notes": "Gintama.: Shirogane no Tamashii-hen 2 (2018, 14 episodes) — same listing"
+    },
+    "gintama-dot-shirogane-2.kitsu-p1.json": {
+      "request": "GET /anime/41079/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 4232,
+      "sha256": "4ad8c271419653a7eb1c37ae7fe69a2c1dda058bcc0496700bb5947b7dded91a",
+      "notes": "Gintama.: Shirogane no Tamashii-hen 2 (2018, 14 episodes) — same listing"
+    },
+    "gintama-dot-shirogane.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 36838 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 9643,
+      "sha256": "b2a53e879bbfab4b12a9c99a463aa166d7f646eeb94b245029f105328aea7b5b",
+      "notes": "Gintama.: Shirogane no Tamashii-hen (2018, 12 episodes; Kitsu lists 7) — same listing"
+    },
+    "gintama-dot-shirogane.kitsu-p1.json": {
+      "request": "GET /anime/14095/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 3856,
+      "sha256": "4000f903765fb7fe58c6ace79d528d7b6a7f7f41776f542647203531fd3a27e6",
+      "notes": "Gintama.: Shirogane no Tamashii-hen (2018, 12 episodes; Kitsu lists 7) — same listing"
+    },
+    "gintama-dot.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 34096 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 9643,
+      "sha256": "b2a53e879bbfab4b12a9c99a463aa166d7f646eeb94b245029f105328aea7b5b",
+      "notes": "Gintama. (2017, 12 episodes) — the reported show; AniList lists the 2006 series' first 49 episodes for it"
+    },
+    "gintama-dot.kitsu-p1.json": {
+      "request": "GET /anime/12553/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 3565,
+      "sha256": "93c371646ddc8bb398691571b8ec4d4d0338da21f09e20bd99d1458c8499fb6f",
+      "notes": "Gintama. (2017, 12 episodes) — the reported show; AniList lists the 2006 series' first 49 episodes for it"
+    },
+    "gintama.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 918 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 9644,
+      "sha256": "e4147735ba32ebba5d9deaf2b87ae24e0e158ceb3b796e57ab9c0415225640bc",
+      "notes": "Gintama (2006, 201 episodes) — the series the 49-entry listing belongs to; it is right here"
+    },
+    "gintama.kitsu-p1.json": {
+      "request": "GET /anime/818/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 19812,
+      "sha256": "0146c33ef5c7e1757a8d788b05373dbe3cd8427856cfff3bfbf59798d0be1478",
+      "notes": "Gintama (2006, 201 episodes) — the series the 49-entry listing belongs to; it is right here"
+    },
+    "kaguya-2.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 40591 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 2940,
+      "sha256": "ec9de5c75e868ce3c8796f0e3417de52c4bcbef5a5d57bf8c027ef06fb1e1711",
+      "notes": "Kaguya-sama season 2 (12 episodes) — AniList lists season 1's twelve; titles share the show's recurring words"
+    },
+    "kaguya-2.kitsu-p1.json": {
+      "request": "GET /anime/42632/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 12117,
+      "sha256": "ccd786d315469a47415141ececabbd7b417d9cb2188bd07df1a5a83498150930",
+      "notes": "Kaguya-sama season 2 (12 episodes) — AniList lists season 1's twelve; titles share the show's recurring words"
+    },
+    "mushoku-tensei.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 39535 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 4069,
+      "sha256": "7c3aad4d1cec73b5c87eb2900af4bdf6a13949874308ef1288c6ffcd8bdb3582",
+      "notes": "Mushoku Tensei part 1 (11 episodes) — AniList lists both cours (0-24); Kitsu has no titles"
+    },
+    "mushoku-tensei.kitsu-p1.json": {
+      "request": "GET /anime/42323/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 3133,
+      "sha256": "4e944e0ff7abcb1994774ef666584ad067da11745b53c9970f5899870ee846b8",
+      "notes": "Mushoku Tensei part 1 (11 episodes) — AniList lists both cours (0-24); Kitsu has no titles"
+    },
+    "one-piece.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 21 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 13570,
+      "sha256": "4ecdfcdbcb261777cd7cbe9a9b63fd5a9b8f56da745be96e1a9812589e3ecd91",
+      "notes": "One Piece — ongoing, AniList count null; listing covers 62-130; Kitsu page 4 (61-80)"
+    },
+    "one-piece.kitsu-p4.json": {
+      "request": "GET /anime/12/episodes?page[limit]=20&page[offset]=60&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 9926,
+      "sha256": "1d19b1ee87de13b26f4acbe44064df927ba7c18c5ff4ac348404e4613e5bef46",
+      "notes": "One Piece — ongoing, AniList count null; listing covers 62-130; Kitsu page 4 (61-80)"
+    },
+    "spy-family.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 50265 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 4374,
+      "sha256": "2a88c3222a3b236a235680b453b272c9f92bd9acf6428d6423e016051262a741",
+      "notes": "SPY×FAMILY part 1 (12 episodes) — AniList lists both cours (25); the first twelve are right"
+    },
+    "spy-family.kitsu-p1.json": {
+      "request": "GET /anime/45398/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 17138,
+      "sha256": "aed4f539d56bbfa69ac24127a377210ff570cff13f8a64262123f8bd17f765ed",
+      "notes": "SPY×FAMILY part 1 (12 episodes) — AniList lists both cours (25); the first twelve are right"
+    }
+  }
+}
