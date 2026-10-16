@@ -9,20 +9,19 @@
 //! episode stills are consistently higher-quality than the
 //! Crunchyroll promotional crops AniList carries.
 
-use std::collections::HashMap;
-
 use crate::app::AppState;
 use crate::cache::ttl::{ANILIST_STREAMING_EPS_ERROR_TTL, ANILIST_STREAMING_EPS_TTL};
 use crate::cache::{meta_cache_get, meta_cache_put};
 use crate::meta::anilist_media::MediaRef;
-use crate::meta::anilist_streaming_eps::streaming_eps_map_for_ids;
+use crate::meta::anilist_streaming_eps::{streaming_listing_for_ids, StreamingListing};
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
 /// Stable key for the per-show AniList episode-thumbnail backfill.
-/// Versioned so a future schema change (e.g. richer cached payload)
-/// can orphan old rows.
+/// Versioned so a schema change orphans old rows: `v2` caches the
+/// whole [`StreamingListing`] (entry titles, AniList's episode count
+/// and status) where `v1` cached a bare number → thumbnail map.
 fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
-    format!("anilist:eps-thumbs:v1:k{kitsu_id}")
+    format!("anilist:eps-thumbs:v2:k{kitsu_id}")
 }
 
 /// Writes the outcome of an AniList lookup to the cache. `Ok(map)`
@@ -33,14 +32,17 @@ fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
 fn cache_anilist_eps_thumbs(
     pool: &crate::cache::SqlitePool,
     kitsu_id: &str,
-    outcome: &std::result::Result<HashMap<u32, String>, ()>,
+    outcome: &std::result::Result<StreamingListing, ()>,
 ) {
     let key = anilist_eps_thumbs_key(kitsu_id);
-    let (map, ttl) = match outcome {
-        Ok(m) => (m.clone(), ANILIST_STREAMING_EPS_TTL.as_secs()),
-        Err(()) => (HashMap::new(), ANILIST_STREAMING_EPS_ERROR_TTL.as_secs()),
+    let (listing, ttl) = match outcome {
+        Ok(l) => (l.clone(), ANILIST_STREAMING_EPS_TTL.as_secs()),
+        Err(()) => (
+            StreamingListing::default(),
+            ANILIST_STREAMING_EPS_ERROR_TTL.as_secs(),
+        ),
     };
-    if let Ok(body) = serde_json::to_string(&map) {
+    if let Ok(body) = serde_json::to_string(&listing) {
         let _ = meta_cache_put(pool, &key, &body, ttl);
     }
 }
@@ -49,7 +51,7 @@ fn cache_anilist_eps_thumbs(
 /// by `kitsu_id`. On hit, returns instantly with no network calls.
 /// On miss, resolves Kitsu's mappings then fetches AniList, caches the
 /// outcome (positive or negative), and returns it.
-pub async fn thumbs_for_show(state: &AppState, kitsu_id: &str) -> HashMap<u32, String> {
+pub async fn thumbs_for_show(state: &AppState, kitsu_id: &str) -> StreamingListing {
     thumbs_for_show_with_anilist_base(state, kitsu_id, None).await
 }
 
@@ -59,11 +61,11 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> HashMap<u32, String> {
+) -> StreamingListing {
     let key = anilist_eps_thumbs_key(kitsu_id);
     if let Ok(Some(body)) = meta_cache_get(&state.cache_pool, &key) {
-        if let Ok(map) = serde_json::from_str::<HashMap<u32, String>>(&body) {
-            return map;
+        if let Ok(listing) = serde_json::from_str::<StreamingListing>(&body) {
+            return listing;
         }
     }
     let outcome = fetch_anilist_eps_thumbs(state, kitsu_id, anilist_base).await;
@@ -72,17 +74,14 @@ pub(crate) async fn thumbs_for_show_with_anilist_base(
 }
 
 /// One-shot lookup: `kitsu_id` → Kitsu's external-id mappings →
-/// AniList streamingEpisodes → `(ep_number, thumbnail_url)` map. Any
-/// failure step (no usable mapping, AniList rate limit, parse
-/// failure) yields `Err(())` so the caller can negative-cache an
-/// empty result. The pair-list → map dedup lives in
-/// `meta::anilist_streaming_eps` where its wiremock test suite covers
-/// the merge.
+/// AniList streamingEpisodes → [`StreamingListing`]. Any failure step
+/// (no usable mapping, AniList rate limit, parse failure) yields
+/// `Err(())` so the caller can negative-cache an empty result.
 async fn fetch_anilist_eps_thumbs(
     state: &AppState,
     kitsu_id: &str,
     anilist_base: Option<&str>,
-) -> std::result::Result<HashMap<u32, String>, ()> {
+) -> std::result::Result<StreamingListing, ()> {
     let ids = super::external_ids::external_ids_for(state, kitsu_id)
         .await
         .map_err(
@@ -91,7 +90,7 @@ async fn fetch_anilist_eps_thumbs(
     // Neither id: nothing to ask AniList. Err so the empty result
     // takes the short negative TTL, as a failed lookup does.
     MediaRef::preferring_mal(ids.mal, ids.anilist).ok_or(())?;
-    streaming_eps_map_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
+    streaming_listing_for_ids(&state.meta_http, ids.mal, ids.anilist, anilist_base)
         .await
         .map_err(|e| {
             tracing::warn!(
@@ -122,9 +121,9 @@ pub fn needs_backfill(eps: &[KitsuEpisode]) -> bool {
 }
 
 /// Backfill `thumbnail.original` on Kitsu episodes from the AniList
-/// `streamingEpisodes` map. Kitsu always wins when present. Episodes
+/// streaming listing. Kitsu always wins when present. Episodes
 /// without a `number` can't be matched and pass through unchanged.
-pub fn merge_thumbs(eps: Vec<KitsuEpisode>, anilist: &HashMap<u32, String>) -> Vec<KitsuEpisode> {
+pub fn merge_thumbs(eps: Vec<KitsuEpisode>, anilist: &StreamingListing) -> Vec<KitsuEpisode> {
     eps.into_iter()
         .map(|mut ep| {
             let already_has_thumb = ep
@@ -136,9 +135,9 @@ pub fn merge_thumbs(eps: Vec<KitsuEpisode>, anilist: &HashMap<u32, String>) -> V
                 return ep;
             }
             let Some(num) = ep.number else { return ep };
-            if let Some(url) = anilist.get(&num) {
+            if let Some(entry) = anilist.entries.get(&num) {
                 ep.thumbnail = Some(KitsuEpisodeThumbnail {
-                    original: Some(url.clone()),
+                    original: Some(entry.thumbnail.clone()),
                 });
             }
             ep
