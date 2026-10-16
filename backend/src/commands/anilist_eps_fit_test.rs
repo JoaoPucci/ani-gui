@@ -342,3 +342,44 @@ fn untitled_pages_refuse_a_listing_past_the_count_even_when_it_is_right() {
         assert!(!listing_fits(&listing, &page), "{slug}");
     }
 }
+
+#[test]
+fn a_number_is_not_contained_in_a_longer_number() {
+    // "Arc, Part 1" squashes to "arcpart1", which sits inside
+    // "arcpart11"; a listing whose numbers run on past Kitsu's must not
+    // agree on that. Each Kitsu part N here meets the listing's part N1.
+    let l = listing(
+        Some(3),
+        true,
+        &[
+            (1, "Arc, Part 11"),
+            (2, "Arc, Part 21"),
+            (3, "Arc, Part 31"),
+        ],
+    );
+    let page = [
+        ep(1, Some("Arc, Part 1")),
+        ep(2, Some("Arc, Part 2")),
+        ep(3, Some("Arc, Part 3")),
+    ];
+    assert!(!listing_fits(&l, &page));
+}
+
+#[test]
+fn a_leading_number_is_not_contained_in_a_longer_number() {
+    let l = listing(
+        Some(3),
+        true,
+        &[
+            (1, "11 Days Left"),
+            (2, "12 Days Left"),
+            (3, "13 Days Left"),
+        ],
+    );
+    let page = [
+        ep(1, Some("1 Days Left")),
+        ep(2, Some("2 Days Left")),
+        ep(3, Some("3 Days Left")),
+    ];
+    assert!(!listing_fits(&l, &page));
+}
