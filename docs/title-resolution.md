@@ -306,7 +306,7 @@ A refused listing fills nothing: the page shows Kitsu's stills where Kitsu has t
 
 A listing numbered continuously across seasons is refused rather than re-based by the season's first number. The same 139–159 listing sits on My Hero Academia's first four seasons as well as its seventh, so an offset taken from the listing would hand season 7 stills to season 2; only Kitsu's titles could confirm an offset, and both sampled entries whose listing is their own season numbered that way — My Hero Academia 7, Solo Leveling season 2 — already have a Kitsu still for every episode, so a confirmed re-base would fill nothing.
 
-The case table the rule was chosen from, measured against Kitsu's page with the listing's first episodes (page 1, or the page holding them for a long runner). *Compared* counts the page episodes both sides title, *agree* those the titles match on; ✓ marks a listing that is the show's. The rows marked † are recorded under `tests/fixtures/episode-thumbs/` and checked by `backend/src/commands/anilist_eps_fit_test.rs`.
+The case table the rule was chosen from, measured against Kitsu's twenty episodes holding the listing's first ones: page 1, One Piece's page 4, and Detective Conan's episodes 751–770. *Compared* counts the page episodes both sides title, *agree* those the titles match on; ✓ marks a listing that is the show's. The rows marked † are recorded under `tests/fixtures/episode-thumbs/` and checked by `backend/src/commands/anilist_eps_fit_test.rs`.
 
 | AniList entry | Count | Listing | Kitsu page | Compared | Agree | Listing is the show's | Verdict |
 |---|---|---|---|---|---|---|---|
@@ -348,7 +348,7 @@ The case table the rule was chosen from, measured against Kitsu's page with the 
 
 Half episodes (`Episode 1061.5`), specials and movies never enter a listing: only an integer `Episode N` title does, since Kitsu numbers episodes as integers. A Kitsu placeholder title (`Episode 5`) is not compared, as an untitled episode is not, and a title of fewer than three letters and digits counts as contained in nothing.
 
-The sample shows no right listing refused, but the rule can refuse one in two ways it was not measured on. Without Kitsu titles, a split-cour listing on an entry that holds only its first cour runs past the count and has the same shape as Gintama.'s, so it is refused although its first episodes are right. And a Kitsu title in another language — romaji, or Japanese script — never agrees with Crunchyroll's English one, so a page of three or more of them refuses the listing. Either way the episodes keep their placeholders, which is what the page shows without the backfill.
+No right listing in the sample is refused where it would fill a still (My Hero Academia 7 and Solo Leveling season 2 are refused, but Kitsu has every still for them), though the rule can refuse one in two ways it was not measured on. Without Kitsu titles, a split-cour listing on an entry that holds only its first cour runs past the count and has the same shape as Gintama.'s, so it is refused although its first episodes are right. And a Kitsu title in another language — romaji, or Japanese script — never agrees with Crunchyroll's English one, so a page where such titles are most of those compared refuses the listing. Either way the episodes keep their placeholders, which is what the page shows without the backfill.
 
 ## Failure modes the bridge tolerates
 
