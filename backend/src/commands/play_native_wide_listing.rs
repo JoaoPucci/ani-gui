@@ -75,7 +75,21 @@ pub(super) fn fit_to_entry(
         .iter()
         .zip(&admitted)
         .any(|(row, ok)| !ok && row.2 <= tolerance);
-    let span = spanning(probed, expected, &admitted, entry);
+    // The spanning cut reads each title past a version tag, which hides
+    // no division; it answers by position, so the view is read alone.
+    let read: Vec<BrowseHit> = probed
+        .iter()
+        .map(|(h, _, _, _)| BrowseHit {
+            title: super::play_native_version_copies::without_version_tag(&h.title),
+            ..(*h).clone()
+        })
+        .collect();
+    let view: Vec<Probed<'_>> = probed
+        .iter()
+        .zip(&read)
+        .map(|((_, eps, d, c), h)| (h, eps.clone(), *d, *c))
+        .collect();
+    let span = spanning(&view, expected, &admitted, entry);
     for (row, ok) in probed.iter_mut().zip(&pickable) {
         if !ok {
             row.2 = UNFIT;
