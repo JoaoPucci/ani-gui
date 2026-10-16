@@ -49,9 +49,7 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
         Some(row) => {
             row.offset = offset;
             // An offset-only put must not erase the display
-            // stamp — every fresh resolve re-stamps the offset,
-            // and the last fractional watch has to stay
-            // translatable until something replaces it.
+            // stamp: the rows from before read through it.
             if display.is_some() {
                 row.display = display;
             }

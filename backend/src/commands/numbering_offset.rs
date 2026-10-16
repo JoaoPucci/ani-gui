@@ -3,15 +3,19 @@
 //!
 //! A provider can carry a franchise's cumulative episode count into
 //! continuation cours — anidb.app listed TYBW's fourth part as 41 and
-//! 42 — and rows written then hold the provider slot a watch resolved
-//! to, in that numbering. Every GUI surface counts per-entry like
-//! Kitsu, and every row written now records that number itself, marked
-//! as such ([`crate::history::HistoryEntry::own_number`]). For the rows
-//! from before, the resolver's shift is persisted per show key, with
-//! the (slot, tag) display stamp the last displaced watch left, and the
-//! read boundary subtracts and translates through them. Resolves still
-//! stamp the offset; they no longer write display stamps, so the one a
-//! row reads through stays as it was.
+//! 42 — and rows written then hold the provider's number for the
+//! episode: the slot a watch resolved to, or, for a write with no
+//! listing at hand, the display number plus the offset. Every GUI
+//! surface counts per-entry like Kitsu, and every row written now
+//! records that number itself, marked as such
+//! ([`crate::history::HistoryEntry::own_number`]). For the rows from
+//! before, the resolver's shift is persisted per show key, with the
+//! (slot, tag) display stamp the last displaced resolve left — warms
+//! included, so a row past a recap whose stamp a warm moved before
+//! this build reads one episode high until its show is next watched —
+//! and the read boundary subtracts and translates through them. A
+//! resolve stamps the offset only for a show with no row here, and no
+//! longer writes display stamps, so neither moves under such a row.
 //! The rows anidb.app's resolves stamped stay: they are what keeps the
 //! history rows from its days readable.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
@@ -30,7 +34,7 @@ use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
 
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
-/// Last write wins, so a re-resolve can correct a stale stamp.
+/// Last write wins; resolves call it only for a show with no row yet.
 pub fn put(state: &AppState, slug: &str, offset: u32) {
     merge_row(state, slug, offset, None);
 }
