@@ -1,13 +1,15 @@
 //! The evidence the appended-extras rule reads
 //! ([`super::play_native_appended`]), from what a detail page visit
 //! already caches: Kitsu's entry, the Kitsu episode pages holding the
-//! count's last episodes, and AniList's airing answer. Each is read
+//! count's last episodes, and AniList's airing answer — and, past
+//! those, the entries Kitsu relates the show to, with a TV sequel's
+//! first episode page. Each is read
 //! from the cache first and fetched only when it is missing.
 
-use super::play_native_appended::{EntryTail, TailEpisode, TailSource, ALIGNED};
+use super::play_native_appended::{EntryTail, Related, TailEpisode, TailSource, ALIGNED};
 use crate::app::AppState;
 use crate::meta::anilist_airing::AiringStatus;
-use crate::meta::kitsu::KitsuEpisode;
+use crate::meta::kitsu::{KitsuEpisode, KitsuRelation};
 
 /// How many episodes Kitsu lists to a page, as the backend asks for
 /// them.
@@ -89,6 +91,24 @@ pub fn entry_tail(
     }
 }
 
+/// Whether Kitsu relates `r` as a TV sequel: the entry whose first
+/// episodes the rows past the count are checked against.
+fn is_tv_sequel(r: &KitsuRelation) -> bool {
+    r.kind == "anime" && r.role == "sequel" && r.subtype.as_deref() == Some("TV")
+}
+
+/// A relation as the evidence reads it.
+fn related(r: KitsuRelation, episode_titles: Option<Vec<String>>) -> Related {
+    Related {
+        anime: r.kind == "anime",
+        role: r.role,
+        subtype: r.subtype,
+        status: r.status,
+        episode_count: r.episode_count,
+        episode_titles,
+    }
+}
+
 #[async_trait::async_trait]
 impl TailSource for KitsuTail<'_> {
     async fn tail(&self, count: u32) -> Option<EntryTail> {
@@ -106,12 +126,28 @@ impl TailSource for KitsuTail<'_> {
                     .ok()?,
             );
         }
-        Some(entry_tail(
+        let mut tail = entry_tail(
             detail.status.as_deref(),
             detail.episode_count,
             &airing,
             episodes,
-        ))
+        );
+        let relations = super::kitsu::kitsu_relationships(self.state, self.kitsu_id)
+            .await
+            .ok()?;
+        tail.related_complete = relations.complete;
+        for r in relations.entries {
+            let episode_titles = if is_tv_sequel(&r) {
+                let page = super::kitsu::kitsu_episode_page(self.state, &r.id, 1)
+                    .await
+                    .ok()?;
+                Some(page.into_iter().filter_map(|e| e.canonical_title).collect())
+            } else {
+                None
+            };
+            tail.related.push(related(r, episode_titles));
+        }
+        Some(tail)
     }
 }
 
