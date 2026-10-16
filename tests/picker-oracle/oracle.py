@@ -750,11 +750,31 @@ def countless_pick(titles, searched, rows, entry_year):
     return sorted(vouched, key=lambda r: 0 if part_agrees(titles, r[1]) else 1)[0]
 
 
-def counted_pick(titles, searched, rows, count):
+def vouched_by_name(titles, searched, cand):
+    """The title searched, or a title the entry names — what alone vouches
+    for a hit when the entry's count stands alone. The searched half is
+    the docs' wording; in every generated pool it is subsumed by the
+    other, since one of the entry's titles always names itself, so the
+    agreement says nothing about how the two sides compare the title
+    searched."""
+    return written(cand) == written(searched) or names(titles, cand)
+
+
+def count_stands_alone(count, entry_year):
+    """"A count with no year is no identity either": a count above one,
+    and no year."""
+    return count is not None and count > 1 and entry_year is None
+
+
+def counted_pick(titles, searched, rows, count, entry_year):
     """The pick with a count and no broad listing: the best distance within
     the tolerance among the hits that could be picked; ties prefer the
-    exact title, then part agreement, then the provider's order."""
+    exact title, then part agreement, then the provider's order. When the
+    count stands alone, only a hit the title searched or the entry's names
+    vouch for can be picked."""
     adm, _ = head(titles, rows, True)
+    if count_stands_alone(count, entry_year):
+        adm = [r for r in adm if vouched_by_name(titles, searched, r[1])]
     tol = max(3, count // 10)
     fits = [r for r in adm if abs(r[2] - count) <= tol]
     if not fits:
@@ -817,7 +837,7 @@ def predict(case):
         if count is None:
             r = countless_pick(titles, searched, rows, year)
         else:
-            r = counted_pick(titles, searched, rows, count)
+            r = counted_pick(titles, searched, rows, count, year)
         if r:
             return {"pick": r[0], "count": r[2]}
     return None
@@ -833,7 +853,14 @@ def clean_miss_expected(case):
         return not any(not admitted(titles, r[1]) for r in rows)
     _, evidence = head(titles, rows, True)
     tol = max(3, count // 10)
-    return not any(abs(r[2] - count) <= tol and not admitted(titles, r[1]) for r in evidence)
+    if any(abs(r[2] - count) <= tol and not admitted(titles, r[1]) for r in evidence):
+        return False
+    # the count-alone refusal is a refusal by title too: a fitting hit
+    # nothing names, among the hits probed, leaves no clean miss
+    if count_stands_alone(count, case["entry_year"]):
+        adm, _ = head(titles, rows, True)
+        return not any(abs(r[2] - count) <= tol for r in adm)
+    return True
 
 
 def refusal_expected(case):
@@ -971,6 +998,14 @@ def gen():
                 for pos, rows in (("alone", [x]), ("unrel-first", [UNREL, x]), ("unrel-last", [x, UNREL])):
                     case = dict(titles=titles, count=E, entry_year=LISTING_YEAR, rows=rows)
                     add(titles, E, LISTING_YEAR, rows, predict(case), f"admission/{tsname}/{pos}")
+                # with a count and no year: the count stands alone, so only
+                # the title searched or a name of the entry's vouches; an
+                # unrelated hit that fits the count sits beside the
+                # candidate so the refusal of what nothing names is seen
+                fit = ("u", "Zeta Thing", E)
+                for pos, rows in (("alone", [x]), ("fit-first", [fit, x]), ("fit-last", [x, fit])):
+                    case = dict(titles=titles, count=E, entry_year=None, rows=rows)
+                    add(titles, E, None, rows, predict(case), f"counted-noyear/{tsname}/{pos}")
                 # countless, with and without a year
                 for year in (LISTING_YEAR, None):
                     for pos, rows in (("alone", [x]), ("unrel-first", [UNREL, x]), ("unrel-last", [x, UNREL])):

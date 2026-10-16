@@ -1,0 +1,36 @@
+{
+ "kitsu": {
+  "id": "45494",
+  "name": "Liu Yao",
+  "canonical": "Liu Yao",
+  "alt_titles": ["Liu Yao: The Revitalization of Fuyao Sect"],
+  "episode_count": 13,
+  "year": null,
+  "subtype": "ONA"
+ },
+ "searches": {
+  "Liu Yao": [
+    ["zhen-dao-ge-qian-li-bu-liu-xing-9568", "Zhen Dao Ge: Qian li bu Liu Xing", "ONA"]
+  ],
+  "Liu Yao: The Revitalization of Fuyao Sect": [
+    ["zhen-dao-ge-qian-li-bu-liu-xing-9568", "Zhen Dao Ge: Qian li bu Liu Xing", "ONA"]
+  ]
+ },
+ "episodes": {
+  "zhen-dao-ge-qian-li-bu-liu-xing-9568": [
+    [137783, 1, null],
+    [137784, 2, null],
+    [137785, 3, null],
+    [137786, 4, null],
+    [137787, 5, null],
+    [137788, 6, null],
+    [137789, 7, null],
+    [137790, 8, null],
+    [137791, 9, null],
+    [137792, 10, null],
+    [137793, 11, null],
+    [137796, 12, null]
+  ]
+ },
+ "years": {}
+}

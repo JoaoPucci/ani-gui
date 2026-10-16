@@ -9,6 +9,11 @@
     "captured": "2026-10-06",
     "sha256": "ce921d6ab2dceb03f7eae98ba775aa2c89c957eb0e1de4493eb063e60ae3d640"
   },
+  "11061.json": {
+    "source": "kitsu.io /api/edge/anime/11061; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "e555046f1171e74cc0aca5118159d71e3da17febff88697480d927111141a980"
+  },
   "11209.json": {
     "source": "kitsu.io /api/edge/anime/11209; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
@@ -19,10 +24,20 @@
     "captured": "2026-10-06",
     "sha256": "0a9f313b8d0dbff05ec295d04c6df77610002b0d2a742408770f3c3f71e69743"
   },
+  "11576.json": {
+    "source": "kitsu.io /api/edge/anime/11576; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "06cd63317db7fb6651ec840781fb5d12e393e16ab4ea3fde1e9cc4af00d349b2"
+  },
   "11578.json": {
     "source": "kitsu.io /api/edge/anime/11578; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
     "sha256": "0b13e3e0057c3009b5430483f2346435dabf1e7c9646d768ae264ee9fd5f938f"
+  },
+  "11944.json": {
+    "source": "kitsu.io /api/edge/anime/11944; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "48b36fdfc73ed473466c8049e8086942dc940bd9ed12a7ea82bafaff8ef9399d"
   },
   "12.json": {
     "source": "kitsu.io /api/edge/anime/12; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
@@ -83,6 +98,11 @@
     "source": "kitsu.io /api/edge/anime/3919; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
     "sha256": "628dd4251aff465010c197a153f105e0ddf27d3b76fafbc8cd07add701b3b9cb"
+  },
+  "40684.json": {
+    "source": "kitsu.io /api/edge/anime/40684; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "9c66c4a71b8a617ccf446b60e3d8d70c513f6720e9ab63041edc945a745e115c"
   },
   "41046.json": {
     "source": "kitsu.io /api/edge/anime/41046; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
@@ -189,6 +209,11 @@
     "captured": "2026-10-06",
     "sha256": "9370153430cf555f604549e582f89929d82e027b41286c952ee2866f70a2d52d"
   },
+  "43745.json": {
+    "source": "kitsu.io /api/edge/anime/43745; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-16",
+    "sha256": "3c664352356574799b1c151240ff28351c8765a62d4c287e7f84490480e299be"
+  },
   "43907.json": {
     "source": "kitsu.io /api/edge/anime/43907; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
@@ -219,6 +244,11 @@
     "captured": "2026-10-06",
     "sha256": "7246c0e7e04850edd62caa1ad11eef8a8735c67495d68f5e2c567c73c40aa1fb"
   },
+  "44505.json": {
+    "source": "kitsu.io /api/edge/anime/44505; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "e6a5d037fc83d0d5e04c6e31ec480da5fca4430412a7f4c8c548455beee3474d"
+  },
   "44544.json": {
     "source": "kitsu.io /api/edge/anime/44544; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-12",
@@ -239,6 +269,11 @@
     "captured": "2026-10-06",
     "sha256": "fd73dcff5bc27c70500b4410d911ebf858adf30ffca4851b2c3ba2822b6db624"
   },
+  "45049.json": {
+    "source": "kitsu.io /api/edge/anime/45049; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "ad6b0a9b42958229bbff7e6565f567822760bf2d0d084bb9926a687aba75f43a"
+  },
   "45217.json": {
     "source": "kitsu.io /api/edge/anime/45217; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
@@ -249,6 +284,16 @@
     "captured": "2026-10-06",
     "sha256": "08b5146e16afeb5d6e5795ac9c08cb54a6caed56b54df5952b9898ea3bca5d02"
   },
+  "45494.json": {
+    "source": "kitsu.io /api/edge/anime/45494; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "fbd897346fef24101ac3819bdee084c8bfcabbab0d01665b4c5df9d8f0ac787e"
+  },
+  "45500.json": {
+    "source": "kitsu.io /api/edge/anime/45500; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the premiere year graphql.anilist.co names for the entry Kitsu's mappings bridge it to, read as the app will read it where Kitsu knows no date",
+    "captured": "2026-10-16",
+    "sha256": "e939329e11a37aeef8be032ab6ca839154a65b99dfc34e95d7d8489955a136ba"
+  },
   "45556.json": {
     "source": "kitsu.io /api/edge/anime/45556; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
@@ -258,6 +303,11 @@
     "source": "kitsu.io /api/edge/anime/45619; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
     "sha256": "183a23928400c0e5f15d89dce6eab1fdf7854da4cfd1b0529350b6dc34203303"
+  },
+  "45637.json": {
+    "source": "kitsu.io /api/edge/anime/45637; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-16",
+    "sha256": "8ce3d1ae92585f18f79e60d3d84d004e7a1542fa618da3a358fd2e02cfa8dbbc"
   },
   "45857.json": {
     "source": "kitsu.io /api/edge/anime/45857; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
@@ -324,6 +374,11 @@
     "captured": "2026-10-06",
     "sha256": "875945c7c71c467b07f563d9556eb5cbe58245444cc3efcd42c27dfc98e617a2"
   },
+  "47150.json": {
+    "source": "kitsu.io /api/edge/anime/47150; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "93df703e55623768f92caab29627350c13f1518b5183f2dd8cf71a99b388aacf"
+  },
   "47181.json": {
     "source": "kitsu.io /api/edge/anime/47181; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
@@ -354,6 +409,11 @@
     "captured": "2026-10-06",
     "sha256": "6b1b268ddbada31085377d4973871f89e92982ad6d762df7d1fbf20b5233bccc"
   },
+  "50237.json": {
+    "source": "kitsu.io /api/edge/anime/50237; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return; the premiere year graphql.anilist.co names for the entry Kitsu's mappings bridge it to, read as the app will read it where Kitsu knows no date",
+    "captured": "2026-10-15",
+    "sha256": "3fcdd4e0b86f11d7af0901f6ed73f0981327d88261c054c6785b13a686cc2fdd"
+  },
   "50496.json": {
     "source": "kitsu.io /api/edge/anime/50496; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-12",
@@ -363,6 +423,11 @@
     "source": "kitsu.io /api/edge/anime/50497; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-12",
     "sha256": "3c617827349971382db729be6edf23f750017222543bf6f386e3e1da7ddb88c1"
+  },
+  "50744.json": {
+    "source": "kitsu.io /api/edge/anime/50744; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "cf4bd11f84fab9bc6e9a09538ca072f8e562b11174e2655d75f74787901f9d55"
   },
   "5971.json": {
     "source": "kitsu.io /api/edge/anime/5971; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
@@ -408,6 +473,11 @@
     "source": "kitsu.io /api/edge/anime/8271; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
     "captured": "2026-10-06",
     "sha256": "bc57f48c97c1ba46b25a2e86eb1fe4f8e89728af38925e4a655fa32296a4e109"
+  },
+  "8404.json": {
+    "source": "kitsu.io /api/edge/anime/8404; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",
+    "captured": "2026-10-15",
+    "sha256": "fba30a7ad5795e58572d0588d6798ec0a8052945127f8882763832089ddc4f97"
   },
   "8671.json": {
     "source": "kitsu.io /api/edge/anime/8671; hianime.at search pages, /api/theme/episode/list/:id and entry pages, read through the impersonating transport and reduced to what the parsers return",

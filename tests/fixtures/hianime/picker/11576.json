@@ -1,0 +1,28 @@
+{
+ "kitsu": {
+  "id": "11576",
+  "name": "Arpiel: 6 Destinies",
+  "canonical": "Arpiel: 6 Destinies",
+  "alt_titles": ["Ar:pieL - 6 Fates", "Ar:pieL - Yeoseosgaeui Unmyeong"],
+  "episode_count": 11,
+  "year": null,
+  "subtype": "TV"
+ },
+ "searches": {
+  "Ar:pieL - 6 Fates": [
+    ["ariel-deluxe-9148", "Ariel Deluxe", "OVA"],
+    ["ariel-visual-8866", "Ariel Visual", "OVA"]
+  ],
+  "Ar:pieL - Yeoseosgaeui Unmyeong": [
+    ["ariel-deluxe-9148", "Ariel Deluxe", "OVA"],
+    ["ariel-visual-8866", "Ariel Visual", "OVA"]
+  ],
+  "Arpiel: 6 Destinies": [
+    ["ariel-deluxe-9148", "Ariel Deluxe", "OVA"],
+    ["ariel-visual-8866", "Ariel Visual", "OVA"]
+  ]
+ },
+ "episodes": {
+ },
+ "years": {}
+}

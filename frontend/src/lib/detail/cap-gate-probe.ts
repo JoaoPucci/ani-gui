@@ -1,3 +1,4 @@
+import type { AvailabilityResponse } from '$lib/api';
 import { beyondPlayable } from './episode-caps';
 
 /**
@@ -75,6 +76,26 @@ export interface CapGateRefresh {
 	 *  unconfirmed answer carries means "could not look", not "there
 	 *  are none", and writing it would delete specials that exist. */
 	extraEpisodes: string[] | null;
+}
+
+/**
+ * The answer a route hands the controller, read from the backend's
+ * wire shape: the whole row — the controller decides which parts of a
+ * fresh answer are safe to write back. An unsettled answer is no
+ * answer: the probe reached the provider and came back without a
+ * verdict, and its `available: false` means nothing, so it is the
+ * controller's null — "nothing was established" — the same path the
+ * request's failure takes. Both routes read answers through this, so
+ * neither can take that false for the show being gone.
+ */
+export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null {
+	if (r.unsettled) return null;
+	return {
+		count: r.episode_count,
+		approximate: r.episode_count_approximate === true,
+		available: r.available,
+		extraEpisodes: r.extra_episodes ?? []
+	};
 }
 
 export interface CapGateProbeDeps {

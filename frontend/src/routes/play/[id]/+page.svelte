@@ -63,7 +63,11 @@
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
 	import { airedCap, beyondPlayable, displayCap } from '$lib/detail/episode-caps';
-	import { createCapGateProbe, type CapGateRefresh } from '$lib/detail/cap-gate-probe';
+	import {
+		capGateAnswerFrom,
+		createCapGateProbe,
+		type CapGateRefresh
+	} from '$lib/detail/cap-gate-probe';
 	import {
 		createAvailabilityWriteback,
 		type AvailabilityPatch
@@ -983,14 +987,10 @@
 				// being questioned and never reaches the provider.
 				bypass_cache: true
 			});
-			// The whole row, not one field of it. The controller decides
-			// which parts of a fresh answer are safe to write back.
-			return {
-				count: r.episode_count,
-				approximate: r.episode_count_approximate === true,
-				available: r.available,
-				extraEpisodes: r.extra_episodes ?? []
-			};
+			// The whole row, not one field of it — and an unsettled
+			// answer as none. The controller decides which parts of a
+			// fresh answer are safe to write back.
+			return capGateAnswerFrom(r);
 		},
 		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
 		onCleared: (episode, _count, refresh) => {

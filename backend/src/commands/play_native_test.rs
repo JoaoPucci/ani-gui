@@ -198,13 +198,15 @@ async fn a_dead_plain_candidate_ahead_of_a_plain_winner_still_picks() {
     // candidates is weak evidence, and treating every dead earlier
     // row as blocking would abort picks on any garbage hit dying —
     // the probe-skip behavior exists precisely for that. Only
-    // identity-bearing equal ranks block.
+    // identity-bearing equal ranks block. The entry is dated, its
+    // candidates' pages naming no year: a plain candidate is one
+    // without identity, and only a dated entry takes one on its count.
     let client = first_twin_dead();
     let hits = [
         hit("unrelated-99", "Unrelated"),
         hit("also-unrelated-88", "Also Unrelated"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(12), "something else", None, None)
+    let picked = pick_candidate(&client, &hits, Some(12), "something else", Some(2020), None)
         .await
         .expect("the surviving plain candidate still wins");
     assert_eq!(picked.hit.slug, "also-unrelated-88");
@@ -735,13 +737,14 @@ async fn a_movie_badge_is_disproof_against_a_multi_episode_expectation() {
     // The browse card names its format. A Movie cannot be the
     // 12-episode series the caller expects, however well its count
     // or position scores — the same class of mispick the provider
-    // picker's type filter used to catch.
+    // picker's type filter used to catch. The entry is dated, so the
+    // series, named by nothing, is still taken on its count.
     let client = TableProvider::counted(&[(1, 12), (2, 12)]);
     let hits = [
         typed_hit("recap-movie-1", "Recap Movie", "Movie"),
         typed_hit("the-series-2", "The Series", "TV"),
     ];
-    let picked = pick_candidate(&client, &hits, Some(12), "unrelated", None, None)
+    let picked = pick_candidate(&client, &hits, Some(12), "unrelated", Some(2020), None)
         .await
         .expect("picked");
     assert_eq!(picked.hit.slug, "the-series-2");

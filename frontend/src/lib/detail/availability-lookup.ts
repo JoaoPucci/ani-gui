@@ -78,6 +78,10 @@ export function startAvailabilityLookup(
 		})
 		.then((r) => {
 			if (cancelled) return;
+			// An unsettled answer reached the provider and established
+			// nothing: its `available: false` is not a verdict, so the
+			// page keeps what it had, as it does when the lookup fails.
+			if (r.unsettled) return;
 			// Whatever a re-ask has since established is the re-ask's —
 			// it is newer and it bypassed the cache. Anything it left
 			// unanswered is still this lookup's to fill.
