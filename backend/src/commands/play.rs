@@ -2196,6 +2196,9 @@ mod affinity_tests;
 #[path = "play_after_removal_test.rs"]
 mod after_removal_tests;
 #[cfg(test)]
+#[path = "play_played_test.rs"]
+mod played_tests;
+#[cfg(test)]
 #[path = "play_referer_prop_test.rs"]
 mod referer_prop_tests;
 #[cfg(test)]
