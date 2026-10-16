@@ -607,6 +607,11 @@ export function playStream(
 	onProgress: (p: PlayProgress) => void,
 	signal?: AbortSignal
 ): Promise<CreateSessionResponse> {
+	// Cancelled before it began: nothing is sent. Opening a stream
+	// and closing it at once still starts a resolve on the backend.
+	if (signal?.aborted) {
+		return Promise.reject(new Error('playStream: aborted'));
+	}
 	if (typeof EventSource === 'undefined') {
 		return play(args);
 	}

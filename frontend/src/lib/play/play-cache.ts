@@ -103,7 +103,10 @@ const fireQueue: Array<() => void> = [];
  * warming; foreground clicks shouldn't be punished for the warming
  * having queued ahead of them.
  */
-function withSlot<T>(fn: () => Promise<T>): {
+function withSlot<T>(
+	fn: () => Promise<T>,
+	signal: AbortSignal
+): {
 	promise: Promise<T>;
 	startNow: () => void;
 	hasStarted: () => boolean;
@@ -112,9 +115,29 @@ function withSlot<T>(fn: () => Promise<T>): {
 	let started = false;
 	const promise = (async () => {
 		if (activeFires >= PREFETCH_CONCURRENCY) {
-			await new Promise<void>((resolve) => {
-				slotResolver = resolve;
-				fireQueue.push(resolve);
+			await new Promise<void>((resolve, reject) => {
+				// Aborted while it waits — its page is gone. It leaves
+				// the queue without taking a slot, so the fires behind
+				// it move up, and it never runs: a fire is a resolve
+				// request to the backend. An abort that lands after the
+				// slot was granted, before the fire starts, finds the
+				// listener gone; the fire then runs with an aborted
+				// signal, which playStream refuses before it sends
+				// anything, and the slot passes on as it does for any
+				// fire that ends.
+				const onAbort = () => {
+					const idx = fireQueue.indexOf(grant);
+					if (idx >= 0) fireQueue.splice(idx, 1);
+					slotResolver = null;
+					reject(new Error('play-cache: aborted before its turn'));
+				};
+				const grant = () => {
+					signal.removeEventListener('abort', onAbort);
+					resolve();
+				};
+				slotResolver = grant;
+				fireQueue.push(grant);
+				signal.addEventListener('abort', onAbort, { once: true });
 			});
 		}
 		started = true;
@@ -188,7 +211,10 @@ export function getOrFire(
 			for (const s of subscribers) s(p);
 		};
 		const fireRef = { current: fire };
-		const slot = withSlot(() => fireRef.current(emit, abortController.signal));
+		const slot = withSlot(
+			() => fireRef.current(emit, abortController.signal),
+			abortController.signal
+		);
 		newEntry.promise = slot.promise;
 		newEntry.startNow = slot.startNow;
 		newEntry.hasStarted = slot.hasStarted;
