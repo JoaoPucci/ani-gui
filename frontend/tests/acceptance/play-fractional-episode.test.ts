@@ -244,3 +244,57 @@ describe('play route — recaps at the edges of a strip page', () => {
 		);
 	});
 });
+
+describe('play route — on an extra appended after the last episode', () => {
+	// Noragami's two OADs, which the backend answers as the extras 12.1
+	// and 12.2 beside episode 12: the arrows step from one to the
+	// other before leaving the run.
+	async function mountOn(episode: string) {
+		useHandlers(['12.1', '12.2']);
+		setUrl(`/play/${KITSU_ID}`, { session: `session-${episode}`, episode, kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+	}
+
+	it('steps from the first OAD to the second', async () => {
+		await mountOn('12.1');
+		const next = () => navButton(m.play_episode_nav_next_aria_label());
+		await until(
+			() =>
+				(next()?.textContent ?? '').includes(m.play_episode_nav_next_label({ episode: '12.2' })) &&
+				!next()!.disabled,
+			'the next arrow, onto 12.2'
+		);
+		const before = FakeEventSource.instances.length;
+		next()!.click();
+		await until(
+			() =>
+				FakeEventSource.instances
+					.slice(before)
+					.some((i) => i.url.includes('episode=12.2') && !i.url.includes('prefetch=1')),
+			'the next stream, for 12.2'
+		);
+	});
+
+	it('steps back from the second OAD to the first', async () => {
+		await mountOn('12.2');
+		const prev = navButton(m.play_episode_nav_previous_aria_label());
+		await until(
+			() =>
+				(navButton(m.play_episode_nav_previous_aria_label())?.textContent ?? '').includes(
+					m.play_episode_nav_prev_label({ episode: '12.1' })
+				),
+			'the previous arrow, onto 12.1'
+		);
+		expect(prev).toBeDefined();
+		const before = FakeEventSource.instances.length;
+		navButton(m.play_episode_nav_previous_aria_label())!.click();
+		await until(
+			() =>
+				FakeEventSource.instances
+					.slice(before)
+					.some((i) => i.url.includes('episode=12.1') && !i.url.includes('prefetch=1')),
+			'the previous stream, for 12.1'
+		);
+	});
+});
