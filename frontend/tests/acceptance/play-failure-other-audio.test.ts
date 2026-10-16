@@ -31,6 +31,7 @@ vi.mock('$app/navigation', () => ({
 	afterNavigate: vi.fn()
 }));
 
+import { goto } from '$app/navigation';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import HomePage from '../../src/routes/+page.svelte';
@@ -587,5 +588,94 @@ describe('a failure for one show, landing after the page moved to another', () =
 		const dubAsks = asked.batch.filter((b) => b.mode === 'dub');
 		expect(dubAsks).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
 		expect(dubAsks).not.toContainEqual({ kitsu_ids: [OTHER_ID], mode: 'dub' });
+	});
+});
+
+describe('a play for one show that succeeds after the page moved to another', () => {
+	// The same reuse: the first show's play answers while the page is on
+	// the second. The watch it records is the first show's, and the
+	// page does not drag the viewer back to the first show's player.
+	const OTHER_ID = '777';
+	const OTHER_TITLE = 'Another Show';
+	const SESSION = JSON.stringify({
+		id: 'session-late',
+		kind: 'mp4',
+		has_subtitles: false,
+		quality: '1080',
+		mode: 'sub'
+	});
+
+	function useOtherShowAndRecord() {
+		const marked: Record<string, unknown>[] = [];
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(OTHER_ID, OTHER_TITLE, 24), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
+				HttpResponse.json({ aired: 24, next_episode: null, next_airing_at: null, upcoming: [] })
+			),
+			http.post(`${API_BASE}/api/play/mark-watched`, async ({ request }) => {
+				marked.push((await request.json()) as Record<string, unknown>);
+				return new HttpResponse(null, { status: 204 });
+			})
+		);
+		return marked;
+	}
+
+	async function clickMoveAndSucceed(
+		episode: number,
+		moveTo: () => void,
+		landed: () => boolean = () => (target.textContent ?? '').includes(OTHER_TITLE)
+	) {
+		await until(() => tile(episode) !== null, `the tile for episode ${episode}`);
+		tile(episode)!.click();
+		await until(
+			() =>
+				FakeEventSource.instances.some(
+					(i) => i.url.includes(`episode=${episode}`) && !i.url.includes('prefetch=1')
+				),
+			"the click's interactive stream"
+		);
+		const stream = FakeEventSource.instances
+			.filter((i) => i.url.includes(`episode=${episode}`) && !i.url.includes('prefetch=1'))
+			.pop()!;
+		moveTo();
+		await until(landed, 'the page to move to the other show');
+		vi.mocked(goto).mockClear();
+		stream.dispatch('done', SESSION);
+	}
+
+	it("detail: records the first show's watch and stays on the second show", async () => {
+		useHandlers({ cached: {}, playable_episode_counts: {} });
+		const marked = useOtherShowAndRecord();
+		app = mount(DetailPage, { target });
+		await clickMoveAndSucceed(5, () => setParams({ id: OTHER_ID }));
+		await until(() => marked.length > 0, 'the watch record');
+		expect(marked[0]).toMatchObject({ kitsu_id: KITSU_ID, title: TITLE, episode: '5' });
+		await new Promise((r) => setTimeout(r, 30));
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	});
+
+	it("play: records the first show's watch and stays on the second show", async () => {
+		useHandlers({ cached: {}, playable_episode_counts: {} });
+		const marked = useOtherShowAndRecord();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		// The play page loads its show on mount, so only the URL moves.
+		let moved = false;
+		await clickMoveAndSucceed(
+			2,
+			() => {
+				setParams({ id: OTHER_ID });
+				setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+				moved = true;
+			},
+			() => moved
+		);
+		await until(() => marked.length > 0, 'the watch record');
+		expect(marked[marked.length - 1]).toMatchObject({ kitsu_id: KITSU_ID, episode: '2' });
+		await new Promise((r) => setTimeout(r, 30));
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 	});
 });
