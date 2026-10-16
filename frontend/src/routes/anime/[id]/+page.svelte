@@ -84,7 +84,7 @@
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { buildPlayArgs } from '$lib/play/play-args';
 	import {
-		rememberChoice,
+		applyChoice,
 		selectedVersion,
 		storedChoice,
 		versionsToOffer
@@ -164,8 +164,7 @@
 		// The version already shown is the one requests play; a click on
 		// it changes nothing, and must not re-warm under another key.
 		if (kind === shownVersion) return;
-		rememberChoice(id, kind);
-		versionChoice = kind;
+		versionChoice = applyChoice(id, kind);
 	}
 	const onVersionKey = (e: KeyboardEvent, index: number) =>
 		handleRadioKey(e, index, offeredVersions.length, (i) => chooseVersion(offeredVersions[i].kind));

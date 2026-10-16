@@ -76,6 +76,34 @@ export function rememberChoice(
 	}
 }
 
+/**
+ * Apply the viewer's choice of `kind` for the show, and answer the
+ * version requests for it name from now on. The default — the
+ * uncensored copy, which a request naming none plays — is applied by
+ * forgetting the choice, so requests go back to naming none rather
+ * than caching the same listing under a second key. The answer is
+ * what the storage holds afterwards: the play page reads the choice
+ * from there, and a page playing a choice the storage refused would
+ * pair its plays with that page's evictions and stamps naming another.
+ */
+export function applyChoice(
+	kitsuId: string,
+	kind: VersionKind,
+	storage: ChoiceStorage | null = defaultStorage()
+): VersionKind | undefined {
+	if (kind === 'uncensored') forgetChoice(kitsuId, storage);
+	else rememberChoice(kitsuId, kind, storage);
+	return storedChoice(kitsuId, storage);
+}
+
+function forgetChoice(kitsuId: string, storage: ChoiceStorage | null): void {
+	try {
+		storage?.setItem(KEY, JSON.stringify(load(storage).filter(([id]) => id !== kitsuId)));
+	} catch {
+		// The choice stays; applyChoice answers with it.
+	}
+}
+
 /** The versions to offer a choice between: all of them, in the
  *  provider's order, when there are several; none otherwise. */
 export function versionsToOffer(versions: VersionInfo[] | null | undefined): VersionInfo[] {
