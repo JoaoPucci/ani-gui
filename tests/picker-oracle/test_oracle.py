@@ -75,7 +75,24 @@ class Generation(unittest.TestCase):
     def test_every_case_carries_an_expectation(self):
         for case in oracle.gen():
             self.assertIn("expect", case, case["id"])
-            self.assertTrue(case["expect"] is None or set(case["expect"]) == {"pick", "count"}, case["id"])
+            self.assertTrue(
+                case["expect"] is None or set(case["expect"]) in ({"pick", "count"}, {"pick", "count", "versions"}),
+                case["id"],
+            )
+
+    def test_the_generated_set_walks_versions_both_ways(self):
+        fams = [c for c in oracle.gen() if c["family"].startswith("versions")]
+        # generated pools tag titles that end on a division too: the tag hides none
+        self.assertTrue(
+            any(
+                "/" in c["family"]
+                and any(r[0].endswith("-u") for r in c["rows"])
+                and any(r[1].endswith(("Season 2", " 2")) for r in c["rows"] if not r[0].endswith("-u"))
+                for c in fams
+            )
+        )
+        self.assertTrue(any(c["expect"] and "versions" in c["expect"] for c in fams))
+        self.assertTrue(any(c["expect"] and "versions" not in c["expect"] for c in fams))
 
 
 class TheModelReadsTheDocs(unittest.TestCase):
@@ -189,6 +206,50 @@ class TheModelReadsTheDocs(unittest.TestCase):
             (["Show 2"], E, [("a", "Show 2nd Season Part 2", E), ("b", "Show Season 2", E)], pick("b")),
         ]:
             self.assertEqual(oracle.predict(pool(titles, count, rows)), want, (titles, count, rows))
+
+    def test_copies_under_a_version_tag_are_versions_of_the_pick(self):
+        def versions(slug, *vs, count=E):
+            return {"pick": slug, "count": count, "versions": [list(v) for v in vs]}
+
+        both = [("p", "Show", E), ("u", "Show (Uncensored)", E)]
+        for titles, count, rows, want in [
+            # the docs' table, row by row where a generated pool can say it
+            (["Show"], E, both, versions("u", ("p", "standard"), ("u", "uncensored"))),
+            (["Show"], E, list(reversed(both)), versions("u", ("u", "uncensored"), ("p", "standard"))),
+            (["Other Name", "Show"], E, both, versions("u", ("p", "standard"), ("u", "uncensored"))),
+            (["Show"], E, [("p", "Show", E), ("u", "Show [UNCENSORED]", E)], versions("u", ("p", "standard"), ("u", "uncensored"))),
+            (["Show"], E, [("p", "Show", E), ("u", "Show （Uncensored）", E)], versions("u", ("p", "standard"), ("u", "uncensored"))),
+            (["Show 2nd Season"], E, [("p", "Show 2nd Season", E), ("u", "Show 2nd Season (Uncensored)", E)], versions("u", ("p", "standard"), ("u", "uncensored"))),
+            (["Show"], E, [("p", "Show", E), ("u", "Show (Uncensored)", 11)], pick("p")),
+            (["Show"], E, [("p", "Show", 11), ("u", "Show (Uncensored)", 13)], pick("p", 11)),
+            (["Show"], E, [("p", "Show", E), ("u", "Show Uncensored", E)], pick("p")),
+            (["Show"], E, [("p", "Show", E), ("u", "Show Other (Uncensored)", E)], pick("p")),
+            (["Show"], E, [("p", "Show", E), ("u", "Show (Uncensored)", E), ("q", "Show", E)], pick("p")),
+            (["Show"], E, [("u", "Show (Uncensored)", E)], pick("u")),
+            (["Show"], E, [("p", "Show Season 2", E), ("u", "Show Season 2 (Uncensored)", E)], None),
+            (["Show"], None, both, pick("p")),
+        ]:
+            self.assertEqual(oracle.predict(pool(titles, count, rows)), want, (titles, count, rows))
+        # a count and no year: the tagged copy is named by nothing
+        self.assertEqual(oracle.predict(pool(["Show"], E, list(reversed(both)), year=None)), pick("p"))
+
+    def test_a_version_tag_hides_no_division_from_the_title_rule(self):
+        for count in (E, None):
+            for year in (2020, None):
+                for title in ("Show Season 2 [Uncensored]", "Show 2 (Uncensored)", "Show Part 2 （Uncensored）"):
+                    case = pool(["Show"], count, [("x", title, E)], year=year)
+                    self.assertIsNone(oracle.predict(case), (title, count, year))
+                    self.assertEqual(oracle.refusal_expected(case), ("NoResults", False), (title, count, year))
+        # a tagged entry before is another entry: never picked, a clean miss
+        tagged_before = pool(["Show 2"], E, [("x", "Show 1 [Uncensored]", E)])
+        self.assertIsNone(oracle.predict(tagged_before))
+        self.assertEqual(oracle.refusal_expected(tagged_before), ("NoResults", True))
+        # part agreement reads past the tag: the cour whose part agrees
+        cours = [("a", "Show Season 2 Part 2 [Uncensored]", E), ("b", "Show Season 2 [Uncensored]", E)]
+        self.assertEqual(oracle.predict(pool(["Show Season 2"], E, cours)), pick("b"))
+        self.assertEqual(oracle.predict(pool(["Show Season 2"], None, cours)), pick("b"))
+        # after the entry's own season, it admits as before
+        self.assertEqual(oracle.predict(pool(["Show 2nd Season"], E, [("x", "Show 2nd Season [Uncensored]", E)])), pick("x"))
 
     def test_the_countless_pick_takes_only_what_something_vouches_for(self):
         # with the entry's year, every listing's page year (the driver writes
@@ -391,7 +452,10 @@ def outcome_of(case):
     if expect is None:
         err, clean = oracle.refusal_expected(case)
         return {"err": err, "clean_miss": clean}
-    return {"ok": expect["pick"], "count": expect["count"], "episodes": [[k, k, None] for k in range(1, expect["count"] + 1)]}
+    got = {"ok": expect["pick"], "count": expect["count"], "episodes": [[k, k, None] for k in range(1, expect["count"] + 1)]}
+    if "versions" in expect:
+        got["versions"] = expect["versions"]
+    return got
 
 
 REFUSED = {"refused": "NoResults", "clean_miss": True}
@@ -504,6 +568,28 @@ class Comparison(unittest.TestCase):
             self.assertEqual(code, 1, wrong)
         code, out = self.run_cmp(got=dict(self.got, d={"err": "Network", "clean_miss": False}))
         self.assertEqual(code, 0, out)
+
+    def test_a_pick_must_carry_the_versions_the_docs_give_it(self):
+        two = dict(
+            pool(["Show"], E, [("p", "Show", E), ("u", "Show (Uncensored)", E)]),
+            id="v",
+            expect={"pick": "u", "count": E, "versions": [["p", "standard"], ["u", "uncensored"]]},
+        )
+        self.cases.append(two)
+        rows = [[k, k, None] for k in range(1, E + 1)]
+        right = {"ok": "u", "count": E, "episodes": rows, "versions": [["p", "standard"], ["u", "uncensored"]]}
+        code, out = self.run_cmp(got=dict(self.got, v=right))
+        self.assertEqual(code, 0, out)
+        for wrong in (
+            {"ok": "u", "count": E, "episodes": rows},
+            {"ok": "u", "count": E, "episodes": rows, "versions": [["u", "uncensored"], ["p", "standard"]]},
+            {"ok": "p", "count": E, "episodes": rows, "versions": [["p", "standard"], ["u", "uncensored"]]},
+        ):
+            code, out = self.run_cmp(got=dict(self.got, v=wrong))
+            self.assertEqual(code, 1, wrong)
+        # and a pick the docs give no versions must carry none
+        code, out = self.run_cmp(got=dict(self.got, a=dict(self.got["a"], versions=[["x", "standard"], ["y", "uncensored"]])))
+        self.assertEqual(code, 1, out)
 
     def test_a_panic_or_a_missing_outcome_fails(self):
         code, out = self.run_cmp(got=dict(self.got, a={"panic": True}))

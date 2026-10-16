@@ -63,8 +63,8 @@ python3 -I tests/picker-oracle/oracle.py cmp \
 (cd backend && cargo test --lib write_the_fixture_golden -- --ignored)
 ```
 
-Generating the set takes about six seconds and writes some 48,000
-pools (13 MB); the picker walks them in about twenty seconds in the
+Generating the set takes about six seconds and writes some 65,000
+pools (18 MB); the picker walks them in about twenty seconds in the
 debug profile. The generated set is not committed: it is a deterministic
 function of `oracle.py` and `cases/`, so committing it would store the
 generator's output beside the generator. The whole set runs on every
@@ -129,7 +129,7 @@ records its outcome, and the fixture test asserts its pick.
 
 The predicates compute admission (the title rule), the entry before,
 the season before, the sequel guard, the probe head, the pick by count
-when no listing is broader than the entry, and the countless order
+and its versions when no listing is broader than the entry, and the countless order
 through the one reader that decides whether the entry names a hit.
 Pools the predicates do not compute — a broad listing a sibling could
 complete (the spanning cut), a bare title beside parts of it whose

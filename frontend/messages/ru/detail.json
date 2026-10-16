@@ -140,5 +140,9 @@
 	"unavailable_in_dub_message": "Нет в дубляже — тайтл доступен в SUB. Переключите озвучку ниже, чтобы посмотреть или скачать.",
 	"unavailable_in_sub_message": "Нет в версии с субтитрами — тайтл доступен в DUB. Переключите озвучку ниже, чтобы посмотреть или скачать.",
 	"error_no_id_headline": "Аниме не выбрано.",
-	"error_no_id_detail": "В адресе нет id тайтла."
+	"error_no_id_detail": "В адресе нет id тайтла.",
+	"version_group_aria_label": "Какую версию воспроизводить",
+	"version_group_label": "Версия",
+	"version_standard": "Обычная",
+	"version_uncensored": "Без цензуры"
 }

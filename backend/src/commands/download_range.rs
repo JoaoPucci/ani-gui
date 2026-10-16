@@ -8,7 +8,7 @@ use crate::error::Result;
 
 use super::download::{DownloadArgs, DownloadProgress};
 use super::play_native::PickedShow;
-use super::play_native_episode::{resolve_episode, ResolvedEpisode};
+use super::play_native_episode::ResolvedEpisode;
 use super::play_native_resolve::NativeError;
 use super::play_native_walk::pick_native_walk;
 use super::providers::{gate_of, Attempt};
@@ -59,16 +59,19 @@ impl Attempt for RangeStartAttempt<'_> {
             self.args.year,
             self.args.subtype.as_deref(),
         )
-        .await?;
-        let first = resolve_episode(
+        .await?
+        .choose(self.args.version);
+        // The first episode from the version named, or the next that
+        // carries it; the range keeps the version named for the rest.
+        let (_, first) = super::play_native_version_modes::resolve_in_any_version(
             provider,
-            &picked,
+            picked.clone(),
             &self.first.to_string(),
             &self.args.mode,
             self.quality,
         )
-        .await?;
-        Ok((picked, first))
+        .await;
+        Ok((picked, first?))
     }
 
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
@@ -137,6 +140,7 @@ where
     // naming the provider that served it, with the cap the pick's
     // listing paid for — the row the play path writes.
     let extra_tags = super::play_native_numbering::extra_episode_tags(&picked.episodes);
+    let (versions, _) = super::play_native_versions::named_versions(attempted.provider, &picked);
     super::availability::stamp_after_native(
         state,
         args.kitsu_id.as_deref(),
@@ -146,7 +150,8 @@ where
             attempted.provider,
             super::play_native_numbering::kitsu_episode_cap(&picked.episodes),
             &extra_tags,
-        ),
+        )
+        .with_versions(&versions),
     )
     .await;
     let client = attempted.client;
@@ -168,7 +173,19 @@ where
         // the provider; the rest resolve here, against it.
         let resolved = match first_resolved.take() {
             Some(r) => Ok(r),
-            None => resolve_episode(&*client, &picked, &ep_no, &args.mode, quality).await,
+            // A version that lacks this episode in the mode gives way
+            // to the next that carries it, as the range's start did.
+            None => {
+                super::play_native_version_modes::resolve_in_any_version(
+                    &*client,
+                    picked.clone(),
+                    &ep_no,
+                    &args.mode,
+                    quality,
+                )
+                .await
+                .1
+            }
         };
         let resolved = match resolved {
             Ok(r) => r,

@@ -43,7 +43,9 @@
 		type Config,
 		type HistoryEntry,
 		type KitsuAnimeRef,
-		type KitsuEpisode
+		type KitsuEpisode,
+		type VersionInfo,
+		type VersionKind
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
 	import { unavailableMessage, watchOtherAudio } from '$lib/detail/unavailable-copy';
@@ -88,6 +90,15 @@
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
+	import {
+		applyChoice,
+		selectedVersion,
+		storedChoice,
+		versionsToOffer,
+		versionsInMode
+	} from '$lib/versions/version-choice';
+	import { handleRadioKey } from '$lib/versions/radio-keys';
+	import { versionLabel } from '$lib/versions/version-label';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
@@ -148,6 +159,29 @@
 	// streamable RIGHT NOW" number — Kitsu's episode_count lags real
 	// airing for ongoing shows (One Piece: Kitsu 1106, the provider 1161).
 	let playableEpisodeCount = $state<number | null>(null);
+
+	// The show's versions, when the provider lists it twice ("Versions
+	// of one pick" in docs/title-resolution.md), as the availability
+	// answer names them; and the version remembered for the show,
+	// which every play and download request names. Nothing remembered
+	// leaves the backend's default, the uncensored copy.
+	let showVersions = $state<VersionInfo[]>([]);
+	let versionChoice = $state<VersionKind | undefined>(undefined);
+	// The mode the versions were answered in: what they say of each
+	// version's mode is that mode's.
+	let versionsMode = $state<'sub' | 'dub'>('sub');
+	const offeredVersions = $derived.by(() =>
+		versionsToOffer(versionsInMode(showVersions, versionsMode, availabilityMode))
+	);
+	const shownVersion = $derived(selectedVersion(offeredVersions, versionChoice));
+	function chooseVersion(kind: VersionKind) {
+		// The version already shown is the one requests play; a click on
+		// it changes nothing, and must not re-warm under another key.
+		if (kind === shownVersion) return;
+		versionChoice = applyChoice(id, kind);
+	}
+	const onVersionKey = (e: KeyboardEvent, index: number) =>
+		handleRadioKey(e, index, offeredVersions.length, (i) => chooseVersion(offeredVersions[i].kind));
 	/**
 	 * Clicking a cap-gated tile re-asks the provider rather than doing
 	 * nothing. The playable count is a snapshot — 24h for an ongoing
@@ -753,7 +787,11 @@
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
 					setResolved: (r) => (availabilityResolved = r),
-					setListed: (l) => (warmListed = l)
+					setListed: (l) => (warmListed = l),
+					setVersions: (v, m) => {
+						showVersions = v;
+						versionsMode = m;
+					}
 				}
 			)
 		);
@@ -939,6 +977,8 @@
 		warmListed = null;
 		playableEpisodeCount = null;
 		extraEpisodes = [];
+		showVersions = [];
+		versionChoice = storedChoice(currentId);
 		resumeEntry = null;
 		resetEpisodePageCache(kitsuPageCache);
 		const detailServed = kitsuAnimeDetail(currentId);
@@ -1037,6 +1077,9 @@
 		if (!availabilityResolved) return;
 		const mode = playMode(config);
 		const quality = playQuality(config);
+		// Read here so a new choice re-warms under its own keys; the
+		// other version's warmed sessions are never served for it.
+		const version = versionChoice;
 
 		// Fan out a prefetch for every visible AIRED episode tile in
 		// the strip. The play-cache dedupes simultaneous calls —
@@ -1076,9 +1119,10 @@
 				quality,
 				show: detail,
 				kitsuId: id,
-				prefetch: true
+				prefetch: true,
+				version
 			});
-			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
+			void getOrFire(makeKey(id, ep, mode, quality, version), (emit, signal) =>
 				playStream(args, emit, signal)
 			).catch(() => {
 				/* the click handler will see the error if it ever fires;
@@ -1300,6 +1344,7 @@
 		}
 		const mode = playMode(config);
 		const quality = playQuality(config);
+		const version = versionChoice;
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
 		// against them, and records the show the viewer clicked.
@@ -1315,7 +1360,8 @@
 			mode,
 			quality,
 			show,
-			kitsuId: owner.showId
+			kitsuId: owner.showId,
+			version
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.
@@ -1336,7 +1382,7 @@
 			owner,
 			() =>
 				getOrFire(
-					makeKey(owner.showId, ep, mode, quality),
+					makeKey(owner.showId, ep, mode, quality, version),
 					(emit, signal) => playStream(playArgs, emit, signal),
 					(p) => {
 						actionProgress = progressLabel(p);
@@ -1420,7 +1466,8 @@
 			episode: defaultEpisode(),
 			mode,
 			quality,
-			kitsuId: id
+			kitsuId: id,
+			version: versionChoice
 		});
 		downloadModalOpen = true;
 	}
@@ -1641,6 +1688,31 @@
 								{/each}
 							</div>
 						</div>
+
+						{#if offeredVersions.length > 0}
+							<!-- Shown only for a show the provider lists twice. A
+							     choice of one of N, so a radio group: one tab stop,
+							     the arrows move the choice. -->
+							<div class="seg-group">
+								<span class="seg-label">{m.detail_version_group_label()}</span>
+								<div class="seg" role="radiogroup" aria-label={m.detail_version_group_aria_label()}>
+									{#each offeredVersions as v, i (v.kind)}
+										<button
+											type="button"
+											class="seg-btn"
+											class:active={shownVersion === v.kind}
+											role="radio"
+											aria-checked={shownVersion === v.kind}
+											tabindex={shownVersion === v.kind ? 0 : -1}
+											onclick={() => chooseVersion(v.kind)}
+											onkeydown={(e) => onVersionKey(e, i)}
+										>
+											{versionLabel(v.kind)}
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/if}
 
 						{#if configError}
 							<span class="seg-error" role="alert"

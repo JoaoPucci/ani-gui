@@ -35,6 +35,8 @@ proptest::proptest! {
             referer: referer.clone(),
             subtitles: Vec::new(),
             provider: crate::scraper::provider::ProviderId::TestA,
+            versions: Vec::new(),
+            version: None,
         };
         let row = cached_resolution_for(&resolved);
         proptest::prop_assert_eq!(row.upstream_url, master_url);

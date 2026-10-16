@@ -49,6 +49,8 @@ fn native() -> NativeResolved {
         provider: crate::scraper::provider::ProviderId::TestA,
         referer: None,
         subtitles: Vec::new(),
+        versions: Vec::new(),
+        version: None,
     }
 }
 
@@ -76,6 +78,7 @@ fn args() -> PlayArgs {
         alt_titles: vec![],
         prefetch: false,
         kitsu_id: None,
+        version: None,
     }
 }
 

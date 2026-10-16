@@ -686,16 +686,7 @@ async fn post_play_mark_watched(
     // resolution row is read: a removal of the show in between took
     // that row, and the watch read from it is not recorded after it.
     let begun = crate::history::guard::epoch(&state.history_path);
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let key = crate::commands::play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let key = args.resolution_key();
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
             // The row, the watched-at stamp and, when the frontend
@@ -821,16 +812,7 @@ async fn post_play_cache_evict(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> StatusCode {
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let key = crate::commands::play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let key = args.resolution_key();
     crate::commands::play_resolution_cache::evict(&state.cache_pool, &key);
     StatusCode::NO_CONTENT
 }
@@ -1614,6 +1596,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1660,6 +1644,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1725,6 +1711,8 @@ mod tests {
                 resolved_slot: Some(5),
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // A later resolve moved the display stamp to its own row.
@@ -1778,6 +1766,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // The stamp names display 4 as slot 5.
@@ -1835,6 +1825,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1890,6 +1882,8 @@ mod tests {
                     resolved_slot: Some(1),
                     subtitles: Vec::new(),
                     kitsu_id: None,
+                    versions: Vec::new(),
+                    version: None,
                 },
             );
         }
@@ -1973,6 +1967,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -2075,6 +2071,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -2166,6 +2164,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -2268,6 +2268,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
 
@@ -2376,6 +2378,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2429,6 +2433,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2558,6 +2564,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let pool = state.cache_pool.clone();

@@ -168,6 +168,12 @@ pub struct AvailabilityResponse {
     /// from every cached row, which hold verdicts.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unsettled: bool,
+    /// The show's versions, in the provider's order, when its pick has
+    /// several — copies of one season under a version tag ("Versions of
+    /// one pick" in `docs/title-resolution.md`); absent otherwise. The
+    /// uncensored version is the one a play naming none plays.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
 }
 
 impl AvailabilityResponse {
@@ -184,6 +190,7 @@ impl AvailabilityResponse {
             gate_refused: false,
             provider: None,
             unsettled: true,
+            versions: Vec::new(),
         }
     }
 }
@@ -274,6 +281,8 @@ pub struct ResolveVerdict<'a> {
     pub episode_cap: Option<u32>,
     /// The listing's fractional extras, when it served.
     pub extra_tags: &'a [String],
+    /// The pick's versions, when it served one with several.
+    pub versions: &'a [crate::commands::play_native_versions::VersionInfo],
 }
 
 impl<'a> ResolveVerdict<'a> {
@@ -290,7 +299,18 @@ impl<'a> ResolveVerdict<'a> {
             provider: Some(provider),
             episode_cap,
             extra_tags,
+            versions: &[],
         }
+    }
+
+    /// The verdict naming the served pick's `versions`.
+    #[must_use]
+    pub fn with_versions(
+        mut self,
+        versions: &'a [crate::commands::play_native_versions::VersionInfo],
+    ) -> Self {
+        self.versions = versions;
+        self
     }
 
     /// A clean miss — every search completed and nothing matched —
@@ -302,6 +322,7 @@ impl<'a> ResolveVerdict<'a> {
             provider,
             episode_cap: None,
             extra_tags: &[],
+            versions: &[],
         }
     }
 }
@@ -479,6 +500,7 @@ pub async fn stamp_after_native(
                             gate_refused: false,
                             unsettled: false,
                             provider: verdict.provider,
+                            versions: with_modes_kept(state, &row, verdict.versions),
                         },
                     );
                 }
@@ -487,6 +509,36 @@ pub async fn stamp_after_native(
         },
     )
     .await;
+}
+
+/// `versions` as a resolve names them, each given what the row standing
+/// at `row` says of its mode where the resolve says nothing: a play
+/// knows which version it played, not which carry the mode, and a stamp
+/// must not take back what the probe learned of each.
+fn with_modes_kept(
+    state: &AppState,
+    row: &str,
+    versions: &[crate::commands::play_native_versions::VersionInfo],
+) -> Vec<crate::commands::play_native_versions::VersionInfo> {
+    let standing: Vec<crate::commands::play_native_versions::VersionInfo> =
+        meta_cache_get(&state.cache_pool, row)
+            .ok()
+            .flatten()
+            .and_then(|body| serde_json::from_str::<AvailabilityResponse>(&body).ok())
+            .map(|r| r.versions)
+            .unwrap_or_default();
+    versions
+        .iter()
+        .map(|v| crate::commands::play_native_versions::VersionInfo {
+            has_mode: v.has_mode.or_else(|| {
+                standing
+                    .iter()
+                    .find(|s| s.show_key == v.show_key)
+                    .and_then(|s| s.has_mode)
+            }),
+            ..v.clone()
+        })
+        .collect()
 }
 
 /// Stamp a served replay's positive, where no positive row stands.
@@ -603,6 +655,14 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v21: v20 as below, keyed past the v20 the recap-before-a-
+    //      continuation-cour change takes for its own re-probe: a row
+    //      written under that v20 names no versions.
+    // v20: a season the provider lists twice — an "(Uncensored)" copy
+    //      and a plain one — is one pick with two versions, and the
+    //      answer names them. A v19 row cannot say whether its show
+    //      has versions, and served for its lifetime it would hide the
+    //      choice; re-keying re-probes.
     // v19: a dated entry with a count takes only a hit a name vouches
     //      for, and a dated entry's hit its own page files under
     //      Hentai is never a pick. A v18 row for such an entry can be
@@ -718,7 +778,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v19:{kitsu_id}:{m}")
+    format!("availability:v21:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -795,13 +855,15 @@ pub async fn check_availability(
         answered_by: None,
     };
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
-    let (available, episode_count, extra_episodes, provider) = match probed {
+    let (available, episode_count, extra_episodes, provider, versions) = match probed {
         Ok(attempted) => {
-            let (p, present) = attempted.value;
+            let (p, present, modes) = attempted.value;
             let Some(present) = present else {
-                // Every row the mode search touched was missing. The
-                // walk moves on from that answer and surfaces the
-                // unknown verdict itself when nobody answers; kept
+                // Every row the mode search touched was missing — or,
+                // for a show with versions, no version carries the mode
+                // and one never answered. The walk moves on from that
+                // answer and surfaces the unknown verdict itself when
+                // nobody answers; kept
                 // for the day an inconclusive answer reaches here
                 // regardless — nothing about this mode was said,
                 // which is not absence, so persist nothing.
@@ -813,6 +875,17 @@ pub async fn check_availability(
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
                     crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                     Some(attempted.provider),
+                    crate::commands::play_native_versions::named_versions(attempted.provider, &p)
+                        .0
+                        .into_iter()
+                        .map(|v| crate::commands::play_native_versions::VersionInfo {
+                            has_mode: modes
+                                .iter()
+                                .find(|(k, _)| *k == v.kind)
+                                .and_then(|(_, m)| *m),
+                            ..v
+                        })
+                        .collect(),
                 )
             } else if attempted.past_undenied_affinity {
                 // The provider answered absence, but past the
@@ -835,13 +908,19 @@ pub async fn check_availability(
                 // ahead of it is refusing — so a fallback's absence stands
                 // through the primary's outage and not a moment past
                 // it, since it proves nothing about the primary.
-                (false, None, Vec::new(), Some(attempted.provider))
+                (
+                    false,
+                    None,
+                    Vec::new(),
+                    Some(attempted.provider),
+                    Vec::new(),
+                )
             }
         }
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below, naming the provider whose miss
         // it is, under the same read rule.
-        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by),
+        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by, Vec::new()),
         // An answered dead end — a pool refused on how its hits are
         // named, dead listings on a healthy provider — proves nothing
         // about the show and is no failure of the probe: the unknown
@@ -884,6 +963,7 @@ pub async fn check_availability(
                 gate_refused,
                 unsettled: false,
                 provider,
+                versions: versions.clone(),
             });
         };
         // A verdict is measured against the row as it stands now,
@@ -904,6 +984,7 @@ pub async fn check_availability(
                 gate_refused,
                 unsettled: false,
                 provider,
+                versions: versions.clone(),
             });
         }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
@@ -923,6 +1004,7 @@ pub async fn check_availability(
                 // Cached: a cache hit must still say whose catalogue
                 // carries the show.
                 provider,
+                versions: versions.clone(),
             },
         );
     }
@@ -935,6 +1017,7 @@ pub async fn check_availability(
         gate_refused,
         unsettled: false,
         provider,
+        versions: versions.clone(),
     })
 }
 
@@ -958,10 +1041,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     client: &P,
     args: &AvailabilityArgs,
     mode: &str,
-) -> std::result::Result<
-    (crate::commands::play_native::PickedShow, Option<bool>),
-    crate::commands::play_native_resolve::NativeError,
-> {
+) -> std::result::Result<ShowModes, crate::commands::play_native_resolve::NativeError> {
     let picked = pick_native_walk(
         client,
         &args.title,
@@ -971,15 +1051,37 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         args.subtype.as_deref(),
     )
     .await?;
+    let fail = |error| crate::commands::play_native_resolve::NativeError {
+        error,
+        clean_miss: false,
+        failed_at: None,
+    };
     let present = crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)
         .await
-        .map_err(|error| crate::commands::play_native_resolve::NativeError {
-            error,
-            clean_miss: false,
-            failed_at: None,
-        })?;
-    Ok((picked, present))
+        .map_err(fail)?;
+    // Each version is asked too: the provider need not carry one mode
+    // for every copy of a season.
+    let modes = crate::commands::play_native_version_modes::modes_of_versions(
+        client, &picked, present, mode,
+    )
+    .await
+    .map_err(fail)?;
+    let (picked, present) =
+        crate::commands::play_native_version_modes::version_for_mode(picked, &modes, present);
+    Ok((picked, present, modes))
 }
+
+/// What a probe found: the pick, playing a version that carries the
+/// mode when one does; whether the show carries the mode; and whether
+/// each of its versions does.
+type ShowModes = (
+    crate::commands::play_native::PickedShow,
+    Option<bool>,
+    Vec<(
+        crate::commands::play_native_versions::VersionKind,
+        Option<bool>,
+    )>,
+);
 
 /// [`probe_show`] as an attempt the runner can move between
 /// providers.
@@ -993,7 +1095,7 @@ struct ProbeAttempt<'r> {
 
 #[async_trait::async_trait]
 impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
-    type Output = (crate::commands::play_native::PickedShow, Option<bool>);
+    type Output = ShowModes;
 
     async fn run(
         &mut self,
@@ -1071,6 +1173,7 @@ pub fn write_cache(
             gate_refused: false,
             unsettled: false,
             provider,
+            versions: Vec::new(),
         },
     );
 }
@@ -1440,6 +1543,10 @@ mod positive_ttl_tests;
 #[cfg(test)]
 #[path = "availability_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "availability_versions_test.rs"]
+mod versions_tests;
 
 #[cfg(test)]
 #[path = "availability_subtype_args_test.rs"]

@@ -196,6 +196,7 @@ pub(crate) async fn try_serve_cached(
     // retryable (cache hit can be evicted + re-resolved) or terminal
     // (fresh fetch, no cache to clear).
     resp.cache_hit = true;
+    super::play::with_versions_of(&mut resp, &cached.versions, cached.version);
     Some(resp)
 }
 
@@ -216,16 +217,7 @@ pub(crate) async fn try_launch_args_from_cache(
     if !cfg.cache_resolutions {
         return None;
     }
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let cache_key = play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let cache_key = args.resolution_key();
     let cached = play_resolution_cache::get(&state.cache_pool, &cache_key).ok()??;
     // Captured before the check goes out, like a fresh resolve's
     // answer: a refresh landing during the check owns the row.

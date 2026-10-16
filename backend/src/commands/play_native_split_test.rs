@@ -27,6 +27,7 @@ fn cand(title: &str, count: u32, confirmed: bool) -> PartCandidate<'_> {
         offset: 0,
         admitted: true,
         agrees: true,
+        version: crate::commands::play_native_versions::VersionKind::Standard,
     }
 }
 
@@ -387,6 +388,7 @@ proptest::proptest! {
                 offset: *offset,
                 admitted: true,
                 agrees: true,
+                version: crate::commands::play_native_versions::VersionKind::Standard,
             })
             .collect();
         let best_single = cands

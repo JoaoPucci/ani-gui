@@ -53,7 +53,7 @@ pub(super) fn strongest_dead(
     pos: usize,
     could_win: bool,
 ) -> Option<(u8, usize)> {
-    if !could_win || !entry.admits(title) || entry.another_entry(title) {
+    if !could_win || !entry.admits_as_read(title) || entry.another_entry_as_read(title) {
         return best;
     }
     let failed = (entry_rank(entry, title, needle, confirmed), pos);

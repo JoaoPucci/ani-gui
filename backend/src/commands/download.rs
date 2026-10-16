@@ -76,6 +76,10 @@ pub struct DownloadArgs {
     /// default provider order and stamps nothing.
     #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub kitsu_id: Option<String>,
+    /// The version of the show to download when the pick has several
+    /// ([`crate::commands::play::PlayArgs::version`]).
+    #[serde(default)]
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
     /// Absolute path to the directory the download lands in. The
     /// frontend's confirmation modal opens on `paths::download_dir()`
     /// and lets the user pick a different folder; the chosen path
@@ -83,6 +87,24 @@ pub struct DownloadArgs {
     /// chain on the backend.
     #[serde(default)]
     pub download_dir: Option<String>,
+}
+
+impl DownloadArgs {
+    /// The native resolve this download asks for, at `quality`.
+    #[must_use]
+    pub fn native_request<'a>(&'a self, quality: &'a str) -> NativeResolveRequest<'a> {
+        NativeResolveRequest {
+            title: &self.title,
+            alt_titles: &self.alt_titles,
+            episode: &self.episode,
+            mode: &self.mode,
+            quality,
+            expected_count: self.episode_count,
+            year: self.year,
+            subtype: self.subtype.as_deref(),
+            version: self.version,
+        }
+    }
 }
 
 /// SSE event body for one line of the download's progress stream —
@@ -205,16 +227,7 @@ where
     // Downloads are always a user waiting at the dock — interactive
     // priority, like the play path's non-prefetch requests.
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
-    let request = NativeResolveRequest {
-        title: &args.title,
-        alt_titles: &args.alt_titles,
-        episode: &args.episode,
-        mode: &args.mode,
-        quality,
-        expected_count: args.episode_count,
-        year: args.year,
-        subtype: args.subtype.as_deref(),
-    };
+    let request = args.native_request(quality);
     let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {
             crate::commands::progress::ProgressLine::LinksFetched { provider } => {
@@ -270,7 +283,8 @@ where
                         attempted.provider,
                         attempted.value.episode_cap,
                         &attempted.value.extra_tags,
-                    ),
+                    )
+                    .with_versions(&attempted.value.versions),
                 )
                 .await;
                 attempted.value

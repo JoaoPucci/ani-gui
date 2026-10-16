@@ -22,6 +22,7 @@ pub use super::play_native_episode::resolve_episode;
 use super::play_native_episode::{classify_chain_failure, ChainOutcome};
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 use super::play_native_transient::{attempt_at, Transients, WalkStage};
+use super::play_native_version_modes::resolve_in_any_version;
 
 /// A fully resolved native play: what the orchestrator needs to open
 /// a session, stamp caches, and write history.
@@ -65,6 +66,11 @@ pub struct NativeResolved {
     /// The matched row's display tag, stamped beside the offset when
     /// it differs from the slot so the read boundary can translate.
     pub resolved_tag: Option<String>,
+    /// The pick's versions, in the provider's order — empty when it
+    /// has one.
+    pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
+    /// The version that played, when the pick has several.
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -115,6 +121,9 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller has it. Format disproof against the browse
     /// cards' badges.
     pub subtype: Option<&'a str>,
+    /// The version to play when the pick has several; `None` plays
+    /// the pick's default.
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -211,18 +220,26 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        let picked = picked.choose(req.version);
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
-                        let resolved = match resolve_episode(
+                        // The version asked for, or the next that
+                        // carries the episode in the mode.
+                        let (picked, resolved) = resolve_in_any_version(
                             client,
-                            &picked,
+                            picked,
                             req.episode,
                             req.mode,
                             req.quality,
                         )
-                        .await
-                        {
+                        .await;
+                        let (versions, version) =
+                            crate::commands::play_native_versions::named_versions(
+                                client.id(),
+                                &picked,
+                            );
+                        let resolved = match resolved {
                             Ok(resolved) => resolved,
                             Err(ne) => match classify_chain_failure(ne) {
                                 ChainOutcome::Stop(ne) => return Err(ne),
@@ -269,6 +286,8 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
+                            versions,
+                            version,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
