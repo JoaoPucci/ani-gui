@@ -108,3 +108,7 @@ pub(super) fn unnamed_dated(
     }
     refused_a_fit
 }
+
+#[cfg(test)]
+#[path = "play_native_dated_name_test.rs"]
+mod tests;
