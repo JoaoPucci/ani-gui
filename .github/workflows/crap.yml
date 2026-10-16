@@ -130,13 +130,9 @@ jobs:
         working-directory: backend
         # Offline, as rust.yml's `test` job runs; see there.
         env:
-          HTTP_PROXY: http://proxy.invalid:9
-          HTTPS_PROXY: http://proxy.invalid:9
-          ALL_PROXY: http://proxy.invalid:9
           http_proxy: http://proxy.invalid:9
           https_proxy: http://proxy.invalid:9
           all_proxy: http://proxy.invalid:9
-          NO_PROXY: 127.0.0.1,localhost,::1
           no_proxy: 127.0.0.1,localhost,::1
           CARGO_NET_OFFLINE: 'true'
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info

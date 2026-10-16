@@ -164,16 +164,15 @@ jobs:
         # the environment's proxy) and the curl the transport spawns
         # both honour these. So do cargo and rustup: the step before
         # fetched every crate, cargo is told not to look, and the
-        # toolchain the run uses was installed before it.
+        # toolchain the run uses was installed before it. The names are
+        # lowercase only: an env map's keys are case-insensitive, and
+        # every reader here takes the lowercase form — curl reads
+        # `http_proxy` in no other — where reqwest reads either.
         env:
           RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-D warnings -C target-feature=+crt-static' || '-D warnings' }}
-          HTTP_PROXY: http://proxy.invalid:9
-          HTTPS_PROXY: http://proxy.invalid:9
-          ALL_PROXY: http://proxy.invalid:9
           http_proxy: http://proxy.invalid:9
           https_proxy: http://proxy.invalid:9
           all_proxy: http://proxy.invalid:9
-          NO_PROXY: 127.0.0.1,localhost,::1
           no_proxy: 127.0.0.1,localhost,::1
           CARGO_NET_OFFLINE: 'true'
         run: cargo test --workspace --all-features
@@ -273,13 +272,9 @@ jobs:
         working-directory: backend
         # Offline, as the `test` job's run is; see there.
         env:
-          HTTP_PROXY: http://proxy.invalid:9
-          HTTPS_PROXY: http://proxy.invalid:9
-          ALL_PROXY: http://proxy.invalid:9
           http_proxy: http://proxy.invalid:9
           https_proxy: http://proxy.invalid:9
           all_proxy: http://proxy.invalid:9
-          NO_PROXY: 127.0.0.1,localhost,::1
           no_proxy: 127.0.0.1,localhost,::1
           CARGO_NET_OFFLINE: 'true'
         run: cargo llvm-cov --workspace --lcov --output-path lcov.info
