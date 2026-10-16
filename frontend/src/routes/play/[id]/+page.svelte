@@ -79,6 +79,7 @@
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { handoffArgs } from '$lib/play/handoff-args';
 	import { buildPlayArgs } from '$lib/play/play-args';
+	import { storedChoice } from '$lib/versions/version-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
@@ -1859,6 +1860,9 @@
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
 		const show = detail;
+		// The version remembered for the show on its detail page — the
+		// one the session playing here was resolved for.
+		const version = storedChoice(id);
 		// Which tiles to warm — and how wide, given the caching
 		// setting — is the module's decision; the page only feeds it
 		// the runtime inputs.
@@ -1871,7 +1875,7 @@
 			listed: warmListed
 		});
 		for (const targetEp of targets) {
-			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
+			void getOrFire(makeKey(id, targetEp, mode, quality, version), (emit, signal) =>
 				playStream(
 					buildPlayArgs({
 						title,
@@ -1879,6 +1883,7 @@
 						mode,
 						quality,
 						show,
+						version,
 						// Prefetches must NOT update Continue Watching —
 						// switchToEpisode (the click path) does that
 						// directly via prefetch:false (default).
@@ -1920,6 +1925,7 @@
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
+		const version = storedChoice(id);
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
 		markStarted(id, targetEp, undefined, fromRow);
@@ -1932,7 +1938,7 @@
 			// surfaces `<provider> ✓` ticks under the Lottie when the
 			// click races a prefetch that hasn't finished yet.
 			const session = await getOrFire(
-				makeKey(id, targetEp, mode, quality),
+				makeKey(id, targetEp, mode, quality, version),
 				(emit, signal) =>
 					playStream(
 						buildPlayArgs({
@@ -1941,7 +1947,8 @@
 							mode,
 							quality,
 							show: detail,
-							kitsuId: recordableId(id, fromGuess)
+							kitsuId: recordableId(id, fromGuess),
+							version
 						}),
 						emit,
 						signal
@@ -1980,7 +1987,8 @@
 					mode,
 					quality,
 					show: detail,
-					kitsuId: recordableId(id, fromGuess)
+					kitsuId: recordableId(id, fromGuess),
+					version
 				})
 			).catch(() => {});
 			// Mirror the progress to any connected tracker (AniList / MAL).
@@ -2067,8 +2075,17 @@
 		const quality = config?.quality ?? 'best';
 		console.info('[play] stale-stream recovery:', reason);
 		try {
+			// The resolution cache keys on the version, so the eviction
+			// names the one the failing session was resolved for.
 			await evictPlayCache(
-				buildPlayArgs({ title, episode: episodeNum, mode, quality, show: detail })
+				buildPlayArgs({
+					title,
+					episode: episodeNum,
+					mode,
+					quality,
+					show: detail,
+					version: storedChoice(id)
+				})
 			);
 		} catch {
 			/* eviction-endpoint failure shouldn't block retry — the
@@ -2226,7 +2243,8 @@
 					episode: episodeNum,
 					kitsuId: recordableId(id, fromGuess) ?? '',
 					config,
-					detail
+					detail,
+					version: storedChoice(id)
 				})
 			);
 			// Success surfaces as a bottom-right toast (4s auto-
@@ -2279,7 +2297,8 @@
 					episode: episodeNum,
 					kitsuId: recordableId(id, fromGuess) ?? '',
 					config,
-					detail
+					detail,
+					version: storedChoice(id)
 				})
 			);
 			toastStore.push(
@@ -2330,7 +2349,8 @@
 			episode: episodeNum,
 			mode,
 			quality,
-			kitsuId: id
+			kitsuId: id,
+			version: storedChoice(id)
 		});
 		downloadModalOpen = true;
 	}

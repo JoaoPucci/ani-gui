@@ -107,5 +107,9 @@
 	"synopsis_toggle_more": "Read more",
 	"unavailable_message": "Not in the streaming catalogue — playback & download unavailable for this title.",
 	"error_no_id_headline": "No anime selected.",
-	"error_no_id_detail": "The address is missing the show's id."
+	"error_no_id_detail": "The address is missing the show's id.",
+	"version_group_aria_label": "Which version to play",
+	"version_group_label": "Version",
+	"version_standard": "Standard",
+	"version_uncensored": "Uncensored"
 }

@@ -43,7 +43,9 @@
 		type Config,
 		type HistoryEntry,
 		type KitsuAnimeRef,
-		type KitsuEpisode
+		type KitsuEpisode,
+		type VersionInfo,
+		type VersionKind
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
 	import { subtypeLabel } from '$lib/search/subtype-label';
@@ -81,6 +83,14 @@
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { buildPlayArgs } from '$lib/play/play-args';
+	import {
+		rememberChoice,
+		selectedVersion,
+		storedChoice,
+		versionsToOffer
+	} from '$lib/versions/version-choice';
+	import { handleRadioKey } from '$lib/versions/radio-keys';
+	import { versionLabel } from '$lib/versions/version-label';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
@@ -140,6 +150,25 @@
 	// streamable RIGHT NOW" number — Kitsu's episode_count lags real
 	// airing for ongoing shows (One Piece: Kitsu 1106, the provider 1161).
 	let playableEpisodeCount = $state<number | null>(null);
+
+	// The show's versions, when the provider lists it twice ("Versions
+	// of one pick" in docs/title-resolution.md), as the availability
+	// answer names them; and the version remembered for the show,
+	// which every play and download request names. Nothing remembered
+	// leaves the backend's default, the uncensored copy.
+	let showVersions = $state<VersionInfo[]>([]);
+	let versionChoice = $state<VersionKind | undefined>(undefined);
+	const offeredVersions = $derived(versionsToOffer(showVersions));
+	const shownVersion = $derived(selectedVersion(offeredVersions, versionChoice));
+	function chooseVersion(kind: VersionKind) {
+		// The version already shown is the one requests play; a click on
+		// it changes nothing, and must not re-warm under another key.
+		if (kind === shownVersion) return;
+		rememberChoice(id, kind);
+		versionChoice = kind;
+	}
+	const onVersionKey = (e: KeyboardEvent, index: number) =>
+		handleRadioKey(e, index, offeredVersions.length, (i) => chooseVersion(offeredVersions[i].kind));
 	/**
 	 * Clicking a cap-gated tile re-asks the provider rather than doing
 	 * nothing. The playable count is a snapshot — 24h for an ongoing
@@ -721,7 +750,8 @@
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
 					setResolved: (r) => (availabilityResolved = r),
-					setListed: (l) => (warmListed = l)
+					setListed: (l) => (warmListed = l),
+					setVersions: (v) => (showVersions = v)
 				}
 			)
 		);
@@ -907,6 +937,8 @@
 		warmListed = null;
 		playableEpisodeCount = null;
 		extraEpisodes = [];
+		showVersions = [];
+		versionChoice = storedChoice(currentId);
 		resumeEntry = null;
 		resetEpisodePageCache(kitsuPageCache);
 		const detailServed = kitsuAnimeDetail(currentId);
@@ -1005,6 +1037,9 @@
 		if (!availabilityResolved) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
+		// Read here so a new choice re-warms under its own keys; the
+		// other version's warmed sessions are never served for it.
+		const version = versionChoice;
 
 		// Fan out a prefetch for every visible AIRED episode tile in
 		// the strip. The play-cache dedupes simultaneous calls —
@@ -1030,7 +1065,7 @@
 		});
 		const show = detail;
 		for (const ep of targets) {
-			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
+			void getOrFire(makeKey(id, ep, mode, quality, version), (emit, signal) =>
 				playStream(
 					buildPlayArgs({
 						title,
@@ -1038,6 +1073,7 @@
 						mode,
 						quality,
 						show,
+						version,
 						// Prefetches must NOT update Continue Watching — the
 						// 12 calls fired here resolve in arbitrary order, so
 						// whichever finishes last would overwrite the user's
@@ -1263,6 +1299,7 @@
 		}
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
+		const version = versionChoice;
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.
 		markStarted(id, ep);
@@ -1280,10 +1317,18 @@
 			// variant feeds progress events into the overlay so the user
 			// sees `<provider> ✓` ticks while resolution runs.
 			const session = await getOrFire(
-				makeKey(id, ep, mode, quality),
+				makeKey(id, ep, mode, quality, version),
 				(emit, signal) =>
 					playStream(
-						buildPlayArgs({ title, episode: ep, mode, quality, show: detail, kitsuId: id }),
+						buildPlayArgs({
+							title,
+							episode: ep,
+							mode,
+							quality,
+							show: detail,
+							kitsuId: id,
+							version
+						}),
 						emit,
 						signal
 					),
@@ -1304,7 +1349,7 @@
 			// clicks ALSO call this; the backend op is idempotent (looks
 			// up cache by key, no-op when missing).
 			void markWatched(
-				buildPlayArgs({ title, episode: ep, mode, quality, show: detail, kitsuId: id })
+				buildPlayArgs({ title, episode: ep, mode, quality, show: detail, kitsuId: id, version })
 			).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
@@ -1372,7 +1417,8 @@
 			episode: defaultEpisode(),
 			mode,
 			quality,
-			kitsuId: id
+			kitsuId: id,
+			version: versionChoice
 		});
 		downloadModalOpen = true;
 	}
@@ -1592,6 +1638,31 @@
 								{/each}
 							</div>
 						</div>
+
+						{#if offeredVersions.length > 0}
+							<!-- Shown only for a show the provider lists twice. A
+							     choice of one of N, so a radio group: one tab stop,
+							     the arrows move the choice. -->
+							<div class="seg-group">
+								<span class="seg-label">{m.detail_version_group_label()}</span>
+								<div class="seg" role="radiogroup" aria-label={m.detail_version_group_aria_label()}>
+									{#each offeredVersions as v, i (v.kind)}
+										<button
+											type="button"
+											class="seg-btn"
+											class:active={shownVersion === v.kind}
+											role="radio"
+											aria-checked={shownVersion === v.kind}
+											tabindex={shownVersion === v.kind ? 0 : -1}
+											onclick={() => chooseVersion(v.kind)}
+											onkeydown={(e) => onVersionKey(e, i)}
+										>
+											{versionLabel(v.kind)}
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/if}
 
 						{#if configError}
 							<span class="seg-error" role="alert"

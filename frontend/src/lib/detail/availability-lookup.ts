@@ -14,7 +14,7 @@
  * this side, where it can be driven directly.
  */
 
-import type { AvailabilityArgs, AvailabilityResponse } from '$lib/api';
+import type { AvailabilityArgs, AvailabilityResponse, VersionInfo } from '$lib/api';
 import type { AvailabilityAnswer, AvailabilityPatch } from './availability-writeback';
 
 /** The show being asked about, in the shape the request wants. */
@@ -49,6 +49,10 @@ export interface AvailabilityLookupDeps {
 	 *  nothing is published here — the page's own handling of the
 	 *  re-ask's patch is what sets it then. */
 	setListed: (listed: boolean | null) => void;
+	/** The show's versions from a settled answer — empty when it has
+	 *  one. Not called while the question is open, nor when it fails
+	 *  or settles nothing: the page keeps the versions it had. */
+	setVersions?: (versions: VersionInfo[]) => void;
 }
 
 /**
@@ -92,6 +96,7 @@ export function startAvailabilityLookup(
 			});
 			if (patch.available !== undefined) deps.setListed(patch.available);
 			deps.apply(patch);
+			deps.setVersions?.(r.versions ?? []);
 		})
 		.catch(() => {
 			// Nothing established. The page keeps what it had, and the

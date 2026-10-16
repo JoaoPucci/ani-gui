@@ -650,6 +650,7 @@ export function playStream(
 	if (args.alt_titles && args.alt_titles.length > 0)
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.prefetch === true) params.set('prefetch', '1');
+	if (args.version) params.set('version', args.version);
 
 	return apiBase().then(
 		(base) =>
@@ -780,6 +781,7 @@ export function downloadStream(
 		params.set('alt_titles', args.alt_titles.join('\n'));
 	if (args.kitsu_id) params.set('kitsu_id', args.kitsu_id);
 	if (args.download_dir) params.set('download_dir', args.download_dir);
+	if (args.version) params.set('version', args.version);
 
 	return apiBase().then(
 		(base) =>

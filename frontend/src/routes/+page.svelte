@@ -103,6 +103,7 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
 	import { buildPlayArgs } from '$lib/play/play-args';
+	import { storedChoice } from '$lib/versions/version-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
@@ -673,7 +674,10 @@
 			mode: a.mode,
 			quality: a.quality,
 			show: a.match,
-			kitsuId: recordableId(a.match.id, a.guess === true)
+			kitsuId: recordableId(a.match.id, a.guess === true),
+			// The version remembered for the show, as its detail page
+			// would play it.
+			version: storedChoice(a.match.id)
 		});
 	const startResume = makeStartResume({
 		leftPartWay,
@@ -714,7 +718,7 @@
 			})),
 		resolvePlay: (a, onProgress) =>
 			getOrFire(
-				makeKey(a.match.id, a.episode, a.mode, a.quality),
+				makeKey(a.match.id, a.episode, a.mode, a.quality, storedChoice(a.match.id)),
 				(emit, signal) => playStream(playArgsFor(a), emit, signal),
 				(p) => onProgress(progressLabel(p))
 			),

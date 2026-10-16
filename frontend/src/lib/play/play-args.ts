@@ -1,4 +1,10 @@
-import { altTitlesFromKitsu, yearFromKitsuRef, type KitsuAnimeRef, type PlayArgs } from '$lib/api';
+import {
+	altTitlesFromKitsu,
+	yearFromKitsuRef,
+	type KitsuAnimeRef,
+	type PlayArgs,
+	type VersionKind
+} from '$lib/api';
 
 /**
  * The request every play of an episode sends — the embedded play,
@@ -19,6 +25,9 @@ export interface PlayArgsInput {
 	kitsuId?: string;
 	/** A background warm, which must not move Continue Watching. */
 	prefetch?: boolean;
+	/** The version remembered for the show (`storedChoice` in
+	 *  `$lib/versions/version-choice.ts`); omitted when none is. */
+	version?: VersionKind;
 }
 
 export function buildPlayArgs(input: PlayArgsInput): PlayArgs {
@@ -34,5 +43,6 @@ export function buildPlayArgs(input: PlayArgsInput): PlayArgs {
 	};
 	if (input.prefetch === true) args.prefetch = true;
 	if (input.kitsuId) args.kitsu_id = input.kitsuId;
+	if (input.version) args.version = input.version;
 	return args;
 }

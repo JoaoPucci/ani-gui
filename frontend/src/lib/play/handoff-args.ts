@@ -1,4 +1,4 @@
-import type { KitsuAnimeRef, PlayArgs } from '$lib/api';
+import type { KitsuAnimeRef, PlayArgs, VersionKind } from '$lib/api';
 import { buildPlayArgs } from './play-args';
 
 /**
@@ -16,6 +16,8 @@ export function handoffArgs(input: {
 	kitsuId: string;
 	config: { mode: string; quality: string };
 	detail: KitsuAnimeRef | null;
+	/** The version the embedded play names for the show. */
+	version?: VersionKind;
 }): PlayArgs {
 	return buildPlayArgs({
 		title: input.title,
@@ -23,6 +25,7 @@ export function handoffArgs(input: {
 		mode: input.config.mode === 'dub' ? 'dub' : 'sub',
 		quality: input.config.quality || 'best',
 		show: input.detail,
-		kitsuId: input.kitsuId
+		kitsuId: input.kitsuId,
+		version: input.version
 	});
 }

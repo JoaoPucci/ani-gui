@@ -148,5 +148,9 @@
 	"synopsis_toggle_more": "Mostrar mais",
 	"unavailable_message": "Fora do catálogo de streaming — reprodução e download indisponíveis para este título.",
 	"error_no_id_headline": "Nenhum anime selecionado.",
-	"error_no_id_detail": "O endereço não traz o id do título."
+	"error_no_id_detail": "O endereço não traz o id do título.",
+	"version_group_aria_label": "Qual versão reproduzir",
+	"version_group_label": "Versão",
+	"version_standard": "Padrão",
+	"version_uncensored": "Sem censura"
 }
