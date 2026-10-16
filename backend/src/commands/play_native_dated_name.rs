@@ -22,6 +22,7 @@
 //! them.
 
 use super::play_native::ep_count_threshold;
+use super::play_native_numbering::regular_episode_count;
 use super::play_native_title_grammar::normalized;
 use super::play_native_title_marker::EntryTitles;
 use super::play_native_wide_listing::{Probed, UNFIT};
@@ -81,8 +82,10 @@ pub(super) fn may_win(
 /// Every other entry is left exactly as it is, as is every candidate
 /// already out.
 ///
-/// Returns whether a candidate within the tolerance — one the year
-/// and count would have accepted — was scored out: the refusal is an
+/// Returns whether a candidate the year and count would have accepted
+/// was scored out — one within the tolerance, or one from the entry's
+/// year listing fewer episodes than the entry has, which the airing
+/// rescue or the split stitching would have taken: the refusal is an
 /// inference from how the candidate is named, so a pool rejected
 /// after it is [`super::play_native_title_verdict::refused_by_title`],
 /// not a clean miss.
@@ -99,11 +102,15 @@ pub(super) fn unnamed_dated(
     }
     let tolerance = ep_count_threshold(expected);
     let mut refused_a_fit = false;
-    for (h, _, distance, _) in probed.iter_mut() {
+    for (h, eps, distance, confirmed) in probed.iter_mut() {
         if *distance == UNFIT || named_for_entry(h, needle, entry, pages) {
             continue;
         }
-        refused_a_fit |= *distance <= tolerance;
+        // What the year and count would have taken: a fit, or a listing
+        // from the entry's year shorter than the entry — an airing part
+        // the rescue takes, a part of a split the stitching takes.
+        let short = *confirmed && regular_episode_count(eps) < expected;
+        refused_a_fit |= *distance <= tolerance || short;
         *distance = UNFIT;
     }
     refused_a_fit
