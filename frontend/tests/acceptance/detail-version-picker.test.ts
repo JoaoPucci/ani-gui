@@ -264,8 +264,16 @@ describe('detail route — the versions of a show listed twice', () => {
 
 	it('keeps playing what the storage holds when it refuses the choice', async () => {
 		useShowHandlers(TWO_VERSIONS);
-		const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-			throw new Error('quota');
+		// Only the choices' key refuses: the page keeps other records in
+		// the same storage, and a storage refusing those too is a
+		// different scenario from the one under test.
+		// The stub replaces the method on the storage the page uses:
+		// happy-dom's storage does not read it from Storage.prototype.
+		const storage = window.localStorage;
+		const write = storage.setItem.bind(storage);
+		const setItem = vi.spyOn(storage, 'setItem').mockImplementation((key, value) => {
+			if (key === 'ani-gui.version-choices') throw new Error('quota');
+			write(key, value);
 		});
 		try {
 			app = mount(DetailPage, { target });
