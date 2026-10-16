@@ -84,16 +84,20 @@ fn asked_the_mode(provider: &TableProvider) -> bool {
 }
 
 /// Whether a probe answered without a verdict: a normal answer whose
-/// wire shape says `unsettled`, saying the show is not available and
-/// meaning nothing by it. Read as the renderer reads it — from the
-/// serialized answer — since that shape is what the route sends.
+/// wire shape says `unsettled` — with the reason it settled nothing —
+/// saying the show is not available and meaning nothing by it. Read as
+/// the renderer reads it — from the serialized answer — since that
+/// shape is what the route sends.
 pub(super) fn unsettled(got: &Result<AvailabilityResponse>) -> bool {
-    got.as_ref().is_ok_and(|r| {
-        let wire = serde_json::to_value(r).expect("serializes");
-        wire["unsettled"] == serde_json::Value::Bool(true)
-            && !r.available
-            && r.episode_count.is_none()
-    })
+    unsettled_reason(got).is_some()
+}
+
+/// The reason an unsettled answer gives, read from the wire.
+pub(super) fn unsettled_reason(got: &Result<AvailabilityResponse>) -> Option<String> {
+    let r = got.as_ref().ok()?;
+    let wire = serde_json::to_value(r).expect("serializes");
+    let reason = wire["unsettled"].as_str()?.to_string();
+    (!r.available && r.episode_count.is_none()).then_some(reason)
 }
 
 /// [`check_availability`] with `table` answering in the slot of the
@@ -1053,8 +1057,9 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
     }))
     .expect("args");
     let got = check_with(&state, &args, &primary).await;
-    assert!(
-        unsettled(&got),
+    assert_eq!(
+        unsettled_reason(&got).as_deref(),
+        Some("unanswered"),
         "nobody answered for the mode — unknown, not an error: {got:?}"
     );
     assert!(asked_the_mode(&fallback), "the fallback was asked too");
@@ -2018,9 +2023,10 @@ async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_noth
     }))
     .expect("args");
     let got = check_with(&state, &args, &other).await;
-    assert!(
-        unsettled(&got),
-        "a refusal by name is unknown, not an error: {got:?}"
+    assert_eq!(
+        unsettled_reason(&got).as_deref(),
+        Some("refused"),
+        "a refusal by name is unsettled, says so, and is no error: {got:?}"
     );
     assert!(
         other.count(|a| matches!(a, Asked::Episodes(_))) > 0,
@@ -2031,6 +2037,73 @@ async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_noth
             .expect("cache read")
             .is_none(),
         "a refusal by name persists nothing"
+    );
+}
+
+/// A dated entry with a count is refused a hit no name vouches for —
+/// the dated-name rule — and the answer says the refusal is by name,
+/// as the count-alone rule's does; nothing is persisted.
+#[tokio::test]
+async fn a_refused_pool_for_a_dated_entry_answers_refused_and_persists_nothing() {
+    let other = Arc::new(one_show(
+        ProviderId::TestA,
+        ("other-7", "Other", Some("TV")),
+        &[
+            7001, 7002, 7003, 7004, 7005, 7006, 7007, 7008, 7009, 7010, 7011, 7012,
+        ],
+        true,
+        false,
+    ));
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Show: Arc",
+        "mode": "sub",
+        "kitsu_id": "592",
+        "episode_count": 12,
+        "year": 2016,
+        "subtype": "TV"
+    }))
+    .expect("args");
+    let got = check_with(&state, &args, &other).await;
+    assert_eq!(
+        unsettled_reason(&got).as_deref(),
+        Some("refused"),
+        "{got:?}"
+    );
+    assert!(
+        meta_cache_get(&state.cache_pool, &cache_key("592", "sub"))
+            .expect("cache read")
+            .is_none(),
+        "a refusal by name persists nothing"
+    );
+}
+
+/// A pool whose candidate's listing answers not-found is the answered
+/// dead end too, but no refusal by name: the dead listing may have been
+/// the show's. The answer is unsettled for another reason, and the
+/// renderer keeps the page's play for it.
+#[tokio::test]
+async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
+    let dead = Arc::new(
+        TableProvider::new()
+            .answering_as(ProviderId::TestA)
+            .search_default(hits(&[("ghost-show-9", "Ghost Show")])),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Ghost Show",
+        "mode": "sub",
+        "kitsu_id": "593",
+        "episode_count": 12
+    }))
+    .expect("args");
+    let got = check_with(&state, &args, &dead).await;
+    assert_eq!(
+        unsettled_reason(&got).as_deref(),
+        Some("unanswered"),
+        "{got:?}"
     );
 }
 

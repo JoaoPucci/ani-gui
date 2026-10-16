@@ -3144,7 +3144,7 @@ mod tests {
         );
         let body: serde_json::Value =
             serde_json::from_str(&body_string(r).await).expect("a JSON answer");
-        assert_eq!(body["unsettled"], serde_json::Value::Bool(true));
+        assert_eq!(body["unsettled"], "refused", "the answer says why");
         assert_eq!(body["available"], serde_json::Value::Bool(false));
         assert!(body["episode_count"].is_null(), "{body}");
     }
