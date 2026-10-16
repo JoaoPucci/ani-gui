@@ -780,7 +780,7 @@ describe('a play for one show that answers after the page moved on', () => {
 		['syncplay', () => m.play_hamburger_syncplay_label()]
 	] as const) {
 		it(`play: a ${handoff} launch that fails after the viewer moved says nothing`, async () => {
-			useHandlers(HAS_IT);
+			const asked = useHandlers(HAS_IT);
 			useOtherShowAndRecord();
 			let release!: () => void;
 			const held = new Promise<void>((r) => (release = r));
@@ -806,6 +806,8 @@ describe('a play for one show that answers after the page moved on', () => {
 			await new Promise((r) => setTimeout(r, 50));
 			expect(target.textContent).not.toContain(SUGGESTS());
 			expect(target.textContent).not.toContain(PLAIN());
+			// Nothing is asked of the cache for a visit nobody is on.
+			expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
 		});
 	}
 });
