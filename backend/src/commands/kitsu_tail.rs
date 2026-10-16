@@ -112,3 +112,7 @@ impl TailSource for KitsuTail<'_> {
         ))
     }
 }
+
+#[cfg(test)]
+#[path = "kitsu_tail_test.rs"]
+mod tests;
