@@ -1346,14 +1346,17 @@
 			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
-			actionBusy = false;
 			// Fixed-position overlay rather than an inline banner — the
 			// user just clicked their primary action and it failed,
 			// scrolled out of view of the page header, so the message
 			// needs to follow them. They dismiss explicitly (button /
 			// Escape / backdrop click) so it doesn't auto-disappear
-			// while they're reading.
-			playFailure = { episode: ep, message: await describePlayFailure(e, mode, ep) };
+			// while they're reading. Busy holds until the message is
+			// worded (it waits on a cache lookup), so no second play can
+			// start under a failure that has not landed yet.
+			const message = await describePlayFailure(e, mode, ep);
+			actionBusy = false;
+			playFailure = { episode: ep, message };
 		}
 	}
 

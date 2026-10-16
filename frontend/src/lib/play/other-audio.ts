@@ -59,9 +59,10 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 /** The cache's answer for the other audio of `q`'s show: `true` when
  *  it has the show and no count it carries falls short of the episode,
  *  `false` when it has nothing or a count short of the episode, `null`
- *  when it holds no answer or the lookup fails or stalls. A count can
- *  only run high (it may count half episodes as whole), so an episode
- *  past it is missing from the other audio too. */
+ *  when it holds no answer or the lookup fails or stalls. The cached
+ *  count is what the other audio's pages gate episodes by, so an
+ *  episode past it would be disabled there; suggesting the switch
+ *  would land the user on it. */
 export async function lookupOtherAudio(
 	q: OtherAudioQuery,
 	batch: Batch = availabilityBatch

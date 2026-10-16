@@ -55,8 +55,8 @@ describe('lookupOtherAudio — what the availability cache says, never a probe',
 	});
 
 	it('is false when the other audio carries fewer episodes than this one', async () => {
-		// The provider's count can only run high, never low, so an
-		// episode past it is not in the other audio either.
+		// The other audio's pages gate episodes by the cached count, so
+		// an episode past it would be disabled there.
 		const batch = batchAnswering({
 			cached: { '7': true },
 			playable_episode_counts: { '7': 4 }

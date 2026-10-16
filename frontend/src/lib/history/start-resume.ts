@@ -38,7 +38,9 @@ export interface StartResumeDeps {
 	onBusy: (kitsuId: string | null) => void;
 	onProgress: (label: string | null) => void;
 	/** `args` is what the failed play asked for — the show, episode
-	 *  and audio a failure surface needs to word its message. */
+	 *  and audio a failure surface needs to word its message. It may
+	 *  return a promise (typed `void` so plain callbacks still fit);
+	 *  busy holds until that settles. */
 	onFailure: (title: string, error: unknown, args: ResumePlayArgs) => void;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
@@ -149,9 +151,15 @@ export function makeStartResume(
 			}
 			deps.navigateToSession(match.id, session, episode, guess, entry.id);
 		} catch (e) {
-			deps.onBusy(null);
 			deps.onProgress(null);
-			deps.onFailure(title, e, args);
+			// Busy holds until the failure is on screen: the page words it
+			// after a cache lookup, and a card left idle meanwhile would
+			// take a second click whose play the late message then covers.
+			try {
+				await deps.onFailure(title, e, args);
+			} finally {
+				deps.onBusy(null);
+			}
 		}
 	};
 }

@@ -684,14 +684,13 @@
 		// The shared mapper, default phrasing; the other audio's answer
 		// comes from the availability cache for the show and episode
 		// the resume asked for.
-		onFailure: (title, e, args) => {
-			void describePlayFailureFromCache(e, {
+		onFailure: async (title, e, args) => {
+			const message = await describePlayFailureFromCache(e, {
 				kitsuId: args.match.id,
 				mode: args.mode,
 				episode: args.episode
-			}).then((message) => {
-				resumeFailure = { title, message };
 			});
+			resumeFailure = { title, message };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
