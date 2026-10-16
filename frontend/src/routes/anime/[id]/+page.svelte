@@ -1291,10 +1291,12 @@
 		}
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
-		// The show this play is for, read once: a Similar-title link
-		// reuses this component, so `id` can name another show by the
-		// time the play answers.
+		// The show and visit this play is for, read once: SvelteKit
+		// reuses this component across a Similar-title link and across a
+		// round trip back, so by the time the play answers `id` may name
+		// another show, or this show on a later visit.
 		const showId = id;
+		const askedVisit = visit;
 		const show = detail;
 		const playArgs = {
 			title,
@@ -1356,17 +1358,25 @@
 				show?.episode_count ?? null,
 				show?.status === 'finished'
 			).catch(() => {});
-			// The page moved on to another show (a Similar-title link
-			// reuses this component): the watch above is still this
-			// show's, but taking the viewer back to its player is not.
-			if (id !== showId) {
+			// The viewer moved on (another show, or away and back): the
+			// watch above is still this show's, but taking them into its
+			// player is not.
+			if (visit !== askedVisit) {
 				actionBusy = false;
+				actionProgress = null;
 				return;
 			}
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			void goto(resolve('/play/[id]', { id: showId }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
+			// The viewer moved on: say nothing — a message here would be
+			// about a visit they left (the same rule as onSuperseded).
+			if (visit !== askedVisit) {
+				actionBusy = false;
+				actionProgress = null;
+				return;
+			}
 			// Fixed-position overlay rather than an inline banner — the
 			// user just clicked their primary action and it failed,
 			// scrolled out of view of the page header, so the message

@@ -1922,10 +1922,13 @@
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		// The show this switch is for, read once: the route's component
-		// is reused across shows, so `id`, `detail` and the URL's flags
-		// can describe another by the time the play answers.
+		// The show, visit and flags this switch is for, read once: the
+		// route's component is reused across shows and across a round
+		// trip back, so by the time the play answers `id` and the URL's
+		// flags may describe another visit. (`detail` loads only on mount,
+		// so it is captured for symmetry rather than because it moves.)
 		const showId = id;
+		const askedVisit = visit;
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
@@ -1943,7 +1946,7 @@
 		};
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
-		markStarted(id, targetEp, undefined, fromRow);
+		markStarted(showId, targetEp, undefined, row);
 		switchBusy = true;
 		switchProgress = null;
 		playerError = null;
@@ -1963,10 +1966,11 @@
 			// below is theirs any more, least of all a navigation back
 			// into the player.
 			if (gone) return;
-			// The page moved on to another show (the component is reused):
+			// The viewer moved on (another show, or away and back; the
+			// component is reused):
 			// the watch below is still this show's, but the player on
 			// screen is not, so nothing else here touches it.
-			const moved = id !== showId;
+			const moved = visit !== askedVisit;
 			// Reset the one-shot auto-retry budget only on a real episode
 			// switch — Next/Prev/pick are distinct session-classes, so
 			// each gets its own shot. Resetting on a same-episode landing
@@ -2028,6 +2032,8 @@
 			).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
+			// The viewer moved on: say nothing about a visit they left.
+			if (visit !== askedVisit) return;
 			// switchToEpisode is the play *call* failing — the user
 			// might be scrolled into the episode strip when this fires,
 			// so a fixed-position overlay is the only visible surface.
@@ -2056,6 +2062,9 @@
 	 *  re-resolve flow. */
 	async function recoverFromStaleStream(reason: string) {
 		if (!detail) return;
+		// The visit this recovery is for: a page moved on to another
+		// show while the eviction was out must not resolve afresh.
+		const askedVisit = visit;
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
 		// into a blank frame. The user keeps the Reload button to try
@@ -2098,7 +2107,7 @@
 		// the next slow play, which is acceptable for the retry.
 		// The viewer left while the eviction was out: a fresh resolve
 		// would only navigate them back.
-		if (gone) return;
+		if (gone || visit !== askedVisit) return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
 	}
