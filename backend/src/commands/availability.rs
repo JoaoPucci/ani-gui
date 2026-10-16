@@ -603,6 +603,12 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v20: the extras a provider appends after a show's last episode
+    //      are read as extras beside it when Kitsu and AniList end the
+    //      show at its count. A v19 row for such a show holds the
+    //      listing's whole count as its cap (Noragami's fourteen, its
+    //      two OADs as episodes 13 and 14); nothing in a row says
+    //      which reading stamped it, so re-keying re-probes.
     // v19: a dated entry with a count takes only a hit a name vouches
     //      for, and a dated entry's hit its own page files under
     //      Hentai is never a pick. A v18 row for such an entry can be
@@ -718,7 +724,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v19:{kitsu_id}:{m}")
+    format!("availability:v20:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
