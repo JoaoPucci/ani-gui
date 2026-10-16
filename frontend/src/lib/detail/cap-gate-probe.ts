@@ -50,6 +50,9 @@ export interface CapGateAnswer {
 	available: boolean;
 	/** Non-integer episode tags — recaps and specials, e.g. "1061.5". */
 	extraEpisodes: string[];
+	/** True when `available: false` is the provider refusing the title
+	 *  by name. Not carried yet. */
+	refused?: boolean;
 }
 
 /**
@@ -68,6 +71,10 @@ export interface CapGateRefresh {
 	 *  that the backend does not persist and asks again on the next
 	 *  look. */
 	available: boolean;
+	/** True when the false is a refusal by name: the title is in the
+	 *  catalogue under nothing named for it, in any audio. Not carried
+	 *  yet. */
+	refused?: boolean;
 	/** The confirmed cap, or null when the answer did not establish one
 	 *  — a count that can read one high must not replace a real cap.
 	 *
