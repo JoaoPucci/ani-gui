@@ -356,3 +356,89 @@ async fn a_full_page_ending_at_the_count_is_followed_by_the_next() {
         tail.episodes
     );
 }
+
+/// Kitsu keeps placeholder rows mid-list, which the reader drops: a
+/// page of twenty rows can read as seventeen. The page after the last
+/// one read is read whatever its length, so an episode Kitsu lists
+/// past the count is seen however the page before it was filled.
+#[tokio::test]
+async fn the_page_after_is_read_however_full_the_last_one_looked() {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let row = |i: usize, n: u32, real: bool| {
+        let (title, date) = if real {
+            (
+                serde_json::json!(format!("Story {n}")),
+                serde_json::json!("2020-01-01"),
+            )
+        } else {
+            (serde_json::Value::Null, serde_json::Value::Null)
+        };
+        serde_json::json!({"id": i.to_string(), "type": "episodes", "attributes": {
+            "number": n, "canonicalTitle": title, "airdate": date}})
+    };
+    // Page one: 1..=19 with 3, 5 and 6 placeholders, then 19 again —
+    // twenty rows, seventeen real. Page two: 20.
+    let first: Vec<serde_json::Value> = (1..=19u32)
+        .chain([19])
+        .enumerate()
+        .map(|(i, n)| row(i, n, ![3, 5, 6].contains(&n)))
+        .collect();
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/9/episodes"))
+        .and(query_param("page[offset]", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": first})))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/9/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"data": [row(20, 20, true)]})),
+        )
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/9/media-relationships"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"data": [], "meta": {"count": 0}})),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let mut detail =
+        crate::meta::kitsu::parse_anime_response(&fixture("kitsu-anime-7881.json")).expect("entry");
+    detail.id = "9".into();
+    detail.episode_count = Some(19);
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("9"),
+        &serde_json::to_string(&detail).expect("json"),
+        60,
+    )
+    .expect("detail row");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:9",
+        &serde_json::to_string(&AiringStatus {
+            aired: Some(19),
+            ..AiringStatus::default()
+        })
+        .expect("json"),
+        60,
+    )
+    .expect("airing row");
+    let tail = KitsuTail::for_entry(&state, Some("9"))
+        .expect("an entry")
+        .tail(19)
+        .await
+        .expect("read");
+    assert!(
+        tail.episodes.iter().any(|e| e.number == 20),
+        "{:?}",
+        tail.episodes
+    );
+}

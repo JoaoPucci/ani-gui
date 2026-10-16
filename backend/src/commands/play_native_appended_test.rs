@@ -890,3 +890,42 @@ fn a_sequel_kitsu_has_not_titled_keeps_the_listing() {
     }
     assert_eq!(appended_extras(&rows, count, &tail), None);
 }
+
+/// A kept reading is for the show it was proved on: another listing's
+/// rows, whatever their ids, are read without it.
+#[tokio::test]
+async fn a_kept_reading_is_for_the_show_it_was_proved_on() {
+    let (rows, _) = noragami();
+    let source = Kept {
+        tail: None,
+        kept: std::sync::Mutex::new(Some(Remembered {
+            slug: "another-show-1".into(),
+            ..noragami_reading()
+        })),
+    };
+    let got = fit_appended(picked(rows.clone()), Some(12), Some(&source)).await;
+    assert_eq!(got.episodes, rows);
+}
+
+/// A listing of the same show that no longer runs past the count — a
+/// count Kitsu raised to take the rows in — forgets the reading; one
+/// of another show leaves it.
+#[tokio::test]
+async fn a_listing_no_longer_past_the_count_forgets_the_reading() {
+    let (rows, _) = noragami();
+    let source = Kept {
+        tail: None,
+        kept: std::sync::Mutex::new(Some(noragami_reading())),
+    };
+    let mut other = picked(rows.clone());
+    other.hit.slug = "another-show-1".into();
+    fit_appended(other, Some(14), Some(&source)).await;
+    assert_eq!(
+        source.remembered(),
+        Some(noragami_reading()),
+        "another show"
+    );
+    let got = fit_appended(picked(rows.clone()), Some(14), Some(&source)).await;
+    assert_eq!(got.episodes, rows);
+    assert_eq!(source.remembered(), None);
+}

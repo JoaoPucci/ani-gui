@@ -409,3 +409,71 @@ async fn an_oad_an_earlier_version_recorded_as_episode_13_reads_back_as_12_1() {
         .expect("answered");
     assert_eq!(read(&state), "12.1");
 }
+
+/// A row from before history recorded the Kitsu id is claimed by the
+/// show id's mapping, on the detail page's lookup and in Continue
+/// alike, and reads back the same way.
+#[tokio::test]
+async fn a_row_older_than_the_recorded_id_reads_back_as_12_1_through_its_mapping() {
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    let row = crate::history::HistoryEntry {
+        ep_no: "13".into(),
+        id: "hianime:noragami-916".into(),
+        title: "Noragami".into(),
+        watched_at: None,
+        kitsu_id: None,
+    };
+    crate::history::write_atomic(&state.history_path, std::slice::from_ref(&row)).expect("history");
+    crate::commands::kitsu::allmanga_kitsu_put(&state, &row.id, KITSU).expect("mapping");
+    seed_kitsu(&state, "finished");
+    check_availability(&state, &availability_args())
+        .await
+        .expect("answered");
+    let listed = crate::commands::history::history_list(&state).expect("history");
+    assert_eq!(listed[0].ep_no, "12.1");
+    let found = crate::commands::history::history_by_kitsu(&state, KITSU)
+        .expect("history")
+        .expect("the row");
+    assert_eq!(found.ep_no, "12.1");
+}
+
+/// Kitsu recounting the show — the OADs counted as episodes 13 and 14
+/// — leaves no listing past the count, and the next resolve of the
+/// same listing forgets the reading: row 13 is then episode 13.
+#[tokio::test]
+async fn a_recount_that_takes_the_rows_in_forgets_the_reading() {
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    seed_kitsu(&state, "finished");
+    check_availability(&state, &availability_args())
+        .await
+        .expect("answered");
+    let recount: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Noragami",
+        "mode": "sub",
+        "episode_count": 14,
+        "kitsu_id": KITSU,
+        "status": "finished",
+        "bypass_cache": true,
+    }))
+    .expect("args");
+    let got = check_availability(&state, &recount)
+        .await
+        .expect("answered");
+    assert_eq!(got.episode_count, Some(14));
+    let row = crate::history::HistoryEntry {
+        ep_no: "13".into(),
+        id: "hianime:noragami-916".into(),
+        title: "Noragami".into(),
+        watched_at: None,
+        kitsu_id: Some(KITSU.into()),
+    };
+    crate::history::write_atomic(&state.history_path, std::slice::from_ref(&row)).expect("history");
+    assert_eq!(
+        crate::commands::history::history_list(&state).expect("history")[0].ep_no,
+        "13"
+    );
+}
