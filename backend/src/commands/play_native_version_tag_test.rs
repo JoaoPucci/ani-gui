@@ -131,3 +131,30 @@ async fn a_tag_after_the_entrys_own_season_still_admits_it() {
     .expect("picked");
     assert_eq!(p.hit.slug, "chained-soldier-season-2-1");
 }
+
+#[tokio::test]
+async fn a_tagged_entry_before_is_another_entry() {
+    // "Show 1 [Uncensored]" is "Show 1" under a version tag: the entry
+    // before "Show 2", never picked, and no refusal by title — the pool
+    // is the clean miss it would be without it.
+    for tagged in [
+        "Show 1 [Uncensored]",
+        "Show (Uncensored)",
+        "Show Season 1 (Uncensored)",
+    ] {
+        let client = site(&[(1, 12)]);
+        let hits = [hit("show-1", tagged)];
+        let err = pick_candidate_titled(
+            &client,
+            &hits,
+            Some(12),
+            "Show 2",
+            &["Show 2"],
+            Some(YEAR),
+            Some("TV"),
+        )
+        .await
+        .expect_err(tagged);
+        assert!(matches!(err, AniError::NoResults), "{tagged}: {err:?}");
+    }
+}
