@@ -264,6 +264,15 @@ starting it, and delete it when you find it done.
 
 ## Correctness in the app (continued)
 
+- **A version's own modes.** When a season has versions ("Versions of
+  one pick" in `docs/title-resolution.md`), the availability probe asks
+  whether the requested audio mode exists of the default — uncensored —
+  version alone. Should the provider dub only the plain copy, a dub
+  lookup answers that the show is listed without a dub, though
+  choosing Standard would play one. No recording yet says whether
+  hianime's modes differ between the copies, and finding out costs one
+  mode request per version per look, which is why it waited.
+
 - **Two app instances do not share the playback record, the paced
   lanes or the host budget.** The proxy's record of media served, the
   lanes that paced downloads and their subtitle fetches take in turn
