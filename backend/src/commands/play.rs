@@ -1380,13 +1380,12 @@ pub(crate) mod tests {
         assert_eq!(resp.media_kind, MediaKind::Mp4);
     }
 
-    /// A still-valid cache row for a fractional extra can outlive
-    /// the sidecar's single (slot, tag) stamp — resolving 1.5 then
-    /// 2.5 replaces the stamp, and the 1.5 replay would fall back
-    /// to the display tag a history reader cannot grep. The cache row itself
-    /// carries the resolved slot, so the replay writes it directly.
+    /// A replay of a fractional extra from a still-valid cache row
+    /// records the episode played, 3.5, marked as the app's own number:
+    /// the cached slot read back through the sidecar named another
+    /// episode once a later resolve moved its one stamp.
     #[test]
-    fn cache_hit_history_writes_the_cached_slot() {
+    fn cache_hit_history_writes_the_episode_played() {
         let state = state_with_proxy_origin();
         let td = tempfile::tempdir().expect("tempdir");
         let mut state = state;
@@ -1419,12 +1418,12 @@ pub(crate) mod tests {
         );
         let body = std::fs::read_to_string(&state.history_path).unwrap_or_default();
         assert!(
-            body.contains("\t4\t") || body.starts_with("4\t"),
-            "the replay must write the cached slot, not the display tag; got {body:?}"
+            body.starts_with("3.5\t"),
+            "the replay writes the episode played, not the cached slot; got {body:?}"
         );
         assert!(
-            !body.contains("3.5"),
-            "the display tag must not reach the shared file; got {body:?}"
+            body.trim_end().ends_with("\tep:own"),
+            "marked as the app's own number; got {body:?}"
         );
     }
 

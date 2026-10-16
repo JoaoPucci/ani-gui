@@ -836,3 +836,7 @@ mod kitsu_column_tests;
 #[cfg(test)]
 #[path = "guard_test.rs"]
 mod guard_tests;
+
+#[cfg(test)]
+#[path = "own_number_test.rs"]
+mod own_number_tests;

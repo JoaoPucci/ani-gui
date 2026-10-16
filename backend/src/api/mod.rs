@@ -1686,6 +1686,8 @@ mod tests {
         let line = body
             .strip_suffix('\n')
             .expect("one line, newline-terminated");
+        let (line, marker) = line.rsplit_once('\t').expect("the marker");
+        assert_eq!(marker, "ep:own", "the row marks the app's own number");
         let (columns, moment) = line.rsplit_once('\t').expect("the watch's moment");
         assert_eq!(
             columns, "150\tvDTSJHSpYnrkZnAvG\tNato: Shippuuden (500 episodes)",
@@ -1706,7 +1708,7 @@ mod tests {
     /// route records, as the handoffs and the embedded replay already
     /// do.
     #[tokio::test]
-    async fn mark_watched_records_the_cached_rows_own_slot() {
+    async fn mark_watched_records_the_episode_for_a_cached_row() {
         use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
         use crate::proxy::MediaKind;
 
@@ -1749,17 +1751,20 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
         let line = body.strip_suffix('\n').expect("one line");
-        let (columns, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let (rest, marker) = line.rsplit_once('\t').expect("the marker");
+        let (columns, _moment) = rest.rsplit_once('\t').expect("the watch's moment");
         assert_eq!(
-            columns, "5\tthe-show-77\tThe Show",
-            "the row records the cached slot, not the display number"
+            columns, "4\tthe-show-77\tThe Show",
+            "the row records the episode marked, not the cached slot"
         );
+        assert_eq!(marker, "ep:own");
     }
 
-    /// A row from before the slot was cached carries none, and keeps
-    /// the stamp-aware translation of the display number.
+    /// A cached row from before the slot was cached carries none; the
+    /// watch records the episode played all the same, whatever the
+    /// sidecar's stamp says.
     #[tokio::test]
-    async fn mark_watched_translates_the_display_number_for_a_row_without_a_slot() {
+    async fn mark_watched_records_the_episode_for_a_row_without_a_slot() {
         use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
         use crate::proxy::MediaKind;
 
@@ -1802,11 +1807,13 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
         let line = body.strip_suffix('\n').expect("one line");
-        let (columns, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let (rest, marker) = line.rsplit_once('\t').expect("the marker");
+        let (columns, _moment) = rest.rsplit_once('\t').expect("the watch's moment");
         assert_eq!(
-            columns, "5\tthe-show-77\tThe Show",
-            "a row without a slot translates the display number through the stamp"
+            columns, "4\tthe-show-77\tThe Show",
+            "the episode played, marked, not the stamp's slot"
         );
+        assert_eq!(marker, "ep:own");
     }
 
     /// `mark-watched` is the second carrier of the reverse mapping —

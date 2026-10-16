@@ -436,14 +436,12 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
     }
 }
 
-/// The history file speaks the provider's numbering, and a cached
-/// row carries the slot its resolve landed on. A replay records that
-/// slot — the display number translated through the single display
-/// stamp can point at a recap once a later resolve has moved the
-/// stamp — and only a row from before the field falls back to the
-/// translation.
+/// A replay records the episode played — the app's own number — and
+/// not the slot the cached row carries: a slot read back through the
+/// numbering sidecar named another episode once a later resolve moved
+/// its one stamp. A row from before the slot field records the same.
 #[test]
-fn a_cached_watch_prefers_the_rows_own_slot() {
+fn a_cached_watch_records_the_episode_played() {
     let td = tempfile::tempdir().expect("td");
     let state = state_in(&td);
     let row = |slot: Option<u32>| CachedResolution {
@@ -458,16 +456,13 @@ fn a_cached_watch_prefers_the_rows_own_slot() {
     };
     let stamped = super::cached_watch(&state, &row(Some(5)), "4");
     assert_eq!(
-        stamped.ep_no, "5",
-        "the row's own slot, not the display number"
+        stamped.ep_no, "4",
+        "the episode played, not the cached slot"
     );
     assert_eq!(stamped.show_id, "show-1");
     assert_eq!(stamped.title, "Show");
     let legacy = super::cached_watch(&state, &row(None), "4");
-    assert_eq!(
-        legacy.ep_no, "4",
-        "a row without a slot translates the display number"
-    );
+    assert_eq!(legacy.ep_no, "4", "a row without a slot records it too");
 }
 
 /// The handoff's cache hit stands on the same row the embedded

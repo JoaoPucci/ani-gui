@@ -803,3 +803,110 @@ fn a_play_begun_before_a_watch_leaves_the_watchs_row() {
     let row = rows.iter().find(|e| e.id == SHOW).expect("row");
     assert_eq!(row.ep_no, "5", "the later watch's episode stands");
 }
+
+/// A provider listing [1..7, 7.5, 8, 9]: the recap is slot 8 tagged
+/// "7.5", and episodes 8 and 9 are slots 9 and 10. A resolve of
+/// `episode` landing on `slot` under `tag`.
+fn displaced(slot: u32, tag: &str) -> NativeResolved {
+    let mut n = native();
+    n.numbering_offset = 0;
+    n.resolved_slot = slot;
+    n.resolved_tag = Some(tag.into());
+    n
+}
+
+fn listed_episode(state: &AppState) -> String {
+    crate::commands::history::history_list(state)
+        .expect("history list")
+        .into_iter()
+        .find(|e| e.id == SHOW)
+        .expect("the show's row")
+        .ep_no
+}
+
+#[test]
+fn a_watched_episode_reads_back_as_itself_after_any_later_resolve() {
+    // Watch episode 8 (slot 9), then warm 9 (slot 10) and the recap
+    // (slot 8). The row must still name episode 8: storing the slot and
+    // translating it through the one stamp the warms replaced read it
+    // back as 9, and Continue skipped episode 9.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let watch = displaced(9, "8");
+    stamp_numbering(&state, &watch, play);
+    write_history(&state, &watch, "8", play);
+    for (slot, tag) in [(10, "9"), (8, "7.5")] {
+        let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+        stamp_numbering(&state, &displaced(slot, tag), warm);
+    }
+    assert_eq!(listed_episode(&state), "8");
+    let row = crate::history::read_all(&state.history_path)
+        .expect("read")
+        .into_iter()
+        .find(|e| e.id == SHOW)
+        .expect("row");
+    assert_eq!(row.ep_no, "8", "the row holds the episode the user watched");
+    assert!(row.own_number, "and says it is the app's own number");
+}
+
+#[test]
+fn a_watched_recap_reads_back_as_itself() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let recap = displaced(8, "7.5");
+    stamp_numbering(&state, &recap, play);
+    write_history(&state, &recap, "7.5", play);
+    let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    stamp_numbering(&state, &displaced(9, "8"), warm);
+    assert_eq!(listed_episode(&state), "7.5");
+}
+
+#[test]
+fn a_row_in_the_apps_own_numbering_ignores_offset_and_stamps() {
+    // A continuation listed cumulatively re-listed per season (offset
+    // 40 now, 0 before), and a stamp on the row's number: the app's own
+    // number needs neither.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "2".into(),
+            id: SHOW.into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: true,
+        },
+    )
+    .expect("write");
+    crate::commands::numbering_offset::put_display(&state, SHOW, 40, 2, "41.5");
+    assert_eq!(listed_episode(&state), "2");
+}
+
+#[test]
+fn a_legacy_slot_row_keeps_reading_through_its_stamp_after_a_warm() {
+    // A row written before rows carried the app's own number holds the
+    // slot (9 for episode 8) and reads through the show's stamp. A warm
+    // no longer moves that stamp, so the row keeps reading as 8.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    crate::history::upsert_and_write(
+        &state.history_path,
+        crate::history::HistoryEntry {
+            ep_no: "9".into(),
+            id: SHOW.into(),
+            title: "The Show".into(),
+            watched_at: None,
+            kitsu_id: None,
+            own_number: false,
+        },
+    )
+    .expect("write");
+    crate::commands::numbering_offset::put_display(&state, SHOW, 0, 9, "8");
+    let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    stamp_numbering(&state, &displaced(10, "9"), warm);
+    assert_eq!(listed_episode(&state), "8");
+}
