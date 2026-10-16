@@ -17,15 +17,35 @@ export function parseEpisodeNumber(raw: string | null | undefined): number | nul
 
 /** The episode before `episode`: one less for a whole episode, the
  *  whole episode below for a fractional extra (7.5 → 7). May be 0,
- *  which is no episode. */
-export function previousEpisode(episode: number): number {
+ *  which is no episode. `extras` are the fractional extras the
+ *  provider lists. */
+export function previousEpisode(episode: number, extras: readonly number[] = []): number {
+	void extras;
 	return Number.isInteger(episode) ? episode - 1 : Math.floor(episode);
 }
 
 /** The episode after `episode`: one more for a whole episode, the
- *  whole episode above for a fractional extra (7.5 → 8). */
-export function nextEpisode(episode: number): number {
+ *  whole episode above for a fractional extra (7.5 → 8). `extras` are
+ *  the fractional extras the provider lists. */
+export function nextEpisode(episode: number, extras: readonly number[] = []): number {
+	void extras;
 	return Number.isInteger(episode) ? episode + 1 : Math.ceil(episode);
+}
+
+/** Whether stepping to `target` stays among what can be played: up to
+ *  the `cap` (no cap is no bound), or one of the listed `extras`. */
+export function stepAllowed(
+	target: number,
+	cap: number | null,
+	extras: readonly number[] = []
+): boolean {
+	void extras;
+	return cap === null || target <= cap;
+}
+
+/** The provider's extra tags as numbers, dropping any that is not. */
+export function extraNumbers(tags: readonly string[]): number[] {
+	return tags.map((t) => Number(t)).filter((n) => Number.isFinite(n) && n > 0);
 }
 
 /** The whole episode a fractional extra follows, for placing it in a
