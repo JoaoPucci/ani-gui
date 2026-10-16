@@ -863,3 +863,7 @@ fn jwt_exp_claim(access_token: &str) -> Option<i64> {
 #[cfg(test)]
 #[path = "anilist_user_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "anilist_user_tracked_test.rs"]
+mod tracked_tests;

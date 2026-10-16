@@ -13,3 +13,7 @@ use crate::account::provider::EntryUpdate;
 pub fn fit_to_tracker_total(update: EntryUpdate, _tracker_episodes: Option<u32>) -> EntryUpdate {
     update
 }
+
+#[cfg(test)]
+#[path = "progress_fit_test.rs"]
+mod tests;

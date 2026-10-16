@@ -236,3 +236,7 @@ mod tests;
 #[cfg(test)]
 #[path = "mal_user_parse_prop_test.rs"]
 mod parse_prop_tests;
+
+#[cfg(test)]
+#[path = "mal_user_tracked_test.rs"]
+mod tracked_tests;
