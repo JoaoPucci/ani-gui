@@ -155,7 +155,7 @@ shadow a usable transport the host actually has.
 Without the staging step the app still launches and browses metadata;
 only stream resolution and downloads need the staged tools.
 
-The Electron main process resolves the backend binary (`backend/target/debug/ani-gui-backend`), spawns it, and parses its stdout `ANI_GUI_LISTENING <url>` handshake to discover the loopback port. The renderer reads that URL from `window.aniGui.apiBase` (set by the Electron preload script) and uses it for every `fetch()` call.
+The Electron main process resolves the backend binary (`backend/target/debug/ani-gui-backend`), spawns it, and parses its stdout handshake — one `ANI_GUI_LANE <name> <url>` line per lane, then `ANI_GUI_LISTENING <url>` — to discover the loopback ports. The renderer reads the API's URL from `window.aniGui.apiBase` and the lanes from `window.aniGui.lanes` (both set by the Electron preload script), and sends each request to its lane ([architecture](./architecture.md#one-loopback-origin-per-class-of-traffic)).
 
 ## Build for distribution
 

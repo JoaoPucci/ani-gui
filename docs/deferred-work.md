@@ -339,47 +339,18 @@ starting it, and delete it when you find it done.
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
 
-- **Everything the renderer asks the backend for shares one origin,
-  and so one connection budget.** The backend binds a single loopback
-  listener and serves the API, the image route and the stream proxy
-  from it, so the renderer reaches all three at the same
-  `http://127.0.0.1:<port>`; the one request that goes anywhere else
-  is the manual diagnostic route's, which hands a pasted URL straight
-  to the player, as the content security policy entry below records.
-  Chromium opens at most six connections at a time to one host and
-  port over plain HTTP, and a request past the sixth waits for a
-  socket whatever it is for. The requests that hold
-  a socket longest are the ones that wait on a provider: an
-  availability probe stays open until the provider answers or the
-  sixty-second resolve deadline passes — and, for a show before its
-  premiere that the provider does not list, through the AniList airing
-  lookup that follows the answer — the search page runs four of them
-  at once while its cards render and does not abort them when the
-  user leaves the page, and the image route on a cold cache holds its
-  socket for the upstream fetch, up to thirty seconds. With the
-  provider slow, the probes and a couple of posters fill the six, and
-  the next page's own metadata request — a cache hit the backend would
-  answer in milliseconds — queues behind them for a socket. To the
-  user that is a page that takes tens of seconds to open, with the
-  probes themselves ending as 504s. Seen on 2026-10-15 against a slow
-  hianime: pages stalled while the backend was idle. A proxied
-  stream's segment fetches draw on the same six during playback.
-
-  The cheap part of the answer is a second loopback listener, so that
-  what waits on a provider — images, probes, or both — spends a budget
-  of its own and the API keeps one to itself; the proxy's segment
-  traffic argues for a listener of its own on the same grounds. The
-  costlier part is that the backend announces one base URL in its
-  handshake and the renderer builds every backend URL it composes
-  from it,
-  while the proxy stamps the playlist and segment URLs it rewrites
-  from the same origin, so a second
-  origin is a second line in the handshake and a second base on the
-  window. It waited because the search page, which suffers most,
-  already bounds the damage with a render deadline and the probe pool,
-  and because the layout of listeners is also where the content
-  security policy deferred below will name its origins; the two are
-  better decided together.
+- **A seventh download at once waits, unannounced, for a connection.**
+  A download reports its progress over a stream of its own, open for
+  the whole download, and each class of renderer traffic has its own
+  loopback origin
+  ([`architecture.md`](./architecture.md#one-loopback-origin-per-class-of-traffic)),
+  so downloads share six connections among themselves and take none
+  from the player or the API. Past six at once, the next one's stream
+  waits in Chromium for one of them to finish, and the backend does not
+  start that download until it arrives; the dock shows the row as
+  started all the while. One progress channel for every download would
+  end the limit. It waited because only other downloads wait on it
+  now.
 
 ## Interface
 
@@ -824,6 +795,11 @@ starting it, and delete it when you find it done.
   proxy like every other stream, or retires it. And the HLS player
   attaches media through blob URLs, which no origin-shaped rule
   covers.
+
+  The loopback origins it would allow are the backend's lanes — six,
+  on ports the kernel assigns at every start and the handshake
+  announces — so the policy is one the main process writes for each
+  launch rather than a constant.
 
   It waited for a play to verify against — one that goes through
   the proxy and the event stream the page listens to. At the time
