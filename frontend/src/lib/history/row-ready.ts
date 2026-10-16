@@ -1,7 +1,6 @@
 import type { HistoryEntry, KitsuAnimeRef, KitsuEpisode } from '$lib/api';
 import { EPISODES_KITSU_PAGE_SIZE } from './resolve';
-import { pickResumeEpisodeFor } from '$lib/play/next-episode';
-import { parseEpisodeNumber } from '$lib/play/episode-number';
+import { continueEpisode } from '$lib/play/next-episode';
 
 export interface ContinueRowReadyDeps {
 	/** Snapshot of the current history list, keyed by entry id. The
@@ -96,17 +95,11 @@ export function makeContinueRowReadyHandler(
 		// defensively normalizes a malformed ep_no (`'abc'`, `'0'`,
 		// empty) to displayEpisode=1, which would make the handler
 		// advance the row to episode 2 (last+1=1+1) instead of treating
-		// it as a no-history row. Both Continue surfaces read the raw
-		// ep_no through parseEpisodeNumber (a recap's "7.5" stays 7.5)
-		// and let pickNextEpisode collapse a missing one to episode 1.
-		const lastWatched = parseEpisodeNumber(entry.ep_no) ?? NaN;
+		// it as a no-history row. The home card reads the raw ep_no
+		// through the same continueEpisode (a recap's "7.5" stays 7.5),
+		// which lets pickNextEpisode collapse a missing one to episode 1.
 		const cap = playableCount ?? match.episode_count ?? null;
-		const nextEpisode = pickResumeEpisodeFor(
-			match.id,
-			Number.isFinite(lastWatched) ? lastWatched : null,
-			cap,
-			deps.leftPartWay
-		);
+		const nextEpisode = continueEpisode(match.id, entry.ep_no, cap, deps.leftPartWay);
 		const kitsuPage = Math.max(1, Math.ceil(nextEpisode / EPISODES_KITSU_PAGE_SIZE));
 		const target = `${match.id}|${kitsuPage}|${nextEpisode}`;
 		if (inFlight.get(entryId)?.target === target) return;

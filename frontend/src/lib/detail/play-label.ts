@@ -5,7 +5,7 @@
  * messages.
  */
 
-import { parseEpisodeNumber } from '$lib/play/episode-number';
+import { parseHistoryEpisode } from '$lib/play/episode-number';
 
 /**
  * Single-video detection. True for shows whose detail page should
@@ -95,7 +95,7 @@ export function computePlayLabel(args: {
 		return leftPartWay ? { kind: 'continue' } : { kind: 'watch_again' };
 	}
 	if (!resumeEntry) return { kind: 'episode_one' };
-	const last = parseEpisodeNumber(resumeEntry.ep_no);
+	const last = parseHistoryEpisode(resumeEntry.ep_no);
 	if (!leftPartWay && last !== null && defaultEpisode === last) {
 		return { kind: 'replay', episode: defaultEpisode };
 	}

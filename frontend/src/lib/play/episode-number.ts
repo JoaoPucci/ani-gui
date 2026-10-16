@@ -43,7 +43,13 @@ export function extraOnPage(episode: number, page: number, pageSize: number): bo
 	return anchor >= (page - 1) * pageSize + 1 && anchor <= page * pageSize;
 }
 
-/** Stub: the episode a history row names. */
+/** The episode a history row names, read by the episode it starts
+ *  with: a recap's "7.5" is 7.5, and a range-shaped row ("1-12") is
+ *  its first episode, as the history resolver reads it. `null` when
+ *  the row names no positive episode. */
 export function parseHistoryEpisode(raw: string | null | undefined): number | null {
-	return parseEpisodeNumber(raw);
+	const lead = /^\s*(\d+(?:\.\d+)?)/.exec(raw ?? '');
+	if (!lead) return null;
+	const n = Number(lead[1]);
+	return n > 0 ? n : null;
 }

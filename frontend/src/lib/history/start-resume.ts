@@ -19,7 +19,7 @@
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { resolveResumeEpisode } from './resume-episode';
 import { resumeOr } from '$lib/play/next-episode';
-import { parseEpisodeNumber } from '$lib/play/episode-number';
+import { parseHistoryEpisode } from '$lib/play/episode-number';
 
 export interface ResumePlayArgs {
 	/** Whether the card's match is only a guess (row-trust.ts): its id
@@ -107,7 +107,7 @@ export function makeStartResume(
 		deps.onProgress(null);
 
 		const { mode, quality } = await deps.getSettings();
-		const lastWatchedRaw = parseEpisodeNumber(entry.ep_no) ?? NaN;
+		const lastWatchedRaw = parseHistoryEpisode(entry.ep_no) ?? NaN;
 		const resolved = await resolveResumeEpisode(
 			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
 			deps.getPlayableCount(entry.id),

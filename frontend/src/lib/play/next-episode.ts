@@ -1,4 +1,4 @@
-import { nextEpisode } from './episode-number';
+import { nextEpisode, parseHistoryEpisode } from './episode-number';
 
 /**
  * Pick the episode the player should jump to when the user clicks
@@ -8,7 +8,8 @@ import { nextEpisode } from './episode-number';
  *
  * Rules, in evaluation order:
  *
- *   1. No history (null) or unparsable / sub-1 lastWatched → 1.
+ *   1. No history (null) or unparsable / non-positive lastWatched → 1.
+ *      (A recap before episode 1, 0.5, is an episode: it goes on to 1.)
  *      Detail page's "Play episode 1" branch. Home cards never hit
  *      this in practice (the card only renders for entries with
  *      history), but the helper has to answer to both call sites.
@@ -28,7 +29,7 @@ import { nextEpisode } from './episode-number';
  * path the same way an out-of-range manual navigation would.
  */
 export function pickNextEpisode(lastWatched: number | null, episodeCap: number | null): number {
-	if (lastWatched === null || !Number.isFinite(lastWatched) || lastWatched < 1) return 1;
+	if (lastWatched === null || !Number.isFinite(lastWatched) || lastWatched <= 0) return 1;
 	const next = nextEpisode(lastWatched);
 	if (episodeCap !== null && next > episodeCap) return lastWatched;
 	return next;
@@ -66,18 +67,21 @@ export function pickResumeEpisodeFor(
 /** `lastWatched` when it was left part-way and is an episode at all,
  *  else `next` — for a caller that already picked the next episode. */
 export function resumeOr(lastWatched: number | null, next: number, leftPartWay: boolean): number {
-	if (!leftPartWay || lastWatched === null || !Number.isFinite(lastWatched) || lastWatched < 1) {
+	if (!leftPartWay || lastWatched === null || !Number.isFinite(lastWatched) || lastWatched <= 0) {
 		return next;
 	}
 	return lastWatched;
 }
 
-/** Stub: the episode a Continue card plays for a history row. */
+/** The episode a Continue card plays for a history row of `kitsuId`:
+ *  {@link pickResumeEpisodeFor} on the row's episode as
+ *  {@link parseHistoryEpisode} reads it. Shared by the home card and
+ *  its row handler so the two cannot disagree. */
 export function continueEpisode(
 	kitsuId: string,
 	epNo: string,
 	episodeCap: number | null,
 	leftPartWay?: (kitsuId: string, episode: number) => boolean
 ): number {
-	return pickResumeEpisodeFor(kitsuId, null, episodeCap, leftPartWay);
+	return pickResumeEpisodeFor(kitsuId, parseHistoryEpisode(epNo), episodeCap, leftPartWay);
 }
