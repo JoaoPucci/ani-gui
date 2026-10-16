@@ -2230,6 +2230,11 @@
 	async function onOpenExternal() {
 		const title = detail?.canonical_title;
 		if (!title || !config) return;
+		// The show, audio and episode this launch is for, read once: a
+		// switch while a slow launch is out must not re-head its failure,
+		// re-aim its lookup, or re-word its success toast.
+		const ep = episodeNum;
+		const launch = { kitsuId: id, mode: config.mode, episode: ep };
 		// Pause the embedded video so the user isn't watching two
 		// instances simultaneously. The notice/launch flow continues
 		// regardless; if the external player fails to start the user
@@ -2240,7 +2245,7 @@
 			await playExternal(
 				handoffArgs({
 					title,
-					episode: episodeNum,
+					episode: ep,
 					kitsuId: recordableId(id, fromGuess) ?? '',
 					config,
 					detail
@@ -2253,7 +2258,7 @@
 			// from cfg.external_player_kind.
 			toastStore.push(
 				externalLaunchSuccessToast({
-					episode: episodeNum,
+					episode: ep,
 					kind: config.external_player_kind,
 					isSingleVideo: singleVideo
 				})
@@ -2268,11 +2273,8 @@
 			// case names the binary and the resolve-step branches
 			// reuse describePlayFailure copy.
 			externalError = {
-				episode: episodeNum,
-				message: describeExternalLaunchFailure(
-					e,
-					await otherAudioForFailure(e, { kitsuId: id, mode: config.mode, episode: episodeNum })
-				)
+				episode: ep,
+				message: describeExternalLaunchFailure(e, await otherAudioForFailure(e, launch))
 			};
 		} finally {
 			externalBusy = false;
@@ -2287,6 +2289,11 @@
 	async function onSyncplay() {
 		const title = detail?.canonical_title;
 		if (!title || !config) return;
+		// The show, audio and episode this launch is for, read once: a
+		// switch while a slow launch is out must not re-head its failure,
+		// re-aim its lookup, or re-word its success toast.
+		const ep = episodeNum;
+		const launch = { kitsuId: id, mode: config.mode, episode: ep };
 		// Same pause-the-embedded-video logic as the external flow:
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
@@ -2296,15 +2303,13 @@
 			await playSyncplay(
 				handoffArgs({
 					title,
-					episode: episodeNum,
+					episode: ep,
 					kitsuId: recordableId(id, fromGuess) ?? '',
 					config,
 					detail
 				})
 			);
-			toastStore.push(
-				syncplayLaunchSuccessToast({ episode: episodeNum, isSingleVideo: singleVideo })
-			);
+			toastStore.push(syncplayLaunchSuccessToast({ episode: ep, isSingleVideo: singleVideo }));
 		} catch (e) {
 			// Same routing as onOpenExternal — ErrorOverlay modal so
 			// missing-binary failures can't be missed. Body shaped
@@ -2314,11 +2319,8 @@
 			// "Get Syncplay" install link — only when the binary
 			// itself was the problem.
 			syncplayError = {
-				episode: episodeNum,
-				message: describeSyncplayLaunchFailure(
-					e,
-					await otherAudioForFailure(e, { kitsuId: id, mode: config.mode, episode: episodeNum })
-				),
+				episode: ep,
+				message: describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch)),
 				isSpawnFailure: isSyncplaySpawnFailure(e)
 			};
 		} finally {
