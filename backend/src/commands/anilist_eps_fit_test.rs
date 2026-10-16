@@ -433,3 +433,21 @@ fn full_width_digits_read_as_their_ascii_forms() {
     );
     assert!(!listing_fits(&longer, &page));
 }
+
+#[test]
+fn a_second_season_refuses_the_first_seasons_listing_with_or_without_titles() {
+    // Kimi ni Todoke 2nd Season: AniList lists season 1 ("Episode 1 -
+    // Prologue", "Episode 2 - Seat Shuffling", … to 25) on the entry.
+    // Kitsu's titles ("Valentine", "2nd Years") refuse it, and so does
+    // the count where Kitsu has none: 25 is past its 13.
+    let (listing, page) = recorded("kimi-ni-todoke-2", 1);
+    assert!(!listing_fits(&listing, &page), "with Kitsu's titles");
+    let untitled: Vec<KitsuEpisode> = page
+        .into_iter()
+        .map(|mut e| {
+            e.canonical_title = None;
+            e
+        })
+        .collect();
+    assert!(!listing_fits(&listing, &untitled), "without them");
+}

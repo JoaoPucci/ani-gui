@@ -122,6 +122,18 @@
       "sha256": "ccd786d315469a47415141ececabbd7b417d9cb2188bd07df1a5a83498150930",
       "notes": "Kaguya-sama season 2 (12 episodes) — AniList lists season 1's twelve; titles share the show's recurring words"
     },
+    "kimi-ni-todoke-2.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 9656 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 3710,
+      "sha256": "06886ddef91c672b14d6e45e2b4f4f15af03b8dc8f2ce8843538a21ec095365b",
+      "notes": "Kimi ni Todoke 2nd Season (12 episodes on Kitsu, 13 on AniList) — AniList lists season 1's episodes (1-25, no 16); Kitsu titles and stills every episode"
+    },
+    "kimi-ni-todoke-2.kitsu-p1.json": {
+      "request": "GET /anime/5820/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 25603,
+      "sha256": "2eeb55fea76f3af7d3d26db3a4dbf24c939b9ac4647064de738ef43a25de137e",
+      "notes": "Kimi ni Todoke 2nd Season (12 episodes on Kitsu, 13 on AniList) — AniList lists season 1's episodes (1-25, no 16); Kitsu titles and stills every episode"
+    },
     "mushoku-tensei.anilist.json": {
       "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 39535 } (the production query: episodes status streamingEpisodes { title thumbnail })",
       "size": 4069,
