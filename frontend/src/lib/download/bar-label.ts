@@ -16,6 +16,9 @@ export interface DownloadBarItem {
 	episode: string;
 	rangeTotal: number | null;
 	currentEp: number | null;
+	/** Where the download stands; a row that carries none counts as
+	 *  running. */
+	status?: string;
 }
 
 export type DownloadBarLabel =

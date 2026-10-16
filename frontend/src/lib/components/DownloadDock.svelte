@@ -17,6 +17,7 @@
 	import { downloadStore, type DownloadItem } from '$lib/download/store.svelte';
 	import { progressTitle, terminalReportText } from '$lib/download/report-copy';
 	import { formatSpeed, totalSpeed } from '$lib/download/speed';
+	import { dockLabel } from '$lib/download/dock-label';
 	import { m } from '$lib/paraglide/messages';
 
 	let open = $state(false);
@@ -26,6 +27,7 @@
 	const activeCount = $derived(downloadStore.active.length);
 	const speed = $derived(totalSpeed(itemsView));
 	const unseenCount = $derived(downloadStore.unseenCount);
+	const triggerLabel = $derived(dockLabel(downloadStore.active, unseenCount));
 	// Hide the dock entirely when there are no downloads — the icon
 	// only earns space in the topbar when there's something to surface.
 	// Slide transition animates the inline-size, so the topbar's search
@@ -90,13 +92,13 @@
 			onclick={() => (open = !open)}
 			aria-haspopup="menu"
 			aria-expanded={open}
-			aria-label={activeCount > 0
+			aria-label={triggerLabel.kind === 'active'
 				? m.download_dock_active_speed_label({
-						count: activeCount,
+						count: triggerLabel.count,
 						speed: formatSpeed(speed ?? 0)
 					})
-				: unseenCount > 0
-					? m.download_dock_unseen_label({ count: unseenCount })
+				: triggerLabel.kind === 'unseen'
+					? m.download_dock_unseen_label({ count: triggerLabel.count })
 					: m.download_dock_idle_label()}
 			title={m.download_dock_title()}
 		>
