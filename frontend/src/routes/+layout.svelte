@@ -71,8 +71,8 @@
 	// Push the active-download count to Electron main on every
 	// change. Main caches the latest value and reads it at close
 	// time to decide whether to prompt the user before quitting.
-	// `active` filters items by pending/active status — which is
-	// exactly the set whose work would be lost on quit.
+	// `active` filters items by pending/queued/active status — which
+	// is exactly the set whose work would be lost on quit.
 	$effect(() => {
 		const count = downloadStore.active.length;
 		if (typeof window !== 'undefined') window.aniGui?.notifyActiveDownloads?.(count);
