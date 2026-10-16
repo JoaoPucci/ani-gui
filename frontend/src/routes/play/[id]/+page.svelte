@@ -125,6 +125,7 @@
 		stripColumns,
 		wholeEpisodeCount
 	} from '$lib/play/episode-number';
+	import { fallbackTileTitle } from '$lib/play/tile-title';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
 	import {
@@ -3529,7 +3530,12 @@
 											{/if}
 										</span>
 										<span class="ep-card-foot-title">
-											{ep.canonical_title ?? m.play_episode_card_title_fallback({ num: String(n) })}
+											{ep.canonical_title ??
+												fallbackTileTitle(
+													n,
+													(x) => m.play_episode_card_title_fallback({ num: x }),
+													(x) => m.play_episode_card_extra_title_fallback({ num: x })
+												)}
 										</span>
 									</span>
 								</button>
