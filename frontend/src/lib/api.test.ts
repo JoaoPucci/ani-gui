@@ -748,6 +748,16 @@ describe('playStream', () => {
 		expect(es.closed).toBe(true);
 	});
 
+	it('opens no stream when the signal is aborted while the API base is still being read', async () => {
+		// The base is read asynchronously before the stream opens; an
+		// abort that lands in between is as late as the page gets.
+		const ctrl = new AbortController();
+		const promise = playStream({ title: 't', episode: '1', mode: 'sub' }, () => {}, ctrl.signal);
+		ctrl.abort();
+		await expect(promise).rejects.toThrow(/aborted/i);
+		expect(FakeEventSource.instances).toHaveLength(0);
+	});
+
 	it('sends no POST either when EventSource is unavailable and the signal is already aborted', async () => {
 		delete g.EventSource;
 		const fetchMock = vi.fn();
