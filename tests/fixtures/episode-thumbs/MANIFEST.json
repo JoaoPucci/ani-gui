@@ -186,13 +186,13 @@
       "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 56242 } (the production query: episodes status streamingEpisodes { title thumbnail })",
       "size": 6060,
       "sha256": "3fc565f2496f2abc23abd8655d174c52039ed246cbdb21c78d7818b8a41597ae",
-      "notes": "Sengoku Youko (13 episodes, first of three cours) — AniList lists all three cours (1-35); Kitsu has no titles"
+      "notes": "Sengoku Youko (13 episodes, its first part) — AniList lists the whole series (1-35); Kitsu has no titles"
     },
     "sengoku-youko.kitsu-p1.json": {
       "request": "GET /anime/47891/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
       "size": 3641,
       "sha256": "73f3ba367a47560b46d49082c0ca05e2386f1fdd6b02dc782ac55bd7da0c6c19",
-      "notes": "Sengoku Youko (13 episodes, first of three cours) — AniList lists all three cours (1-35); Kitsu has no titles"
+      "notes": "Sengoku Youko (13 episodes, its first part) — AniList lists the whole series (1-35); Kitsu has no titles"
     },
     "spy-family.anilist.json": {
       "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 50265 } (the production query: episodes status streamingEpisodes { title thumbnail })",
