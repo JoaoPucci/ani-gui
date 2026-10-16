@@ -457,6 +457,7 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         resolved_slot: Some(native.resolved_slot),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
+        played: None,
     }
 }
 
@@ -964,6 +965,7 @@ pub(crate) mod tests {
             resolved_slot: None,
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
         }
     }
 
@@ -1302,6 +1304,7 @@ pub(crate) mod tests {
                 resolved_slot: Some(1),
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
             },
         );
     }
@@ -1348,6 +1351,7 @@ pub(crate) mod tests {
                 resolved_slot: None,
                 subtitles,
                 kitsu_id: None,
+                played: None,
             },
         );
     }
@@ -1743,6 +1747,7 @@ pub(crate) mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
             },
         );
         let cfg = external_cfg();

@@ -196,6 +196,11 @@ pub struct CachedResolution {
     /// stamp-aware translation.
     #[serde(default)]
     pub resolved_slot: Option<u32>,
+    /// The app's own number for the episode the resolve matched, which
+    /// a replay records. `None` on rows from before the field, whose
+    /// replays record the request.
+    #[serde(default)]
+    pub played: Option<String>,
     /// The sidecar subtitle tracks the resolve listed, so a replay
     /// offers the same tracks a fresh resolve did.
     #[serde(default)]
