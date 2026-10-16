@@ -95,7 +95,10 @@ pub(super) fn countless_miss(
 /// [`refused_by_title`] dead end when the titles refused a candidate
 /// the count accepted, and the clean miss only when every candidate
 /// answered and the count refused them all. A pool holding a candidate
-/// that could have won and whose listing answered not-found
+/// that could have won — admitted, not another entry, and for a dated
+/// entry with a count vouched for by a name; the count-alone and
+/// single-video rules are not consulted — and whose listing answered
+/// not-found
 /// (`dead_listing`) is the answered dead end on that dead listing,
 /// which may have been the entry's, whatever else it holds: not the
 /// clean miss, and no refusal by name.
