@@ -799,3 +799,34 @@ fn a_play_begun_before_a_watch_leaves_the_watchs_row() {
     let row = rows.iter().find(|e| e.id == SHOW).expect("row");
     assert_eq!(row.ep_no, "5", "the later watch's episode stands");
 }
+
+#[test]
+fn a_former_tag_in_the_sidecar_gives_way_to_the_rows_tag_on_its_next_watch() {
+    // A watch of a stitched recap under an earlier version left the
+    // history row's slot 13 stamped "24.5". Asked for again, the resolve
+    // finds the recap by that former tag and reports its tag now; the
+    // watch's stamp then reads the row back as "12.5".
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let mut recap = native();
+    recap.numbering_offset = 0;
+    recap.resolved_slot = 13;
+    recap.resolved_tag = Some("24.5".into());
+    stamp_numbering(&state, &recap, play);
+    write_history(&state, &recap, "24.5", play);
+    let listed = || {
+        crate::commands::history::history_list(&state)
+            .expect("list")
+            .into_iter()
+            .find(|e| e.id == SHOW)
+            .expect("row")
+            .ep_no
+    };
+    assert_eq!(listed(), "24.5");
+    let again = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    recap.resolved_tag = Some("12.5".into());
+    stamp_numbering(&state, &recap, again);
+    write_history(&state, &recap, "24.5", again);
+    assert_eq!(listed(), "12.5");
+}
