@@ -809,13 +809,10 @@ fn a_former_tag_in_the_sidecar_gives_way_to_the_rows_tag_on_its_next_watch() {
     // watch's stamp then reads the row back as "12.5".
     let tmp = tempfile::tempdir().unwrap();
     let state = state_in(tmp.path());
-    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    seed_former_recap_row(&state);
     let mut recap = native();
     recap.numbering_offset = 0;
     recap.resolved_slot = 13;
-    recap.resolved_tag = Some("24.5".into());
-    stamp_numbering(&state, &recap, play);
-    write_history(&state, &recap, "24.5", play);
     let listed = || {
         crate::commands::history::history_list(&state)
             .expect("list")
@@ -840,13 +837,7 @@ fn any_resolve_of_the_show_puts_a_former_tag_in_the_sidecar_right() {
     // now: the row reads back as the recap it is from then on.
     let tmp = tempfile::tempdir().unwrap();
     let state = state_in(tmp.path());
-    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
-    let mut old = native();
-    old.numbering_offset = 0;
-    old.resolved_slot = 13;
-    old.resolved_tag = Some("24.5".into());
-    stamp_numbering(&state, &old, play);
-    write_history(&state, &old, "24.5", play);
+    seed_former_recap_row(&state);
     let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     let mut five = native();
     five.numbering_offset = 0;
@@ -870,13 +861,10 @@ async fn a_former_tag_repair_survives_the_players_mark_watched() {
     // must not put the row back to the former tag.
     let tmp = tempfile::tempdir().unwrap();
     let state = state_in(tmp.path());
-    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    seed_former_recap_row(&state);
     let mut recap = native();
     recap.numbering_offset = 0;
     recap.resolved_slot = 13;
-    recap.resolved_tag = Some("24.5".into());
-    stamp_numbering(&state, &recap, play);
-    write_history(&state, &recap, "24.5", play);
     let again = crate::history::guard::Asked::now(&state.history_path, Some("77"));
     recap.resolved_tag = Some("12.5".into());
     stamp_numbering(&state, &recap, again);
@@ -891,4 +879,15 @@ async fn a_former_tag_repair_survives_the_players_mark_watched() {
         .expect("row")
         .ep_no;
     assert_eq!(listed, "12.5");
+}
+
+/// A history row from before stitched recaps were renumbered: the slot an
+/// earlier version stored (13) and the stamp it left, "24.5" — written
+/// as that version left them, not through this version's writers.
+fn seed_former_recap_row(state: &AppState) {
+    let row = crate::history::parse(&format!("13\t{SHOW}\tThe Show\n"))
+        .pop()
+        .expect("a row");
+    crate::history::upsert_and_write(&state.history_path, row).expect("write");
+    crate::commands::numbering_offset::put_display(state, SHOW, 0, 13, "24.5");
 }
