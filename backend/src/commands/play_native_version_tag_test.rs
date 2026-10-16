@@ -234,3 +234,48 @@ async fn a_tagged_broad_listing_is_cut_as_its_plain_copy_is() {
     assert_eq!(p.hit.slug, "show-season-3-1");
     assert_eq!(p.episodes.len(), 12, "cut to the entry's episodes");
 }
+
+#[tokio::test]
+async fn parts_are_stitched_within_one_version() {
+    // Both copies of both parts: the plain first part stitches to the
+    // plain second part, whichever copy the provider lists first.
+    for order in [[1u64, 2, 3, 4], [1, 2, 4, 3]] {
+        let client = site(&[(1, 12), (2, 12), (3, 12), (4, 12)]);
+        let all = [
+            hit("show-1", "Show"),
+            hit("show-2", "Show [Uncensored]"),
+            hit("show-part-2-3", "Show Part 2 [Uncensored]"),
+            hit("show-part-2-4", "Show Part 2"),
+        ];
+        let hits: Vec<_> = order
+            .iter()
+            .map(|i| all[(*i - 1) as usize].clone())
+            .collect();
+        let p = pick_candidate_titled(
+            &client,
+            &hits,
+            Some(24),
+            "Show",
+            &["Show"],
+            Some(YEAR),
+            Some("TV"),
+        )
+        .await
+        .expect("picked");
+        assert_eq!(p.episodes.len(), 24, "{order:?}");
+        let lead = p
+            .hit
+            .slug
+            .rsplit('-')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let second = p.episodes[12].id / 1000;
+        let pair = (lead.as_str(), second);
+        assert!(
+            pair == ("1", 4) || pair == ("2", 3),
+            "{order:?}: lead {} stitched to listing {second}",
+            p.hit.slug
+        );
+    }
+}
