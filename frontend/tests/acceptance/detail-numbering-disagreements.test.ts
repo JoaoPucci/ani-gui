@@ -6,10 +6,11 @@
 // provider numbers so, a recap's row is tagged 7.5). The cases below
 // cover the provider listing a recap Kitsu does not, Kitsu counting a
 // recap as a regular episode the provider lists as 7.5, and Kitsu
-// counting one the provider does not list at all. In each, the whole
-// tiles, their Kitsu labels, the episode each one requests and the
-// tile past the provider's count are what they were before fractional
-// extras were read as themselves; only the recap's own tile is new.
+// counting one the provider does not list at all. In each, it pins
+// the whole tiles, the Kitsu label inside each, the episode every whole
+// tile requests and the tiles past the provider's count. This is a
+// regression pin: the file passes unchanged against the frontend from
+// before fractional extras were read as themselves, so none of it moved.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -18,6 +19,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -172,39 +174,60 @@ async function dismissOverlay() {
 
 const WHOLE = Array.from({ length: 12 }, (_, i) => i + 1);
 
+/** Each whole tile carries its own Kitsu row's label. */
+function expectKitsuLabels(numbers: number[]) {
+	for (const n of numbers) {
+		const li = target.querySelector(`li[data-ep-num="${n}"]`);
+		expect(li?.textContent, `tile ${n}`).toContain(`Kitsu title ${n}`);
+	}
+}
+
+/** Every whole tile on the page requests its own number. */
+async function expectRequests(numbers: number[]) {
+	for (const n of numbers) {
+		expect(await requestedBy(n), `tile ${n}`).toBe(String(n));
+		await dismissOverlay();
+	}
+}
+
+const pastCap = (n: number) => tileButton(n)!.matches('.ep-tile-recheck');
+
 describe('detail route — Kitsu and the provider disagree about a recap', () => {
-	it('the provider lists a 7.5 Kitsu does not: whole tiles as before, plus the recap', async () => {
+	it('the provider lists a 7.5 Kitsu does not', async () => {
 		useShow(12, 12, ['7.5']);
 		app = mount(DetailPage, { target });
 		await until(() => tileButton(7.5) !== null && tileButton(12) !== null, 'the grid');
 		expect(tileNumbers()).toEqual([1, 2, 3, 4, 5, 6, 7, 7.5, 8, 9, 10, 11, 12]);
-		expect(tileNumbers().filter(Number.isInteger)).toEqual(WHOLE);
-		expect(target.textContent).toContain('Kitsu title 8');
-		expect(await requestedBy(8)).toBe('8');
-		await dismissOverlay();
+		expectKitsuLabels(WHOLE);
+		await expectRequests(WHOLE);
 		expect(await requestedBy(7.5)).toBe('7.5');
-		expect(tileButton(12)!.closest('li')!.querySelector('.ep-tile-recheck')).toBeNull();
+		expect(WHOLE.some(pastCap)).toBe(false);
 	});
 
-	it('Kitsu counts the recap as episode 8, the provider lists it as 7.5: as before, plus the recap', async () => {
+	it('Kitsu counts the recap as episode 8, the provider lists it as 7.5', async () => {
 		// The provider's whole episodes stop at 11; Kitsu's run to 12.
 		useShow(12, 11, ['7.5']);
 		app = mount(DetailPage, { target });
 		await until(() => tileButton(7.5) !== null && tileButton(12) !== null, 'the grid');
 		expect(tileNumbers()).toEqual([1, 2, 3, 4, 5, 6, 7, 7.5, 8, 9, 10, 11, 12]);
-		expect(target.textContent).toContain('Kitsu title 8');
-		expect(await requestedBy(8)).toBe('8');
-		await dismissOverlay();
-		expect(await requestedBy(11)).toBe('11');
-		// Past the provider's count, as before.
-		expect(tileButton(12)!.matches('.ep-tile-recheck')).toBe(true);
+		expectKitsuLabels(WHOLE);
+		await expectRequests(WHOLE.slice(0, 11));
+		expect(WHOLE.filter(pastCap)).toEqual([12]);
 	});
 
-	it('Kitsu counts a recap the provider does not list: exactly as before', async () => {
+	it('Kitsu counts a recap the provider does not list', async () => {
 		useShow(13, 12, []);
 		app = mount(DetailPage, { target });
 		await until(() => tileButton(12) !== null, 'the grid');
 		expect(tileNumbers()).toEqual(WHOLE);
-		expect(await requestedBy(8)).toBe('8');
+		expectKitsuLabels(WHOLE);
+		await expectRequests(WHOLE);
+		// The strip stops at the provider's count: Kitsu's thirteenth
+		// row gets no tile and there is no second page to reach.
+		const next = target.querySelector(
+			`button[aria-label="${m.detail_episodes_pager_next_aria_label()}"]`
+		) as HTMLButtonElement | null;
+		expect(next === null || next.disabled).toBe(true);
+		expect(tileButton(13)).toBeNull();
 	});
 });

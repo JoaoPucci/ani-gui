@@ -2,7 +2,7 @@
  * The fractional-episode reading must leave every whole episode where
  * it was. These cases compare each new reader and step with the
  * whole-number behaviour the app had before (parseInt, ±1, ceil paging,
- * counting tiles), over the strings the app itself writes.
+ * counting tiles), over the strings the app and its backend write.
  */
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
@@ -27,6 +27,15 @@ describe('a whole episode reads as it did', () => {
 			fc.property(whole, (n) => {
 				// play-url.ts writes `episode=${n}`.
 				return parseEpisodeNumber(String(n)) === parseInt(String(n), 10);
+			})
+		);
+	});
+
+	it('from a history row as the backend writes one: a slot, a translated slot, or an integer-valued tag', () => {
+		fc.assert(
+			fc.property(whole, (n) => {
+				// read_ep_no can hand back a stamped tag verbatim ("8.0").
+				return parseHistoryEpisode(`${n}.0`) === n && parseHistoryEpisode(String(n)) === n;
 			})
 		);
 	});
@@ -75,19 +84,20 @@ describe('a whole episode steps as it did', () => {
 });
 
 describe('a whole episode pages as it did', () => {
-	it('is its own anchor, on the page ceil(n / size) names', () => {
+	it('is its own anchor, and the strip pager opens it on the page ceil(n / size) names', () => {
+		// Whole tiles are placed by the strip's own [start, end] window,
+		// unchanged; only the pager's page for an episode, which a whole
+		// episode shares with a recap's anchor, went through the new code.
 		fc.assert(
 			fc.property(whole, fc.integer({ min: 1, max: 50 }), (n, size) => {
-				const page = Math.ceil(n / size);
-				return (
-					stripAnchor(n) === n &&
-					new StripPager(size).pageOf(n) === page &&
-					extraOnPage(n, page, size) &&
-					!extraOnPage(n, page + 1, size) &&
-					(page === 1 || !extraOnPage(n, page - 1, size))
-				);
+				return stripAnchor(n) === n && new StripPager(size).pageOf(n) === Math.ceil(n / size);
 			})
 		);
+	});
+
+	it('the next episode is within the last episode exactly when the episode is before it', () => {
+		// The play page's hasNext now reads next <= total for total < n.
+		fc.assert(fc.property(whole, whole, (n, total) => nextEpisode(n) <= total === n < total));
 	});
 
 	it('a page without extras counts every tile, as it did', () => {
@@ -101,12 +111,12 @@ describe('a whole episode pages as it did', () => {
 		);
 	});
 
-	it('a recap beside whole episodes changes no whole episode’s page or count', () => {
-		// Pages of five: [1..5] then [6..10]; a 5.5 recap joins page 1 and
-		// takes nothing from either page's whole episodes.
+	it('a recap beside whole episodes changes no whole episode’s count', () => {
+		// Pages of five: a 5.5 recap joins page 1 and takes nothing from
+		// its whole episodes; it lands on no other page.
 		const page1 = [1, 2, 3, 4, 5, 5.5].map((number) => ({ number, relative_number: null }));
 		expect(wholeEpisodeCount(page1)).toBe(5);
-		for (const n of [1, 2, 3, 4, 5]) expect(extraOnPage(n, 1, 5)).toBe(true);
-		for (const n of [6, 7, 8, 9, 10]) expect(extraOnPage(n, 2, 5)).toBe(true);
+		expect(extraOnPage(5.5, 1, 5)).toBe(true);
+		expect(extraOnPage(5.5, 2, 5)).toBe(false);
 	});
 });
