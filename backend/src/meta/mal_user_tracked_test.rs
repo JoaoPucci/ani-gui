@@ -73,3 +73,42 @@ async fn tracked_media_reads_a_zero_total_as_unknown() {
     let got = tracked(r#"{"id":21,"num_episodes":0}"#).await;
     assert_eq!(got.episodes, None);
 }
+
+#[test]
+fn the_provider_names_itself_myanimelist() {
+    assert_eq!(provider("http://unused").kind(), ProviderKind::MyAnimeList);
+}
+
+#[test]
+fn a_tracked_media_body_that_is_not_json_is_a_parse_failure() {
+    assert!(matches!(
+        parse_tracked_media(b"not json"),
+        Err(AniError::ParseFailed { .. })
+    ));
+}
+
+#[test]
+fn a_tracked_media_body_with_a_malformed_row_is_a_parse_failure() {
+    // The total reads, the row does not: the whole read fails rather
+    // than a write going out against a row it could not see.
+    assert!(matches!(
+        parse_tracked_media(br#"{"num_episodes":13,"my_list_status":"watching"}"#),
+        Err(AniError::ParseFailed { .. })
+    ));
+}
+
+#[test]
+fn a_list_status_reply_that_is_not_json_is_a_parse_failure() {
+    assert!(matches!(
+        parse_list_status_response(b"not json", 21),
+        Err(AniError::ParseFailed { .. })
+    ));
+}
+
+#[test]
+fn a_list_status_reply_with_an_unknown_status_is_a_parse_failure() {
+    assert!(matches!(
+        parse_list_status_response(br#"{"status":"hibernating"}"#, 21),
+        Err(AniError::ParseFailed { .. })
+    ));
+}
