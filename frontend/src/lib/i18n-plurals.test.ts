@@ -319,6 +319,37 @@ const ROWS: Row[] = [
 		}
 	},
 	{
+		// The strip with downloads waiting: the running episodes are
+		// counted, the queued downloads beside them. "Queued" does not
+		// inflect in any shipped locale.
+		message: 'download_bar_label_multi_queued',
+		inputs: (n) => ({ count: n, queued: 2 }),
+		en: {
+			0: 'Downloading 0 episodes · 2 queued',
+			1: 'Downloading 1 episode · 2 queued',
+			2: 'Downloading 2 episodes · 2 queued'
+		},
+		'pt-BR': {
+			0: 'Baixando 0 episódios · 2 na fila',
+			1: 'Baixando 1 episódio · 2 na fila',
+			2: 'Baixando 2 episódios · 2 na fila'
+		},
+		'es-419': {
+			0: 'Descargando 0 episodios · 2 en cola',
+			1: 'Descargando 1 episodio · 2 en cola',
+			2: 'Descargando 2 episodios · 2 en cola'
+		},
+		ru: {
+			1: 'Загрузка 1 серии · 2 в очереди',
+			2: 'Загрузка 2 серий · 2 в очереди',
+			5: 'Загрузка 5 серий · 2 в очереди',
+			21: 'Загрузка 21 серии · 2 в очереди',
+			22: 'Загрузка 22 серий · 2 в очереди',
+			25: 'Загрузка 25 серий · 2 в очереди',
+			11: 'Загрузка 11 серий · 2 в очереди'
+		}
+	},
+	{
 		message: 'download_bar_cancel_confirm_multi',
 		en: {
 			0: 'Cancel 0 active downloads?',
@@ -343,6 +374,34 @@ const ROWS: Row[] = [
 			22: 'Отменить 22 активные загрузки?',
 			25: 'Отменить 25 активных загрузок?',
 			11: 'Отменить 11 активных загрузок?'
+		}
+	},
+	{
+		message: 'download_dock_active_queued_speed_label',
+		inputs: (n) => ({ count: n, queued: 2, speed: SPEED }),
+		en: {
+			0: '0 downloads in progress, 2 queued, ' + SPEED,
+			1: '1 download in progress, 2 queued, ' + SPEED,
+			2: '2 downloads in progress, 2 queued, ' + SPEED
+		},
+		'pt-BR': {
+			0: '0 downloads em andamento, 2 na fila, ' + SPEED,
+			1: '1 download em andamento, 2 na fila, ' + SPEED,
+			2: '2 downloads em andamento, 2 na fila, ' + SPEED
+		},
+		'es-419': {
+			0: '0 descargas en curso, 2 en cola, ' + SPEED,
+			1: '1 descarga en curso, 2 en cola, ' + SPEED,
+			2: '2 descargas en curso, 2 en cola, ' + SPEED
+		},
+		ru: {
+			1: '1 загрузка в процессе, 2 в очереди, ' + SPEED,
+			2: '2 загрузки в процессе, 2 в очереди, ' + SPEED,
+			5: '5 загрузок в процессе, 2 в очереди, ' + SPEED,
+			21: '21 загрузка в процессе, 2 в очереди, ' + SPEED,
+			22: '22 загрузки в процессе, 2 в очереди, ' + SPEED,
+			25: '25 загрузок в процессе, 2 в очереди, ' + SPEED,
+			11: '11 загрузок в процессе, 2 в очереди, ' + SPEED
 		}
 	},
 	{

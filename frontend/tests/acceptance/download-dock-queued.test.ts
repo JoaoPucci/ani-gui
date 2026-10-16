@@ -18,6 +18,8 @@ import { DOWNLOAD_CONCURRENCY } from '../../src/lib/download/queue';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
 import DownloadDock from '../../src/lib/components/DownloadDock.svelte';
+import DownloadBar from '../../src/lib/components/DownloadBar.svelte';
+import { formatSpeed } from '../../src/lib/download/speed';
 import { API_BASE } from './setup';
 
 type Handler = (ev: MessageEvent) => void;
@@ -46,6 +48,12 @@ class FakeEventSource {
 const g = globalThis as unknown as { EventSource?: unknown };
 let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
+let bar: ReturnType<typeof mount> | null = null;
+
+/** Messages by name, so a case can name one the catalogue lacks and
+ *  fail on it rather than on the compile. */
+const message = (name: string) =>
+	(m as unknown as Record<string, ((inputs: Record<string, unknown>) => string) | undefined>)[name];
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -64,6 +72,8 @@ afterEach(async () => {
 	await settle();
 	if (app) unmount(app);
 	app = null;
+	if (bar) unmount(bar);
+	bar = null;
 	target.remove();
 	delete g.EventSource;
 });
@@ -110,6 +120,23 @@ describe('downloads past the ones running at once', () => {
 			waiting.querySelector(`button[aria-label="${m.download_dock_cancel_aria_label()}"]`)
 		).not.toBeNull();
 		expect(rowFor(pop, 1).textContent).not.toContain(m.download_dock_queued());
+
+		// What is running and what is waiting are told apart: the
+		// trigger's label and the progress strip count each.
+		const trigger = target.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');
+		expect(trigger?.getAttribute('aria-label')).toBe(
+			message('download_dock_active_queued_speed_label')?.({
+				count: DOWNLOAD_CONCURRENCY,
+				queued: 1,
+				speed: formatSpeed(0)
+			})
+		);
+		bar = mount(DownloadBar, { target });
+		flushSync();
+		expect(target.querySelector('.dl-bar')?.textContent).toContain(
+			message('download_bar_label_multi_queued')?.({ count: DOWNLOAD_CONCURRENCY, queued: 1 }) ??
+				'the strip names the queued downloads'
+		);
 
 		FakeEventSource.open[0].finish();
 		await settle();

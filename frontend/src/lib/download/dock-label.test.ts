@@ -13,4 +13,13 @@ describe('dockLabel', () => {
 		expect(dockLabel([], 3)).toEqual({ kind: 'unseen', count: 3 });
 		expect(dockLabel([], 0)).toEqual({ kind: 'idle' });
 	});
+
+	it('counts the queued downloads apart from the running ones', () => {
+		const active = [
+			{ status: 'active' as const },
+			{ status: 'active' as const },
+			{ status: 'queued' as const }
+		];
+		expect(dockLabel(active, 0)).toEqual({ kind: 'active-queued', count: 2, queued: 1 });
+	});
 });
