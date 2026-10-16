@@ -69,8 +69,8 @@ pub(crate) async fn resolve_in_any_version<P: Provider + ?Sized>(
 /// provider's order: `default` for the version it plays, already asked,
 /// and one mode probe for each other version — the same bounded scan
 /// of its rows ([`super::availability_mode::mode_present`]). Another
-/// version's probe failing leaves its mode unknown; the playing copy
-/// has answered, and the answer stands on it.
+/// version's probe failing leaves its mode unknown rather than failing
+/// the answer ([`version_for_mode`] combines what is known).
 ///
 /// # Errors
 /// A block or the gate's refusal on another version's probe: every

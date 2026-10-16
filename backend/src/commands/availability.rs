@@ -859,9 +859,11 @@ pub async fn check_availability(
         Ok(attempted) => {
             let (p, present, modes) = attempted.value;
             let Some(present) = present else {
-                // Every row the mode search touched was missing. The
-                // walk moves on from that answer and surfaces the
-                // unknown verdict itself when nobody answers; kept
+                // Every row the mode search touched was missing — or,
+                // for a show with versions, no version carries the mode
+                // and one never answered. The walk moves on from that
+                // answer and surfaces the unknown verdict itself when
+                // nobody answers; kept
                 // for the day an inconclusive answer reaches here
                 // regardless — nothing about this mode was said,
                 // which is not absence, so persist nothing.
