@@ -862,3 +862,33 @@ fn any_resolve_of_the_show_puts_a_former_tag_in_the_sidecar_right() {
         .ep_no;
     assert_eq!(listed, "12.5");
 }
+
+#[tokio::test]
+async fn a_former_tag_repair_survives_the_players_mark_watched() {
+    // After the repaired watch, the player marks the episode watched
+    // from the cached resolution — keyed by the request, "24.5". That
+    // must not put the row back to the former tag.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let mut recap = native();
+    recap.numbering_offset = 0;
+    recap.resolved_slot = 13;
+    recap.resolved_tag = Some("24.5".into());
+    stamp_numbering(&state, &recap, play);
+    write_history(&state, &recap, "24.5", play);
+    let again = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    recap.resolved_tag = Some("12.5".into());
+    stamp_numbering(&state, &recap, again);
+    write_history(&state, &recap, "24.5", again);
+    let cached = crate::commands::play::cached_resolution_for(&recap);
+    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "24.5");
+    crate::commands::play_native_record::record_watch(&state, &watch, None).await;
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == SHOW)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "12.5");
+}
