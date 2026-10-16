@@ -115,6 +115,24 @@ pub struct PlayArgs {
     pub version: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
+impl PlayArgs {
+    /// The native resolve this play asks for, at `quality`.
+    #[must_use]
+    pub fn native_request<'a>(&'a self, quality: &'a str) -> NativeResolveRequest<'a> {
+        NativeResolveRequest {
+            title: &self.title,
+            alt_titles: &self.alt_titles,
+            episode: &self.episode,
+            mode: &self.mode,
+            quality,
+            expected_count: self.episode_count,
+            year: self.year,
+            subtype: self.subtype.as_deref(),
+            version: None,
+        }
+    }
+}
+
 // `deserialize_alt_titles`, `deserialize_loose_bool`, and the
 
 /// Update Continue Watching on a play-cache hit.
@@ -323,17 +341,7 @@ where
     // bounded probing, episode-to-master resolution. The subprocess never runs on the
     // play path — the -S index handoff it required is the coupling
     // the provider change broke.
-    let request = NativeResolveRequest {
-        title: &args.title,
-        alt_titles: &args.alt_titles,
-        episode: &args.episode,
-        mode: &args.mode,
-        quality,
-        expected_count: args.episode_count,
-        year: args.year,
-        subtype: args.subtype.as_deref(),
-        version: None,
-    };
+    let request = args.native_request(quality);
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider
     // that accepts connections but stalls every request must not

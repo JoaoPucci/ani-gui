@@ -247,6 +247,23 @@ pub fn cache_key(
     format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}")
 }
 
+/// [`cache_key`] for a request naming the version it plays
+/// ([`crate::commands::play::PlayArgs::version`]).
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn cache_key_for_version(
+    title: &str,
+    mode: &str,
+    quality: &str,
+    episode: &str,
+    year: Option<u32>,
+    episode_count: Option<u32>,
+    subtype: Option<&str>,
+    _version: Option<crate::commands::play_native_versions::VersionKind>,
+) -> String {
+    cache_key(title, mode, quality, episode, year, episode_count, subtype)
+}
+
 /// Look up a cached resolution. Returns `Ok(None)` on miss or expired.
 /// The HEAD-validation step is the caller's responsibility — this
 /// helper only handles the SQLite read + JSON parse.

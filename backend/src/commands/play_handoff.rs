@@ -8,7 +8,7 @@
 use crate::app::AppState;
 use crate::commands::external_player::LaunchArgs;
 use crate::commands::play::PlayArgs;
-use crate::commands::play_native_resolve::{NativeResolveRequest, NativeResolved};
+use crate::commands::play_native_resolve::NativeResolved;
 use crate::config::{read_config, Config};
 use crate::error::Result;
 
@@ -46,17 +46,7 @@ pub async fn resolve_launch_args(
     let quality = args.quality.as_deref().unwrap_or("best");
     let cfg = read_config(&state.config_path).unwrap_or_default();
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
-    let request = NativeResolveRequest {
-        title: &args.title,
-        alt_titles: &args.alt_titles,
-        episode: &args.episode,
-        mode: &args.mode,
-        quality,
-        expected_count: args.episode_count,
-        year: args.year,
-        subtype: args.subtype.as_deref(),
-        version: None,
-    };
+    let request = args.native_request(quality);
     let at_start = crate::commands::availability::RowAtStart::read(
         state,
         args.kitsu_id.as_deref(),
