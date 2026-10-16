@@ -80,6 +80,7 @@ export function playArgsFor(input: {
 	quality: string;
 	show: KitsuAnimeRef | null;
 	kitsuId: string | undefined;
+	prefetch?: boolean;
 }): PlayArgs {
 	const args: PlayArgs = {
 		title: input.title,
@@ -93,4 +94,39 @@ export function playArgsFor(input: {
 	};
 	if (input.kitsuId !== undefined) args.kitsu_id = input.kitsuId;
 	return args;
+}
+
+/** Stub. */
+export function playMode(config: { mode: string } | null | undefined): 'sub' | 'dub' {
+	void config;
+	return 'sub';
+}
+
+/** Stub. */
+export function playQuality(config: { quality: string } | null | undefined): string {
+	void config;
+	return '';
+}
+
+/** Stub. */
+export function recordPlayed(
+	input: {
+		args: PlayArgs;
+		showId: string;
+		episode: number;
+		show: KitsuAnimeRef | null;
+		mirror: boolean;
+	},
+	deps: {
+		markWatched: (args: PlayArgs) => Promise<void>;
+		syncTrackers: (
+			kitsuId: string,
+			episode: number,
+			seriesTotal: number | null,
+			seriesFinished: boolean
+		) => Promise<void>;
+	}
+): void {
+	void input;
+	void deps;
 }

@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { altTitlesFromKitsu, type KitsuAnimeRef } from '$lib/api';
-import { claimPlay, playArgsFor, runOwnedPlay } from './owned-play';
+import {
+	claimPlay,
+	playArgsFor,
+	playMode,
+	playQuality,
+	recordPlayed,
+	runOwnedPlay
+} from './owned-play';
 
 /** A route's visit counter, as the pages keep it: it advances on every
  *  change of the show id, including a round trip back. */
@@ -245,5 +252,85 @@ describe('playArgsFor', () => {
 			kitsuId: '42'
 		});
 		expect(args).toMatchObject({ episode_count: null, year: null, subtype: null });
+	});
+});
+
+describe('playArgsFor — warms', () => {
+	it('marks a warm as a prefetch, which records no Continue Watching', () => {
+		const args = playArgsFor({
+			title: 'Show',
+			episode: 3,
+			mode: 'sub',
+			quality: 'best',
+			show: null,
+			kitsuId: '42',
+			prefetch: true
+		});
+		expect(args.prefetch).toBe(true);
+	});
+
+	it('leaves a click unmarked', () => {
+		const args = playArgsFor({
+			title: 'Show',
+			episode: 3,
+			mode: 'sub',
+			quality: 'best',
+			show: null,
+			kitsuId: '42'
+		});
+		expect('prefetch' in args).toBe(false);
+	});
+});
+
+describe('playMode / playQuality', () => {
+	it('reads anything but dub as sub, and a missing quality as best', () => {
+		expect(playMode({ mode: 'dub' })).toBe('dub');
+		expect(playMode({ mode: 'sub' })).toBe('sub');
+		expect(playMode({ mode: 'weird' })).toBe('sub');
+		expect(playMode(null)).toBe('sub');
+		expect(playQuality({ quality: '720' })).toBe('720');
+		expect(playQuality(null)).toBe('best');
+	});
+});
+
+describe('recordPlayed', () => {
+	const show = { episode_count: 12, status: 'finished' } as unknown as KitsuAnimeRef;
+	const args = { title: 'Show', episode: '5', mode: 'sub', quality: 'best' } as const;
+
+	it('stamps the watch and mirrors it to the trackers for the clicked show', async () => {
+		const markWatched = vi.fn(async () => {});
+		const syncTrackers = vi.fn(async () => {});
+		recordPlayed(
+			{ args, showId: '42', episode: 5, show, mirror: true },
+			{ markWatched, syncTrackers }
+		);
+		expect(markWatched).toHaveBeenCalledWith(args);
+		expect(syncTrackers).toHaveBeenCalledWith('42', 5, 12, true);
+	});
+
+	it('mirrors nothing for a guessed match', () => {
+		const syncTrackers = vi.fn(async () => {});
+		recordPlayed(
+			{ args, showId: '42', episode: 5, show, mirror: false },
+			{ markWatched: vi.fn(async () => {}), syncTrackers }
+		);
+		expect(syncTrackers).not.toHaveBeenCalled();
+	});
+
+	it('swallows a failed stamp or mirror — both are best-effort', async () => {
+		const markWatched = vi.fn(async () => {
+			throw new Error('down');
+		});
+		const syncTrackers = vi.fn(async () => {
+			throw new Error('down');
+		});
+		expect(() =>
+			recordPlayed(
+				{ args, showId: '42', episode: 5, show: null, mirror: true },
+				{ markWatched, syncTrackers }
+			)
+		).not.toThrow();
+		await Promise.resolve();
+		expect(syncTrackers).toHaveBeenCalledWith('42', 5, null, false);
 	});
 });
