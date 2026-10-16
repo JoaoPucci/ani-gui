@@ -365,3 +365,52 @@ async fn a_dead_listing_inside_a_refused_pool_is_no_refusal_by_name() {
         );
     }
 }
+
+/// A pool whose verdict is no refusal can still hold a listing that
+/// could have won and answered not-found: "The Show" dead beside a live
+/// "The Show" seven episodes long against three. That listing may be
+/// the show's, so the pool is never the clean miss, and a refusal by
+/// name in another alias's pool is no refusal by name either — with a
+/// count, and without one, where the dead listing is the exact title.
+#[tokio::test]
+async fn a_dead_listing_in_any_pool_is_never_a_clean_miss_nor_a_refusal_by_name() {
+    let refused: (&str, Pool) = ("refused", Pool::Hits(&[("the-show-77", "Some Other")]));
+    for (label, pool, expected) in [
+        (
+            "with a count",
+            Pool::Hits(&[("ghost-1", "The Show"), ("the-show-99", "The Show")]),
+            Some(3),
+        ),
+        (
+            "without a count",
+            Pool::Hits(&[("ghost-1", "The Show")]),
+            None,
+        ),
+    ] {
+        let alone = scripted(&[("the show", pool)]);
+        let ne = pick_native_walk(&alone, "the show", &[], expected, None, None)
+            .await
+            .expect_err("nothing picked");
+        assert!(
+            !ne.clean_miss,
+            "{label}: a dead listing that could have won is no clean miss"
+        );
+
+        let beside = scripted(&[("the show", pool), refused]);
+        let ne = pick_native_walk(
+            &beside,
+            "the show",
+            &["refused".to_string()],
+            expected,
+            None,
+            None,
+        )
+        .await
+        .expect_err("nothing picked");
+        assert!(!ne.clean_miss, "{label}");
+        assert!(
+            !ne.refused_by_name,
+            "{label}: the dead listing may have been the show's"
+        );
+    }
+}
