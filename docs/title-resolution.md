@@ -376,6 +376,7 @@ The case table the rule was chosen from, measured on 117 AniList entries against
 | 166477 Megami no Café Terrace 2, 163151 High Card 2 | 12, 12 | 1–24, 1–25 | 1–12 | 0 | 0 | unconfirmed, past the count; Kitsu untitled | refuse |
 | 98444 Yuru Camp△ | 12 | 1–12 | 1–12 | 12 | 0 | season 3's (the same listing as the next row) | refuse |
 | 155908 Yuru Camp△ 3 | 12 | 1–12 | 1–12 | 12 | 12 | ✓ | keep |
+| MAL 9656 Kimi ni Todoke 2nd Season † | 13 | 1–25 | 1–12 | 12 | 0 | season 1's; refused by the count too where Kitsu has no titles (25 past 13) | refuse (Kitsu has every still) |
 | 4081 Natsume Yuujinchou | 13 | 1–12 | 1–13 | 12 | 0 | not season 1's | refuse |
 | 849 The Melancholy of Haruhi Suzumiya (2006) | 14 | 1–28 | 1–14 | 14 | 0 | the 2009 chronological order, not the 2006 broadcast order Kitsu numbers | refuse |
 | 5680 K-On! | 13 | 1–14 | 1–13 | 0 | 0 | unconfirmed, listing untitled ("Episode 1") | refuse |
