@@ -53,3 +53,10 @@ export function parseHistoryEpisode(raw: string | null | undefined): number | nu
 	const n = Number(lead[1]);
 	return n > 0 ? n : null;
 }
+
+/** Stub: how many whole episodes are among `tiles`. */
+export function wholeEpisodeCount(
+	tiles: readonly { number: number | null; relative_number: number | null }[]
+): number {
+	return tiles.length;
+}

@@ -448,3 +448,12 @@ describe('StripPager.pageOf — a fractional extra', () => {
 		expect(new StripPager(5).pageOf(0.5)).toBe(1);
 	});
 });
+
+describe('StripPager.episodeChanged — a recap before episode 1', () => {
+	it('follows playback onto 0.5 like any other episode', () => {
+		// 0.5 is on page 1; from episode 6 on page 2, moving to it must
+		// take the strip to page 1, as moving to episode 1 does.
+		const pager = settledAt(6);
+		expect(pager.episodeChanged(0.5)).toEqual({ fetch: true, page: 1, gen: 2 });
+	});
+});

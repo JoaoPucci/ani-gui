@@ -4,7 +4,8 @@ import {
 	nextEpisode,
 	parseEpisodeNumber,
 	parseHistoryEpisode,
-	previousEpisode
+	previousEpisode,
+	wholeEpisodeCount
 } from './episode-number';
 
 describe('parseEpisodeNumber', () => {
@@ -73,5 +74,21 @@ describe('parseHistoryEpisode', () => {
 		for (const raw of [null, undefined, '', 'abc', '0', '-1', '0-3']) {
 			expect(parseHistoryEpisode(raw), String(raw)).toBeNull();
 		}
+	});
+});
+
+describe('wholeEpisodeCount', () => {
+	it('counts the whole episodes on a page, not the extras beside them', () => {
+		const tiles = [0.5, 1, 2, 3, 4, 5, 5.5].map((number) => ({ number, relative_number: null }));
+		expect(wholeEpisodeCount(tiles)).toBe(5);
+	});
+
+	it('reads relative_number where number is missing', () => {
+		expect(
+			wholeEpisodeCount([
+				{ number: null, relative_number: 3 },
+				{ number: null, relative_number: null }
+			])
+		).toBe(1);
 	});
 });

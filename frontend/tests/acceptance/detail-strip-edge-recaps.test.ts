@@ -12,6 +12,7 @@ import { mount, unmount } from 'svelte';
 import { API_BASE, server } from './setup';
 import { page, setParams } from './page-state.svelte';
 import { appConfig, kitsuRef } from './home-handlers';
+import { m } from '../../src/lib/paraglide/messages';
 
 vi.mock('$app/state', () => ({
 	get page() {
@@ -87,5 +88,9 @@ describe('detail route — recaps at the edges of a grid page', () => {
 			'the 12.5 tile on page 1'
 		);
 		expect(target.querySelector('li[data-ep-num="0.5"]')).not.toBeNull();
+		// The range counts episodes, not the recaps beside them.
+		expect(target.textContent).toContain(
+			m.detail_episodes_range_pagination({ epStart: '1', epEnd: '12', total: '24' })
+		);
 	});
 });
