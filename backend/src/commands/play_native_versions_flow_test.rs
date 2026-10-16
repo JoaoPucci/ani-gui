@@ -263,3 +263,64 @@ fn a_session_built_from_a_resolve_carries_its_versions() {
     assert_eq!(resp.versions, both_versions());
     assert_eq!(resp.version, Some(VersionKind::Uncensored));
 }
+
+/// "The Show" listed twice, three episodes each, dubbed only in the
+/// plain copy: every row carries sub, only the plain copy's carry dub,
+/// and episode 2 streams in each mode its copy carries.
+fn dubbed_plain_copy() -> TableProvider {
+    let table = two_copies().stream(1002, "dub", PLAIN).stream_from(
+        2002,
+        "dub",
+        crate::scraper::table_provider::Answer::fails(|| crate::error::AniError::NoResults),
+    );
+    [1001, 1002, 1003, 2001, 2002, 2003]
+        .into_iter()
+        .fold(table, |t, row| {
+            t.mode(row, "sub", true).mode(row, "dub", row < 2000)
+        })
+}
+
+async fn resolve_in(
+    provider: &TableProvider,
+    mode: &str,
+    version: Option<VersionKind>,
+) -> crate::commands::play_native_resolve::NativeResolved {
+    resolve_native(
+        provider,
+        NativeResolveRequest {
+            title: "The Show",
+            alt_titles: &[],
+            episode: "2",
+            mode,
+            quality: "best",
+            expected_count: Some(3),
+            year: Some(YEAR),
+            subtype: Some("TV"),
+            version,
+        },
+        &mut |_| {},
+    )
+    .await
+    .expect("resolved")
+}
+
+#[tokio::test]
+async fn a_mode_only_the_plain_copy_carries_plays_from_it() {
+    // The uncensored copy is the default, and it has no dub: the
+    // resolve plays the dub from the copy that carries one rather than
+    // answering that the episode has none.
+    let provider = dubbed_plain_copy();
+    for asked in [
+        None,
+        Some(VersionKind::Uncensored),
+        Some(VersionKind::Standard),
+    ] {
+        let got = resolve_in(&provider, "dub", asked).await;
+        assert_eq!(got.slug, key("the-show-1"), "{asked:?}");
+        assert_eq!(got.master_url, PLAIN, "{asked:?}");
+        assert_eq!(got.version, Some(VersionKind::Standard), "{asked:?}");
+    }
+    // In a mode every copy carries, the version asked for plays.
+    let got = resolve_in(&provider, "sub", None).await;
+    assert_eq!(got.slug, key("the-show-2"));
+}

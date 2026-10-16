@@ -119,3 +119,58 @@ fn a_row_probed_before_versions_is_not_read() {
         "the key must have moved past v19: {current}"
     );
 }
+
+/// [`two_copies`], dubbed only in the plain copy.
+fn dubbed_plain_copy() -> Arc<TableProvider> {
+    let table = Arc::try_unwrap(two_copies()).unwrap_or_else(|_| unreachable!());
+    Arc::new(
+        [1001, 1002, 1003, 2001, 2002, 2003]
+            .into_iter()
+            .fold(table, |t, row| t.mode(row, "dub", row < 2000)),
+    )
+}
+
+#[tokio::test]
+async fn a_mode_only_one_version_carries_is_available_and_says_which() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    state.providers.set_stub(dubbed_plain_copy());
+    let dub = AvailabilityArgs {
+        mode: "dub".into(),
+        ..args()
+    };
+    let got = check_availability(&state, &dub).await.expect("answered");
+    assert!(got.available, "the plain copy carries a dub");
+    assert_eq!(got.episode_count, Some(3));
+    let modes: Vec<(VersionKind, Option<bool>)> =
+        got.versions.iter().map(|v| (v.kind, v.has_mode)).collect();
+    assert_eq!(
+        modes,
+        vec![
+            (VersionKind::Standard, Some(true)),
+            (VersionKind::Uncensored, Some(false)),
+        ]
+    );
+    // Sub, which both carry.
+    let sub = check_availability(&state, &args()).await.expect("answered");
+    let modes: Vec<Option<bool>> = sub.versions.iter().map(|v| v.has_mode).collect();
+    assert_eq!(modes, vec![Some(true), Some(true)]);
+}
+
+#[tokio::test]
+async fn a_mode_no_version_carries_is_absent() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    let table = Arc::try_unwrap(two_copies()).unwrap_or_else(|_| unreachable!());
+    state.providers.set_stub(Arc::new(
+        [1001, 1002, 1003, 2001, 2002, 2003]
+            .into_iter()
+            .fold(table, |t, row| t.mode(row, "dub", false)),
+    ));
+    let dub = AvailabilityArgs {
+        mode: "dub".into(),
+        ..args()
+    };
+    let got = check_availability(&state, &dub).await.expect("answered");
+    assert!(!got.available);
+}
