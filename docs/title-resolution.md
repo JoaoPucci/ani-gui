@@ -129,7 +129,7 @@ Without a count, a pool from which the title rule dropped a hit it refuses is ne
 
 With no W, nothing is cut. A P is never picked, in any row. A refused candidate is never picked, whatever the table says of it. An L, an F or a P is another entry of the same show, as the season before the sequel guard drops is: a pool rejected after one of them is scored out is a clean miss, as it would be without it. Only a refusal by title, which judges whether a listing is the show at all, keeps a pool from being one.
 
-The pools each row answers, E = 12:
+The pools each row answers, E = 12 unless the row states the entry's count:
 
 | Entry | Pool | Row | Picked |
 |---|---|---|---|
@@ -238,7 +238,7 @@ The pools each row answers, E = 12:
 | Show: Arc (12, 2016) | "Other" 12, its page naming 2016 | dated: the year and the count vouch, as for every dated entry | Other |
 | Show: Arc (12, 2016) | "Other" 12, its page naming no year | dated: taken on its count, as before this rule | Other |
 | Show: Arc (no count, no year) | "Other" 12 | countless: nothing vouches, the clean miss, as before | nothing |
-| Tsubu★Doll (5, no year) | "Tsugu Tsugumomo" 12, a two-episode OVA, seven others | the OVA sits within the tolerance and nothing names it: refused | nothing |
+| Tsubu★Doll (5, no year, OVA) | a TV series (ruled out by format), a two-episode OVA, seven others | the OVA sits within the tolerance and nothing names it: refused | nothing |
 | Yi Ren Zhi Xia 6th Season (26, no year) | "The Outcast 5th Season" 12, "The Outcast 6" 26, a movie 1, a special 2 | "The Outcast 6" is named by the alias "The Outcast 6th Season" | The Outcast 6 |
 
 Names are compared as written: the entry's titles have to carry the provider's name for the show for its broad listing to be read at all, which Kitsu's titles do for every recorded pool ("Gintama.: Silver Soul Arc" among Shirogane no Tamashii-hen's). The title rule that admits a candidate weighs only the divisions a title ends on and never its name, because the provider answers an alias with titles that share no words with the canonical one ("My Star" for "[Oshi no Ko]").

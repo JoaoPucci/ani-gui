@@ -2734,8 +2734,10 @@ async fn walk_under_anilist_year(id: &str) -> std::result::Result<PickedShow, Na
 /// catalogue that has a count and more than one episode — and what the
 /// walk makes of the ones hianime lists or refuses rightly: two are
 /// listed under a name one of the entry's titles carries, and four it
-/// does not list are the clean miss, every pool's hits off by more
-/// than the count tolerance.
+/// does not list are the clean miss, every pool empty (Cubistar), its
+/// hits ruled out by format before any listing is read (Arpiel's two
+/// OVAs for a TV entry, Jidou Bungaku Library's TV series and film for
+/// an OVA), or off by more than the count tolerance (Astro Boy Reboot).
 const UNDATED_AUDITED_RIGHT: &[Expectation] = &[
     ("47150", Some(("naruto-shinsaku-anime-1984", 4))), // NARUTO×NINKU, listed as "Naruto (Shinsaku Anime)"
     ("50237", Some(("the-outcast-season-6-3813", 26))), // Yi Ren Zhi Xia 6th Season, "The Outcast 6"
