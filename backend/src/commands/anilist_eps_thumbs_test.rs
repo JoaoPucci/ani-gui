@@ -11,7 +11,7 @@ fn listing(pairs: &[(u32, &str)]) -> StreamingListing {
                     *n,
                     crate::meta::anilist_streaming_eps::StreamingEntry {
                         title: String::new(),
-                        thumbnail: (*url).to_string(),
+                        thumbnail: Some((*url).to_string()),
                     },
                 )
             })

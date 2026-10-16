@@ -28,7 +28,10 @@ fn parse_streaming_episodes_response_extracts_ep_num_and_url() {
     let got = parse_streaming_episodes_response(body).expect("parses");
     let nums: Vec<u32> = got.entries.keys().copied().collect();
     assert_eq!(nums, vec![1, 2, 3]);
-    assert!(got.entries[&1].thumbnail.contains("abc_full.jpg"));
+    assert!(got.entries[&1]
+        .thumbnail
+        .as_deref()
+        .is_some_and(|t| t.contains("abc_full.jpg")));
     assert_eq!(
         got.entries[&1].title,
         "You Guys!! Do You Even Have a Gintama? (Part 1)"
@@ -157,8 +160,14 @@ fn parse_streaming_episodes_response_keeps_the_first_entry_per_episode() {
     let got = parse_streaming_episodes_response(body).expect("parses");
     assert_eq!(got.entries.len(), 2);
     assert_eq!(got.entries[&1].title, "sub");
-    assert!(got.entries[&1].thumbnail.contains("1-sub"));
-    assert!(got.entries[&2].thumbnail.contains("2.jpg"));
+    assert!(got.entries[&1]
+        .thumbnail
+        .as_deref()
+        .is_some_and(|t| t.contains("1-sub")));
+    assert!(got.entries[&2]
+        .thumbnail
+        .as_deref()
+        .is_some_and(|t| t.contains("2.jpg")));
 }
 
 #[test]
@@ -195,7 +204,7 @@ async fn streaming_listing_for_media_by_mal_id_posts_correct_query() {
         .await
         .expect("ok");
     assert_eq!(
-        got.entries.get(&1).map(|e| e.thumbnail.as_str()),
+        got.entries.get(&1).and_then(|e| e.thumbnail.as_deref()),
         Some("https://x.cdn/1.jpg")
     );
 }
@@ -250,7 +259,7 @@ async fn streaming_listing_for_media_by_anilist_id_queries_media_by_id() {
         .await
         .expect("ok");
     assert_eq!(
-        got.entries.get(&2).map(|e| e.thumbnail.as_str()),
+        got.entries.get(&2).and_then(|e| e.thumbnail.as_deref()),
         Some("https://x.cdn/2.jpg")
     );
 }
@@ -301,7 +310,7 @@ async fn streaming_listing_for_ids_retries_by_anilist_id_when_anilist_lacks_the_
         .await
         .expect("ok");
     assert_eq!(
-        got.entries.get(&3).map(|e| e.thumbnail.as_str()),
+        got.entries.get(&3).and_then(|e| e.thumbnail.as_deref()),
         Some("https://x.cdn/3.jpg")
     );
 }
@@ -352,7 +361,7 @@ proptest::proptest! {
         for (n, url) in &pairs {
             want.entry(*n).or_insert(StreamingEntry {
                 title: url.clone(),
-                thumbnail: url.clone(),
+                thumbnail: Some(url.clone()),
             });
         }
         proptest::prop_assert_eq!(got.entries, want);

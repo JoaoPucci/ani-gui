@@ -43,8 +43,9 @@ const STREAMING_EPS_BY_ID_GQL: &str = "query StreamingEpsById($id: Int!) { \
 pub struct StreamingEntry {
     /// The entry's title after its `Episode N` prefix.
     pub title: String,
-    /// The still's URL.
-    pub thumbnail: String,
+    /// The still's URL; `None` where AniList lists the episode
+    /// without one.
+    pub thumbnail: Option<String>,
 }
 
 /// What AniList lists as a show's streaming episodes, keyed by the

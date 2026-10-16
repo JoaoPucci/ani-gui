@@ -147,9 +147,9 @@ pub fn merge_thumbs(eps: Vec<KitsuEpisode>, anilist: &StreamingListing) -> Vec<K
                 return ep;
             }
             let Some(num) = ep.number else { return ep };
-            if let Some(entry) = anilist.entries.get(&num) {
+            if let Some(url) = anilist.entries.get(&num).and_then(|e| e.thumbnail.as_ref()) {
                 ep.thumbnail = Some(KitsuEpisodeThumbnail {
-                    original: Some(entry.thumbnail.clone()),
+                    original: Some(url.clone()),
                 });
             }
             ep

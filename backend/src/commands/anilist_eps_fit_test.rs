@@ -131,7 +131,7 @@ fn listing(episodes: Option<u32>, finished: bool, titles: &[(u32, &str)]) -> Str
                     *n,
                     StreamingEntry {
                         title: (*t).to_string(),
-                        thumbnail: format!("https://cr.cdn/{n}.jpg"),
+                        thumbnail: Some(format!("https://cr.cdn/{n}.jpg")),
                     },
                 )
             })

@@ -60,7 +60,7 @@ pub fn parse_streaming_episodes_response(body: &[u8]) -> Result<StreamingListing
         };
         listing.entries.entry(num).or_insert(StreamingEntry {
             title: rest.to_string(),
-            thumbnail,
+            thumbnail: Some(thumbnail),
         });
     }
     Ok(listing)
