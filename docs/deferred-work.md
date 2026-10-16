@@ -339,19 +339,6 @@ starting it, and delete it when you find it done.
   nothing stores, so closing one means storing it, and the change that
   made removal thorough chose not to add new records.
 
-- **A seventh download at once waits, unannounced, for a connection.**
-  A download reports its progress over a stream of its own, open for
-  the whole download, and each class of renderer traffic has its own
-  loopback origin
-  ([`architecture.md`](./architecture.md#one-loopback-origin-per-class-of-traffic)),
-  so downloads share six connections among themselves and take none
-  from the player or the API. Past six at once, the next one's stream
-  waits in Chromium for one of them to finish, and the backend does not
-  start that download until it arrives; the dock shows the row as
-  started all the while. One progress channel for every download would
-  end the limit. It waited because only other downloads wait on it
-  now.
-
 ## Interface
 
 - **Localised content fetch** — synopsis and episode titles.
