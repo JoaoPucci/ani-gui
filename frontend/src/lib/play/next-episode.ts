@@ -1,3 +1,5 @@
+import { nextEpisode } from './episode-number';
+
 /**
  * Pick the episode the player should jump to when the user clicks
  * "Continue" — same rules across the home Continue Watching card and
@@ -10,7 +12,8 @@
  *      Detail page's "Play episode 1" branch. Home cards never hit
  *      this in practice (the card only renders for entries with
  *      history), but the helper has to answer to both call sites.
- *   2. next = lastWatched + 1.
+ *   2. next = the episode after lastWatched (a fractional extra goes
+ *      on to the whole episode above it: 7.5 → 8).
  *   3. If a cap is known and next would exceed it → lastWatched
  *      (Replay branch). Single-video shows (movies, finished 1-ep
  *      OVAs) fall through here naturally: lastWatched=1, cap=1 →
@@ -26,7 +29,7 @@
  */
 export function pickNextEpisode(lastWatched: number | null, episodeCap: number | null): number {
 	if (lastWatched === null || !Number.isFinite(lastWatched) || lastWatched < 1) return 1;
-	const next = lastWatched + 1;
+	const next = nextEpisode(lastWatched);
 	if (episodeCap !== null && next > episodeCap) return lastWatched;
 	return next;
 }

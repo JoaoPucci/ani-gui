@@ -83,6 +83,7 @@
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
+	import { parseEpisodeNumber } from '$lib/play/episode-number';
 	import { markStarted, readPosition } from '$lib/play/watch-position';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -1217,7 +1218,7 @@
 		// user watched through the aired episodes gets Replay of the
 		// last aired one instead of Continue into an unaired episode
 		// (Codex P2 #3565649454).
-		const last = resumeEntry ? parseInt(resumeEntry.ep_no, 10) : null;
+		const last = resumeEntry ? parseEpisodeNumber(resumeEntry.ep_no) : null;
 		return pickResumeEpisode(last, airedCap(episodeCap, airing), leftPartWay(last));
 	}
 
@@ -1239,7 +1240,7 @@
 			isSingleVideo: singleVideo,
 			resumeEntry,
 			defaultEpisode: defaultEpisode(),
-			leftPartWay: leftPartWay(resumeEntry ? parseInt(resumeEntry.ep_no, 10) : null)
+			leftPartWay: leftPartWay(resumeEntry ? parseEpisodeNumber(resumeEntry.ep_no) : null)
 		});
 		switch (state.kind) {
 			case 'watch':
