@@ -7,7 +7,7 @@ import {
 	SEEK_GRACE_MS,
 	STEP_DOWN_COOLDOWN_MS
 } from './quality-governor';
-import type { LadderLevel, QualityTarget } from './quality-ladder';
+import type { LadderLevel, QualityPinChoice, QualityTarget } from './quality-ladder';
 
 const MASTER: LadderLevel[] = [
 	{ height: 360, bitrate: 800_000 },
@@ -17,7 +17,11 @@ const MASTER: LadderLevel[] = [
 const BEST: QualityTarget = { kind: 'best' };
 const FULL = HEALTHY_BUFFER_S + 5;
 
-function governor(target: QualityTarget = BEST, pin: number | null = null, levels = MASTER) {
+function governor(
+	target: QualityTarget = BEST,
+	pin: QualityPinChoice | null = null,
+	levels = MASTER
+) {
 	return new QualityGovernor(levels, target, pin);
 }
 
@@ -40,6 +44,14 @@ describe('QualityGovernor — the start', () => {
 		expect(exact.start()?.level).toBe(1);
 		expect(exact.isPinned).toBe(true);
 		expect(governor(BEST, 480).start()?.level).toBe(0);
+	});
+
+	it('a pin by bandwidth rank starts at that rank from the top, or the lowest past the end', () => {
+		const top = governor(BEST, { rank: 0 });
+		expect(top.start()?.level).toBe(2);
+		expect(top.isPinned).toBe(true);
+		expect(governor(BEST, { rank: 1 }).start()?.level).toBe(1);
+		expect(governor(BEST, { rank: 9 }).start()?.level).toBe(0);
 	});
 
 	it('leaves a stream of one level, or none, to the engine', () => {

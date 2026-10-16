@@ -269,6 +269,74 @@ describe('armQuality — trouble', () => {
 		expect(s.logs.filter((l) => l.startsWith('fragments-failed'))).toHaveLength(2);
 	});
 
+	it('an audio segment hls.js switched levels for follows the engine without counting against the video', () => {
+		// Levels with their own audio groups: hls.js leaves a level whose
+		// audio fails for one whose audio does. That is no stall of the
+		// video and no failure of its level — the governor holds the level
+		// the engine moved to, rather than stepping down on its own or
+		// putting the engine back on the broken audio.
+		const s = arm();
+		s.parse();
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(1),
+			frag: { type: 'audio', level: 0 }
+		});
+		expect(s.engine.loads).toEqual([2, 1]);
+		expect(s.logs.join('\n')).toMatch(/followed: 1080p.*720p/);
+		expect(s.logs.join('\n')).not.toMatch(/fragments-failed|held at/);
+		expect(s.lastView()?.unavailable).toEqual([]);
+		// Not a step down: healthy playback has nothing to climb back from.
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(10_000_000);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 1 } });
+		expect(s.engine.loads).toEqual([2, 1]);
+	});
+
+	it('an audio segment switch to a level the engine cannot use, or to the level held, follows nothing', () => {
+		const s = arm();
+		s.parse();
+		s.engine.emit(E.ERROR, { details: D.LEVEL_LOAD_ERROR, fatal: true, level: 1 });
+		const loads = [...s.engine.loads];
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(1),
+			frag: { type: 'audio', level: 0 }
+		});
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(s.engine.manual),
+			frag: { type: 'subtitle', level: 0 }
+		});
+		expect(s.engine.loads).toEqual(loads);
+	});
+
+	it('a switched append error with no segment is a failure of the level it names', () => {
+		const s = arm();
+		s.parse();
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_APPEND_ERROR,
+			fatal: false,
+			level: 1,
+			errorAction: SWITCHED(0)
+		});
+		// Level 1 is not the one held: the held level is put back.
+		expect(s.engine.loads).toEqual([2, 2]);
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_APPEND_ERROR,
+			fatal: false,
+			level: 2,
+			errorAction: SWITCHED(1)
+		});
+		expect(s.engine.loads).toEqual([2, 2, 1]);
+	});
+
 	it("an audio rendition's segments failing do not move the video level", () => {
 		const s = arm();
 		s.parse();
@@ -394,14 +462,30 @@ describe('armQuality — the viewer chooses', () => {
 		expect(qualityPin.get()).toBe(360);
 	});
 
-	it('a level with no height pins nothing, and a refused pick changes nothing', () => {
-		const s = arm('best', [
+	it('a level whose playlist lists no height is pinned by its bandwidth rank from the top', () => {
+		const unnamed = [
+			{ height: 0, bitrate: 2_000_000 },
 			{ height: 0, bitrate: 800_000 },
-			{ height: 0, bitrate: 2_000_000 }
-		]);
+			{ height: 0, bitrate: 5_000_000 }
+		];
+		const s = arm('best', unnamed);
 		s.parse();
 		s.control.pick(0);
 		expect(qualityPin.get()).toBeNull();
+		expect(qualityPin.choice()).toEqual({ rank: 1 });
+		// The next stream starts at the level of that rank, pinned.
+		const next = arm('best', unnamed);
+		next.parse();
+		expect(next.engine.loads).toEqual([0]);
+		expect(next.lastView()?.pinned).toBe(0);
+		// A height picked later replaces the rank.
+		const named = arm();
+		named.parse();
+		named.control.pick(1);
+		expect(qualityPin.choice()).toBe(720);
+	});
+
+	it('a refused pick changes nothing', () => {
 		const t = arm();
 		t.parse();
 		t.control.pick(9);
