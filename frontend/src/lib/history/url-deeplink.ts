@@ -1,9 +1,9 @@
 /**
  * Pure helpers for the `/anime/[id]` page's URL deep-link effects.
- * Continue Watching cards link to `/anime/[id]?page=N&ep=M` so the
- * detail page can land directly on the right episode page with the
- * right tile highlighted; this module owns the parsing + decision
- * rules so the `$effect` blocks in the component become thin glue.
+ * The detail page opens on the episode page a `?page=N` names (no
+ * link in the app builds one now; a bookmarked or pasted URL can
+ * carry it); this module owns the parsing + decision rules so the
+ * `$effect` blocks in the component become thin glue.
  *
  * Companion to `lib/history/nav-depth.ts` — same extraction pattern.
  */

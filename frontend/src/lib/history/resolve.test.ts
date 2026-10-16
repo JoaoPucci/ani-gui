@@ -5,7 +5,6 @@ import {
 	isMusicSubtype,
 	pickKitsuMatch,
 	resolveHistoryEntry,
-	resumeQueryString,
 	titlesPlausiblySameShow
 } from './resolve';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
@@ -117,14 +116,12 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		const r = resolveHistoryEntry(entry('Demon Slayer (26 episodes)', '5'), stubKitsu());
 		expect(r.displayEpisode).toBe(5);
 		expect(r.kitsuEpisode).toBe(5);
-		expect(r.uiPage).toBe(1);
 		expect(r.mappingNote).toBe('direct');
 	});
 
 	it('lands on the right UI page when the episode is past page 1', () => {
 		const r = resolveHistoryEntry(entry('One Piece (1100 episodes)', '54'), stubKitsu());
 		expect(r.kitsuEpisode).toBe(54);
-		expect(r.uiPage).toBe(Math.ceil(54 / 12));
 	});
 
 	it('still records cour metadata for callers that want to surface it', () => {
@@ -137,7 +134,6 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		expect(r.cour).toBe(2);
 		expect(r.courSize).toBe(12);
 		expect(r.kitsuEpisode).toBe(4);
-		expect(r.uiPage).toBe(1);
 	});
 
 	it('parses ordinal-season suffixes ("2nd Season", "Fourth Season") as the cour', () => {
@@ -156,7 +152,6 @@ describe('resolveHistoryEntry — direct episode mapping', () => {
 		);
 		expect(r.cour).toBe(1);
 		expect(r.kitsuEpisode).toBe(4);
-		expect(r.uiPage).toBe(1);
 	});
 });
 
@@ -165,7 +160,6 @@ describe('resolveHistoryEntry — no Kitsu match', () => {
 		const r = resolveHistoryEntry(entry('Obscure Anime (12 episodes)', '5'), null);
 		expect(r.kitsuId).toBeNull();
 		expect(r.kitsuEpisode).toBeNull();
-		expect(r.uiPage).toBe(1);
 		expect(r.displayTitle).toBe('Obscure Anime');
 		expect(r.displayEpisode).toBe(5);
 		expect(r.mappingNote).toBe('no-kitsu-match');
@@ -444,23 +438,6 @@ describe('pickKitsuMatch', () => {
 			titledCountedHit('one', 'Tiny Show Movie', 1)
 		];
 		expect(pickKitsuMatch(hits, r)?.id).toBe('thirteen');
-	});
-});
-
-describe('resumeQueryString', () => {
-	it('emits ep when a kitsu episode is set', () => {
-		const r = resolveHistoryEntry(entry('Show (12 episodes)', '4'), stubKitsu());
-		expect(resumeQueryString(r)).toBe('?ep=4');
-	});
-
-	it('emits page when the target ep is past UI page 1', () => {
-		const r = resolveHistoryEntry(entry('Show (200 episodes)', '54'), stubKitsu());
-		expect(resumeQueryString(r)).toBe(`?page=${Math.ceil(54 / 12)}&ep=54`);
-	});
-
-	it('returns empty string when neither page nor ep is meaningful', () => {
-		const r = resolveHistoryEntry(entry('Show (12 episodes)', '0'), null);
-		expect(resumeQueryString(r)).toBe('');
 	});
 });
 
