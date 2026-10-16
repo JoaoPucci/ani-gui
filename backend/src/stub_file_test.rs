@@ -3,9 +3,14 @@
 //! running when the test polls for the file — so the test can read the
 //! file while the stub is writing it.
 
-/// A shell line that writes `producer`'s output to `path`.
+/// A shell line that publishes `producer`'s output at `path` whole:
+/// written beside it, then renamed over it, so a reader finds either
+/// no file or the complete one — never one still being written.
 pub(crate) fn publish(path: &std::path::Path, producer: &str) -> String {
-    format!("{producer} > '{path}'", path = path.display())
+    format!(
+        "{producer} > '{path}.part' && mv -f '{path}.part' '{path}'",
+        path = path.display()
+    )
 }
 
 /// A file written in place is readable half-written: the redirection
