@@ -19,6 +19,7 @@ fn positive(count: u32) -> AvailabilityResponse {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     }
 }
@@ -172,6 +173,7 @@ fn negative() -> AvailabilityResponse {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     }
 }

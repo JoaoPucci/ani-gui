@@ -3,6 +3,7 @@
 //! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
 use super::*;
+use crate::commands::play_native_count_alone::unvouched_counted;
 use crate::commands::play_native_single_video::unvouched_single_videos;
 use crate::commands::play_native_title_grammar::normalized;
 
@@ -110,6 +111,11 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // play_native_single_video).
     let refused_a_fit =
         unvouched_single_videos(&mut probed_ok, expected, &needle, entry) || refused_a_fit;
+    // A count with no year fits many shows: only its name makes a
+    // candidate the entry (see play_native_count_alone). A dated
+    // entry, or one a single video long, is not read here.
+    let refused_a_fit =
+        unvouched_counted(&mut probed_ok, expected, &needle, entry, year) || refused_a_fit;
     // An empty pool splits by what killed the probes: any transport
     // death means nothing was learned (the transient Network), while
     // all-answered not-found means the pool is dead but the provider

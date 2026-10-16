@@ -150,7 +150,12 @@ use crate::proxy::MediaKind;
 // its five. A v17 row can hold the series' stream under a subtitled
 // sequel's key — taken without a count on a year the filter only
 // tolerated — or an uncut pool's pick; bumping re-resolves.
-const SCHEMA: &str = "v18";
+// v19: an entry with a count and no year takes only a hit the title
+// searched or one of its own names vouches for. A v18 row for such an
+// entry can hold another show's stream — one whose count merely fit —
+// under the entry's key, and a HEAD-passing hit would keep serving it;
+// bumping re-resolves.
+const SCHEMA: &str = "v19";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

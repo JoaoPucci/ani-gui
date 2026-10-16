@@ -43,6 +43,7 @@ fn positive_row(provider: ProviderId, cap: Option<u32>) -> AvailabilityResponse 
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider: Some(provider),
     }
 }
@@ -289,8 +290,8 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_stamped_while_it_
     let got = probe.await.expect("the probe finishes");
 
     assert!(
-        matches!(got, Err(crate::error::AniError::NoResults)),
-        "the primary's miss is the verdict the caller sees: {got:?}"
+        super::tests::unsettled(&got),
+        "the primary's miss is the verdict the caller sees, unknown and not an error: {got:?}"
     );
     let row = row_now(&state);
     assert!(row.available, "the fallback's positive row stands");
@@ -559,8 +560,8 @@ async fn a_probes_clean_miss_does_not_overwrite_a_positive_row_written_again_whi
     let got = probe.await.expect("the probe finishes");
 
     assert!(
-        matches!(got, Err(crate::error::AniError::NoResults)),
-        "the primary's miss is the verdict the caller sees: {got:?}"
+        super::tests::unsettled(&got),
+        "the primary's miss is the verdict the caller sees, unknown and not an error: {got:?}"
     );
     let row = row_now(&state);
     assert!(row.available, "the row written again stands: {row:?}");

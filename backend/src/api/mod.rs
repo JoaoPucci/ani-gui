@@ -1858,7 +1858,7 @@ mod tests {
         // Verify the reverse mapping was persisted by reading the
         // cache row directly. The frontend will read this via the
         // GET /api/allmanga-kitsu-map/:show_id endpoint.
-        let key = "allmanga2kitsu:v6:vDTSJHSpYnrkZnAvG";
+        let key = "allmanga2kitsu:v7:vDTSJHSpYnrkZnAvG";
         let body = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(body, Some("11061".to_string()));
     }
@@ -2027,7 +2027,7 @@ mod tests {
         // the mapping write was suppressed. Surface decisions stay in
         // tracing::warn for diagnostics.
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let key = "allmanga2kitsu:v6:D5ksnsKtYAzzFXeSp";
+        let key = "allmanga2kitsu:v7:D5ksnsKtYAzzFXeSp";
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored, None,
@@ -2123,7 +2123,7 @@ mod tests {
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let stored =
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v6:seq-show").expect("get");
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v7:seq-show").expect("get");
         assert_eq!(
             stored,
             Some("99001".to_string()),
@@ -2214,7 +2214,7 @@ mod tests {
             .expect("oneshot");
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let stored =
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v6:seq2-show").expect("get");
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v7:seq2-show").expect("get");
         assert_eq!(
             stored,
             Some("99002".to_string()),
@@ -2289,7 +2289,7 @@ mod tests {
             .expect("oneshot");
 
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let key = "allmanga2kitsu:v6:D5ksnsKtYAzzFXeSp";
+        let key = "allmanga2kitsu:v7:D5ksnsKtYAzzFXeSp";
         let stored = crate::cache::meta_cache_get(&pool, key).expect("get");
         assert_eq!(
             stored,
@@ -2402,7 +2402,7 @@ mod tests {
             "a watch that never reached the file must not be stamped"
         );
         assert_eq!(
-            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v6:vDTSJHSpYnrkZnAvG")
+            crate::cache::meta_cache_get(&pool, "allmanga2kitsu:v7:vDTSJHSpYnrkZnAvG")
                 .expect("get"),
             None,
             "nor mapped"
@@ -3091,5 +3091,60 @@ mod tests {
             r.status() != StatusCode::NOT_FOUND,
             "/api/availability route missing"
         );
+    }
+
+    /// A probe that reaches the provider and comes back without a
+    /// verdict — here an entry with a count and no year whose only
+    /// fitting hit is refused on how it is named — answers 200 with
+    /// `unsettled: true`, not 404. The renderer reads it as unknown and
+    /// keeps the card and the lazy play; an error status went to its
+    /// console as a failure of a request that in fact succeeded.
+    #[tokio::test]
+    async fn post_availability_answers_an_unsettled_probe_as_a_normal_answer() {
+        use crate::scraper::provider::{BrowseHit, EpisodeRef};
+        use crate::scraper::table_provider::TableProvider;
+        let td = TempDir::new().expect("tempdir");
+        let mut state = test_app_state(&td);
+        let rows: Vec<EpisodeRef> = (1..=12u32)
+            .map(|n| EpisodeRef {
+                id: 7000 + u64::from(n),
+                number: n,
+                number2: None,
+            })
+            .collect();
+        state.providers.set_stub(Arc::new(
+            TableProvider::new()
+                .answering_as(crate::provider_set::ProviderSet::TEST_DEFAULT)
+                .search_default(vec![BrowseHit {
+                    slug: "other-7".into(),
+                    title: "Other".into(),
+                    kind: Some("TV".into()),
+                }])
+                .listing(7, rows),
+        ));
+        let router = build_api_router(Arc::new(state));
+        let r = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/availability")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"title":"Show: Arc","mode":"sub","kitsu_id":"591","episode_count":12,"subtype":"TV"}"#,
+                    ))
+                    .expect("req"),
+            )
+            .await
+            .expect("oneshot");
+        assert_eq!(
+            r.status(),
+            StatusCode::OK,
+            "an unsettled probe is a normal answer"
+        );
+        let body: serde_json::Value =
+            serde_json::from_str(&body_string(r).await).expect("a JSON answer");
+        assert_eq!(body["unsettled"], serde_json::Value::Bool(true));
+        assert_eq!(body["available"], serde_json::Value::Bool(false));
+        assert!(body["episode_count"].is_null(), "{body}");
     }
 }

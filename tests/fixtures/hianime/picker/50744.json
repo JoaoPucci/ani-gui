@@ -1,0 +1,32 @@
+{
+ "kitsu": {
+  "id": "50744",
+  "name": "Devil May Cry Season 3",
+  "canonical": "Devil May Cry Season 3",
+  "alt_titles": ["デビル メイ クライ 3"],
+  "episode_count": 8,
+  "year": null,
+  "subtype": "ONA"
+ },
+ "searches": {
+  "Devil May Cry Season 3": [
+    ["devil-may-cry-season-2-7229", "Devil May Cry Season 2", "TV"]
+  ],
+  "デビル メイ クライ 3": [
+    ["devil-may-cry-1071", "Devil May Cry", "TV"]
+  ]
+ },
+ "episodes": {
+  "devil-may-cry-season-2-7229": [
+    [101544, 1, null],
+    [101545, 2, null],
+    [101546, 3, null],
+    [101547, 4, null],
+    [101548, 5, null],
+    [101550, 6, null],
+    [101552, 7, null],
+    [101553, 8, null]
+  ]
+ },
+ "years": {}
+}

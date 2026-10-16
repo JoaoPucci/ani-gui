@@ -17,7 +17,9 @@
 //! came to rule the pick, v5 when names came to vouch for a countless
 //! or single-video pick, v6 when a countless entry stopped taking a
 //! hit its year only tolerated and the probe head's evidence came to
-//! reach as far as its five — retires the mappings before it: their
+//! reach as far as its five, v7 when an entry with a count and no year
+//! came to take only a hit named for it — retires the mappings before
+//! it: their
 //! marks then name rows nothing reads, until they expire, and the
 //! next play of a show stores a fresh mapping and mark.
 //!

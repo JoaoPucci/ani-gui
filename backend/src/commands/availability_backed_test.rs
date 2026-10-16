@@ -16,6 +16,7 @@ fn negative_row(provider: Option<crate::scraper::provider::ProviderId>) -> Avail
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
+        unsettled: false,
         provider,
     }
 }

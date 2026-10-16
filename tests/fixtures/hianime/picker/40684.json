@@ -1,0 +1,28 @@
+{
+ "kitsu": {
+  "id": "40684",
+  "name": "Ohanashi de Te Koi",
+  "canonical": "Ohanashi de Te Koi",
+  "alt_titles": ["お話でてこい"],
+  "episode_count": 5,
+  "year": null,
+  "subtype": "OVA"
+ },
+ "searches": {
+  "Ohanashi de Te Koi": [
+    ["aoi-hitomi-no-onnanoko-no-ohanashi-9267", "Aoi Hitomi no Onnanoko no Ohanashi", "SPECIAL"],
+    ["katainaka-ni-totsuidekita-ssia-musume-to-h-shimakuru-ohanashi-2166", "Katainaka ni Totsuidekita ○-ssia Musume to H Shimakuru Ohanashi", "OVA"]
+  ],
+  "お話でてこい": [
+  ]
+ },
+ "episodes": {
+  "katainaka-ni-totsuidekita-ssia-musume-to-h-shimakuru-ohanashi-2166": [
+    [33370, 1, null],
+    [33371, 2, null],
+    [33372, 3, null],
+    [33373, 4, null]
+  ]
+ },
+ "years": {}
+}

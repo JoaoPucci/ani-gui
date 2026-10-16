@@ -201,7 +201,23 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v18:"), "got {k}");
+    assert!(k.starts_with("play:v19:"), "got {k}");
+}
+
+#[test]
+fn a_row_resolved_before_a_counted_undated_entry_needed_a_name_is_not_served() {
+    // An entry with a count and no year took any hit within the count
+    // tolerance: seven of Kitsu's fourteen such entries resolved to
+    // another show's stream, and a HEAD-passing hit on such a v18 row
+    // would keep serving it — Girlfriend, Girlfriend's episode under
+    // Mo Du Zhe's key — for the row's whole lifetime.
+    let pool = pool();
+    let current = cache_key("Mo Du Zhe", "sub", "best", "1", None, Some(12), Some("ONA"));
+    let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v18:", 1);
+    assert_ne!(previous, current, "the schema must have moved past v18");
+    let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+    meta_cache_put(&pool, &previous, &body, 60).unwrap();
+    assert!(get(&pool, &current).expect("ok").is_none());
 }
 
 #[test]

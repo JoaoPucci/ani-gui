@@ -539,7 +539,13 @@ pub fn title_match_put(
 ///   an entry whose broad listing went uncut — where the title
 ///   carries no cour marker the guard could refuse it on; re-keying
 ///   lets the next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 6;
+/// - v7: an entry with a count and no year takes only a hit the title
+///   searched or one of its own names vouches for. A v6 row can bind
+///   another show's key to such an entry — Girlfriend, Girlfriend's to
+///   Mo Du Zhe, whose count it merely fit — where the title carries no
+///   cour marker the guard could refuse it on; re-keying lets the next
+///   resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 7;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
@@ -1710,6 +1716,25 @@ mod tests {
             &state.cache_pool,
             &format!("allmanga2kitsu:v5:{key}"),
             "50600",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
+    fn a_mapping_stamped_before_a_counted_undated_entry_needed_a_name_is_not_read() {
+        // An entry with a count and no year took any hit within the
+        // count tolerance, and a play stamps the picked show's key with
+        // the entry asked for: Girlfriend, Girlfriend's key bound to Mo
+        // Du Zhe, under a title the cross-cour guard has no cour to
+        // refuse on.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:girlfriend-girlfriend-560";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v6:{key}"),
+            "45637",
             60,
         )
         .expect("put");

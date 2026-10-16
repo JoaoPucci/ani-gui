@@ -20,6 +20,11 @@ struct Entry {
     alt_titles: Vec<String>,
     episode_count: Option<u32>,
     year: Option<u32>,
+    /// The premiere year AniList names for the entry where Kitsu knows
+    /// no date, when the recording was made with both walks — the
+    /// app's, and the one it would make with that year instead.
+    #[serde(default)]
+    anilist_year: Option<u32>,
     subtype: Option<String>,
 }
 
@@ -2704,5 +2709,211 @@ async fn a_subtitled_sequel_the_provider_does_not_list_is_not_played_as_its_seri
     match walk_over(site).await {
         Ok(p) => panic!("played the series: {}", p.hit.slug),
         Err(e) => assert!(e.clean_miss, "{:?}", e.error),
+    }
+}
+
+/// [`walk`] under the premiere year AniList names for the entry
+/// instead of Kitsu's, which the recording carries: what the pick
+/// makes of the same pools once that year is the one it is given.
+async fn walk_under_anilist_year(id: &str) -> std::result::Result<PickedShow, NativeError> {
+    let site = Recorded::load(id);
+    let e = &site.doc.kitsu;
+    let year = e
+        .anilist_year
+        .unwrap_or_else(|| panic!("fixture {id} names no AniList year"));
+    pick_native_walk(
+        &site,
+        &e.canonical,
+        &e.alt_titles,
+        e.episode_count,
+        Some(year),
+        e.subtype.as_deref(),
+    )
+    .await
+}
+
+/// The multi-episode entries Kitsu lists with a count and no premiere
+/// date — fourteen on 2026-10-15, the whole of its to-be-announced
+/// catalogue that has a count and more than one episode — and what the
+/// walk makes of the ones hianime lists or refuses rightly: two are
+/// listed under a name one of the entry's titles carries, and four it
+/// does not list are the clean miss, every pool empty (Cubistar), its
+/// hits ruled out by format before any listing is read (Arpiel's two
+/// OVAs for a TV entry, Jidou Bungaku Library's TV series and film for
+/// an OVA), or off by more than the count tolerance (Astro Boy Reboot).
+const UNDATED_AUDITED_RIGHT: &[Expectation] = &[
+    ("47150", Some(("naruto-shinsaku-anime-1984", 4))), // NARUTO×NINKU, listed as "Naruto (Shinsaku Anime)"
+    ("50237", Some(("the-outcast-season-6-3813", 26))), // Yi Ren Zhi Xia 6th Season, "The Outcast 6"
+    ("11576", None),                                    // Arpiel: 6 Destinies
+    ("11944", None),                                    // Astro Boy Reboot
+    ("44505", None),                                    // Cubistar
+    ("11061", None),                                    // Jidou Bungaku Library
+];
+
+#[tokio::test]
+async fn undated_entries_the_catalogue_lists_or_lacks_outright_are_picked_right() {
+    assert_picks(UNDATED_AUDITED_RIGHT).await;
+}
+
+/// Yi Ren Zhi Xia's sixth season is dated on AniList (2026) where Kitsu
+/// has no date; its listing's page names the same year, so the pick is
+/// the same with the year as without it.
+#[tokio::test]
+async fn an_undated_entry_anilist_dates_keeps_its_pick_under_that_year() {
+    let picked = walk_under_anilist_year("50237").await.expect("picked");
+    assert_eq!(picked.hit.slug, "the-outcast-season-6-3813");
+}
+
+/// Devil May Cry's third season, with a count and no date: hianime
+/// lists the first two seasons alone. The canonical search answers with
+/// the second, whose count of eight fits the entry's — refused by name,
+/// the pool is the answered dead end rather than the clean miss, since
+/// a hit the count accepted was refused on how it is written; the
+/// Japanese alias answers with the 2007 series, the entry before, which
+/// is never the entry. The walk surfaces the miss without the clean
+/// verdict, so the availability cache persists nothing for it.
+#[tokio::test]
+async fn a_season_the_catalogue_stops_short_of_is_a_dead_end_not_a_miss() {
+    match walk("50744").await {
+        Ok(p) => panic!("picked {} ({})", p.hit.slug, p.hit.title),
+        Err(e) => {
+            assert!(!e.clean_miss, "a refusal by name persisted: {:?}", e.error);
+            assert!(
+                matches!(e.error, crate::error::AniError::NoResults),
+                "{:?}",
+                e.error
+            );
+        }
+    }
+}
+
+/// Each row a Kitsu id whose every pool the walk must refuse, and
+/// refuse without the clean verdict: the refusal is an inference from
+/// how the hits are named, so it is the answered dead end the
+/// availability cache never persists, never the miss it does.
+async fn assert_refused_unpersisted(ids: &[&str]) {
+    let mut wrong = Vec::new();
+    for id in ids {
+        match walk(id).await {
+            Ok(p) => wrong.push(format!("{id}: picked {} ({})", p.hit.slug, p.hit.title)),
+            Err(e) if e.clean_miss => {
+                wrong.push(format!("{id}: refused as the clean miss: {:?}", e.error));
+            }
+            Err(e) if !matches!(e.error, crate::error::AniError::NoResults) => {
+                wrong.push(format!("{id}: {:?}", e.error));
+            }
+            Err(_) => {}
+        }
+    }
+    assert!(wrong.is_empty(), "wrong verdicts:\n{}", wrong.join("\n"));
+}
+
+/// The other seven undated entries hianime does not list under any of
+/// their titles — its searches answer with other shows, and one of them
+/// sits within the count tolerance of the entry: a hentai OVA two
+/// episodes long for a five-episode idol OVA, a twelve-episode romance
+/// for a twelve-episode donghua. With a count and no year, the count is
+/// all that vouched for a hit, so each was played as the entry. Nothing
+/// but its count fits any of them — not the title searched, not a name
+/// of the entry's, not a year — and every pool should be refused: the
+/// answered dead end, since a hit the count accepted is refused on how
+/// it is named, which the availability cache does not persist.
+const UNDATED_REFUSED: &[&str] = &[
+    "8404",  // Tsubu★Doll (5): picked a 2-episode OVA
+    "43745", // Chuan Shu Zijiu Zhinan 2nd Season (10): picked Fei Ren Zai 2nd Season (12)
+    "45637", // Mo Du Zhe (12): picked Girlfriend, Girlfriend (12)
+    "45049", // Lady Napoleon (13): picked a 12-episode isekai
+    "45494", // Liu Yao (13): picked Zhen Dao Ge: Qian li bu Liu Xing (12)
+    "40684", // Ohanashi de Te Koi (5): picked a 4-episode hentai OVA
+    "45500", // Zai Xia Ying Tai (12): picked Hero Return (12)
+];
+
+#[tokio::test]
+async fn undated_entries_the_catalogue_does_not_list_are_refused() {
+    assert_refused_unpersisted(UNDATED_REFUSED).await;
+}
+
+/// Zai Xia Ying Tai is the one of the seven AniList dates (2025) where
+/// Kitsu does not. Given that year the walk is a dated one, and picks
+/// as a dated walk does: Hero Return (2020) and every other dated hit
+/// of the first pool are excluded, and the alias pool holds a
+/// twelve-episode show from 2025 — year-confirmed, count fitting,
+/// named by nothing — which the dated walk takes, as it takes the
+/// fourteen recorded dated entries whose own listings nothing but
+/// their year and count vouch for (JoJo's "(Uncensored)" listings, "My
+/// Star" for [Oshi no Ko]). So a year alone moves this pick rather
+/// than stopping it, and only a hit named for the entry refuses it.
+#[tokio::test]
+async fn a_dated_walk_over_the_same_pools_takes_the_year_confirmed_fit() {
+    let picked = walk_under_anilist_year("45500").await.expect("picked");
+    assert_eq!(
+        picked.hit.slug,
+        "even-given-the-worthless-appraiser-class-im-actually-the-strongest-531"
+    );
+}
+
+/// What vouches for a hit depends on what the entry knows. A dated
+/// entry takes a hit nothing names on its count, whether the hit's
+/// page names the entry's year or none — the path every dated entry
+/// takes today, unchanged. An entry with a count and no year has only
+/// the count to go on, and a count fits many shows: a hit neither the
+/// title searched nor one of the entry's names vouches for is refused,
+/// as the dead end a refusal by name is; a hit an alias names is still
+/// taken on its count. Without a count the pool is refused as before,
+/// and as the clean miss it was.
+#[tokio::test]
+async fn only_an_entry_with_a_count_and_no_year_needs_a_hit_named_for_it() {
+    let other = |year: Option<u32>| ("other-1", "Other", 12, year);
+    let dated = inline_pool(
+        &["Show: Arc"],
+        Some(12),
+        Some(2016),
+        "TV",
+        &[other(Some(2016))],
+    );
+    assert_eq!(
+        walk_over(dated)
+            .await
+            .expect("dated, year confirmed")
+            .hit
+            .slug,
+        "other-1"
+    );
+    let dated_unknown = inline_pool(&["Show: Arc"], Some(12), Some(2016), "TV", &[other(None)]);
+    assert_eq!(
+        walk_over(dated_unknown)
+            .await
+            .expect("dated, year unknown")
+            .hit
+            .slug,
+        "other-1"
+    );
+    let undated = inline_pool(&["Show: Arc"], Some(12), None, "TV", &[other(None)]);
+    match walk_over(undated).await {
+        Ok(p) => panic!("undated: picked {}", p.hit.slug),
+        Err(e) => {
+            assert!(!e.clean_miss, "undated: a refusal by name persisted");
+            assert!(
+                matches!(e.error, crate::error::AniError::NoResults),
+                "undated: {:?}",
+                e.error
+            );
+        }
+    }
+    let named = inline_pool(
+        &["Show: Arc", "Shou Arc"],
+        Some(12),
+        None,
+        "TV",
+        &[other(None), ("shou-2", "Shou Arc", 12, None)],
+    );
+    assert_eq!(
+        walk_over(named).await.expect("undated, named").hit.slug,
+        "shou-2"
+    );
+    let countless = inline_pool(&["Show: Arc"], None, None, "TV", &[other(None)]);
+    match walk_over(countless).await {
+        Ok(p) => panic!("countless: picked {}", p.hit.slug),
+        Err(e) => assert!(e.clean_miss, "countless: {:?}", e.error),
     }
 }
