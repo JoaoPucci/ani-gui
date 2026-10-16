@@ -37,7 +37,9 @@ export function createAniskipFetchTrigger(): AniskipFetchTrigger {
 	let fetchedKey: string | null = null;
 	return {
 		step(showId, episodeNum, durationReady) {
-			const ep = episodeNum > 0 ? String(episodeNum) : '';
+			// aniskip numbers episodes as MAL does, in whole numbers; a
+			// fractional extra (a 7.5 recap) has no skip times to ask for.
+			const ep = episodeNum > 0 && Number.isInteger(episodeNum) ? String(episodeNum) : '';
 			const key = showId && ep ? `${showId}|${ep}` : null;
 			if (!key) {
 				if (fetchedKey === null) return { kind: 'idle' };

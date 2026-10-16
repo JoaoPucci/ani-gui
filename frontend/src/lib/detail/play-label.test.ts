@@ -181,3 +181,35 @@ describe('computePlayLabel — an episode left part-way', () => {
 		).toEqual({ kind: 'continue' });
 	});
 });
+
+describe('computePlayLabel — a fractional extra in history', () => {
+	it('reads a recap at the end of the list as one to replay', () => {
+		expect(
+			computePlayLabel({
+				isSingleVideo: false,
+				resumeEntry: { ep_no: '12.5' },
+				defaultEpisode: 12.5
+			})
+		).toEqual({ kind: 'replay', episode: 12.5 });
+	});
+
+	it('does not read the whole episode below a recap as the recap', () => {
+		// ep_no 7.5 read as 7 made "Continue · Episode 7" read as a
+		// replay of the last watched episode.
+		expect(
+			computePlayLabel({
+				isSingleVideo: false,
+				resumeEntry: { ep_no: '7.5' },
+				defaultEpisode: 7
+			})
+		).toEqual({ kind: 'resume', episode: 7 });
+	});
+});
+
+describe('computePlayLabel — a range-shaped row', () => {
+	it('reads "1-12" by its first episode', () => {
+		expect(
+			computePlayLabel({ isSingleVideo: false, resumeEntry: { ep_no: '1-12' }, defaultEpisode: 1 })
+		).toEqual({ kind: 'replay', episode: 1 });
+	});
+});
