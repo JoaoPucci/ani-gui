@@ -6,7 +6,9 @@
 //! first episode page. Each is read
 //! from the cache first and fetched only when it is missing.
 
-use super::play_native_appended::{EntryTail, Related, TailEpisode, TailSource, ALIGNED};
+use super::play_native_appended::{
+    EntryTail, Related, Remembered, TailEpisode, TailSource, ALIGNED,
+};
 use crate::app::AppState;
 use crate::meta::anilist_airing::AiringStatus;
 use crate::meta::kitsu::{KitsuEpisode, KitsuRelation};
@@ -38,6 +40,11 @@ impl std::fmt::Debug for KitsuTail<'_> {
             .field("kitsu_id", &self.kitsu_id)
             .finish_non_exhaustive()
     }
+}
+
+/// Where the reading the evidence last proved for an entry is kept.
+fn kept_key(kitsu_id: &str) -> String {
+    format!("appended:v1:{kitsu_id}")
 }
 
 /// The 1-based Kitsu page episode `n` is on.
@@ -158,8 +165,35 @@ impl KitsuTail<'_> {
     }
 }
 
+/// How long a proved reading is kept: as long as the title-match
+/// rows a play stores.
+const KEPT_FOR: std::time::Duration = crate::cache::ttl::TITLE_MATCH_TTL;
+
 #[async_trait::async_trait]
 impl TailSource for KitsuTail<'_> {
+    fn remembered(&self) -> Option<Remembered> {
+        let body = crate::cache::meta_cache_get(&self.state.cache_pool, &kept_key(self.kitsu_id))
+            .ok()??;
+        serde_json::from_str(&body).ok()
+    }
+
+    fn remember(&self, reading: Option<&Remembered>) {
+        let key = kept_key(self.kitsu_id);
+        match reading.and_then(|r| serde_json::to_string(r).ok()) {
+            Some(body) => {
+                let _ = crate::cache::meta_cache_put(
+                    &self.state.cache_pool,
+                    &key,
+                    &body,
+                    KEPT_FOR.as_secs(),
+                );
+            }
+            None => {
+                let _ = crate::cache::meta_cache_delete(&self.state.cache_pool, &key);
+            }
+        }
+    }
+
     async fn tail(&self, count: u32) -> Option<EntryTail> {
         let detail = super::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)
             .await

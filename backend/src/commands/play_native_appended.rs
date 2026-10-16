@@ -127,9 +127,11 @@ pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u
 }
 
 /// `picked` with the extras its provider appended read as extras,
-/// when the evidence proves them; `picked` itself otherwise — no
-/// source, a listing of another shape, evidence that is missing,
-/// late or short of proof.
+/// when the evidence proves them, or when the evidence cannot be read
+/// and the source keeps that reading for these very rows; `picked`
+/// itself otherwise — no source, a listing of another shape, evidence
+/// that reads and falls short of proof (which forgets a kept reading),
+/// or no evidence and nothing kept.
 pub async fn fit_appended(
     picked: PickedShow,
     expected: Option<u32>,
@@ -138,13 +140,28 @@ pub async fn fit_appended(
     let (Some(count), Some(source)) = (appended_count(&picked.episodes, expected), source) else {
         return picked;
     };
-    let Ok(Some(tail)) = tokio::time::timeout(TAIL_BUDGET, source.tail(count)).await else {
-        return picked;
+    let reading = Remembered {
+        count,
+        ids: past_ids(&picked.episodes, count),
     };
-    match appended_extras(&picked.episodes, count, &tail) {
+    let fitted = match tokio::time::timeout(TAIL_BUDGET, source.tail(count)).await {
+        Ok(Some(tail)) => {
+            let fitted = appended_extras(&picked.episodes, count, &tail);
+            source.remember(fitted.as_ref().map(|_| &reading));
+            fitted
+        }
+        _ => (source.remembered() == Some(reading)).then(|| tag_past(&picked.episodes, count)),
+    };
+    match fitted {
         Some(episodes) => PickedShow { episodes, ..picked },
         None => picked,
     }
+}
+
+/// The provider's ids of the rows past `count`, in order.
+fn past_ids(listing: &[EpisodeRef], count: u32) -> Vec<u64> {
+    let at = usize::try_from(count).unwrap_or(usize::MAX);
+    listing.iter().skip(at).map(|e| e.id).collect()
 }
 
 /// `listing` with its rows past `count` tagged `count.1`, `count.2`,
