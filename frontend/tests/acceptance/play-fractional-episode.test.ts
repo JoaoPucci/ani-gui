@@ -235,5 +235,9 @@ describe('play route — recaps at the edges of a strip page', () => {
 			'the 5.5 tile on page 1'
 		);
 		expect(target.querySelector('li[data-ep-num="0.5"]')).not.toBeNull();
+		// The range counts episodes, not the recaps beside them.
+		expect(target.textContent).toContain(
+			m.play_episodes_range_pagination({ epStart: '1', epEnd: '5', total: '12' })
+		);
 	});
 });

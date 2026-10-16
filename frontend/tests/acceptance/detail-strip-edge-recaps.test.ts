@@ -56,6 +56,42 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
+function useShow(count: number, extras: string[]) {
+	server.use(
+		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+			HttpResponse.json({ ...kitsuRef(KITSU_ID, 'Ongoing Show', count), status: 'finished' })
+		),
+		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+			HttpResponse.json({ aired: count, next_episode: null, next_airing_at: null, upcoming: [] })
+		),
+		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+		http.post(`${API_BASE}/api/availability`, () =>
+			HttpResponse.json({
+				available: true,
+				episode_count: count,
+				extra_episodes: extras,
+				episode_count_approximate: false
+			})
+		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () => HttpResponse.json(null)),
+		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
+		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({}))
+	);
+}
+
+describe('detail route — a recap does not make a short run look paged', () => {
+	it('grows no pager for 11 episodes and a recap before episode 1', async () => {
+		useShow(11, ['0.5']);
+		app = mount(DetailPage, { target });
+		await until(() => target.querySelector('li[data-ep-num="0.5"]') !== null, 'the grid');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(target.querySelector('form.ep-jump')).toBeNull();
+	});
+});
+
 describe('detail route — recaps at the edges of a grid page', () => {
 	it('shows 0.5 and 12.5 on page 1', async () => {
 		server.use(
