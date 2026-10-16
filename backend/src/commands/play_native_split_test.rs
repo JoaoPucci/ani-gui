@@ -1,7 +1,9 @@
 //! Tests for `crate::commands::play_native_split`.
 
 use super::*;
-use crate::commands::play_native_numbering::{extra_episode_tags, kitsu_episode_cap};
+use crate::commands::play_native_numbering::{
+    extra_episode_tags, former_tags_of, kitsu_episode_cap,
+};
 
 const SBR: &str = "Steel Ball Run: JoJo no Kimyou na Bouken";
 
@@ -534,4 +536,36 @@ fn a_chain_is_never_led_by_a_candidate_the_entry_s_titles_refuse() {
     ];
     let entry = crate::commands::play_native_title_marker::EntryTitles::bare("X");
     assert!(stitched(&probed, 24, UNFIT, entry).is_none());
+}
+
+#[test]
+fn a_recap_inside_a_cumulative_part_was_tagged_the_same_before() {
+    // "18.5" under offset 12 sat above the offset, which every version
+    // translated alike: no former tag.
+    let first = listing(100, 12);
+    let second = vec![
+        row(201, 1, Some("13")),
+        row(202, 2, Some("18.5")),
+        row(203, 3, Some("19")),
+    ];
+    let merged = merge_parts(&[&first, &second]);
+    assert!(merged.iter().all(|e| e.former_tag.is_none()));
+}
+
+#[test]
+fn a_former_tag_shifts_by_the_parts_before_not_by_the_parts_offset() {
+    // Part 1 has ten episodes; part 2 is numbered from 13 (offset 12)
+    // with a recap at its offset. The earlier version shifted the
+    // untranslated "12.5" by the ten episodes before it: "22.5". The
+    // recap sits at "10.5" now.
+    let first = listing(100, 10);
+    let second = vec![row(201, 1, Some("12.5")), row(202, 2, Some("13"))];
+    let merged = merge_parts(&[&first, &second]);
+    let recap = merged.iter().find(|e| e.id == 201).expect("recap");
+    assert_eq!(recap.number2.as_deref(), Some("10.5"));
+    assert_eq!(recap.former_tag.as_deref(), Some("22.5"));
+    assert_eq!(
+        former_tags_of(&merged),
+        vec![(recap.number, "22.5".to_string(), "10.5".to_string())]
+    );
 }

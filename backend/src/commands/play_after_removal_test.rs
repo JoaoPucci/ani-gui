@@ -831,3 +831,34 @@ fn a_former_tag_in_the_sidecar_gives_way_to_the_rows_tag_on_its_next_watch() {
     write_history(&state, &recap, "24.5", again);
     assert_eq!(listed(), "12.5");
 }
+
+#[test]
+fn any_resolve_of_the_show_puts_a_former_tag_in_the_sidecar_right() {
+    // The history row's slot 13 was stamped "24.5" by an earlier
+    // version. A resolve of any episode of the show — a warm of
+    // episode 5 — has the listing at hand and knows slot 13 is "12.5"
+    // now: the row reads back as the recap it is from then on.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let mut old = native();
+    old.numbering_offset = 0;
+    old.resolved_slot = 13;
+    old.resolved_tag = Some("24.5".into());
+    stamp_numbering(&state, &old, play);
+    write_history(&state, &old, "24.5", play);
+    let warm = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let mut five = native();
+    five.numbering_offset = 0;
+    five.resolved_slot = 5;
+    five.resolved_tag = None;
+    five.former_tags = vec![(13, "24.5".into(), "12.5".into())];
+    stamp_numbering(&state, &five, warm);
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == SHOW)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "12.5");
+}

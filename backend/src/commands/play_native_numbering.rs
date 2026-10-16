@@ -86,6 +86,14 @@ pub fn extra_episode_tags(episodes: &[crate::scraper::provider::EpisodeRef]) -> 
         .collect()
 }
 
+/// Stub: the rows of `episodes` an earlier version tagged otherwise.
+pub fn former_tags_of(
+    episodes: &[crate::scraper::provider::EpisodeRef],
+) -> Vec<(u32, String, String)> {
+    let _ = episodes;
+    Vec::new()
+}
+
 /// A provider fraction in per-entry numbering: "41.5" under offset
 /// 40 advertises as "1.5", and "40.5" — a recap before the entry's
 /// first episode — as "0.5". Tags without a parseable integer part
