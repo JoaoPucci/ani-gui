@@ -2,14 +2,14 @@
 //! search returns the same list" coupling with a direct pick over the
 //! client's own results.
 //!
-//! The browse page carries titles only, so episode counts come from
-//! one episodes call per considered candidate. The probe set is
-//! bounded: real queries put the right show in the first few hits,
-//! and every probe is an upstream request. Within the probed set the
-//! proven layers from the provider picker apply — episode-count
-//! distance with the `max(3, 10%)` threshold, then an exact-name
-//! tie-break — minus the year filter, which waits until a live
-//! capture confirms where the browse markup carries a year.
+//! The browse page carries titles, a format badge and a romanized
+//! name but no count, so episode counts come from one episodes call
+//! per considered candidate. The probe set is bounded: real queries
+//! put the right show in the first few hits, and every probe is an
+//! upstream request. Within the probed set the proven layers from the
+//! provider picker apply — episode-count distance with the
+//! `max(3, 10%)` threshold, then an exact-name tie-break — beside the
+//! year filter, which reads each considered hit's entry page.
 
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
@@ -90,6 +90,13 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   survivor whose own year positively matched and whose episode
 ///   list is shorter than expected still wins — an airing part has
 ///   aired fewer episodes than the total Kitsu knows is coming.
+/// - With a year and `expected = Some(n)`, `n > 1`: a year and a
+///   count fit many shows, so a candidate is picked only when a name
+///   vouches for it — `search_title`, or a name of the show (its
+///   title, its card's romanized name, its entry page's names) the
+///   entry names or shares a name with; any other is scored out, and a
+///   pool rejected after one that fit is not a clean miss (see
+///   `play_native_dated_name`).
 /// - With `expected = Some(1)`: a single video's count fits every
 ///   other single video, so a candidate is picked only when it is
 ///   `search_title`, the entry names it, or its own year matched;
