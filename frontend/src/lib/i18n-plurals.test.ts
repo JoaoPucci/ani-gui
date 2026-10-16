@@ -350,30 +350,32 @@ const ROWS: Row[] = [
 		}
 	},
 	{
+		// Cancel-all reaches queued downloads too, which are not
+		// active: the count names downloads, not active ones.
 		message: 'download_bar_cancel_confirm_multi',
 		en: {
-			0: 'Cancel 0 active downloads?',
-			1: 'Cancel 1 active download?',
-			2: 'Cancel 2 active downloads?'
+			0: 'Cancel 0 downloads?',
+			1: 'Cancel 1 download?',
+			2: 'Cancel 2 downloads?'
 		},
 		'pt-BR': {
-			0: 'Cancelar 0 downloads ativos?',
-			1: 'Cancelar 1 download ativo?',
-			2: 'Cancelar 2 downloads ativos?'
+			0: 'Cancelar 0 downloads?',
+			1: 'Cancelar 1 download?',
+			2: 'Cancelar 2 downloads?'
 		},
 		'es-419': {
-			0: '¿Cancelar 0 descargas activas?',
-			1: '¿Cancelar 1 descarga activa?',
-			2: '¿Cancelar 2 descargas activas?'
+			0: '¿Cancelar 0 descargas?',
+			1: '¿Cancelar 1 descarga?',
+			2: '¿Cancelar 2 descargas?'
 		},
 		ru: {
-			1: 'Отменить 1 активную загрузку?',
-			2: 'Отменить 2 активные загрузки?',
-			5: 'Отменить 5 активных загрузок?',
-			21: 'Отменить 21 активную загрузку?',
-			22: 'Отменить 22 активные загрузки?',
-			25: 'Отменить 25 активных загрузок?',
-			11: 'Отменить 11 активных загрузок?'
+			1: 'Отменить 1 загрузку?',
+			2: 'Отменить 2 загрузки?',
+			5: 'Отменить 5 загрузок?',
+			21: 'Отменить 21 загрузку?',
+			22: 'Отменить 22 загрузки?',
+			25: 'Отменить 25 загрузок?',
+			11: 'Отменить 11 загрузок?'
 		}
 	},
 	{
