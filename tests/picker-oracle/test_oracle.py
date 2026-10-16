@@ -233,6 +233,10 @@ class TheModelReadsTheDocs(unittest.TestCase):
                     case = pool(["Show"], count, [("x", title, E)], year=year)
                     self.assertIsNone(oracle.predict(case), (title, count, year))
                     self.assertEqual(oracle.refusal_expected(case), ("NoResults", False), (title, count, year))
+        # a tagged entry before is another entry: never picked, a clean miss
+        tagged_before = pool(["Show 2"], E, [("x", "Show 1 [Uncensored]", E)])
+        self.assertIsNone(oracle.predict(tagged_before))
+        self.assertEqual(oracle.refusal_expected(tagged_before), ("NoResults", True))
         # after the entry's own season, it admits as before
         self.assertEqual(oracle.predict(pool(["Show 2nd Season"], E, [("x", "Show 2nd Season [Uncensored]", E)])), pick("x"))
 
