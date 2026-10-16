@@ -71,6 +71,20 @@ export class QualityTrack {
 		return { ...seen, listed };
 	}
 
+	/** The switch a choice already in force still needs: the level held,
+	 *  when a segment of another level is what plays; null otherwise. */
+	staleChoice(governor: QualityGovernor, choice: 'auto' | number): QualityMove | null {
+		const held = governor.level;
+		const inForce = choice === 'auto' ? !governor.isPinned : governor.isPinned && held === choice;
+		if (!inForce || this.playing === null || this.playing === held) return null;
+		return {
+			level: held,
+			from: this.playing,
+			reason: choice === 'auto' ? 'auto' : 'pick',
+			via: 'next'
+		};
+	}
+
 	/** What the menu shows. */
 	view(governor: QualityGovernor): QualityView {
 		return {

@@ -46,9 +46,16 @@ export class QualityGovernor extends QualityHold {
 
 	/** Playback stalled with nothing buffered. */
 	stall(now: number): QualityMove | null {
-		if (!this.engaged || this.pinned || !this.pace.mayStepDown(now)) return null;
-		const lower = this.neighbour(this.current, -1);
-		return lower === null ? null : this.stepDown(lower, now, 'stall');
+		if (!this.engaged || this.pinned || this.pace.inSeekGrace(now)) return null;
+		const lower = this.pace.coolingDown(now) ? null : this.neighbour(this.current, -1);
+		// A stall that moves nothing — at the lowest level, or inside the
+		// cooldown — is trouble all the same: the climb waits for a
+		// window without any.
+		if (lower === null) {
+			this.pace.troubled(now);
+			return null;
+		}
+		return this.stepDown(lower, now, 'stall');
 	}
 
 	/** The engine gave up on `level`'s segments after its retries. Not
@@ -86,9 +93,9 @@ export class QualityGovernor extends QualityHold {
 	 *  a climb back would fail the same audio and repeat the switch. A
 	 *  level that failed, or the one held, is no move. */
 	follow(level: number, now?: number): QualityMove | null {
-		void now;
 		if (!this.engaged || level === this.current || this.unavailable.has(level)) return null;
 		this.unavailable.add(this.current);
+		this.settled(now);
 		return this.move(level, 'followed', 'load');
 	}
 
@@ -101,6 +108,12 @@ export class QualityGovernor extends QualityHold {
 
 	protected override restarted(now: number): void {
 		this.pace.restart(now);
+	}
+
+	/** A move to a level that has proven nothing yet restarts the
+	 *  healthy window. */
+	protected override settled(now: number | undefined): void {
+		if (now !== undefined) this.pace.troubled(now);
 	}
 
 	private stepDown(level: number, now: number, reason: QualityReason): QualityMove {

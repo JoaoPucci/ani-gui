@@ -32,11 +32,21 @@ export class QualityPace {
 		this.lastSeekAt = now;
 	}
 
-	/** Whether a stall at `now` may step the level down. */
-	mayStepDown(now: number): boolean {
-		return (
-			now - this.lastSeekAt >= SEEK_GRACE_MS && now - this.lastStepDownAt >= STEP_DOWN_COOLDOWN_MS
-		);
+	/** Whether `now` is inside a seek's grace: a stall then is the
+	 *  seek's own wait for media. */
+	inSeekGrace(now: number): boolean {
+		return now - this.lastSeekAt < SEEK_GRACE_MS;
+	}
+
+	/** Whether `now` is inside the cooldown after a step down. */
+	coolingDown(now: number): boolean {
+		return now - this.lastStepDownAt < STEP_DOWN_COOLDOWN_MS;
+	}
+
+	/** Playback was in trouble at `now`, or moved to a level that has
+	 *  proven nothing yet: the healthy window starts over. */
+	troubled(now: number): void {
+		this.lastChangeAt = now;
 	}
 
 	/** The level stepped down at `now`. */

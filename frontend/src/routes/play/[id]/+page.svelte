@@ -541,6 +541,14 @@
 	// stream's quality control publishes them ($lib/play/arm-quality);
 	// the menu is its pure model ($lib/play/quality-menu).
 	let qualityView = $state<QualityView | null>(null);
+	// The quality setting as the settings answer it, once: a stream's
+	// start level waits for it rather than reading a setting not yet
+	// loaded as `best`. Failing settings answer `undefined`, read as
+	// `best` like everywhere else.
+	let answerQualitySetting: (quality: string | undefined) => void = () => {};
+	const qualitySetting = new Promise<string | undefined>((resolve) => {
+		answerQualitySetting = resolve;
+	});
 	let qualityControl: QualityControl | null = null;
 	const qualityMenuModel = $derived(qualityMenu(qualityView));
 	function pickQuality(choice: 'auto' | number) {
@@ -1654,7 +1662,9 @@
 		if (mediaKind === 'mp4') {
 			videoEl.src = mediaUrl;
 		} else if (Hls.isSupported()) {
-			hls = new Hls({ lowLatencyMode: false, ...HLS_STALL_LOAD_POLICY });
+			// The quality control starts the engine once it has chosen the
+			// start level, which waits for the settings ($lib/play/arm-quality).
+			hls = new Hls({ lowLatencyMode: false, autoStartLoad: false, ...HLS_STALL_LOAD_POLICY });
 			// The engine retires with its source: the next attach's
 			// flush, or the page leaving.
 			const engine = hls;
@@ -1669,7 +1679,8 @@
 				engine,
 				events: Hls.Events,
 				video: videoEl,
-				setting: () => config?.quality,
+				setting: () => qualitySetting,
+				holdsStart: true,
 				onView: (view) => {
 					qualityView = view;
 					// A stream retiring takes its levels with it; the next
@@ -1849,9 +1860,13 @@
 		if (startReq.fetch) void fetchEpisodesPage(startReq.page, startReq.gen, { initial: true });
 
 		void settingsGet()
-			.then((c) => (config = c))
+			.then((c) => {
+				config = c;
+				answerQualitySetting(c.quality);
+			})
 			.catch(() => {
 				config = null;
+				answerQualitySetting(undefined);
 			});
 	});
 

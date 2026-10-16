@@ -85,8 +85,8 @@ export function reactTo(
 ): QualityMove | null {
 	if (!report) return null;
 	if (report.kind === 'stall') return governor.stall(now);
-	if (report.kind === 'level-failed') return governor.levelFailed(report.level);
-	if (report.kind === 'followed') return governor.follow(report.level);
+	if (report.kind === 'level-failed') return governor.levelFailed(report.level, now);
+	if (report.kind === 'followed') return governor.follow(report.level, now);
 	return governor.fragmentsFailed(report.level ?? governor.level, now);
 }
 

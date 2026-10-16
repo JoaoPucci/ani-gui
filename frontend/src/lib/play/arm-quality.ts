@@ -14,7 +14,7 @@
 import type Hls from 'hls.js';
 import type { BufferedRanges } from './buffer-ahead';
 import { bufferAheadSeconds } from './buffer-ahead';
-import { QualityGovernor, type QualityMove } from './quality-governor';
+import { QualityGovernor } from './quality-governor';
 import { parseQualitySetting } from './quality-ladder';
 import type { QualityView } from './quality-menu';
 import { qualityPin, rememberPick } from './quality-pin';
@@ -26,6 +26,7 @@ import {
 	readError,
 	readInitSegment
 } from './quality-report';
+import { engineMover, whenSettled } from './quality-sink';
 import { QualityTrack } from './quality-track';
 
 export { qualityPin } from './quality-pin';
@@ -77,17 +78,15 @@ export function armQuality(input: {
 	const track = new QualityTrack();
 	let governor: QualityGovernor | null = null;
 
-	const apply = (move: QualityMove | null): void => {
-		if (!move) return;
-		if (move.via === 'next') engine.nextLevel = move.level;
-		else engine.loadLevel = move.level;
-		log(track.describeMove(move));
-	};
+	let retired = false;
+	const apply = engineMover(engine, track, log);
 	const publish = (g: QualityGovernor): void => onView(track.view(g));
 
-	engine.on(events.MANIFEST_PARSED, (_event, data) => {
-		track.arrive(data.levels);
-		const setting = input.setting() as QualitySetting;
+	// The start waits for the setting: a level chosen before it is known
+	// would be `best`'s. With `holdsStart` the engine waits too, and is
+	// started here once its start level is set.
+	const begin = (setting: QualitySetting, count: number): void => {
+		if (retired) return;
 		const g = new QualityGovernor(
 			track.levels(),
 			parseQualitySetting(setting),
@@ -98,11 +97,17 @@ export function armQuality(input: {
 		if (start) {
 			engine.startLevel = start.level;
 			apply(start);
-			log(`setting ${setting ?? 'best'}, ${data.levels.length} levels`);
-		} else if (data.levels.length === 1) {
+			log(`setting ${setting ?? 'best'}, ${count} levels`);
+		} else if (count === 1) {
 			log(`one level, ${track.describe(0)}: nothing to choose`);
 		}
 		publish(g);
+		if (input.holdsStart) engine.startLoad();
+	};
+
+	engine.on(events.MANIFEST_PARSED, (_event, data) => {
+		track.arrive(data.levels);
+		whenSettled(input.setting(), (setting) => begin(setting, data.levels.length));
 	});
 
 	engine.on(events.ERROR, (_event, data) => {
@@ -157,7 +162,9 @@ export function armQuality(input: {
 		pick(choice) {
 			const g = governor;
 			if (!g) return;
-			const move = g.pick(choice, now());
+			// A choice already in force still switches at once when the
+			// level playing is another — segments from before a climb.
+			const move = g.pick(choice, now()) ?? track.staleChoice(g, choice);
 			const kept = rememberPick(choice, g, track);
 			if (!move && kept) log(kept);
 			apply(move);
@@ -165,6 +172,7 @@ export function armQuality(input: {
 		},
 		dispose() {
 			video.removeEventListener('seeking', onSeeking);
+			retired = true;
 			governor = null;
 			onView(null);
 		}

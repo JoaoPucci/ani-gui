@@ -87,7 +87,6 @@ export abstract class QualityHold {
 	 *  governor moves to the nearest level below — above, when it was
 	 *  the lowest. */
 	levelFailed(level: number, now?: number): QualityMove | null {
-		void now;
 		this.unavailable.add(level);
 		if (!this.engaged || level !== this.current) return null;
 		const next = this.neighbour(level, -1) ?? this.neighbour(level, 1);
@@ -95,6 +94,7 @@ export abstract class QualityHold {
 			this.engaged = false;
 			return null;
 		}
+		this.settled(now);
 		return this.move(next, 'level-failed', 'load');
 	}
 
@@ -110,6 +110,9 @@ export abstract class QualityHold {
 
 	/** The choice went back to auto at `now`. */
 	protected abstract restarted(now: number): void;
+
+	/** The level moved, at `now`, to one that has proven nothing yet. */
+	protected abstract settled(now: number | undefined): void;
 
 	protected move(level: number, reason: QualityReason, via: QualityMove['via']): QualityMove {
 		const from = this.current;
