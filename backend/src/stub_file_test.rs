@@ -7,3 +7,36 @@
 pub(crate) fn publish(path: &std::path::Path, producer: &str) -> String {
     format!("{producer} > '{path}'", path = path.display())
 }
+
+/// A file written in place is readable half-written: the redirection
+/// creates it empty and the shell fills it as it writes. macOS's
+/// `/bin/sh` is bash, which line-buffers its stdout, so
+/// `printf '%s\n'` reaches the file one line — one argument — at a
+/// time, and a test that takes the first non-empty read can read only
+/// the first argument. Published whole, the file at `path` is
+/// replaced, never written: a name linked to the file that was there
+/// before still sees that file, empty, and `path` reads complete.
+#[test]
+fn a_published_file_replaces_the_one_at_its_path_rather_than_writing_into_it() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let path = dir.path().join("argv");
+    let witness = dir.path().join("witness");
+    std::fs::write(&path, b"").expect("seed");
+    std::fs::hard_link(&path, &witness).expect("link");
+    let status = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(publish(&path, "printf '%s\\n' \"$@\""))
+        .args(["sh", "--player-path=mpv", "--", "http://x/master.m3u8"])
+        .status()
+        .expect("sh");
+    assert!(status.success());
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("published"),
+        "--player-path=mpv\n--\nhttp://x/master.m3u8\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&witness).expect("witness"),
+        "",
+        "the file was written in place, where a reader can see it half written"
+    );
+}
