@@ -24,6 +24,18 @@ export function unavailableMessage(mode: string, otherAudio: OtherAudio): string
 		: m.detail_unavailable_in_sub_message();
 }
 
+/** Whether the notice asks the cache about the other audio: while it
+ *  is up (`unavailable`), and never for a music title, which this page
+ *  holds unavailable in both audios. `refused` — the provider refused
+ *  the title by name — is not read yet. */
+export function asksOtherAudio(state: {
+	unavailable: boolean;
+	music: boolean;
+	refused: boolean;
+}): boolean {
+	return state.unavailable && !state.music;
+}
+
 /** Ask the cache about the other audio of `q`'s title and hand the
  *  answer to `onAnswer`. Returns a cancel: an answer that lands after
  *  it is about a question the page no longer asks, and is dropped. */

@@ -50,6 +50,9 @@ export interface AvailabilityLookupDeps {
 	 *  nothing is published here — the page's own handling of the
 	 *  re-ask's patch is what sets it then. */
 	setListed: (listed: boolean | null) => void;
+	/** Whether the answer was the provider refusing the title by name.
+	 *  Not reported yet. */
+	setRefused?: (refused: boolean) => void;
 }
 
 /**

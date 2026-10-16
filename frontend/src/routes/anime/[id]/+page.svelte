@@ -46,7 +46,11 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
-	import { unavailableMessage, watchOtherAudio } from '$lib/detail/unavailable-copy';
+	import {
+		asksOtherAudio,
+		unavailableMessage,
+		watchOtherAudio
+	} from '$lib/detail/unavailable-copy';
 	import type { OtherAudio } from '$lib/play/error-copy';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
@@ -467,13 +471,20 @@
 	// title ($lib/detail/unavailable-copy). Re-asked when the title or
 	// the audio changes; a late answer to an old question is dropped.
 	let noticeOtherAudio = $state<OtherAudio>(null);
+	// Whether the page-load lookup's answer was the provider refusing
+	// the title by name ($lib/detail/availability-lookup).
+	let availabilityRefused = $state(false);
 	// A music title is unavailable in both audios by this page's own
 	// rule, so it never names the other one, whatever the cache holds.
 	$effect(() => {
 		const q = { kitsuId: id, mode: availabilityMode };
-		const unavailable = cta === 'unavailable' && !isMusicSubtype(detail?.subtype ?? null);
+		const asks = asksOtherAudio({
+			unavailable: cta === 'unavailable',
+			music: isMusicSubtype(detail?.subtype ?? null),
+			refused: availabilityRefused
+		});
 		noticeOtherAudio = null;
-		if (!unavailable) return;
+		if (!asks) return;
 		return watchOtherAudio(q, (answer) => (noticeOtherAudio = answer));
 	});
 
@@ -750,7 +761,8 @@
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
 					setResolved: (r) => (availabilityResolved = r),
-					setListed: (l) => (warmListed = l)
+					setListed: (l) => (warmListed = l),
+					setRefused: (r) => (availabilityRefused = r)
 				}
 			)
 		);

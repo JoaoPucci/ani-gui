@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AvailabilityBatchResponse } from '$lib/api';
 import { m } from '$lib/paraglide/messages';
-import { unavailableMessage, watchOtherAudio } from './unavailable-copy';
+import { asksOtherAudio, unavailableMessage, watchOtherAudio } from './unavailable-copy';
 
 function batchAnswering(res: AvailabilityBatchResponse) {
 	return vi.fn<(ids: string[], mode: string) => Promise<AvailabilityBatchResponse>>(
@@ -126,5 +126,13 @@ describe('watchOtherAudio — the notice asks the cache, never the provider', ()
 		release({ cached: { '7': true }, playable_episode_counts: {} });
 		await new Promise((r) => setTimeout(r, 0));
 		expect(onAnswer).not.toHaveBeenCalled();
+	});
+});
+
+describe('asksOtherAudio', () => {
+	it('asks while the notice is up, and never for a music title', () => {
+		expect(asksOtherAudio({ unavailable: true, music: false, refused: false })).toBe(true);
+		expect(asksOtherAudio({ unavailable: false, music: false, refused: false })).toBe(false);
+		expect(asksOtherAudio({ unavailable: true, music: true, refused: false })).toBe(false);
 	});
 });
