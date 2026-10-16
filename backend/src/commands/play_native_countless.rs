@@ -45,6 +45,12 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
         .filter(|(h, _)| entry.admits_as_read(&h.title))
         .collect();
     let refused = read.len() < head.len();
+    // So is another entry of the same show read past the tag — passed
+    // over as the head passes one over, no refusal.
+    let read: Vec<(&BrowseHit, bool)> = read
+        .into_iter()
+        .filter(|(h, _)| !entry.another_entry_as_read(&h.title))
+        .collect();
     let head = read.as_slice();
     let exact = head
         .iter()

@@ -145,7 +145,10 @@ pub(crate) fn note_dead<'h>(
     vouched: bool,
     entry: EntryTitles<'_>,
 ) {
-    if could_win && vouched && entry.admits_as_read(&hit.title) && !entry.another_entry(&hit.title)
+    if could_win
+        && vouched
+        && entry.admits_as_read(&hit.title)
+        && !entry.another_entry_as_read(&hit.title)
     {
         dead.push(hit);
     }

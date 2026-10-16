@@ -65,7 +65,7 @@ pub(super) fn fit_to_entry(
     let pickable: Vec<bool> = probed
         .iter()
         .zip(&admitted)
-        .map(|((h, _, _, _), ok)| *ok && !entry.another_entry(&h.title))
+        .map(|((h, _, _, _), ok)| *ok && !entry.another_entry_as_read(&h.title))
         .collect();
     // Only a refusal by title keeps a rejected pool from being a clean
     // miss: another entry of the same show, like an L, F or P, is no

@@ -110,6 +110,15 @@ impl EntryTitles<'_> {
         ))
     }
 
+    /// [`Self::another_entry`] for a probed candidate, read past a
+    /// bracketed version tag as [`Self::admits_as_read`] is: "Show 1
+    /// [Uncensored]" is the entry before "Show 2" as "Show 1" is.
+    pub(crate) fn another_entry_as_read(&self, candidate: &str) -> bool {
+        self.another_entry(&super::play_native_version_copies::without_version_tag(
+            candidate,
+        ))
+    }
+
     /// Whether `candidate` matches one of the entry's titles only by
     /// continuing its first number ([`continues_number_of`]) — "Show20"
     /// for "Show 2", "861" for "86 Part 2" — and no title of the entry
