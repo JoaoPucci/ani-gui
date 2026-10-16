@@ -52,6 +52,7 @@
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache } from '$lib/play/other-audio';
+	import { claimPlay, playArgsFor, runOwnedPlay } from '$lib/play/owned-play';
 	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
@@ -1296,59 +1297,53 @@
 		}
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
-		// The show and visit this play is for, read once: SvelteKit
-		// reuses this component across a Similar-title link and across a
-		// round trip back, so by the time the play answers `id` may name
-		// another show, or this show on a later visit.
-		const showId = id;
-		const askedVisit = visit;
+		// The show and visit this play is for, and its request, taken at
+		// the click ($lib/play/owned-play): a late answer is judged
+		// against them, and records the show the viewer clicked.
+		const owner = claimPlay(id, () => visit);
 		const show = detail;
-		const playArgs = {
+		const playArgs = playArgsFor({
 			title,
-			episode: String(ep),
+			episode: ep,
 			mode,
 			quality,
-			episode_count: show?.episode_count ?? null,
-			year: yearFromKitsuRef(show),
-			subtype: show?.subtype ?? null,
-			alt_titles: altTitlesFromKitsu(show),
-			kitsu_id: showId
-		};
+			show,
+			kitsuId: owner.showId
+		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.
-		markStarted(showId, ep);
+		markStarted(owner.showId, ep);
 		// LoadingOverlay binds to actionBusy; it stays up until goto
-		// fires (which unmounts this page) or the catch branch resets
-		// busy and surfaces an error toast.
+		// fires (which unmounts this page), until a failure's message is
+		// worded (it waits on a cache lookup, so no second play starts
+		// under a failure that has not landed), or until the answer turns
+		// out to belong to a visit the viewer left.
 		actionBusy = true;
 		actionNotice = null;
 		actionProgress = null;
-		try {
-			// Hits the play-cache: a prefetch from onMount or an earlier
-			// click against the same (show, ep, mode, quality) tuple
-			// completes instantly here. Fresh resolutions land in the
-			// cache for the next click within this session. The streaming
-			// variant feeds progress events into the overlay so the user
-			// sees `<provider> ✓` ticks while resolution runs.
-			const session = await getOrFire(
-				makeKey(showId, ep, mode, quality),
-				(emit, signal) => playStream(playArgs, emit, signal),
-				(p) => {
-					actionProgress = progressLabel(p);
-				}
-			);
+		// Hits the play-cache: a prefetch from onMount or an earlier
+		// click against the same (show, ep, mode, quality) tuple
+		// completes instantly here. The streaming variant feeds progress
+		// events into the overlay so the user sees `<provider> ✓` ticks.
+		const outcome = await runOwnedPlay(
+			owner,
+			() =>
+				getOrFire(
+					makeKey(owner.showId, ep, mode, quality),
+					(emit, signal) => playStream(playArgs, emit, signal),
+					(p) => {
+						actionProgress = progressLabel(p);
+					}
+				),
+			(e) => describePlayFailure(e, owner.showId, mode, ep)
+		);
+		if (outcome.kind === 'played') {
 			actionNotice = null;
-			// The target is built from `resolve()` plus a query string;
-			// the no-resolve lint rule's pattern matcher only recognises
-			// a literal `goto(resolve(...))`, so we suppress around it.
-			// `kind` rides along so the player page knows whether to
-			// mount hls.js or a plain `<video src>`.
 			// Stamp Continue Watching for the click. getOrFire shares
 			// the prefetch's in-flight promise (which had prefetch=true),
 			// so the backend's auto-history-write stayed silent for
-			// cache-hit clicks — markWatched covers that gap. Cache-miss
-			// clicks ALSO call this; the backend op is idempotent (looks
-			// up cache by key, no-op when missing).
+			// cache-hit clicks — markWatched covers that gap. The backend
+			// op is idempotent.
 			void markWatched(playArgs).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
@@ -1358,46 +1353,31 @@
 			// #3387467149) — and only for a finished series (Codex P2
 			// #3387184082). progress itself is the played episode number.
 			void syncWatchedToTrackers(
-				showId,
+				owner.showId,
 				ep,
 				show?.episode_count ?? null,
 				show?.status === 'finished'
 			).catch(() => {});
-			// The viewer moved on (another show, or away and back): the
-			// watch above is still this show's, but taking them into its
-			// player is not.
-			if (visit !== askedVisit) {
-				actionBusy = false;
-				actionProgress = null;
+			if (outcome.current) {
+				// `kind` rides along so the player page knows whether to
+				// mount hls.js or a plain `<video src>`. The no-resolve
+				// lint rule only recognises a literal `goto(resolve(...))`.
+				/* eslint-disable svelte/no-navigation-without-resolve */
+				void goto(
+					resolve('/play/[id]', { id: owner.showId }) + buildPlayQuery(outcome.session, ep)
+				);
+				/* eslint-enable svelte/no-navigation-without-resolve */
 				return;
 			}
-			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id: showId }) + buildPlayQuery(session, ep));
-			/* eslint-enable svelte/no-navigation-without-resolve */
-		} catch (e) {
-			// The viewer moved on: say nothing — a message here would be
-			// about a visit they left (the same rule as onSuperseded).
-			if (visit !== askedVisit) {
-				actionBusy = false;
-				actionProgress = null;
-				return;
-			}
-			// Fixed-position overlay rather than an inline banner — the
-			// user just clicked their primary action and it failed,
-			// scrolled out of view of the page header, so the message
-			// needs to follow them. They dismiss explicitly (button /
-			// Escape / backdrop click) so it doesn't auto-disappear
-			// while they're reading. Busy holds until the message is
-			// worded (it waits on a cache lookup), so no second play can
-			// start under a failure that has not landed yet.
-			const message = await describePlayFailure(e, showId, mode, ep);
-			actionBusy = false;
-			actionProgress = null;
-			// Wording waits on a cache lookup; the viewer may have moved
-			// on meanwhile.
-			if (visit !== askedVisit) return;
-			playFailure = { episode: ep, message };
 		}
+		actionBusy = false;
+		actionProgress = null;
+		// Fixed-position overlay rather than an inline banner — the
+		// user just clicked their primary action and it failed, scrolled
+		// out of view of the page header, so the message needs to follow
+		// them. They dismiss explicitly. An abandoned failure says
+		// nothing: it is about a visit the viewer left.
+		if (outcome.kind === 'failed') playFailure = { episode: ep, message: outcome.message };
 	}
 
 	// Not-yet-premiered shows can exist as searchable provider stubs,

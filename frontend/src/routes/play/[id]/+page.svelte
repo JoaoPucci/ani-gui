@@ -115,6 +115,7 @@
 	import { isStaleDragCallback } from '$lib/play/drag-generation';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
+	import { claimPlay, playArgsFor, runOwnedPlay } from '$lib/play/owned-play';
 	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
 	import {
@@ -1927,31 +1928,26 @@
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		// The show, visit and flags this switch is for, read once: the
-		// route's component is reused across shows and across a round
-		// trip back, so by the time the play answers `id` and the URL's
-		// flags may describe another visit. (`detail` loads only on mount,
-		// so it is captured for symmetry rather than because it moves.)
-		const showId = id;
-		const askedVisit = visit;
+		// The show, visit and flags this switch is for, and its request,
+		// taken at the click ($lib/play/owned-play): the route's component
+		// is reused across shows and across a round trip back, so a late
+		// answer is judged against them. (`detail` loads only on mount.)
+		const owner = claimPlay(id, () => visit);
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
 		const quality = config?.quality ?? 'best';
-		const playArgs = {
+		const playArgs = playArgsFor({
 			title,
-			episode: String(targetEp),
+			episode: targetEp,
 			mode,
 			quality,
-			episode_count: show.episode_count ?? null,
-			year: yearFromKitsuRef(show),
-			subtype: show.subtype ?? null,
-			alt_titles: altTitlesFromKitsu(show),
-			kitsu_id: recordableId(showId, guess)
-		};
+			show,
+			kitsuId: recordableId(owner.showId, guess)
+		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
-		markStarted(showId, targetEp, undefined, row);
+		markStarted(owner.showId, targetEp, undefined, row);
 		switchBusy = true;
 		switchProgress = null;
 		playerError = null;
@@ -1960,44 +1956,49 @@
 			// next-episode click is usually instant. Streaming variant
 			// surfaces `<provider> ✓` ticks under the Lottie when the
 			// click races a prefetch that hasn't finished yet.
-			const session = await getOrFire(
-				makeKey(showId, targetEp, mode, quality),
-				(emit, signal) => playStream(playArgs, emit, signal),
-				(p) => {
-					switchProgress = progressLabel(p);
-				}
+			const outcome = await runOwnedPlay(
+				owner,
+				() =>
+					getOrFire(
+						makeKey(owner.showId, targetEp, mode, quality),
+						(emit, signal) => playStream(playArgs, emit, signal),
+						(p) => {
+							switchProgress = progressLabel(p);
+						}
+					),
+				(e) => describePlayFailureFromCache(e, { kitsuId: owner.showId, mode, episode: targetEp })
 			);
+			// switchToEpisode is the play *call* failing — the user might
+			// be scrolled into the episode strip when this fires, so a
+			// fixed-position overlay is the only visible surface.
+			// playerError stays for *playback*-time errors. An abandoned
+			// failure says nothing: it is about a visit the viewer left.
+			if (outcome.kind === 'failed') {
+				playFailure = { episode: targetEp, message: outcome.message };
+				return;
+			}
+			if (outcome.kind === 'abandoned') return;
 			// The viewer left while the session was on its way: nothing
 			// below is theirs any more, least of all a navigation back
 			// into the player.
 			if (gone) return;
-			// The viewer moved on (another show, or away and back; the
-			// component is reused):
-			// the watch below is still this show's, but the player on
-			// screen is not, so nothing else here touches it.
-			const moved = visit !== askedVisit;
 			// Reset the one-shot auto-retry budget only on a real episode
-			// switch — Next/Prev/pick are distinct session-classes, so
-			// each gets its own shot. Resetting on a same-episode landing
-			// (the auto-recovery path, and the manual Reload path) would
-			// let chronically expired CDN URLs loop unbounded through
-			// eviction + resolve, hammering the resolver and upstream until a
-			// non-network error happens. See Codex P1 #3366915811.
+			// switch on the visit still on screen — Next/Prev/pick are
+			// distinct session-classes, so each gets its own shot.
+			// Resetting on a same-episode landing (the auto-recovery path,
+			// and the manual Reload path) would let chronically expired CDN
+			// URLs loop unbounded through eviction + resolve. See Codex P1
+			// #3366915811.
 			if (
-				!moved &&
+				outcome.current &&
 				shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })
 			) {
 				hasAutoRetried = false;
 				stallMachine.reset();
 			}
-			// goto navigates within the same route, so the page doesn't
-			// fully unmount — `$effect` above re-fires with the new
-			// session, and hls.js swaps source. The target is built
-			// from `resolve()` plus a query string; the no-resolve
-			// lint rule's pattern matcher only recognises a literal
-			// `goto(resolve(...))` call, so we suppress around the call.
 			// Stamp Continue Watching — see the equivalent block in
-			// /anime/[id] for the rationale (getOrFire reuse).
+			// /anime/[id] for the rationale (getOrFire reuse). The watch
+			// is the clicked show's even when the viewer has moved on.
 			void markWatched(playArgs).catch(() => {});
 			// Mirror the progress to any connected tracker (AniList / MAL).
 			// Best-effort and renderer-driven — the backend is stateless,
@@ -2009,50 +2010,31 @@
 			// #3387184082). progress itself is the played episode number.
 			if (!guess) {
 				void syncWatchedToTrackers(
-					showId,
+					owner.showId,
 					targetEp,
 					show.episode_count ?? null,
 					show.status === 'finished'
 				).catch(() => {});
 			}
-			if (moved) return;
+			// The player on screen belongs to another visit: leave it.
+			if (!outcome.current) return;
 			/* eslint-disable svelte/no-navigation-without-resolve */
-			// replaceState: true so prev/next don't accumulate history
-			// entries — back from /play/[id] always returns to
-			// /anime/[id], not to the previously-watched episode.
-			// Episode navigation already lives in the player's prev/
-			// next controls; the back button is for leaving the show.
+			// goto navigates within the same route, so the page doesn't
+			// fully unmount — `$effect` above re-fires with the new
+			// session, and hls.js swaps source. replaceState: true so
+			// prev/next don't accumulate history entries — back from
+			// /play/[id] always returns to /anime/[id].
 			//
 			// Awaited, so the switch stays busy until the navigation has
 			// landed: the next stream attaches there, and starts its
 			// resume hold if it has a point, before `finally` clears the
-			// flag, so the loading indicator runs from one into the other
-			// without going out between them. A navigation that fails is
-			// not a failed play, so it does not reach the play-failure
-			// overlay below.
+			// flag. A navigation that fails is not a failed play.
 			await goto(
-				resolve('/play/[id]', { id: showId }) +
-					withRow(withGuess(buildPlayQuery(session, targetEp), guess), row),
+				resolve('/play/[id]', { id: owner.showId }) +
+					withRow(withGuess(buildPlayQuery(outcome.session, targetEp), guess), row),
 				{ replaceState: true }
 			).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */
-		} catch (e) {
-			// The viewer moved on: say nothing about a visit they left.
-			if (visit !== askedVisit) return;
-			// switchToEpisode is the play *call* failing — the user
-			// might be scrolled into the episode strip when this fires,
-			// so a fixed-position overlay is the only visible surface.
-			// playerError stays for *playback*-time errors (in-place
-			// `<p class="player-empty">` substitute for the video).
-			const message = await describePlayFailureFromCache(e, {
-				kitsuId: showId,
-				mode,
-				episode: targetEp
-			});
-			// Wording waits on a cache lookup; the viewer may have moved
-			// on meanwhile.
-			if (visit !== askedVisit) return;
-			playFailure = { episode: targetEp, message };
 		} finally {
 			switchBusy = false;
 		}
@@ -2072,9 +2054,9 @@
 	 *  re-resolve flow. */
 	async function recoverFromStaleStream(reason: string) {
 		if (!detail) return;
-		// The visit this recovery is for: a page moved on to another
-		// show while the eviction was out must not resolve afresh.
-		const askedVisit = visit;
+		// The visit this recovery is for ($lib/play/owned-play): a page
+		// moved on while the eviction was out must not resolve afresh.
+		const owner = claimPlay(id, () => visit);
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
 		// into a blank frame. The user keeps the Reload button to try
@@ -2117,7 +2099,7 @@
 		// the next slow play, which is acceptable for the retry.
 		// The viewer left while the eviction was out: a fresh resolve
 		// would only navigate them back.
-		if (gone || visit !== askedVisit) return;
+		if (gone || !owner.isCurrent()) return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
 	}
@@ -2254,10 +2236,12 @@
 		// switch while a slow launch is out must not re-head its failure,
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
-		const launch = { kitsuId: id, mode: config.mode, episode: ep };
-		// The visit it is for: a failure that lands after the viewer moved
-		// on (another show, or away and back) is not shown to them.
-		const askedVisit = visit;
+		const cfg = config;
+		const launch = { kitsuId: id, mode: cfg.mode, episode: ep };
+		// The visit it is for ($lib/play/owned-play): a failure that lands
+		// after the viewer moved on (another show, or away and back) is
+		// not shown to them, and asks the cache nothing.
+		const owner = claimPlay(id, () => visit);
 		// Pause the embedded video so the user isn't watching two
 		// instances simultaneously. The notice/launch flow continues
 		// regardless; if the external player fails to start the user
@@ -2265,40 +2249,41 @@
 		videoEl?.pause();
 		externalBusy = true;
 		try {
-			await playExternal(
-				handoffArgs({
-					title,
-					episode: ep,
-					kitsuId: recordableId(id, fromGuess) ?? '',
-					config,
-					detail
-				})
+			const outcome = await runOwnedPlay(
+				owner,
+				() =>
+					playExternal(
+						handoffArgs({
+							title,
+							episode: ep,
+							kitsuId: recordableId(id, fromGuess) ?? '',
+							config: cfg,
+							detail
+						})
+					),
+				// Body text is shaped by describeExternalLaunchFailure so
+				// the spawn case names the binary and the resolve-step
+				// branches reuse describePlayFailure copy.
+				async (e) => describeExternalLaunchFailure(e, await otherAudioForFailure(e, launch))
 			);
-			// Success surfaces as a bottom-right toast (4s auto-
-			// dismiss owned by the toast store). The shape comes
-			// from externalLaunchSuccessToast so the message text
-			// stays i18n'd and picks up the player's display name
-			// from cfg.external_player_kind.
-			toastStore.push(
-				externalLaunchSuccessToast({
-					episode: ep,
-					kind: config.external_player_kind,
-					isSingleVideo: singleVideo
-				})
-			);
-		} catch (e) {
-			// Route the failure through the ErrorOverlay modal so the
-			// user can't miss it — the prior inline notice landed in
-			// the player area and the player_spawn_failed case (the
-			// most common one, when the user's configured binary
-			// isn't on PATH) was easy to scroll past. Body text is
-			// shaped by describeExternalLaunchFailure so the spawn
-			// case names the binary and the resolve-step branches
-			// reuse describePlayFailure copy.
-			if (visit !== askedVisit) return;
-			const otherAudio = await otherAudioForFailure(e, launch);
-			if (visit !== askedVisit) return;
-			externalError = { episode: ep, message: describeExternalLaunchFailure(e, otherAudio) };
+			if (outcome.kind === 'played') {
+				// Success surfaces as a bottom-right toast (4s auto-dismiss
+				// owned by the toast store), naming the player from
+				// cfg.external_player_kind. The window really opened, so the
+				// toast is shown whatever page the viewer is on.
+				toastStore.push(
+					externalLaunchSuccessToast({
+						episode: ep,
+						kind: cfg.external_player_kind,
+						isSingleVideo: singleVideo
+					})
+				);
+			} else if (outcome.kind === 'failed') {
+				// The ErrorOverlay modal, so the user can't miss it — the
+				// player_spawn_failed case (the configured binary isn't on
+				// PATH) was easy to scroll past as an inline notice.
+				externalError = { episode: ep, message: outcome.message };
+			}
 		} finally {
 			externalBusy = false;
 		}
@@ -2316,42 +2301,43 @@
 		// switch while a slow launch is out must not re-head its failure,
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
-		const launch = { kitsuId: id, mode: config.mode, episode: ep };
-		// The visit it is for: a failure that lands after the viewer moved
-		// on (another show, or away and back) is not shown to them.
-		const askedVisit = visit;
+		const cfg = config;
+		const launch = { kitsuId: id, mode: cfg.mode, episode: ep };
+		// The visit it is for ($lib/play/owned-play): a failure that lands
+		// after the viewer moved on is not shown to them.
+		const owner = claimPlay(id, () => visit);
 		// Same pause-the-embedded-video logic as the external flow:
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
 		videoEl?.pause();
 		syncplayBusy = true;
 		try {
-			await playSyncplay(
-				handoffArgs({
-					title,
-					episode: ep,
-					kitsuId: recordableId(id, fromGuess) ?? '',
-					config,
-					detail
-				})
+			const outcome = await runOwnedPlay(
+				owner,
+				() =>
+					playSyncplay(
+						handoffArgs({
+							title,
+							episode: ep,
+							kitsuId: recordableId(id, fromGuess) ?? '',
+							config: cfg,
+							detail
+						})
+					),
+				async (e) => describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch))
 			);
-			toastStore.push(syncplayLaunchSuccessToast({ episode: ep, isSingleVideo: singleVideo }));
-		} catch (e) {
-			// Same routing as onOpenExternal — ErrorOverlay modal so
-			// missing-binary failures can't be missed. Body shaped
-			// by describeSyncplayLaunchFailure (spawn-fail names the
-			// binary; resolve-step failures reuse describePlayFailure).
-			// `isSpawnFailure` drives whether the modal renders the
-			// "Get Syncplay" install link — only when the binary
-			// itself was the problem.
-			if (visit !== askedVisit) return;
-			const otherAudio = await otherAudioForFailure(e, launch);
-			if (visit !== askedVisit) return;
-			syncplayError = {
-				episode: ep,
-				message: describeSyncplayLaunchFailure(e, otherAudio),
-				isSpawnFailure: isSyncplaySpawnFailure(e)
-			};
+			if (outcome.kind === 'played') {
+				toastStore.push(syncplayLaunchSuccessToast({ episode: ep, isSingleVideo: singleVideo }));
+			} else if (outcome.kind === 'failed') {
+				// Same routing as onOpenExternal. `isSpawnFailure` drives
+				// whether the modal renders the "Get Syncplay" install link —
+				// only when the binary itself was the problem.
+				syncplayError = {
+					episode: ep,
+					message: outcome.message,
+					isSpawnFailure: isSyncplaySpawnFailure(outcome.error)
+				};
+			}
 		} finally {
 			syncplayBusy = false;
 		}
