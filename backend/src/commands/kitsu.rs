@@ -539,7 +539,13 @@ pub fn title_match_put(
 ///   an entry whose broad listing went uncut — where the title
 ///   carries no cour marker the guard could refuse it on; re-keying
 ///   lets the next resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 6;
+/// - v7: an entry with a count and no year takes only a hit the title
+///   searched or one of its own names vouches for. A v6 row can bind
+///   another show's key to such an entry — Girlfriend, Girlfriend's to
+///   Mo Du Zhe, whose count it merely fit — where the title carries no
+///   cour marker the guard could refuse it on; re-keying lets the next
+///   resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 7;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")
