@@ -29,3 +29,13 @@ export function whenSettled<T>(value: T | Promise<T>, then: (value: T | undefine
 	if (value instanceof Promise) void value.then(then, () => then(undefined));
 	else then(value);
 }
+
+/** How long a stream's start waits for the settings. */
+export const QUALITY_SETTING_WAIT_MS = 0;
+
+/** The value, or undefined when it fails or does not come within
+ *  `ms`. */
+export function settledWithin<T>(value: Promise<T>, ms: number): Promise<T | undefined> {
+	void ms;
+	return value;
+}

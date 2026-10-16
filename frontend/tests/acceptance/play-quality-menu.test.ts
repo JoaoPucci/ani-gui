@@ -276,6 +276,18 @@ describe('play route — the quality the setting names, and the menu that change
 		expect(hls.startLevel).toBe(0);
 	});
 
+	it('settings that never answer hold the start back only for a bound, then read as best', async () => {
+		useShowHandlers();
+		server.use(http.get(`${API_BASE}/api/settings`, () => new Promise<never>(() => {})));
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'hls' });
+		app = mount(PlayPage, { target });
+		await until(() => hlsInstances().length > 0, 'the hls engine to attach');
+		const hls = hlsInstances()[hlsInstances().length - 1];
+		hls.emit(EVENTS.MANIFEST_PARSED, { levels: MASTER });
+		await until(() => hls.starts === 1, 'the engine to start without the settings', 10_000);
+		expect(hls.loads).toEqual([2]);
+	});
+
 	it('offers no quality row for a stream of one level', async () => {
 		const hls = await mountHls();
 		hls.emit(EVENTS.MANIFEST_PARSED, { levels: [MASTER[1]] });
