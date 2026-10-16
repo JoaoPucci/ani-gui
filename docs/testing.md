@@ -37,6 +37,11 @@ tests/
 │   ├── history/           # watch-history samples
 │   ├── hls/               # transport streams as base64 text, a master playlist
 │   └── arch/              # stand-in checks the bats harness drives
+├── picker-oracle/         # the season picker's checks (README inside)
+│   ├── oracle.py          # model of docs/title-resolution.md, and the comparison
+│   ├── cases/             # hand-written pools with the docs' answers
+│   ├── allowlist.json     # accepted disagreements, each with its reason
+│   └── fixtures-golden.json  # every recorded picker fixture's outcome
 └── arch/                  # cross-cutting architectural invariants
     ├── i18n.sh
     ├── deferral_record.sh
@@ -72,6 +77,9 @@ cd frontend && pnpm test:acceptance
 # Architectural invariants (always fast; the workflow-certification
 # self-test parses CI config with PyYAML — python3-yaml on Debian/Ubuntu)
 bash tests/arch/run-all.sh
+
+# The season picker against the model of its docs (tests/picker-oracle/README.md)
+python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 ```
 
 ## Coverage targets
@@ -98,11 +106,30 @@ Every PR runs all gating workflows; merge blocks until they're green:
 
 | Workflow | Triggers | Gating |
 |---|---|---|
-| `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, or a workflow | yes |
-| `rust.yml` | PR touches `backend/**` or `Cargo.lock` | yes |
+| `bash.yml` | PR touches `tests/bash/**`, `tests/arch/**`, a script the suites execute, or a workflow | yes |
+| `rust.yml` | PR touches `backend/**`, `tests/fixtures/**`, `rust-toolchain.toml`, `tests/picker-oracle/fixtures-golden.json` or the workflow — decided by `tools/rust-workflow-filter.sh`, which `tests/bash/arch/rust_workflow_filter.bats` runs | yes |
+| `rust.yml`, job `picker oracle agreement` | PR touches `backend/**`, `tests/fixtures/hianime/picker/**`, `tests/picker-oracle/**`, `docs/title-resolution.md` or the workflow — the same script | not in the ruleset's required list yet |
 | `frontend.yml` | PR touches `frontend/**` | yes |
 | `arch.yml` | always | yes |
 | `mutation.yml` | nightly cron + manual dispatch | no (informational) |
+
+## The season picker
+
+The picker that chooses a provider listing for a Kitsu entry is checked
+two ways, both under `tests/picker-oracle/` (its README has the
+commands): every recorded pool under `tests/fixtures/hianime/picker/`
+must pick as `fixtures-golden.json` records, an ordinary `cargo test`;
+and the picker must agree with `oracle.py`, a model of the decision
+tables in `docs/title-resolution.md`, on every pool the model writes
+out, unless `allowlist.json` carries the disagreement with a reason.
+
+The rule for a reported mispick: it becomes a recorded fixture under
+`tests/fixtures/hianime/picker/` — with a `MANIFEST.json` entry and an
+expectation in the fixture test's table — in the PR that fixes it. The
+golden and the allowlist change only in a PR that changes the picker,
+with the reason in the commit body. The model follows the docs: when
+the model and the docs disagree, fix whichever is wrong and say which;
+it is never bent to the picker.
 
 ## Fixture management
 

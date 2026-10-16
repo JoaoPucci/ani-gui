@@ -1,0 +1,19 @@
+[
+ {"id": "kanji/1", "titles": ["ショー 第十期"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Season 10", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/2", "titles": ["ショー 第十二部"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Part 12", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/3", "titles": ["ショー 第二十一期"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Season 21", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/4", "titles": ["ショー 第十期"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Season 11", 12]], "expect": null, "family": "kanji"},
+ {"id": "kanji/5", "titles": ["ショー 第十期"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Season 1", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/6", "titles": ["怪獣八号"], "count": 12, "entry_year": 2020, "rows": [["x", "Kaiju No. 8", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/7", "titles": ["怪獣八号"], "count": 12, "entry_year": 2020, "rows": [["x", "怪獣八十号", 12]], "expect": null, "family": "kanji"},
+ {"id": "kanji/8", "titles": ["怪獣八号"], "count": 12, "entry_year": 2020, "rows": [["x", "怪獣８号", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/9", "titles": ["怪獣８号"], "count": 12, "entry_year": 2020, "rows": [["x", "怪獣八号", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/10", "titles": ["一騎当千"], "count": 12, "entry_year": 2020, "rows": [["x", "Ikki Tousen 2", 12]], "expect": null, "family": "kanji"},
+ {"id": "kanji/11", "titles": ["一騎当千"], "count": 12, "entry_year": 2020, "rows": [["x", "一騎当千", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/12", "titles": ["ショー 第百期"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Season 100", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/13", "titles": ["ショー 第十期"], "count": 12, "entry_year": 2020, "rows": [["w", "ショー 第十期", 24], ["l", "ショー 第十期 第二部", 12]], "expect": {"pick": "w", "count": 12}, "family": "kanji"},
+ {"id": "kanji/14", "titles": ["ショー第十期"], "count": 12, "entry_year": 2020, "rows": [["x", "ショー第十期第二部", 12]], "expect": null, "family": "kanji"},
+ {"id": "kanji/15", "titles": ["ショー第十二期"], "count": 12, "entry_year": 2020, "rows": [["x", "Show 12", 12]], "expect": {"pick": "x", "count": 12}, "family": "kanji"},
+ {"id": "kanji/16", "titles": ["ショー 第十期"], "count": 12, "entry_year": 2020, "rows": [["x", "ショー 第十二期", 12]], "expect": null, "family": "kanji"},
+ {"id": "kanji/17", "titles": ["ショー 第二十期"], "count": 12, "entry_year": 2020, "rows": [["x", "Show Season 2", 12]], "expect": null, "family": "kanji"}
+]
