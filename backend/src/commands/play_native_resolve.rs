@@ -294,11 +294,12 @@ where
                             refused_by_name: false,
                         });
                     }
-                    // An all-answered-not-found pool: dead candidates
-                    // on a healthy provider. The walk moves on, and
-                    // the verdict stays answered — the breaker must
-                    // not open on a provider that answered.
-                    Err(AniError::Upstream { .. }) => {
+                    // An all-answered-not-found pool — dead candidates
+                    // on a healthy provider — or one refused on how
+                    // its hits are named. The walk moves on, and the
+                    // verdict stays answered — the breaker must not
+                    // open on a provider that answered.
+                    Err(AniError::Upstream { .. } | AniError::RefusedByName) => {
                         any_answered_dead_end = true;
                     }
                     Err(e) => {

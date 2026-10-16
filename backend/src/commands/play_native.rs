@@ -127,10 +127,12 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///
 /// # Errors
 /// [`crate::error::AniError::NoResults`] when `hits` is empty or no
-/// candidate survives the threshold; the answered dead end
-/// `Upstream { status: 404 }` when the titles refused a candidate the
-/// count accepted, or without a count refused a hit and nothing else
-/// was picked.
+/// candidate survives the threshold; the refusal by name
+/// [`crate::error::AniError::RefusedByName`] when the titles, or the
+/// rules that read how a hit is named, refused a candidate the count
+/// accepted, or without a count refused a hit and nothing else was
+/// picked; the answered dead end `Upstream { status: 404 }` when every
+/// candidate's listing answered not-found.
 pub async fn pick_candidate<P: Provider + ?Sized>(
     client: &P,
     hits: &[BrowseHit],

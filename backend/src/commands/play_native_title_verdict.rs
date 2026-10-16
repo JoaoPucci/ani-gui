@@ -114,9 +114,12 @@ pub(super) fn rejection(
 /// written, and a wrong one must not be persisted as the show's
 /// absence: the verdict is the answered dead end the walk moves on
 /// from without a clean miss — never weather, which would open the
-/// breaker on a provider that answered.
+/// breaker on a provider that answered — and it is its own,
+/// [`crate::error::AniError::RefusedByName`], so the walk can tell it
+/// from a pool of dead listings and say that the catalogue lists
+/// nothing named for the entry.
 pub(super) fn refused_by_title() -> crate::error::AniError {
-    crate::error::AniError::Upstream { status: 404 }
+    crate::error::AniError::RefusedByName
 }
 
 #[cfg(test)]
