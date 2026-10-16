@@ -1,7 +1,8 @@
 //! The offsets store's file format and locked I/O — split from the
 //! translation boundary for the per-file complexity bar. One TSV
 //! row per slug: `slug\toffset[\tslot\ttag]`, the optional pair
-//! being the last watch's display stamp.
+//! being the display stamp the last displaced watch left before rows
+//! recorded the app's own number.
 
 use std::path::{Path, PathBuf};
 

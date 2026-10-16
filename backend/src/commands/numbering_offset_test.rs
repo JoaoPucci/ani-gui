@@ -54,23 +54,6 @@ fn display_stamps_round_trip_and_survive_offset_puts() {
 }
 
 #[test]
-fn writes_map_a_stamped_display_back_to_its_slot() {
-    // The mark-watched and cache-hit writers have no listing at
-    // hand: when the requested episode names the stamped display
-    // tag — by numeric identity, since the frontend normalizes
-    // "3.50" to "3.5" — the stored row gets the slot a resume looks
-    // up. Everything else keeps the offset translation.
-    let state = make_state();
-    put_display(&state, "the-show-77", 0, 4, "3.50");
-    assert_eq!(write_ep_no(&state, "the-show-77", "3.5", 0), "4");
-    assert_eq!(write_ep_no(&state, "the-show-77", "2", 0), "2");
-    let cont = make_state();
-    put_display(&cont, "the-sequel-88", 40, 2, "41.5");
-    assert_eq!(write_ep_no(&cont, "the-sequel-88", "1.5", 40), "2");
-    assert_eq!(write_ep_no(&cont, "the-sequel-88", "1", 40), "41");
-}
-
-#[test]
 fn reads_present_the_stamped_display_per_entry() {
     // The read boundary turns the stored slot back into the
     // per-entry display the GUI counts in: "4" with stamp (4, "3.5")

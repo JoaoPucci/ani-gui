@@ -50,9 +50,9 @@ pub struct NativeResolved {
     pub episode_cap: Option<u32>,
     /// The shift between the provider's episode numbers and the
     /// per-entry numbers the request used ([`numbering_offset`]).
-    /// The history writers add it — the history file speaks the
-    /// provider's numbering — and the offset store persists it for
-    /// the cache-hit and mark-watched writers and the read boundary.
+    /// The offset store persists it for the read boundary, which
+    /// translates history rows from before rows recorded the app's own
+    /// number.
     pub numbering_offset: u32,
     /// The listing's fractional display tags
     /// ([`extra_episode_tags`]) — the availability stamp's

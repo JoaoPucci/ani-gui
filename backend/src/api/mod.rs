@@ -1699,14 +1699,11 @@ mod tests {
         );
     }
 
-    /// A cached row carries the slot its resolve landed on, and the
-    /// history file speaks that numbering: episode 4 sits at slot 5
-    /// when a recap holds slot 4. The show's single display stamp can
-    /// have moved to a later resolve's row by the time the click is
-    /// marked, and translating the display number through it then
-    /// names slot 4 — the recap — so the row's own slot is what the
-    /// route records, as the handoffs and the embedded replay already
-    /// do.
+    /// A cached row carries the slot its resolve landed on: episode 4
+    /// sits at slot 5 when a recap holds slot 4. Mark-watched records
+    /// the episode itself, 4, marked as the app's own number, as the
+    /// handoffs and the embedded replay do — neither the slot nor a
+    /// display stamp decides what the row reads back as.
     #[tokio::test]
     async fn mark_watched_records_the_episode_for_a_cached_row() {
         use crate::commands::play_resolution_cache::{cache_key, put, CachedResolution};
@@ -1730,7 +1727,7 @@ mod tests {
                 kitsu_id: None,
             },
         );
-        // A later resolve moved the display stamp to its own row.
+        // A stamp for another row, which no longer matters to a new row.
         crate::commands::numbering_offset::put_display(&state, "the-show-77", 0, 7, "6");
         let router = build_api_router(Arc::new(state));
 

@@ -1,13 +1,17 @@
-//! Provider-numbering offset store — the bridge between the two
-//! numbering spaces the history file has to span.
+//! Provider-numbering offset store — the bridge that keeps history rows
+//! from before rows recorded the app's own number readable.
 //!
 //! A provider can carry a franchise's cumulative episode count into
 //! continuation cours — anidb.app listed TYBW's fourth part as 41 and
-//! 42 — and a resume looks the stored `ep_no` up in that provider's
-//! list, so the history file speaks PROVIDER numbering. Every GUI
-//! surface counts per-entry like Kitsu. The resolver computes the shift
-//! once per show; this module persists it keyed by show key so the
-//! history writers can add it and the read boundary can subtract it.
+//! 42 — and rows written then hold the provider slot a watch resolved
+//! to, in that numbering. Every GUI surface counts per-entry like
+//! Kitsu, and every row written now records that number itself, marked
+//! as such ([`crate::history::HistoryEntry::own_number`]). For the rows
+//! from before, the resolver's shift is persisted per show key, with
+//! the (slot, tag) display stamp the last displaced watch left, and the
+//! read boundary subtracts and translates through them. Resolves still
+//! stamp the offset; they no longer write display stamps, so the one a
+//! row reads through stays as it was.
 //! The rows anidb.app's resolves stamped stay: they are what keeps the
 //! history rows from its days readable.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
@@ -31,11 +35,13 @@ pub fn put(state: &AppState, slug: &str, offset: u32) {
     merge_row(state, slug, offset, None);
 }
 
-/// Persist the slug's offset together with the last watch's
+/// Test setup only: no resolve writes a display stamp now. Persist the
+/// slug's offset together with the last watch's
 /// (slot, display tag) pair — written when a native resolve lands
 /// on a row whose display differs from its slot, so the history can
 /// carry the slot a resume needs while the read boundary translates
 /// it back for display. Last write wins, like the offset.
+#[cfg(test)]
 pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &str) {
     merge_row(state, slug, offset, Some((slot, tag.to_string())));
 }
@@ -65,22 +71,6 @@ pub fn get(state: &AppState, slug: &str) -> u32 {
         .into_iter()
         .find(|r| r.slug == slug)
         .map_or(0, |r| r.offset)
-}
-
-/// The ep_no a listing-less writer (mark-watched, cache-hit) should
-/// store for `episode`: the offset translation, except when the
-/// provider-space value names the stamped display tag — by numeric
-/// identity, since the frontend normalizes — in which case the slot
-/// is written instead, because that is what a resume looks the row up
-/// by in the provider listing.
-pub fn write_ep_no(state: &AppState, slug: &str, episode: &str, offset: u32) -> String {
-    let provider = provider_ep_no(episode, offset);
-    if let Some((slot, tag)) = display_stamp(state, slug) {
-        if super::play_native_episode::tag_matches(&tag, &provider) {
-            return slot.to_string();
-        }
-    }
-    provider
 }
 
 /// The per-entry (Kitsu-space) reading of a stored row: the stamped
