@@ -57,7 +57,7 @@ import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './s
  *  failure, `lookupOtherAudio` answers for the failed episode (`true`
  *  only when a cached count covers it); for the detail page's notice,
  *  `lookupOtherAudioShow` answers for the title (`true` on a positive
- *  row). Learned from the cache only. */
+ *  row unless its cached count is zero). Learned from the cache only. */
 export type OtherAudio = boolean | null;
 
 /** What a surface tells `describePlayFailure` beyond the error. */

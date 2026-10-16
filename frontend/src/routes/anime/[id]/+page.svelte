@@ -697,8 +697,8 @@
 	// Availability against the provider. Result gates the Play + Download
 	// CTAs so titles outside the catalogue (Western animation, etc.)
 	// get a calm notice instead of a click → error overlay (one that
-	// names the other audio when the cache has the title there — see
-	// $lib/detail/unavailable-copy), and its episode count caps the tiles.
+	// names the other audio when the cache has the title there, never
+	// for a music title — see $lib/detail/unavailable-copy), and its episode count caps the tiles.
 	//
 	// Its own effect, reading the mode directly, because the mode
 	// arrives after the page does: settings resolve late, so the first
@@ -1528,7 +1528,7 @@
 					     a placeholder so we never flash CTAs labeled with
 					     stale Kitsu counts. False → the unavailable notice
 					     ("not in catalogue", or the other audio when the cache
-					     has the title there). True → real Play/Download with the
+					     has the title there and it is not a music title). True → real Play/Download with the
 					     provider-truth count threaded through. -->
 					<!-- Availability-specific, non-editor content: a loading skeleton
 					     while the probe is in flight; the unavailable notice when the
