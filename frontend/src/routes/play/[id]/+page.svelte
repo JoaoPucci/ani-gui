@@ -117,6 +117,7 @@
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
 	import { isStaleDragCallback } from '$lib/play/drag-generation';
+	import { nextEpisode, parseEpisodeNumber, previousEpisode } from '$lib/play/episode-number';
 	import { describeError, describePlayFailure } from '$lib/play/error-copy';
 	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
@@ -159,7 +160,9 @@
 	// show it names by then; every URL this page builds carries it on.
 	const fromRow = $derived(openedFromRow(page.url.searchParams));
 	const sessionId = $derived(page.url.searchParams.get('session') ?? '');
-	const episodeNum = $derived(parseInt(page.url.searchParams.get('episode') ?? '1', 10));
+	// A fractional extra (a 7.5 recap) stays itself: see
+	// $lib/play/episode-number.
+	const episodeNum = $derived(parseEpisodeNumber(page.url.searchParams.get('episode')) ?? 1);
 	// kind defaults to hls — the legacy URL shape didn't carry one. The
 	// detail page now always appends &kind=<hls|mp4>, so this default
 	// only kicks in when a refresh on a stale URL drops the param.
@@ -1228,8 +1231,10 @@
 	// so the next arrow and auto-play-next can't walk into a greyed
 	// tile. Unknown airing passes the cap through untouched.
 	const totalEpisodes = $derived(airedCap(episodeCap, airing));
-	const hasPrev = $derived(episodeNum > 1);
-	const hasNext = $derived(totalEpisodes === null || episodeNum < totalEpisodes);
+	const prevEpisodeNum = $derived(previousEpisode(episodeNum));
+	const nextEpisodeNum = $derived(nextEpisode(episodeNum));
+	const hasPrev = $derived(prevEpisodeNum >= 1);
+	const hasNext = $derived(totalEpisodes === null || nextEpisodeNum <= totalEpisodes);
 
 	// Auto-play next: persisted in Config.auto_play_next; mirrored as a
 	// local boolean so the inline toggle on the player can flip the
@@ -2110,11 +2115,11 @@
 
 	function onPrev() {
 		if (!hasPrev) return;
-		void switchToEpisode(episodeNum - 1);
+		void switchToEpisode(prevEpisodeNum);
 	}
 	function onNext() {
 		if (!hasNext) return;
-		void switchToEpisode(episodeNum + 1);
+		void switchToEpisode(nextEpisodeNum);
 	}
 	function onPickEpisode(ep: KitsuEpisode) {
 		const n = ep.number ?? ep.relative_number ?? null;
@@ -3054,7 +3059,7 @@
 									stroke-linejoin="round"
 								/>
 							</svg>
-							<span>{m.play_episode_nav_prev_label({ episode: String(episodeNum - 1) })}</span>
+							<span>{m.play_episode_nav_prev_label({ episode: String(prevEpisodeNum) })}</span>
 						</button>
 						<button type="button" class="ep-btn ep-current-btn" disabled aria-current="true">
 							<span>{m.play_episode_nav_current_label({ episode: String(episodeNum) })}</span>
@@ -3069,7 +3074,7 @@
 							disabled={!hasNext || switchBusy || airingIsPending}
 							aria-label={m.play_episode_nav_next_aria_label()}
 						>
-							<span>{m.play_episode_nav_next_label({ episode: String(episodeNum + 1) })}</span>
+							<span>{m.play_episode_nav_next_label({ episode: String(nextEpisodeNum) })}</span>
 							<svg
 								class="ep-btn-icon"
 								viewBox="0 0 24 24"

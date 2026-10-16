@@ -1,6 +1,7 @@
 import { epAirState } from '$lib/detail/episode-airing';
 import type { AiringStatus } from '$lib/detail/episode-airing';
 import { airedTargets, beyondPlayable } from '$lib/detail/episode-caps';
+import { nextEpisode } from '$lib/play/episode-number';
 
 /**
  * Which episodes a page-mount warm should resolve.
@@ -62,7 +63,7 @@ export function playPageWarmTargets(
 	const warmable = (n: number) =>
 		!epAirState(n, input.airing).unaired && !beyondPlayable(n, input.playableCount);
 	const candidates = input.visible.filter((n): n is number => n !== null && warmable(n));
-	const next = input.currentEpisode + 1;
+	const next = nextEpisode(input.currentEpisode);
 	return planWarm({
 		cacheResolutions: input.cacheResolutions,
 		candidates,
