@@ -173,6 +173,14 @@ async fn an_uncached_entry_and_page_are_read_from_kitsu() {
         .expect(1)
         .mount(&kitsu)
         .await;
+    // The page after, empty for a twelve-episode show.
+    Mock::given(method("GET"))
+        .and(path("/anime/7881/episodes"))
+        .and(wiremock::matchers::query_param("page[offset]", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
     // The relations and the sequel's page, which the reader asks for
     // once the entry's own rows are read.
     for (route, file) in [
@@ -225,6 +233,13 @@ async fn noragami_s_tail_carries_its_relations_and_its_sequel_s_titles() {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
     let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/7881/episodes"))
+        .and(wiremock::matchers::query_param("page[offset]", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
     for (route, file) in [
         ("/anime/7881", "kitsu-anime-7881.json"),
         ("/anime/7881/episodes", "kitsu-episodes-7881-p1.json"),

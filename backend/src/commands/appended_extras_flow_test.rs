@@ -118,6 +118,15 @@ fn seed_kitsu(state: &crate::app::AppState, status: &str) {
         day,
     )
     .expect("page row");
+    // The page after, which Kitsu answers empty for a twelve-episode
+    // show.
+    meta_cache_put(
+        &state.cache_pool,
+        &format!("kitsu:episodes:{KITSU}:p2"),
+        "[]",
+        day,
+    )
+    .expect("page after");
     let relations =
         crate::meta::kitsu::parse_relationships_response(&fixture("kitsu-relations-7881.json"))
             .expect("relations");
