@@ -59,7 +59,8 @@ impl Attempt for RangeStartAttempt<'_> {
             self.args.year,
             self.args.subtype.as_deref(),
         )
-        .await?;
+        .await?
+        .choose(self.args.version);
         let first = resolve_episode(
             provider,
             &picked,
@@ -137,6 +138,7 @@ where
     // naming the provider that served it, with the cap the pick's
     // listing paid for — the row the play path writes.
     let extra_tags = super::play_native_numbering::extra_episode_tags(&picked.episodes);
+    let (versions, _) = super::play_native_versions::named_versions(attempted.provider, &picked);
     super::availability::stamp_after_native(
         state,
         args.kitsu_id.as_deref(),
@@ -146,7 +148,8 @@ where
             attempted.provider,
             super::play_native_numbering::kitsu_episode_cap(&picked.episodes),
             &extra_tags,
-        ),
+        )
+        .with_versions(&versions),
     )
     .await;
     let client = attempted.client;

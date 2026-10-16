@@ -102,7 +102,7 @@ impl DownloadArgs {
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),
-            version: None,
+            version: self.version,
         }
     }
 }
@@ -283,7 +283,8 @@ where
                         attempted.provider,
                         attempted.value.episode_cap,
                         &attempted.value.extra_tags,
-                    ),
+                    )
+                    .with_versions(&attempted.value.versions),
                 )
                 .await;
                 attempted.value

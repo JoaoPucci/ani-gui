@@ -686,16 +686,7 @@ async fn post_play_mark_watched(
     // resolution row is read: a removal of the show in between took
     // that row, and the watch read from it is not recorded after it.
     let begun = crate::history::guard::epoch(&state.history_path);
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let key = crate::commands::play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let key = args.resolution_key();
     if let Ok(Some(cached)) = crate::commands::play_resolution_cache::get(&state.cache_pool, &key) {
         if !cached.show_id.is_empty() {
             // The row, the watched-at stamp and, when the frontend
@@ -821,16 +812,7 @@ async fn post_play_cache_evict(
     State(state): State<Arc<AppState>>,
     Json(args): Json<play_inner::PlayArgs>,
 ) -> StatusCode {
-    let quality = args.quality.as_deref().unwrap_or("best");
-    let key = crate::commands::play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let key = args.resolution_key();
     crate::commands::play_resolution_cache::evict(&state.cache_pool, &key);
     StatusCode::NO_CONTENT
 }

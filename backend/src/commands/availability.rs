@@ -306,9 +306,10 @@ impl<'a> ResolveVerdict<'a> {
     /// The verdict naming the served pick's `versions`.
     #[must_use]
     pub fn with_versions(
-        self,
-        _versions: &'a [crate::commands::play_native_versions::VersionInfo],
+        mut self,
+        versions: &'a [crate::commands::play_native_versions::VersionInfo],
     ) -> Self {
+        self.versions = versions;
         self
     }
 
@@ -499,7 +500,7 @@ pub async fn stamp_after_native(
                             gate_refused: false,
                             unsettled: false,
                             provider: verdict.provider,
-                            versions: Vec::new(),
+                            versions: verdict.versions.to_vec(),
                         },
                     );
                 }
@@ -624,6 +625,11 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v20: a season the provider lists twice — an "(Uncensored)" copy
+    //      and a plain one — is one pick with two versions, and the
+    //      answer names them. A v19 row cannot say whether its show
+    //      has versions, and served for its lifetime it would hide the
+    //      choice; re-keying re-probes.
     // v19: a dated entry with a count takes only a hit a name vouches
     //      for, and a dated entry's hit its own page files under
     //      Hentai is never a pick. A v18 row for such an entry can be
@@ -739,7 +745,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v19:{kitsu_id}:{m}")
+    format!("availability:v20:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
@@ -816,7 +822,7 @@ pub async fn check_availability(
         answered_by: None,
     };
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
-    let (available, episode_count, extra_episodes, provider) = match probed {
+    let (available, episode_count, extra_episodes, provider, versions) = match probed {
         Ok(attempted) => {
             let (p, present) = attempted.value;
             let Some(present) = present else {
@@ -834,6 +840,7 @@ pub async fn check_availability(
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
                     crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                     Some(attempted.provider),
+                    crate::commands::play_native_versions::named_versions(attempted.provider, &p).0,
                 )
             } else if attempted.past_undenied_affinity {
                 // The provider answered absence, but past the
@@ -856,13 +863,19 @@ pub async fn check_availability(
                 // ahead of it is refusing — so a fallback's absence stands
                 // through the primary's outage and not a moment past
                 // it, since it proves nothing about the primary.
-                (false, None, Vec::new(), Some(attempted.provider))
+                (
+                    false,
+                    None,
+                    Vec::new(),
+                    Some(attempted.provider),
+                    Vec::new(),
+                )
             }
         }
         // Clean miss: the only verdict that proves absence — flows
         // into the cache write below, naming the provider whose miss
         // it is, under the same read rule.
-        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by),
+        Err(ne) if ne.clean_miss => (false, None, Vec::new(), attempt.answered_by, Vec::new()),
         // An answered dead end — a pool refused on how its hits are
         // named, dead listings on a healthy provider — proves nothing
         // about the show and is no failure of the probe: the unknown
@@ -905,7 +918,7 @@ pub async fn check_availability(
                 gate_refused,
                 unsettled: false,
                 provider,
-                versions: Vec::new(),
+                versions: versions.clone(),
             });
         };
         // A verdict is measured against the row as it stands now,
@@ -926,7 +939,7 @@ pub async fn check_availability(
                 gate_refused,
                 unsettled: false,
                 provider,
-                versions: Vec::new(),
+                versions: versions.clone(),
             });
         }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
@@ -946,7 +959,7 @@ pub async fn check_availability(
                 // Cached: a cache hit must still say whose catalogue
                 // carries the show.
                 provider,
-                versions: Vec::new(),
+                versions: versions.clone(),
             },
         );
     }
@@ -959,7 +972,7 @@ pub async fn check_availability(
         gate_refused,
         unsettled: false,
         provider,
-        versions: Vec::new(),
+        versions: versions.clone(),
     })
 }
 

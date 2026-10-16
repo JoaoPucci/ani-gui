@@ -116,6 +116,22 @@ pub struct PlayArgs {
 }
 
 impl PlayArgs {
+    /// The resolution-cache key this play reads and writes: the
+    /// request's own axes, its version among them.
+    #[must_use]
+    pub fn resolution_key(&self) -> String {
+        play_resolution_cache::cache_key_for_version(
+            &self.title,
+            &self.mode,
+            self.quality.as_deref().unwrap_or("best"),
+            &self.episode,
+            self.year,
+            self.episode_count,
+            self.subtype.as_deref(),
+            self.version,
+        )
+    }
+
     /// The native resolve this play asks for, at `quality`.
     #[must_use]
     pub fn native_request<'a>(&'a self, quality: &'a str) -> NativeResolveRequest<'a> {
@@ -128,7 +144,7 @@ impl PlayArgs {
             expected_count: self.episode_count,
             year: self.year,
             subtype: self.subtype.as_deref(),
-            version: None,
+            version: self.version,
         }
     }
 }
@@ -197,6 +213,7 @@ fn write_history_on_cache_hit(
 /// Stamp the availability cache with a native resolution's verdict —
 /// the shared [`crate::commands::availability::stamp_after_native`],
 /// keyed by the play's own show and mode.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn stamp_availability_after_native(
     state: &AppState,
     args: &PlayArgs,
@@ -205,6 +222,7 @@ pub(super) async fn stamp_availability_after_native(
     at_start: &crate::commands::availability::RowAtStart,
     episode_cap: Option<u32>,
     extra_tags: &[String],
+    versions: &[crate::commands::play_native_versions::VersionInfo],
 ) {
     crate::commands::availability::stamp_after_native(
         state,
@@ -216,7 +234,7 @@ pub(super) async fn stamp_availability_after_native(
             provider,
             episode_cap,
             extra_tags,
-            versions: &[],
+            versions,
         },
     )
     .await;
@@ -287,15 +305,7 @@ where
     // to PLAY_RESOLUTION_TTL — we just have to confirm the upstream
     // URL is still alive (wixmp / sharepoint URLs rotate). HEAD is
     // ~50ms; a full resolve is ~5–7s. Worth the round-trip.
-    let cache_key = play_resolution_cache::cache_key(
-        &args.title,
-        &args.mode,
-        quality,
-        &args.episode,
-        args.year,
-        args.episode_count,
-        args.subtype.as_deref(),
-    );
+    let cache_key = args.resolution_key();
     // Read before any network work — the replay's liveness check
     // and the resolving alike — not before the write: the answer a
     // play stamps is the one it got here, and a refresh can land any
@@ -377,6 +387,7 @@ where
                     &availability_at_start,
                     None,
                     &[],
+                    &[],
                 )
                 .await;
             }
@@ -404,6 +415,7 @@ where
         &availability_at_start,
         native.episode_cap,
         &native.extra_tags,
+        &native.versions,
     )
     .await;
     crate::commands::play_native_record::stamp_numbering(state, &native, asked);
@@ -454,16 +466,20 @@ where
         referer: cached_resolution.referer,
         subtitles: cached_resolution.subtitles,
     };
-    create_session_with_kind(state, &session_args, kind)
+    let mut resp = create_session_with_kind(state, &session_args, kind)?;
+    with_versions_of(&mut resp, &native.versions, native.version);
+    Ok(resp)
 }
 
 /// `resp` naming the played show's `versions` and the `version` that
 /// played.
 pub(crate) fn with_versions_of(
-    _resp: &mut CreateSessionResponse,
-    _versions: &[crate::commands::play_native_versions::VersionInfo],
-    _version: Option<crate::commands::play_native_versions::VersionKind>,
+    resp: &mut CreateSessionResponse,
+    versions: &[crate::commands::play_native_versions::VersionInfo],
+    version: Option<crate::commands::play_native_versions::VersionKind>,
 ) {
+    resp.versions = versions.to_vec();
+    resp.version = version;
 }
 
 /// The cache row a native resolve leaves behind: the stream, the
@@ -482,8 +498,8 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         resolved_slot: Some(native.resolved_slot),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
-        versions: Vec::new(),
-        version: None,
+        versions: native.versions.clone(),
+        version: native.version,
     }
 }
 
@@ -610,6 +626,7 @@ pub(crate) mod tests {
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
+            &[],
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -677,6 +694,7 @@ pub(crate) mod tests {
             &at_start,
             Some(1061),
             &["1061.5".to_string()],
+            &[],
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -2066,7 +2084,8 @@ pub(crate) mod tests {
         );
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, None, &at_start, None, &[]).await;
+        stamp_availability_after_native(&state, &args, false, None, &at_start, None, &[], &[])
+            .await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
@@ -2112,6 +2131,7 @@ pub(crate) mod tests {
             Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(2),
+            &[],
             &[],
         )
         .await;
@@ -2160,6 +2180,7 @@ pub(crate) mod tests {
             Some(crate::scraper::provider::ProviderId::Hianime),
             &at_start,
             Some(12),
+            &[],
             &[],
         )
         .await;
@@ -2213,6 +2234,7 @@ pub(crate) mod tests {
             Some(crate::scraper::provider::ProviderId::TestA),
             &at_start,
             Some(12),
+            &[],
             &[],
         )
         .await;

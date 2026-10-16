@@ -160,7 +160,14 @@ use crate::proxy::MediaKind;
 // pick. A v19 row for such an entry can hold a same-year show's stream
 // under the entry's key — HenSemi (TV) playing Medaka Box Abnormal —
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-const SCHEMA: &str = "v20";
+// v21: a season the provider lists twice — an "(Uncensored)" copy and
+// a plain one — is one pick with two versions, the uncensored one
+// playing unless the request names another, and a request naming a
+// version keys its own row. A v20 row for such a show holds whichever
+// copy the pool's tie happened to pick, under the key a request naming
+// no version reads, and a HEAD-passing hit would keep serving it;
+// bumping re-resolves.
+const SCHEMA: &str = "v21";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -259,9 +266,15 @@ pub fn cache_key_for_version(
     year: Option<u32>,
     episode_count: Option<u32>,
     subtype: Option<&str>,
-    _version: Option<crate::commands::play_native_versions::VersionKind>,
+    version: Option<crate::commands::play_native_versions::VersionKind>,
 ) -> String {
-    cache_key(title, mode, quality, episode, year, episode_count, subtype)
+    let key = cache_key(title, mode, quality, episode, year, episode_count, subtype);
+    match version {
+        // A request naming no version keeps the key it had: a show with
+        // one version is asked for that way, and its row is unchanged.
+        None => key,
+        Some(v) => format!("{key}:{}", v.as_str()),
+    }
 }
 
 /// Look up a cached resolution. Returns `Ok(None)` on miss or expired.

@@ -22,6 +22,17 @@ pub enum VersionKind {
     Uncensored,
 }
 
+impl VersionKind {
+    /// The kind as the wire names it.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Uncensored => "uncensored",
+        }
+    }
+}
+
 /// A version as the answers that carry a pick name it: its kind and
 /// the show key it plays under.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,6 +71,31 @@ impl crate::commands::play_native::PickedShow {
         self.episodes = chosen.episodes;
         self
     }
+}
+
+/// The versions of `picked` as the answers name them, each under its
+/// show key with `provider`, and the one it plays — nothing for a pick
+/// with one version.
+#[must_use]
+pub fn named_versions(
+    provider: crate::scraper::provider::ProviderId,
+    picked: &crate::commands::play_native::PickedShow,
+) -> (Vec<VersionInfo>, Option<VersionKind>) {
+    let infos = picked
+        .versions
+        .iter()
+        .map(|v| VersionInfo {
+            kind: v.kind,
+            show_key: crate::scraper::provider::ShowKey::new(provider, v.hit.slug.clone())
+                .to_string(),
+        })
+        .collect();
+    let playing = picked
+        .versions
+        .iter()
+        .find(|v| v.hit.slug == picked.hit.slug)
+        .map(|v| v.kind);
+    (infos, playing)
 }
 
 /// The version tag's word, as a bracket holds it.

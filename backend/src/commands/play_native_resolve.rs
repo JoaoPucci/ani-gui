@@ -219,6 +219,12 @@ where
                 .await
                 {
                     Ok(picked) => {
+                        let picked = picked.choose(req.version);
+                        let (versions, version) =
+                            crate::commands::play_native_versions::named_versions(
+                                client.id(),
+                                &picked,
+                            );
                         on_progress(ProgressLine::Matched {
                             title: picked.hit.title.clone(),
                         });
@@ -277,8 +283,8 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
-                            versions: Vec::new(),
-                            version: None,
+                            versions,
+                            version,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS

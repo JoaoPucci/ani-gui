@@ -74,7 +74,8 @@ pub async fn resolve_launch_args(
                         attempted.provider,
                         attempted.value.episode_cap,
                         &attempted.value.extra_tags,
-                    ),
+                    )
+                    .with_versions(&attempted.value.versions),
                 )
                 .await;
                 attempted.value
