@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { extraOnPage, nextEpisode, parseEpisodeNumber, previousEpisode } from './episode-number';
+import {
+	extraOnPage,
+	nextEpisode,
+	parseEpisodeNumber,
+	parseHistoryEpisode,
+	previousEpisode
+} from './episode-number';
 
 describe('parseEpisodeNumber', () => {
 	it('keeps a fractional extra as the number it is', () => {
@@ -52,5 +58,20 @@ describe('extraOnPage', () => {
 	it('places a recap before episode 1 on page 1', () => {
 		expect(extraOnPage(0.5, 1, 5)).toBe(true);
 		expect(extraOnPage(0.5, 2, 5)).toBe(false);
+	});
+});
+
+describe('parseHistoryEpisode', () => {
+	it('reads a history row by the episode it starts with', () => {
+		expect(parseHistoryEpisode('7.5')).toBe(7.5);
+		expect(parseHistoryEpisode('7')).toBe(7);
+		expect(parseHistoryEpisode('1-12')).toBe(1);
+		expect(parseHistoryEpisode(' 3 ')).toBe(3);
+	});
+
+	it('has no episode for a row that names none', () => {
+		for (const raw of [null, undefined, '', 'abc', '0', '-1', '0-3']) {
+			expect(parseHistoryEpisode(raw), String(raw)).toBeNull();
+		}
 	});
 });

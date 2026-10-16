@@ -42,3 +42,8 @@ export function extraOnPage(episode: number, page: number, pageSize: number): bo
 	const anchor = stripAnchor(episode);
 	return anchor >= (page - 1) * pageSize + 1 && anchor <= page * pageSize;
 }
+
+/** Stub: the episode a history row names. */
+export function parseHistoryEpisode(raw: string | null | undefined): number | null {
+	return parseEpisodeNumber(raw);
+}

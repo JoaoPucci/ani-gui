@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { pickNextEpisode, pickResumeEpisode, pickResumeEpisodeFor } from './next-episode';
+import {
+	continueEpisode,
+	pickNextEpisode,
+	pickResumeEpisode,
+	pickResumeEpisodeFor
+} from './next-episode';
 
 /** Episode the player should jump to when the user clicks Continue.
  *
@@ -115,5 +120,29 @@ describe('Continue from a fractional extra', () => {
 
 	it('goes back to a recap left part-way', () => {
 		expect(pickResumeEpisode(7.5, 12, true)).toBe(7.5);
+	});
+});
+
+describe('Continue from a recap before episode 1', () => {
+	it('goes on from 0.5 to episode 1, and back to it when left part-way', () => {
+		expect(pickNextEpisode(0.5, 12)).toBe(1);
+		expect(pickResumeEpisode(0.5, 12, true)).toBe(0.5);
+	});
+});
+
+describe('continueEpisode — the episode a Continue card plays', () => {
+	it('reads the history row as the recap it names', () => {
+		const lpw = (_id: string, ep: number) => ep === 7.5;
+		expect(continueEpisode('k1', '7.5', 12, lpw)).toBe(7.5);
+		expect(continueEpisode('k1', '7.5', 12, () => false)).toBe(8);
+	});
+
+	it('reads a range-shaped row by its first episode, as the history resolver does', () => {
+		expect(continueEpisode('k1', '1-12', 12)).toBe(2);
+	});
+
+	it('treats a row that names no episode as no history', () => {
+		expect(continueEpisode('k1', 'abc', 12)).toBe(1);
+		expect(continueEpisode('k1', '0', 12)).toBe(1);
 	});
 });

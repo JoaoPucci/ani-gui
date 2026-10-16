@@ -71,3 +71,13 @@ export function resumeOr(lastWatched: number | null, next: number, leftPartWay: 
 	}
 	return lastWatched;
 }
+
+/** Stub: the episode a Continue card plays for a history row. */
+export function continueEpisode(
+	kitsuId: string,
+	epNo: string,
+	episodeCap: number | null,
+	leftPartWay?: (kitsuId: string, episode: number) => boolean
+): number {
+	return pickResumeEpisodeFor(kitsuId, null, episodeCap, leftPartWay);
+}
