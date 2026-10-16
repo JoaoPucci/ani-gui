@@ -96,8 +96,26 @@ impl Watch {
         Self {
             show_id: native.slug.clone(),
             title: native.title.clone(),
-            ep_no: episode.trim().to_string(),
+            ep_no: matched_episode(native, episode),
         }
+    }
+}
+
+/// The app's own number for the row a resolve matched: its tag, or its
+/// slot where it has none, in the entry's numbering. That is the
+/// request whenever the request named the row by its tag now; a request
+/// that found the row by a tag an earlier version gave it records the
+/// row's tag instead, so the row reads back as the episode it is.
+fn matched_episode(native: &NativeResolved, requested: &str) -> String {
+    let shown = native
+        .resolved_tag
+        .clone()
+        .unwrap_or_else(|| native.resolved_slot.to_string());
+    let own = crate::commands::numbering_offset::kitsu_ep_no(&shown, native.numbering_offset);
+    if own.is_empty() {
+        requested.trim().to_string()
+    } else {
+        own
     }
 }
 
@@ -242,7 +260,7 @@ pub(crate) fn write_history(
     asked: Asked<'_>,
 ) {
     let entry = crate::history::HistoryEntry {
-        ep_no: requested.trim().to_string(),
+        ep_no: matched_episode(native, requested),
         id: native.slug.clone(),
         title: native.title.clone(),
         // A resolve is not a watch: the row keeps the moment of the
