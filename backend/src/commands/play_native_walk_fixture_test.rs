@@ -729,7 +729,11 @@ async fn a_refused_candidate_s_dead_probe_blocks_no_winner() {
 }
 
 /// A pool written out as `(slug, title, aired episodes)` rows, every
-/// listing from `year`, for an entry known by `titles`.
+/// listing from `year`, for an entry known by `titles`. Every card
+/// carries the entry's canonical title as its romanized name, as the
+/// provider's cards for an entry's own listings carry the entry's
+/// romaji: the pools here are about how a listing's title reads, and
+/// the name vouches for every hit, as the year does.
 fn pool_of(
     titles: &[&str],
     count: Option<u32>,
@@ -754,6 +758,7 @@ fn pool_of(
         "searches": { query: rows.iter().map(|(s, t, _)| [*s, *t, "TV"]).collect::<Vec<_>>() },
         "episodes": rows.iter().map(|(s, _, n)| ((*s).to_string(), serde_json::from_str::<serde_json::Value>(&format!("[{}]", listing(*n))).unwrap())).collect::<serde_json::Map<_, _>>(),
         "years": rows.iter().map(|(s, _, _)| ((*s).to_string(), serde_json::json!(year))).collect::<serde_json::Map<_, _>>(),
+        "jnames": rows.iter().map(|(s, _, _)| ((*s).to_string(), serde_json::json!(titles[0]))).collect::<serde_json::Map<_, _>>(),
     });
     Recorded::inline("inline", &json.to_string())
 }
