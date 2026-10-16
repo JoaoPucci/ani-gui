@@ -121,7 +121,8 @@
 		extraOnPage,
 		nextEpisode,
 		parseEpisodeNumber,
-		previousEpisode
+		previousEpisode,
+		wholeEpisodeCount
 	} from '$lib/play/episode-number';
 	import { describeError, describePlayFailure } from '$lib/play/error-copy';
 	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
@@ -1267,7 +1268,9 @@
 		return Math.max(1, Math.ceil(total / UI_PAGE_SIZE));
 	});
 	const epStart = $derived((episodesPage - 1) * UI_PAGE_SIZE + 1);
-	const epEnd = $derived((episodesPage - 1) * UI_PAGE_SIZE + (episodes?.length ?? 0));
+	// Whole episodes only: the recaps beside them are not in the run.
+	const pageWhole = $derived(episodes ? wholeEpisodeCount(episodes) : 0);
+	const epEnd = $derived((episodesPage - 1) * UI_PAGE_SIZE + pageWhole);
 
 	function kitsuPagesForUiPage(uiPage: number): number[] {
 		const start = (uiPage - 1) * UI_PAGE_SIZE + 1;
@@ -3383,7 +3386,7 @@
 									onclick={() => gotoPage(episodesPage + 1)}
 									disabled={(totalEpisodePages !== null && episodesPage >= totalEpisodePages) ||
 										episodesLoading ||
-										(episodes !== null && episodes.length < UI_PAGE_SIZE)}
+										(episodes !== null && pageWhole < UI_PAGE_SIZE)}
 									aria-label={m.play_episodes_pager_next_aria_label()}
 								>
 									<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">

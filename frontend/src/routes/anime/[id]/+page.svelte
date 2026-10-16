@@ -83,7 +83,7 @@
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
-	import { extraOnPage, parseHistoryEpisode } from '$lib/play/episode-number';
+	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
 	import { markStarted, readPosition } from '$lib/play/watch-position';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -501,7 +501,8 @@
 	const knownAvailableEpisodes = $derived.by(() => {
 		if (episodesPage !== 1) return null;
 		if (!episodes) return null;
-		if (episodes.length < UI_PAGE_SIZE) return episodes.length;
+		const whole = wholeEpisodeCount(episodes);
+		if (whole < UI_PAGE_SIZE) return whole;
 		return null;
 	});
 	const totalEpisodePages = $derived.by(() => {
@@ -515,7 +516,9 @@
 		return Math.max(1, Math.ceil(total / UI_PAGE_SIZE));
 	});
 	const epStart = $derived((episodesPage - 1) * UI_PAGE_SIZE + 1);
-	const epEnd = $derived((episodesPage - 1) * UI_PAGE_SIZE + (episodes?.length ?? 0));
+	// Whole episodes only: the recaps beside them are not in the run.
+	const pageWhole = $derived(episodes ? wholeEpisodeCount(episodes) : 0);
+	const epEnd = $derived((episodesPage - 1) * UI_PAGE_SIZE + pageWhole);
 
 	function kitsuPagesForUiPage(uiPage: number): number[] {
 		const start = (uiPage - 1) * UI_PAGE_SIZE + 1;
@@ -1771,7 +1774,7 @@
 								</span>
 							</div>
 
-							{#if (totalEpisodePages !== null && totalEpisodePages > 1) || (episodes && episodes.length === UI_PAGE_SIZE)}
+							{#if (totalEpisodePages !== null && totalEpisodePages > 1) || (episodes && pageWhole === UI_PAGE_SIZE)}
 								<div class="ep-toolbar-right">
 									<form class="ep-jump" onsubmit={jumpToEpisode}>
 										<span class="ep-jump-key" aria-hidden="true"
@@ -1836,7 +1839,7 @@
 											onclick={() => gotoPage(episodesPage + 1)}
 											disabled={(totalEpisodePages !== null && episodesPage >= totalEpisodePages) ||
 												episodesLoading ||
-												(episodes !== null && episodes.length < UI_PAGE_SIZE)}
+												(episodes !== null && pageWhole < UI_PAGE_SIZE)}
 											aria-label={m.detail_episodes_pager_next_aria_label()}
 										>
 											<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">

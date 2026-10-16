@@ -105,7 +105,8 @@ export class StripPager {
 
 	/** The URL's episode changed (prev/next buttons, auto-play). */
 	episodeChanged(episode: number): StripPagerFetch {
-		if (!Number.isFinite(episode) || episode < 1) return { fetch: false };
+		// Any positive episode, a recap before episode 1 (0.5) included.
+		if (!Number.isFinite(episode) || episode <= 0) return { fetch: false };
 		const target = this.pageOf(episode);
 		if (target === this.current()) {
 			// Playback entered the page the strip already shows (or is

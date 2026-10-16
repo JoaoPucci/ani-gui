@@ -54,9 +54,14 @@ export function parseHistoryEpisode(raw: string | null | undefined): number | nu
 	return n > 0 ? n : null;
 }
 
-/** Stub: how many whole episodes are among `tiles`. */
+/** How many whole episodes are among a page's `tiles` — the count a
+ *  page's range and "is this the last page" readings are about; the
+ *  fractional extras beside them are not episodes of the run. */
 export function wholeEpisodeCount(
 	tiles: readonly { number: number | null; relative_number: number | null }[]
 ): number {
-	return tiles.length;
+	return tiles.filter((t) => {
+		const n = t.number ?? t.relative_number;
+		return n !== null && Number.isInteger(n);
+	}).length;
 }
