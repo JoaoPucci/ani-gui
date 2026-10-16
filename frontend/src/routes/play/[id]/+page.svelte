@@ -78,6 +78,7 @@
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { handoffArgs } from '$lib/play/handoff-args';
+	import { buildPlayArgs } from '$lib/play/play-args';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
@@ -1857,7 +1858,7 @@
 		if (!title) return;
 		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config.quality ?? 'best';
-		const altTitles = altTitlesFromKitsu(detail);
+		const show = detail;
 		// Which tiles to warm — and how wide, given the caching
 		// setting — is the module's decision; the page only feeds it
 		// the runtime inputs.
@@ -1872,21 +1873,18 @@
 		for (const targetEp of targets) {
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
 				playStream(
-					{
+					buildPlayArgs({
 						title,
-						episode: String(targetEp),
+						episode: targetEp,
 						mode,
 						quality,
-						episode_count: detail?.episode_count ?? null,
-						year: yearFromKitsuRef(detail),
-						subtype: detail?.subtype ?? null,
-						alt_titles: altTitles,
+						show,
 						// Prefetches must NOT update Continue Watching —
 						// switchToEpisode (the click path) does that
 						// directly via prefetch:false (default).
 						prefetch: true,
-						kitsu_id: recordableId(id, fromGuess)
-					},
+						kitsuId: recordableId(id, fromGuess)
+					}),
 					emit,
 					signal
 				)
@@ -1937,17 +1935,14 @@
 				makeKey(id, targetEp, mode, quality),
 				(emit, signal) =>
 					playStream(
-						{
+						buildPlayArgs({
 							title,
-							episode: String(targetEp),
+							episode: targetEp,
 							mode,
 							quality,
-							episode_count: detail?.episode_count ?? null,
-							year: yearFromKitsuRef(detail),
-							subtype: detail?.subtype ?? null,
-							alt_titles: altTitlesFromKitsu(detail),
-							kitsu_id: recordableId(id, fromGuess)
-						},
+							show: detail,
+							kitsuId: recordableId(id, fromGuess)
+						}),
 						emit,
 						signal
 					),
@@ -1978,17 +1973,16 @@
 			// `goto(resolve(...))` call, so we suppress around the call.
 			// Stamp Continue Watching — see the equivalent block in
 			// /anime/[id] for the rationale (getOrFire reuse).
-			void markWatched({
-				title,
-				episode: String(targetEp),
-				mode,
-				quality,
-				episode_count: detail?.episode_count ?? null,
-				year: yearFromKitsuRef(detail),
-				subtype: detail?.subtype ?? null,
-				alt_titles: altTitlesFromKitsu(detail),
-				kitsu_id: recordableId(id, fromGuess)
-			}).catch(() => {});
+			void markWatched(
+				buildPlayArgs({
+					title,
+					episode: targetEp,
+					mode,
+					quality,
+					show: detail,
+					kitsuId: recordableId(id, fromGuess)
+				})
+			).catch(() => {});
 			// Mirror the progress to any connected tracker (AniList / MAL).
 			// Best-effort and renderer-driven — the backend is stateless,
 			// so the renderer fans the write out per provider.
@@ -2073,16 +2067,9 @@
 		const quality = config?.quality ?? 'best';
 		console.info('[play] stale-stream recovery:', reason);
 		try {
-			await evictPlayCache({
-				title,
-				episode: String(episodeNum),
-				mode,
-				quality,
-				episode_count: detail.episode_count ?? null,
-				year: yearFromKitsuRef(detail),
-				subtype: detail.subtype ?? null,
-				alt_titles: altTitlesFromKitsu(detail)
-			});
+			await evictPlayCache(
+				buildPlayArgs({ title, episode: episodeNum, mode, quality, show: detail })
+			);
 		} catch {
 			/* eviction-endpoint failure shouldn't block retry — the
 			 *  server may have already evicted on HEAD-fail */

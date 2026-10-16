@@ -43,9 +43,7 @@
 	import { goto } from '$app/navigation';
 	import {
 		allmangaKitsuMapGet,
-		altTitlesFromKitsu,
 		checkAvailability,
-		yearFromKitsuRef,
 		historyClear,
 		historyDelete,
 		historyList,
@@ -104,6 +102,7 @@
 	import { browserStorage, loadHeroPrefs, saveHeroPrefs, type HeroPrefs } from '$lib/hero/prefs';
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { getOrFire, makeKey } from '$lib/play/play-cache';
+	import { buildPlayArgs } from '$lib/play/play-args';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { filterAvailable } from '$lib/availability/filter';
 	import { pickAvailabilityMode } from '$lib/availability/mode';
@@ -667,17 +666,15 @@
 	const rowTrust = createRowTrust((entry) =>
 		resolveKitsuMatchWithTrust(resolveHistoryEntry(entry, null))
 	);
-	const playArgsFor = (a: ResumePlayArgs) => ({
-		title: a.title,
-		episode: String(a.episode),
-		mode: a.mode,
-		quality: a.quality,
-		episode_count: a.match.episode_count ?? null,
-		year: yearFromKitsuRef(a.match),
-		subtype: a.match.subtype ?? null,
-		alt_titles: altTitlesFromKitsu(a.match),
-		kitsu_id: recordableId(a.match.id, a.guess === true)
-	});
+	const playArgsFor = (a: ResumePlayArgs) =>
+		buildPlayArgs({
+			title: a.title,
+			episode: a.episode,
+			mode: a.mode,
+			quality: a.quality,
+			show: a.match,
+			kitsuId: recordableId(a.match.id, a.guess === true)
+		});
 	const startResume = makeStartResume({
 		leftPartWay,
 		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),

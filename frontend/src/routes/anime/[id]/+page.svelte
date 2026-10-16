@@ -80,6 +80,7 @@
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
+	import { buildPlayArgs } from '$lib/play/play-args';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
@@ -1027,19 +1028,16 @@
 			playableCount: playableEpisodeCount,
 			listed: warmListed
 		});
-		const altTitles = altTitlesFromKitsu(detail);
+		const show = detail;
 		for (const ep of targets) {
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
 				playStream(
-					{
+					buildPlayArgs({
 						title,
-						episode: String(ep),
+						episode: ep,
 						mode,
 						quality,
-						episode_count: detail?.episode_count ?? null,
-						year: yearFromKitsuRef(detail),
-						subtype: detail?.subtype ?? null,
-						alt_titles: altTitles,
+						show,
 						// Prefetches must NOT update Continue Watching — the
 						// 12 calls fired here resolve in arbitrary order, so
 						// whichever finishes last would overwrite the user's
@@ -1050,8 +1048,8 @@
 						// even if the user only ever prefetches and never
 						// clicks (defense-in-depth; click-side carries it
 						// too via markWatched).
-						kitsu_id: id
-					},
+						kitsuId: id
+					}),
 					emit,
 					signal
 				)
@@ -1285,17 +1283,7 @@
 				makeKey(id, ep, mode, quality),
 				(emit, signal) =>
 					playStream(
-						{
-							title,
-							episode: String(ep),
-							mode,
-							quality,
-							episode_count: detail?.episode_count ?? null,
-							year: yearFromKitsuRef(detail),
-							subtype: detail?.subtype ?? null,
-							alt_titles: altTitlesFromKitsu(detail),
-							kitsu_id: id
-						},
+						buildPlayArgs({ title, episode: ep, mode, quality, show: detail, kitsuId: id }),
 						emit,
 						signal
 					),
@@ -1315,17 +1303,9 @@
 			// cache-hit clicks — markWatched covers that gap. Cache-miss
 			// clicks ALSO call this; the backend op is idempotent (looks
 			// up cache by key, no-op when missing).
-			void markWatched({
-				title,
-				episode: String(ep),
-				mode,
-				quality,
-				episode_count: detail?.episode_count ?? null,
-				year: yearFromKitsuRef(detail),
-				subtype: detail?.subtype ?? null,
-				alt_titles: altTitlesFromKitsu(detail),
-				kitsu_id: id
-			}).catch(() => {});
+			void markWatched(
+				buildPlayArgs({ title, episode: ep, mode, quality, show: detail, kitsuId: id })
+			).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
 			// Completion is decided against the FULL finite series total

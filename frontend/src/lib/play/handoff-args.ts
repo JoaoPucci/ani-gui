@@ -1,4 +1,5 @@
-import { altTitlesFromKitsu, yearFromKitsuRef, type KitsuAnimeRef, type PlayArgs } from '$lib/api';
+import type { KitsuAnimeRef, PlayArgs } from '$lib/api';
+import { buildPlayArgs } from './play-args';
 
 /**
  * The request a handoff — the external player or Syncplay — sends
@@ -16,16 +17,12 @@ export function handoffArgs(input: {
 	config: { mode: string; quality: string };
 	detail: KitsuAnimeRef | null;
 }): PlayArgs {
-	const args: PlayArgs = {
+	return buildPlayArgs({
 		title: input.title,
-		episode: String(input.episode),
+		episode: input.episode,
 		mode: input.config.mode === 'dub' ? 'dub' : 'sub',
 		quality: input.config.quality || 'best',
-		episode_count: input.detail?.episode_count ?? null,
-		year: yearFromKitsuRef(input.detail),
-		subtype: input.detail?.subtype ?? null,
-		alt_titles: altTitlesFromKitsu(input.detail)
-	};
-	if (input.kitsuId) args.kitsu_id = input.kitsuId;
-	return args;
+		show: input.detail,
+		kitsuId: input.kitsuId
+	});
 }
