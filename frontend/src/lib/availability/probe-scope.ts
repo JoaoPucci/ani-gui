@@ -13,7 +13,9 @@
  * other than the current one is aborted. Settling after the
  * navigation, not before, is what keeps the next page's probes: it
  * mounts and asks before the navigation ends, under its own path, and
- * the old page has been torn down by then, so a probe it loses reads
+ * the old page has been torn down by then — or, where the route keeps
+ * its component and only a parameter changes (one show's page to
+ * another's), has moved its own context on — so a probe it loses reads
  * as superseded rather than as a failure on a page still standing. A
  * navigation that keeps the path (a query change on the same page)
  * aborts nothing.

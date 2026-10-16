@@ -1,10 +1,11 @@
 // Electron preload — bridges main → renderer with contextIsolation on.
 //
-// The first piece of state that crosses the bridge is the localhost
-// URL of the Rust backend (and, below, its other lanes). The main process discovered the kernel-assigned
-// port at startup and passed it via `webPreferences.additionalArguments`
-// as `--ani-gui-api-base=http://127.0.0.1:<port>`. We parse it here
-// and surface it as `window.aniGui.apiBase`.
+// The backend's localhost URLs cross the bridge: the API's, which the
+// main process discovered at startup and passed via
+// `webPreferences.additionalArguments` as
+// `--ani-gui-api-base=http://127.0.0.1:<port>` and which is parsed here
+// into `window.aniGui.apiBase`, and its other lanes, parsed further
+// down into `window.aniGui.lanes`.
 //
 // The frontend's `lib/api.ts > apiBase()` checks `window.aniGui.apiBase`
 // first; once this value is present, all `fetch()` calls land on the

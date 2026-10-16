@@ -57,14 +57,14 @@ The backend listens on six loopback ports, not one — a lane per class of traff
 
 | Lane | What goes to it |
 |------|-----------------|
-| `api` | Everything below does not name: page data, search, settings, history, account, the cache-only availability batch and the fire-and-forget warm. |
+| `api` | Everything the rows below do not name: page data, search, settings, history, account, the cache-only availability batch and the fire-and-forget warm. |
 | `stream` | The stream proxy (`/s/<token>/…`): playlists, segments, keys, MP4 bodies, sidecar subtitles. |
 | `image` | `/api/image`. |
 | `probe` | Availability probes (`/api/availability`). |
 | `resolve` | Play resolutions: the progress stream the player's own play and the prefetches open, and the plain, external-player and Syncplay resolves. |
 | `download` | Downloads' progress streams. |
 
-The handshake the backend prints at startup announces each lane as `ANI_GUI_LANE <name> <origin>`, ahead of the API's `ANI_GUI_LISTENING <origin>` and the secret, the two lines the desktop shell waits for; the shell hands them to the renderer through the preload bridge as `window.aniGui.lanes`, and the renderer picks the lane for each request, falling back to the API's origin for any lane it was not given. The stream proxy stamps every URL it writes — the session's media URL, every URI in a rewritten playlist — with the stream lane's origin. The external player and Syncplay are handed the upstream stream itself, and a download's tools reach the proxy from inside the backend, so none of the three draws on Chromium's pool.
+The handshake the backend prints at startup announces each lane as `ANI_GUI_LANE <name> <origin>`, ahead of the API's `ANI_GUI_LISTENING <origin>` and the secret, the two lines the desktop shell waits for; the shell hands them to the renderer through the preload bridge as `window.aniGui.lanes`, and the renderer picks the lane for each request, falling back to the API's origin for any lane it was not given. The stream proxy stamps every URL it writes — the session's media URL, every URI in a rewritten playlist — with the stream lane's origin. The external player and Syncplay are handed the upstream stream itself, and a download's tools reach the proxy from processes the backend spawns, so none of the three draws on Chromium's pool.
 
 Lanes bound how long one class can make another wait; they do not bound a class against itself, so the renderer also holds availability probes to four at once across every surface, background ones to three so a probe the user is waiting on always finds a slot, and aborts a page's probes once the user has left it.
 

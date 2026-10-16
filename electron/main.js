@@ -391,7 +391,7 @@ async function createWindow(backend) {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      // Pass the resolved apiBase + the user's configured locale
+      // Pass the backend's handshake + the user's configured locale
       // into the preload via additional arguments. The preload reads
       // them off process.argv. The locale flag is omitted entirely
       // when config.toml is missing or has no locale key, so the
