@@ -245,6 +245,10 @@ async fn the_pick_walk_stops_typed_on_a_gate_refusal() {
     );
 }
 
+/// A rule refusing a pool by name: what it is, the pool, the title
+/// searched, the entry's count and year.
+type RefusalCase = (&'static str, Pool, &'static str, Option<u32>, Option<u32>);
+
 /// The walk's verdict for `title` with `expected` and `year`, the
 /// search answering `pool`.
 async fn refused_walk(
@@ -264,7 +268,7 @@ async fn every_rule_that_refuses_a_pool_by_name_is_a_refusal_by_name() {
     // `the-show-77` lists two regular episodes and a recap; each pool
     // below is refused on how its one hit is named, by a different
     // rule, and every verdict says so.
-    let cases: [(&str, Pool, &str, Option<u32>, Option<u32>); 6] = [
+    let cases: [RefusalCase; 6] = [
         (
             "the title rule, with a count: a season the entry never names",
             Pool::Hits(&[("the-show-77", "The Show Season 2")]),
