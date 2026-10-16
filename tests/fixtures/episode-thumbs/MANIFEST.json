@@ -126,13 +126,13 @@
       "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 39535 } (the production query: episodes status streamingEpisodes { title thumbnail })",
       "size": 4069,
       "sha256": "7c3aad4d1cec73b5c87eb2900af4bdf6a13949874308ef1288c6ffcd8bdb3582",
-      "notes": "Mushoku Tensei part 1 (11 episodes) — AniList lists both cours (0-24); Kitsu has no titles"
+      "notes": "Mushoku Tensei part 1 (11 episodes) — AniList lists Mushoku Tensei II's episodes 0-24; Kitsu has no titles"
     },
     "mushoku-tensei.kitsu-p1.json": {
       "request": "GET /anime/42323/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
       "size": 3133,
       "sha256": "4e944e0ff7abcb1994774ef666584ad067da11745b53c9970f5899870ee846b8",
-      "notes": "Mushoku Tensei part 1 (11 episodes) — AniList lists both cours (0-24); Kitsu has no titles"
+      "notes": "Mushoku Tensei part 1 (11 episodes) — AniList lists Mushoku Tensei II's episodes 0-24; Kitsu has no titles"
     },
     "one-piece.anilist.json": {
       "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 21 } (the production query: episodes status streamingEpisodes { title thumbnail })",

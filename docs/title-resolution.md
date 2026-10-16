@@ -323,8 +323,8 @@ The case table the rule was chosen from, measured against Kitsu's page with the 
 | 131681 Attack on Titan: The Final Season Part 2 | 12 | 1–25 | 1–12 | 12 | 0 | season 1's | refuse |
 | 140960 SPY×FAMILY † | 12 | 1–25 | 1–12 | 12 | 12 | ✓ for 1–12 (both cours) | keep |
 | 112641 Kaguya-sama season 2 † | 12 | 1–12 | 1–12 | 12 | 0 | season 1's | refuse |
-| 108465 Mushoku Tensei † | 11 | 0–24 | 1–11 | 0 | 0 | ✓ for 1–11 (both cours), Kitsu untitled | refuse |
-| 127720 Mushoku Tensei Part 2 | 12 | 0–24 | 1–12 | 0 | 0 | both cours, Kitsu untitled | refuse |
+| 108465 Mushoku Tensei † | 11 | 0–24 | 1–11 | 0 | 0 | season 2's (Mushoku Tensei II), Kitsu untitled | refuse |
+| 127720 Mushoku Tensei Part 2 | 12 | 0–24 | 1–12 | 0 | 0 | season 2's (Mushoku Tensei II), Kitsu untitled | refuse |
 | 21 One Piece † | — | 62–130 | 61–80 | 19 | 19 | ✓ | keep |
 | 235 Detective Conan | — | 754–1012 | 751–770 | 17 | 17 | ✓ | keep |
 | 11061 Hunter x Hunter (2011) | 148 | 1–148 | 1–20 | 20 | 20 | ✓ (× against x) | keep |
@@ -342,11 +342,13 @@ The case table the rule was chosen from, measured against Kitsu's page with the 
 | 176496 Solo Leveling season 2 | 13 | 13–25 | 1–13 | 1 | 0 | ✓, numbered across seasons | refuse (Kitsu has every still) |
 | 21355, 108632 Re:Zero seasons 1 and 2 | 25, 13 | 51–66 | 1–20, 1–13 | 0 | 0 | season 3's (the Priestella arc) | refuse |
 | 113936 Dr. Stone: Stone Wars | 11 | 1–16 | 1–11 | 0 | 0 | unconfirmed, Kitsu untitled | refuse |
-| 100922 Grand Blue | 12 | 1–5 | 1–12 | 5 | 0 | titles all differ | refuse |
+| 100922 Grand Blue | 12 | 1–5 | 1–12 | 5 | 0 | unconfirmed; every title differs from Kitsu's | refuse |
 | 143270 Lycoris Recoil | 13 | 1–6 | 1–13 | 0 | 0 | unconfirmed, Kitsu untitled | keep |
 | 154587 Sousou no Frieren, 20623 Kiseijuu | 28, 24 | 1–28, 1–24 | 1–20 | 20 | 20 | ✓ | keep |
 
-Half episodes (`Episode 1061.5`), specials and movies never enter a listing: only an integer `Episode N` title does, since Kitsu numbers episodes as integers. The one cost the evidence shows is a split-cour listing on an entry Kitsu has no titles for (Mushoku Tensei): it is refused although its first cour is right, because without titles it has the same shape as Gintama.'s, and those episodes keep their placeholders.
+Half episodes (`Episode 1061.5`), specials and movies never enter a listing: only an integer `Episode N` title does, since Kitsu numbers episodes as integers. A Kitsu placeholder title (`Episode 5`) is not compared, as an untitled episode is not, and a title of fewer than three letters and digits counts as contained in nothing.
+
+The sample shows no right listing refused, but the rule can refuse one in two ways it was not measured on. Without Kitsu titles, a split-cour listing on an entry that holds only its first cour runs past the count and has the same shape as Gintama.'s, so it is refused although its first episodes are right. And a Kitsu title in another language — romaji, or Japanese script — never agrees with Crunchyroll's English one, so a page of three or more of them refuses the listing. Either way the episodes keep their placeholders, which is what the page shows without the backfill.
 
 ## Failure modes the bridge tolerates
 
