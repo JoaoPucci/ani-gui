@@ -18,6 +18,8 @@ use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
 #[path = "anilist_eps_fit.rs"]
 mod fit;
+#[path = "anilist_eps_titles.rs"]
+mod titles;
 
 /// Stable key for the per-show AniList episode-thumbnail backfill.
 /// Versioned so a schema change orphans old rows: `v2` caches the
