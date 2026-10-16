@@ -305,7 +305,7 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
 
     assert!(
         argv.contains("/x/master.m3u8"),
-        "syncplay was still launched: {argv}"
+        "syncplay was not launched with the stream: {argv:?}"
     );
     assert!(
         crate::history::read_all(&state.history_path)
