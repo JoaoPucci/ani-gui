@@ -107,8 +107,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Cancel {count} active download?",
-				"countPlural=*": "Cancel {count} active downloads?"
+				"countPlural=one": "Cancel {count} download?",
+				"countPlural=*": "Cancel {count} downloads?"
 			}
 		}
 	],

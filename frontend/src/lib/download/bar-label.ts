@@ -9,6 +9,8 @@
  * See `bar-label.test.ts` for the exhaustive expected outputs.
  */
 
+import type { DownloadStatus } from './store.svelte';
+
 export interface DownloadBarItem {
 	title: string;
 	/** Episode argument as sent to the backend — `"5"` for single,
@@ -18,7 +20,7 @@ export interface DownloadBarItem {
 	currentEp: number | null;
 	/** Where the download stands; a row that carries none counts as
 	 *  running. */
-	status?: string;
+	status?: DownloadStatus;
 }
 
 export type DownloadBarLabel =

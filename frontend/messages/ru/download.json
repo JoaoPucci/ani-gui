@@ -128,9 +128,9 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Отменить {count} активную загрузку?",
-				"countPlural=few": "Отменить {count} активные загрузки?",
-				"countPlural=*": "Отменить {count} активных загрузок?"
+				"countPlural=one": "Отменить {count} загрузку?",
+				"countPlural=few": "Отменить {count} загрузки?",
+				"countPlural=*": "Отменить {count} загрузок?"
 			}
 		}
 	],

@@ -116,8 +116,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "¿Cancelar {count} descarga activa?",
-				"countPlural=*": "¿Cancelar {count} descargas activas?"
+				"countPlural=one": "¿Cancelar {count} descarga?",
+				"countPlural=*": "¿Cancelar {count} descargas?"
 			}
 		}
 	],
