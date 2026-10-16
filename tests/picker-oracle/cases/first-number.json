@@ -1,0 +1,13 @@
+[
+ {"id": "first-number/1", "titles": ["Kaiju No. 8 Season 2"], "count": 12, "entry_year": 2020, "rows": [["x", "Kaiju No. 8 2nd Season", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/2", "titles": ["Kaiju No. 8 Season 2"], "count": 12, "entry_year": 2020, "rows": [["x", "Kaiju No. 8: 2nd Season", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/3", "titles": ["Mob Psycho 100 II", "Mob Psycho 100 Season 2"], "count": 12, "entry_year": 2020, "rows": [["x", "Mob Psycho 100 2nd Season", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/4", "titles": ["Mob Psycho 100 II"], "count": 12, "entry_year": 2020, "rows": [["x", "Mob Psycho 100 2", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/5", "titles": ["86 Part 2", "86: Eighty Six Part 2"], "count": 12, "entry_year": 2020, "rows": [["x", "86 2nd Season", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/6", "titles": ["86 Part 2"], "count": 12, "entry_year": 2020, "rows": [["x", "86 - 2nd Cour", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/7", "titles": ["Lucky 2 Season 2"], "count": 12, "entry_year": 2020, "rows": [["x", "Lucky 2 2nd Season", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/8", "titles": ["Kidou Senshi Gundam 00 Second Season", "Mobile Suit Gundam 00 Season 2"], "count": 12, "entry_year": 2020, "rows": [["x", "Mobile Suit Gundam 00 2nd Season", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/9", "titles": ["Attack on Titan Season 3 Part 2"], "count": 12, "entry_year": 2020, "rows": [["x", "Attack on Titan Season 3 2nd Part", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/10", "titles": ["Fruits Basket 1st Season", "Fruits Basket (2019)"], "count": 12, "entry_year": 2020, "rows": [["x", "Fruits Basket 1st Season (2019)", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"},
+ {"id": "first-number/11", "titles": ["Show 2"], "count": 12, "entry_year": 2020, "rows": [["x", "Show 2 (2020)", 12]], "expect": {"pick": "x", "count": 12}, "family": "first-number"}
+]

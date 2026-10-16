@@ -187,7 +187,7 @@ The pools each row answers, E = 12 unless the row states the entry's count:
 | Show | "Show Part 2 (TV)" 12 | the same: a part 2 the entry does not name | nothing |
 | Show Season 2 | "Show Season 2 (TV)" 12 | ends on the entry's own season 2: admitted, and it fits | Show Season 2 (TV) |
 | Hunter x Hunter | "Hunter x Hunter (2011)" 148, "Hunter x Hunter" 62, no count | the exact title is compared as written, the tag kept: "Hunter x Hunter" | Hunter x Hunter |
-| Fruits Basket | "Fruits Basket (2019)" 25, "Fruits Basket" 25 | the same, on a tie: the exact title | Fruits Basket |
+| Fruits Basket | "Fruits Basket (2019)" 25, "Fruits Basket" 25 (E = 25) | the same, on a tie: the exact title | Fruits Basket |
 | Show (2011) Season 2 | "Show Season 2" 12, "Show Season 2 (2011)" 12 | the tag counts wherever it stands: "Show Season 2 (2011)" is the exact title | Show Season 2 (2011) |
 | Show 2 | "Show Season 1 (2020)" 12 | a release year is no word: the entry before | nothing |
 | Show 2 | "Show (TV)" 12 | a format tag is no word: the entry before | nothing |

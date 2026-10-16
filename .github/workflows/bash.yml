@@ -29,15 +29,17 @@ jobs:
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # See rust.yml's filter for why we avoid `git diff | grep -q`
-          # under pipefail (SIGPIPE on early grep exit kills the diff).
+          # See tools/rust-workflow-filter.sh for why we avoid
+          # `git diff | grep -q` under pipefail (SIGPIPE on early grep
+          # exit kills the diff).
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          # The snapshot generator lives in tools/ and the bats
-          # suites execute it, so a change to it must run the suite
-          # that runs it; `tests/tools/` carries the node tool tests. Workflows are included because the
-          # invocation harness pins their resolved shape against the
-          # recorded snapshot.
-          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
+          # The snapshot generator and the rust workflow filter live in
+          # tools/ and the bats suites execute them, so a change to
+          # either must run the suite that runs it; `tests/tools/`
+          # carries the node tool tests. Workflows are included because
+          # the invocation harness pins their resolved shape against
+          # the recorded snapshot.
+          if grep -qE '^(tests/bash/|tests/arch/|tests/tools/|tests/fixtures/|tools/workflow-snapshot\.py$|tools/rust-workflow-filter\.sh$|\.gitignore$|\.github/workflows/[^/]+\.ya?ml$)' <<<"$changed"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
