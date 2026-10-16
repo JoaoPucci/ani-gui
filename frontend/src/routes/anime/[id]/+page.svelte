@@ -83,7 +83,7 @@
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
-	import { parseEpisodeNumber } from '$lib/play/episode-number';
+	import { extraOnPage, parseEpisodeNumber } from '$lib/play/episode-number';
 	import { markStarted, readPosition } from '$lib/play/watch-position';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
@@ -482,7 +482,7 @@
 			for (const tag of extraEpisodes) {
 				const n = parseFloat(tag);
 				if (!Number.isFinite(n)) continue;
-				if (n < start || n > end) continue;
+				if (!extraOnPage(n, episodesPage, UI_PAGE_SIZE)) continue;
 				out.push(placeholderEpisode(n));
 			}
 			out.sort(

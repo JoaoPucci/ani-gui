@@ -28,6 +28,8 @@
  * the fetch each returned instruction asks for, reporting the
  * outcome back through `completed` / `failed`.
  */
+import { stripAnchor } from './episode-number';
+
 export type StripPagerFetch = { fetch: true; page: number; gen: number } | { fetch: false };
 
 /** Outcome of a failed fetch: whether the error should be surfaced,
@@ -68,7 +70,8 @@ export class StripPager {
 	pageOf(episode: number): number {
 		if (!Number.isFinite(this.pageSize) || this.pageSize < 1) return 1;
 		if (!Number.isFinite(episode) || episode < 1) return 1;
-		return Math.ceil(episode / this.pageSize);
+		// A fractional extra opens on the page of the episode it follows.
+		return Math.ceil(stripAnchor(episode) / this.pageSize);
 	}
 
 	/** Page decisions compare against: requested while a fetch is in

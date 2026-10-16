@@ -28,7 +28,17 @@ export function nextEpisode(episode: number): number {
 	return Number.isInteger(episode) ? episode + 1 : Math.ceil(episode);
 }
 
-/** Stub: whether an extra numbered `episode` belongs on `page`. */
+/** The whole episode a fractional extra follows, for placing it in a
+ *  paged strip: 5.5 sits beside 5, and a recap before episode 1 (0.5)
+ *  sits beside 1. A whole episode is its own anchor. */
+export function stripAnchor(episode: number): number {
+	return Math.max(1, Math.floor(episode));
+}
+
+/** Whether `episode` belongs on 1-based `page` of a strip paged
+ *  `pageSize` at a time — an extra on the page of the episode it
+ *  follows, never between two pages. */
 export function extraOnPage(episode: number, page: number, pageSize: number): boolean {
-	return episode >= (page - 1) * pageSize + 1 && episode <= page * pageSize;
+	const anchor = stripAnchor(episode);
+	return anchor >= (page - 1) * pageSize + 1 && anchor <= page * pageSize;
 }

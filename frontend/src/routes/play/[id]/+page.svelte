@@ -117,7 +117,12 @@
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
 	import { isStaleDragCallback } from '$lib/play/drag-generation';
-	import { nextEpisode, parseEpisodeNumber, previousEpisode } from '$lib/play/episode-number';
+	import {
+		extraOnPage,
+		nextEpisode,
+		parseEpisodeNumber,
+		previousEpisode
+	} from '$lib/play/episode-number';
 	import { describeError, describePlayFailure } from '$lib/play/error-copy';
 	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
@@ -1208,7 +1213,7 @@
 			}
 			for (const tag of extraEpisodes) {
 				const n = parseFloat(tag);
-				if (!Number.isFinite(n) || n < start || n > end) continue;
+				if (!Number.isFinite(n) || !extraOnPage(n, episodesPage, UI_PAGE_SIZE)) continue;
 				out.push({
 					id: `__placeholder__${n}`,
 					number: n,
