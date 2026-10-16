@@ -343,3 +343,40 @@ proptest::proptest! {
         );
     }
 }
+
+/// A continuation cour listed with the franchise's numbers (offset 12,
+/// its episodes tagged 13…) can carry a recap before its first episode,
+/// tagged "12.5". In the entry's own numbering that recap is 0.5, the
+/// extra before episode 1; passed through as "12.5", it advertised a
+/// recap past the entry's twelfth episode, and asking for it named
+/// "24.5", which the listing does not have.
+#[test]
+fn a_recap_before_a_continuations_first_episode_is_its_point_five() {
+    assert_eq!(per_entry_fraction("12.5", 12), "0.5");
+    assert_eq!(provider_fraction("0.5", 12), "12.5");
+    let eps: Vec<EpisodeRef> = [("12.5", 1u32), ("13", 2), ("14", 3)]
+        .iter()
+        .map(|(tag, slot)| EpisodeRef {
+            id: u64::from(*slot),
+            number: *slot,
+            number2: Some((*tag).to_string()),
+        })
+        .collect();
+    assert_eq!(numbering_offset(&eps), 12);
+    assert_eq!(extra_episode_tags(&eps), vec!["0.5".to_string()]);
+}
+
+proptest::proptest! {
+    /// The round trip holds from the recap before episode 1 upward.
+    #[test]
+    fn fraction_translation_round_trips_from_the_first_episode(
+        n in 0u32..50_000,
+        frac in 1u32..10,
+        offset in 1u32..40_000,
+    ) {
+        let provider = format!("{}.{frac}", n + offset);
+        let advertised = per_entry_fraction(&provider, offset);
+        proptest::prop_assert_eq!(&advertised, &format!("{n}.{frac}"));
+        proptest::prop_assert_eq!(provider_fraction(&advertised, offset), provider);
+    }
+}
