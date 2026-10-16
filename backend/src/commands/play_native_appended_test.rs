@@ -53,9 +53,56 @@ fn recorded_tail(kitsu: u32) -> EntryTail {
             })
             .collect(),
         read_past_count: true,
-        related: Vec::new(),
-        related_complete: false,
+        related: recorded_related(kitsu),
+        related_complete: true,
     }
+}
+
+/// The entries Kitsu relates `kitsu` to, as recorded, each TV sequel
+/// carrying its first episode page's titles where that page is
+/// recorded too.
+fn recorded_related(kitsu: u32) -> Vec<Related> {
+    let doc: serde_json::Value =
+        serde_json::from_slice(&fixture(&format!("kitsu-relations-{kitsu}.json")))
+            .expect("recorded relations");
+    let included = doc["included"].as_array().cloned().unwrap_or_default();
+    doc["data"]
+        .as_array()
+        .expect("relations")
+        .iter()
+        .map(|r| {
+            let dst = &r["relationships"]["destination"]["data"];
+            let attrs = included
+                .iter()
+                .find(|i| i["type"] == dst["type"] && i["id"] == dst["id"])
+                .map(|i| i["attributes"].clone())
+                .unwrap_or_default();
+            let role = r["attributes"]["role"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let subtype = attrs["subtype"].as_str().map(str::to_string);
+            let sequel_tv = role == "sequel" && subtype.as_deref() == Some("TV");
+            let id = dst["id"].as_str().unwrap_or_default();
+            let page = format!("kitsu-episodes-{id}-p1.json");
+            Related {
+                role,
+                anime: dst["type"] == "anime",
+                subtype,
+                status: attrs["status"].as_str().map(str::to_string),
+                episode_count: attrs["episodeCount"]
+                    .as_u64()
+                    .and_then(|n| u32::try_from(n).ok()),
+                episode_titles: sequel_tv.then(|| {
+                    crate::meta::kitsu::parse_episodes_response(&fixture(&page))
+                        .expect("sequel page")
+                        .into_iter()
+                        .filter_map(|e| e.canonical_title)
+                        .collect()
+                }),
+            }
+        })
+        .collect()
 }
 
 /// The tags `rows` carry, in order.
@@ -294,8 +341,15 @@ fn a_count_of_one_reads_its_one_episode() {
             airdate: Some("2020-01-01".into()),
         }],
         read_past_count: true,
-        related: Vec::new(),
-        related_complete: false,
+        related: vec![Related {
+            role: "side_story".into(),
+            anime: true,
+            subtype: Some("special".into()),
+            status: Some("finished".into()),
+            episode_count: Some(1),
+            episode_titles: None,
+        }],
+        related_complete: true,
     };
     let fitted = appended_extras(&rows, 1, &tail).expect("appended");
     assert_eq!(tags(&fitted), vec![None, Some("1.1")]);
@@ -307,12 +361,25 @@ fn a_count_of_one_reads_its_one_episode() {
 /// canonical title, air date.
 type KitsuRow = (Option<u32>, Option<String>, Option<String>);
 
+/// One entry Kitsu relates a show to, as the corpus records it: role,
+/// type, id, subtype, status, episode count, and a TV sequel's first
+/// page of episode titles where it was read.
+type RelatedRow = (
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<u32>,
+    Option<Vec<Option<String>>>,
+);
+
 #[derive(serde::Deserialize)]
 struct Corpus {
     shows: Vec<CorpusShow>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 struct CorpusShow {
     kitsu_id: String,
     title: String,
@@ -320,20 +387,34 @@ struct CorpusShow {
     episode_count: Option<u32>,
     anilist: Option<CorpusAnilist>,
     kitsu_pages: std::collections::BTreeMap<String, Vec<KitsuRow>>,
+    related: Vec<RelatedRow>,
+    related_complete: bool,
     provider: CorpusProvider,
     appended: bool,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 struct CorpusAnilist {
     status: Option<String>,
     episodes: Option<u32>,
     next_episode: Option<u32>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 struct CorpusProvider {
     rows: Vec<(u32, String, Option<String>)>,
+}
+
+fn corpus() -> Vec<CorpusShow> {
+    let corpus: Corpus = serde_json::from_slice(&fixture("corpus.json")).expect("corpus parses");
+    corpus.shows
+}
+
+fn corpus_show(kitsu: &str) -> CorpusShow {
+    corpus()
+        .into_iter()
+        .find(|s| s.kitsu_id == kitsu)
+        .unwrap_or_else(|| panic!("{kitsu} is recorded"))
 }
 
 impl CorpusShow {
@@ -351,32 +432,72 @@ impl CorpusShow {
             .collect()
     }
 
-    /// The tail the recorded Kitsu pages and AniList answer give.
+    /// The tail production reads from these answers: the recorded
+    /// Kitsu rows and AniList answer through the real parsers — which
+    /// drop Kitsu's placeholder rows — and the evidence reader's own
+    /// mapping, with the recorded relations.
     fn tail(&self) -> EntryTail {
-        EntryTail {
-            finished: self.status.as_deref() == Some("finished"),
-            count: self.episode_count,
-            anilist_count: self.anilist.as_ref().and_then(|a| {
-                (a.status.as_deref() == Some("FINISHED") && a.next_episode.is_none())
-                    .then_some(a.episodes)
-                    .flatten()
-            }),
-            episodes: self
-                .kitsu_pages
-                .values()
-                .flatten()
-                .filter_map(|(n, title, airdate)| {
-                    Some(TailEpisode {
-                        number: (*n)?,
-                        title: title.clone(),
-                        airdate: airdate.clone(),
-                    })
+        let data: Vec<serde_json::Value> = self
+            .kitsu_pages
+            .values()
+            .flatten()
+            .zip(0u32..)
+            .map(|((number, title, airdate), i)| {
+                serde_json::json!({
+                    "id": i.to_string(),
+                    "type": "episodes",
+                    "attributes": {"number": number, "canonicalTitle": title, "airdate": airdate}
                 })
-                .collect(),
-            read_past_count: true,
-            related: Vec::new(),
-            related_complete: false,
-        }
+            })
+            .collect();
+        let page = crate::meta::kitsu::parse_episodes_response(
+            serde_json::json!({ "data": data }).to_string().as_bytes(),
+        )
+        .expect("a page");
+        let airing = self
+            .anilist
+            .as_ref()
+            .and_then(|a| {
+                let next = a
+                    .next_episode
+                    .map(|e| serde_json::json!({"episode": e, "airingAt": 4_000_000_000u64}));
+                let body = serde_json::json!({"data": {"Media": {
+                    "status": a.status, "episodes": a.episodes,
+                    "nextAiringEpisode": next, "airingSchedule": {"nodes": []}
+                }}});
+                crate::meta::anilist_airing::parse_airing_response(body.to_string().as_bytes())
+                    .expect("an answer")
+            })
+            .unwrap_or_default();
+        let mut tail = crate::commands::kitsu_tail::entry_tail(
+            self.status.as_deref(),
+            self.episode_count,
+            &airing,
+            page,
+        );
+        tail.related = self
+            .related
+            .iter()
+            .map(|(role, kind, _, subtype, status, count, titles)| Related {
+                role: role.clone(),
+                anime: kind == "anime",
+                subtype: subtype.clone(),
+                status: status.clone(),
+                episode_count: *count,
+                episode_titles: titles
+                    .as_ref()
+                    .map(|t| t.iter().flatten().cloned().collect()),
+            })
+            .collect();
+        tail.related_complete = self.related_complete;
+        tail
+    }
+
+    /// The show as hianime listed it while only `past` of the rows
+    /// past Kitsu's count were up.
+    fn listed_up_to(&self, past: usize) -> Vec<EpisodeRef> {
+        let count = self.episode_count.expect("counted") as usize;
+        self.listing().into_iter().take(count + past).collect()
     }
 }
 
@@ -387,9 +508,9 @@ impl CorpusShow {
 /// row.
 #[test]
 fn on_every_recorded_show_only_appended_rows_move() {
-    let corpus: Corpus = serde_json::from_slice(&fixture("corpus.json")).expect("corpus parses");
-    assert!(corpus.shows.len() > 100);
-    for show in &corpus.shows {
+    let shows = corpus();
+    assert!(shows.len() > 100);
+    for show in &shows {
         let rows = show.listing();
         let fitted = appended_count(&rows, show.episode_count)
             .and_then(|count| appended_extras(&rows, count, &show.tail()));
@@ -408,4 +529,155 @@ fn on_every_recorded_show_only_appended_rows_move() {
         );
         assert_eq!(kitsu_episode_cap(&fitted), Some(count));
     }
+}
+
+// ── what the rows past the count are ───────────────────────────────
+
+fn explaining() -> Related {
+    Related {
+        role: "side_story".into(),
+        anime: true,
+        subtype: Some("OVA".into()),
+        status: Some("finished".into()),
+        episode_count: Some(2),
+        episode_titles: None,
+    }
+}
+
+/// Noragami's two rows past twelve are explained by the OVA Kitsu
+/// relates it to, two episodes long. Without an entry of that shape
+/// and length nothing says what the rows are.
+#[test]
+fn rows_no_related_entry_explains_keep_the_listing() {
+    let (rows, tail) = noragami();
+    assert!(appended_extras(&rows, 12, &tail).is_some(), "as recorded");
+    let without = |keep: &dyn Fn(&Related) -> bool| EntryTail {
+        related: tail.related.iter().filter(|r| keep(r)).cloned().collect(),
+        ..tail.clone()
+    };
+    assert_eq!(
+        appended_extras(
+            &rows,
+            12,
+            &without(&|r| r.subtype.as_deref() != Some("OVA"))
+        ),
+        None,
+        "no OVA"
+    );
+    for other in [
+        Related {
+            episode_count: Some(3),
+            ..explaining()
+        },
+        Related {
+            subtype: Some("TV".into()),
+            ..explaining()
+        },
+        Related {
+            status: Some("current".into()),
+            ..explaining()
+        },
+        Related {
+            anime: false,
+            ..explaining()
+        },
+    ] {
+        let t = EntryTail {
+            related: vec![other.clone()],
+            ..tail.clone()
+        };
+        assert_eq!(appended_extras(&rows, 12, &t), None, "{other:?}");
+    }
+    let part = EntryTail {
+        related_complete: false,
+        ..tail.clone()
+    };
+    assert_eq!(
+        appended_extras(&rows, 12, &part),
+        None,
+        "relations read in part"
+    );
+}
+
+/// A sequel still airing may be what the rows past the count are.
+#[test]
+fn a_sequel_still_airing_keeps_the_listing() {
+    let (rows, mut tail) = noragami();
+    tail.related.push(Related {
+        role: "sequel".into(),
+        anime: true,
+        subtype: Some("TV".into()),
+        status: Some("current".into()),
+        episode_count: None,
+        episode_titles: Some(Vec::new()),
+    });
+    assert_eq!(appended_extras(&rows, 12, &tail), None);
+}
+
+/// A TV sequel's episodes are checked against the rows past the count:
+/// one whose page was not read leaves nothing to check them against.
+#[test]
+fn a_tv_sequel_whose_episodes_were_not_read_keeps_the_listing() {
+    let (rows, mut tail) = noragami();
+    for r in &mut tail.related {
+        if r.role == "sequel" {
+            r.episode_titles = None;
+        }
+    }
+    assert_eq!(appended_extras(&rows, 12, &tail), None);
+}
+
+/// hianime lists some entries with the next cour merged in: Attack on
+/// Titan Season 3 with Part 2, Gintama.'s Silver Soul arc with its
+/// second half, Haikyuu!! To the Top with its second cour. While that
+/// cour aired, the listing ran a few rows past the entry's count, and
+/// every other piece of evidence held — the entry finished on Kitsu
+/// and AniList, its titles lining up. The rows are the sequel's
+/// episodes, which Kitsu lists under the sequel, and never extras of
+/// the entry; Haikyuu!! even has a two-episode OVA that a two-row
+/// window would match.
+#[test]
+fn a_sequel_cour_merged_into_the_listing_is_never_its_extras() {
+    for kitsu in ["13569", "14095", "42059"] {
+        let show = corpus_show(kitsu);
+        let count = show.episode_count.expect("counted");
+        let mut airing_sequel = show.tail();
+        for r in &mut airing_sequel.related {
+            if r.role == "sequel" {
+                r.status = Some("current".into());
+            }
+        }
+        for past in 1..=MAX_APPENDED as usize {
+            let rows = show.listed_up_to(past);
+            assert_eq!(appended_count(&rows, Some(count)), Some(count));
+            assert_eq!(
+                appended_extras(&rows, count, &show.tail()),
+                None,
+                "{} with {past} past, the sequel finished",
+                show.title
+            );
+            assert_eq!(
+                appended_extras(&rows, count, &airing_sequel),
+                None,
+                "{} with {past} past, the sequel airing",
+                show.title
+            );
+        }
+    }
+}
+
+/// Titles that are only numbers line up whatever each row holds, so
+/// they prove nothing about the listing's numbering.
+#[test]
+fn titles_that_are_only_numbers_prove_no_numbering() {
+    let (mut rows, mut tail) = noragami();
+    for n in 10..=12u32 {
+        rows[n as usize - 1].title = Some(format!("Episode {n}"));
+        for e in &mut tail.episodes {
+            if e.number == n {
+                e.title = Some(format!("Episode {n}"));
+            }
+        }
+    }
+    assert_eq!(appended_extras(&rows, 12, &tail), None);
 }

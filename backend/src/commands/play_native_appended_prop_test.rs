@@ -1,6 +1,12 @@
 //! Properties of the appended-extras rule: whatever the listing and
 //! the evidence, no whole episode up to the count changes row, and
 //! what moves is exactly the rows past the count, as extras.
+//!
+//! The cases start from conclusive evidence — a listing of distinct
+//! titles running a few rows past the count, Kitsu and AniList ending
+//! the show at the count, Kitsu's rows named as the listing names
+//! them, an OVA of the right length — and break at most one piece of
+//! it, so both readings are reached in every run.
 
 use super::*;
 use crate::commands::play_native_numbering::{
@@ -18,93 +24,172 @@ fn row_for(rows: &[EpisodeRef], n: u32) -> Option<&EpisodeRef> {
     })
 }
 
-/// A name from a small alphabet, so listings and Kitsu's rows collide
-/// often: equal names, generic ones, missing ones.
-fn name() -> impl Strategy<Value = Option<String>> {
+/// A listing of `count + past` rows, each named for its slot.
+fn listing(count: u32, past: u32) -> Vec<EpisodeRef> {
+    (1..=count + past)
+        .map(|n| EpisodeRef {
+            id: u64::from(n) * 7,
+            number: n,
+            number2: None,
+            title: Some(format!("Story {n}")),
+        })
+        .collect()
+}
+
+/// Evidence that proves the `past` rows after `count` are extras.
+fn conclusive(count: u32, past: u32) -> EntryTail {
+    EntryTail {
+        finished: true,
+        count: Some(count),
+        anilist_count: Some(count),
+        episodes: (1..=count)
+            .map(|n| TailEpisode {
+                number: n,
+                title: Some(format!("story {n}")),
+                airdate: Some("2020-01-01".into()),
+            })
+            .collect(),
+        read_past_count: true,
+        related: vec![Related {
+            role: "side_story".into(),
+            anime: true,
+            subtype: Some("OVA".into()),
+            status: Some("finished".into()),
+            episode_count: Some(past),
+            episode_titles: None,
+        }],
+        related_complete: true,
+    }
+}
+
+/// One way of breaking the evidence or the listing, or none.
+#[derive(Debug, Clone)]
+enum Break {
+    None,
+    Unfinished,
+    KitsuCount(u32),
+    AnilistCount(Option<u32>),
+    NotReadPast,
+    KitsuPast,
+    KitsuRowGone(u32),
+    Undated(u32),
+    Renamed(u32),
+    Untitled(u32),
+    Generic(u32),
+    Tagged(u32),
+    OvaLength(u32),
+    SequelAiring,
+    RelationsInPart,
+}
+
+fn a_break(count: u32, past: u32) -> impl Strategy<Value = Break> {
+    let row = 1..=count + past;
     prop_oneof![
-        Just(None),
-        Just(Some("Episode 13".to_string())),
-        "[A-C]{1,3}".prop_map(Some),
-        "[a-c ]{1,4}".prop_map(Some),
+        3 => Just(Break::None),
+        1 => Just(Break::Unfinished),
+        1 => (0u32..40).prop_map(Break::KitsuCount),
+        1 => proptest::option::of(0u32..40).prop_map(Break::AnilistCount),
+        1 => Just(Break::NotReadPast),
+        1 => Just(Break::KitsuPast),
+        1 => (1..=count).prop_map(Break::KitsuRowGone),
+        1 => (1..=count).prop_map(Break::Undated),
+        1 => row.clone().prop_map(Break::Renamed),
+        1 => row.clone().prop_map(Break::Untitled),
+        1 => row.clone().prop_map(Break::Generic),
+        1 => row.prop_map(Break::Tagged),
+        1 => (0u32..12).prop_map(Break::OvaLength),
+        1 => Just(Break::SequelAiring),
+        1 => Just(Break::RelationsInPart),
     ]
 }
 
-/// A listing of up to 30 rows numbered by slot, now and then a row
-/// carrying a tag.
-fn listing() -> impl Strategy<Value = Vec<EpisodeRef>> {
-    proptest::collection::vec(
-        (name(), proptest::option::weighted(0.05, "[0-9]{1,2}\\.5")),
-        0..30,
-    )
-    .prop_map(|rows| {
-        rows.into_iter()
-            .zip(1u32..)
-            .map(|((title, tag), n)| EpisodeRef {
-                id: u64::from(n) * 7,
-                number: n,
-                number2: tag,
-                title,
-            })
-            .collect()
-    })
-}
-
-/// Evidence that is sometimes conclusive: built from the listing's own
-/// titles up to `count` and then perturbed field by field.
-fn tail_for(rows: &[EpisodeRef], count: u32) -> impl Strategy<Value = EntryTail> {
-    let own: Vec<TailEpisode> = rows
-        .iter()
-        .filter(|e| e.number <= count)
-        .map(|e| TailEpisode {
-            number: e.number,
-            title: e.title.clone(),
+/// The listing and evidence `b` leaves.
+fn broken(count: u32, past: u32, b: &Break) -> (Vec<EpisodeRef>, EntryTail) {
+    let mut rows = listing(count, past);
+    let mut tail = conclusive(count, past);
+    let at = |n: u32| usize::try_from(n - 1).expect("an index");
+    match b {
+        Break::None => {}
+        Break::Unfinished => tail.finished = false,
+        Break::KitsuCount(c) => tail.count = Some(*c),
+        Break::AnilistCount(c) => tail.anilist_count = *c,
+        Break::NotReadPast => tail.read_past_count = false,
+        Break::KitsuPast => tail.episodes.push(TailEpisode {
+            number: count + 1,
+            title: Some("More".into()),
             airdate: Some("2020-01-01".into()),
-        })
-        .collect();
-    (
-        any::<bool>(),
-        prop_oneof![Just(Some(count)), proptest::option::of(0u32..40)],
-        prop_oneof![Just(Some(count)), proptest::option::of(0u32..40)],
-        any::<bool>(),
-        proptest::collection::vec((0u32..40, name(), any::<bool>()), 0..3),
-    )
-        .prop_map(move |(finished, kitsu, anilist, past, noise)| {
-            let mut episodes = own.clone();
-            episodes.extend(noise.into_iter().map(|(number, title, dated)| TailEpisode {
-                number,
-                title,
-                airdate: dated.then(|| "2020-01-01".to_string()),
-            }));
-            EntryTail {
-                finished,
-                count: kitsu,
-                anilist_count: anilist,
-                episodes,
-                read_past_count: past,
-                related: Vec::new(),
-                related_complete: false,
-            }
-        })
+        }),
+        Break::KitsuRowGone(n) => tail.episodes.retain(|e| e.number != *n),
+        Break::Undated(n) => tail.episodes[at(*n)].airdate = None,
+        Break::Renamed(n) => rows[at(*n)].title = Some("Somewhere Else".into()),
+        Break::Untitled(n) => rows[at(*n)].title = None,
+        Break::Generic(n) => rows[at(*n)].title = Some(format!("Episode {n}")),
+        Break::Tagged(n) => rows[at(*n)].number2 = Some(format!("{n}.5")),
+        Break::OvaLength(l) => tail.related[0].episode_count = Some(*l),
+        Break::SequelAiring => tail.related.push(Related {
+            role: "sequel".into(),
+            anime: true,
+            subtype: Some("TV".into()),
+            status: Some("current".into()),
+            episode_count: None,
+            episode_titles: Some(Vec::new()),
+        }),
+        Break::RelationsInPart => tail.related_complete = false,
+    }
+    (rows, tail)
 }
 
-fn case() -> impl Strategy<Value = (Vec<EpisodeRef>, u32, EntryTail)> {
-    listing().prop_flat_map(|rows| {
-        let len = u32::try_from(rows.len()).unwrap_or(0);
-        (Just(rows), 0..=len + 2).prop_flat_map(|(rows, count)| {
-            let tail = tail_for(&rows, count);
-            (Just(rows), Just(count), tail)
-        })
-    })
+/// Whether `b` leaves the evidence conclusive: the breaks that touch
+/// nothing the rule reads — a row before the last three, a row past
+/// the count renamed to another name of its own — or change a value to
+/// what it was.
+fn still_conclusive(count: u32, past: u32, b: &Break) -> bool {
+    let first = count.saturating_sub(ALIGNED - 1).max(1);
+    match b {
+        Break::None => true,
+        Break::KitsuCount(c) => *c == count,
+        Break::AnilistCount(c) => *c == Some(count),
+        Break::KitsuRowGone(n) | Break::Undated(n) => *n < first,
+        Break::Renamed(n) => *n < first || *n > count,
+        Break::Untitled(n) | Break::Generic(n) => *n < first,
+        Break::OvaLength(l) => *l == past,
+        _ => false,
+    }
+}
+
+fn case() -> impl Strategy<Value = (u32, u32, Break)> {
+    (1u32..30, 1u32..=MAX_APPENDED)
+        .prop_flat_map(|(count, past)| (Just(count), Just(past), a_break(count, past)))
 }
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(2000))]
 
-    /// Whatever the evidence, every whole episode up to the count
-    /// plays the row it played before — none shifted, skipped or
-    /// doubled — and nothing past the count is left a whole episode.
+    /// Conclusive evidence reads exactly the rows past the count as
+    /// extras, in order; breaking any piece of it leaves the listing
+    /// as it was.
     #[test]
-    fn no_whole_episode_up_to_the_count_changes_row((rows, count, tail) in case()) {
+    fn the_rows_past_the_count_are_extras_exactly_when_the_evidence_holds(
+        (count, past, b) in case()
+    ) {
+        let (rows, tail) = broken(count, past, &b);
+        let fitted = appended_extras(&rows, count, &tail);
+        if still_conclusive(count, past, &b) {
+            let want: Vec<String> = (1..=past).map(|i| format!("{count}.{i}")).collect();
+            let fitted = fitted.expect("conclusive evidence reads the extras");
+            prop_assert_eq!(extra_episode_tags(&fitted), want);
+        } else {
+            prop_assert_eq!(fitted, None);
+        }
+    }
+
+    /// Whenever the rule reads extras, every whole episode up to the
+    /// count plays the row it played before — none shifted, skipped or
+    /// doubled — nothing past the count is left a whole episode, and
+    /// each row is the row it was but for its tag.
+    #[test]
+    fn no_whole_episode_up_to_the_count_changes_row((count, past, b) in case()) {
+        let (rows, tail) = broken(count, past, &b);
         let Some(fitted) = appended_extras(&rows, count, &tail) else {
             return Ok(());
         };
@@ -112,6 +197,7 @@ proptest! {
         for n in 1..=count {
             prop_assert_eq!(row_for(&fitted, n), row_for(&rows, n), "episode {}", n);
         }
+        prop_assert_eq!(row_for(&fitted, count + 1), None);
         prop_assert_eq!(kitsu_episode_cap(&fitted), Some(count));
         prop_assert_eq!(numbering_offset(&fitted), 0);
         for (before, after) in rows.iter().zip(&fitted) {
@@ -120,78 +206,18 @@ proptest! {
                 (after.id, after.number, &after.title)
             );
         }
-        let past: Vec<String> = (1..=fitted.len() - count as usize)
-            .map(|i| format!("{count}.{i}"))
-            .collect();
-        prop_assert_eq!(extra_episode_tags(&fitted), past);
     }
 
-    /// The rule moves nothing on a listing the shape check turns away,
-    /// and nothing without every piece of evidence it names.
+    /// Every tag the rule writes reads back as the number it is, so a
+    /// request carrying it round-trips through any reader that parses
+    /// it.
     #[test]
-    fn short_evidence_moves_nothing((rows, count, tail) in case()) {
-        let fitted = appended_extras(&rows, count, &tail);
-        let asks = appended_count(&rows, Some(count)) == Some(count);
-        let proven = tail.finished
-            && tail.count == Some(count)
-            && tail.anilist_count == Some(count)
-            && tail.read_past_count
-            && tail.episodes.iter().all(|e| e.number <= count);
-        if !(asks && proven) {
-            prop_assert_eq!(fitted, None);
-        }
-    }
-
-    /// Conclusive evidence — Kitsu and AniList end the show at the
-    /// count, Kitsu's rows up to it are dated and named as the
-    /// listing names them, and each row past it has a name of its
-    /// own — reads exactly the rows past the count as extras, in order.
-    #[test]
-    fn conclusive_evidence_reads_the_rows_past_the_count_as_extras(
-        count in 1u32..30,
-        past in 1u32..=MAX_APPENDED,
-    ) {
-        let rows: Vec<EpisodeRef> = (1..=count + past)
-            .map(|n| EpisodeRef {
-                id: u64::from(n),
-                number: n,
-                number2: None,
-                title: Some(format!("Story {n}")),
-            })
-            .collect();
-        let tail = EntryTail {
-            finished: true,
-            count: Some(count),
-            anilist_count: Some(count),
-            episodes: (count.saturating_sub(4)..=count)
-                .filter(|n| *n > 0)
-                .map(|n| TailEpisode {
-                    number: n,
-                    title: Some(format!("story {n}")),
-                    airdate: Some("2020-01-01".into()),
-                })
-                .collect(),
-            read_past_count: true,
-            related: Vec::new(),
-            related_complete: false,
-        };
-        prop_assert_eq!(appended_count(&rows, Some(count)), Some(count));
-        let fitted = appended_extras(&rows, count, &tail);
-        prop_assert!(fitted.is_some());
-        let want: Vec<String> = (1..=past).map(|i| format!("{count}.{i}")).collect();
-        prop_assert_eq!(extra_episode_tags(&fitted.expect("fitted")), want);
-    }
-
-    /// Every tag the rule writes reads back as the number it is, so
-    /// a request carrying it round-trips through any reader that
-    /// parses it.
-    #[test]
-    fn every_tag_reads_back_as_itself((rows, count, tail) in case()) {
-        if let Some(fitted) = appended_extras(&rows, count, &tail) {
-            for tag in extra_episode_tags(&fitted) {
-                let n: f64 = tag.parse().expect("a number");
-                prop_assert_eq!(n.to_string(), tag);
-            }
+    fn every_tag_reads_back_as_itself(count in 1u32..1000, past in 1u32..=MAX_APPENDED) {
+        let fitted = appended_extras(&listing(count, past), count, &conclusive(count, past))
+            .expect("conclusive");
+        for tag in extra_episode_tags(&fitted) {
+            let n: f64 = tag.parse().expect("a number");
+            prop_assert_eq!(n.to_string(), tag);
         }
     }
 }
