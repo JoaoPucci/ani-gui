@@ -399,3 +399,35 @@ describe('makeContinueRowReadyHandler — an episode left part-way', () => {
 		expect(spy.calls.setEpisode).toEqual([['hist-a', makeKitsuEpisode(5)]]);
 	});
 });
+
+describe('makeContinueRowReadyHandler — a fractional extra in history', () => {
+	it('asks whether the recap itself was left part-way, and shows it if so', async () => {
+		const asked: number[] = [];
+		const entry = makeEntry('hist-r', '7.5', 'Show R');
+		const match = makeMatch('k-r', 12);
+		const spy = makeSpy(
+			[entry],
+			() => Promise.resolve([makeKitsuEpisode(7), makeKitsuEpisode(8)]),
+			(_id, ep) => {
+				asked.push(ep);
+				return ep === 7.5;
+			}
+		);
+		const handle = makeContinueRowReadyHandler(spy.deps);
+		handle('hist-r', match, 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		expect(asked).toEqual([7.5]);
+		// A recap has no Kitsu episode row of its own.
+		expect(spy.calls.setEpisode).toEqual([['hist-r', null]]);
+	});
+
+	it('goes on from a recap to the whole episode after it', async () => {
+		const entry = makeEntry('hist-r', '7.5', 'Show R');
+		const match = makeMatch('k-r', 12);
+		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(7), makeKitsuEpisode(8)]));
+		const handle = makeContinueRowReadyHandler(spy.deps);
+		handle('hist-r', match, 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		expect(spy.calls.setEpisode).toEqual([['hist-r', expect.objectContaining({ number: 8 })]]);
+	});
+});

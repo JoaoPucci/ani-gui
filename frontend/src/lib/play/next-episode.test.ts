@@ -102,3 +102,18 @@ describe('pickResumeEpisodeFor', () => {
 		expect(ask).not.toHaveBeenCalled();
 	});
 });
+
+describe('Continue from a fractional extra', () => {
+	it('goes on from a recap to the whole episode after it', () => {
+		expect(pickNextEpisode(7.5, 12)).toBe(8);
+		expect(pickNextEpisode(7.5, null)).toBe(8);
+	});
+
+	it('replays a recap past the last episode, as it replays the last episode', () => {
+		expect(pickNextEpisode(12.5, 12)).toBe(12.5);
+	});
+
+	it('goes back to a recap left part-way', () => {
+		expect(pickResumeEpisode(7.5, 12, true)).toBe(7.5);
+	});
+});
