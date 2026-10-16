@@ -96,8 +96,10 @@ pub struct HistoryEntry {
     pub kitsu_id: Option<String>,
     /// Whether `ep_no` is the app's own number for the episode — the
     /// tile's, "8" or "7.5" — rather than a provider slot the read
-    /// boundary translates back through the numbering sidecar.
-    #[serde(default)]
+    /// boundary translates back through the numbering sidecar. The file's
+    /// concern only: the read boundary has already applied it to what
+    /// the routes return, so it is not part of their JSON.
+    #[serde(default, skip_serializing)]
     pub own_number: bool,
 }
 

@@ -58,12 +58,13 @@ pub struct NativeResolved {
     /// ([`extra_episode_tags`]) — the availability stamp's
     /// `extra_episodes`, also already paid for.
     pub extra_tags: Vec<String>,
-    /// The matched row's slot — the integer a resume looks up in
-    /// the provider's listing, and what the fresh-resolve writer
-    /// stores.
+    /// The matched row's slot — its position in the provider's
+    /// listing. Cached with the resolution; no history writer stores it
+    /// now, since rows record the app's own number.
     pub resolved_slot: u32,
-    /// The matched row's display tag, stamped beside the offset when
-    /// it differs from the slot so the read boundary can translate.
+    /// The matched row's display tag, when it carries one. Display
+    /// stamps are no longer written from it; kept for the log and the
+    /// tests that describe a listing.
     pub resolved_tag: Option<String>,
 }
 

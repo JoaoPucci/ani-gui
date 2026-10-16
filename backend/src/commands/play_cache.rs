@@ -246,7 +246,7 @@ pub(crate) async fn try_launch_args_from_cache(
         "play_external: cache hit (stream and tracks live), launching mpv from cached URL",
     );
     stamp_availability_on_cache_hit(state, args, &cached, &at_start).await;
-    let watch = cached_watch(state, &cached, &args.episode);
+    let watch = cached_watch(&cached, &args.episode);
     Some((cached_launch_args(cached, args, cfg), watch))
 }
 
@@ -255,7 +255,6 @@ pub(crate) async fn try_launch_args_from_cache(
 /// numbers it — the row records it marked as such, so neither the
 /// cached slot nor the sidecar's stamps decide what it reads back as.
 pub(crate) fn cached_watch(
-    _state: &AppState,
     cached: &play_resolution_cache::CachedResolution,
     episode: &str,
 ) -> super::play_native_record::Watch {

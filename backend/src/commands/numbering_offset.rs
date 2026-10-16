@@ -36,11 +36,9 @@ pub fn put(state: &AppState, slug: &str, offset: u32) {
 }
 
 /// Test setup only: no resolve writes a display stamp now. Persist the
-/// slug's offset together with the last watch's
-/// (slot, display tag) pair — written when a native resolve lands
-/// on a row whose display differs from its slot, so the history can
-/// carry the slot a resume needs while the read boundary translates
-/// it back for display. Last write wins, like the offset.
+/// slug's offset together with a (slot, display tag) pair, the stamp
+/// a displaced watch left before rows recorded the app's own number.
+/// Last write wins, like the offset.
 #[cfg(test)]
 pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &str) {
     merge_row(state, slug, offset, Some((slot, tag.to_string())));

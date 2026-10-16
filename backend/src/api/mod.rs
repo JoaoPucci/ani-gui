@@ -719,10 +719,9 @@ async fn post_play_mark_watched(
             // or home ordering.
             //
             // The watch is the cached row's, built the way the handoffs
-            // build theirs: the row's own slot when it carries one, the
-            // display number translated through the stamp only for a
-            // row from before the slot was cached.
-            let watch = crate::commands::play_cache::cached_watch(&state, &cached, &args.episode);
+            // build theirs: the episode the click played, as the app
+            // numbers it.
+            let watch = crate::commands::play_cache::cached_watch(&cached, &args.episode);
             crate::commands::play_native_record::record_watch_requested_at(
                 &state,
                 &watch,

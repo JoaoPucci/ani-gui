@@ -442,8 +442,6 @@ fn state_in(td: &tempfile::TempDir) -> crate::app::AppState {
 /// its one stamp. A row from before the slot field records the same.
 #[test]
 fn a_cached_watch_records_the_episode_played() {
-    let td = tempfile::tempdir().expect("td");
-    let state = state_in(&td);
     let row = |slot: Option<u32>| CachedResolution {
         upstream_url: "https://cdn.example/x/master.m3u8".into(),
         referer: String::new(),
@@ -454,14 +452,14 @@ fn a_cached_watch_records_the_episode_played() {
         subtitles: Vec::new(),
         kitsu_id: None,
     };
-    let stamped = super::cached_watch(&state, &row(Some(5)), "4");
+    let stamped = super::cached_watch(&row(Some(5)), "4");
     assert_eq!(
         stamped.ep_no, "4",
         "the episode played, not the cached slot"
     );
     assert_eq!(stamped.show_id, "show-1");
     assert_eq!(stamped.title, "Show");
-    let legacy = super::cached_watch(&state, &row(None), "4");
+    let legacy = super::cached_watch(&row(None), "4");
     assert_eq!(legacy.ep_no, "4", "a row without a slot records it too");
 }
 

@@ -27,11 +27,11 @@ fn lock_path(store: &Path) -> PathBuf {
     store.with_file_name("ani-gui-offsets.lock")
 }
 
-/// One store row: the slug's offset plus, when the last native
-/// watch landed on a row whose display tag differs from its slot,
-/// that (slot, tag) pair — the bridge that lets the history file
-/// carry the slot a resume looks up while the read boundary presents
-/// the display identity.
+/// One store row: the slug's offset plus, when the last displaced
+/// watch before rows recorded the app's own number landed on a row
+/// whose display tag differs from its slot, that (slot, tag) pair —
+/// the bridge that lets such a row, which holds the slot, read back
+/// as the episode it was.
 ///
 /// The slot is stored for this app and no other. Nothing outside it
 /// reads this file: it sits beside a history the CLI cannot reach,

@@ -3,9 +3,9 @@
 //! Two writes follow every resolve that a user asked for, and they
 //! are the same writes whether the stream ends up in the embedded
 //! player, in mpv, or in Syncplay. They live here so the paths
-//! cannot drift: the handoff once wrote the display number the UI
-//! had shown instead of the slot, which pointed a row at whichever
-//! episode happened to occupy that slot in the provider's listing.
+//! cannot drift: every one records the episode the play asked for,
+//! as the app numbers it, marked as such
+//! ([`crate::history::HistoryEntry::own_number`]).
 
 use crate::app::AppState;
 use crate::commands::play_native_resolve::NativeResolved;
@@ -15,13 +15,11 @@ use crate::history::guard::{Asked, Epoch};
 mod record_id;
 use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id};
 
-/// Stamp the show's numbering offset while it is known.
+/// Stamp the show's numbering offset, for a show the sidecar has no
+/// row for ([`put_numbering`]).
 ///
-/// The cache-hit and mark-watched writers and the history read
-/// boundary all key on it by slug, and none of them has a listing to
-/// derive it from. When the matched row's display tag differs from
-/// its slot, the pair goes in too so the boundary can translate
-/// between the number the provider stores and the one the UI shows.
+/// The history read boundary keys on it by slug for rows from before
+/// rows recorded the app's own number, which hold a provider slot.
 ///
 /// Prefetches stamp as well: their resolve is exactly as
 /// authoritative as a click's.
@@ -226,10 +224,9 @@ pub(crate) async fn record_watch_requested_at(
 
 /// Record the watch.
 ///
-/// `ep_no` is the matched row's own slot — exactly what a resume
-/// looks up, whatever space the display tags live in. A failed
-/// write is logged and swallowed: the stream is resolved and the
-/// user is waiting on it.
+/// The row records `requested`, the episode the play asked for, as
+/// the app numbers it (below). A failed write is logged and
+/// swallowed: the stream is resolved and the user is waiting on it.
 ///
 /// `requested` is the episode the caller asked for, as the app numbers
 /// it: the row records it, marked as the app's own number, so it reads
