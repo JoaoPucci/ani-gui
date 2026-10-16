@@ -19,6 +19,20 @@ const UNCENSORED: &str = "uncensored";
 /// ([`normalized`]: case and spacing aside, catalogue tags kept), and
 /// which version the tag names.
 pub(crate) fn version_of(title: &str) -> (String, VersionKind) {
+    let (out, kind) = split_version_tag(title);
+    (normalized(&out), kind)
+}
+
+/// `title` without a bracketed version tag, as written otherwise — what
+/// the title rule reads a candidate's divisions in, the tag being no
+/// more part of the title's structure than a catalogue tag is.
+pub(crate) fn without_version_tag(title: &str) -> String {
+    split_version_tag(title).0.trim().to_string()
+}
+
+/// `title` split into its text without a bracketed version tag and the
+/// version the tag names ([`version_of`]).
+fn split_version_tag(title: &str) -> (String, VersionKind) {
     let mut rest = title;
     let mut out = String::new();
     let mut kind = VersionKind::Standard;
@@ -47,7 +61,7 @@ pub(crate) fn version_of(title: &str) -> (String, VersionKind) {
         rest = &after[close + closer..];
     }
     out.push_str(rest);
-    (normalized(&out), kind)
+    (out, kind)
 }
 
 /// Whether two hits list one title under any version tag, as far as
@@ -131,7 +145,8 @@ pub(crate) fn note_dead<'h>(
     vouched: bool,
     entry: EntryTitles<'_>,
 ) {
-    if could_win && vouched && entry.admits(&hit.title) && !entry.another_entry(&hit.title) {
+    if could_win && vouched && entry.admits_as_read(&hit.title) && !entry.another_entry(&hit.title)
+    {
         dead.push(hit);
     }
 }

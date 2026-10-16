@@ -57,7 +57,7 @@ pub(super) fn fit_to_entry(
 ) -> bool {
     let admitted: Vec<bool> = probed
         .iter()
-        .map(|(h, _, _, _)| entry.admits(&h.title))
+        .map(|(h, _, _, _)| entry.admits_as_read(&h.title))
         .collect();
     // Pickable: admitted, and not another entry of the same show
     // ([`EntryTitles::another_entry`]) — which still counts as admitted

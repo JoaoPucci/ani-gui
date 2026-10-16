@@ -99,6 +99,17 @@ impl EntryTitles<'_> {
             && !self.continues_a_number(candidate)
     }
 
+    /// [`Self::admits`] for a probed candidate, read past a bracketed
+    /// version tag ("Show Season 2 [Uncensored]" ends on its season 2):
+    /// the rule that decides whether a probed candidate can be the
+    /// entry. Which hits are probed is decided by [`Self::admits`] on
+    /// the title as written, as before.
+    pub(crate) fn admits_as_read(&self, candidate: &str) -> bool {
+        self.admits(&super::play_native_version_copies::without_version_tag(
+            candidate,
+        ))
+    }
+
     /// Whether `candidate` matches one of the entry's titles only by
     /// continuing its first number ([`continues_number_of`]) — "Show20"
     /// for "Show 2", "861" for "86 Part 2" — and no title of the entry
