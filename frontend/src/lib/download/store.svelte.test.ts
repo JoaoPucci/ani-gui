@@ -29,6 +29,21 @@ describe('downloadStore', () => {
 		destDir: '/tmp/dl'
 	};
 
+	it('a queued row is a download in progress, and a cancel reaches its controller', () => {
+		const id = downloadStore.add(baseArgs);
+		const other = downloadStore.add(baseArgs);
+		const ctrl = new AbortController();
+		downloadStore.markQueued(id, ctrl);
+		const row = downloadStore.items.find((i) => i.id === id);
+		expect(row?.status).toBe('queued');
+		expect(row?.abort).toBe(ctrl);
+		expect(downloadStore.items.find((i) => i.id === other)?.status).toBe('pending');
+		expect(downloadStore.active.map((i) => i.id)).toContain(id);
+		downloadStore.cancel(id);
+		expect(ctrl.signal.aborted).toBe(true);
+		expect(downloadStore.items.some((i) => i.id === id)).toBe(false);
+	});
+
 	it('add() prepends a pending row and returns its id', () => {
 		const id = downloadStore.add(baseArgs);
 		expect(id).toMatch(/^dl-\d+$/);
