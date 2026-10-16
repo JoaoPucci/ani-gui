@@ -606,8 +606,10 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v20: a recap tagged at a continuation's offset ("12.5" under
     //      offset 12) advertises as the entry's 0.5, and a stitched
     //      split's such recap as the tag between its parts ("12.5",
-    //      not "24.5"); rows from v19 carry the old extras, and a
-    //      cached "24.5" no longer plays.
+    //      not "24.5"), a second recap between the same episodes with
+    //      a tag of its own ("12.75"); rows from v19 carry the old
+    //      extras, and the probe that replaces them puts a history
+    //      row's stamp from then right.
     // v19: a dated entry with a count takes only a hit a name vouches
     //      for, and a dated entry's hit its own page files under
     //      Hentai is never a pick. A v18 row for such an entry can be

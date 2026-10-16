@@ -161,8 +161,11 @@ use crate::proxy::MediaKind;
 // under the entry's key — HenSemi (TV) playing Medaka Box Abnormal —
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
 // v21: a stitched recap before a cumulatively numbered part is tagged
-// a part earlier ("12.5", not "24.5"); a v20 row keyed by the old tag
-// can hold the stream of the recap that tag names no longer.
+// a part earlier ("12.5", not "24.5"), and a second recap between the
+// same episodes has a tag of its own ("12.75"). A v20 row replays
+// without the resolve that puts a history row's stamp from then right,
+// and records no `played` episode for the session to name; bumping
+// makes the first play of each episode a fresh resolve.
 const SCHEMA: &str = "v21";
 
 /// What the native resolve produced, frozen for replay. The session
