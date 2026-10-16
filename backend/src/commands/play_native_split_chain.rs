@@ -83,6 +83,7 @@ pub(crate) fn stitched(
             offset: crate::commands::play_native_numbering::numbering_offset(eps),
             admitted: *distance != crate::commands::play_native_wide_listing::UNFIT,
             agrees: entry.part_agrees(&h.title),
+            version: crate::commands::play_native_version_copies::version_of(&h.title).1,
         })
         .collect();
     let chain = split_chain(&cands, expected, best_single)?;

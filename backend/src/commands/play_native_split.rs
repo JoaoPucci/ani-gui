@@ -45,6 +45,9 @@ pub(crate) struct PartCandidate<'a> {
     ///
     /// [`EntryTitles::part_agrees`]: super::play_native_title_marker::EntryTitles::part_agrees
     pub agrees: bool,
+    /// The version the candidate's title names (`play_native_versions`):
+    /// a chain keeps to its lead's, never one listing made of two copies.
+    pub version: super::play_native_versions::VersionKind,
 }
 
 /// The parts that follow candidate `lead`, in order, while each next
@@ -54,7 +57,10 @@ fn chain_from(cands: &[PartCandidate<'_>], lead: usize) -> Vec<usize> {
     let mut chain = vec![lead];
     for k in 2.. {
         let next = cands.iter().enumerate().position(|(j, c)| {
-            j != lead && usable(c) && part_ordinal(cands[lead].title, c.title) == Some(k)
+            j != lead
+                && usable(c)
+                && c.version == cands[lead].version
+                && part_ordinal(cands[lead].title, c.title) == Some(k)
         });
         match next {
             Some(j) => chain.push(j),

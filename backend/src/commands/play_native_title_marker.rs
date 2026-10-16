@@ -136,7 +136,7 @@ impl EntryTitles<'_> {
     /// "2nd Season Part 2") are told apart by nothing else.
     pub(crate) fn part_agrees(&self, candidate: &str) -> bool {
         // Read past a version tag, which hides no part: part agreement
-        // only ever ranks probed candidates.
+        // never decides which hits the probe head takes.
         let candidate = &super::play_native_version_copies::without_version_tag(candidate);
         let mut entry_parts: BTreeSet<u32> = self.all().flat_map(part_ordinals).collect();
         if entry_parts.is_empty() {
