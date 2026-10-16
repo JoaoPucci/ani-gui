@@ -958,3 +958,38 @@ fn a_row_in_the_apps_own_numbering_above_the_offset_reads_as_itself() {
     crate::commands::numbering_offset::put(&state, SHOW, 40);
     assert_eq!(listed_episode(&state), "45");
 }
+
+#[test]
+fn a_watch_records_the_episode_the_resolve_matched() {
+    // A request can name a row by a tag other than its own (a stitched
+    // recap an earlier version tagged "24.5", now "12.5"): the row
+    // records the matched episode's own number, not the request's.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let recap = displaced(13, "12.5");
+    write_history(&state, &recap, "24.5", play);
+    assert_eq!(listed_episode(&state), "12.5");
+    let watch = crate::commands::play_native_record::Watch::of(&recap, "24.5");
+    assert_eq!(watch.ep_no, "12.5");
+}
+
+#[test]
+fn a_continuations_watch_records_the_entrys_own_number() {
+    // Offset 40, the row tagged "41": the entry's episode 1.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let mut first = displaced(1, "41");
+    first.numbering_offset = 40;
+    write_history(&state, &first, "1", play);
+    assert_eq!(listed_episode(&state), "1");
+    let mut untagged = native();
+    untagged.numbering_offset = 0;
+    untagged.resolved_slot = 4;
+    untagged.resolved_tag = None;
+    assert_eq!(
+        crate::commands::play_native_record::Watch::of(&untagged, "4").ep_no,
+        "4"
+    );
+}
