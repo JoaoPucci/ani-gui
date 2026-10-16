@@ -37,7 +37,10 @@ export interface StartResumeDeps {
 	isGuess?: (entryId: string) => boolean;
 	onBusy: (kitsuId: string | null) => void;
 	onProgress: (label: string | null) => void;
-	onFailure: (title: string, error: unknown) => void;
+	/** `args` is what the failed play asked for — the show, episode
+	 *  and audio a failure surface needs to word its message. Busy
+	 *  holds until a returned promise settles. */
+	onFailure: (title: string, error: unknown, args: ResumePlayArgs) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
 	getPlayableCount: (entryId: string) => number | null;
@@ -147,9 +150,15 @@ export function makeStartResume(
 			}
 			deps.navigateToSession(match.id, session, episode, guess, entry.id);
 		} catch (e) {
-			deps.onBusy(null);
 			deps.onProgress(null);
-			deps.onFailure(title, e);
+			// Busy holds until the failure is on screen: the page words it
+			// after a cache lookup, and a card left idle meanwhile would
+			// take a second click whose play the late message then covers.
+			try {
+				await deps.onFailure(title, e, args);
+			} finally {
+				deps.onBusy(null);
+			}
 		}
 	};
 }

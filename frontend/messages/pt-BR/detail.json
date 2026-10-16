@@ -147,6 +147,8 @@
 	"synopsis_toggle_less": "Mostrar menos",
 	"synopsis_toggle_more": "Mostrar mais",
 	"unavailable_message": "Fora do catálogo de streaming — reprodução e download indisponíveis para este título.",
+	"unavailable_in_dub_message": "Indisponível dublado — este título está disponível em SUB. Troque o áudio abaixo para assistir ou baixar.",
+	"unavailable_in_sub_message": "Indisponível legendado — este título está disponível em DUB. Troque o áudio abaixo para assistir ou baixar.",
 	"error_no_id_headline": "Nenhum anime selecionado.",
 	"error_no_id_detail": "O endereço não traz o id do título."
 }
