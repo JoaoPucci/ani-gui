@@ -205,3 +205,11 @@ describe('computePlayLabel — a fractional extra in history', () => {
 		).toEqual({ kind: 'resume', episode: 7 });
 	});
 });
+
+describe('computePlayLabel — a range-shaped row', () => {
+	it('reads "1-12" by its first episode', () => {
+		expect(
+			computePlayLabel({ isSingleVideo: false, resumeEntry: { ep_no: '1-12' }, defaultEpisode: 1 })
+		).toEqual({ kind: 'replay', episode: 1 });
+	});
+});

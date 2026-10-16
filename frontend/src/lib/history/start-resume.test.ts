@@ -345,3 +345,14 @@ describe('makeStartResume — a fractional extra in history', () => {
 		);
 	});
 });
+
+describe('makeStartResume — a range-shaped row', () => {
+	it('reads "1-12" by its first episode and plays 2', async () => {
+		const h = makeHarness();
+		await makeStartResume(h.deps)(makeEntry('h1', '1-12', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 2 }),
+			expect.anything()
+		);
+	});
+});

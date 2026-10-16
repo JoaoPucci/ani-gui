@@ -431,3 +431,13 @@ describe('makeContinueRowReadyHandler — a fractional extra in history', () => 
 		expect(spy.calls.setEpisode).toEqual([['hist-r', expect.objectContaining({ number: 8 })]]);
 	});
 });
+
+describe('makeContinueRowReadyHandler — a range-shaped row', () => {
+	it('reads "1-12" by its first episode and goes on to 2', async () => {
+		const entry = makeEntry('hist-g', '1-12', 'Show G');
+		const spy = makeSpy([entry], () => Promise.resolve([makeKitsuEpisode(1), makeKitsuEpisode(2)]));
+		makeContinueRowReadyHandler(spy.deps)('hist-g', makeMatch('k-g', 12), 12);
+		await vi.waitFor(() => expect(spy.calls.setEpisode).toHaveLength(1));
+		expect(spy.calls.setEpisode).toEqual([['hist-g', expect.objectContaining({ number: 2 })]]);
+	});
+});
