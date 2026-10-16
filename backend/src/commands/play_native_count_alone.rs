@@ -32,7 +32,7 @@ use super::play_native_wide_listing::{Probed, UNFIT};
 /// single-video rule reads the pool.
 #[must_use]
 pub(crate) fn count_stands_alone(expected: u32, year: Option<u32>) -> bool {
-    expected != 1 && year.is_none()
+    expected > 1 && year.is_none()
 }
 
 /// For an entry whose count stands alone ([`count_stands_alone`]),
