@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { VersionInfo } from '$lib/api';
 import {
 	MAX_CHOICES,
+	applyChoice,
 	defaultStorage,
 	rememberChoice,
 	selectedVersion,
@@ -179,5 +180,40 @@ describe('the version selected for a show', () => {
 	it('is the first listed when the show has neither the remembered kind nor an uncensored one', () => {
 		const twoStandards: VersionInfo[] = [standard, { kind: 'standard', show_key: 'hianime:x' }];
 		expect(selectedVersion(twoStandards, 'uncensored')).toBe('standard');
+	});
+});
+
+describe('applying a choice', () => {
+	it('remembers a choice of the plain copy and names it from then on', () => {
+		const { storage } = memory();
+		expect(applyChoice('42', 'standard', storage)).toBe('standard');
+		expect(storedChoice('42', storage)).toBe('standard');
+	});
+
+	it('forgets the choice when the default is chosen, so requests name none again', () => {
+		// The backend plays the uncensored copy for a request naming no
+		// version; naming it explicitly would warm and cache the same
+		// listing a second time under another key.
+		const { storage } = memory();
+		applyChoice('42', 'standard', storage);
+		applyChoice('7', 'standard', storage);
+		expect(applyChoice('42', 'uncensored', storage)).toBeUndefined();
+		expect(storedChoice('42', storage)).toBeUndefined();
+		expect(storedChoice('7', storage)).toBe('standard');
+	});
+
+	it('names what the storage holds when it refuses the write', () => {
+		// The play page reads the choice from storage; a page playing a
+		// choice the storage never took would pair its play with
+		// another page's eviction and stamp naming none.
+		const refusing: ChoiceStorage = {
+			getItem: () => JSON.stringify([['42', 'standard']]),
+			setItem: () => {
+				throw new Error('quota');
+			}
+		};
+		expect(applyChoice('42', 'uncensored', refusing)).toBe('standard');
+		expect(applyChoice('9', 'standard', throwing)).toBeUndefined();
+		expect(applyChoice('9', 'standard', null)).toBeUndefined();
 	});
 });

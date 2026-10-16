@@ -244,4 +244,43 @@ describe('detail route — the versions of a show listed twice', () => {
 		expect(checked(m.detail_version_standard())).toBe('true');
 		expect(document.activeElement).toBe(versionRadio(m.detail_version_standard()));
 	});
+
+	it('goes back to naming no version when Uncensored is chosen again', async () => {
+		useShowHandlers(TWO_VERSIONS);
+		app = mount(DetailPage, { target });
+		await until(() => versionGroup() !== null, 'the version choice');
+
+		versionRadio(m.detail_version_standard())!.click();
+		flushSync();
+		versionRadio(m.detail_version_uncensored())!.click();
+		flushSync();
+		expect(checked(m.detail_version_uncensored())).toBe('true');
+
+		await until(() => playAction() !== null, 'the play action');
+		playAction()!.click();
+		await until(() => clickStreams().length > 0, 'the click to resolve the episode');
+		expect(new URL(clickStreams()[0].url).searchParams.has('version')).toBe(false);
+	});
+
+	it('keeps playing what the storage holds when it refuses the choice', async () => {
+		useShowHandlers(TWO_VERSIONS);
+		const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+			throw new Error('quota');
+		});
+		try {
+			app = mount(DetailPage, { target });
+			await until(() => versionGroup() !== null, 'the version choice');
+			versionRadio(m.detail_version_standard())!.click();
+			flushSync();
+			// The play page reads the choice from storage: a choice the
+			// storage never took is not one this page may play either.
+			expect(checked(m.detail_version_uncensored())).toBe('true');
+			await until(() => playAction() !== null, 'the play action');
+			playAction()!.click();
+			await until(() => clickStreams().length > 0, 'the click to resolve the episode');
+			expect(new URL(clickStreams()[0].url).searchParams.has('version')).toBe(false);
+		} finally {
+			setItem.mockRestore();
+		}
+	});
 });
