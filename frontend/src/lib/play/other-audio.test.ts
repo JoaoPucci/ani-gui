@@ -110,6 +110,24 @@ describe('lookupOtherAudio — what the availability cache says, never a probe',
 		expect(batch).not.toHaveBeenCalled();
 	});
 
+	it('is unknown for a fractional extra, which the count does not cover', async () => {
+		// The cached count is the highest integer episode; a recap such
+		// as 7.5 is an extra listed beside it, and the batch row does not
+		// say which extras the other audio carries. 7.5 <= 12 proves
+		// nothing about it.
+		const batch = batchAnswering({
+			cached: { '7': true },
+			playable_episode_counts: { '7': 12 }
+		});
+		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: 7.5 }, batch)).toBeNull();
+		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: 7 }, batch)).toBe(true);
+	});
+
+	it('still knows a fractional extra is missing when the other audio has nothing', async () => {
+		const batch = batchAnswering({ cached: { '7': false }, playable_episode_counts: {} });
+		expect(await lookupOtherAudio({ kitsuId: '7', mode: 'sub', episode: 7.5 }, batch)).toBe(false);
+	});
+
 	it('is unknown when no episode is named', async () => {
 		// A range download does not say which of its episodes failed,
 		// so no count can vouch for it.

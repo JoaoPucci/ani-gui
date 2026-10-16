@@ -496,3 +496,30 @@ describe('play — a handoff names the episode it launched, not the one on scree
 		});
 	}
 });
+
+describe('detail — a fractional extra and the other audio', () => {
+	it('does not suggest the other audio for a recap the count cannot vouch for', async () => {
+		// The cache's count covers episodes 1–12; 7.5 is an extra listed
+		// beside them, and nothing in the batch row says the other audio
+		// carries it.
+		const asked = useHandlers({
+			cached: { [KITSU_ID]: true },
+			playable_episode_counts: { [KITSU_ID]: 12 }
+		});
+		server.use(
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				asked.probeModes.push(((await request.json()) as { mode: string }).mode);
+				return HttpResponse.json({
+					available: true,
+					episode_count: 12,
+					extra_episodes: ['7.5'],
+					episode_count_approximate: false
+				});
+			})
+		);
+		app = mount(DetailPage, { target });
+		await clickAndFail(7.5);
+		await expectCopy(PLAIN);
+		expectCacheOnly(asked);
+	});
+});
