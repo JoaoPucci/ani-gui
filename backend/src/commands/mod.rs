@@ -92,6 +92,7 @@ mod play_native_title_verdict;
 mod play_native_transient;
 mod play_native_version_copies;
 mod play_native_version_modes;
+mod play_native_version_tag;
 pub mod play_native_versions;
 pub mod play_native_walk;
 mod play_native_wide_listing;
