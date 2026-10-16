@@ -82,9 +82,39 @@ fn a_build_from_before_the_marker_keeps_a_marked_rows_kitsu_id_and_moment() {
     }]);
     let line = body.trim_end();
     let rest = line.splitn(3, '\t').nth(2).expect("what follows the id");
-    let (rest, kitsu_id) = split_kitsu_id(rest);
-    let (title, watched_at) = split_moment(rest);
+    let (rest, kitsu_id) = v0_16_split_kitsu_id(rest);
+    let (title, watched_at) = v0_16_split_moment(rest);
     assert_eq!(kitsu_id.as_deref(), Some("49877"));
     assert_eq!(watched_at, Some(1_700_000_000_000));
     assert_eq!(title, "The Show\tep:own");
+}
+
+/// v0.16.0's `split_kitsu_id`, frozen: the reading an older build
+/// applies, kept here so a change to this build's own cannot make the
+/// case above stop describing that build.
+fn v0_16_split_kitsu_id(rest: &str) -> (&str, Option<String>) {
+    let Some((before, tail)) = rest.rsplit_once('\t') else {
+        return (rest, None);
+    };
+    match tail.strip_prefix("kitsu:") {
+        Some(digits) if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) => {
+            (before, Some(digits.to_owned()))
+        }
+        _ => (rest, None),
+    }
+}
+
+/// v0.16.0's `split_moment`, frozen like the one above.
+fn v0_16_split_moment(rest: &str) -> (&str, Option<i64>) {
+    let Some((title, tail)) = rest.rsplit_once('\t') else {
+        return (rest, None);
+    };
+    match tail.parse::<i64>() {
+        Ok(ms)
+            if tail == ms.to_string() && (1_577_836_800_000..4_102_444_800_000).contains(&ms) =>
+        {
+            (title, Some(ms))
+        }
+        _ => (rest, None),
+    }
 }

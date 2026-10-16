@@ -68,8 +68,9 @@ pub struct HistoryEntry {
     /// `play_native_record::write_history` on a fresh resolve,
     /// `play::write_history_on_cache_hit` on a cache hit, and the
     /// watch a handoff or mark-watched records. A row from before holds
-    /// the provider slot it resolved to, which the read boundary
-    /// translates through the numbering sidecar.
+    /// the provider's number for it — the slot it resolved to, or the
+    /// display number plus the offset where no listing was at hand —
+    /// which the read boundary translates through the numbering sidecar.
     pub ep_no: String,
     /// The provider's show id — a slug on every row written since the
     /// migration. Older rows carry the retired provider's opaque id
@@ -803,7 +804,7 @@ mod tests {
             // this property makes.
             prop_assume!(watched_at.is_some() || !tail_reads_as_a_watch(&title));
             // Nor does it claim a title ending in the marker column.
-            prop_assume!(!title.ends_with("\tep:own") && title != "ep:own");
+            prop_assume!(own_number || !title.ends_with("\tep:own"));
             let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None, own_number };
             let parsed = parse(&serialize(std::slice::from_ref(&entry)));
             prop_assert_eq!(parsed, vec![entry]);
