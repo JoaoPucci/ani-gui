@@ -24,8 +24,31 @@ pub struct HistoryNumber {
 ///
 /// # Errors
 /// As [`super::history::history_list`].
-pub fn history_number(_state: &AppState, _id: &str) -> Result<Option<HistoryNumber>> {
-    Ok(None)
+pub fn history_number(state: &AppState, id: &str) -> Result<Option<HistoryNumber>> {
+    let Some(row) = super::history::history_list(state)?
+        .into_iter()
+        .find(|e| e.id == id)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(HistoryNumber {
+        former_ep_no: former_number(state, id, &row.ep_no),
+        ep_no: row.ep_no,
+    }))
+}
+
+/// The number a row reading `ep_no` read as before its show's stamp
+/// was put right — while the stamp's row is the episode it reads.
+fn former_number(state: &AppState, slug: &str, ep_no: &str) -> Option<String> {
+    use crate::commands::numbering_offset::{display_stamp, former_stamp, get, kitsu_ep_no};
+    let (_, now) = display_stamp(state, slug)?;
+    let (_, former) = former_stamp(state, slug)?;
+    let offset = get(state, slug);
+    let same = |a: &str, b: &str| match (a.parse::<f64>(), b.parse::<f64>()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    };
+    same(&kitsu_ep_no(&now, offset), ep_no).then(|| kitsu_ep_no(&former, offset))
 }
 
 #[cfg(test)]
