@@ -12,7 +12,7 @@
 use crate::meta::anilist_streaming_eps::StreamingListing;
 use crate::meta::kitsu::KitsuEpisode;
 
-use super::titles::{is_placeholder, squashed, titles_agree};
+use super::titles::{is_placeholder, titles_agree};
 
 /// Fewest compared titles that decide on their own. Below it a few
 /// differently worded titles could refuse a right listing, so the
@@ -51,7 +51,7 @@ fn shape_fits(listing: &StreamingListing) -> bool {
 }
 
 /// `(Kitsu title, listing title)` for every page episode both title.
-/// A Kitsu placeholder ("Episode 5") is no title.
+/// A placeholder on either side ("Episode 5") is no title.
 fn compared_titles<'a>(
     listing: &'a StreamingListing,
     page: &'a [KitsuEpisode],
@@ -60,7 +60,7 @@ fn compared_titles<'a>(
         .filter_map(|ep| {
             let ours = ep.canonical_title.as_deref()?;
             let theirs = listing.entries.get(&ep.number?)?.title.as_str();
-            (!is_placeholder(ours) && !squashed(theirs).is_empty()).then_some((ours, theirs))
+            (!is_placeholder(ours) && !is_placeholder(theirs)).then_some((ours, theirs))
         })
         .collect()
 }

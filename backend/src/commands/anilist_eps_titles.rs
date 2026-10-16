@@ -11,13 +11,42 @@ const MIN_CONTAINED: usize = 3;
 /// episode.
 const STOP_WORDS: &[&str] = &["the", "and", "for", "from", "with", "part", "episode"];
 
-/// A title with no words, or only the word "episode" and a number.
+/// Numbers as titles spell them out, by value: "Part One" is "Part 1".
+const NUMBER_WORDS: &[&str] = &[
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+];
+
+/// A title with no words, or only the word "episode" and a number,
+/// a decimal one included ("Episode 5", "Episode 5.5").
 pub(super) fn is_placeholder(title: &str) -> bool {
     let words: Vec<String> = tokens(title).collect();
     match words.as_slice() {
         [] => true,
-        [word, number] => word == "episode" && number.chars().all(|c| c.is_ascii_digit()),
-        _ => false,
+        [word, number @ ..] => {
+            word == "episode"
+                && (1..=2).contains(&number.len())
+                && number.iter().all(|n| n.chars().all(|c| c.is_ascii_digit()))
+        }
     }
 }
 
@@ -57,16 +86,23 @@ pub(super) fn titles_agree(pairs: &[(&str, &str)]) -> usize {
         .count()
 }
 
-/// Lowercased runs of letters and digits.
+/// Lowercased runs of letters and digits, a spelled-out number
+/// ([`NUMBER_WORDS`]) written as digits.
 fn tokens(title: &str) -> impl Iterator<Item = String> + '_ {
     title
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
-        .map(str::to_lowercase)
+        .map(|w| {
+            let w = w.to_lowercase();
+            NUMBER_WORDS
+                .iter()
+                .position(|n| *n == w)
+                .map_or(w, |n| n.to_string())
+        })
 }
 
 /// The title's letters and digits, lowercased, with nothing between.
-pub(super) fn squashed(title: &str) -> String {
+fn squashed(title: &str) -> String {
     tokens(title).collect()
 }
 
