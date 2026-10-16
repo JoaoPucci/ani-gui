@@ -1,6 +1,6 @@
 import type { AvailabilityResponse } from '$lib/api';
 import { beyondPlayable } from './episode-caps';
-import { establishesNothing } from '$lib/availability/verdict';
+import { availabilityVerdict } from '$lib/availability/verdict';
 
 /**
  * Re-asking availability when a user clicks a cap-gated episode tile.
@@ -87,14 +87,18 @@ export interface CapGateRefresh {
  * verdict, and its `available: false` means nothing, so it is the
  * controller's null — "nothing was established" — the same path the
  * request's failure takes. Both routes read answers through this, so
- * neither can take that false for the show being gone.
+ * neither can take that false for the show being gone. A refusal by
+ * name is the exception: the catalogue lists nothing named for the
+ * show, and the answer is the show unavailable
+ * (`$lib/availability/verdict`).
  */
 export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null {
-	if (establishesNothing(r)) return null;
+	const available = availabilityVerdict(r);
+	if (available === null) return null;
 	return {
 		count: r.episode_count,
 		approximate: r.episode_count_approximate === true,
-		available: r.available,
+		available,
 		extraEpisodes: r.extra_episodes ?? []
 	};
 }
