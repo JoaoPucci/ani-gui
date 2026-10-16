@@ -43,27 +43,6 @@ fn parse_streaming_episodes_response_extracts_ep_num_and_url() {
 }
 
 #[test]
-fn parse_streaming_episodes_response_drops_entries_without_thumbnail() {
-    // AniList sometimes lists an entry with title but null thumbnail
-    // (the listing got scraped before Crunchyroll uploaded the still).
-    // Those entries are useless for backfill — skip them entirely.
-    let body = br##"{
-        "data": {
-            "Media": {
-                "streamingEpisodes": [
-                    { "title": "Episode 1 - ...", "thumbnail": "https://x.cdn/1.jpg" },
-                    { "title": "Episode 2 - ...", "thumbnail": null },
-                    { "title": "Episode 3 - ...", "thumbnail": "https://x.cdn/3.jpg" }
-                ]
-            }
-        }
-    }"##;
-    let got = parse_streaming_episodes_response(body).expect("parses");
-    let nums: Vec<u32> = got.entries.keys().copied().collect();
-    assert_eq!(nums, vec![1, 3]);
-}
-
-#[test]
 fn parse_streaming_episodes_response_drops_titles_without_episode_prefix() {
     // Some entries are OVAs / specials / movies with titles like
     // "OVA 1 - …" or "Special - …". Kitsu's `number` field is for
@@ -366,4 +345,19 @@ proptest::proptest! {
         }
         proptest::prop_assert_eq!(got.entries, want);
     }
+}
+
+#[test]
+fn parse_keeps_a_numbered_entry_without_a_thumbnail() {
+    // A row with no still still says the listing numbers that episode,
+    // which the fit rule reads; it fills nothing.
+    let body = br#"{"data":{"Media":{"episodes":2,"status":"FINISHED","streamingEpisodes":[
+        {"title":"Episode 1 - One","thumbnail":"https://x.cdn/1.jpg"},
+        {"title":"Episode 2 - Two","thumbnail":null},
+        {"title":"Episode 3 - Three","thumbnail":null}
+    ]}}}"#;
+    let got = parse_streaming_episodes_response(body).expect("parses");
+    let nums: Vec<u32> = got.entries.keys().copied().collect();
+    assert_eq!(nums, vec![1, 2, 3]);
+    assert_eq!(got.entries[&3].title, "Three");
 }

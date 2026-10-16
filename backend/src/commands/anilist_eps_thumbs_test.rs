@@ -623,3 +623,101 @@ async fn an_anilist_failure_is_cached_as_an_empty_listing() {
     assert_eq!(first, StreamingListing::default());
     assert_eq!(second, StreamingListing::default());
 }
+
+/// An AniList reply listing episodes 1..=`listed` of a finished show
+/// counted at `count`, with a still only for the first `with_stills`.
+fn listing_body(count: u32, listed: u32, with_stills: u32) -> String {
+    let eps: Vec<serde_json::Value> = (1..=listed)
+        .map(|n| {
+            serde_json::json!({
+                "title": format!("Episode {n} - Title {n}"),
+                "thumbnail": (n <= with_stills).then(|| format!("https://cr.cdn/{n}.jpg")),
+            })
+        })
+        .collect();
+    serde_json::json!({ "data": { "Media": {
+        "episodes": count, "status": "FINISHED", "streamingEpisodes": eps,
+    } } })
+    .to_string()
+}
+
+/// An untitled, unstilled Kitsu page of episodes 1..=`count`.
+fn untitled_page(count: u32) -> Vec<KitsuEpisode> {
+    (1..=count)
+        .map(|n| {
+            let mut e = ep_with(n, None);
+            e.canonical_title = None;
+            e
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn entries_without_stills_still_number_the_listing_for_the_fit_rule() {
+    // A 12-episode show whose listing runs to 24, stills only on 1-12:
+    // the listing is past the count and refused, though every entry
+    // that has a still is within it.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 21 }),
+        &listing_body(12, 24, 12),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(untitled_page(12), &got);
+    assert!(merged.iter().all(|e| e
+        .thumbnail
+        .as_ref()
+        .and_then(|t| t.original.as_ref())
+        .is_none()));
+}
+
+#[tokio::test]
+async fn an_entry_without_a_still_fills_nothing() {
+    // Within its count the listing fits; episode 2 has no still and
+    // keeps its placeholder, episode 1 takes its still.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 21 }),
+        &listing_body(2, 2, 1),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(untitled_page(2), &got);
+    let stills: Vec<Option<&str>> = merged
+        .iter()
+        .map(|e| e.thumbnail.as_ref().and_then(|t| t.original.as_deref()))
+        .collect();
+    assert_eq!(stills, vec![Some("https://cr.cdn/1.jpg"), None]);
+}
+
+#[tokio::test]
+async fn a_later_entry_with_a_still_fills_an_episode_its_first_entry_left_bare() {
+    // Subbed and dubbed tracks list the same episode; the first may
+    // have no still where the second has one.
+    let body = r#"{"data":{"Media":{"episodes":1,"status":"FINISHED","streamingEpisodes":[
+        {"title":"Episode 1 - Sub","thumbnail":null},
+        {"title":"Episode 1 - Dub","thumbnail":"https://cr.cdn/1-dub.jpg"}
+    ]}}}"#;
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(&anilist, serde_json::json!({ "idMal": 21 }), body, 1).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(untitled_page(1), &got);
+    assert_eq!(
+        merged[0]
+            .thumbnail
+            .as_ref()
+            .and_then(|t| t.original.as_deref()),
+        Some("https://cr.cdn/1-dub.jpg")
+    );
+}
