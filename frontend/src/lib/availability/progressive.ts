@@ -51,7 +51,10 @@ async function probeInline<T extends KitsuAnimeRef>(
 				// `available: false` is no verdict — so, like a failed
 				// probe, it leaves the card and remembers nothing; a
 				// refusal by name is the verdict that the catalogue
-				// does not carry the show, and drops it.
+				// does not carry the show, recorded as `false` — which
+				// prunes a finished show's card and, by `keepCard`'s
+				// status rule, leaves an airing, upcoming or
+				// unknown-status one, as for any show not listed yet.
 				const verdict = availabilityVerdict(r);
 				if (verdict !== null) cached[item.id] = verdict;
 			} catch {
