@@ -41,11 +41,17 @@ pub(super) fn parse_card(card: &str) -> Option<BrowseHit> {
         .map(str::trim)
         .filter(|k| !k.is_empty())
         .map(str::to_string);
+    // The romanized name beside the display title; an empty one names
+    // nothing.
+    let jname = attr(anchor, "data-jname=\"")
+        .map(decode_entities)
+        .map(|j| j.trim().to_string())
+        .filter(|j| !j.is_empty());
     Some(BrowseHit {
         slug,
         title,
         kind,
-        jname: None,
+        jname,
     })
 }
 
