@@ -483,5 +483,27 @@ describe('capGateAnswerFrom', () => {
 				unsettled: true
 			})
 		).toBeNull();
+		expect(
+			capGateAnswerFrom({
+				available: false,
+				episode_count: null,
+				extra_episodes: [],
+				unsettled: 'unanswered'
+			})
+		).toBeNull();
+	});
+
+	it('reads a refusal by name as the show being unavailable', () => {
+		// The catalogue lists nothing named for the show: the tile is
+		// gated as for a show the provider does not carry, with no count
+		// and no extras — not the could-not-tell of an unsettled answer.
+		expect(
+			capGateAnswerFrom({
+				available: false,
+				episode_count: null,
+				extra_episodes: [],
+				unsettled: 'refused'
+			})
+		).toEqual({ count: null, approximate: false, available: false, extraEpisodes: [] });
 	});
 });

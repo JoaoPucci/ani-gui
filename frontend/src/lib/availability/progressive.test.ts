@@ -143,6 +143,14 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a']);
 	});
 
+	it('drops a show the catalogue refused by name, as one it does not carry', async () => {
+		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+		apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled: 'refused' });
+		const emit = vi.fn();
+		await filterAvailableProgressive([ref('a', { status: 'finished' })], 'sub', emit);
+		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual([]);
+	});
+
 	it('keeps an item whose probe throws (defer to lazy path)', async () => {
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 		apiMock.checkAvailability.mockRejectedValue(new Error('upstream 520'));

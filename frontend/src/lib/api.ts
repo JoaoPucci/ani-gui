@@ -900,10 +900,14 @@ export interface AvailabilityResponse {
 /** Why an availability probe reached no verdict
  *  ({@link AvailabilityResponse.unsettled}). */
 export type UnsettledReason =
+	/** Every pool was refused on how its hits are named: the catalogue
+	 *  lists nothing named for the show, and Play can only fail. */
 	| 'refused'
-	| 'dead_end'
-	| 'no_mode_verdict'
+	/** Dead listings, or a mode nobody answered for. */
+	| 'unanswered'
+	/** An absence answered past a provider a positive row remembers. */
 	| 'past_affinity'
+	/** A negative a positive row overtook while the probe was out. */
 	| 'superseded';
 
 /** "Is this title in the provider's catalog?" probe. The detail page hits

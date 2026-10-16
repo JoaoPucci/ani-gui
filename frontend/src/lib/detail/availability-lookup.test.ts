@@ -125,6 +125,34 @@ describe('startAvailabilityLookup', () => {
 		expect(h.resolved).toEqual([false, true]);
 	});
 
+	it('reads a refusal by name as the show not being in the catalogue', async () => {
+		// The catalogue answered and lists nothing named for the show:
+		// Play can only fail, so the page shows it as unavailable — the
+		// same patch a settled `available: false` writes, with no count.
+		const h = harness(() =>
+			Promise.resolve(answer({ available: false, episode_count: null, unsettled: 'refused' }))
+		);
+		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
+		await settled();
+
+		expect(h.applied).toEqual([{ available: false, count: null, extraEpisodes: [] }]);
+		expect(h.listed).toEqual([null, false]);
+		expect(h.resolved).toEqual([false, true]);
+	});
+
+	it('establishes nothing from an answer unsettled for any other reason', async () => {
+		for (const reason of ['unanswered', 'past_affinity', 'superseded'] as const) {
+			const h = harness(() =>
+				Promise.resolve(answer({ available: false, episode_count: null, unsettled: reason }))
+			);
+			startAvailabilityLookup(SUBJECT, 'sub', h.deps);
+			await settled();
+
+			expect(h.applied, reason).toEqual([]);
+			expect(h.listed, reason).toEqual([null]);
+		}
+	});
+
 	it('says nothing at all once cancelled', async () => {
 		// The page it was asked for has moved on — a different show, a
 		// different mode, or gone. Reporting the question answered would
