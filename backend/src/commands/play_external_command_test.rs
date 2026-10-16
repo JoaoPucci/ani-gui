@@ -298,6 +298,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
         },
     );
     let before = std::time::SystemTime::now()
@@ -407,6 +408,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
         },
     );
 
@@ -587,6 +589,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
         },
     );
     crate::history::upsert_and_write(
