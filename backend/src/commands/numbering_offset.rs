@@ -51,6 +51,18 @@ pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> st
     remove_rows(state, |r| removed.contains(r.slug.as_str()))
 }
 
+/// Put a display stamp an earlier version wrote right: when the slug's
+/// stamp names `slot` with the tag `former` that version gave it,
+/// it names the tag the row has now. Any other stamp is left alone.
+pub fn retag_display(state: &AppState, slug: &str, slot: u32, former: &str, now: &str) {
+    let Some((stamped, tag)) = display_stamp(state, slug) else {
+        return;
+    };
+    if stamped == slot && tag == former {
+        merge_row(state, slug, get(state, slug), Some((slot, now.to_string())));
+    }
+}
+
 /// The slug's stamped (slot, display tag) pair, when one exists.
 pub fn display_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
     let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();

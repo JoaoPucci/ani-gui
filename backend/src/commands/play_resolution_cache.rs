@@ -160,7 +160,10 @@ use crate::proxy::MediaKind;
 // pick. A v19 row for such an entry can hold a same-year show's stream
 // under the entry's key — HenSemi (TV) playing Medaka Box Abnormal —
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-const SCHEMA: &str = "v20";
+// v21: a stitched recap before a cumulatively numbered part is tagged
+// a part earlier ("12.5", not "24.5"); a v20 row keyed by the old tag
+// can hold the stream of the recap that tag names no longer.
+const SCHEMA: &str = "v21";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.

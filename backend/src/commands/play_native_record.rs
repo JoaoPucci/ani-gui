@@ -32,6 +32,17 @@ use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id
 pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: Asked<'_>) {
     crate::history::guard::hold(&state.history_path, |held| {
         if !held.removed_since(asked, &native.slug) {
+            // The listing is at hand: a stamp an earlier version wrote
+            // with a row's former tag gets the row's tag now.
+            for (slot, former, now) in &native.former_tags {
+                crate::commands::numbering_offset::retag_display(
+                    state,
+                    &native.slug,
+                    *slot,
+                    former,
+                    now,
+                );
+            }
             put_numbering(state, native);
         }
     });

@@ -20,7 +20,9 @@ use crate::scraper::provider::{Provider, ProviderId, ShowKey, SubtitleTrack};
 use super::play_native::pick_candidate_titled;
 pub use super::play_native_episode::resolve_episode;
 use super::play_native_episode::{classify_chain_failure, ChainOutcome};
-use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
+use super::play_native_numbering::{
+    extra_episode_tags, former_tags_of, kitsu_episode_cap, numbering_offset,
+};
 use super::play_native_transient::{attempt_at, Transients, WalkStage};
 
 /// A fully resolved native play: what the orchestrator needs to open
@@ -274,7 +276,7 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
-                            former_tags: Vec::new(),
+                            former_tags: former_tags_of(&picked.episodes),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
