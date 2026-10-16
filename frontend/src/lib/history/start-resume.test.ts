@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { makeStartResume, type StartResumeDeps } from './start-resume';
+import { makeStartResume, type ResumePlayArgs, type StartResumeDeps } from './start-resume';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
@@ -25,14 +25,14 @@ interface Harness {
 	log: string[];
 	busyLog: (string | null)[];
 	counts: [string, number][];
-	failures: [string, unknown][];
+	failures: [string, unknown, ResumePlayArgs][];
 }
 
 function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 	const log: string[] = [];
 	const busyLog: (string | null)[] = [];
 	const counts: [string, number][] = [];
-	const failures: [string, unknown][] = [];
+	const failures: [string, unknown, ResumePlayArgs][] = [];
 	const deps: StartResumeDeps = {
 		isBusy: () => busyLog.at(-1) != null,
 		onBusy: (id) => {
@@ -40,7 +40,9 @@ function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 			log.push(`busy:${id}`);
 		},
 		onProgress: () => {},
-		onFailure: (title, e) => failures.push([title, e]),
+		onFailure: (title, e, args) => {
+			failures.push([title, e, args]);
+		},
 		getSettings: vi.fn().mockImplementation(async () => {
 			log.push('settings');
 			return { mode: 'sub' as const, quality: 'best' };
@@ -131,8 +133,43 @@ describe('makeStartResume (click orchestration)', () => {
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
 		expect(h.busyLog).toEqual(['k1', null]);
-		expect(h.failures).toEqual([['Title k1', expect.any(Error)]]);
+		expect(h.failures).toEqual([
+			[
+				'Title k1',
+				expect.any(Error),
+				// What the failed play asked for, so the page can look up
+				// the other audio of the same show and episode.
+				expect.objectContaining({
+					episode: 6,
+					mode: 'sub',
+					match: expect.objectContaining({ id: 'k1' })
+				})
+			]
+		]);
 		expect(h.deps.navigateToSession).not.toHaveBeenCalled();
+	});
+
+	it('stays busy while the failure surface words its message', async () => {
+		// The page looks the other audio up before it shows the
+		// failure. Clearing busy first left a window with neither the
+		// loading state nor the failure on screen, in which a second
+		// click could start a play the late message then covered.
+		let release!: () => void;
+		const worded = new Promise<void>((r) => (release = r));
+		const h = makeHarness({
+			resolvePlay: vi.fn().mockRejectedValue(new Error('no sources')),
+			onFailure: () => worded
+		});
+		const start = makeStartResume(h.deps);
+		const done = start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		await vi.waitFor(() => expect(h.deps.resolvePlay).toHaveBeenCalled());
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(h.busyLog, 'busy holds until the message is worded').toEqual(['k1']);
+		expect(h.deps.isBusy()).toBe(true);
+		release();
+		await done;
+		expect(h.busyLog).toEqual(['k1', null]);
 	});
 
 	it('a countless interactive lookup writes no cap and falls back to the Kitsu count', async () => {
@@ -313,6 +350,46 @@ describe('makeStartResume — the episode is marked started before its watch is 
 			6,
 			true,
 			'h1'
+		);
+	});
+});
+
+describe('makeStartResume — a fractional extra in history', () => {
+	it('goes on from a recap to the whole episode after it', async () => {
+		const h = makeHarness();
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '7.5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 8 }),
+			expect.anything()
+		);
+	});
+
+	it('goes back to a recap left part-way', async () => {
+		const asked: number[] = [];
+		const h = makeHarness({
+			leftPartWay: (_id, episode) => {
+				asked.push(episode);
+				return episode === 7.5;
+			}
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '7.5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(asked).toContain(7.5);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 7.5 }),
+			expect.anything()
+		);
+	});
+});
+
+describe('makeStartResume — a range-shaped row', () => {
+	it('reads "1-12" by its first episode and plays 2', async () => {
+		const h = makeHarness();
+		await makeStartResume(h.deps)(makeEntry('h1', '1-12', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 2 }),
+			expect.anything()
 		);
 	});
 });

@@ -19,6 +19,7 @@
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { resolveResumeEpisode } from './resume-episode';
 import { resumeOr } from '$lib/play/next-episode';
+import { parseHistoryEpisode } from '$lib/play/episode-number';
 
 export interface ResumePlayArgs {
 	/** Whether the card's match is only a guess (row-trust.ts): its id
@@ -37,7 +38,10 @@ export interface StartResumeDeps {
 	isGuess?: (entryId: string) => boolean;
 	onBusy: (kitsuId: string | null) => void;
 	onProgress: (label: string | null) => void;
-	onFailure: (title: string, error: unknown) => void;
+	/** `args` is what the failed play asked for — the show, episode
+	 *  and audio a failure surface needs to word its message. Busy
+	 *  holds until a returned promise settles. */
+	onFailure: (title: string, error: unknown, args: ResumePlayArgs) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
 	getPlayableCount: (entryId: string) => number | null;
@@ -106,7 +110,7 @@ export function makeStartResume(
 		deps.onProgress(null);
 
 		const { mode, quality } = await deps.getSettings();
-		const lastWatchedRaw = parseInt(entry.ep_no, 10);
+		const lastWatchedRaw = parseHistoryEpisode(entry.ep_no) ?? NaN;
 		const resolved = await resolveResumeEpisode(
 			Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null,
 			deps.getPlayableCount(entry.id),
@@ -147,9 +151,15 @@ export function makeStartResume(
 			}
 			deps.navigateToSession(match.id, session, episode, guess, entry.id);
 		} catch (e) {
-			deps.onBusy(null);
 			deps.onProgress(null);
-			deps.onFailure(title, e);
+			// Busy holds until the failure is on screen: the page words it
+			// after a cache lookup, and a card left idle meanwhile would
+			// take a second click whose play the late message then covers.
+			try {
+				await deps.onFailure(title, e, args);
+			} finally {
+				deps.onBusy(null);
+			}
 		}
 	};
 }
