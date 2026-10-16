@@ -42,8 +42,8 @@ export function createDownloadQueue(max: number): DownloadQueue {
 
 	const run = async <T>(task: () => Promise<T>, opts: DownloadRunOptions): Promise<T> => {
 		running += 1;
-		opts.onStart();
 		try {
+			opts.onStart();
 			return await task();
 		} finally {
 			running -= 1;
