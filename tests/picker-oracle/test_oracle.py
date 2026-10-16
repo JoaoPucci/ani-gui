@@ -82,8 +82,15 @@ class Generation(unittest.TestCase):
 
     def test_the_generated_set_walks_versions_both_ways(self):
         fams = [c for c in oracle.gen() if c["family"].startswith("versions")]
-        # titles that end on a division are tagged too: the tag hides none
-        self.assertTrue(any(c["rows"][0][1].endswith(("Season 2", " 2")) for c in fams))
+        # generated pools tag titles that end on a division too: the tag hides none
+        self.assertTrue(
+            any(
+                "/" in c["family"]
+                and any(r[0].endswith("-u") for r in c["rows"])
+                and any(r[1].endswith(("Season 2", " 2")) for r in c["rows"] if not r[0].endswith("-u"))
+                for c in fams
+            )
+        )
         self.assertTrue(any(c["expect"] and "versions" in c["expect"] for c in fams))
         self.assertTrue(any(c["expect"] and "versions" not in c["expect"] for c in fams))
 
