@@ -133,6 +133,14 @@ where
         }
     };
     let (picked, first_resolved) = attempted.value;
+    // As a play does: a stamp an earlier version wrote with a stitched
+    // row's former tag reads right.
+    crate::commands::numbering_offset::retag_from_listing(
+        state,
+        &crate::scraper::provider::ShowKey::new(attempted.provider, picked.hit.slug.clone())
+            .to_string(),
+        &picked.episodes,
+    );
     // The range's first stream is a positive availability fact
     // naming the provider that served it, with the cap the pick's
     // listing paid for — the row the play path writes.

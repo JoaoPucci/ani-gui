@@ -291,6 +291,9 @@ where
             }
         };
 
+    // As a play does: a stamp an earlier version wrote with a stitched
+    // row's former tag reads right.
+    crate::commands::numbering_offset::retag_display(state, &resolved.slug, &resolved.former_tags);
     tracing::info!(
         slug = %resolved.slug,
         episode = %args.episode,

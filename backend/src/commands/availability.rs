@@ -813,6 +813,15 @@ pub async fn check_availability(
                 return Ok(AvailabilityResponse::unsettled());
             };
             if present {
+                // The listing is at hand: a history row's stamp an
+                // earlier version wrote with a stitched row's former
+                // tag reads right before its Continue card is clicked.
+                crate::commands::numbering_offset::retag_from_listing(
+                    state,
+                    &crate::scraper::provider::ShowKey::new(attempted.provider, p.hit.slug.clone())
+                        .to_string(),
+                    &p.episodes,
+                );
                 (
                     true,
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
