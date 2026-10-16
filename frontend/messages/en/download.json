@@ -89,6 +89,16 @@
 			}
 		}
 	],
+	"bar_label_multi_queued": [
+		{
+			"declarations": ["input count", "input queued", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Downloading {count} episode · {queued} queued",
+				"countPlural=*": "Downloading {count} episodes · {queued} queued"
+			}
+		}
+	],
 	"bar_cancel_all_aria_label": "Cancel all downloads",
 	"bar_cancel_all_title": "Cancel all downloads",
 	"bar_cancel_confirm_single": "Cancel download of \"{title}\"?",
@@ -109,6 +119,21 @@
 			"match": {
 				"countPlural=one": "{count} download in progress, {speed}",
 				"countPlural=*": "{count} downloads in progress, {speed}"
+			}
+		}
+	],
+	"dock_active_queued_speed_label": [
+		{
+			"declarations": [
+				"input count",
+				"input queued",
+				"input speed",
+				"local countPlural = count: plural"
+			],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} download in progress, {queued} queued, {speed}",
+				"countPlural=*": "{count} downloads in progress, {queued} queued, {speed}"
 			}
 		}
 	],

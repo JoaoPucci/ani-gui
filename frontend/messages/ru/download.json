@@ -109,6 +109,17 @@
 			}
 		}
 	],
+	"bar_label_multi_queued": [
+		{
+			"declarations": ["input count", "input queued", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Загрузка {count} серии · {queued} в очереди",
+				"countPlural=few": "Загрузка {count} серий · {queued} в очереди",
+				"countPlural=*": "Загрузка {count} серий · {queued} в очереди"
+			}
+		}
+	],
 	"bar_cancel_all_aria_label": "Отменить все загрузки",
 	"bar_cancel_all_title": "Отменить все загрузки",
 	"bar_cancel_confirm_single": "Отменить загрузку «{title}»?",
@@ -131,6 +142,22 @@
 				"countPlural=one": "{count} загрузка в процессе, {speed}",
 				"countPlural=few": "{count} загрузки в процессе, {speed}",
 				"countPlural=*": "{count} загрузок в процессе, {speed}"
+			}
+		}
+	],
+	"dock_active_queued_speed_label": [
+		{
+			"declarations": [
+				"input count",
+				"input queued",
+				"input speed",
+				"local countPlural = count: plural"
+			],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} загрузка в процессе, {queued} в очереди, {speed}",
+				"countPlural=few": "{count} загрузки в процессе, {queued} в очереди, {speed}",
+				"countPlural=*": "{count} загрузок в процессе, {queued} в очереди, {speed}"
 			}
 		}
 	],

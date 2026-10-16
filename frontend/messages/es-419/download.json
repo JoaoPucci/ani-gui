@@ -98,6 +98,16 @@
 			}
 		}
 	],
+	"bar_label_multi_queued": [
+		{
+			"declarations": ["input count", "input queued", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Descargando {count} episodio · {queued} en cola",
+				"countPlural=*": "Descargando {count} episodios · {queued} en cola"
+			}
+		}
+	],
 	"bar_cancel_all_aria_label": "Cancelar todas las descargas",
 	"bar_cancel_all_title": "Cancelar todas las descargas",
 	"bar_cancel_confirm_single": "¿Cancelar la descarga de «{title}»?",
@@ -118,6 +128,21 @@
 			"match": {
 				"countPlural=one": "{count} descarga en curso, {speed}",
 				"countPlural=*": "{count} descargas en curso, {speed}"
+			}
+		}
+	],
+	"dock_active_queued_speed_label": [
+		{
+			"declarations": [
+				"input count",
+				"input queued",
+				"input speed",
+				"local countPlural = count: plural"
+			],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} descarga en curso, {queued} en cola, {speed}",
+				"countPlural=*": "{count} descargas en curso, {queued} en cola, {speed}"
 			}
 		}
 	],

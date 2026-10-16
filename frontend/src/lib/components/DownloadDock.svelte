@@ -92,14 +92,20 @@
 			onclick={() => (open = !open)}
 			aria-haspopup="menu"
 			aria-expanded={open}
-			aria-label={triggerLabel.kind === 'active'
-				? m.download_dock_active_speed_label({
+			aria-label={triggerLabel.kind === 'active-queued'
+				? m.download_dock_active_queued_speed_label({
 						count: triggerLabel.count,
+						queued: triggerLabel.queued,
 						speed: formatSpeed(speed ?? 0)
 					})
-				: triggerLabel.kind === 'unseen'
-					? m.download_dock_unseen_label({ count: triggerLabel.count })
-					: m.download_dock_idle_label()}
+				: triggerLabel.kind === 'active'
+					? m.download_dock_active_speed_label({
+							count: triggerLabel.count,
+							speed: formatSpeed(speed ?? 0)
+						})
+					: triggerLabel.kind === 'unseen'
+						? m.download_dock_unseen_label({ count: triggerLabel.count })
+						: m.download_dock_idle_label()}
 			title={m.download_dock_title()}
 		>
 			<!-- The badge and the dot sit on the icon's corner, so a trigger

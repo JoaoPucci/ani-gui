@@ -102,6 +102,17 @@
 			}
 		}
 	],
+	"bar_label_multi_queued": [
+		{
+			"declarations": ["input count", "input queued", "local countPlural = count: plural"],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "Baixando {count} episódios · {queued} na fila",
+				"count=*, countPlural=one": "Baixando {count} episódio · {queued} na fila",
+				"count=*, countPlural=*": "Baixando {count} episódios · {queued} na fila"
+			}
+		}
+	],
 	"bar_cancel_all_aria_label": "Cancelar todos os downloads",
 	"bar_cancel_all_title": "Cancelar todos os downloads",
 	"bar_cancel_confirm_single": "Cancelar o download de \"{title}\"?",
@@ -124,6 +135,22 @@
 				"count=0, countPlural=*": "{count} downloads em andamento, {speed}",
 				"count=*, countPlural=one": "{count} download em andamento, {speed}",
 				"count=*, countPlural=*": "{count} downloads em andamento, {speed}"
+			}
+		}
+	],
+	"dock_active_queued_speed_label": [
+		{
+			"declarations": [
+				"input count",
+				"input queued",
+				"input speed",
+				"local countPlural = count: plural"
+			],
+			"selectors": ["count", "countPlural"],
+			"match": {
+				"count=0, countPlural=*": "{count} downloads em andamento, {queued} na fila, {speed}",
+				"count=*, countPlural=one": "{count} download em andamento, {queued} na fila, {speed}",
+				"count=*, countPlural=*": "{count} downloads em andamento, {queued} na fila, {speed}"
 			}
 		}
 	],
