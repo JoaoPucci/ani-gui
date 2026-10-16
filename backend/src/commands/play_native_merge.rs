@@ -123,3 +123,12 @@ pub(crate) fn former_tags_of(episodes: &[EpisodeRef]) -> Vec<(u32, String, Strin
         })
         .collect()
 }
+
+/// The tag an earlier version gave the row in `slot`, from a resolve's
+/// [`former_tags_of`].
+pub(crate) fn former_tag_of(former_tags: &[(u32, String, String)], slot: u32) -> Option<&str> {
+    former_tags
+        .iter()
+        .find(|(s, _, _)| *s == slot)
+        .map(|(_, former, _)| former.as_str())
+}

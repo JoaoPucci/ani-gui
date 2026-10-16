@@ -434,12 +434,25 @@ where
     // removal from history since this play began.
     play_resolution_cache::store(state, asked, &cache_key, &cached_resolution);
 
+    // The episode the session plays, and the number an earlier version
+    // gave it: the player follows the one, a position kept from then
+    // is under the other.
+    let episode = crate::commands::play_native_record::matched_episode(&native, &args.episode);
+    let former_episode = crate::commands::play_native_merge::former_tag_of(
+        &native.former_tags,
+        native.resolved_slot,
+    )
+    .map(|t| crate::commands::numbering_offset::kitsu_ep_no(t, native.numbering_offset));
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
         referer: cached_resolution.referer,
         subtitles: cached_resolution.subtitles,
     };
-    create_session_with_kind(state, &session_args, kind)
+    Ok(CreateSessionResponse {
+        episode: Some(episode),
+        former_episode,
+        ..create_session_with_kind(state, &session_args, kind)?
+    })
 }
 
 /// The cache row a native resolve leaves behind: the stream, the

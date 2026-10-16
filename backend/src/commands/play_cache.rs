@@ -196,6 +196,9 @@ pub(crate) async fn try_serve_cached(
     // retryable (cache hit can be evicted + re-resolved) or terminal
     // (fresh fetch, no cache to clear).
     resp.cache_hit = true;
+    // The episode the resolve behind the row played; a row from before
+    // the field names none.
+    resp.episode.clone_from(&cached.played);
     Some(resp)
 }
 
