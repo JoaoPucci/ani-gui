@@ -1717,6 +1717,25 @@ mod tests {
     }
 
     #[test]
+    fn a_mapping_stamped_before_a_counted_undated_entry_needed_a_name_is_not_read() {
+        // An entry with a count and no year took any hit within the
+        // count tolerance, and a play stamps the picked show's key with
+        // the entry asked for: Girlfriend, Girlfriend's key bound to Mo
+        // Du Zhe, under a title the cross-cour guard has no cour to
+        // refuse on.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:girlfriend-girlfriend-560";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v6:{key}"),
+            "45637",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
     fn allmanga_kitsu_cache_round_trips_for_a_given_show_id() {
         let state = state_with_kitsu_at("http://unused");
         allmanga_kitsu_put(&state, "vDTSJHSpYnrkZnAvG", "11469").expect("put ok");
