@@ -261,7 +261,10 @@ pub(crate) fn cached_watch(
     super::play_native_record::Watch {
         show_id: cached.show_id.clone(),
         title: cached.show_title.clone(),
-        ep_no: episode.trim().to_string(),
+        ep_no: cached
+            .played
+            .clone()
+            .unwrap_or_else(|| episode.trim().to_string()),
     }
 }
 

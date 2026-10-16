@@ -129,10 +129,14 @@ fn write_history_on_cache_hit(
         return;
     }
     let entry = crate::history::HistoryEntry {
-        // The episode played, as the app numbers it, marked as such:
-        // neither the cached slot nor the sidecar's stamps decide what
-        // the row reads back as.
-        ep_no: args.episode.trim().to_string(),
+        // The episode played, as the app numbers it — the one the
+        // cached resolve matched, or the request on a row from before
+        // that was recorded — marked as such: neither the cached slot
+        // nor the sidecar's stamps decide what the row reads back as.
+        ep_no: cached
+            .played
+            .clone()
+            .unwrap_or_else(|| args.episode.trim().to_string()),
         id: cached.show_id.clone(),
         title: cached.show_title.clone(),
         watched_at: None,
@@ -444,9 +448,11 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         show_id: native.slug.clone(),
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
+        played: Some(crate::commands::play_native_record::matched_episode(
+            native, "",
+        )),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
-        played: None,
     }
 }
 
