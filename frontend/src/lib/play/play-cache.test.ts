@@ -392,6 +392,72 @@ describe('clearForShow — abort in-flight', () => {
 	});
 });
 
+describe('clearForShow — abort queued', () => {
+	it('never runs a fire that was cleared while it waited for a slot', async () => {
+		// PREFETCH_CONCURRENCY = 2. Two fires hold the slots and a third
+		// queues; leaving the show aborts all three. The two running
+		// ones reject on their signal and free their slots — the queued
+		// one must not then start: its page is gone, and a fire is a
+		// resolve request to the backend.
+		const started: string[] = [];
+		const fire =
+			(seed: string) =>
+			(_emit: (p: PlayProgress) => void, signal: AbortSignal): Promise<CreateSessionResponse> => {
+				started.push(seed);
+				return new Promise<CreateSessionResponse>((_resolve, reject) => {
+					signal.addEventListener('abort', () => reject(new Error('aborted')));
+				});
+			};
+		const p1 = getOrFire(makeKey('gone', 1, 'sub', 'best'), fire('a'));
+		const p2 = getOrFire(makeKey('gone', 2, 'sub', 'best'), fire('b'));
+		const p3 = getOrFire(makeKey('gone', 3, 'sub', 'best'), fire('c'));
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(started).toEqual(['a', 'b']);
+
+		clearForShow('gone');
+		await expect(p1).rejects.toThrow(/aborted/);
+		await expect(p2).rejects.toThrow(/aborted/);
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(started).toEqual(['a', 'b']);
+		await expect(p3).rejects.toThrow(/aborted/);
+	});
+
+	it('leaves the slots to the fires still queued for another show', async () => {
+		// The cleared entry gives up its place; the queue behind it is
+		// not held up, and the cap still holds.
+		const releasers: Array<() => void> = [];
+		const started: string[] = [];
+		const fire =
+			(seed: string) =>
+			(_emit: (p: PlayProgress) => void, signal: AbortSignal): Promise<CreateSessionResponse> => {
+				started.push(seed);
+				return new Promise<CreateSessionResponse>((resolve, reject) => {
+					releasers.push(() => resolve(fakeResp(seed)));
+					signal.addEventListener('abort', () => reject(new Error('aborted')));
+				});
+			};
+		const a = getOrFire(makeKey('kept', 1, 'sub', 'best'), fire('a'));
+		const b = getOrFire(makeKey('kept', 2, 'sub', 'best'), fire('b'));
+		const gone = getOrFire(makeKey('gone', 1, 'sub', 'best'), fire('gone'));
+		const c = getOrFire(makeKey('kept', 3, 'sub', 'best'), fire('c'));
+		await Promise.resolve();
+		await Promise.resolve();
+		clearForShow('gone');
+
+		releasers[0]();
+		await a;
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(started).toEqual(['a', 'b', 'c']);
+		await expect(gone).rejects.toThrow(/aborted/);
+		releasers[1]();
+		releasers[2]();
+		await Promise.all([b, c]);
+	});
+});
+
 describe('clearForShow', () => {
 	it('drops every entry whose key starts with the given show id', async () => {
 		const fire = vi.fn(plainFire(fakeResp('x')));
