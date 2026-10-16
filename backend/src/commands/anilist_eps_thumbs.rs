@@ -16,6 +16,8 @@ use crate::meta::anilist_media::MediaRef;
 use crate::meta::anilist_streaming_eps::{streaming_listing_for_ids, StreamingListing};
 use crate::meta::kitsu::{KitsuEpisode, KitsuEpisodeThumbnail};
 
+#[path = "anilist_eps_contain.rs"]
+mod contain;
 #[path = "anilist_eps_fit.rs"]
 mod fit;
 #[path = "anilist_eps_titles.rs"]
