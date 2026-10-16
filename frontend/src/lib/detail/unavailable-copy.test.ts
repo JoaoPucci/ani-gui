@@ -135,4 +135,10 @@ describe('asksOtherAudio', () => {
 		expect(asksOtherAudio({ unavailable: false, music: false, refused: false })).toBe(false);
 		expect(asksOtherAudio({ unavailable: true, music: true, refused: false })).toBe(false);
 	});
+
+	it('never asks for a title the provider refused by name', () => {
+		// A refusal by name is about the title, not the audio: the
+		// provider lists nothing named for it, in either.
+		expect(asksOtherAudio({ unavailable: true, music: false, refused: true })).toBe(false);
+	});
 });
