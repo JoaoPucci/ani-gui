@@ -104,6 +104,19 @@ function forgetChoice(kitsuId: string, storage: ChoiceStorage | null): void {
 	}
 }
 
+/** The versions a page holds, as they read in the mode it shows: as
+ *  given when the answer was asked in that mode; without what they say
+ *  of a mode otherwise — an answer's `has_mode` is the mode it was asked
+ *  about, and says nothing of another until that one is answered. */
+export function versionsInMode(
+	versions: VersionInfo[],
+	answeredMode: 'sub' | 'dub',
+	mode: 'sub' | 'dub'
+): VersionInfo[] {
+	if (answeredMode === mode) return versions;
+	return versions.map(({ kind, show_key }) => ({ kind, show_key }));
+}
+
 /** The versions to offer a choice between: every one the answer does
  *  not say lacks the requested mode, when there are several of those,
  *  the uncensored one first and the rest in the provider's order — the
