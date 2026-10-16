@@ -109,33 +109,40 @@ fn related(r: KitsuRelation, episode_titles: Option<Vec<String>>) -> Related {
     }
 }
 
-#[async_trait::async_trait]
-impl TailSource for KitsuTail<'_> {
-    async fn tail(&self, count: u32) -> Option<EntryTail> {
-        let detail = super::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)
-            .await
-            .ok()?;
-        let airing = super::airing::airing_get(self.state, self.kitsu_id)
-            .await
-            .ok()?;
+impl KitsuTail<'_> {
+    /// Kitsu's rows on the pages [`tail_pages`] names, and on the page
+    /// after the last of them when that one is full to its end with
+    /// nothing past the count on it: Kitsu's pages are not always
+    /// dense, so a full page says nothing about what follows it.
+    async fn read_pages(&self, count: u32) -> Option<Vec<KitsuEpisode>> {
         let mut episodes = Vec::new();
+        let mut last = (0, 0);
         for page in tail_pages(count) {
-            episodes.extend(
-                super::kitsu::kitsu_episode_page(self.state, self.kitsu_id, page)
-                    .await
-                    .ok()?,
-            );
+            let rows = self.page(page).await?;
+            last = (page, rows.len());
+            episodes.extend(rows);
         }
-        let mut tail = entry_tail(
-            detail.status.as_deref(),
-            detail.episode_count,
-            &airing,
-            episodes,
-        );
+        let full = last.1 >= usize::try_from(KITSU_PAGE).unwrap_or(usize::MAX);
+        let nothing_past = episodes.iter().all(|e| e.number.is_none_or(|n| n <= count));
+        if full && nothing_past {
+            episodes.extend(self.page(last.0 + 1).await?);
+        }
+        Some(episodes)
+    }
+
+    async fn page(&self, page: u32) -> Option<Vec<KitsuEpisode>> {
+        super::kitsu::kitsu_episode_page(self.state, self.kitsu_id, page)
+            .await
+            .ok()
+    }
+
+    /// The entries Kitsu relates the show to, each TV sequel with its
+    /// first page of titles, and whether they are all of them.
+    async fn read_related(&self) -> Option<(Vec<Related>, bool)> {
         let relations = super::kitsu::kitsu_relationships(self.state, self.kitsu_id)
             .await
             .ok()?;
-        tail.related_complete = relations.complete;
+        let mut out = Vec::new();
         for r in relations.entries {
             let episode_titles = if is_tv_sequel(&r) {
                 let page = super::kitsu::kitsu_episode_page(self.state, &r.id, 1)
@@ -145,8 +152,31 @@ impl TailSource for KitsuTail<'_> {
             } else {
                 None
             };
-            tail.related.push(related(r, episode_titles));
+            out.push(related(r, episode_titles));
         }
+        Some((out, relations.complete))
+    }
+}
+
+#[async_trait::async_trait]
+impl TailSource for KitsuTail<'_> {
+    async fn tail(&self, count: u32) -> Option<EntryTail> {
+        let detail = super::kitsu::kitsu_anime_detail(self.state, self.kitsu_id)
+            .await
+            .ok()?;
+        let airing = super::airing::airing_get(self.state, self.kitsu_id)
+            .await
+            .ok()?;
+        let episodes = self.read_pages(count).await?;
+        let (related, related_complete) = self.read_related().await?;
+        let mut tail = entry_tail(
+            detail.status.as_deref(),
+            detail.episode_count,
+            &airing,
+            episodes,
+        );
+        tail.related = related;
+        tail.related_complete = related_complete;
         Some(tail)
     }
 }
