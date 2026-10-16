@@ -201,7 +201,30 @@ fn cache_key_includes_schema_version_so_v0_entries_are_unreachable() {
     // shape so a typo in SCHEMA doesn't silently produce keys
     // that collide with the prior version.
     let k = cache_key("X", "sub", "best", "1", None, None, None);
-    assert!(k.starts_with("play:v19:"), "got {k}");
+    assert!(k.starts_with("play:v20:"), "got {k}");
+}
+
+#[test]
+fn a_row_resolved_before_a_dated_counted_entry_needed_a_name_is_not_served() {
+    // A dated entry with a count took any hit its year and count fit:
+    // HenSemi (TV) resolved to Medaka Box Abnormal, a same-year show
+    // the year filter tolerated, and a HEAD-passing hit on such a v19
+    // row would keep serving it under HenSemi (TV)'s key.
+    let pool = pool();
+    let current = cache_key(
+        "HenSemi (TV)",
+        "sub",
+        "best",
+        "1",
+        Some(2011),
+        Some(13),
+        Some("TV"),
+    );
+    let previous = current.replacen(&format!("play:{SCHEMA}:"), "play:v19:", 1);
+    assert_ne!(previous, current, "the schema must have moved past v19");
+    let body = serde_json::to_string(&sample_resolution()).expect("serialize");
+    meta_cache_put(&pool, &previous, &body, 60).unwrap();
+    assert!(get(&pool, &current).expect("ok").is_none());
 }
 
 #[test]

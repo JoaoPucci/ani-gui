@@ -1742,6 +1742,23 @@ mod tests {
     }
 
     #[test]
+    fn a_mapping_stamped_before_a_dated_counted_entry_needed_a_name_is_not_read() {
+        // A dated entry with a count took any hit its year and count
+        // fit: Medaka Box Abnormal's key bound to HenSemi (TV), under a
+        // title the cross-cour guard has no cour to refuse on.
+        let state = state_with_kitsu_at("http://unused");
+        let key = "hianime:medaka-box-abnormal-4606";
+        crate::cache::meta_cache_put(
+            &state.cache_pool,
+            &format!("allmanga2kitsu:v7:{key}"),
+            "6067",
+            60,
+        )
+        .expect("put");
+        assert_eq!(allmanga_kitsu_get(&state, key).expect("get ok"), None);
+    }
+
+    #[test]
     fn allmanga_kitsu_cache_round_trips_for_a_given_show_id() {
         let state = state_with_kitsu_at("http://unused");
         allmanga_kitsu_put(&state, "vDTSJHSpYnrkZnAvG", "11469").expect("put ok");

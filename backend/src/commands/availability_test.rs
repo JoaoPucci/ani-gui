@@ -2040,8 +2040,21 @@ async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_noth
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v18:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v18:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v19:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v19:kid-1:dub");
+}
+
+/// A verdict the picker stamped before a dated entry with a count
+/// needed a name is not served: HenSemi (TV)'s row can hold Medaka Box
+/// Abnormal's twelve episodes as its own, a same-year show whose count
+/// merely fit, and nothing in a row says which hit it was stamped from.
+#[test]
+fn a_verdict_stamped_before_a_dated_counted_entry_needed_a_name_is_not_read() {
+    let current = cache_key("6067", "sub");
+    assert!(
+        !current.starts_with("availability:v18:"),
+        "the key must have moved past v18: {current}"
+    );
 }
 
 /// A verdict the picker stamped before an entry with a count and no
