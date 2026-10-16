@@ -29,7 +29,7 @@ says which pool.
 |---|---|
 | `oracle.py` | The model and the comparison. Standard library only. |
 | `test_oracle.py` | The model's own tests: rows transcribed from the docs' tables predict as the tables say; the generated set is reproducible; the comparison refuses what it must. |
-| `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row, but for two rows the driver cannot express (below); the others are the shapes that surfaced while reviewing picker changes. |
+| `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row, but for three rows the driver cannot express (below); the others are the shapes that surfaced while reviewing picker changes. |
 | `allowlist.json` | Disagreements accepted for now, each with its reason and the outcome it accepts. |
 | `fixtures-golden.json` | Every recorded fixture's outcome, one show per line. |
 
@@ -44,7 +44,7 @@ From the repository root, with `python3` (3.12 or later) and the Rust
 toolchain:
 
 ```sh
-# The model against the docs' tables (about thirty seconds)
+# The model against the docs' tables (about a minute)
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 
 # The picker against the model: generate, run, compare
@@ -63,9 +63,9 @@ python3 -I tests/picker-oracle/oracle.py cmp \
 (cd backend && cargo test --lib write_the_fixture_golden -- --ignored)
 ```
 
-Generating the set takes about two seconds and writes some 28,000
-pools (7 MB); the picker walks them in about eleven seconds in the debug
-profile. The generated set is not committed: it is a deterministic
+Generating the set takes about six seconds and writes some 48,000
+pools (13 MB); the picker walks them in about twenty seconds in the
+debug profile. The generated set is not committed: it is a deterministic
 function of `oracle.py` and `cases/`, so committing it would store the
 generator's output beside the generator. The whole set runs on every
 relevant pull request.
@@ -115,12 +115,14 @@ either without touching the picker is asking the checker to look away.
 
 Every reported mispick becomes a recorded fixture under
 `tests/fixtures/hianime/picker/` — the entry's Kitsu arguments and
-every search, listing and entry-page year the walk read for it — with a
-`MANIFEST.json` entry and an expectation in one of the fixture test's
-tables in `play_native_walk_fixture_test.rs` — a pick or a clean miss in
-an `Expectation` table (`AUDITED_RIGHT`, `UNDATED_AUDITED_RIGHT`), a
-refusal that is not the clean miss in `UNDATED_REFUSED` — in the pull
-request that fixes it. That recording then holds the fix: the golden
+every search, listing and entry page the walk read for it, reduced to
+what the parsers return (`play_native_walk_record_test.rs` records one)
+— with a `MANIFEST.json` entry and an expectation in one of the fixture
+test's tables in `play_native_walk_fixture_test.rs` — a pick or a clean
+miss in an `Expectation` table (`AUDITED_RIGHT`,
+`UNDATED_AUDITED_RIGHT`), a refusal that is not the clean miss in
+`UNDATED_REFUSED` or `DATED_REFUSED` — in the pull request that fixes
+it. That recording then holds the fix: the golden
 records its outcome, and the fixture test asserts its pick.
 
 ## What the model computes, and what it tables
@@ -134,19 +136,29 @@ complete (the spanning cut), a bare title beside parts of it whose
 counts could together explain the entry's (stitching), a dead listing,
 a one-video entry — are tabled: `gen()` writes their expectations row
 by row from the decision tables, and `cases/doc-table.json` carries
-the table itself — all but two rows, which the driver cannot express
-because it names 2020 on every page and badges every hit TV: the
-dated "Show: Arc" whose hit's page names no year, pinned by the fixture
-test `only_an_entry_with_a_count_and_no_year_needs_a_hit_named_for_it`,
-and Tsubu★Doll, whose refusal rests on a format badge and is pinned by
-its recording (8404, in `UNDATED_REFUSED`). `predict()` answers `NOT_MODELLED` for those shapes,
+the table itself — all but three rows, which the driver cannot express
+because it names 2020 on every page, badges every hit TV and lists no
+genre: the dated "Show: Arc" whose hit's page names no year, pinned by
+the fixture test `an_entry_with_a_count_takes_only_a_hit_named_for_it`;
+Tsubu★Doll, whose refusal rests on a format badge and is pinned by its
+recording (8404, in `UNDATED_REFUSED`); and Ohanashi de Te Koi given
+its hentai's year and title, whose refusal rests on the hit's genre and
+is pinned by `a_hit_filed_under_hentai_is_never_picked`. `predict()` answers `NOT_MODELLED` for those shapes,
 and the model's tests assert that where both a predicate and a tabled
 row speak, they agree.
 
 Every generated listing numbers its episodes from 1 with no tag and its
 page names 2020, the year a generated entry carries when it carries one
-(`LISTING_YEAR`, in `oracle.py` and in the driver), so the year vouches
-for every hit and the titles alone decide. The model does not reach
+(`LISTING_YEAR`, in `oracle.py` and in the driver), and every search
+card carries the entry's canonical title as its romanized name unless
+the pool says otherwise (`card_names` in `oracle.py`, `site_of` in the
+driver), as the provider's cards for an entry's own listings carry the
+entry's romaji — so a name vouches for every hit, as the year does, and
+the titles alone decide. The `counted-dated` family is the one that
+says otherwise: its pools name nothing on their cards, or name an
+unrelated hit that fits the count on its card or its page, so the rule
+that a dated entry with a count takes only a hit a name vouches for is
+walked. The model does not reach
 what the year filter or the format badge does on a real pool; the
 recorded fixtures do.
 
@@ -165,5 +177,8 @@ Kitsu's, either `null` when unknown. `expect` is the pick the docs
 answer — the slug and its regular count — or `null` for a pool the walk
 must refuse. A pick is held to the first `count` rows of its listing, so
 a case cannot expect a stitched pick, whose rows keep each part's ids. An optional `dead` lists slugs whose probe dies in
-transport. Hand-written ids are given by hand; generated ones are the
+transport. An optional `jnames` maps a slug to the romanized name its
+search card carries — given, it replaces the convention above, and a
+slug it leaves out carries none — and an optional `page_names` maps a
+slug to the names its entry page gives. Hand-written ids are given by hand; generated ones are the
 family and a hash of the pool.

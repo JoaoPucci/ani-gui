@@ -1021,10 +1021,14 @@ def first_num_variants(t):
 UNREL = ("zeta", "Zeta Thing", 24)
 
 
-def case_id(family, titles, count, year, rows, dead):
+def case_id(family, titles, count, year, rows, dead, names=None):
     """A pool's id follows its content, not its position in the set, so
-    the allowlist survives the generator growing."""
-    body = json.dumps([titles, count, year, [list(r) for r in rows], list(dead)], ensure_ascii=False, sort_keys=True)
+    the allowlist survives the generator growing. The names a pool gives
+    its hits (`jnames`, `page_names`) are part of it when it gives any."""
+    content = [titles, count, year, [list(r) for r in rows], list(dead)]
+    if names is not None:
+        content.append(names)
+    body = json.dumps(content, ensure_ascii=False, sort_keys=True)
     return family.split("/")[0] + "/" + hashlib.sha1(body.encode("utf-8")).hexdigest()[:10]
 
 
@@ -1045,10 +1049,10 @@ def hand_written():
 def gen():
     cases = []
 
-    def add(titles, count, year, rows, expect, fam, dead=()):
+    def add(titles, count, year, rows, expect, fam, dead=(), names=None):
         rows = [list(r) for r in rows]
         case = dict(
-            id=case_id(fam, titles, count, year, rows, dead),
+            id=case_id(fam, titles, count, year, rows, dead, names),
             titles=list(titles),
             count=count,
             entry_year=year,
@@ -1058,6 +1062,8 @@ def gen():
         )
         if dead:
             case["dead"] = list(dead)
+        if names is not None:
+            case.update(names)
         cases.append(case)
 
     entries = NUMERIC_STEMS + PLAIN + SEQUEL_ENTRIES
@@ -1078,6 +1084,18 @@ def gen():
                 for pos, rows in (("alone", [x]), ("fit-first", [fit, x]), ("fit-last", [x, fit])):
                     case = dict(titles=titles, count=E, entry_year=None, rows=rows)
                     add(titles, E, None, rows, predict(case), f"counted-noyear/{tsname}/{pos}")
+                # with a count and a year, the cards naming nothing: only
+                # the title searched or a name of the show vouches, and an
+                # unrelated hit that fits the count sits beside the
+                # candidate — named by nothing, by its card, or by its page
+                for how, names in (
+                    ("unnamed", {"jnames": {}}),
+                    ("card", {"jnames": {"u": titles[0]}}),
+                    ("page", {"jnames": {}, "page_names": {"u": [titles[0]]}}),
+                ):
+                    for pos, rows in (("alone", [x]), ("fit-first", [fit, x]), ("fit-last", [x, fit])):
+                        case = dict(titles=titles, count=E, entry_year=LISTING_YEAR, rows=rows, **names)
+                        add(titles, E, LISTING_YEAR, rows, predict(case), f"counted-dated/{tsname}/{how}/{pos}", names=names)
                 # countless, with and without a year
                 for year in (LISTING_YEAR, None):
                     for pos, rows in (("alone", [x]), ("unrel-first", [UNREL, x]), ("unrel-last", [x, UNREL])):
@@ -1344,7 +1362,8 @@ def gen():
         titles = [f"{x} {tag}" for x in c["titles"]]
         rows = [[r[0], f"{r[1]} {tag}", r[2]] for r in c["rows"]]
         t = dict(c, family=fam, titles=titles, rows=rows)
-        t["id"] = case_id(fam, titles, c["count"], c["entry_year"], rows, c.get("dead", []))
+        names = {k: c[k] for k in ("jnames", "page_names") if k in c} or None
+        t["id"] = case_id(fam, titles, c["count"], c["entry_year"], rows, c.get("dead", []), names)
         tagged.append(t)
     out = {}
     for c in cases + tagged + hand_written():
