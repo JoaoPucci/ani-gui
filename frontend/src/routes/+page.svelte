@@ -111,7 +111,7 @@
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
-	import { pickResumeEpisode } from '$lib/play/next-episode';
+	import { continueEpisode } from '$lib/play/next-episode';
 	import {
 		clearRowPositions,
 		clearShowPositions,
@@ -992,11 +992,11 @@
 				match?.status ?? null
 			)}
 			{@const playableCount = historyPlayableCounts[entry.id]}
-			{@const lastWatched = parseInt(entry.ep_no, 10)}
-			{@const nextEpisode = pickResumeEpisode(
-				Number.isFinite(lastWatched) ? lastWatched : null,
+			{@const nextEpisode = continueEpisode(
+				match?.id ?? '',
+				entry.ep_no,
 				playableCount ?? match?.episode_count ?? null,
-				!!match && Number.isFinite(lastWatched) && leftPartWay(match.id, lastWatched)
+				match ? leftPartWay : undefined
 			)}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,

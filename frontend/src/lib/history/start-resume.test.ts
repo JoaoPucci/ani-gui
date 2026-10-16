@@ -353,3 +353,43 @@ describe('makeStartResume — the episode is marked started before its watch is 
 		);
 	});
 });
+
+describe('makeStartResume — a fractional extra in history', () => {
+	it('goes on from a recap to the whole episode after it', async () => {
+		const h = makeHarness();
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '7.5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 8 }),
+			expect.anything()
+		);
+	});
+
+	it('goes back to a recap left part-way', async () => {
+		const asked: number[] = [];
+		const h = makeHarness({
+			leftPartWay: (_id, episode) => {
+				asked.push(episode);
+				return episode === 7.5;
+			}
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '7.5', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(asked).toContain(7.5);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 7.5 }),
+			expect.anything()
+		);
+	});
+});
+
+describe('makeStartResume — a range-shaped row', () => {
+	it('reads "1-12" by its first episode and plays 2', async () => {
+		const h = makeHarness();
+		await makeStartResume(h.deps)(makeEntry('h1', '1-12', 'Show'), makeMatch('k1', 12), 12, true);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 2 }),
+			expect.anything()
+		);
+	});
+});

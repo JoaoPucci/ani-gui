@@ -28,6 +28,8 @@
  * the fetch each returned instruction asks for, reporting the
  * outcome back through `completed` / `failed`.
  */
+import { stripAnchor } from './episode-number';
+
 export type StripPagerFetch = { fetch: true; page: number; gen: number } | { fetch: false };
 
 /** Outcome of a failed fetch: whether the error should be surfaced,
@@ -68,7 +70,8 @@ export class StripPager {
 	pageOf(episode: number): number {
 		if (!Number.isFinite(this.pageSize) || this.pageSize < 1) return 1;
 		if (!Number.isFinite(episode) || episode < 1) return 1;
-		return Math.ceil(episode / this.pageSize);
+		// A fractional extra opens on the page of the episode it follows.
+		return Math.ceil(stripAnchor(episode) / this.pageSize);
 	}
 
 	/** Page decisions compare against: requested while a fetch is in
@@ -102,7 +105,8 @@ export class StripPager {
 
 	/** The URL's episode changed (prev/next buttons, auto-play). */
 	episodeChanged(episode: number): StripPagerFetch {
-		if (!Number.isFinite(episode) || episode < 1) return { fetch: false };
+		// Any positive episode, a recap before episode 1 (0.5) included.
+		if (!Number.isFinite(episode) || episode <= 0) return { fetch: false };
 		const target = this.pageOf(episode);
 		if (target === this.current()) {
 			// Playback entered the page the strip already shows (or is

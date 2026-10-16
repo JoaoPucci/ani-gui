@@ -1,3 +1,5 @@
+import { nextEpisode, parseHistoryEpisode } from './episode-number';
+
 /**
  * Pick the episode the player should jump to when the user clicks
  * "Continue" — same rules across the home Continue Watching card and
@@ -6,11 +8,13 @@
  *
  * Rules, in evaluation order:
  *
- *   1. No history (null) or unparsable / sub-1 lastWatched → 1.
+ *   1. No history (null) or unparsable / non-positive lastWatched → 1.
+ *      (A recap before episode 1, 0.5, is an episode: it goes on to 1.)
  *      Detail page's "Play episode 1" branch. Home cards never hit
  *      this in practice (the card only renders for entries with
  *      history), but the helper has to answer to both call sites.
- *   2. next = lastWatched + 1.
+ *   2. next = the episode after lastWatched (a fractional extra goes
+ *      on to the whole episode above it: 7.5 → 8).
  *   3. If a cap is known and next would exceed it → lastWatched
  *      (Replay branch). Single-video shows (movies, finished 1-ep
  *      OVAs) fall through here naturally: lastWatched=1, cap=1 →
@@ -25,8 +29,8 @@
  * path the same way an out-of-range manual navigation would.
  */
 export function pickNextEpisode(lastWatched: number | null, episodeCap: number | null): number {
-	if (lastWatched === null || !Number.isFinite(lastWatched) || lastWatched < 1) return 1;
-	const next = lastWatched + 1;
+	if (lastWatched === null || !Number.isFinite(lastWatched) || lastWatched <= 0) return 1;
+	const next = nextEpisode(lastWatched);
 	if (episodeCap !== null && next > episodeCap) return lastWatched;
 	return next;
 }
@@ -63,8 +67,21 @@ export function pickResumeEpisodeFor(
 /** `lastWatched` when it was left part-way and is an episode at all,
  *  else `next` — for a caller that already picked the next episode. */
 export function resumeOr(lastWatched: number | null, next: number, leftPartWay: boolean): number {
-	if (!leftPartWay || lastWatched === null || !Number.isFinite(lastWatched) || lastWatched < 1) {
+	if (!leftPartWay || lastWatched === null || !Number.isFinite(lastWatched) || lastWatched <= 0) {
 		return next;
 	}
 	return lastWatched;
+}
+
+/** The episode a Continue card plays for a history row of `kitsuId`:
+ *  {@link pickResumeEpisodeFor} on the row's episode as
+ *  {@link parseHistoryEpisode} reads it. Shared by the home card and
+ *  its row handler so the two cannot disagree. */
+export function continueEpisode(
+	kitsuId: string,
+	epNo: string,
+	episodeCap: number | null,
+	leftPartWay?: (kitsuId: string, episode: number) => boolean
+): number {
+	return pickResumeEpisodeFor(kitsuId, parseHistoryEpisode(epNo), episodeCap, leftPartWay);
 }
