@@ -233,7 +233,7 @@ describe('startDownload', () => {
 			await Promise.resolve();
 			expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
 				'dl-1',
-				describePlayFailure(failure)
+				describePlayFailure(failure, { otherAudio: null })
 			);
 		}
 	});
@@ -255,7 +255,7 @@ describe('startDownload', () => {
 		await Promise.resolve();
 		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
 			'dl-1',
-			describePlayFailure(failure)
+			describePlayFailure(failure, { otherAudio: null })
 		);
 		const shown = storeMock.downloadStore.markError.mock.calls[0][1] as string;
 		expect(shown).toMatch(/video server/i);

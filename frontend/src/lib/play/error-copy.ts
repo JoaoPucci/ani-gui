@@ -50,6 +50,23 @@ import { describeError } from './describe-error';
 export { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
 import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
 
+/** What the availability cache says about the other audio of the
+ *  show a play failed for: `true` when it has the show (and, where the
+ *  cache carries a count, this episode), `false` when it is known to
+ *  have nothing, `null` when nothing vouches either way — never
+ *  probed, an answer the cache would not serve, or a lookup that
+ *  failed. Learned from the cache only (./other-audio). */
+export type OtherAudio = boolean | null;
+
+/** What a surface tells `describePlayFailure` beyond the error. */
+export interface PlayFailureContext {
+	/** The other audio's known availability. Required, so no surface
+	 *  can show the episode verdict without having answered it. */
+	otherAudio: OtherAudio;
+	/** The surface's own catalogue-miss phrasing, if it has one. */
+	noResults?: () => string;
+}
+
 /** User-facing copy for a play-call failure. The message branches
  *  match (in order): rate_limited / upstream 429 → busy source (with
  *  the upstream's own retry hint when it sent one); upstream 5xx →
@@ -61,7 +78,7 @@ import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './s
  *  catalogue miss; scraper → upstream unhappy; timeout → slow
  *  upstream; network / gate_refused → connection trouble; default →
  *  generic retry. */
-export function describePlayFailure(e: unknown, opts?: { noResults?: () => string }): string {
+export function describePlayFailure(e: unknown, ctx: PlayFailureContext): string {
 	const rateLimited = describeRateLimit(e);
 	if (rateLimited !== null) return rateLimited;
 	const sourceDown = describeSourceDown(e);
@@ -90,7 +107,7 @@ export function describePlayFailure(e: unknown, opts?: { noResults?: () => strin
 		// The one deliberate per-surface difference: the detail page
 		// phrases a catalogue miss definitively (it also gates the
 		// Play CTA proactively); every other surface keeps the hedge.
-		return (opts?.noResults ?? m.play_play_failure_no_results)();
+		return (ctx.noResults ?? m.play_play_failure_no_results)();
 	}
 	if (raw.includes('scraper')) {
 		return m.play_play_failure_scraper();

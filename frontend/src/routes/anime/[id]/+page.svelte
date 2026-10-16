@@ -1096,7 +1096,10 @@
 	 *  one deliberate difference — the definitive catalogue-miss
 	 *  phrasing (this page also gates the Play CTA proactively). */
 	function describePlayFailure(e: unknown): string {
-		return sharedDescribePlayFailure(e, { noResults: m.detail_error_play_no_results });
+		return sharedDescribePlayFailure(e, {
+			otherAudio: null,
+			noResults: m.detail_error_play_no_results
+		});
 	}
 
 	// Hero framing preferences — see $lib/hero/prefs. A choice made in

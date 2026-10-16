@@ -645,7 +645,7 @@
 	/** Play-call failure copy: the shared mapper, default phrasing.
 	 *  (The strings this replaces were hardcoded English.) */
 	function describePlayFailure(e: unknown): string {
-		return sharedDescribePlayFailure(e);
+		return sharedDescribePlayFailure(e, { otherAudio: null });
 	}
 
 	/** Click handler for a Continue Watching card. Resolves the play

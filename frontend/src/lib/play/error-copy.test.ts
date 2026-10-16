@@ -156,7 +156,7 @@ describe('describeRateLimit — an upstream 429 is a rate limit too', () => {
 		expect(describeRateLimit({ kind: 'upstream', status: 429 })).toBe(
 			m.play_play_failure_rate_limited()
 		);
-		expect(describePlayFailure({ kind: 'upstream', status: 429 })).toBe(
+		expect(describePlayFailure({ kind: 'upstream', status: 429 }, { otherAudio: null })).toBe(
 			m.play_play_failure_rate_limited()
 		);
 		expect(describeRateLimit({ kind: 'upstream', status: 403 })).toBeNull();
@@ -165,39 +165,50 @@ describe('describeRateLimit — an upstream 429 is a rate limit too', () => {
 
 describe('describePlayFailure', () => {
 	it('matches the no_results branch', () => {
-		expect(describePlayFailure({ kind: 'scraper', detail: 'no_results' })).toMatch(
-			/Couldn't find this title/
-		);
+		expect(
+			describePlayFailure({ kind: 'scraper', detail: 'no_results' }, { otherAudio: null })
+		).toMatch(/Couldn't find this title/);
 	});
 
 	it('names the episode, not the title, when the show was found and the episode was not', () => {
 		// The show is in the catalogue; this episode has no stream in
 		// the requested audio. Telling the user the title is not in the
 		// catalogue is wrong on both counts.
-		const msg = describePlayFailure({ kind: 'episode_unavailable' });
+		const msg = describePlayFailure({ kind: 'episode_unavailable' }, { otherAudio: null });
 		expect(msg).toMatch(/episode/i);
-		expect(msg, 'not the generic shrug').not.toBe(describePlayFailure({ kind: 'io' }));
+		expect(msg, 'not the generic shrug').not.toBe(
+			describePlayFailure({ kind: 'io' }, { otherAudio: null })
+		);
 		expect(msg, 'not the catalogue miss').not.toBe(
-			describePlayFailure({ kind: 'scraper', detail: 'no_results' })
+			describePlayFailure({ kind: 'scraper', detail: 'no_results' }, { otherAudio: null })
 		);
 		expect(
-			describePlayFailure({ kind: 'episode_unavailable' }, { noResults: () => 'NOT IN CATALOGUE' })
+			describePlayFailure(
+				{ kind: 'episode_unavailable' },
+				{ otherAudio: null, noResults: () => 'NOT IN CATALOGUE' }
+			)
 		).toBe(msg);
 	});
 
 	it('matches the scraper branch when no_results is not present', () => {
-		expect(describePlayFailure({ kind: 'scraper', detail: 'allmanga 503' })).toMatch(
-			/streaming source looks unhappy/
-		);
+		expect(
+			describePlayFailure({ kind: 'scraper', detail: 'allmanga 503' }, { otherAudio: null })
+		).toMatch(/streaming source looks unhappy/);
 	});
 
 	it('matches the timeout branch', () => {
-		expect(describePlayFailure({ kind: 'timeout' })).toMatch(/took too long to respond/);
+		expect(describePlayFailure({ kind: 'timeout' }, { otherAudio: null })).toMatch(
+			/took too long to respond/
+		);
 	});
 
 	it('matches the network branch for a failure to connect', () => {
-		expect(describePlayFailure({ kind: 'network' })).toMatch(/Network trouble/);
-		expect(describePlayFailure({ kind: 'gate_refused' })).toMatch(/Network trouble/);
+		expect(describePlayFailure({ kind: 'network' }, { otherAudio: null })).toMatch(
+			/Network trouble/
+		);
+		expect(describePlayFailure({ kind: 'gate_refused' }, { otherAudio: null })).toMatch(
+			/Network trouble/
+		);
 	});
 
 	it('reads an upstream status instead of blaming the connection', () => {
@@ -206,20 +217,27 @@ describe('describePlayFailure', () => {
 		// the thing, which is the catalogue-miss copy; any other status
 		// outside the busy (429) and down (5xx) shapes, and an upstream
 		// with no status at all, says the source answered with an error.
-		const miss = describePlayFailure({ kind: 'upstream', status: 404 });
+		const miss = describePlayFailure({ kind: 'upstream', status: 404 }, { otherAudio: null });
 		expect(miss).toBe(m.play_play_failure_no_results());
-		expect(describePlayFailure({ kind: 'upstream', status: 410 })).toBe(miss);
+		expect(describePlayFailure({ kind: 'upstream', status: 410 }, { otherAudio: null })).toBe(miss);
 		// The detail page's definitive catalogue-miss override is for a
 		// title the catalogue lacks, which a 404 does not prove.
-		expect(describePlayFailure({ kind: 'upstream', status: 404 }, { noResults: () => 'X' })).toBe(
-			miss
-		);
-		const answered = describePlayFailure({ kind: 'upstream', status: 403 });
+		expect(
+			describePlayFailure(
+				{ kind: 'upstream', status: 404 },
+				{ otherAudio: null, noResults: () => 'X' }
+			)
+		).toBe(miss);
+		const answered = describePlayFailure({ kind: 'upstream', status: 403 }, { otherAudio: null });
 		expect(answered).toBe(m.play_play_failure_source_error());
 		expect(answered).not.toBe(m.play_play_failure_network());
-		expect(describePlayFailure({ kind: 'upstream', status: 400 })).toBe(answered);
-		expect(describePlayFailure({ kind: 'upstream', detail: '503' })).toBe(answered);
-		expect(describeExternalLaunchFailure({ kind: 'upstream', status: 403 })).toBe(answered);
+		expect(describePlayFailure({ kind: 'upstream', status: 400 }, { otherAudio: null })).toBe(
+			answered
+		);
+		expect(describePlayFailure({ kind: 'upstream', detail: '503' }, { otherAudio: null })).toBe(
+			answered
+		);
+		expect(describeExternalLaunchFailure({ kind: 'upstream', status: 403 }, null)).toBe(answered);
 	});
 
 	it('surfaces the rate-limit wait when the backend carries one', () => {
@@ -227,13 +245,18 @@ describe('describePlayFailure', () => {
 		// N seconds" — the backend forwards it as retry_after_secs and
 		// the copy must pass the number on instead of the generic
 		// "couldn't start" shrug.
-		const msg = describePlayFailure({ kind: 'rate_limited', retry_after_secs: 9 });
+		const msg = describePlayFailure(
+			{ kind: 'rate_limited', retry_after_secs: 9 },
+			{ otherAudio: null }
+		);
 		expect(msg).toMatch(/busy/i);
 		expect(msg).toMatch(/9/);
 	});
 
 	it('still names the busy source when the rate limit has no hint', () => {
-		expect(describePlayFailure({ kind: 'rate_limited', retry_after_secs: null })).toMatch(/busy/i);
+		expect(
+			describePlayFailure({ kind: 'rate_limited', retry_after_secs: null }, { otherAudio: null })
+		).toMatch(/busy/i);
 	});
 
 	it('falls back to a generic retry message for unrecognized errors', () => {
@@ -241,10 +264,10 @@ describe('describePlayFailure', () => {
 		// stays optimistic — "try again" — because the most common
 		// real-world cause is a transient hiccup the user hasn't
 		// seen before.
-		expect(describePlayFailure(new Error('something weird'))).toMatch(
+		expect(describePlayFailure(new Error('something weird'), { otherAudio: null })).toMatch(
 			/Couldn't start this episode right now/
 		);
-		expect(describePlayFailure({ unexpected: true })).toMatch(
+		expect(describePlayFailure({ unexpected: true }, { otherAudio: null })).toMatch(
 			/Couldn't start this episode right now/
 		);
 	});
@@ -253,7 +276,9 @@ describe('describePlayFailure', () => {
 		// The classifier lowercases before matching, so an upstream
 		// that emits "NO_RESULTS" still hits the catalogue-miss
 		// branch.
-		expect(describePlayFailure({ kind: 'NO_RESULTS' })).toMatch(/Couldn't find this title/);
+		expect(describePlayFailure({ kind: 'NO_RESULTS' }, { otherAudio: null })).toMatch(
+			/Couldn't find this title/
+		);
 	});
 });
 
@@ -263,22 +288,24 @@ describe('describePlayFailure — the provider being down names itself', () => {
 		// unavailable" — maintenance or an outage. The old copy said
 		// "check your connection", which sent the user chasing their
 		// own network and VPN through a provider maintenance window.
-		expect(describePlayFailure({ kind: 'upstream', status: 503 })).toBe(
+		expect(describePlayFailure({ kind: 'upstream', status: 503 }, { otherAudio: null })).toBe(
 			m.play_play_failure_source_down()
 		);
-		expect(describePlayFailure({ kind: 'upstream', status: 502 })).toBe(
+		expect(describePlayFailure({ kind: 'upstream', status: 502 }, { otherAudio: null })).toBe(
 			m.play_play_failure_source_down()
 		);
 	});
 
 	it('genuine connection failures keep the check-your-connection copy', () => {
-		expect(describePlayFailure({ kind: 'network' })).toBe(m.play_play_failure_network());
+		expect(describePlayFailure({ kind: 'network' }, { otherAudio: null })).toBe(
+			m.play_play_failure_network()
+		);
 		// A 4xx upstream is not the down-for-maintenance shape, and not
 		// a connection failure either.
-		expect(describePlayFailure({ kind: 'upstream', status: 403 })).not.toBe(
+		expect(describePlayFailure({ kind: 'upstream', status: 403 }, { otherAudio: null })).not.toBe(
 			m.play_play_failure_source_down()
 		);
-		expect(describePlayFailure({ kind: 'upstream', status: 403 })).not.toBe(
+		expect(describePlayFailure({ kind: 'upstream', status: 403 }, { otherAudio: null })).not.toBe(
 			m.play_play_failure_network()
 		);
 	});
@@ -298,7 +325,7 @@ describe('describePlayFailure — a stream server that did not serve', () => {
 			stage: 'embed',
 			host: 'zokoanime.video'
 		};
-		const msg = describePlayFailure(e);
+		const msg = describePlayFailure(e, { otherAudio: null });
 		expect(msg).toBe(describeError(e));
 		expect(msg).toMatch(/video server/i);
 		expect(msg).toMatch(/episode/i);
@@ -309,8 +336,10 @@ describe('describePlayFailure — a stream server that did not serve', () => {
 		expect(msg).not.toContain('zokoanime.video');
 		expect(msg).not.toContain('embed');
 		// Every play surface, and the override point, read it the same.
-		expect(describeExternalLaunchFailure(e)).toBe(msg);
-		expect(describePlayFailure(e, { noResults: () => 'NOT IN CATALOGUE' })).toBe(msg);
+		expect(describeExternalLaunchFailure(e, null)).toBe(msg);
+		expect(describePlayFailure(e, { otherAudio: null, noResults: () => 'NOT IN CATALOGUE' })).toBe(
+			msg
+		);
 	});
 });
 
@@ -339,14 +368,19 @@ describe('describePlayFailure — one mapper for every surface', () => {
 		// one deliberate per-surface difference; everything else was
 		// triplicated drift (the home page's copies were hardcoded
 		// English). One mapper, one override point.
-		expect(describePlayFailure({ kind: 'no_results' }, { noResults: () => 'not indexed' })).toBe(
-			'not indexed'
+		expect(
+			describePlayFailure(
+				{ kind: 'no_results' },
+				{ otherAudio: null, noResults: () => 'not indexed' }
+			)
+		).toBe('not indexed');
+		expect(describePlayFailure({ kind: 'no_results' }, { otherAudio: null })).toBe(
+			m.play_play_failure_no_results()
 		);
-		expect(describePlayFailure({ kind: 'no_results' })).toBe(m.play_play_failure_no_results());
 		// The override touches nothing else.
-		expect(describePlayFailure({ kind: 'timeout' }, { noResults: () => 'not indexed' })).toBe(
-			m.play_play_failure_timeout()
-		);
+		expect(
+			describePlayFailure({ kind: 'timeout' }, { otherAudio: null, noResults: () => 'not indexed' })
+		).toBe(m.play_play_failure_timeout());
 	});
 });
 

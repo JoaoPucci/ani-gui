@@ -37,7 +37,9 @@ export interface StartResumeDeps {
 	isGuess?: (entryId: string) => boolean;
 	onBusy: (kitsuId: string | null) => void;
 	onProgress: (label: string | null) => void;
-	onFailure: (title: string, error: unknown) => void;
+	/** `args` is what the failed play asked for — the show, episode
+	 *  and audio a failure surface needs to word its message. */
+	onFailure: (title: string, error: unknown, args: ResumePlayArgs) => void;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
 	getPlayableCount: (entryId: string) => number | null;
@@ -149,7 +151,7 @@ export function makeStartResume(
 		} catch (e) {
 			deps.onBusy(null);
 			deps.onProgress(null);
-			deps.onFailure(title, e);
+			deps.onFailure(title, e, args);
 		}
 	};
 }

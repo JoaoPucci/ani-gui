@@ -69,7 +69,7 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 			// it is the download tool failing, not the provider.)
 			const kind = payloadKind(e);
 			if (kind === 'episode_unavailable' || kind === 'no_results' || kind === 'upstream') {
-				downloadStore.markError(id, describePlayFailure(e));
+				downloadStore.markError(id, describePlayFailure(e, { otherAudio: null }));
 				return;
 			}
 			// Everything else: the sentence for its kind, worded for a

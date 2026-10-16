@@ -2031,7 +2031,7 @@
 			// so a fixed-position overlay is the only visible surface.
 			// playerError stays for *playback*-time errors (in-place
 			// `<p class="player-empty">` substitute for the video).
-			playFailure = { episode: targetEp, message: describePlayFailure(e) };
+			playFailure = { episode: targetEp, message: describePlayFailure(e, { otherAudio: null }) };
 		} finally {
 			switchBusy = false;
 		}
@@ -2265,7 +2265,7 @@
 			// reuse describePlayFailure copy.
 			externalError = {
 				episode: episodeNum,
-				message: describeExternalLaunchFailure(e)
+				message: describeExternalLaunchFailure(e, null)
 			};
 		} finally {
 			externalBusy = false;
@@ -2308,7 +2308,7 @@
 			// itself was the problem.
 			syncplayError = {
 				episode: episodeNum,
-				message: describeSyncplayLaunchFailure(e),
+				message: describeSyncplayLaunchFailure(e, null),
 				isSpawnFailure: isSyncplaySpawnFailure(e)
 			};
 		} finally {
