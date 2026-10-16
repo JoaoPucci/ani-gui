@@ -1,13 +1,16 @@
 /**
- * What the app already knows about the other audio of a show whose
- * play just failed with the episode verdict — the show was found and
- * this episode has no stream in the chosen audio.
+ * What the app already knows about the other audio of a show: for a
+ * play that just failed with the episode verdict (the show was found
+ * and this episode has no stream in the chosen audio), and for the
+ * detail page's notice when the chosen audio has nothing.
  *
- * The answer decides whether the failure copy suggests switching
- * audio (see `describePlayFailure`). It comes from the availability
+ * The episode-level answer decides whether the failure copy suggests
+ * switching audio (see `describePlayFailure`); the show-level one
+ * decides whether the notice names the other audio
+ * ($lib/detail/unavailable-copy). Both come from the availability
  * cache only: the batch route reads cached rows and asks the provider
- * nothing, so a failure never starts a probe of its own. Anything
- * short of a cached answer is "unknown", and unknown does not suggest.
+ * nothing, so neither ever starts a probe of its own. Anything short
+ * of a cached answer is "unknown", and unknown claims nothing.
  */
 
 import { availabilityBatch } from '$lib/api';

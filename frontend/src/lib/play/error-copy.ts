@@ -50,13 +50,14 @@ import { describeError } from './describe-error';
 export { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
 import { describeRateLimit, describeSourceAnswer, describeSourceDown } from './source-answer';
 
-/** What the availability cache says about the other audio of the
- *  show a play failed for: `true` only when a cached count covers the
- *  failed episode, `false` when the other audio is known to have
- *  nothing (or its count stops short of the episode), `null` when
- *  nothing vouches either way — never probed, a row the cache will not
- *  serve, a positive row without a count, no episode named, or a
- *  lookup that failed. Learned from the cache only (./other-audio). */
+/** What the availability cache says about the other audio: `true`
+ *  on evidence for the question asked, `false` when the other audio is
+ *  known not to have it, `null` when nothing vouches either way. The
+ *  question depends on the producer (./other-audio): for a play
+ *  failure, `lookupOtherAudio` answers for the failed episode (`true`
+ *  only when a cached count covers it); for the detail page's notice,
+ *  `lookupOtherAudioShow` answers for the title (`true` on a positive
+ *  row). Learned from the cache only. */
 export type OtherAudio = boolean | null;
 
 /** What a surface tells `describePlayFailure` beyond the error. */
