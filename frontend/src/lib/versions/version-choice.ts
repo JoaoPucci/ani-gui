@@ -104,10 +104,17 @@ function forgetChoice(kitsuId: string, storage: ChoiceStorage | null): void {
 	}
 }
 
-/** The versions to offer a choice between: all of them, in the
- *  provider's order, when there are several; none otherwise. */
+/** The versions to offer a choice between: all of them when there are
+ *  several, the uncensored one first and the rest in the provider's
+ *  order — the provider lists a season's copies in no fixed order, and
+ *  the control should not flip between seasons of one show; none
+ *  otherwise. */
 export function versionsToOffer(versions: VersionInfo[] | null | undefined): VersionInfo[] {
-	return versions && versions.length > 1 ? versions : [];
+	if (!versions || versions.length < 2) return [];
+	return [
+		...versions.filter((v) => v.kind === 'uncensored'),
+		...versions.filter((v) => v.kind !== 'uncensored')
+	];
 }
 
 /** The version shown as selected: the remembered one when the show
