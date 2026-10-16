@@ -4,7 +4,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::contain::contains_other;
+use super::contain::{contains_other, Squashed};
+use crate::commands::play_native_title_grammar::ascii_form;
 
 /// Words too common in episode titles to say two titles are the same
 /// episode.
@@ -78,10 +79,12 @@ pub(super) fn titles_agree(pairs: &[(&str, &str)]) -> usize {
         .count()
 }
 
-/// Lowercased runs of letters and digits, a spelled-out number
-/// ([`NUMBER_WORDS`]) written as digits.
-fn tokens(title: &str) -> impl Iterator<Item = String> + '_ {
-    title
+/// Lowercased runs of letters and digits, full-width forms read as
+/// ASCII ([`ascii_form`]) and a spelled-out number ([`NUMBER_WORDS`])
+/// written as digits.
+fn tokens(title: &str) -> impl Iterator<Item = String> {
+    let ascii: String = title.chars().map(ascii_form).collect();
+    let words: Vec<String> = ascii
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty())
         .map(|w| {
@@ -91,11 +94,14 @@ fn tokens(title: &str) -> impl Iterator<Item = String> + '_ {
                 .position(|n| *n == w)
                 .map_or(w, |n| n.to_string())
         })
+        .collect();
+    words.into_iter()
 }
 
-/// The title's letters and digits, lowercased, with nothing between.
-fn squashed(title: &str) -> String {
-    tokens(title).collect()
+/// The title's letters and digits, lowercased, with nothing between,
+/// and where its words split.
+fn squashed(title: &str) -> Squashed {
+    Squashed::of_words(tokens(title))
 }
 
 /// The title's words of three or more characters, stop words out.
