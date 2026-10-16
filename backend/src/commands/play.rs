@@ -1421,6 +1421,44 @@ pub(crate) mod tests {
         );
     }
 
+    /// A cached row that records the episode its resolve matched
+    /// replays as that episode, whatever tag the request found it by.
+    #[test]
+    fn cache_hit_history_writes_the_episode_the_resolve_matched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut state = state_with_proxy_origin();
+        state.history_path = tmp.path().join("history");
+        let args = PlayArgs {
+            title: "Recap Show".into(),
+            episode: "24.5".into(),
+            mode: "sub".into(),
+            quality: None,
+            subtype: None,
+            episode_count: None,
+            year: None,
+            alt_titles: vec![],
+            prefetch: false,
+            kitsu_id: None,
+        };
+        let mut cached = cached_blank(
+            "https://u.example/x.mp4".into(),
+            String::new(),
+            MediaKind::Mp4,
+        );
+        cached.show_id = "recap-show-7".into();
+        cached.show_title = "Recap Show".into();
+        cached.resolved_slot = Some(13);
+        cached.played = Some("12.5".into());
+        write_history_on_cache_hit(
+            &state,
+            &args,
+            &cached,
+            crate::history::guard::Asked::now(&state.history_path, None),
+        );
+        let rows = crate::history::read_all(&state.history_path).expect("rows");
+        assert_eq!(rows[0].ep_no, "12.5");
+    }
+
     /// Same shape, but with a non-empty referer + show_id — exercises
     /// the cache-hit history-write branch (lines 266-282 in the file
     /// before this test landed). Without this the upsert-on-cache-hit

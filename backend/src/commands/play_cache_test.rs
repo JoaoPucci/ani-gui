@@ -465,6 +465,30 @@ fn a_cached_watch_records_the_episode_played() {
     assert_eq!(legacy.ep_no, "4", "a row without a slot records it too");
 }
 
+/// A cached row records the episode its resolve matched, and a replay
+/// records that: a request that found a stitched recap by a tag an
+/// earlier version gave it ("24.5", the row "12.5" now) replays as
+/// "12.5". A row from before the field records the request.
+#[test]
+fn a_cached_watch_records_the_episode_the_resolve_matched() {
+    let row = |played: Option<&str>| CachedResolution {
+        upstream_url: "https://cdn.example/x/master.m3u8".into(),
+        referer: String::new(),
+        media_kind: MediaKind::Hls,
+        show_id: "show-1".into(),
+        show_title: "Show".into(),
+        resolved_slot: Some(13),
+        subtitles: Vec::new(),
+        kitsu_id: None,
+        played: played.map(str::to_owned),
+    };
+    assert_eq!(
+        super::cached_watch(&row(Some("12.5")), "24.5").ep_no,
+        "12.5"
+    );
+    assert_eq!(super::cached_watch(&row(None), "24.5").ep_no, "24.5");
+}
+
 /// The handoff's cache hit stands on the same row the embedded
 /// player's does, and refreshes it the same way: the provider the
 /// cached show key names is remembered again after the launch.

@@ -993,3 +993,37 @@ fn a_continuations_watch_records_the_entrys_own_number() {
         "4"
     );
 }
+
+#[test]
+fn a_cached_resolution_records_the_episode_it_matched() {
+    let recap = displaced(13, "12.5");
+    let cached = crate::commands::play::cached_resolution_for(&recap);
+    assert_eq!(cached.played.as_deref(), Some("12.5"));
+}
+
+#[test]
+fn an_integer_valued_tag_records_the_whole_number() {
+    // A provider tag "41.0" under offset 40 is the entry's episode 1,
+    // as the request named it; "3.0" at offset 0 is 3.
+    let tmp = tempfile::tempdir().unwrap();
+    let state = state_in(tmp.path());
+    let play = crate::history::guard::Asked::now(&state.history_path, Some("77"));
+    let mut first = displaced(1, "41.0");
+    first.numbering_offset = 40;
+    write_history(&state, &first, "1", play);
+    assert_eq!(listed_episode(&state), "1");
+    let three = displaced(3, "3.0");
+    assert_eq!(
+        crate::commands::play_native_record::Watch::of(&three, "3").ep_no,
+        "3"
+    );
+}
+
+#[test]
+fn a_matched_row_without_a_number_records_the_request() {
+    let blank = displaced(4, "");
+    assert_eq!(
+        crate::commands::play_native_record::Watch::of(&blank, "4").ep_no,
+        "4"
+    );
+}
