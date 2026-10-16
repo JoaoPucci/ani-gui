@@ -125,8 +125,13 @@ pub fn needs_backfill(eps: &[KitsuEpisode]) -> bool {
 
 /// Backfill `thumbnail.original` on Kitsu episodes from the AniList
 /// streaming listing. Kitsu always wins when present. Episodes
-/// without a `number` can't be matched and pass through unchanged.
+/// without a `number` can't be matched and pass through unchanged,
+/// and a listing that does not describe the show ([`fit::listing_fits`])
+/// fills nothing — the page keeps its placeholder stills.
 pub fn merge_thumbs(eps: Vec<KitsuEpisode>, anilist: &StreamingListing) -> Vec<KitsuEpisode> {
+    if !fit::listing_fits(anilist, &eps) {
+        return eps;
+    }
     eps.into_iter()
         .map(|mut ep| {
             let already_has_thumb = ep
