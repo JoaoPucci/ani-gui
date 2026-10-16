@@ -8,6 +8,7 @@ import {
 	describeSourceDown
 } from './error-copy';
 import { describeExternalLaunchFailure } from './external-launch-copy';
+import { describeSyncplayLaunchFailure } from './syncplay-toast';
 
 describe('describeRateLimit', () => {
 	it('maps the typed rate limit with its wait for reuse by route-local mappers', () => {
@@ -440,6 +441,12 @@ describe('describePlayFailure — an episode missing from this audio', () => {
 			describePlayFailure(e, { otherAudio: true })
 		);
 		expect(describeExternalLaunchFailure(e, false)).toBe(
+			describePlayFailure(e, { otherAudio: false })
+		);
+		expect(describeSyncplayLaunchFailure(e, true)).toBe(
+			describePlayFailure(e, { otherAudio: true })
+		);
+		expect(describeSyncplayLaunchFailure(e, false)).toBe(
 			describePlayFailure(e, { otherAudio: false })
 		);
 	});

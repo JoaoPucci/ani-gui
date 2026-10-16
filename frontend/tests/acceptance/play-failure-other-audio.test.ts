@@ -114,15 +114,55 @@ type CacheAnswer = {
 	playable_episode_counts: Record<string, number>;
 };
 
-/** What the routes asked for: every cache-only batch body and the
- *  mode of every availability probe. */
+/** What the routes asked for: every cache-only batch body, the mode
+ *  of every availability probe, and every cache warm. */
 interface Asked {
 	batch: { kitsu_ids: string[]; mode: string }[];
 	probeModes: string[];
+	warms: number;
 }
 
+/** The availability routes. The cache answers `cache` for the other
+ *  audio (dub) and holds nothing for the audio being played, so the
+ *  routes' own lookups for sub are unaffected. */
+function availabilityHandlers(cache: CacheAnswer | 'fails', asked: Asked) {
+	return [
+		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+			asked.probeModes.push(((await request.json()) as { mode: string }).mode);
+			return HttpResponse.json({
+				available: true,
+				episode_count: 12,
+				extra_episodes: [],
+				episode_count_approximate: false
+			});
+		}),
+		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+			const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
+			asked.batch.push(body);
+			if (body.mode !== 'dub')
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			if (cache === 'fails') return new HttpResponse(null, { status: 500 });
+			return HttpResponse.json(cache);
+		}),
+		http.post(`${API_BASE}/api/availability/warm`, () => {
+			asked.warms += 1;
+			return new HttpResponse(null, { status: 202 });
+		})
+	];
+}
+
+function expectCacheOnly(asked: Asked) {
+	expect(asked.batch).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
+	expect(asked.probeModes, 'the provider is never asked about the other audio').not.toContain(
+		'dub'
+	);
+	expect(asked.warms, 'nothing warms the cache on a failure').toBe(0);
+}
+
+type Handoff = 'external' | 'syncplay';
+
 function useHandlers(cache: CacheAnswer | 'fails'): Asked {
-	const asked: Asked = { batch: [], probeModes: [] };
+	const asked: Asked = { batch: [], probeModes: [], warms: 0 };
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig('sub'))),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
@@ -133,28 +173,21 @@ function useHandlers(cache: CacheAnswer | 'fails'): Asked {
 		),
 		http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
-		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
-			const body = (await request.json()) as { mode: string };
-			asked.probeModes.push(body.mode);
-			return HttpResponse.json({
-				available: true,
-				episode_count: 12,
-				extra_episodes: [],
-				episode_count_approximate: false
-			});
-		}),
-		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
-			asked.batch.push((await request.json()) as { kitsu_ids: string[]; mode: string });
-			if (cache === 'fails') return new HttpResponse(null, { status: 500 });
-			return HttpResponse.json(cache);
-		}),
+		...availabilityHandlers(cache, asked),
 		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
 		http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
 		http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
 		http.post(`${API_BASE}/api/play/cache/evict`, () => new HttpResponse(null, { status: 204 })),
-		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null)),
+		// Both handoffs resolve the episode before they spawn anything;
+		// the resolve answers with the verdict.
+		...(['external', 'syncplay'] as Handoff[]).map((h) =>
+			http.post(`${API_BASE}/api/play/${h}`, () =>
+				HttpResponse.json(JSON.parse(VERDICT), { status: 404 })
+			)
+		)
 	);
 	return asked;
 }
@@ -202,50 +235,85 @@ const CASES: [string, CacheAnswer | 'fails', () => string][] = [
 	['the cache lookup fails', 'fails', PLAIN]
 ];
 
+/** The other audio has the show but stops at episode 1 — short of the
+ *  episode each route fails, so a route that looked up the wrong
+ *  episode, or none, would suggest it. */
+const SHORT: [string, CacheAnswer, () => string] = [
+	"the other audio's count stops short of the episode",
+	{ cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 1 } },
+	PLAIN
+];
+
+async function expectCopy(expected: () => string) {
+	await until(
+		() => (target.textContent ?? '').includes(expected()),
+		'the episode-unavailable copy on the failure overlay'
+	);
+	if (expected === PLAIN) expect(target.textContent).not.toContain(SUGGESTS());
+}
+
 describe('detail — the episode verdict and the other audio', () => {
-	for (const [when, cache, expected] of CASES) {
+	for (const [when, cache, expected] of [...CASES, SHORT]) {
 		it(`when ${when}`, async () => {
 			const asked = useHandlers(cache);
 			app = mount(DetailPage, { target });
 			await clickAndFail(5);
-			await until(
-				() => (target.textContent ?? '').includes(expected()),
-				'the episode-unavailable copy on the play failure overlay'
-			);
-			if (expected === PLAIN) expect(target.textContent).not.toContain(SUGGESTS());
-			expect(asked.batch).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
-			expect(asked.probeModes, 'the provider is never asked about the other audio').not.toContain(
-				'dub'
-			);
+			await expectCopy(expected);
+			expectCacheOnly(asked);
 		});
 	}
 });
 
 describe('play — the episode verdict and the other audio', () => {
-	for (const [when, cache, expected] of CASES) {
+	for (const [when, cache, expected] of [...CASES, SHORT]) {
 		it(`when ${when}`, async () => {
 			const asked = useHandlers(cache);
 			setUrl(`/play/${KITSU_ID}`, { session: 'session-other-audio', episode: '1', kind: 'mp4' });
 			app = mount(PlayPage, { target });
 			await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 			await clickAndFail(2);
-			await until(
-				() => (target.textContent ?? '').includes(expected()),
-				'the episode-unavailable copy on the failure overlay'
-			);
-			if (expected === PLAIN) expect(target.textContent).not.toContain(SUGGESTS());
-			expect(asked.batch).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
-			expect(asked.probeModes, 'the provider is never asked about the other audio').not.toContain(
-				'dub'
-			);
+			await expectCopy(expected);
+			expectCacheOnly(asked);
 		});
 	}
 });
 
+const moreButton = () =>
+	target.querySelector(
+		`button[aria-label="${m.play_more_aria_label()}"]`
+	) as HTMLButtonElement | null;
+
+const menuItem = (label: string) =>
+	Array.from(target.querySelectorAll('button[role="menuitem"]')).find((b) =>
+		(b.textContent ?? '').includes(label)
+	) as HTMLButtonElement | undefined;
+
+describe('play — a handoff that meets the episode verdict and the other audio', () => {
+	const labels: [Handoff, () => string][] = [
+		['external', () => m.play_external_label()],
+		['syncplay', () => m.play_hamburger_syncplay_label()]
+	];
+	for (const [handoff, label] of labels) {
+		for (const [when, cache, expected] of CASES) {
+			it(`${handoff}, when ${when}`, async () => {
+				const asked = useHandlers(cache);
+				setUrl(`/play/${KITSU_ID}`, { session: 'session-handoff', episode: '3', kind: 'mp4' });
+				app = mount(PlayPage, { target });
+				await until(() => moreButton() !== null, 'the More actions button under the player');
+				moreButton()!.click();
+				await until(() => menuItem(label()) !== undefined, `the "${label()}" menu item`);
+				menuItem(label())!.click();
+				await expectCopy(expected);
+				expectCacheOnly(asked);
+			});
+		}
+	}
+});
+
 describe('home — a Continue Watching verdict and the other audio', () => {
-	for (const [when, cache, expected] of CASES) {
+	for (const [when, cache, expected] of [...CASES, SHORT]) {
 		it(`when ${when}`, async () => {
-			const asked: Asked = { batch: [], probeModes: [] };
+			const asked: Asked = { batch: [], probeModes: [], warms: 0 };
 			server.use(
 				http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig('sub'))),
 				http.get(`${API_BASE}/api/history`, () =>
@@ -254,20 +322,7 @@ describe('home — a Continue Watching verdict and the other audio', () => {
 				http.post(`${API_BASE}/api/kitsu/search`, () =>
 					HttpResponse.json([{ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' }])
 				),
-				http.post(`${API_BASE}/api/availability`, async ({ request }) => {
-					asked.probeModes.push(((await request.json()) as { mode: string }).mode);
-					return HttpResponse.json({
-						available: true,
-						episode_count: 12,
-						extra_episodes: [],
-						episode_count_approximate: false
-					});
-				}),
-				http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
-					asked.batch.push((await request.json()) as { kitsu_ids: string[]; mode: string });
-					if (cache === 'fails') return new HttpResponse(null, { status: 500 });
-					return HttpResponse.json(cache);
-				}),
+				...availabilityHandlers(cache, asked),
 				http.get(`${API_BASE}/api/kitsu/trending-anilist`, () => HttpResponse.json([])),
 				http.get(`${API_BASE}/api/kitsu/top-rated`, () => HttpResponse.json([])),
 				http.get(`${API_BASE}/api/watched-at`, () => HttpResponse.json({})),
@@ -289,15 +344,8 @@ describe('home — a Continue Watching verdict and the other audio', () => {
 				'the resume resolve stream'
 			);
 			FakeEventSource.instances[FakeEventSource.instances.length - 1].dispatch('error', VERDICT);
-			await until(
-				() => (target.textContent ?? '').includes(expected()),
-				'the episode-unavailable copy on the resume failure overlay'
-			);
-			if (expected === PLAIN) expect(target.textContent).not.toContain(SUGGESTS());
-			expect(asked.batch).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
-			expect(asked.probeModes, 'the provider is never asked about the other audio').not.toContain(
-				'dub'
-			);
+			await expectCopy(expected);
+			expectCacheOnly(asked);
 		});
 	}
 });
