@@ -158,3 +158,79 @@ async fn a_tagged_entry_before_is_another_entry() {
         assert!(matches!(err, AniError::NoResults), "{tagged}: {err:?}");
     }
 }
+
+#[tokio::test]
+async fn a_tag_hides_no_part_from_part_agreement() {
+    // Both tagged cours are the entry's season; the one whose part
+    // agrees — no part marker past the tag — is the pick, as it is for
+    // the plain pair.
+    for count in [Some(12), None] {
+        let client = site(&[(1, 12), (2, 12)]);
+        let hits = [
+            hit(
+                "show-season-2-part-2-1",
+                "Show Season 2 Part 2 [Uncensored]",
+            ),
+            hit("show-season-2-2", "Show Season 2 [Uncensored]"),
+        ];
+        let p = pick_candidate_titled(
+            &client,
+            &hits,
+            count,
+            "Show Season 2",
+            &["Show Season 2"],
+            Some(YEAR),
+            Some("TV"),
+        )
+        .await
+        .expect("picked");
+        assert_eq!(p.hit.slug, "show-season-2-2", "{count:?}");
+    }
+}
+
+#[tokio::test]
+async fn tagged_parts_stitch_as_their_plain_copies_do() {
+    let client = site(&[(1, 12), (2, 12)]);
+    let hits = [
+        hit("show-1", "Show [Uncensored]"),
+        hit("show-part-2-2", "Show Part 2 [Uncensored]"),
+    ];
+    let p = pick_candidate_titled(
+        &client,
+        &hits,
+        Some(24),
+        "Show",
+        &["Show"],
+        Some(YEAR),
+        Some("TV"),
+    )
+    .await
+    .expect("picked");
+    assert_eq!(p.hit.slug, "show-1");
+    assert_eq!(p.episodes.len(), 24, "the two parts, stitched");
+}
+
+#[tokio::test]
+async fn a_tagged_broad_listing_is_cut_as_its_plain_copy_is() {
+    let client = site(&[(1, 22), (2, 10)]);
+    let hits = [
+        hit("show-season-3-1", "Show Season 3 (Uncensored)"),
+        hit(
+            "show-season-3-part-2-2",
+            "Show Season 3 Part 2 (Uncensored)",
+        ),
+    ];
+    let p = pick_candidate_titled(
+        &client,
+        &hits,
+        Some(12),
+        "Show Season 3",
+        &["Show Season 3"],
+        Some(YEAR),
+        Some("TV"),
+    )
+    .await
+    .expect("picked");
+    assert_eq!(p.hit.slug, "show-season-3-1");
+    assert_eq!(p.episodes.len(), 12, "cut to the entry's episodes");
+}
