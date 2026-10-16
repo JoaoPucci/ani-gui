@@ -24,6 +24,10 @@ use crate::app::AppState;
 mod numbering_offset_store;
 use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
 
+#[path = "numbering_offset_former.rs"]
+mod former;
+pub use former::{former_stamp, retag_display};
+
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
 /// Last write wins, so a re-resolve can correct a stale stamp.
@@ -49,22 +53,6 @@ pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &s
 /// one that exists but cannot be read is left as it is.
 pub fn forget(state: &AppState, removed: &std::collections::HashSet<&str>) -> std::io::Result<()> {
     remove_rows(state, |r| removed.contains(r.slug.as_str()))
-}
-
-/// Put a display stamp an earlier version wrote right: when the slug's
-/// stamp names one of `former_tags`' slots with the tag that version
-/// gave it, it names the tag the row has now. Any other stamp is left
-/// alone.
-pub fn retag_display(state: &AppState, slug: &str, former_tags: &[(u32, String, String)]) {
-    let Some((stamped, tag)) = display_stamp(state, slug) else {
-        return;
-    };
-    if let Some((slot, _, now)) = former_tags
-        .iter()
-        .find(|(slot, former, _)| *slot == stamped && *former == tag)
-    {
-        merge_row(state, slug, get(state, slug), Some((*slot, now.clone())));
-    }
 }
 
 /// The slug's stamped (slot, display tag) pair, when one exists.
