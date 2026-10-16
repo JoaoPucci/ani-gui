@@ -146,6 +146,7 @@
 	"dock_ep_label_single": "Ep {episode}",
 	"dock_cancel_aria_label": "Cancelar download",
 	"dock_cancel_title": "Cancelar",
+	"dock_queued": "Na fila",
 	"dock_reveal_aria_label": "Mostrar na pasta",
 	"dock_reveal_title": "Mostrar na pasta",
 	"dock_dismiss_aria_label": "Dispensar",

@@ -130,6 +130,7 @@
 	"dock_ep_label_single": "Ep {episode}",
 	"dock_cancel_aria_label": "Cancel download",
 	"dock_cancel_title": "Cancel",
+	"dock_queued": "Queued",
 	"dock_reveal_aria_label": "Reveal in folder",
 	"dock_reveal_title": "Reveal in folder",
 	"dock_dismiss_aria_label": "Dismiss",

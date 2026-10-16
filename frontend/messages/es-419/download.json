@@ -139,6 +139,7 @@
 	"dock_ep_label_single": "Ep {episode}",
 	"dock_cancel_aria_label": "Cancelar descarga",
 	"dock_cancel_title": "Cancelar",
+	"dock_queued": "En cola",
 	"dock_reveal_aria_label": "Mostrar en la carpeta",
 	"dock_reveal_title": "Mostrar en la carpeta",
 	"dock_dismiss_aria_label": "Descartar",

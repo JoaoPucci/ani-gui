@@ -153,6 +153,7 @@
 	"dock_ep_label_single": "Эп. {episode}",
 	"dock_cancel_aria_label": "Отменить загрузку",
 	"dock_cancel_title": "Отменить",
+	"dock_queued": "В очереди",
 	"dock_reveal_aria_label": "Показать в папке",
 	"dock_reveal_title": "Показать в папке",
 	"dock_dismiss_aria_label": "Скрыть",
