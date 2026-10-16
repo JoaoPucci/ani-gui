@@ -37,11 +37,15 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: 
     });
 }
 
-/// The offset. A display stamp is no longer written: rows record the
-/// app's own number, and the stamps rows from before read through stay
-/// as they are, so a later resolve cannot move one under them.
+/// The offset, for a show that has none yet. Rows record the app's own
+/// number now; only rows from before read through the sidecar, and the
+/// offset and display stamp each of those reads through were stamped
+/// when it was written, so a later resolve — a re-listing's included —
+/// leaves both as they are. A display stamp is no longer written.
 fn put_numbering(state: &AppState, native: &NativeResolved) {
-    crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset);
+    if !crate::commands::numbering_offset::has(state, &native.slug) {
+        crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset);
+    }
 }
 
 /// The wall clock's moment, in milliseconds since the epoch.
