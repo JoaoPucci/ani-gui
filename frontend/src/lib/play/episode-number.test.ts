@@ -5,6 +5,7 @@ import {
 	parseEpisodeNumber,
 	parseHistoryEpisode,
 	previousEpisode,
+	stripColumns,
 	wholeEpisodeCount
 } from './episode-number';
 
@@ -90,5 +91,19 @@ describe('wholeEpisodeCount', () => {
 				{ number: null, relative_number: null }
 			])
 		).toBe(1);
+	});
+});
+
+describe('stripColumns', () => {
+	it('gives every tile on a page its own column, recaps included', () => {
+		// The play strip is one row: a page of 1–5 with 0.5 and 5.5 beside
+		// it holds seven tiles, and a sixth column would otherwise wrap.
+		expect(stripColumns(7, 5)).toBe(7);
+		expect(stripColumns(6, 5)).toBe(6);
+	});
+
+	it('keeps a page’s width when it holds fewer tiles', () => {
+		expect(stripColumns(5, 5)).toBe(5);
+		expect(stripColumns(2, 5)).toBe(5);
 	});
 });

@@ -65,3 +65,9 @@ export function wholeEpisodeCount(
 		return n !== null && Number.isInteger(n);
 	}).length;
 }
+
+/** Stub: how many columns a strip page's single row needs. */
+export function stripColumns(tileCount: number, pageSize: number): number {
+	void tileCount;
+	return pageSize;
+}
