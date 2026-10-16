@@ -277,3 +277,81 @@ async fn noragami_s_tail_carries_its_relations_and_its_sequel_s_titles() {
         "the manga is related too"
     );
 }
+
+/// Kitsu's pages are not always dense: a duplicated row pushes the
+/// count's last episode to the end of its page and the next episode
+/// onto the page after. A page read full to the end, with nothing past
+/// the count on it, is followed by the next one, so an episode Kitsu
+/// lists past the count is seen.
+#[tokio::test]
+async fn a_full_page_ending_at_the_count_is_followed_by_the_next() {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let row = |i: usize, n: u32| {
+        serde_json::json!({"id": i.to_string(), "type": "episodes", "attributes": {
+            "number": n, "canonicalTitle": format!("Story {n}"), "airdate": "2020-01-01"}})
+    };
+    // Page one: 1..=18, 18 again, 19. Page two: 20.
+    let first: Vec<serde_json::Value> = (1..=18u32)
+        .chain([18, 19])
+        .enumerate()
+        .map(|(i, n)| row(i, n))
+        .collect();
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/9/episodes"))
+        .and(query_param("page[offset]", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": first})))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/9/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": [row(20, 20)]})),
+        )
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/9/media-relationships"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(serde_json::json!({"data": [], "meta": {"count": 0}})),
+        )
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let mut detail =
+        crate::meta::kitsu::parse_anime_response(&fixture("kitsu-anime-7881.json")).expect("entry");
+    detail.id = "9".into();
+    detail.episode_count = Some(19);
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        &crate::commands::kitsu::anime_detail_key("9"),
+        &serde_json::to_string(&detail).expect("json"),
+        60,
+    )
+    .expect("detail row");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:9",
+        &serde_json::to_string(&AiringStatus {
+            aired: Some(19),
+            ..AiringStatus::default()
+        })
+        .expect("json"),
+        60,
+    )
+    .expect("airing row");
+    let tail = KitsuTail::for_entry(&state, Some("9"))
+        .expect("an entry")
+        .tail(19)
+        .await
+        .expect("read");
+    assert!(tail.read_past_count);
+    assert!(
+        tail.episodes.iter().any(|e| e.number == 20),
+        "{:?}",
+        tail.episodes
+    );
+}
