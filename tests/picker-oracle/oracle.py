@@ -766,8 +766,10 @@ def parts_of(t):
 
 
 def part_agrees(titles, cand):
+    """Part agreement ranks probed candidates only, and reads past a
+    bracketed version tag, which hides no part."""
     eparts = set().union(*(parts_of(t) for t in titles)) or {1}
-    return bool((parts_of(cand) or {1}) & eparts)
+    return bool((parts_of(_past_vtag(cand)) or {1}) & eparts)
 
 
 def head(titles, rows, counted):
