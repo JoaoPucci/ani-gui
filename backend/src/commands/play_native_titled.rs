@@ -190,6 +190,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
             return Ok(PickedShow {
                 hit: hit.clone(),
                 episodes,
+                versions: Vec::new(),
             });
         }
         // A rejection is only a clean verdict when every candidate
@@ -206,5 +207,6 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     Ok(PickedShow {
         hit: hit.clone(),
         episodes,
+        versions: Vec::new(),
     })
 }

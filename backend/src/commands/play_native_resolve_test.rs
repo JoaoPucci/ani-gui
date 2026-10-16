@@ -1233,6 +1233,7 @@ fn one_episode_show() -> crate::commands::play_native::PickedShow {
             number: 1,
             number2: None,
         }],
+        versions: Vec::new(),
     }
 }
 

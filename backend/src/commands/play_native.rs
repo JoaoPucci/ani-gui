@@ -22,6 +22,7 @@ use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
 use super::play_native_title_verdict::{countless_miss, probe_head, rejection, rescuable};
+pub use super::play_native_versions::{ShowVersion, VersionKind};
 use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
@@ -45,6 +46,10 @@ pub struct PickedShow {
     pub hit: BrowseHit,
     /// The show's episodes, as returned by the probe.
     pub episodes: Vec<EpisodeRef>,
+    /// Every version of the pick, in the provider's order, the one
+    /// `hit` names among them — empty unless the pick has copies under
+    /// another version tag (see `play_native_versions`).
+    pub versions: Vec<ShowVersion>,
 }
 
 /// Whether a transport-dead candidate outranks the winner: a
