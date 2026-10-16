@@ -46,6 +46,11 @@ export interface PushWatchedDeps {
  * (e.g. 12 dubbed of 24), and watching the last dubbed episode must
  * not complete the whole series (Codex P2 #3387467149). null/0 means
  * the total is unknown — don't complete (Codex P2 #3386988961).
+ *
+ * The backend reads `completed` on the progress route as this finale
+ * and sends the tracker's own episode total with it (a tracker that
+ * counts a prologue Kitsu does not completes there), so nothing else
+ * may send `completed` through `updateProgress`.
  */
 export function watchedStatus(
 	episode: number,
