@@ -85,7 +85,8 @@ export class QualityGovernor extends QualityHold {
 	 *  a level's load errors once one of its video segments buffers, so
 	 *  a climb back would fail the same audio and repeat the switch. A
 	 *  level that failed, or the one held, is no move. */
-	follow(level: number): QualityMove | null {
+	follow(level: number, now?: number): QualityMove | null {
+		void now;
 		if (!this.engaged || level === this.current || this.unavailable.has(level)) return null;
 		this.unavailable.add(this.current);
 		return this.move(level, 'followed', 'load');

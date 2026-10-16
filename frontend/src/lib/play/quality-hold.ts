@@ -86,7 +86,8 @@ export abstract class QualityHold {
 	 *  the level is left for the stream, and if it is the one held the
 	 *  governor moves to the nearest level below — above, when it was
 	 *  the lowest. */
-	levelFailed(level: number): QualityMove | null {
+	levelFailed(level: number, now?: number): QualityMove | null {
+		void now;
 		this.unavailable.add(level);
 		if (!this.engaged || level !== this.current) return null;
 		const next = this.neighbour(level, -1) ?? this.neighbour(level, 1);
