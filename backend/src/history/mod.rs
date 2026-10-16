@@ -64,7 +64,7 @@ use crate::error::Result;
 pub struct HistoryEntry {
     /// Episode number the user last watched. Every write since rows
     /// carried [`Self::own_number`] stores the app's own number for it
-    /// — the number the play asked for, "8" or "7.5" — by
+    /// — the episode the play resolved to, "8" or "7.5" — by
     /// `play_native_record::write_history` on a fresh resolve,
     /// `play::write_history_on_cache_hit` on a cache hit, and the
     /// watch a handoff or mark-watched records. A row from before holds

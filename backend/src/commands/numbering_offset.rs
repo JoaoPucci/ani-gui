@@ -15,7 +15,8 @@
 //! this build reads one episode high until its show is next watched —
 //! and the read boundary subtracts and translates through them. A
 //! resolve stamps the offset only for a show with no row here, and no
-//! longer writes display stamps, so neither moves under such a row.
+//! longer stamps the displaced row it lands on, so neither moves to
+//! another row under such a row.
 //! The rows anidb.app's resolves stamped stay: they are what keeps the
 //! history rows from its days readable.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
@@ -39,7 +40,7 @@ pub fn put(state: &AppState, slug: &str, offset: u32) {
     merge_row(state, slug, offset, None);
 }
 
-/// Test setup only: no resolve writes a display stamp now. Persist the
+/// Test setup only: no resolve stamps the row it lands on now. Persist the
 /// slug's offset together with a (slot, display tag) pair, the stamp
 /// a displaced watch left before rows recorded the app's own number.
 /// Last write wins, like the offset.

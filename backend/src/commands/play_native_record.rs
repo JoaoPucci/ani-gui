@@ -3,7 +3,7 @@
 //! Two writes follow every resolve that a user asked for, and they
 //! are the same writes whether the stream ends up in the embedded
 //! player, in mpv, or in Syncplay. They live here so the paths
-//! cannot drift: every one records the episode the play asked for,
+//! cannot drift: every one records the episode the play resolved to,
 //! as the app numbers it, marked as such
 //! ([`crate::history::HistoryEntry::own_number`]).
 
@@ -88,8 +88,9 @@ pub struct Watch {
     pub show_id: String,
     /// The provider's title for the row.
     pub title: String,
-    /// The episode watched, as the app numbers it: the number the play
-    /// asked for.
+    /// The episode watched, as the app numbers it: the one the resolve
+    /// matched ([`matched_episode`]) — the number the play asked for,
+    /// unless that named the row by a tag it no longer carries.
     pub ep_no: String,
 }
 
@@ -228,13 +229,14 @@ pub(crate) async fn record_watch_requested_at(
 
 /// Record the watch.
 ///
-/// The row records `requested`, the episode the play asked for, as
-/// the app numbers it (below). A failed write is logged and
-/// swallowed: the stream is resolved and the user is waiting on it.
+/// The row records the episode the resolve matched, as the app numbers
+/// it ([`matched_episode`]), marked as the app's own number, so it
+/// reads back as itself whatever the provider's slots or the sidecar
+/// say. A failed write is logged and swallowed: the stream is resolved
+/// and the user is waiting on it.
 ///
 /// `requested` is the episode the caller asked for, as the app numbers
-/// it: the row records it, marked as the app's own number, so it reads
-/// back as itself whatever the provider's slots or the sidecar say.
+/// it — what the row records when the resolve names no row.
 ///
 /// `asked` is the play's request: a show removed from history while
 /// the play resolved, or watched since it began, gets no row from it
