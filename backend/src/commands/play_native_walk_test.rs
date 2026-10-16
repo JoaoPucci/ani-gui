@@ -244,3 +244,81 @@ async fn the_pick_walk_stops_typed_on_a_gate_refusal() {
         "one refused admit; later aliases never asked"
     );
 }
+
+/// The walk's verdict for `title` with `expected` and `year`, the
+/// search answering `pool`.
+async fn refused_walk(
+    pool: Pool,
+    title: &str,
+    expected: Option<u32>,
+    year: Option<u32>,
+) -> NativeError {
+    let provider = scripted(&[(title, pool)]);
+    pick_native_walk(&provider, title, &[], expected, year, None)
+        .await
+        .expect_err("refused")
+}
+
+#[tokio::test]
+async fn every_rule_that_refuses_a_pool_by_name_is_a_refusal_by_name() {
+    // `the-show-77` lists two regular episodes and a recap; each pool
+    // below is refused on how its one hit is named, by a different
+    // rule, and every verdict says so.
+    let cases: [(&str, Pool, &str, Option<u32>, Option<u32>); 6] = [
+        (
+            "the title rule, with a count: a season the entry never names",
+            Pool::Hits(&[("the-show-77", "The Show Season 2")]),
+            "the show",
+            Some(3),
+            Some(2020),
+        ),
+        (
+            "the title rule, without a count",
+            Pool::Hits(&[("the-show-77", "The Show Season 2")]),
+            "the show",
+            None,
+            None,
+        ),
+        (
+            "the countless pick: a refused hit beside one nothing vouches for",
+            Pool::Hits(&[
+                ("the-show-77", "The Show Season 2"),
+                ("other-99", "Some Other"),
+            ]),
+            "the show",
+            None,
+            None,
+        ),
+        (
+            "the single-video rule",
+            Pool::Hits(&[("the-show-77", "Some Other")]),
+            "the show",
+            Some(1),
+            None,
+        ),
+        (
+            "the count-alone rule",
+            Pool::Hits(&[("the-show-77", "Some Other")]),
+            "the show",
+            Some(3),
+            None,
+        ),
+        (
+            "the dated-name rule",
+            Pool::Hits(&[("the-show-77", "Some Other")]),
+            "the show",
+            Some(3),
+            Some(2020),
+        ),
+    ];
+    for (rule, pool, title, expected, year) in cases {
+        let ne = refused_walk(pool, title, expected, year).await;
+        assert!(
+            matches!(ne.error, AniError::NoResults),
+            "{rule}: {:?}",
+            ne.error
+        );
+        assert!(!ne.clean_miss, "{rule}: persisted");
+        assert!(ne.refused_by_name, "{rule}: not a refusal by name");
+    }
+}
