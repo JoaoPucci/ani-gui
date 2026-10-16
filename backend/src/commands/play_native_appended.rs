@@ -85,6 +85,8 @@ pub struct Related {
 /// and the ids of the rows past it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Remembered {
+    /// The provider's slug for the show the rows were listed under.
+    pub slug: String,
     /// Kitsu's count the rows were read past.
     pub count: u32,
     /// The provider's ids of the rows read as extras, in order.
@@ -141,6 +143,7 @@ pub async fn fit_appended(
         return picked;
     };
     let reading = Remembered {
+        slug: picked.hit.slug.clone(),
         count,
         ids: past_ids(&picked.episodes, count),
     };
@@ -156,6 +159,16 @@ pub async fn fit_appended(
         Some(episodes) => PickedShow { episodes, ..picked },
         None => picked,
     }
+}
+
+/// The extra a history row's episode names under `reading`, when the
+/// row is for the show the reading was proved on (`show_key`, as the
+/// history file keys it) and its episode is the slot of a row the
+/// reading tagged: an earlier version recorded Noragami's first OAD as
+/// episode 13, which reads back as `12.1`.
+#[must_use]
+pub fn extra_for_slot(_reading: &Remembered, _show_key: &str, _ep_no: &str) -> Option<String> {
+    None
 }
 
 /// The provider's ids of the rows past `count`, in order.

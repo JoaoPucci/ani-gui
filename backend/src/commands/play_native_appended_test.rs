@@ -753,6 +753,7 @@ async fn a_reading_once_proved_stands_while_the_evidence_cannot_be_read() {
 async fn a_kept_reading_is_for_the_rows_it_was_proved_on() {
     let (rows, _) = noragami();
     let kept = Remembered {
+        slug: "noragami-916".into(),
         count: 12,
         ids: rows[12..].iter().map(|e| e.id).collect(),
     };
