@@ -33,15 +33,15 @@ export interface PlayOwner {
 
 /** Claim a play for `showId` on the route's current visit. `visit`
  *  reads the route's visit counter; it is read now and on every
- *  `isCurrent()`. */
+ *  `isCurrent()`. `gone` reads whether the page was destroyed, which
+ *  leaving the route does without moving the counter. */
 export function claimPlay(
 	showId: string,
 	visit: () => number,
 	gone: () => boolean = () => false
 ): PlayOwner {
-	void gone;
 	const claimed = visit();
-	return { showId, visit: claimed, isCurrent: () => visit() === claimed };
+	return { showId, visit: claimed, isCurrent: () => !gone() && visit() === claimed };
 }
 
 /** What a play's answer may still do (see the module notes). */

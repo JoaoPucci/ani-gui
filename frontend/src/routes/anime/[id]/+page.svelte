@@ -1300,7 +1300,11 @@
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
 		// against them, and records the show the viewer clicked.
-		const owner = claimPlay(id, () => visit);
+		const owner = claimPlay(
+			id,
+			() => visit,
+			() => gone
+		);
 		const show = detail;
 		const playArgs = playArgsFor({
 			title,

@@ -1932,7 +1932,11 @@
 		// taken at the click ($lib/play/owned-play): the route's component
 		// is reused across shows and across a round trip back, so a late
 		// answer is judged against them. (`detail` loads only on mount.)
-		const owner = claimPlay(id, () => visit);
+		const owner = claimPlay(
+			id,
+			() => visit,
+			() => gone
+		);
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
@@ -2056,7 +2060,11 @@
 		if (!detail) return;
 		// The visit this recovery is for ($lib/play/owned-play): a page
 		// moved on while the eviction was out must not resolve afresh.
-		const owner = claimPlay(id, () => visit);
+		const owner = claimPlay(
+			id,
+			() => visit,
+			() => gone
+		);
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
 		// into a blank frame. The user keeps the Reload button to try
@@ -2099,7 +2107,7 @@
 		// the next slow play, which is acceptable for the retry.
 		// The viewer left while the eviction was out: a fresh resolve
 		// would only navigate them back.
-		if (gone || !owner.isCurrent()) return;
+		if (!owner.isCurrent()) return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
 	}
@@ -2241,7 +2249,11 @@
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
-		const owner = claimPlay(id, () => visit);
+		const owner = claimPlay(
+			id,
+			() => visit,
+			() => gone
+		);
 		// Pause the embedded video so the user isn't watching two
 		// instances simultaneously. The notice/launch flow continues
 		// regardless; if the external player fails to start the user
@@ -2305,7 +2317,11 @@
 		const launch = { kitsuId: id, mode: cfg.mode, episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
-		const owner = claimPlay(id, () => visit);
+		const owner = claimPlay(
+			id,
+			() => visit,
+			() => gone
+		);
 		// Same pause-the-embedded-video logic as the external flow:
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
