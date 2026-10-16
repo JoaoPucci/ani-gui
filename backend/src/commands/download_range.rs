@@ -8,7 +8,7 @@ use crate::error::Result;
 
 use super::download::{DownloadArgs, DownloadProgress};
 use super::play_native::PickedShow;
-use super::play_native_episode::{resolve_episode, ResolvedEpisode};
+use super::play_native_episode::ResolvedEpisode;
 use super::play_native_resolve::NativeError;
 use super::play_native_walk::pick_native_walk;
 use super::providers::{gate_of, Attempt};
@@ -171,7 +171,19 @@ where
         // the provider; the rest resolve here, against it.
         let resolved = match first_resolved.take() {
             Some(r) => Ok(r),
-            None => resolve_episode(&*client, &picked, &ep_no, &args.mode, quality).await,
+            // A version that lacks this episode in the mode gives way
+            // to the next that carries it, as the range's start did.
+            None => {
+                super::play_native_version_modes::resolve_in_any_version(
+                    &*client,
+                    picked.clone(),
+                    &ep_no,
+                    &args.mode,
+                    quality,
+                )
+                .await
+                .1
+            }
         };
         let resolved = match resolved {
             Ok(r) => r,

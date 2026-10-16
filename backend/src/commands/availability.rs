@@ -500,7 +500,7 @@ pub async fn stamp_after_native(
                             gate_refused: false,
                             unsettled: false,
                             provider: verdict.provider,
-                            versions: verdict.versions.to_vec(),
+                            versions: with_modes_kept(state, &row, verdict.versions),
                         },
                     );
                 }
@@ -509,6 +509,36 @@ pub async fn stamp_after_native(
         },
     )
     .await;
+}
+
+/// `versions` as a resolve names them, each given what the row standing
+/// at `row` says of its mode where the resolve says nothing: a play
+/// knows which version it played, not which carry the mode, and a stamp
+/// must not take back what the probe learned of each.
+fn with_modes_kept(
+    state: &AppState,
+    row: &str,
+    versions: &[crate::commands::play_native_versions::VersionInfo],
+) -> Vec<crate::commands::play_native_versions::VersionInfo> {
+    let standing: Vec<crate::commands::play_native_versions::VersionInfo> =
+        meta_cache_get(&state.cache_pool, row)
+            .ok()
+            .flatten()
+            .and_then(|body| serde_json::from_str::<AvailabilityResponse>(&body).ok())
+            .map(|r| r.versions)
+            .unwrap_or_default();
+    versions
+        .iter()
+        .map(|v| crate::commands::play_native_versions::VersionInfo {
+            has_mode: v.has_mode.or_else(|| {
+                standing
+                    .iter()
+                    .find(|s| s.show_key == v.show_key)
+                    .and_then(|s| s.has_mode)
+            }),
+            ..v.clone()
+        })
+        .collect()
 }
 
 /// Stamp a served replay's positive, where no positive row stands.
