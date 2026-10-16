@@ -27,6 +27,9 @@ pub(crate) mod external_ids;
 pub mod numbering_offset;
 
 #[cfg(test)]
+#[path = "appended_extras_flow_test.rs"]
+mod appended_extras_flow_test;
+#[cfg(test)]
 #[path = "download_lock_prop_test.rs"]
 mod download_lock_prop_tests;
 mod download_pacing;
