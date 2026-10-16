@@ -417,3 +417,31 @@ async fn an_undated_entry_scores_out_the_tagged_copy() {
     assert_eq!(p.hit.slug, "the-show-1");
     assert!(p.versions.is_empty());
 }
+
+#[tokio::test]
+async fn a_dead_copy_no_rule_would_pick_blocks_nothing() {
+    // With a count and no year, or one video long and no year, the
+    // tagged copy is named by none of the entry's titles and could
+    // never be picked: its probe dying leaves the plain copy the pick,
+    // as it is when the copy answers.
+    for count in [12, 1] {
+        let client = site(&[(1, count)]).listing(2, Answer::fails(|| AniError::Network));
+        let hits = [
+            hit("the-show-1", "The Show"),
+            hit("the-show-2", "The Show (Uncensored)"),
+        ];
+        let p = pick_candidate_titled(
+            &client,
+            &hits,
+            Some(count),
+            "The Show",
+            &["The Show"],
+            None,
+            Some("TV"),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("{count}: {e:?}"));
+        assert_eq!(p.hit.slug, "the-show-1", "{count}");
+        assert!(p.versions.is_empty(), "{count}");
+    }
+}
