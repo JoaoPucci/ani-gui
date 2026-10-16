@@ -44,10 +44,13 @@ describe('describeSyncplayLaunchFailure', () => {
 		// when Command::spawn() fails. The helper produces the body
 		// text — the surrounding modal's headline + action live on
 		// the play page.
-		const got = describeSyncplayLaunchFailure({
-			kind: 'syncplay_spawn_failed',
-			binary: '/opt/syncplay/syncplay'
-		});
+		const got = describeSyncplayLaunchFailure(
+			{
+				kind: 'syncplay_spawn_failed',
+				binary: '/opt/syncplay/syncplay'
+			},
+			null
+		);
 		expect(got).toContain('/opt/syncplay/syncplay');
 	});
 
@@ -57,7 +60,7 @@ describe('describeSyncplayLaunchFailure', () => {
 		// the embedded play path — not a debug-y "Syncplay failed:
 		// scraper" string.
 		const scraperErr = { kind: 'scraper', key: 'error.download.tool_failed' };
-		const got = describeSyncplayLaunchFailure(scraperErr);
+		const got = describeSyncplayLaunchFailure(scraperErr, null);
 		// describePlayFailure's scraper branch fires on "scraper" in
 		// the flattened error string; pin that the helper hits that
 		// branch by checking the EN copy.
@@ -76,7 +79,7 @@ describe('describeSyncplayLaunchFailure', () => {
 		// "go set a binary path". Use the unnamed Syncplay-spawn copy
 		// instead so the surrounding modal still surfaces the Get
 		// Syncplay affordance with the matching messaging.
-		const got = describeSyncplayLaunchFailure({ kind: 'syncplay_spawn_failed', binary: '' });
+		const got = describeSyncplayLaunchFailure({ kind: 'syncplay_spawn_failed', binary: '' }, null);
 		expect(got.length).toBeGreaterThan(0);
 		// Brand name appears literal in every locale; pin that the
 		// helper hit the Syncplay branch, not describePlayFailure.
@@ -90,11 +93,14 @@ describe('describeSyncplayLaunchFailure', () => {
 		// spawn failure. Empty-string is the user-cleared-Settings
 		// path and lives in the test above; this one covers genuine
 		// shape errors.
-		const noBinary = describeSyncplayLaunchFailure({ kind: 'syncplay_spawn_failed' });
-		const wrongType = describeSyncplayLaunchFailure({
-			kind: 'syncplay_spawn_failed',
-			binary: 42
-		});
+		const noBinary = describeSyncplayLaunchFailure({ kind: 'syncplay_spawn_failed' }, null);
+		const wrongType = describeSyncplayLaunchFailure(
+			{
+				kind: 'syncplay_spawn_failed',
+				binary: 42
+			},
+			null
+		);
 		expect(noBinary.length).toBeGreaterThan(0);
 		expect(wrongType.length).toBeGreaterThan(0);
 	});
