@@ -25,7 +25,8 @@ use async_trait::async_trait;
 use super::mal_user_net::url_origin;
 pub use super::mal_user_net::MalRefreshState;
 use super::mal_user_parse::{
-    parse_list_page, parse_list_status_response, parse_my_list_status_entry, parse_viewer_response,
+    parse_list_page, parse_list_status_response, parse_my_list_status_entry, parse_tracked_media,
+    parse_viewer_response,
 };
 use crate::account::credentials::{
     MAL_API, MAL_AUTH_URL, MAL_CLIENT_ID, MAL_REDIRECT_URI, MAL_TOKEN_URL,
@@ -221,11 +222,15 @@ impl UserListProvider for MalProvider {
     }
 
     async fn tracked_media(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<TrackedMedia> {
-        let entry = self.current_entry(tokens, id).await?;
-        Ok(TrackedMedia {
-            entry,
-            episodes: None,
-        })
+        // The same read as `current_entry`, with the anime's own
+        // `num_episodes` asked for beside the user's row.
+        let url = format!(
+            "{}/anime/{}?fields=my_list_status,num_episodes&nsfw=true",
+            self.api_url(),
+            id.0
+        );
+        let bytes = self.get_auth_bytes(&url, tokens).await?;
+        parse_tracked_media(&bytes)
     }
 }
 

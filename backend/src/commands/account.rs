@@ -793,6 +793,11 @@ async fn push_progress_via(
     // write carries progress, and the only authoritative source (the
     // local cache is empty until the user syncs their list).
     let update = if update.progress_episodes.is_some() {
+        // The same read carries the tracker's own episode total, so the
+        // count is fitted to the tracker's numbering — the finale of a
+        // finished show fills a total that counts a prologue Kitsu does
+        // not, and nothing exceeds a shorter entry — before the
+        // monotonic reconcile, at no extra request.
         let media = provider.tracked_media(tokens, native).await?;
         let update = fit_to_tracker_total(update, media.episodes);
         match reconcile_monotonic(update, media.entry) {
