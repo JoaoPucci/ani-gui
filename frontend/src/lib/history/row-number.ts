@@ -15,6 +15,15 @@ export async function refreshedRows(
 	rows: () => readonly HistoryEntry[] | null,
 	read: (id: string) => Promise<{ ep_no: string } | null>
 ): Promise<HistoryEntry[] | null> {
-	void [id, rows, read];
-	return null;
+	let now: { ep_no: string } | null;
+	try {
+		now = await read(id);
+	} catch {
+		return null;
+	}
+	const current = rows();
+	const row = current?.find((r) => r.id === id);
+	if (!now || !current || !row || row.ep_no === now.ep_no) return null;
+	const epNo = now.ep_no;
+	return current.map((r) => (r.id === id ? { ...r, ep_no: epNo } : r));
 }

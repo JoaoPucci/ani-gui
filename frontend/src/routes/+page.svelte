@@ -122,6 +122,7 @@
 		readPosition
 	} from '$lib/play/watch-position';
 	import { followPlayed } from '$lib/play/played-episode';
+	import { refreshedRows } from '$lib/history/row-number';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -227,6 +228,13 @@
 	 * cap that contradicts itself, and the next click acts on
 	 * whichever half is wrong.
 	 */
+	// A row read again once its probe answered, as it reads now.
+	async function readRowAgain(id: string) {
+		const next = await refreshedRows(id, () => history, historyNumber);
+		if (!next) return;
+		history = next;
+		for (const h of next) historyById.set(h.id, h);
+	}
 	const publishLoaderCap = (
 		id: string,
 		match: KitsuAnimeRef | null,
@@ -426,8 +434,12 @@
 					// component-scope rowReady handler (row-ready.ts) —
 					// shared with startResume so a click-time cap
 					// refinement refreshes the same badge metadata.
-					onRowReady: (id, m, count, approximate) =>
-						publishLoaderCap(id, m, count, approximate === true)
+					onRowReady: (id, m, count, approximate) => {
+						publishLoaderCap(id, m, count, approximate === true);
+						// The probe paid for the listing that can put the
+						// row's numbering right: read it again.
+						if (count !== null) void readRowAgain(id);
+					}
 				}).then(async (state) => {
 					// Second chance for the rows the scraper gate refused.
 					// Their cap is the search hit's count, which runs high
