@@ -16,7 +16,9 @@
  *
  * What holds them is the image route asked for an upstream that never
  * answers: a TCP server that accepts and says nothing, so the
- * backend's fetch waits on the TLS handshake until its own timeout.
+ * backend's fetch waits on the TLS handshake until its connect timeout
+ * (ten seconds, the metadata client's; the handshake counts as part
+ * of connecting).
  * Every lane serves every route, so the same held request stands in
  * for a slow probe on the probe lane, a slow resolution on the resolve
  * lane, an open download stream on the download lane and a cold poster
@@ -40,9 +42,12 @@ const packagedBinary = path.join(electronDir, 'dist/linux-unpacked/ani-gui');
 /** How many requests each held lane is given — more than Chromium's
  *  six, so every one of its connections is taken. */
 const HELD_PER_LANE = 7;
-/** What "at once" means here: generous for a loaded runner, far
- *  short of the thirty seconds a held request waits. */
-const PROMPT_MS = 3_000;
+/** What "at once" means here: room for a loaded runner whose home
+ *  page is still loading its own data beside the test, yet short
+ *  enough that the control — asked a second after the holds, and
+ *  bound to wait out their ten-second connect timeout — cannot settle
+ *  inside it. */
+const PROMPT_MS = 6_000;
 
 test.beforeAll(() => {
 	if (!existsSync(packagedBinary)) {
