@@ -24,6 +24,9 @@ vi.mock('$app/state', () => ({
 		return page;
 	}
 }));
+vi.mock('$lib/account/push-watched', () => ({
+	syncWatchedToTrackers: vi.fn(async () => {})
+}));
 vi.mock('$app/navigation', () => ({
 	goto: vi.fn(async () => {}),
 	invalidateAll: vi.fn(async () => {}),
@@ -32,10 +35,12 @@ vi.mock('$app/navigation', () => ({
 }));
 
 import { goto } from '$app/navigation';
+import { syncWatchedToTrackers } from '$lib/account/push-watched';
 import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { __resetPlayCacheForTests } from '../../src/lib/play/play-cache';
 import { toastStore } from '../../src/lib/toasts/store.svelte';
 import { externalLaunchSuccessToast } from '../../src/lib/play/external-toast';
 import { syncplayLaunchSuccessToast } from '../../src/lib/play/syncplay-toast';
@@ -76,6 +81,7 @@ let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
 	__resetApiBaseForTests(API_BASE);
+	__resetPlayCacheForTests();
 	FakeEventSource.instances.length = 0;
 	g.EventSource = FakeEventSource;
 	setParams({ id: KITSU_ID });
@@ -525,76 +531,13 @@ describe('detail — a fractional extra and the other audio', () => {
 	});
 });
 
-describe('a failure for one show, landing after the page moved to another', () => {
+describe('a play for one show that answers after the page moved on', () => {
 	// SvelteKit reuses the route's component when a Similar-title link
-	// leads to another show, so the page's id is the new show's by the
-	// time the old play fails. The lookup is about the show that
-	// failed: the cache has its other audio, and nothing for the new one.
-	const OTHER_ID = '777';
-	const OTHER_TITLE = 'Another Show';
-	const HAS_IT = { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } };
-
-	function useOtherShow() {
-		server.use(
-			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
-				HttpResponse.json({ ...kitsuRef(OTHER_ID, OTHER_TITLE, 12), status: 'finished' })
-			),
-			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
-				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
-			)
-		);
-	}
-
-	async function clickThenMove(episode: number, moveTo: () => void) {
-		await until(() => tile(episode) !== null, `the tile for episode ${episode}`);
-		tile(episode)!.click();
-		await until(
-			() =>
-				FakeEventSource.instances.some(
-					(i) => i.url.includes(`episode=${episode}`) && !i.url.includes('prefetch=1')
-				),
-			"the click's interactive stream"
-		);
-		const stream = FakeEventSource.instances
-			.filter((i) => i.url.includes(`episode=${episode}`) && !i.url.includes('prefetch=1'))
-			.pop()!;
-		moveTo();
-		await new Promise((r) => setTimeout(r, 30));
-		stream.dispatch('error', VERDICT);
-	}
-
-	it('detail: asks about the show whose play failed', async () => {
-		const asked = useHandlers(HAS_IT);
-		useOtherShow();
-		app = mount(DetailPage, { target });
-		await clickThenMove(5, () => setParams({ id: OTHER_ID }));
-		await expectCopy(SUGGESTS);
-		const dubAsks = asked.batch.filter((b) => b.mode === 'dub');
-		expect(dubAsks).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
-		expect(dubAsks).not.toContainEqual({ kitsu_ids: [OTHER_ID], mode: 'dub' });
-	});
-
-	it('play: asks about the show whose episode switch failed', async () => {
-		const asked = useHandlers(HAS_IT);
-		useOtherShow();
-		setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
-		app = mount(PlayPage, { target });
-		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
-		await clickThenMove(2, () => {
-			setParams({ id: OTHER_ID });
-			setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
-		});
-		await expectCopy(SUGGESTS);
-		const dubAsks = asked.batch.filter((b) => b.mode === 'dub');
-		expect(dubAsks).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
-		expect(dubAsks).not.toContainEqual({ kitsu_ids: [OTHER_ID], mode: 'dub' });
-	});
-});
-
-describe('a play for one show that succeeds after the page moved to another', () => {
-	// The same reuse: the first show's play answers while the page is on
-	// the second. The watch it records is the first show's, and the
-	// page does not drag the viewer back to the first show's player.
+	// leads to another show, and across a round trip back. A play the
+	// viewer started for the first show can answer while the page is on
+	// the second, or on the first again by a later visit. Its watch is
+	// still the first show's; anything else it would do — an overlay, a
+	// navigation into the player — is about a visit the viewer left.
 	const OTHER_ID = '777';
 	const OTHER_TITLE = 'Another Show';
 	const SESSION = JSON.stringify({
@@ -604,6 +547,7 @@ describe('a play for one show that succeeds after the page moved to another', ()
 		quality: '1080',
 		mode: 'sub'
 	});
+	const HAS_IT = { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } };
 
 	function useOtherShowAndRecord() {
 		const marked: Record<string, unknown>[] = [];
@@ -622,10 +566,12 @@ describe('a play for one show that succeeds after the page moved to another', ()
 		return marked;
 	}
 
-	async function clickMoveAndSucceed(
+	/** Click `episode`, run `moveTo` while its play is out, wait for
+	 *  `landed`, then answer the play with `answer`. */
+	async function clickMoveAndAnswer(
 		episode: number,
-		moveTo: () => void,
-		landed: () => boolean = () => (target.textContent ?? '').includes(OTHER_TITLE)
+		moveTo: () => Promise<void> | void,
+		answer: ['done' | 'error', string]
 	) {
 		await until(() => tile(episode) !== null, `the tile for episode ${episode}`);
 		tile(episode)!.click();
@@ -639,43 +585,121 @@ describe('a play for one show that succeeds after the page moved to another', ()
 		const stream = FakeEventSource.instances
 			.filter((i) => i.url.includes(`episode=${episode}`) && !i.url.includes('prefetch=1'))
 			.pop()!;
-		moveTo();
-		await until(landed, 'the page to move to the other show');
+		await moveTo();
 		vi.mocked(goto).mockClear();
-		stream.dispatch('done', SESSION);
+		vi.mocked(syncWatchedToTrackers).mockClear();
+		stream.dispatch(answer[0], answer[1]);
 	}
 
-	it("detail: records the first show's watch and stays on the second show", async () => {
-		useHandlers({ cached: {}, playable_episode_counts: {} });
-		const marked = useOtherShowAndRecord();
-		app = mount(DetailPage, { target });
-		await clickMoveAndSucceed(5, () => setParams({ id: OTHER_ID }));
-		await until(() => marked.length > 0, 'the watch record');
-		expect(marked[0]).toMatchObject({ kitsu_id: KITSU_ID, title: TITLE, episode: '5' });
-		await new Promise((r) => setTimeout(r, 30));
-		expect(vi.mocked(goto)).not.toHaveBeenCalled();
-	});
+	const toOther = async () => {
+		setParams({ id: OTHER_ID });
+		await until(() => (target.textContent ?? '').includes(OTHER_TITLE), 'the other show');
+	};
+	const roundTrip = async () => {
+		await toOther();
+		setParams({ id: KITSU_ID });
+		await until(() => !(target.textContent ?? '').includes(OTHER_TITLE), 'the first show again');
+		await until(() => tile(5) !== null, 'the first show’s tiles again');
+	};
+	const playButton = () =>
+		target.querySelector('div.actions button.btn-glass') as HTMLButtonElement | null;
 
-	it("play: records the first show's watch and stays on the second show", async () => {
+	for (const [how, moveTo] of [
+		['to another show', toOther],
+		['away and back', roundTrip]
+	] as const) {
+		it(`detail, ${how}: a success records the first show's watch and opens no player`, async () => {
+			useHandlers({ cached: {}, playable_episode_counts: {} });
+			const marked = useOtherShowAndRecord();
+			app = mount(DetailPage, { target });
+			await clickMoveAndAnswer(5, moveTo, ['done', SESSION]);
+			await until(() => marked.length > 0, 'the watch record');
+			expect(marked[marked.length - 1]).toMatchObject({
+				kitsu_id: KITSU_ID,
+				title: TITLE,
+				episode: '5',
+				episode_count: 12
+			});
+			await until(() => vi.mocked(syncWatchedToTrackers).mock.calls.length > 0, 'the mirror');
+			expect(vi.mocked(syncWatchedToTrackers).mock.calls[0].slice(0, 3)).toEqual([KITSU_ID, 5, 12]);
+			await new Promise((r) => setTimeout(r, 30));
+			expect(vi.mocked(goto)).not.toHaveBeenCalled();
+			await until(() => playButton() !== null && !playButton()!.disabled, 'Play to be usable');
+		});
+
+		it(`detail, ${how}: a failure says nothing on the page the viewer is on`, async () => {
+			const asked = useHandlers(HAS_IT);
+			useOtherShowAndRecord();
+			app = mount(DetailPage, { target });
+			await clickMoveAndAnswer(5, moveTo, ['error', VERDICT]);
+			await new Promise((r) => setTimeout(r, 50));
+			expect(target.textContent).not.toContain(PLAIN());
+			expect(target.textContent).not.toContain(SUGGESTS());
+			expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
+			await until(() => playButton() !== null && !playButton()!.disabled, 'Play to be usable');
+		});
+	}
+
+	it("play, to another show: a success records the first show's watch and stays put", async () => {
 		useHandlers({ cached: {}, playable_episode_counts: {} });
 		const marked = useOtherShowAndRecord();
 		setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
 		app = mount(PlayPage, { target });
 		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
 		// The play page loads its show on mount, so only the URL moves.
-		let moved = false;
-		await clickMoveAndSucceed(
+		await clickMoveAndAnswer(
 			2,
 			() => {
 				setParams({ id: OTHER_ID });
 				setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
-				moved = true;
 			},
-			() => moved
+			['done', SESSION]
 		);
 		await until(() => marked.length > 0, 'the watch record');
 		expect(marked[marked.length - 1]).toMatchObject({ kitsu_id: KITSU_ID, episode: '2' });
+		await until(() => vi.mocked(syncWatchedToTrackers).mock.calls.length > 0, 'the mirror');
+		expect(vi.mocked(syncWatchedToTrackers).mock.calls[0][0]).toBe(KITSU_ID);
 		await new Promise((r) => setTimeout(r, 30));
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	});
+
+	it('play, away and back: a success from the earlier visit opens no player', async () => {
+		useHandlers({ cached: {}, playable_episode_counts: {} });
+		useOtherShowAndRecord();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await clickMoveAndAnswer(
+			2,
+			async () => {
+				setParams({ id: OTHER_ID });
+				await new Promise((r) => setTimeout(r, 20));
+				setParams({ id: KITSU_ID });
+				await new Promise((r) => setTimeout(r, 20));
+			},
+			['done', SESSION]
+		);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	});
+
+	it('play, to another show: a failure says nothing on the page the viewer is on', async () => {
+		const asked = useHandlers(HAS_IT);
+		useOtherShowAndRecord();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await clickMoveAndAnswer(
+			2,
+			() => {
+				setParams({ id: OTHER_ID });
+				setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+			},
+			['error', VERDICT]
+		);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(target.textContent).not.toContain(PLAIN());
+		expect(target.textContent).not.toContain(SUGGESTS());
+		expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
 	});
 });

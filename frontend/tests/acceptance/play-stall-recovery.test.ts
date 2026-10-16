@@ -379,3 +379,61 @@ describe('play route — the stale-stream recovery is visible and lossless', () 
 		expect(video.currentTime).toBe(0);
 	});
 });
+
+describe('play route — a recovery for a show the page has left', () => {
+	it('does not re-resolve on the show the page moved to', async () => {
+		// The route's component is reused across shows. A recovery
+		// started for the first show waits on the cache eviction; the
+		// page moves to another show meanwhile. Resolving afresh then
+		// would play the wrong show's episode into the new page.
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let evicting = false;
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json(kitsuEpisodes(12))),
+			http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({
+					available: true,
+					episode_count: 12,
+					extra_episodes: [],
+					episode_count_approximate: false
+				})
+			),
+			http.post(`${API_BASE}/api/play/mark-watched`, () => new HttpResponse(null, { status: 204 })),
+			http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
+			http.post(`${API_BASE}/api/play/cache/evict`, async () => {
+				evicting = true;
+				await held;
+				return new HttpResponse(null, { status: 204 });
+			}),
+			http.get(`${API_BASE}/api/aniskip/:id/:episode`, () => HttpResponse.json(null))
+		);
+
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-left', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		const video = playerVideo();
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+
+		video.currentTime = 720;
+		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		await until(() => evicting, 'the recovery to evict the stale resolution');
+
+		setParams({ id: '777' });
+		setUrl('/play/777', { session: 'session-other', episode: '1', kind: 'mp4' });
+		await new Promise((r) => setTimeout(r, 20));
+		const streamsBefore = FakeEventSource.instances.length;
+		release();
+		await new Promise((r) => setTimeout(r, 100));
+		expect(FakeEventSource.instances.length, 'no fresh resolve after the move').toBe(streamsBefore);
+	});
+});
