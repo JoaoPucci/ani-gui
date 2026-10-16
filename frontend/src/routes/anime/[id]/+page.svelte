@@ -252,6 +252,9 @@
 	}
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
 		applyAvailabilityPatch(writeback.refresh(refresh));
+		// A fresh refusal by name words the notice as the page-load one
+		// does: no other audio to name.
+		availabilityRefused = refresh.refused === true;
 	}
 	const capGate = createCapGateProbe({
 		probe: async () => {

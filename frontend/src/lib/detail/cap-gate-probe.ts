@@ -1,6 +1,6 @@
 import type { AvailabilityResponse } from '$lib/api';
 import { beyondPlayable } from './episode-caps';
-import { availabilityVerdict } from '$lib/availability/verdict';
+import { availabilityVerdict, refusedByName } from '$lib/availability/verdict';
 
 /**
  * Re-asking availability when a user clicks a cap-gated episode tile.
@@ -51,7 +51,7 @@ export interface CapGateAnswer {
 	/** Non-integer episode tags — recaps and specials, e.g. "1061.5". */
 	extraEpisodes: string[];
 	/** True when `available: false` is the provider refusing the title
-	 *  by name. Not carried yet. */
+	 *  by name. */
 	refused?: boolean;
 }
 
@@ -72,8 +72,7 @@ export interface CapGateRefresh {
 	 *  look. */
 	available: boolean;
 	/** True when the false is a refusal by name: the title is in the
-	 *  catalogue under nothing named for it, in any audio. Not carried
-	 *  yet. */
+	 *  catalogue under nothing named for it, in any audio. */
 	refused?: boolean;
 	/** The confirmed cap, or null when the answer did not establish one
 	 *  — a count that can read one high must not replace a real cap.
@@ -110,7 +109,9 @@ export function capGateAnswerFrom(r: AvailabilityResponse): CapGateAnswer | null
 		count: r.episode_count,
 		approximate: r.episode_count_approximate === true,
 		available,
-		extraEpisodes: r.extra_episodes ?? []
+		extraEpisodes: r.extra_episodes ?? [],
+		// Present only when true, as every answer before refusals reads.
+		...(refusedByName(r) ? { refused: true } : {})
 	};
 }
 
@@ -175,6 +176,7 @@ export interface CapGateProbeDeps {
 function refreshFrom(answer: CapGateAnswer): CapGateRefresh {
 	return {
 		available: answer.available,
+		...(answer.refused === true ? { refused: true } : {}),
 		count: answer.approximate ? null : (answer.count ?? 0),
 		extraEpisodes: answer.approximate ? null : answer.extraEpisodes
 	};
