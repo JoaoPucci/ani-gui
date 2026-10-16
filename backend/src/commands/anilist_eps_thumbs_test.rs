@@ -165,7 +165,7 @@ fn merge_thumbs_replaces_thumbnail_with_only_null_original() {
 }
 
 #[test]
-fn cache_anilist_eps_thumbs_caches_success_map_by_kitsu_id() {
+fn cache_anilist_eps_thumbs_caches_success_listing_by_kitsu_id() {
     let pool = crate::cache::open_in_memory().expect("in-mem pool");
     let map = listing(&[(1, "https://cr.cdn/1.jpg")]);
     cache_anilist_eps_thumbs(&pool, "12", &Ok(map.clone()));
@@ -286,7 +286,7 @@ fn needs_backfill_false_for_empty_page() {
 }
 
 #[tokio::test]
-async fn thumbs_for_show_returns_cached_map_without_network() {
+async fn thumbs_for_show_returns_cached_listing_without_network() {
     // The hot path: cache is warm, hit returns instantly with no
     // Kitsu /mappings call and no AniList round-trip. The state's
     // kitsu base is pointed at an unbound port so any miss-path
@@ -398,7 +398,7 @@ async fn mount_anilist(
         .await;
 }
 
-fn one_ep_map() -> StreamingListing {
+fn one_ep_listing() -> StreamingListing {
     let mut l = listing(&[(1, "https://cr.cdn/1.jpg")]);
     l.entries.get_mut(&1).expect("entry").title = "Pilot".to_string();
     l
@@ -417,7 +417,7 @@ async fn a_show_mapped_to_anilist_alone_gets_thumbs_by_anilist_id() {
     .await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "50551", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]
@@ -427,7 +427,7 @@ async fn a_show_mapped_to_mal_alone_keeps_the_mal_query() {
     mount_anilist(&anilist, serde_json::json!({ "idMal": 21 }), ONE_EP_BODY, 1).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]
@@ -439,7 +439,7 @@ async fn a_show_mapped_to_both_keeps_the_mal_query() {
     mount_anilist(&anilist, serde_json::json!({ "id": 21 }), ONE_EP_BODY, 0).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]
@@ -498,7 +498,7 @@ async fn a_mal_id_anilist_lacks_falls_back_to_the_anilist_id_for_thumbs() {
     mount_anilist(&anilist, serde_json::json!({ "id": 30 }), ONE_EP_BODY, 1).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]
@@ -605,7 +605,7 @@ async fn a_cached_row_that_is_not_a_listing_is_fetched_again() {
     let state = state_with_kitsu_at(&kitsu.uri());
     meta_cache_put(&state.cache_pool, &anilist_eps_thumbs_key("12"), "[1,2", 60).expect("put");
     let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]

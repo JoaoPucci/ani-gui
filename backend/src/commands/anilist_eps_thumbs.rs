@@ -27,7 +27,7 @@ fn anilist_eps_thumbs_key(kitsu_id: &str) -> String {
     format!("anilist:eps-thumbs:v2:k{kitsu_id}")
 }
 
-/// Writes the outcome of an AniList lookup to the cache. `Ok(map)`
+/// Writes the outcome of an AniList lookup to the cache. `Ok(listing)`
 /// uses the full [`ANILIST_STREAMING_EPS_TTL`]; `Err(())` uses the
 /// short [`ANILIST_STREAMING_EPS_ERROR_TTL`] so the next few minutes
 /// of navigation hit cache instead of re-burning the rate-limit
