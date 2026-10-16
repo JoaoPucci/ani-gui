@@ -82,6 +82,8 @@ class Generation(unittest.TestCase):
 
     def test_the_generated_set_walks_versions_both_ways(self):
         fams = [c for c in oracle.gen() if c["family"].startswith("versions")]
+        # titles that end on a division are tagged too: the tag hides none
+        self.assertTrue(any(c["rows"][0][1].endswith(("Season 2", " 2")) for c in fams))
         self.assertTrue(any(c["expect"] and "versions" in c["expect"] for c in fams))
         self.assertTrue(any(c["expect"] and "versions" not in c["expect"] for c in fams))
 
@@ -217,12 +219,22 @@ class TheModelReadsTheDocs(unittest.TestCase):
             (["Show"], E, [("p", "Show", E), ("u", "Show Other (Uncensored)", E)], pick("p")),
             (["Show"], E, [("p", "Show", E), ("u", "Show (Uncensored)", E), ("q", "Show", E)], pick("p")),
             (["Show"], E, [("u", "Show (Uncensored)", E)], pick("u")),
-            (["Show"], E, [("p", "Show Season 2", E), ("u", "Show Season 2 (Uncensored)", E)], pick("u")),
+            (["Show"], E, [("p", "Show Season 2", E), ("u", "Show Season 2 (Uncensored)", E)], None),
             (["Show"], None, both, pick("p")),
         ]:
             self.assertEqual(oracle.predict(pool(titles, count, rows)), want, (titles, count, rows))
         # a count and no year: the tagged copy is named by nothing
         self.assertEqual(oracle.predict(pool(["Show"], E, list(reversed(both)), year=None)), pick("p"))
+
+    def test_a_version_tag_hides_no_division_from_the_title_rule(self):
+        for count in (E, None):
+            for year in (2020, None):
+                for title in ("Show Season 2 [Uncensored]", "Show 2 (Uncensored)", "Show Part 2 （Uncensored）"):
+                    case = pool(["Show"], count, [("x", title, E)], year=year)
+                    self.assertIsNone(oracle.predict(case), (title, count, year))
+                    self.assertEqual(oracle.refusal_expected(case), ("NoResults", False), (title, count, year))
+        # after the entry's own season, it admits as before
+        self.assertEqual(oracle.predict(pool(["Show 2nd Season"], E, [("x", "Show 2nd Season [Uncensored]", E)])), pick("x"))
 
     def test_the_countless_pick_takes_only_what_something_vouches_for(self):
         # with the entry's year, every listing's page year (the driver writes
