@@ -4,6 +4,7 @@
 //! none.
 
 use super::*;
+use crate::commands::play_native_appended::TailEpisode;
 use crate::meta::anilist_airing::AiringStatus;
 
 fn fixture(name: &str) -> Vec<u8> {

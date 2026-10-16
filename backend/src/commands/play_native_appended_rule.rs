@@ -2,7 +2,9 @@
 //! ([`super`]), split from it so each file stays inside the
 //! complexity bar.
 
-use super::{appended_count, tag_past, EntryTail, Related};
+use super::names::{explained, own_names};
+use super::titles::{is_generic, same_title};
+use super::{appended_count, tag_past, EntryTail};
 use crate::scraper::provider::EpisodeRef;
 
 /// How many of the count's last episodes must carry the listing's own
@@ -66,78 +68,4 @@ fn aligned(listing: &[EpisodeRef], count: u32, tail: &EntryTail) -> bool {
     };
     let titles: Option<Vec<&str>> = (first..=count).map(named).collect();
     titles.is_some_and(|t| t.iter().any(|t| !is_generic(t)))
-}
-
-/// Whether every row past the count has a name of its own: one that is
-/// not missing, not only its number, and not the name of an episode
-/// Kitsu lists for the entry or on a TV sequel's first page.
-fn own_names(past: &[EpisodeRef], tail: &EntryTail) -> bool {
-    let sequels = tail.related.iter().filter(|r| is_tv_sequel(r));
-    let Some(sequel_titles) = sequels
-        .map(|r| r.episode_titles.as_deref())
-        .collect::<Option<Vec<&[String]>>>()
-    else {
-        return false;
-    };
-    let taken: Vec<&str> = tail
-        .episodes
-        .iter()
-        .filter_map(|e| e.title.as_deref())
-        .chain(sequel_titles.into_iter().flatten().map(String::as_str))
-        .collect();
-    past.iter().all(|row| {
-        row.title
-            .as_deref()
-            .is_some_and(|t| !is_generic(t) && !taken.iter().any(|k| same_title(k, t)))
-    })
-}
-
-fn is_tv_sequel(r: &Related) -> bool {
-    r.anime && r.role == "sequel" && r.subtype.as_deref() == Some("TV")
-}
-
-/// Whether Kitsu's relations, read whole, name what the `past` rows
-/// are — a finished OVA, ONA or special exactly that long — and no
-/// sequel still to finish, which the rows could be the start of.
-fn explained(past: usize, tail: &EntryTail) -> bool {
-    let finished = |r: &Related| r.status.as_deref() == Some("finished");
-    let length = u32::try_from(past).ok();
-    let extra = |r: &Related| {
-        r.anime
-            && finished(r)
-            && matches!(r.subtype.as_deref(), Some("OVA" | "ONA" | "special"))
-            && r.episode_count == length
-    };
-    let airing_sequel = |r: &Related| r.anime && r.role == "sequel" && !finished(r);
-    tail.related_complete
-        && tail.related.iter().any(extra)
-        && !tail.related.iter().any(airing_sequel)
-}
-
-/// A title reduced to what tells two titles apart: its letters and
-/// digits, lowercased. Case, spacing and punctuation are how two
-/// catalogues write one title differently.
-fn reduced(title: &str) -> String {
-    title
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
-/// Whether two titles are one title as the catalogues write it.
-#[must_use]
-pub fn same_title(a: &str, b: &str) -> bool {
-    let a = reduced(a);
-    !a.is_empty() && a == reduced(b)
-}
-
-/// Whether a title is only a number: "Episode 13", "EP 13", "13".
-fn is_generic(title: &str) -> bool {
-    let r = reduced(title);
-    let digits = r
-        .strip_prefix("episode")
-        .or_else(|| r.strip_prefix("ep"))
-        .unwrap_or(&r);
-    digits.chars().all(|c| c.is_ascii_digit())
 }
