@@ -47,7 +47,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     let filtered = year_filtered(client, &hits, year, &mut pages).await;
     let Some(expected) = expected else {
         let picked = match filtered {
-            Ok(head) => pick_without_count(client, &head, &needle, entry).await,
+            Ok(head) => pick_without_count(client, &head, &needle, entry, refused_dropped).await,
             Err(e) => Err(e),
         };
         return countless_miss(picked, refused_dropped);
@@ -62,6 +62,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // own detail year positively matched Kitsu's.
     let mut probed_ok: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = Vec::new();
     let mut any_transport_failure = false;
+    // A candidate that could have won whose listing answered not-found.
+    let mut dead_listing = false;
     // Identity carried by transport-DEAD candidates
     // ([`entry_rank`]), with their provider position: a dead
     // candidate that outranks the eventual winner — or ties an
@@ -94,6 +96,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                     // further probe repeats the same answer.
                     return Err(e);
                 }
+                let could_win = may_win(h, expected, &needle, entry, year, &pages);
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
                     best_failed = strongest_dead(
@@ -103,8 +106,12 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                         &needle,
                         year_confirmed,
                         pos,
-                        may_win(h, expected, &needle, entry, year, &pages),
+                        could_win,
                     );
+                } else {
+                    // Answered not-found: a stale listing that may have
+                    // been the entry's, if it could have won.
+                    dead_listing |= could_have_won(entry, &h.title, could_win);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
@@ -196,7 +203,11 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // got to answer: a transiently dead probe may have hidden
         // the right show, and NoResults rides the walk into a
         // persistable clean miss. Weather stays weather.
-        return Err(rejection(any_transport_failure, refused_a_fit));
+        return Err(rejection(
+            any_transport_failure,
+            refused_a_fit,
+            dead_listing,
+        ));
     }
     let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
     if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {

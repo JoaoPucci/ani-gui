@@ -873,11 +873,13 @@ pub async fn check_availability(
         // saying which. A refusal by name says the catalogue lists
         // nothing named for the entry; the rest say nothing.
         Err(ne) if matches!(ne.error, crate::error::AniError::NoResults) => {
-            return Ok(AvailabilityResponse::unsettled(if ne.refused_by_name {
-                UnsettledReason::Refused
-            } else {
-                UnsettledReason::Unanswered
-            }));
+            return Ok(AvailabilityResponse::unsettled(dead_end_reason(
+                state,
+                args,
+                mode,
+                &at_start,
+                ne.refused_by_name,
+            )));
         }
         // Weather (transport failures, upstream refusals, a refused
         // background admit): surface typed, persist nothing.
@@ -966,6 +968,31 @@ pub async fn check_availability(
         unsettled: None,
         provider,
     })
+}
+
+/// Why an answered dead end settled nothing. A refusal by name says the
+/// catalogue lists nothing named for the show — unless a positive row
+/// appeared while the probe was out, a play having served the show
+/// meanwhile, which a refusal no more outranks than a clean miss does:
+/// the answer is then the superseded unknown. Read without the row's
+/// lock, since nothing is written.
+fn dead_end_reason(
+    state: &AppState,
+    args: &AvailabilityArgs,
+    mode: &str,
+    at_start: &RowAtStart,
+    refused_by_name: bool,
+) -> UnsettledReason {
+    let overtaken = args
+        .kitsu_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .is_some_and(|id| at_start.positive_row_appeared_since(state, &cache_key(id, mode)));
+    match (refused_by_name, overtaken) {
+        (true, false) => UnsettledReason::Refused,
+        (true, true) => UnsettledReason::Superseded,
+        (false, _) => UnsettledReason::Unanswered,
+    }
 }
 
 /// The probe's provider half: pick the show, then measure how far

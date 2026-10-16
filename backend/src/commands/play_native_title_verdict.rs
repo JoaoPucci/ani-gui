@@ -94,13 +94,20 @@ pub(super) fn countless_miss(
 /// unheard — the right show may have been the dead one — the
 /// [`refused_by_title`] dead end when the titles refused a candidate
 /// the count accepted, and the clean miss only when every candidate
-/// answered and the count refused them all.
+/// answered and the count refused them all. A refusal beside a
+/// candidate that could have won and whose listing answered not-found
+/// (`dead_listing`) is the answered dead end on that dead listing,
+/// which may have been the entry's: not the clean miss, and no refusal
+/// by name.
 pub(super) fn rejection(
     any_transport_failure: bool,
     refused_a_fit: bool,
+    dead_listing: bool,
 ) -> crate::error::AniError {
     if any_transport_failure {
         crate::error::AniError::Network
+    } else if refused_a_fit && dead_listing {
+        crate::error::AniError::Upstream { status: 404 }
     } else if refused_a_fit {
         refused_by_title()
     } else {

@@ -29,11 +29,18 @@ use super::play_native_title_marker::EntryTitles;
 /// pool with no such hit is rejected so the next alias gets its
 /// chance. The single probe still runs so the caller gets the episode
 /// list it needs.
+///
+/// When the title rule narrowed the head (`narrowed`) and a candidate
+/// it took answered its listing not-found, the miss is the answered
+/// dead end on a dead listing, `Upstream { status: 404 }`, not the
+/// plain miss the caller would read as a refusal by name: the dead
+/// listing may have been the entry's.
 pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     client: &P,
     head: &[(&BrowseHit, bool)],
     needle: &str,
     entry: EntryTitles<'_>,
+    narrowed: bool,
 ) -> Result<PickedShow> {
     let exact = head
         .iter()
@@ -58,6 +65,7 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
     // listing answers 404 is a stale slug, not the pool's verdict —
     // the next eligible candidate may carry the live listing.
     let mut seen: Vec<&str> = Vec::new();
+    let mut dead = false;
     for chosen in exact.chain(positional) {
         if seen.contains(&chosen.slug.as_str()) {
             continue;
@@ -73,11 +81,15 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
             Err(e) if e.is_provider_block() || matches!(e, crate::error::AniError::GateRefused) => {
                 return Err(e);
             }
-            Err(crate::error::AniError::Upstream { .. }) => {}
+            Err(crate::error::AniError::Upstream { .. }) => dead = true,
             Err(e) => return Err(e),
         }
     }
-    Err(crate::error::AniError::NoResults)
+    Err(if narrowed && dead {
+        crate::error::AniError::Upstream { status: 404 }
+    } else {
+        crate::error::AniError::NoResults
+    })
 }
 
 #[cfg(test)]

@@ -44,6 +44,13 @@ pub(super) fn entry_rank(entry: EntryTitles<'_>, title: &str, needle: &str, conf
 /// the caller's rules otherwise rule out (`could_win` false: a dated
 /// entry's candidate no name vouches for); it still leaves the pool
 /// unheard, which the caller records apart.
+/// Whether a candidate could have been picked, as far as the entry's
+/// titles go: admitted, not another entry of the same show, and not
+/// ruled out by the caller's rules otherwise (`could_win`).
+pub(super) fn could_have_won(entry: EntryTitles<'_>, title: &str, could_win: bool) -> bool {
+    could_win && entry.admits(title) && !entry.another_entry(title)
+}
+
 pub(super) fn strongest_dead(
     best: Option<(u8, usize)>,
     entry: EntryTitles<'_>,
@@ -53,7 +60,7 @@ pub(super) fn strongest_dead(
     pos: usize,
     could_win: bool,
 ) -> Option<(u8, usize)> {
-    if !could_win || !entry.admits(title) || entry.another_entry(title) {
+    if !could_have_won(entry, title, could_win) {
         return best;
     }
     let failed = (entry_rank(entry, title, needle, confirmed), pos);
