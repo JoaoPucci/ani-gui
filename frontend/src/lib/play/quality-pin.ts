@@ -1,26 +1,28 @@
 /**
- * The level the viewer pinned, by the height its playlist lists, for
+ * The level the viewer pinned, by the height its playlist lists — or,
+ * for a level that lists none, by its bandwidth rank from the top — for
  * the rest of the app's run: the next episode, and a stream recovered
- * in its place, start at the same height — or the nearest below it —
- * rather than at the setting's. "Auto" clears it.
+ * in its place, start at the same height or the nearest below it, or
+ * at the same rank, rather than at the setting's. "Auto" clears it.
  */
 
 import type { QualityGovernor } from './quality-governor';
 import type { QualityPinChoice } from './quality-ladder';
 import type { QualityTrack } from './quality-track';
 
-let pinnedHeight: number | null = null;
+let pinned: QualityPinChoice | null = null;
 
 export const qualityPin = {
-	get: (): number | null => pinnedHeight,
+	/** The pinned height; null when nothing, or a rank, is pinned. */
+	get: (): number | null => (typeof pinned === 'number' ? pinned : null),
 	/** What the next stream is matched against. */
-	choice: (): QualityPinChoice | null => pinnedHeight,
-	/** Keeps `height`; a level of no known height pins nothing. */
-	set(height: number | null): void {
-		if (height !== null && height > 0) pinnedHeight = height;
+	choice: (): QualityPinChoice | null => pinned,
+	/** Keeps a height, or a rank for a level that lists none. */
+	set(choice: QualityPinChoice): void {
+		pinned = choice;
 	},
 	clear(): void {
-		pinnedHeight = null;
+		pinned = null;
 	}
 };
 
@@ -37,6 +39,6 @@ export function rememberPick(
 		return 'auto';
 	}
 	if (!governor.isPinned || governor.level !== choice) return null;
-	qualityPin.set(track.pinHeight(choice));
+	qualityPin.set(track.pinFor(choice));
 	return `pinned ${track.describe(choice)}`;
 }

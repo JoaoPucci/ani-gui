@@ -8,6 +8,7 @@
 import {
 	ladderOrder,
 	neighbourLevel,
+	pinnedLevel,
 	targetLevel,
 	type LadderLevel,
 	type QualityPinChoice,
@@ -22,7 +23,8 @@ export type QualityReason =
 	| 'level-failed'
 	| 'healthy'
 	| 'pick'
-	| 'auto';
+	| 'auto'
+	| 'followed';
 
 /** A change of level for the engine to make. `load` takes effect from
  *  the next segment, keeping what is buffered; `next` replaces the
@@ -47,9 +49,8 @@ export abstract class QualityHold {
 	constructor(levels: readonly LadderLevel[], target: QualityTarget, pin: QualityPinChoice | null) {
 		this.ladder = ladderOrder(levels);
 		this.ceiling = targetLevel(target, levels);
-		this.pinned = typeof pin === 'number';
-		this.current =
-			typeof pin === 'number' ? targetLevel({ kind: 'height', height: pin }, levels) : this.ceiling;
+		this.pinned = pin !== null;
+		this.current = pin === null ? this.ceiling : pinnedLevel(pin, levels);
 		this.engaged = levels.length > 1;
 	}
 

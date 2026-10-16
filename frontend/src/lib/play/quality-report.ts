@@ -28,7 +28,9 @@ export type QualityReport =
 	| { kind: 'stall' }
 	| { kind: 'level-failed'; level: number }
 	/** `level` null: the error named none, so the level held failed. */
-	| { kind: 'fragments-failed'; level: number | null };
+	| { kind: 'fragments-failed'; level: number | null }
+	/** hls.js switched to `level` over a side rendition's failure. */
+	| { kind: 'followed'; level: number };
 
 /** Whether a fragment is of the main rendition — the video the levels
  *  are levels of. */
@@ -51,15 +53,25 @@ export function readError(
 	const details: string = data.details;
 	if (details === BUFFER_STALLED && !data.fatal) return seeking ? null : { kind: 'stall' };
 	const action = data.errorAction;
-	const switched = action?.action === SWITCHED_AWAY && action.nextAutoLevel !== undefined;
-	if (!switched && !data.fatal) return null;
+	const next = action?.action === SWITCHED_AWAY ? action.nextAutoLevel : undefined;
+	if (next === undefined && !data.fatal) return null;
 	if (LEVEL_FAILURES.has(details)) {
 		const level = data.level ?? data.context?.level;
 		return typeof level === 'number' ? { kind: 'level-failed', level } : null;
 	}
-	const level = isMain(data.frag) ? data.frag?.level : undefined;
+	// An audio or subtitle segment: the engine's switch is over a side
+	// rendition, and the video level follows it rather than failing.
+	if (data.frag && !isMain(data.frag)) {
+		return next === undefined ? null : { kind: 'followed', level: next };
+	}
+	// The level the failure names — the video segment's, or for an
+	// append or codec error with no segment the one hls.js itself
+	// switches away from (`data.level`). Naming none, it is the level
+	// the engine was loading, which hls.js falls back to as well
+	// (`hls.loadLevel`) and which is the level the governor holds.
+	const level = data.frag?.level ?? data.level;
 	if (typeof level === 'number') return { kind: 'fragments-failed', level };
-	return switched ? { kind: 'fragments-failed', level: null } : null;
+	return next === undefined ? null : { kind: 'fragments-failed', level: null };
 }
 
 /** The governor's answer to a report. */
@@ -71,6 +83,7 @@ export function reactTo(
 	if (!report) return null;
 	if (report.kind === 'stall') return governor.stall(now);
 	if (report.kind === 'level-failed') return governor.levelFailed(report.level);
+	if (report.kind === 'followed') return governor.follow(report.level);
 	return governor.fragmentsFailed(report.level ?? governor.level, now);
 }
 

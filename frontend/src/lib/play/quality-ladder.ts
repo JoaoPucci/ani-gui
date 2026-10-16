@@ -28,6 +28,15 @@ export interface LadderLevel {
  *  none — its rank by bandwidth from the top. */
 export type QualityPinChoice = number | { rank: number };
 
+/** The level a pin choice matches on a stream: the level of that
+ *  height or the nearest below it, or the level of that rank from the
+ *  top — the lowest past the end. */
+export function pinnedLevel(pin: QualityPinChoice, levels: readonly LadderLevel[]): number {
+	if (typeof pin === 'number') return targetLevel({ kind: 'height', height: pin }, levels);
+	const ladder = ladderOrder(levels);
+	return ladder[Math.max(0, ladder.length - 1 - pin.rank)];
+}
+
 /** The setting's target. Anything that is neither `worst` nor a
  *  height reads as `best`, the backend's own default. */
 export function parseQualitySetting(setting: string | null | undefined): QualityTarget {
