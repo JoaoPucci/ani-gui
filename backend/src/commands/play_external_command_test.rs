@@ -211,7 +211,7 @@ async fn an_external_play_records_the_episode_the_user_played() {
     let ep_no = hsts.split_whitespace().next().expect("a history row");
     assert_eq!(ep_no, "4", "the row carries the episode played: {hsts}");
     assert!(
-        hsts.trim_end().ends_with("\tep:own"),
+        hsts.contains("\tThe Show\tep:own"),
         "and marks it as the app's own number: {hsts}"
     );
 }

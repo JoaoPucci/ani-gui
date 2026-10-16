@@ -1412,7 +1412,7 @@ pub(crate) mod tests {
             "the replay writes the episode played, not the cached slot; got {body:?}"
         );
         assert!(
-            body.trim_end().ends_with("\tep:own"),
+            body.contains("\tep:own"),
             "marked as the app's own number; got {body:?}"
         );
     }

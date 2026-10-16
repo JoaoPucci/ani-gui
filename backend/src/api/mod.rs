@@ -1685,9 +1685,10 @@ mod tests {
         let line = body
             .strip_suffix('\n')
             .expect("one line, newline-terminated");
-        let (line, marker) = line.rsplit_once('\t').expect("the marker");
-        assert_eq!(marker, "ep:own", "the row marks the app's own number");
         let (columns, moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let columns = columns
+            .strip_suffix("\tep:own")
+            .expect("the row marks the app's own number after the title");
         assert_eq!(
             columns, "150\tvDTSJHSpYnrkZnAvG\tNato: Shippuuden (500 episodes)",
             "history line should match cache metadata"
@@ -1747,8 +1748,8 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
         let line = body.strip_suffix('\n').expect("one line");
-        let (rest, marker) = line.rsplit_once('\t').expect("the marker");
-        let (columns, _moment) = rest.rsplit_once('\t').expect("the watch's moment");
+        let (rest, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let (columns, marker) = rest.rsplit_once('\t').expect("the marker");
         assert_eq!(
             columns, "4\tthe-show-77\tThe Show",
             "the row records the episode marked, not the cached slot"
@@ -1803,8 +1804,8 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
         let body = std::fs::read_to_string(&history_path).expect("history file written");
         let line = body.strip_suffix('\n').expect("one line");
-        let (rest, marker) = line.rsplit_once('\t').expect("the marker");
-        let (columns, _moment) = rest.rsplit_once('\t').expect("the watch's moment");
+        let (rest, _moment) = line.rsplit_once('\t').expect("the watch's moment");
+        let (columns, marker) = rest.rsplit_once('\t').expect("the marker");
         assert_eq!(
             columns, "4\tthe-show-77\tThe Show",
             "the episode played, marked, not the stamp's slot"
