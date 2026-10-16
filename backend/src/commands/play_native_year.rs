@@ -11,6 +11,9 @@ use crate::scraper::provider::{BrowseHit, Provider};
 /// only a dated entry's hits carry any.
 pub(crate) type PageNames = HashMap<String, Vec<String>>;
 
+/// The genre an entry page files an adult video under.
+pub(crate) const HENTAI: &str = "Hentai";
+
 /// The considered head of `hits`, narrowed by Kitsu's year when it
 /// is known: each candidate's detail page names its premiere year,
 /// and a known year more than one off Kitsu's excludes the
@@ -20,9 +23,10 @@ pub(crate) type PageNames = HashMap<String, Vec<String>>;
 /// vouching for the candidate.
 /// Unknown years (a 404ing detail page, a page without a season
 /// link) never exclude, so a provider markup change degrades to
-/// year-blind picking rather than emptying pools. A pool whose every
-/// candidate carries a known mismatched year contains the show
-/// nowhere — that is a rejection ([`crate::error::AniError::NoResults`]),
+/// year-blind picking rather than emptying pools. A hit its page
+/// files under [`HENTAI`] is excluded the same way: no entry the app
+/// shows is one. A pool whose every candidate carries a known
+/// mismatched year, or that genre, contains the show nowhere — that is a rejection ([`crate::error::AniError::NoResults`]),
 /// so the walk can try the next alias. Each survivor carries whether
 /// its own year positively matched, and every page read leaves the
 /// names it gives the show in [`PageNames`] — a survivor's and an
@@ -45,8 +49,15 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
         // detail page is the provider blocking this client — probing
         // the rest of the pool would turn one block into a burst.
         let page = client.detail_page(&h.slug).await?;
+        // A hentai is never the entry: Kitsu serves the app no adult
+        // entry, so a hit its own page files under the genre is out,
+        // as a hit from another year is.
+        let hentai = page.genres.iter().any(|g| g.eq_ignore_ascii_case(HENTAI));
         if !page.names.is_empty() {
             pages.insert(h.slug.clone(), page.names);
+        }
+        if hentai {
+            continue;
         }
         match page.year {
             // Exact match is positive identity; one year off is the

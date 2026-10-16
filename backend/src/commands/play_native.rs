@@ -96,7 +96,8 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   title, its card's romanized name, its entry page's names) the
 ///   entry names or shares a name with; any other is scored out, and a
 ///   pool rejected after one that fit is not a clean miss (see
-///   `play_native_dated_name`).
+///   `play_native_dated_name`). A hit whose entry page files it under
+///   Hentai is excluded with the year mismatches.
 /// - With `expected = Some(1)`: a single video's count fits every
 ///   other single video, so a candidate is picked only when it is
 ///   `search_title`, the entry names it, or its own year matched;
