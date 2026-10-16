@@ -3110,6 +3110,7 @@ mod tests {
                 id: 7000 + u64::from(n),
                 number: n,
                 number2: None,
+                former_tag: None,
             })
             .collect();
         state.providers.set_stub(Arc::new(

@@ -103,6 +103,7 @@ pub(crate) fn listing_of(id: u64, count: u32) -> Vec<EpisodeRef> {
             id: id * 1000 + u64::from(n),
             number: n,
             number2: None,
+            former_tag: None,
         })
         .collect()
 }
@@ -207,6 +208,7 @@ impl TableProvider {
                 id: *id,
                 number: *number,
                 number2: None,
+                former_tag: None,
             })
             .collect::<Vec<_>>();
         streaming.iter().fold(

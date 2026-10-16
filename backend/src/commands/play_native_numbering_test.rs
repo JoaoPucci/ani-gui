@@ -9,6 +9,7 @@ fn refs(numbers: &[u32]) -> Vec<EpisodeRef> {
             id: i as u64,
             number: *n,
             number2: None,
+            former_tag: None,
         })
         .collect()
 }
@@ -33,7 +34,7 @@ proptest::proptest! {
             .map(|(i, slot)| EpisodeRef {
                 id: i as u64,
                 number: u32::try_from(i).expect("small index") + 1,
-                number2: slot.clone(),
+                number2: slot.clone(), former_tag: None,
             })
             .collect();
         proptest::prop_assert_eq!(
@@ -55,11 +56,13 @@ fn offsets_derive_from_display_identities() {
             id: 10,
             number: 1,
             number2: Some("41".into()),
+            former_tag: None,
         },
         EpisodeRef {
             id: 11,
             number: 2,
             number2: Some("42".into()),
+            former_tag: None,
         },
     ];
     assert_eq!(numbering_offset(&eps), 40);
@@ -76,16 +79,19 @@ fn fractional_extras_are_advertised_in_per_entry_numbering() {
             id: 10,
             number: 1,
             number2: Some("41".into()),
+            former_tag: None,
         },
         EpisodeRef {
             id: 12,
             number: 2,
             number2: Some("41.5".into()),
+            former_tag: None,
         },
         EpisodeRef {
             id: 11,
             number: 3,
             number2: Some("42".into()),
+            former_tag: None,
         },
     ];
     assert_eq!(extra_episode_tags(&eps), vec!["1.5".to_string()]);
@@ -148,11 +154,13 @@ fn whole_number_tags_classify_by_value() {
             id: 10,
             number: 1,
             number2: Some("41.0".into()),
+            former_tag: None,
         },
         EpisodeRef {
             id: 11,
             number: 2,
             number2: Some("42.0".into()),
+            former_tag: None,
         },
     ];
     assert_eq!(numbering_offset(&eps), 40);
@@ -171,16 +179,19 @@ fn the_cap_counts_display_identities_not_integer_slots() {
             id: 1,
             number: 1,
             number2: None,
+            former_tag: None,
         },
         EpisodeRef {
             id: 2,
             number: 2,
             number2: None,
+            former_tag: None,
         },
         EpisodeRef {
             id: 3,
             number: 3,
             number2: Some("2.5".into()),
+            former_tag: None,
         },
     ];
     assert_eq!(kitsu_episode_cap(&eps), Some(2));
@@ -202,7 +213,7 @@ proptest::proptest! {
             eps.push(EpisodeRef {
                 id: 900 + i as u64,
                 number: max + 1 + u32::try_from(i).expect("small index"),
-                number2: Some(t.clone()),
+                number2: Some(t.clone()), former_tag: None,
             });
         }
         proptest::prop_assert_eq!(kitsu_episode_cap(&eps), base);
@@ -219,21 +230,25 @@ fn extras_are_the_non_integer_display_tags_in_listing_order() {
             id: 1,
             number: 1,
             number2: None,
+            former_tag: None,
         },
         EpisodeRef {
             id: 2,
             number: 2,
             number2: Some("42".into()),
+            former_tag: None,
         },
         EpisodeRef {
             id: 3,
             number: 3,
             number2: Some("2.5".into()),
+            former_tag: None,
         },
         EpisodeRef {
             id: 4,
             number: 4,
             number2: Some("1061.5".into()),
+            former_tag: None,
         },
     ];
     assert_eq!(
@@ -269,12 +284,12 @@ proptest::proptest! {
         let mut eps: Vec<EpisodeRef> = vec![EpisodeRef {
             id: 999,
             number: 1,
-            number2: None,
+            number2: None, former_tag: None,
         }];
         eps.extend(slots.iter().enumerate().map(|(i, slot)| EpisodeRef {
             id: i as u64,
             number: u32::try_from(i).expect("small index") + 2,
-            number2: slot.as_ref().map(|(_, s)| s.clone()),
+            number2: slot.as_ref().map(|(_, s)| s.clone()), former_tag: None,
         }));
         let expected: Vec<String> = slots
             .iter()
@@ -360,6 +375,7 @@ fn a_recap_before_a_continuations_first_episode_is_its_point_five() {
             id: u64::from(*slot),
             number: *slot,
             number2: Some((*tag).to_string()),
+            former_tag: None,
         })
         .collect();
     assert_eq!(numbering_offset(&eps), 12);

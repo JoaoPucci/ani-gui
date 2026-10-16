@@ -303,6 +303,7 @@ fn episode_row(index: usize, item: &str) -> Option<EpisodeRef> {
         id,
         number,
         number2: (tag != number.to_string()).then(|| tag.to_string()),
+        former_tag: None,
     })
 }
 

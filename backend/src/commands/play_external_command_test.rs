@@ -34,6 +34,7 @@ fn stub_provider_with_a_recap(mock: &MockServer, query: &str) -> TableProvider {
         id,
         number,
         number2: tag.map(str::to_string),
+        former_tag: None,
     };
     TableProvider::new()
         .hits(
