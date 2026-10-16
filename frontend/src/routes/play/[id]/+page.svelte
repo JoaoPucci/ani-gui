@@ -113,7 +113,8 @@
 	import { clientXToFraction, displayedScrubFraction } from '$lib/play/scrubber';
 	import { shouldThrottleSeek } from '$lib/play/seek-throttle';
 	import { isStaleDragCallback } from '$lib/play/drag-generation';
-	import { describeError, describePlayFailure } from '$lib/play/error-copy';
+	import { describeError } from '$lib/play/error-copy';
+	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
 	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
 	import {
@@ -2031,7 +2032,10 @@
 			// so a fixed-position overlay is the only visible surface.
 			// playerError stays for *playback*-time errors (in-place
 			// `<p class="player-empty">` substitute for the video).
-			playFailure = { episode: targetEp, message: describePlayFailure(e, { otherAudio: null }) };
+			playFailure = {
+				episode: targetEp,
+				message: await describePlayFailureFromCache(e, { kitsuId: id, mode, episode: targetEp })
+			};
 		} finally {
 			switchBusy = false;
 		}
@@ -2265,7 +2269,10 @@
 			// reuse describePlayFailure copy.
 			externalError = {
 				episode: episodeNum,
-				message: describeExternalLaunchFailure(e, null)
+				message: describeExternalLaunchFailure(
+					e,
+					await otherAudioForFailure(e, { kitsuId: id, mode: config.mode, episode: episodeNum })
+				)
 			};
 		} finally {
 			externalBusy = false;
@@ -2308,7 +2315,10 @@
 			// itself was the problem.
 			syncplayError = {
 				episode: episodeNum,
-				message: describeSyncplayLaunchFailure(e, null),
+				message: describeSyncplayLaunchFailure(
+					e,
+					await otherAudioForFailure(e, { kitsuId: id, mode: config.mode, episode: episodeNum })
+				),
 				isSpawnFailure: isSyncplaySpawnFailure(e)
 			};
 		} finally {

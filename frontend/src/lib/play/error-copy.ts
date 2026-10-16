@@ -67,12 +67,20 @@ export interface PlayFailureContext {
 	noResults?: () => string;
 }
 
+/** Whether a play failure is the episode verdict: the show was
+ *  found and this episode has no stream in the chosen audio. The one
+ *  failure whose copy depends on the other audio. */
+export function isEpisodeUnavailable(e: unknown): boolean {
+	return classifierText(e).includes('episode_unavailable');
+}
+
 /** User-facing copy for a play-call failure. The message branches
  *  match (in order): rate_limited / upstream 429 → busy source (with
  *  the upstream's own retry hint when it sent one); upstream 5xx →
  *  source down; upstream 404/410 → catalogue miss; other upstream →
  *  the source answered with an error; episode_unavailable → the show
- *  is there and this episode is not; stream_server_failed → the show
+ *  is there and this episode is not, suggesting the other audio only
+ *  when `ctx.otherAudio` is true; stream_server_failed → the show
  *  is there and its video server did not serve the episode (the
  *  key's own sentence, shared with every other surface); no_results →
  *  catalogue miss; scraper → upstream unhappy; timeout → slow
@@ -86,12 +94,17 @@ export function describePlayFailure(e: unknown, ctx: PlayFailureContext): string
 	const answered = describeSourceAnswer(e);
 	if (answered !== null) return answered;
 	const raw = classifierText(e);
-	if (raw.includes('episode_unavailable')) {
+	if (isEpisodeUnavailable(e)) {
 		// The show is in the catalogue; this episode has no stream in
 		// the requested audio. The same copy on every surface — the
 		// detail page's catalogue-miss phrasing is for a title the
-		// catalogue lacks, which this is not.
-		return m.play_play_failure_episode_unavailable();
+		// catalogue lacks, which this is not. The other audio is
+		// suggested only when the cache vouches for it: sent to an
+		// audio known to have nothing, the user finds Play hidden
+		// there with no reason given, and an unknown is no better.
+		return ctx.otherAudio === true
+			? m.play_play_failure_episode_unavailable_try_other_audio()
+			: m.play_play_failure_episode_unavailable();
 	}
 	if (raw.includes('stream_server_failed')) {
 		// The show is in the catalogue and its stream server did not

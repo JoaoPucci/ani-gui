@@ -48,10 +48,8 @@
 	import { ctaState } from '$lib/detail/cta-state';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
-	import {
-		describeError,
-		describePlayFailure as sharedDescribePlayFailure
-	} from '$lib/play/error-copy';
+	import { describeError } from '$lib/play/error-copy';
+	import { describePlayFailureFromCache } from '$lib/play/other-audio';
 	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
@@ -1094,12 +1092,14 @@
 
 	/** Play-call failure copy: the shared mapper with this surface's
 	 *  one deliberate difference — the definitive catalogue-miss
-	 *  phrasing (this page also gates the Play CTA proactively). */
-	function describePlayFailure(e: unknown): string {
-		return sharedDescribePlayFailure(e, {
-			otherAudio: null,
-			noResults: m.detail_error_play_no_results
-		});
+	 *  phrasing (this page also gates the Play CTA proactively) — and
+	 *  the other audio's answer from the availability cache. */
+	function describePlayFailure(e: unknown, mode: string, episode: number): Promise<string> {
+		return describePlayFailureFromCache(
+			e,
+			{ kitsuId: id, mode, episode },
+			{ noResults: m.detail_error_play_no_results }
+		);
 	}
 
 	// Hero framing preferences — see $lib/hero/prefs. A choice made in
@@ -1353,7 +1353,7 @@
 			// needs to follow them. They dismiss explicitly (button /
 			// Escape / backdrop click) so it doesn't auto-disappear
 			// while they're reading.
-			playFailure = { episode: ep, message: describePlayFailure(e) };
+			playFailure = { episode: ep, message: await describePlayFailure(e, mode, ep) };
 		}
 	}
 

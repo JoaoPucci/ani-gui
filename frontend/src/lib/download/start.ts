@@ -9,6 +9,7 @@
 import { downloadStream, type DownloadArgs } from '$lib/api';
 import { describeDownloadFailure } from './failure-copy';
 import { describePlayFailure, describeRateLimit } from '$lib/play/error-copy';
+import { describePlayFailureFromCache } from '$lib/play/other-audio';
 import { downloadStore } from './store.svelte';
 import { downloadFailureStore } from './failure-store.svelte';
 
@@ -27,6 +28,12 @@ function payloadKind(e: unknown): string | null {
 	if (typeof e !== 'object' || e === null || !('kind' in e)) return null;
 	const kind = (e as { kind: unknown }).kind;
 	return typeof kind === 'string' ? kind : null;
+}
+
+/** The episode a download names, or `null` for a range ("5-12"),
+ *  which does not say which of its episodes failed. */
+function singleEpisode(episode: string): number | null {
+	return /^\d+$/.test(episode.trim()) ? Number(episode.trim()) : null;
 }
 
 export function startDownload(args: DownloadArgs & { destDir: string }): string {
@@ -68,7 +75,17 @@ export function startDownload(args: DownloadArgs & { destDir: string }): string 
 			// they do on the play page. (`scraper` does not: in a download
 			// it is the download tool failing, not the provider.)
 			const kind = payloadKind(e);
-			if (kind === 'episode_unavailable' || kind === 'no_results' || kind === 'upstream') {
+			if (kind === 'episode_unavailable') {
+				// Whether the row suggests the other audio is the
+				// availability cache's call, as on the play page.
+				void describePlayFailureFromCache(e, {
+					kitsuId: args.kitsu_id,
+					mode: args.mode,
+					episode: singleEpisode(args.episode)
+				}).then((message) => downloadStore.markError(id, message));
+				return;
+			}
+			if (kind === 'no_results' || kind === 'upstream') {
 				downloadStore.markError(id, describePlayFailure(e, { otherAudio: null }));
 				return;
 			}
