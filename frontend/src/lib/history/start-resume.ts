@@ -38,10 +38,9 @@ export interface StartResumeDeps {
 	onBusy: (kitsuId: string | null) => void;
 	onProgress: (label: string | null) => void;
 	/** `args` is what the failed play asked for — the show, episode
-	 *  and audio a failure surface needs to word its message. It may
-	 *  return a promise (typed `void` so plain callbacks still fit);
-	 *  busy holds until that settles. */
-	onFailure: (title: string, error: unknown, args: ResumePlayArgs) => void;
+	 *  and audio a failure surface needs to word its message. Busy
+	 *  holds until a returned promise settles. */
+	onFailure: (title: string, error: unknown, args: ResumePlayArgs) => void | Promise<void>;
 	/** Awaits the page's shared settings load (resolveResumeSettings). */
 	getSettings: () => Promise<{ mode: 'sub' | 'dub'; quality: string }>;
 	getPlayableCount: (entryId: string) => number | null;

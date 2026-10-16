@@ -40,7 +40,9 @@ function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 			log.push(`busy:${id}`);
 		},
 		onProgress: () => {},
-		onFailure: (title, e, args) => failures.push([title, e, args]),
+		onFailure: (title, e, args) => {
+			failures.push([title, e, args]);
+		},
 		getSettings: vi.fn().mockImplementation(async () => {
 			log.push('settings');
 			return { mode: 'sub' as const, quality: 'best' };
