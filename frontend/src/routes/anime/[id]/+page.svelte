@@ -46,6 +46,8 @@
 		type KitsuEpisode
 	} from '$lib/api';
 	import { ctaState } from '$lib/detail/cta-state';
+	import { unavailableMessage, watchOtherAudio } from '$lib/detail/unavailable-copy';
+	import type { OtherAudio } from '$lib/play/error-copy';
 	import { subtypeLabel } from '$lib/search/subtype-label';
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { describeError } from '$lib/play/error-copy';
@@ -445,6 +447,19 @@
 	// when the first probe hit a rate limit; the lazy click path
 	// surfaces the real error instead.
 	const cta = $derived(ctaState(availabilityResolved, availability));
+
+	// What the cache says about the other audio while the notice that
+	// replaces Play is up: it names the other audio when that has the
+	// title ($lib/detail/unavailable-copy). Re-asked when the title or
+	// the audio changes; a late answer to an old question is dropped.
+	let noticeOtherAudio = $state<OtherAudio>(null);
+	$effect(() => {
+		const q = { kitsuId: id, mode: availabilityMode };
+		const unavailable = cta === 'unavailable';
+		noticeOtherAudio = null;
+		if (!unavailable) return;
+		return watchOtherAudio(q, (answer) => (noticeOtherAudio = answer));
+	});
 
 	// How far the grid renders tiles: with airing data present the
 	// grid extends past the provider's playable count to the announced
@@ -1526,7 +1541,7 @@
 					{:else if cta === 'unavailable'}
 						<p class="unavailable" role="status">
 							<span aria-hidden="true">⏵</span>
-							{m.detail_unavailable_message()}
+							{unavailableMessage(availabilityMode, noticeOtherAudio)}
 						</p>
 					{/if}
 

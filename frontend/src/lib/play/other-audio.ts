@@ -56,6 +56,26 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 	});
 }
 
+/** The other audio's cached row for `kitsuId`: whether it is
+ *  available and its count, if any. `null` when there is no id, no
+ *  row, or the lookup failed or stalled. */
+async function readOtherAudioRow(
+	kitsuId: string | null | undefined,
+	mode: string,
+	batch: Batch
+): Promise<{ available: boolean; count: number | null } | null> {
+	if (!kitsuId) return null;
+	try {
+		const res = await withTimeout(batch([kitsuId], otherAudioMode(mode)), LOOKUP_TIMEOUT_MS);
+		const available = res?.cached?.[kitsuId];
+		if (typeof available !== 'boolean') return null;
+		const count = res?.playable_episode_counts?.[kitsuId];
+		return { available, count: typeof count === 'number' ? count : null };
+	} catch {
+		return null;
+	}
+}
+
 /** The cache's answer for the other audio of `q`'s show and
  *  episode. `true` only on evidence for the episode: a positive row
  *  whose count covers it. `false` when the row says the other audio
@@ -69,19 +89,27 @@ export async function lookupOtherAudio(
 	q: OtherAudioQuery,
 	batch: Batch = availabilityBatch
 ): Promise<OtherAudio> {
-	const id = q.kitsuId;
-	if (!id) return null;
-	try {
-		const res = await withTimeout(batch([id], otherAudioMode(q.mode)), LOOKUP_TIMEOUT_MS);
-		const cached = res?.cached?.[id];
-		if (cached === false) return false;
-		if (cached !== true) return null;
-		const count = res?.playable_episode_counts?.[id];
-		if (typeof count !== 'number' || q.episode === null) return null;
-		return q.episode <= count;
-	} catch {
-		return null;
-	}
+	const row = await readOtherAudioRow(q.kitsuId, q.mode, batch);
+	if (row === null) return null;
+	if (!row.available) return false;
+	if (row.count === null || q.episode === null) return null;
+	return q.episode <= row.count;
+}
+
+/** The cache's answer for whether the other audio carries the show
+ *  at all — for a claim about the title, not an episode. `true` on a
+ *  positive row, with or without a count (a positive row proves the
+ *  show), unless its count is zero; `false` when the row says the
+ *  other audio has nothing; `null` otherwise, a failed or stalled
+ *  lookup included. */
+export async function lookupOtherAudioShow(
+	q: { kitsuId: string | null | undefined; mode: string },
+	batch: Batch = availabilityBatch
+): Promise<OtherAudio> {
+	const row = await readOtherAudioRow(q.kitsuId, q.mode, batch);
+	if (row === null) return null;
+	if (!row.available) return false;
+	return row.count === 0 ? null : true;
 }
 
 /** `lookupOtherAudio`, asked only for the episode verdict — the one
