@@ -22,7 +22,7 @@
  * choice back.
  */
 
-import type { LadderLevel, QualityTarget } from './quality-ladder';
+import { ladderOrder, targetLevel, type LadderLevel, type QualityTarget } from './quality-ladder';
 
 /** A stall this soon after a seek is the seek's own wait for media,
  *  not the level failing to keep up. */
@@ -61,74 +61,159 @@ export interface QualityMove {
 }
 
 export class QualityGovernor {
+	/** Level indices, lowest first. */
+	private readonly ladder: number[];
+	/** The setting's level: auto never climbs above it. */
+	private readonly ceiling: number;
+	private current: number;
+	private pinned: boolean;
+	private engaged: boolean;
+	private readonly unavailable = new Set<number>();
+	private stepDowns = 0;
+	private lastStepDownAt = -Infinity;
+	private lastChangeAt = -Infinity;
+	private lastSeekAt = -Infinity;
+
 	constructor(levels: readonly LadderLevel[], target: QualityTarget, pinHeight: number | null) {
-		void levels;
-		void target;
-		void pinHeight;
+		this.ladder = ladderOrder(levels);
+		this.ceiling = targetLevel(target, levels);
+		this.pinned = pinHeight !== null;
+		this.current =
+			pinHeight === null
+				? this.ceiling
+				: targetLevel({ kind: 'height', height: pinHeight }, levels);
+		this.engaged = levels.length > 1;
 	}
 
 	/** The level the governor holds the engine at. */
 	get level(): number {
-		return -1;
+		return this.current;
 	}
 
 	/** Whether the viewer pinned the level. */
 	get isPinned(): boolean {
-		return false;
+		return this.pinned;
 	}
 
 	/** Whether the governor holds the engine's level at all: not for a
 	 *  stream of one level, and not once every level below a failing
 	 *  one has failed too, when the engine's own fallback takes over. */
 	get isEngaged(): boolean {
-		return false;
+		return this.engaged;
 	}
 
 	/** Levels the engine could not load, left for the stream. */
 	get unavailableLevels(): number[] {
-		return [];
+		return [...this.unavailable];
 	}
 
 	/** The level to start at. */
 	start(): QualityMove | null {
-		return null;
+		if (!this.engaged) return null;
+		return { level: this.current, from: null, reason: 'start', via: 'load' };
 	}
 
 	/** The viewer seeked. */
 	seeking(now: number): void {
-		void now;
+		this.lastSeekAt = now;
 	}
 
 	/** Playback stalled with nothing buffered. */
 	stall(now: number): QualityMove | null {
-		void now;
-		return null;
+		if (!this.engaged || this.pinned) return null;
+		if (now - this.lastSeekAt < SEEK_GRACE_MS) return null;
+		if (now - this.lastStepDownAt < STEP_DOWN_COOLDOWN_MS) return null;
+		const lower = this.neighbour(this.current, -1);
+		return lower === null ? null : this.stepDown(lower, now, 'stall');
 	}
 
-	/** The engine gave up on `level`'s segments after its retries. */
+	/** The engine gave up on `level`'s segments after its retries. Not
+	 *  a stall to weigh: the level just failed, so the step is taken at
+	 *  once, pinned or not — and with nothing below it, the engine's own
+	 *  fallback is left to try what it can. */
 	fragmentsFailed(level: number, now: number): QualityMove | null {
-		void level;
-		void now;
-		return null;
+		if (!this.engaged || level !== this.current) return null;
+		const lower = this.neighbour(this.current, -1);
+		if (lower === null) {
+			this.engaged = false;
+			return null;
+		}
+		return this.stepDown(lower, now, 'fragments-failed');
 	}
 
-	/** The engine could not load `level`'s playlist after its retries. */
+	/** The engine could not load `level`'s playlist after its retries:
+	 *  the level is left for the stream, and if it is the one held the
+	 *  governor moves to the nearest level below — above, when it was
+	 *  the lowest. */
 	levelFailed(level: number): QualityMove | null {
-		void level;
-		return null;
+		this.unavailable.add(level);
+		if (!this.engaged || level !== this.current) return null;
+		const next = this.neighbour(level, -1) ?? this.neighbour(level, 1);
+		if (next === null) {
+			this.engaged = false;
+			return null;
+		}
+		return this.move(next, 'level-failed', 'load');
 	}
 
 	/** A segment of the main rendition was buffered. */
 	healthy(now: number, bufferAheadS: number): QualityMove | null {
-		void now;
-		void bufferAheadS;
-		return null;
+		if (!this.engaged || this.pinned || this.stepDowns === 0) return null;
+		if (bufferAheadS < HEALTHY_BUFFER_S) return null;
+		const window = HEALTHY_WINDOWS_MS[Math.min(this.stepDowns, HEALTHY_WINDOWS_MS.length) - 1];
+		if (now - this.lastChangeAt < window) return null;
+		const higher = this.neighbour(this.current, 1);
+		if (higher === null || this.rank(higher) > this.rank(this.ceiling)) return null;
+		this.lastChangeAt = now;
+		return this.move(higher, 'healthy', 'load');
 	}
 
 	/** The viewer chose a level, or "Auto". */
 	pick(choice: 'auto' | number, now: number): QualityMove | null {
-		void choice;
-		void now;
+		if (this.ladder.length < 2) return null;
+		if (choice === 'auto') return this.auto(now);
+		if (!this.ladder.includes(choice) || this.unavailable.has(choice)) return null;
+		this.pinned = true;
+		this.engaged = true;
+		return choice === this.current ? null : this.move(choice, 'pick', 'next');
+	}
+
+	private auto(now: number): QualityMove | null {
+		this.pinned = false;
+		this.stepDowns = 0;
+		this.lastChangeAt = now;
+		const top = this.allowedAtOrBelow(this.ceiling) ?? this.neighbour(this.ceiling, 1);
+		if (top === null) return null;
+		this.engaged = true;
+		return top === this.current ? null : this.move(top, 'auto', 'next');
+	}
+
+	private stepDown(level: number, now: number, reason: QualityReason): QualityMove {
+		this.stepDowns += 1;
+		this.lastStepDownAt = now;
+		this.lastChangeAt = now;
+		return this.move(level, reason, 'load');
+	}
+
+	private move(level: number, reason: QualityReason, via: QualityMove['via']): QualityMove {
+		const from = this.current;
+		this.current = level;
+		return { level, from, reason, via };
+	}
+
+	private rank(level: number): number {
+		return this.ladder.indexOf(level);
+	}
+
+	/** The nearest loadable level above (`1`) or below (`-1`) `level`. */
+	private neighbour(level: number, direction: 1 | -1): number | null {
+		for (let r = this.rank(level) + direction; r >= 0 && r < this.ladder.length; r += direction) {
+			if (!this.unavailable.has(this.ladder[r])) return this.ladder[r];
+		}
 		return null;
+	}
+
+	private allowedAtOrBelow(level: number): number | null {
+		return this.unavailable.has(level) ? this.neighbour(level, -1) : level;
 	}
 }

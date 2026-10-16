@@ -26,20 +26,26 @@ export interface LadderLevel {
 /** The setting's target. Anything that is neither `worst` nor a
  *  height reads as `best`, the backend's own default. */
 export function parseQualitySetting(setting: string | null | undefined): QualityTarget {
-	void setting;
+	if (setting === 'worst') return { kind: 'worst' };
+	if (setting && /^[1-9]\d*$/.test(setting)) return { kind: 'height', height: Number(setting) };
 	return { kind: 'best' };
 }
 
 /** The levels' indices, lowest first: by height, then by bitrate. */
 export function ladderOrder(levels: readonly LadderLevel[]): number[] {
-	return levels.map((_, i) => i);
+	return levels
+		.map((_, i) => i)
+		.sort((a, b) => levels[a].height - levels[b].height || levels[a].bitrate - levels[b].bitrate);
 }
 
 /** The level a target chooses: the highest for `best`, the lowest for
  *  `worst`, and for a height the highest level at or below it — the
  *  lowest when every level is above. -1 when there are no levels. */
 export function targetLevel(target: QualityTarget, levels: readonly LadderLevel[]): number {
-	void target;
-	void levels;
-	return -1;
+	const ladder = ladderOrder(levels);
+	if (ladder.length === 0) return -1;
+	if (target.kind === 'best') return ladder[ladder.length - 1];
+	if (target.kind === 'worst') return ladder[0];
+	const fits = ladder.filter((i) => levels[i].height <= target.height);
+	return fits.length > 0 ? fits[fits.length - 1] : ladder[0];
 }

@@ -9,7 +9,9 @@
  * what the viewer sees.
  */
 
-import type { LadderLevel } from './quality-ladder';
+import { m } from '$lib/paraglide/messages';
+import { getLocale } from '$lib/paraglide/runtime';
+import { ladderOrder, type LadderLevel } from './quality-ladder';
 
 /** What the menu shows, as the player's quality control publishes it. */
 export interface QualityView {
@@ -39,14 +41,34 @@ export interface QualityMenu {
  *  level has the same height, and its bitrate alone when the playlist
  *  names no height. */
 export function levelLabel(levels: readonly LadderLevel[], index: number): string {
-	void levels;
-	void index;
-	return '';
+	const { height, bitrate } = levels[index];
+	const mbps = new Intl.NumberFormat(getLocale(), {
+		minimumFractionDigits: 1,
+		maximumFractionDigits: 1
+	}).format(bitrate / 1_000_000);
+	if (height <= 0) return m.play_quality_bitrate({ mbps });
+	const twin = levels.some((other, i) => i !== index && other.height === height);
+	return twin
+		? m.play_quality_height_bitrate({ height: String(height), mbps })
+		: m.play_quality_height({ height: String(height) });
 }
 
 /** The menu, or null when there is nothing to choose: no stream, or a
  *  stream of one level. */
 export function qualityMenu(view: QualityView | null): QualityMenu | null {
-	void view;
-	return null;
+	if (!view || view.levels.length < 2) return null;
+	const { levels, pinned, playing, unavailable } = view;
+	const offered = ladderOrder(levels)
+		.reverse()
+		.filter((i) => !unavailable.includes(i));
+	const items: QualityMenuItem[] = [
+		{ key: 'auto', label: m.play_quality_auto(), checked: pinned === null },
+		...offered.map((i) => ({ key: i, label: levelLabel(levels, i), checked: pinned === i }))
+	];
+	if (pinned !== null) return { items, current: levelLabel(levels, pinned) };
+	const plays = playing !== null && playing < levels.length;
+	const current = plays
+		? m.play_quality_auto_playing({ quality: levelLabel(levels, playing) })
+		: m.play_quality_auto();
+	return { items, current };
 }
