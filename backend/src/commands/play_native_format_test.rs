@@ -8,6 +8,7 @@ fn hits_from(kinds: &[Option<&'static str>]) -> Vec<BrowseHit> {
             slug: format!("show-{i}"),
             title: format!("Show {i}"),
             kind: k.map(str::to_string),
+            jname: None,
         })
         .collect()
 }

@@ -109,6 +109,7 @@ proptest::proptest! {
                 slug: format!("{words}-{id}"),
                 title: title.clone(),
                 kind: Some(kind.clone()),
+                jname: None,
             })
             .collect();
         proptest::prop_assert_eq!(parse_search(&page).expect("search page"), expected);
@@ -146,6 +147,7 @@ proptest::proptest! {
                     slug: format!("{words}-{id}"),
                     title: title.clone(),
                     kind: Some(kind.clone()),
+                    jname: None,
                 })
             })
             .collect();
@@ -359,6 +361,7 @@ proptest::proptest! {
                 slug: format!("{words}-{id}"),
                 title: title.clone(),
                 kind: Some(kind.clone()),
+                jname: None,
             })
             .collect();
         let spread = cards
@@ -454,6 +457,7 @@ proptest::proptest! {
                         slug: format!("{words}-{id}"),
                         title: title.clone(),
                         kind: Some(kind.clone()),
+                        jname: None,
                     })
                     .collect();
                 prop_assert_eq!(hits, expected);

@@ -1,5 +1,6 @@
 //! Reading hianime's markup by attribute, shared by the search page's
-//! reader ([`super::parse`]) and the AJAX listings' ([`super::ajax`]).
+//! reader ([`super::parse`]), the entry page's ([`super::detail`]) and
+//! the AJAX listings' ([`super::ajax`]).
 
 /// The value of the first `name="…"` attribute in `s`, `name` given
 /// with its `="` — read by the whole attribute name: a match is taken
@@ -20,4 +21,15 @@ pub(super) fn attr<'a>(s: &'a str, name: &str) -> Option<&'a str> {
         from = at + 1;
     }
     None
+}
+
+/// The entities the site's titles carry, `&amp;` last so it cannot
+/// re-form another entity.
+pub(super) fn decode_entities(s: &str) -> String {
+    s.replace("&#039;", "'")
+        .replace("&apos;", "'")
+        .replace("&quot;", "\"")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }

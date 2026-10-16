@@ -3119,6 +3119,7 @@ mod tests {
                     slug: "other-7".into(),
                     title: "Other".into(),
                     kind: Some("TV".into()),
+                    jname: None,
                 }])
                 .listing(7, rows),
         ));

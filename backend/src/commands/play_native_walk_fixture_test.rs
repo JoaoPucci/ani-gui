@@ -1,14 +1,16 @@
 //! The pick walk over real hianime pools: each fixture under
 //! `tests/fixtures/hianime/picker/` is one Kitsu entry — the
 //! arguments the app sends for it — with every search, episode list
-//! and entry-page year the walk read for it from the live site,
-//! reduced to what the client's parsers return. The walk runs over
+//! and entry page the walk read for it from the live site, reduced to
+//! what the client's parsers return: a search hit's slug, title,
+//! badge and romanized name, an entry page's year, the other names
+//! it gives the show and its genres. The walk runs over
 //! them exactly as it runs over the site, so a pick that changes
 //! here is a pick that changes for that show.
 
 use super::*;
 use crate::error::Result;
-use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId, StreamSource};
+use crate::scraper::provider::{BrowseHit, EntryPage, EpisodeRef, ProviderId, StreamSource};
 use std::collections::BTreeMap;
 
 #[path = "play_native_walk_oracle_test.rs"]
@@ -34,6 +36,19 @@ struct Fixture {
     searches: BTreeMap<String, Vec<(String, String, Option<String>)>>,
     episodes: BTreeMap<String, Vec<(u64, u32, Option<String>)>>,
     years: BTreeMap<String, Option<u32>>,
+    /// The romanized name each search card carried beside its title,
+    /// by slug; a card that carried none is not listed.
+    #[serde(default)]
+    jnames: BTreeMap<String, String>,
+    /// The other names each entry page read gave the show — its
+    /// Japanese title and its synonyms — by slug; a page that gave
+    /// none is not listed.
+    #[serde(default)]
+    page_names: BTreeMap<String, Vec<String>>,
+    /// The genres each entry page read listed, by slug; a page that
+    /// listed none is not listed.
+    #[serde(default)]
+    genres: BTreeMap<String, Vec<String>>,
 }
 
 fn fixture_dir() -> std::path::PathBuf {
@@ -91,6 +106,7 @@ impl Provider for Recorded {
                 slug: slug.clone(),
                 title: title.clone(),
                 kind: kind.clone(),
+                jname: self.doc.jnames.get(slug).cloned(),
             })
             .collect())
     }
@@ -127,6 +143,13 @@ impl Provider for Recorded {
             .years
             .get(slug)
             .unwrap_or_else(|| panic!("fixture {} holds no entry page for {slug}", self.id)))
+    }
+    async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
+        Ok(EntryPage {
+            year: self.detail_year(slug).await?,
+            names: self.doc.page_names.get(slug).cloned().unwrap_or_default(),
+            genres: self.doc.genres.get(slug).cloned().unwrap_or_default(),
+        })
     }
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
         None

@@ -938,6 +938,7 @@ impl crate::scraper::provider::Provider for RefererProvider {
             slug: "the-show-77".into(),
             title: "The Show".into(),
             kind: None,
+            jname: None,
         }])
     }
     async fn episodes(
@@ -1031,6 +1032,7 @@ impl crate::scraper::provider::Provider for ListingProvider {
             slug: "the-show-77".into(),
             title: "The Show".into(),
             kind: None,
+            jname: None,
         }])
     }
     async fn episodes(
@@ -1224,6 +1226,7 @@ fn one_episode_show() -> crate::commands::play_native::PickedShow {
             slug: "the-show-77".into(),
             title: "The Show".into(),
             kind: None,
+            jname: None,
         },
         episodes: vec![crate::scraper::provider::EpisodeRef {
             id: 1,

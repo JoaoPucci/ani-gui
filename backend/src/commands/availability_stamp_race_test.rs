@@ -722,6 +722,7 @@ fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
                 slug: "probe-show-5".into(),
                 title: "Probe Show".into(),
                 kind: None,
+                jname: None,
             }])
             .listing(5, rows)
             .mode(last, "sub", true)

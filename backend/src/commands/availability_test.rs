@@ -18,6 +18,7 @@ fn hits(entries: &[(&str, &str)]) -> Vec<BrowseHit> {
             slug: (*slug).to_string(),
             title: (*title).to_string(),
             kind: None,
+            jname: None,
         })
         .collect()
 }
@@ -49,6 +50,7 @@ fn one_show(
         slug: slug.to_string(),
         title: title.to_string(),
         kind: kind.map(str::to_string),
+        jname: None,
     };
     rows.iter().fold(
         TableProvider::new()
@@ -1033,6 +1035,7 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
                 slug: "fallback-show-7".into(),
                 title: "Fallback Show".into(),
                 kind: Some("TV".into()),
+                jname: None,
             }])
             .listing(7, numbered(&[7001, 7002])),
     );

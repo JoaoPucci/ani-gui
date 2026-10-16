@@ -43,11 +43,13 @@ fn search_cards_inside_the_result_list_become_hits() {
                 slug: "cowboy-bebop-1281".into(),
                 title: "Cowboy Bebop".into(),
                 kind: Some("TV".into()),
+                jname: None,
             },
             BrowseHit {
                 slug: "cowboy-bebop-the-movie-1282".into(),
                 title: "Cowboy Bebop: The Movie & Tengoku no Tobira '01".into(),
                 kind: Some("Movie".into()),
+                jname: None,
             },
         ],
         "the widget and sidebar cards share the markup and are not results"
@@ -786,6 +788,7 @@ async fn a_fractional_episode_resolves_through_the_client_by_its_tag() {
             slug: "show-1282".into(),
             title: "Show".into(),
             kind: None,
+            jname: None,
         },
         episodes,
     };

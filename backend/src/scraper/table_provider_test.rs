@@ -217,6 +217,7 @@ impl TableProvider {
                         slug: slug.to_string(),
                         title: title.to_string(),
                         kind: None,
+                        jname: None,
                     }],
                 )
                 .listing(show, rows),

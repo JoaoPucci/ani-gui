@@ -1,8 +1,15 @@
 //! The picker's year-identity filter — split from `play_native` so
 //! each file stays inside the complexity ratchet's per-file bar.
 
+use std::collections::HashMap;
+
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, Provider};
+
+/// The other names each considered hit's entry page gave the show,
+/// by slug — read from the pages the year filter already fetched, so
+/// only a dated entry's hits carry any.
+pub(crate) type PageNames = HashMap<String, Vec<String>>;
 
 /// The considered head of `hits`, narrowed by Kitsu's year when it
 /// is known: each candidate's detail page names its premiere year,
@@ -17,11 +24,14 @@ use crate::scraper::provider::{BrowseHit, Provider};
 /// candidate carries a known mismatched year contains the show
 /// nowhere — that is a rejection ([`crate::error::AniError::NoResults`]),
 /// so the walk can try the next alias. Each survivor carries whether
-/// its own year positively matched.
+/// its own year positively matched, and every page read leaves the
+/// names it gives the show in [`PageNames`] — a survivor's and an
+/// excluded hit's alike.
 pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
     client: &P,
     hits: &'a [BrowseHit],
     year: Option<u32>,
+    pages: &mut PageNames,
 ) -> Result<Vec<(&'a BrowseHit, bool)>> {
     // The caller bounds the head (`probe_head`); every hit given is
     // one the pick means to consider.
@@ -34,7 +44,11 @@ pub(crate) async fn year_filtered<'a, P: Provider + ?Sized>(
         // `?`: a refusal, rate limit, or transport failure on a
         // detail page is the provider blocking this client — probing
         // the rest of the pool would turn one block into a burst.
-        match client.detail_year(&h.slug).await? {
+        let page = client.detail_page(&h.slug).await?;
+        if !page.names.is_empty() {
+            pages.insert(h.slug.clone(), page.names);
+        }
+        match page.year {
             // Exact match is positive identity; one year off is the
             // December-premiere allowance — enough to stay in the
             // pool and compete on count, never enough to vouch for

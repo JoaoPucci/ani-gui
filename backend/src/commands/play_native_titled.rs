@@ -6,6 +6,7 @@ use super::*;
 use crate::commands::play_native_count_alone::unvouched_counted;
 use crate::commands::play_native_single_video::unvouched_single_videos;
 use crate::commands::play_native_title_grammar::normalized;
+use crate::commands::play_native_year::PageNames;
 
 /// [`pick_candidate`] told every title the requested entry goes by —
 /// the canonical title and its fallbacks, not only the one searched —
@@ -41,7 +42,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // The bounded head, by the entry's titles (see
     // play_native_title_verdict::probe_head).
     let (hits, refused_dropped) = probe_head(hits, expected.is_some(), entry)?;
-    let filtered = year_filtered(client, &hits, year).await;
+    let mut pages = PageNames::new();
+    let filtered = year_filtered(client, &hits, year, &mut pages).await;
     let Some(expected) = expected else {
         let picked = match filtered {
             Ok(head) => pick_without_count(client, &head, &needle, entry).await,

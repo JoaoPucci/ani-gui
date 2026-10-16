@@ -8,6 +8,7 @@ fn hit(slug: &str, title: &str) -> BrowseHit {
         slug: slug.into(),
         title: title.into(),
         kind: None,
+        jname: None,
     }
 }
 
@@ -16,6 +17,7 @@ fn typed_hit(slug: &str, title: &str, kind: &str) -> BrowseHit {
         slug: slug.into(),
         title: title.into(),
         kind: Some(kind.into()),
+        jname: None,
     }
 }
 
@@ -66,6 +68,7 @@ proptest::proptest! {
                     (false, true) => format!("Other {i} Part 2"),
                 },
                 kind: None,
+                jname: None,
             })
             .collect();
         let probed: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = hits
