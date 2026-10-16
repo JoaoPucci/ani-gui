@@ -187,6 +187,11 @@
 	 * Derived from the route param rather than the loaded detail: the
 	 * detail is briefly null on any load, and treating that as a
 	 * departure would invalidate a probe nobody navigated away from.
+	 *
+	 * A derived re-evaluates when read, so an A→B→A trip advances it
+	 * only because effects on this page read `id` while it was B; the
+	 * awaited flows that compare a captured visit after their await
+	 * rely on that.
 	 */
 	const visit = $derived.by(() => {
 		void id;
@@ -1387,6 +1392,10 @@
 			// start under a failure that has not landed yet.
 			const message = await describePlayFailure(e, showId, mode, ep);
 			actionBusy = false;
+			actionProgress = null;
+			// Wording waits on a cache lookup; the viewer may have moved
+			// on meanwhile.
+			if (visit !== askedVisit) return;
 			playFailure = { episode: ep, message };
 		}
 	}

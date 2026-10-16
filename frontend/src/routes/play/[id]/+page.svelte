@@ -904,6 +904,11 @@
 	 * Derived from the route param rather than the loaded detail: the
 	 * detail is briefly null on any load, and treating that as a
 	 * departure would invalidate a probe nobody navigated away from.
+	 *
+	 * A derived re-evaluates when read, so an A→B→A trip advances it
+	 * only because effects on this page read `id` while it was B; the
+	 * awaited flows that compare a captured visit after their await
+	 * rely on that.
 	 */
 	const visit = $derived.by(() => {
 		void id;
@@ -2039,10 +2044,15 @@
 			// so a fixed-position overlay is the only visible surface.
 			// playerError stays for *playback*-time errors (in-place
 			// `<p class="player-empty">` substitute for the video).
-			playFailure = {
-				episode: targetEp,
-				message: await describePlayFailureFromCache(e, { kitsuId: showId, mode, episode: targetEp })
-			};
+			const message = await describePlayFailureFromCache(e, {
+				kitsuId: showId,
+				mode,
+				episode: targetEp
+			});
+			// Wording waits on a cache lookup; the viewer may have moved
+			// on meanwhile.
+			if (visit !== askedVisit) return;
+			playFailure = { episode: targetEp, message };
 		} finally {
 			switchBusy = false;
 		}
@@ -2245,6 +2255,9 @@
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
 		const launch = { kitsuId: id, mode: config.mode, episode: ep };
+		// The visit it is for: a failure that lands after the viewer moved
+		// on (another show, or away and back) is not shown to them.
+		const askedVisit = visit;
 		// Pause the embedded video so the user isn't watching two
 		// instances simultaneously. The notice/launch flow continues
 		// regardless; if the external player fails to start the user
@@ -2282,10 +2295,9 @@
 			// shaped by describeExternalLaunchFailure so the spawn
 			// case names the binary and the resolve-step branches
 			// reuse describePlayFailure copy.
-			externalError = {
-				episode: ep,
-				message: describeExternalLaunchFailure(e, await otherAudioForFailure(e, launch))
-			};
+			const otherAudio = await otherAudioForFailure(e, launch);
+			if (visit !== askedVisit) return;
+			externalError = { episode: ep, message: describeExternalLaunchFailure(e, otherAudio) };
 		} finally {
 			externalBusy = false;
 		}
@@ -2304,6 +2316,9 @@
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
 		const launch = { kitsuId: id, mode: config.mode, episode: ep };
+		// The visit it is for: a failure that lands after the viewer moved
+		// on (another show, or away and back) is not shown to them.
+		const askedVisit = visit;
 		// Same pause-the-embedded-video logic as the external flow:
 		// Syncplay opens its own player window so two instances would
 		// otherwise stack audio.
@@ -2328,9 +2343,11 @@
 			// `isSpawnFailure` drives whether the modal renders the
 			// "Get Syncplay" install link — only when the binary
 			// itself was the problem.
+			const otherAudio = await otherAudioForFailure(e, launch);
+			if (visit !== askedVisit) return;
 			syncplayError = {
 				episode: ep,
-				message: describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch)),
+				message: describeSyncplayLaunchFailure(e, otherAudio),
 				isSpawnFailure: isSyncplaySpawnFailure(e)
 			};
 		} finally {
