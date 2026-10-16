@@ -50,14 +50,15 @@ fn hits(rows: &[(usize, u32, bool)]) -> Vec<BrowseHit> {
 
 proptest! {
     /// The count stands alone exactly for a count above one with no
-    /// year: never with a year, whatever the count, and never for a
-    /// count of one.
+    /// year: never with a year, whatever the count, never for a count
+    /// of one, and never for a count of zero — a count Kitsu has not
+    /// filled in, which the pick went on scoring as it always had.
     #[test]
     fn the_count_stands_alone_without_a_year_and_above_one(
-        expected in 1u32..2000,
+        expected in 0u32..2000,
         year in proptest::option::of(1900u32..2100),
     ) {
-        prop_assert_eq!(count_stands_alone(expected, year), expected != 1 && year.is_none());
+        prop_assert_eq!(count_stands_alone(expected, year), expected > 1 && year.is_none());
     }
 
     /// A dated entry, whatever its count, is left exactly as it was,
@@ -111,4 +112,11 @@ proptest! {
         }
         prop_assert_eq!(refused, want_refused);
     }
+}
+
+/// A count of zero is no count to stand alone: an undated entry Kitsu
+/// counts at zero is scored as before.
+#[test]
+fn a_count_of_zero_does_not_stand_alone() {
+    assert!(!count_stands_alone(0, None));
 }
