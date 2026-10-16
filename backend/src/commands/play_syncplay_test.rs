@@ -25,8 +25,8 @@ fn stage_recorder(dir: &std::path::Path) -> (std::path::PathBuf, std::path::Path
     std::fs::write(
         &binary,
         format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{}\"\n",
-            argv_file.display()
+            "#!/bin/sh\n{}\n",
+            crate::stub_file::publish(&argv_file, "printf '%s\\n' \"$@\"")
         ),
     )
     .expect("write recorder");

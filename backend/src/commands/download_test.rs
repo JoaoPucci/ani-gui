@@ -735,7 +735,10 @@ async fn cancelling_a_download_kills_the_tools_descendants() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
+        &format!(
+            "sleep 30 &\n{}\nwait",
+            crate::stub_file::publish(&pidfile, "echo $!")
+        ),
     );
     let path_env = bin.path().display().to_string();
     let dest_dir = dest.path().to_path_buf();
