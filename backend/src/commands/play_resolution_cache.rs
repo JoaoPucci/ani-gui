@@ -156,10 +156,10 @@ use crate::proxy::MediaKind;
 // under the entry's key, and a HEAD-passing hit would keep serving it;
 // bumping re-resolves.
 // v20: a dated entry with a count takes only a hit a name vouches for,
-// and a hit its own page files under Hentai is never a pick. A v19 row
-// for such an entry can hold a same-year show's stream under the
-// entry's key — HenSemi (TV) playing Medaka Box Abnormal — and a
-// HEAD-passing hit would keep serving it; bumping re-resolves.
+// and a dated entry's hit its own page files under Hentai is never a
+// pick. A v19 row for such an entry can hold a same-year show's stream
+// under the entry's key — HenSemi (TV) playing Medaka Box Abnormal —
+// and a HEAD-passing hit would keep serving it; bumping re-resolves.
 const SCHEMA: &str = "v20";
 
 /// What the native resolve produced, frozen for replay. The session

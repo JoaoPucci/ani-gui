@@ -9,7 +9,8 @@
 //! upstream request. Within the probed set the proven layers from the
 //! provider picker apply — episode-count distance with the
 //! `max(3, 10%)` threshold, then an exact-name tie-break — beside the
-//! year filter, which reads each considered hit's entry page.
+//! year filter, which for an entry with a year reads each considered
+//! hit's entry page.
 
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};

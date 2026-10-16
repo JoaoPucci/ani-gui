@@ -13,14 +13,22 @@
 //! least [`PACING`] apart, and the run stops on the second refusal
 //! (403 or 429) in a row; without it, such a request fails the run.
 //!
+//! Run from `backend/`, where the test binary runs too, so a relative
+//! path resolves there; the paths below are absolute for that reason,
+//! `$ROOT` the repository's root and `$PAGES` any directory outside it.
+//!
 //! ```sh
-//! # A new fixture: the entry's arguments as the app sends them
-//! PICKER_RECORD_ENTRY=entry.json PICKER_RECORD_PAGES=pages \
-//!   PICKER_RECORD_BIN=electron/.linux-deps-cache/extract-curl-impersonate \
-//!   PICKER_RECORD_OUT=tests/fixtures/hianime/picker/<id>.json \
+//! cd "$ROOT/backend"
+//! # A new fixture: the entry's arguments as the app sends them, as a
+//! # recording's `kitsu` block
+//! PICKER_RECORD_ENTRY="$PAGES/entry.json" PICKER_RECORD_PAGES="$PAGES" \
+//!   PICKER_RECORD_BIN="$ROOT/electron/.linux-deps-cache/extract-curl-impersonate" \
+//!   PICKER_RECORD_OUT="$ROOT/tests/fixtures/hianime/picker/<id>.json" \
 //!   cargo test --lib record_a_picker_fixture -- --ignored
-//! # The names, genres and romanized names of every recorded fixture
-//! PICKER_RECORD_PAGES=pages PICKER_RECORD_BIN=… \
+//! # The cards' romanized names and the pages' names and genres of
+//! # every recorded fixture
+//! PICKER_RECORD_PAGES="$PAGES" \
+//!   PICKER_RECORD_BIN="$ROOT/electron/.linux-deps-cache/extract-curl-impersonate" \
 //!   cargo test --lib record_the_page_names -- --ignored
 //! ```
 

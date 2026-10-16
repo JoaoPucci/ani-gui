@@ -19,10 +19,10 @@
 //! hit its year only tolerated and the probe head's evidence came to
 //! reach as far as its five, v7 when an entry with a count and no year
 //! came to take only a hit named for it, v8 when a dated entry with a
-//! count did too and a hentai listing stopped being a pick — retires
-//! the mappings before it: their
-//! marks then name rows nothing reads, until they expire, and the
-//! next play of a show stores a fresh mapping and mark.
+//! count did too and a dated entry's hentai listing stopped being a
+//! pick — retires the mappings before it: their marks then name rows
+//! nothing reads, until they expire, and the next play of a show stores
+//! a fresh mapping and mark.
 //!
 //! It runs once per cache file, gated by SQLite's `user_version`, which
 //! clearing the cache's rows leaves standing: a rerun would read the
