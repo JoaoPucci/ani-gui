@@ -16,7 +16,6 @@ function view(over: Partial<QualityView> = {}): QualityView {
 describe('levelLabel', () => {
 	it('names a level by its height', () => {
 		expect(levelLabel(LEVELS, 2)).toBe(m.play_quality_height({ height: '1080' }));
-		expect(levelLabel(LEVELS, 2)).toBe('1080p');
 	});
 
 	it('adds the bitrate when another level has the same height', () => {
@@ -27,7 +26,9 @@ describe('levelLabel', () => {
 		expect(levelLabel(twins, 1)).toBe(
 			m.play_quality_height_bitrate({ height: '1080', mbps: '6.3' })
 		);
-		expect(levelLabel(twins, 0)).toBe('1080p · 4.0 Mbps');
+		expect(levelLabel(twins, 0)).toBe(
+			m.play_quality_height_bitrate({ height: '1080', mbps: '4.0' })
+		);
 	});
 
 	it('names a level with no height by its bitrate', () => {
@@ -47,16 +48,16 @@ describe('qualityMenu', () => {
 		const menu = qualityMenu(view());
 		expect(menu?.items.map((i) => [i.key, i.label, i.checked])).toEqual([
 			['auto', m.play_quality_auto(), true],
-			[2, '1080p', false],
-			[1, '720p', false],
-			[0, '480p', false]
+			[2, m.play_quality_height({ height: '1080' }), false],
+			[1, m.play_quality_height({ height: '720' }), false],
+			[0, m.play_quality_height({ height: '480' }), false]
 		]);
 	});
 
 	it('says what Auto is playing once a segment plays', () => {
 		expect(qualityMenu(view())?.current).toBe(m.play_quality_auto());
 		expect(qualityMenu(view({ playing: 2 }))?.current).toBe(
-			m.play_quality_auto_playing({ quality: '1080p' })
+			m.play_quality_auto_playing({ quality: m.play_quality_height({ height: '1080' }) })
 		);
 		expect(qualityMenu(view({ playing: 9 }))?.current).toBe(m.play_quality_auto());
 	});
@@ -64,7 +65,7 @@ describe('qualityMenu', () => {
 	it('checks a pinned level and names it as the row value', () => {
 		const menu = qualityMenu(view({ pinned: 1, playing: 2 }));
 		expect(menu?.items.filter((i) => i.checked).map((i) => i.key)).toEqual([1]);
-		expect(menu?.current).toBe('720p');
+		expect(menu?.current).toBe(m.play_quality_height({ height: '720' }));
 	});
 
 	it('leaves out the levels the engine could not load', () => {

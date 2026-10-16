@@ -178,6 +178,8 @@ async function mountHls(): Promise<FakeHlsT> {
 	return hlsInstances()[hlsInstances().length - 1];
 }
 
+const label = (height: number) => m.play_quality_height({ height: String(height) });
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 function menuButton(): HTMLButtonElement {
@@ -207,18 +209,20 @@ describe('play route — the quality the setting names, and the menu that change
 
 		menuButton().click();
 		await until(() => qualityRow() !== undefined, 'the quality row');
-		expect(qualityRow()?.textContent).toContain(m.play_quality_auto_playing({ quality: '1080p' }));
+		expect(qualityRow()?.textContent).toContain(
+			m.play_quality_auto_playing({ quality: label(1080) })
+		);
 
 		qualityRow()?.click();
-		await until(() => menuItems().some((el) => el.textContent?.includes('720p')), 'the levels');
+		await until(() => menuItems().some((el) => el.textContent?.includes(label(720))), 'the levels');
 		const radios = menuItems().filter((el) => el.getAttribute('role') === 'menuitemradio');
 		// Names only: the checked row's mark is decoration, and which row
 		// is checked is asserted through aria-checked below.
 		expect(radios.map((el) => el.textContent?.replace('✓', '').trim())).toEqual([
 			m.play_quality_auto(),
-			'1080p',
-			'720p',
-			'360p'
+			label(1080),
+			label(720),
+			label(360)
 		]);
 		expect(radios.map((el) => el.getAttribute('aria-checked'))).toEqual([
 			'true',
@@ -233,7 +237,7 @@ describe('play route — the quality the setting names, and the menu that change
 
 		menuButton().click();
 		await until(() => qualityRow() !== undefined, 'the quality row again');
-		expect(qualityRow()?.textContent).toContain('720p');
+		expect(qualityRow()?.textContent).toContain(label(720));
 		expect(qualityRow()?.textContent).not.toContain(m.play_quality_auto());
 	});
 
