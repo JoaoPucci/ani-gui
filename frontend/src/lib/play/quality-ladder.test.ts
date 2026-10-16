@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ladderOrder, parseQualitySetting, targetLevel, type LadderLevel } from './quality-ladder';
+import {
+	ladderOrder,
+	parseQualitySetting,
+	pinnedLevel,
+	targetLevel,
+	type LadderLevel
+} from './quality-ladder';
 
 // The master the defect was measured on: three levels, listed by
 // hls.js lowest first.
@@ -76,5 +82,19 @@ describe('targetLevel', () => {
 		expect(targetLevel({ kind: 'best' }, [])).toBe(-1);
 		expect(targetLevel({ kind: 'worst' }, [])).toBe(-1);
 		expect(targetLevel({ kind: 'height', height: 720 }, [])).toBe(-1);
+	});
+});
+
+describe('pinnedLevel', () => {
+	it('matches a height like a height target, and a rank from the top of the ladder', () => {
+		expect(pinnedLevel(720, MASTER)).toBe(1);
+		expect(pinnedLevel({ rank: 0 }, MASTER)).toBe(2);
+		expect(pinnedLevel({ rank: 2 }, MASTER)).toBe(0);
+		expect(pinnedLevel({ rank: 5 }, MASTER)).toBe(0);
+	});
+
+	it('is -1 when there are no levels, like every target', () => {
+		expect(pinnedLevel({ rank: 0 }, [])).toBe(-1);
+		expect(pinnedLevel(720, [])).toBe(-1);
 	});
 });
