@@ -32,8 +32,8 @@ use crate::account::credentials::{
 };
 use crate::account::pkce::{Pkce, PkceMethod};
 use crate::account::provider::{
-    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
-    UserProfile,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, TrackedMedia,
+    UserListProvider, UserProfile,
 };
 use crate::error::{AniError, Result};
 
@@ -218,6 +218,14 @@ impl UserListProvider for MalProvider {
         );
         let bytes = self.get_auth_bytes(&url, tokens).await?;
         parse_my_list_status_entry(&bytes)
+    }
+
+    async fn tracked_media(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<TrackedMedia> {
+        let entry = self.current_entry(tokens, id).await?;
+        Ok(TrackedMedia {
+            entry,
+            episodes: None,
+        })
     }
 }
 

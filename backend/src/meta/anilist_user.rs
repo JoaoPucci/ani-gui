@@ -32,8 +32,8 @@ use crate::account::credentials::{
 };
 use crate::account::pkce::Pkce;
 use crate::account::provider::{
-    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, UserListProvider,
-    UserProfile, UserStats,
+    CurrentEntry, EntryUpdate, ListEntry, ProviderKind, ProviderMediaId, Tokens, TrackedMedia,
+    UserListProvider, UserProfile, UserStats,
 };
 use crate::account::status::ListStatus;
 use crate::error::{AniError, Result};
@@ -393,6 +393,14 @@ impl UserListProvider for AniListProvider {
         });
         let bytes = self.post_graphql(tokens, &body).await?;
         parse_media_entry_response(&bytes)
+    }
+
+    async fn tracked_media(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<TrackedMedia> {
+        let entry = self.current_entry(tokens, id).await?;
+        Ok(TrackedMedia {
+            entry,
+            episodes: None,
+        })
     }
 }
 
