@@ -1672,6 +1672,9 @@
 				setting: () => config?.quality,
 				onView: (view) => {
 					qualityView = view;
+					// A stream retiring takes its levels with it; the next
+					// one's menu opens on the main list.
+					if (!view) pcQualityExpanded = false;
 				}
 			});
 			qualityControl = quality;

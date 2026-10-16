@@ -132,7 +132,7 @@ export function armQuality(input: {
 		if (!g) return;
 		const news = track.noteEncoded(readInitSegment(data));
 		if (!news) return;
-		if (news.listed !== news.height) {
+		if (news.listed > 0 && news.listed !== news.height) {
 			log(`level ${news.level} encodes ${news.height}p; its playlist says ${news.listed}p`);
 		}
 		publish(g);

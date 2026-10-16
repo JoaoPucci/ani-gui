@@ -4,7 +4,7 @@
  * failed; an init segment as the height a level is encoded at.
  */
 
-import type { ErrorData, ErrorDetails, PlaylistLevelType } from 'hls.js';
+import type { ErrorData, ErrorDetails, NetworkErrorAction, PlaylistLevelType } from 'hls.js';
 import type { QualityGovernor, QualityMove } from './quality-governor';
 
 // hls.js's own names, spelled out so the engine double of a test that
@@ -18,20 +18,17 @@ const levelFailures: `${ErrorDetails}`[] = [
 	'levelParsingError',
 	'levelEmptyError'
 ];
-const fragmentFailures: `${ErrorDetails}`[] = [
-	'fragLoadError',
-	'fragLoadTimeOut',
-	'fragParsingError'
-];
 /** A level's playlist failing. */
 const LEVEL_FAILURES: ReadonlySet<string> = new Set(levelFailures);
-/** A level's segments failing. */
-const FRAGMENT_FAILURES: ReadonlySet<string> = new Set(fragmentFailures);
+/** The error controller's verdict that it gave up on a level and sent
+ *  the engine to another; a retry still pending is `RetryRequest`. */
+const SWITCHED_AWAY: NetworkErrorAction.SendAlternateToPenaltyBox = 2;
 
 export type QualityReport =
 	| { kind: 'stall' }
 	| { kind: 'level-failed'; level: number }
-	| { kind: 'fragments-failed'; level: number };
+	/** `level` null: the error named none, so the level held failed. */
+	| { kind: 'fragments-failed'; level: number | null };
 
 /** Whether a fragment is of the main rendition — the video the levels
  *  are levels of. */
@@ -40,25 +37,29 @@ export function isMain(frag: { type?: unknown } | undefined): boolean {
 }
 
 /** An engine error as the governor weighs it, or null when it is none
- *  of its business. A stall counts unless the element is seeking; a
- *  failure counts once the engine has given up on it — switched away
- *  from the level, or stopped. */
+ *  of its business. A stall counts unless the element is seeking. A
+ *  failure counts once the engine has given up on it: switched to
+ *  another level, or — for a playlist or a video segment — stopped.
+ *  A retry still pending is no verdict, though the level controller
+ *  flags a playlist's as `levelRetry`. Any switch away is a failure of
+ *  the level it names, or of the level held when it names none, so the
+ *  governor steps down from it rather than putting the engine back. */
 export function readError(
-	data: Pick<ErrorData, 'details' | 'fatal' | 'levelRetry' | 'level' | 'context' | 'frag'>,
+	data: Pick<ErrorData, 'details' | 'fatal' | 'errorAction' | 'level' | 'context' | 'frag'>,
 	seeking: boolean
 ): QualityReport | null {
 	const details: string = data.details;
 	if (details === BUFFER_STALLED && !data.fatal) return seeking ? null : { kind: 'stall' };
-	const verdict = data.fatal || data.levelRetry === true;
-	if (LEVEL_FAILURES.has(details) && verdict) {
+	const action = data.errorAction;
+	const switched = action?.action === SWITCHED_AWAY && action.nextAutoLevel !== undefined;
+	if (!switched && !data.fatal) return null;
+	if (LEVEL_FAILURES.has(details)) {
 		const level = data.level ?? data.context?.level;
 		return typeof level === 'number' ? { kind: 'level-failed', level } : null;
 	}
-	if (FRAGMENT_FAILURES.has(details) && verdict && isMain(data.frag)) {
-		const level = data.frag?.level;
-		return typeof level === 'number' ? { kind: 'fragments-failed', level } : null;
-	}
-	return null;
+	const level = isMain(data.frag) ? data.frag?.level : undefined;
+	if (typeof level === 'number') return { kind: 'fragments-failed', level };
+	return switched ? { kind: 'fragments-failed', level: null } : null;
 }
 
 /** The governor's answer to a report. */
@@ -70,7 +71,7 @@ export function reactTo(
 	if (!report) return null;
 	if (report.kind === 'stall') return governor.stall(now);
 	if (report.kind === 'level-failed') return governor.levelFailed(report.level);
-	return governor.fragmentsFailed(report.level, now);
+	return governor.fragmentsFailed(report.level ?? governor.level, now);
 }
 
 /** What a parsed init segment carries, as far as it is read: hls.js

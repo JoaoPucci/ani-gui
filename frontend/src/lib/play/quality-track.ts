@@ -43,9 +43,11 @@ export class QualityTrack {
 		return `${move.reason}: ${from}${this.describe(move.level)}`;
 	}
 
-	/** The height to keep for a pin of `level`, or null when it has none. */
+	/** The height to keep for a pin of `level`: the one its playlist
+	 *  lists, which the next stream's levels are matched by; null when
+	 *  it lists none. */
 	pinHeight(level: number): number | null {
-		const { height } = this.levels()[level];
+		const { height } = this.playlist[level];
 		return height > 0 ? height : null;
 	}
 
