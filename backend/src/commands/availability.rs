@@ -625,6 +625,9 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v21: v20 as below, keyed past the v20 the recap-before-a-
+    //      continuation-cour change takes for its own re-probe: a row
+    //      written under that v20 names no versions.
     // v20: a season the provider lists twice — an "(Uncensored)" copy
     //      and a plain one — is one pick with two versions, and the
     //      answer names them. A v19 row cannot say whether its show
@@ -745,7 +748,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v20:{kitsu_id}:{m}")
+    format!("availability:v21:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache
