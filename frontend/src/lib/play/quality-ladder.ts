@@ -49,3 +49,17 @@ export function targetLevel(target: QualityTarget, levels: readonly LadderLevel[
 	const fits = ladder.filter((i) => levels[i].height <= target.height);
 	return fits.length > 0 ? fits[fits.length - 1] : ladder[0];
 }
+
+/** The nearest level above (`1`) or below (`-1`) `level` on a ladder
+ *  that is not among `unavailable`; null when there is none. */
+export function neighbourLevel(
+	ladder: readonly number[],
+	unavailable: ReadonlySet<number>,
+	level: number,
+	direction: 1 | -1
+): number | null {
+	for (let r = ladder.indexOf(level) + direction; r >= 0 && r < ladder.length; r += direction) {
+		if (!unavailable.has(ladder[r])) return ladder[r];
+	}
+	return null;
+}
