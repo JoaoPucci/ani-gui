@@ -843,3 +843,50 @@ fn every_other_row_reads_back_as_written() {
         "a bare id"
     );
 }
+
+// ── sequels announced, and sequels Kitsu has not titled ───────────
+
+/// Kitsu adds a sequel long before it airs. One only announced has no
+/// episodes the listing could hold, so it neither refuses the reading
+/// nor needs a page of titles.
+#[test]
+fn a_sequel_only_announced_keeps_the_reading() {
+    for status in ["upcoming", "tba", "unreleased"] {
+        let (rows, mut tail) = noragami();
+        tail.related.push(Related {
+            role: "sequel".into(),
+            anime: true,
+            subtype: Some("TV".into()),
+            status: Some(status.into()),
+            episode_count: None,
+            episode_titles: Some(Vec::new()),
+        });
+        assert!(appended_extras(&rows, 12, &tail).is_some(), "{status}");
+    }
+}
+
+/// A TV sequel that has aired, but whose first page Kitsu has not
+/// titled, leaves nothing to tell its episodes from extras: Haikyuu!!
+/// To the Top's second cour, two rows past the count, with the entry's
+/// own last episodes titled as hianime titles them and its two-episode
+/// OVA there to match the window.
+#[test]
+fn a_sequel_kitsu_has_not_titled_keeps_the_listing() {
+    let show = corpus_show("42059");
+    let count = show.episode_count.expect("counted");
+    let rows = show.listed_up_to(2);
+    let mut tail = show.tail();
+    tail.episodes = (1..=count)
+        .map(|n| TailEpisode {
+            number: n,
+            title: rows[n as usize - 1].title.clone(),
+            airdate: Some("2020-01-01".into()),
+        })
+        .collect();
+    for r in &mut tail.related {
+        if r.role == "sequel" {
+            r.episode_titles = Some(Vec::new());
+        }
+    }
+    assert_eq!(appended_extras(&rows, count, &tail), None);
+}
