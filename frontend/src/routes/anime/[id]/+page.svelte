@@ -1112,10 +1112,15 @@
 	 *  one deliberate difference — the definitive catalogue-miss
 	 *  phrasing (this page also gates the Play CTA proactively) — and
 	 *  the other audio's answer from the availability cache. */
-	function describePlayFailure(e: unknown, mode: string, episode: number): Promise<string> {
+	function describePlayFailure(
+		e: unknown,
+		kitsuId: string,
+		mode: string,
+		episode: number
+	): Promise<string> {
 		return describePlayFailureFromCache(
 			e,
-			{ kitsuId: id, mode, episode },
+			{ kitsuId, mode, episode },
 			{ noResults: m.detail_error_play_no_results }
 		);
 	}
@@ -1286,6 +1291,10 @@
 		}
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		const quality = config?.quality ?? 'best';
+		// The show this play is for, read once: a Similar-title link
+		// reuses this component, so `id` can name another show by the
+		// time the play answers.
+		const showId = id;
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.
 		markStarted(id, ep);
@@ -1372,7 +1381,7 @@
 			// while they're reading. Busy holds until the message is
 			// worded (it waits on a cache lookup), so no second play can
 			// start under a failure that has not landed yet.
-			const message = await describePlayFailure(e, mode, ep);
+			const message = await describePlayFailure(e, showId, mode, ep);
 			actionBusy = false;
 			playFailure = { episode: ep, message };
 		}

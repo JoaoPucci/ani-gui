@@ -1922,6 +1922,10 @@
 		const title = detail.canonical_title;
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		// The show this switch is for, read once: the route's component
+		// is reused across shows, so `id` can name another by the time the
+		// play answers.
+		const showId = id;
 		const quality = config?.quality ?? 'best';
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -2034,7 +2038,7 @@
 			// `<p class="player-empty">` substitute for the video).
 			playFailure = {
 				episode: targetEp,
-				message: await describePlayFailureFromCache(e, { kitsuId: id, mode, episode: targetEp })
+				message: await describePlayFailureFromCache(e, { kitsuId: showId, mode, episode: targetEp })
 			};
 		} finally {
 			switchBusy = false;
