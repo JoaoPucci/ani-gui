@@ -88,6 +88,7 @@
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
+	import { followPlayed } from '$lib/play/played-episode';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
@@ -1356,8 +1357,11 @@
 			// mode the playable cap is only the dubbed slice (Codex P2
 			// #3387467149) — and only for a finished series (Codex P2
 			// #3387184082).
+			// The episode the session plays: the request may have named it
+			// by a number it no longer carries.
+			const played = followPlayed(owner.showId, outcome.session, ep);
 			recordPlayed(
-				{ args: playArgs, showId: owner.showId, episode: ep, show, mirror: true },
+				{ args: playArgs, showId: owner.showId, episode: played, show, mirror: true },
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
 			);
 			if (outcome.current) {
@@ -1366,7 +1370,7 @@
 				// lint rule only recognises a literal `goto(resolve(...))`.
 				/* eslint-disable svelte/no-navigation-without-resolve */
 				void goto(
-					resolve('/play/[id]', { id: owner.showId }) + buildPlayQuery(outcome.session, ep)
+					resolve('/play/[id]', { id: owner.showId }) + buildPlayQuery(outcome.session, played)
 				);
 				/* eslint-enable svelte/no-navigation-without-resolve */
 				return;

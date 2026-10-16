@@ -18,7 +18,7 @@
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { resolveResumeEpisode } from './resume-episode';
-import { resumeOr } from '$lib/play/next-episode';
+import { pickNextEpisode, resumeOr } from '$lib/play/next-episode';
 import { parseHistoryEpisode } from '$lib/play/episode-number';
 
 export interface ResumePlayArgs {
@@ -67,7 +67,7 @@ export interface StartResumeDeps {
 	resolvePlay: (
 		args: ResumePlayArgs,
 		onProgress: (label: string) => void
-	) => Promise<{ session_id: string }>;
+	) => Promise<{ session_id: string; episode?: string; former_episode?: string }>;
 	markWatched: (args: ResumePlayArgs) => Promise<void>;
 	syncTrackers: (
 		kitsuId: string,
@@ -141,12 +141,24 @@ export function makeStartResume(
 			deps.isPlayableCountApproximate?.(entry.id) ?? false
 		);
 		const { count, approximate } = resolved;
+		// The row as it reads now: the lookup that settled the cap pays
+		// for the listing that puts its numbering right, and the card
+		// read it before. A position kept under what it read as moves.
+		const card = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
+		const now = await rowNow(deps, entry.id, card);
+		if (now.former !== null && now.last !== null) {
+			deps.movePosition?.(match.id, now.former, now.last);
+		}
+		const last = now.last;
+		const next =
+			last === card
+				? resolved.episode
+				: pickNextEpisode(last, count ?? match.episode_count ?? null);
 		// The last watched episode was left part-way: going back to it,
 		// not on to the next, is what Continue means.
-		const last = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
 		const episode = resumeOr(
 			last,
-			resolved.episode,
+			next,
 			last !== null && (deps.leftPartWay?.(match.id, last) ?? false)
 		);
 		if (typeof count === 'number') {
@@ -158,12 +170,15 @@ export function makeStartResume(
 		deps.markStarted?.(match.id, episode, entry.id);
 		try {
 			const session = await deps.resolvePlay(args, (label) => deps.onProgress(label));
+			// The episode the session plays, which the request may have
+			// named by a number it no longer carries.
+			const played = deps.followPlayed?.(match.id, session, episode) ?? episode;
 			void deps.markWatched(args).catch(() => {});
 			// A guessed match writes nothing to the user's tracker accounts.
 			if (!guess) {
-				void deps.syncTrackers(match.id, episode, seriesTotal, seriesFinished).catch(() => {});
+				void deps.syncTrackers(match.id, played, seriesTotal, seriesFinished).catch(() => {});
 			}
-			deps.navigateToSession(match.id, session, episode, guess, entry.id);
+			deps.navigateToSession(match.id, session, played, guess, entry.id);
 		} catch (e) {
 			deps.onProgress(null);
 			// Busy holds until the failure is on screen: the page words it
@@ -176,4 +191,24 @@ export function makeStartResume(
 			}
 		}
 	};
+}
+
+/** What the clicked row reads as now, and the number it read as
+ *  before its numbering was put right; what the card read when the row
+ *  cannot be asked. */
+async function rowNow(
+	deps: StartResumeDeps,
+	entryId: string,
+	card: number | null
+): Promise<{ last: number | null; former: number | null }> {
+	try {
+		const row = await deps.currentNumber?.(entryId);
+		if (!row) return { last: card, former: null };
+		return {
+			last: parseHistoryEpisode(row.ep_no),
+			former: parseHistoryEpisode(row.former_ep_no)
+		};
+	} catch {
+		return { last: card, former: null };
+	}
 }

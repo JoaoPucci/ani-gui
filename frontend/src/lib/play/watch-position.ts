@@ -80,7 +80,22 @@ export function movePosition(
 	to: number,
 	storage: PositionStorage | null = defaultStorage()
 ): void {
-	void [showId, from, to, storage];
+	const fromKey = keyOf(showId, from);
+	const toKey = keyOf(showId, to);
+	const all = load(storage);
+	const moving = all.find(([k]) => k === fromKey);
+	if (!moving) return;
+	const rest = all.filter(([k]) => k !== fromKey);
+	// A point already under the number it moves to was written since:
+	// it is the later one.
+	if (rest.some(([k]) => k === toKey)) {
+		store(storage, rest);
+		return;
+	}
+	const [, seconds, row] = moving;
+	if (store(storage, [...rest, row ? [toKey, seconds, row] : [toKey, seconds]])) {
+		writes.note(storage, toKey);
+	}
 }
 
 /** Where `episode` of `showId` was left, or null. */

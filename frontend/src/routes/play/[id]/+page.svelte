@@ -79,6 +79,7 @@
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { handoffArgs } from '$lib/play/handoff-args';
 	import { buildPlayQuery } from '$lib/play/play-url';
+	import { followPlayed } from '$lib/play/played-episode';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
 	import { createAniskipFetchTrigger } from '$lib/play/aniskip-fetch-trigger';
@@ -2020,8 +2021,11 @@
 			// The tracker mirror is renderer-driven — the backend is
 			// stateless — and a guessed match writes nothing to the
 			// user's trackers.
+			// The episode the session plays: the request may have named it
+			// by a number it no longer carries.
+			const played = followPlayed(owner.showId, outcome.session, targetEp);
 			recordPlayed(
-				{ args: playArgs, showId: owner.showId, episode: targetEp, show, mirror: !guess },
+				{ args: playArgs, showId: owner.showId, episode: played, show, mirror: !guess },
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
 			);
 			// The player on screen belongs to another visit: leave it.
@@ -2039,7 +2043,7 @@
 			// flag. A navigation that fails is not a failed play.
 			await goto(
 				resolve('/play/[id]', { id: owner.showId }) +
-					withRow(withGuess(buildPlayQuery(outcome.session, targetEp), guess), row),
+					withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
 				{ replaceState: true }
 			).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */

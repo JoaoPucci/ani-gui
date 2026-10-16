@@ -47,6 +47,7 @@
 		historyClear,
 		historyDelete,
 		historyList,
+		historyNumber,
 		imageProxyUrl,
 		kitsuAnimeDetail,
 		kitsuByMalIds,
@@ -117,8 +118,10 @@
 		clearShowPositions,
 		snapshotPositions,
 		markStarted,
+		movePosition,
 		readPosition
 	} from '$lib/play/watch-position';
+	import { followPlayed } from '$lib/play/played-episode';
 	import { m } from '$lib/paraglide/messages';
 
 	// Hero cycles through the top N trending titles. Rotation is slow
@@ -673,6 +676,9 @@
 	const startResume = makeStartResume({
 		leftPartWay,
 		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
+		currentNumber: (entryId) => historyNumber(entryId),
+		movePosition: (kitsuId, from, to) => movePosition(kitsuId, from, to),
+		followPlayed: (kitsuId, session, requested) => followPlayed(kitsuId, session, requested),
 		isBusy: () => !!resumeBusy,
 		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {

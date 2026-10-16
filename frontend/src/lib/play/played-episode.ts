@@ -8,6 +8,8 @@
  */
 
 import type { CreateSessionResponse } from '$lib/api';
+import { parseHistoryEpisode } from './episode-number';
+import { movePosition } from './watch-position';
 import { defaultStorage, type PositionStorage } from './watch-position-storage';
 
 /** The episode `session` plays: its own `episode` when it names one,
@@ -16,8 +18,7 @@ export function playedEpisode(
 	session: Pick<CreateSessionResponse, 'episode'>,
 	requested: number
 ): number {
-	void session;
-	return requested;
+	return parseHistoryEpisode(session.episode) ?? requested;
 }
 
 /** {@link playedEpisode}, with the positions kept for the episode under
@@ -29,6 +30,9 @@ export function followPlayed(
 	requested: number,
 	storage: PositionStorage | null = defaultStorage()
 ): number {
-	void [showId, session, storage];
-	return requested;
+	const played = playedEpisode(session, requested);
+	for (const from of [requested, parseHistoryEpisode(session.former_episode)]) {
+		if (from !== null && from !== played) movePosition(showId, from, played, storage);
+	}
+	return played;
 }
