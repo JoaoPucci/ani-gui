@@ -112,3 +112,20 @@ describe('aniskip fetch trigger', () => {
 		});
 	});
 });
+
+describe('createAniskipFetchTrigger — a fractional extra', () => {
+	it('asks for no skip times on a recap', () => {
+		// aniskip indexes episodes by MAL's whole-number list, where a
+		// recap the provider numbers 7.5 has no entry: asking would at
+		// best find nothing and at worst return another episode's.
+		const t = createAniskipFetchTrigger();
+		expect(t.step('42', 7.5, true)).toEqual({ kind: 'idle' });
+	});
+
+	it("clears the previous episode's skip times on moving to a recap", () => {
+		const t = createAniskipFetchTrigger();
+		expect(t.step('42', 7, true)).toEqual({ kind: 'fetch', showId: '42', episode: '7' });
+		expect(t.step('42', 7.5, true)).toEqual({ kind: 'clear' });
+		expect(t.step('42', 8, true)).toEqual({ kind: 'fetch', showId: '42', episode: '8' });
+	});
+});

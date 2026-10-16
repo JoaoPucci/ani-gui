@@ -95,3 +95,14 @@ describe('pushWatchedToTrackers finale status', () => {
 		expect(c2[0].body).toEqual({ kitsu_id: 'kitsu-12', progress: 6 });
 	});
 });
+
+describe('pushWatchedToTrackers — a fractional extra', () => {
+	it('moves no tracker for a recap', async () => {
+		// MAL and AniList count progress in whole episodes (the backend
+		// takes it as an integer), and a recap the provider numbers 7.5
+		// is not one of them.
+		const { d, calls } = deps();
+		await pushWatchedToTrackers(d, 'k1', 7.5, 12, true);
+		expect(calls).toEqual([]);
+	});
+});
