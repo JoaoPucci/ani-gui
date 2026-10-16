@@ -76,6 +76,8 @@ pub struct Related {
     pub status: Option<String>,
     /// Its episode count.
     pub episode_count: Option<u32>,
+    /// The titles on its first page of episodes, where they were read.
+    pub episode_titles: Option<Vec<String>>,
 }
 
 /// A reading the evidence once proved, kept so a request whose
