@@ -72,11 +72,12 @@ relevant pull request.
 
 `cmp` prints a summary line, one line per family and then every
 problem: a pool whose outcome differs from the model and is not
-allowlisted, an allowlisted
-pool whose outcome moved from the one recorded, an allowlist entry gone
-stale (its pool agrees now), one naming no pool, or one giving no
-reason, a pool the walk panicked on, a pool with no outcome. It exits
-non-zero on any of them.
+allowlisted — a pick by its slug, count and every episode it lists, a
+refusal by its error and clean-miss verdict — an allowlisted pool whose
+outcome moved from the one recorded, an allowlist entry gone stale (its
+pool agrees now), one naming no pool, or one giving no reason, a pool
+the walk panicked on, a pool with no outcome. It exits non-zero on any
+of them.
 
 ## What a disagreement means
 
@@ -94,13 +95,14 @@ possible causes, and the first thing to do is decide which:
    is accepted for now, add an allowlist entry in the same change:
 
    ```json
-   {"id": "countless/0123456789", "got": {"pick": "x", "count": 12},
+   {"id": "countless/0123456789",
+    "got": {"pick": "x", "count": 2, "episodes": [[1, 1, null], [2, 2, null]]},
     "reason": "why the picker is allowed to differ here"}
    ```
 
    `id` is the pool's id as `cmp` prints it; `got` is the outcome the
-   entry accepts, a pick as `{"pick", "count"}` or a refusal as
-   `{"refused", "clean_miss"}`, so a later change that moves the
+   entry accepts, a pick as `{"pick", "count", "episodes"}` or a refusal
+   as `{"refused", "clean_miss"}`, so a later change that moves the
    outcome again is caught; `reason` is for the next reader. A
    generated pool's id follows its content, not its position, so the
    entry survives the generator growing.

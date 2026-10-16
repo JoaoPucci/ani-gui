@@ -836,6 +836,27 @@ def clean_miss_expected(case):
     return not any(abs(r[2] - count) <= tol and not admitted(titles, r[1]) for r in evidence)
 
 
+def refusal_expected(case):
+    """The error and verdict a refused pool answers with. A pool with a
+    listing whose probe dies is unheard — the transient network failure it
+    is, never the clean miss the availability cache persists (the only
+    dead pools the set refuses are those whose dying candidate ties the
+    winner's rank). Any other refusal is NoResults, clean unless the title
+    rule refused a fitting hit."""
+    if case.get("dead"):
+        return "Network", False
+    return "NoResults", clean_miss_expected(case)
+
+
+def episodes_expected(count):
+    """The rows a pick of `count` regular episodes lists: every generated
+    listing numbers its rows 1..n as `[id, number, tag]` with id = number
+    and no tag, and a pick plays the first `count` of them — a whole
+    listing, or a broad one cut to the entry's own episodes from its start
+    with its own numbers kept."""
+    return [[k, k, None] for k in range(1, count + 1)]
+
+
 # --- the generated set
 
 NUMERIC_STEMS = ["86", "Mob Psycho 100", "Kaiju No. 8", "Show 2", "Lucky 2", "ショー２"]
@@ -1237,10 +1258,10 @@ def outcome(got):
 
 
 def summary(got):
-    """What the allowlist records of an outcome: the pick, or the refusal's
-    error and clean-miss verdict."""
+    """What the allowlist records of an outcome: the pick with its
+    episodes, or the refusal's error and clean-miss verdict."""
     if "ok" in got:
-        return {"pick": got["ok"], "count": got["count"]}
+        return {"pick": got["ok"], "count": got["count"], "episodes": got["episodes"]}
     return {"refused": got["err"], "clean_miss": got["clean_miss"]}
 
 
@@ -1275,8 +1296,10 @@ def compare(cases_path, out_path, allowlist_path=None):
             problems.append(f"{id_} [{c['family']}]: the walk panicked")
             continue
         ok = outcome(g) == c["expect"]
-        if ok and c["expect"] is None and not c.get("dead"):
-            ok = g["clean_miss"] == clean_miss_expected(c)
+        if ok and c["expect"] is not None:
+            ok = g["episodes"] == episodes_expected(c["expect"]["count"])
+        if ok and c["expect"] is None:
+            ok = (g["err"], g["clean_miss"]) == refusal_expected(c)
         if ok:
             continue
         families[fam][1] += 1
