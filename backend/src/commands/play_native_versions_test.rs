@@ -371,3 +371,49 @@ fn a_version_is_named_on_the_wire_in_lowercase() {
         VersionKind::Standard
     );
 }
+
+#[tokio::test]
+async fn copies_whose_page_years_differ_within_the_filter_are_versions() {
+    // The plain copy's page names the entry's year, the tagged one's
+    // one off or none: both survive the year filter, and the year
+    // tells no season from another.
+    for tagged_year in [Some(YEAR - 1), None] {
+        let client = site(&[(1, 12)])
+            .listing(2, crate::scraper::table_provider::listing_of(2, 12))
+            .year(2, tagged_year);
+        let hits = [
+            hit("the-show-1", "The Show"),
+            hit("the-show-2", "The Show (Uncensored)"),
+        ];
+        let p = pick(&client, &hits, Some(12), &["The Show"])
+            .await
+            .expect("picked");
+        assert_eq!(p.hit.slug, "the-show-2", "{tagged_year:?}");
+        assert_eq!(p.versions.len(), 2, "{tagged_year:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_undated_entry_scores_out_the_tagged_copy() {
+    // With a count and no year only a name the entry carries vouches,
+    // and the tag's words follow the name: the tagged copy is not the
+    // entry's, and the plain copy is one pick.
+    let client = site(&[(1, 12), (2, 12)]);
+    let hits = [
+        hit("the-show-2", "The Show (Uncensored)"),
+        hit("the-show-1", "The Show"),
+    ];
+    let p = pick_candidate_titled(
+        &client,
+        &hits,
+        Some(12),
+        "The Show",
+        &["The Show"],
+        None,
+        Some("TV"),
+    )
+    .await
+    .expect("picked");
+    assert_eq!(p.hit.slug, "the-show-1");
+    assert!(p.versions.is_empty());
+}
