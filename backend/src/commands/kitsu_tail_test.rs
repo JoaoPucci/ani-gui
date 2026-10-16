@@ -172,6 +172,21 @@ async fn an_uncached_entry_and_page_are_read_from_kitsu() {
         .expect(1)
         .mount(&kitsu)
         .await;
+    // The relations and the sequel's page, which the reader asks for
+    // once the entry's own rows are read.
+    for (route, file) in [
+        (
+            "/anime/7881/media-relationships",
+            "kitsu-relations-7881.json",
+        ),
+        ("/anime/10800/episodes", "kitsu-episodes-10800-p1.json"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture(file)))
+            .mount(&kitsu)
+            .await;
+    }
     let state = state_with_kitsu(&kitsu.uri());
     let airing =
         crate::meta::anilist_airing::parse_airing_response(&fixture("anilist-airing-7881.json"))
