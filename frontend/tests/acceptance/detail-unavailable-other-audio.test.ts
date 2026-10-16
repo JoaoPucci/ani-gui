@@ -75,7 +75,11 @@ interface Asked {
 
 /** The page in `mode`; the probe answers unavailable for it, and the
  *  cache answers `other` for the other audio. */
-function useHandlers(mode: 'sub' | 'dub', other: CacheAnswer | 'fails'): Asked {
+function useHandlers(
+	mode: 'sub' | 'dub',
+	other: CacheAnswer | 'fails',
+	probeAvailable = false
+): Asked {
 	const asked: Asked = { batch: [], probeModes: [], warms: 0 };
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig(mode))),
@@ -89,7 +93,11 @@ function useHandlers(mode: 'sub' | 'dub', other: CacheAnswer | 'fails'): Asked {
 		http.post(`${API_BASE}/api/kitsu/search`, () => HttpResponse.json([])),
 		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 			asked.probeModes.push(((await request.json()) as { mode: string }).mode);
-			return HttpResponse.json({ available: false, episode_count: null, extra_episodes: [] });
+			return HttpResponse.json(
+				probeAvailable
+					? { available: true, episode_count: 12, extra_episodes: [] }
+					: { available: false, episode_count: null, extra_episodes: [] }
+			);
 		}),
 		http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
 			const body = (await request.json()) as { kitsu_ids: string[]; mode: string };
@@ -102,6 +110,7 @@ function useHandlers(mode: 'sub' | 'dub', other: CacheAnswer | 'fails'): Asked {
 			asked.warms += 1;
 			return new HttpResponse(null, { status: 202 });
 		}),
+		http.put(`${API_BASE}/api/settings`, () => new HttpResponse(null, { status: 204 })),
 		http.get(`${API_BASE}/api/history`, () => HttpResponse.json([])),
 		http.get(`${API_BASE}/api/history/by-kitsu/:id`, () => HttpResponse.json(null)),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
@@ -157,4 +166,100 @@ describe('detail — the unavailable notice and the other audio', () => {
 			expect(asked.warms, 'nothing warms the cache for the notice').toBe(0);
 		});
 	}
+});
+
+describe('detail — the notice asks about the other audio only while it is up', () => {
+	it('asks nothing about the other audio when the chosen audio has the title', async () => {
+		const asked = useHandlers('dub', HAS, true);
+		const play = () => target.querySelector('div.actions button.btn-glass');
+		app = mount(DetailPage, { target });
+		await until(() => play() !== null, 'the Play button');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(notice()).toBeNull();
+		expect(asked.batch.filter((b) => b.mode === 'sub')).toEqual([]);
+	});
+
+	it('does not show an old answer after the audio changes', async () => {
+		// In dub, the question "does sub have it?" is out and held. The
+		// viewer switches to sub; the held answer (yes) lands after.
+		// It answers a question nobody asks any more, and naming sub
+		// as the audio that has the title would be wrong in sub.
+		useHandlers('dub', { cached: {}, playable_episode_counts: {} });
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let askedSub = false;
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { mode: string };
+				if (body.mode === 'sub') {
+					askedSub = true;
+					await held;
+					return HttpResponse.json(HAS);
+				}
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			})
+		);
+		app = mount(DetailPage, { target });
+		await until(() => askedSub, 'the lookup for sub');
+		const subButton = Array.from(target.querySelectorAll('button.seg-btn')).find(
+			(b) => b.textContent?.trim() === 'SUB'
+		) as HTMLButtonElement;
+		subButton.click();
+		await until(
+			() => target.querySelector('button.seg-btn.active')?.textContent?.trim() === 'SUB',
+			'the audio switch to land'
+		);
+		await until(() => notice() !== null, 'the notice in sub');
+		release();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(notice()).toContain(m.detail_unavailable_message());
+		expect(notice()).not.toContain(m.detail_unavailable_in_dub_message());
+		expect(notice()).not.toContain(m.detail_unavailable_in_sub_message());
+	});
+
+	it("keeps the catalogue sentence when the other audio's cached count is zero", async () => {
+		useHandlers('dub', {
+			cached: { [KITSU_ID]: true },
+			playable_episode_counts: { [KITSU_ID]: 0 }
+		});
+		app = mount(DetailPage, { target });
+		await until(() => notice() !== null, 'the unavailable notice');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(notice()).toContain(m.detail_unavailable_message());
+	});
+});
+
+describe('detail — a new question starts from no answer', () => {
+	it('drops the other-audio sentence while the next question is out', async () => {
+		// In dub the cache says sub has the title, and the notice says
+		// so. In sub the question becomes "does dub have it?", and until
+		// it is answered the notice must not keep naming sub.
+		useHandlers('dub', HAS);
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let askedDub = false;
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { mode: string };
+				if (body.mode === 'dub') {
+					askedDub = true;
+					await held;
+					return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+				}
+				return HttpResponse.json(HAS);
+			})
+		);
+		app = mount(DetailPage, { target });
+		await until(
+			() => (notice() ?? '').includes(m.detail_unavailable_in_dub_message()),
+			'the notice naming sub'
+		);
+		const subButton = Array.from(target.querySelectorAll('button.seg-btn')).find(
+			(b) => b.textContent?.trim() === 'SUB'
+		) as HTMLButtonElement;
+		subButton.click();
+		await until(() => askedDub, 'the lookup for dub');
+		expect(notice()).toContain(m.detail_unavailable_message());
+		release();
+	});
 });
