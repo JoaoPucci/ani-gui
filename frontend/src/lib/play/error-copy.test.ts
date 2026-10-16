@@ -406,3 +406,66 @@ describe('wait copy reads right for any number of seconds', () => {
 		}
 	});
 });
+
+describe('describePlayFailure — an episode missing from this audio', () => {
+	const e = { kind: 'episode_unavailable', key: 'error.play.episode_unavailable' };
+	const OTHER_AUDIO = /other audio|outro áudio|otro audio|другую озвучку/i;
+
+	it('suggests the other audio when the cache knows it has the episode', () => {
+		const msg = describePlayFailure(e, { otherAudio: true });
+		expect(msg).toBe(m.play_play_failure_episode_unavailable_try_other_audio());
+		expect(msg).toMatch(OTHER_AUDIO);
+	});
+
+	it('does not send the user to an audio the cache knows has nothing', () => {
+		// The defect: the sub cache held four episodes, the dub cache
+		// held none, and the sentence still said to try the other
+		// audio — which the detail page then hid Play for.
+		const msg = describePlayFailure(e, { otherAudio: false });
+		expect(msg).toBe(m.play_play_failure_episode_unavailable());
+		expect(msg).not.toMatch(OTHER_AUDIO);
+		expect(msg).toMatch(/another episode/i);
+	});
+
+	it('does not promise an audio nobody has asked about', () => {
+		// Never probed, an answer the cache would not serve, or a
+		// lookup that failed: nothing vouches for the other audio.
+		const msg = describePlayFailure(e, { otherAudio: null });
+		expect(msg).toBe(describePlayFailure(e, { otherAudio: false }));
+		expect(msg).not.toMatch(OTHER_AUDIO);
+	});
+
+	it('passes the answer through the external-player and Syncplay copy', () => {
+		expect(describeExternalLaunchFailure(e, true)).toBe(
+			describePlayFailure(e, { otherAudio: true })
+		);
+		expect(describeExternalLaunchFailure(e, false)).toBe(
+			describePlayFailure(e, { otherAudio: false })
+		);
+	});
+
+	it('leaves every other branch alone whatever the other audio holds', () => {
+		for (const other of [true, false, null]) {
+			expect(describePlayFailure({ kind: 'timeout' }, { otherAudio: other })).toBe(
+				m.play_play_failure_timeout()
+			);
+			expect(describePlayFailure({ kind: 'no_results' }, { otherAudio: other })).toBe(
+				m.play_play_failure_no_results()
+			);
+		}
+	});
+
+	it('every locale drops the other-audio suggestion from the default sentence', () => {
+		for (const locale of ['en', 'pt-BR', 'es-419', 'ru'] as const) {
+			const plain = m.play_play_failure_episode_unavailable({}, { locale });
+			const suggest = m.play_play_failure_episode_unavailable_try_other_audio({}, { locale });
+			expect(plain, locale).not.toMatch(OTHER_AUDIO);
+			expect(suggest, locale).toMatch(OTHER_AUDIO);
+			if (locale !== 'en') {
+				expect(plain, `${locale} is translated`).not.toBe(
+					m.play_play_failure_episode_unavailable({}, { locale: 'en' })
+				);
+			}
+		}
+	});
+});

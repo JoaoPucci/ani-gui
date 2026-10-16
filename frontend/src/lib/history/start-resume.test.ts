@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { makeStartResume, type StartResumeDeps } from './start-resume';
+import { makeStartResume, type ResumePlayArgs, type StartResumeDeps } from './start-resume';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 
 function makeEntry(id: string, ep: string, title: string): HistoryEntry {
@@ -25,14 +25,14 @@ interface Harness {
 	log: string[];
 	busyLog: (string | null)[];
 	counts: [string, number][];
-	failures: [string, unknown][];
+	failures: [string, unknown, ResumePlayArgs][];
 }
 
 function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 	const log: string[] = [];
 	const busyLog: (string | null)[] = [];
 	const counts: [string, number][] = [];
-	const failures: [string, unknown][] = [];
+	const failures: [string, unknown, ResumePlayArgs][] = [];
 	const deps: StartResumeDeps = {
 		isBusy: () => busyLog.at(-1) != null,
 		onBusy: (id) => {
@@ -40,7 +40,7 @@ function makeHarness(overrides: Partial<StartResumeDeps> = {}): Harness {
 			log.push(`busy:${id}`);
 		},
 		onProgress: () => {},
-		onFailure: (title, e) => failures.push([title, e]),
+		onFailure: (title, e, args) => failures.push([title, e, args]),
 		getSettings: vi.fn().mockImplementation(async () => {
 			log.push('settings');
 			return { mode: 'sub' as const, quality: 'best' };
@@ -131,7 +131,19 @@ describe('makeStartResume (click orchestration)', () => {
 		const start = makeStartResume(h.deps);
 		await start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
 		expect(h.busyLog).toEqual(['k1', null]);
-		expect(h.failures).toEqual([['Title k1', expect.any(Error)]]);
+		expect(h.failures).toEqual([
+			[
+				'Title k1',
+				expect.any(Error),
+				// What the failed play asked for, so the page can look up
+				// the other audio of the same show and episode.
+				expect.objectContaining({
+					episode: 6,
+					mode: 'sub',
+					match: expect.objectContaining({ id: 'k1' })
+				})
+			]
+		]);
 		expect(h.deps.navigateToSession).not.toHaveBeenCalled();
 	});
 

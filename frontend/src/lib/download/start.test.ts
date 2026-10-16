@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // imports inside `start.ts` resolve to these stubs at load time.
 
 const apiMock = vi.hoisted(() => ({
-	downloadStream: vi.fn()
+	downloadStream: vi.fn(),
+	availabilityBatch: vi.fn()
 }));
 vi.mock('$lib/api', () => apiMock);
 
@@ -30,6 +31,7 @@ const failureStoreMock = vi.hoisted(() => ({
 vi.mock('./failure-store.svelte', () => failureStoreMock);
 
 import { startDownload } from './start';
+import { m } from '$lib/paraglide/messages';
 import { describeError, describePlayFailure } from '$lib/play/error-copy';
 
 const baseArgs = {
@@ -51,6 +53,8 @@ describe('startDownload', () => {
 		failureStoreMock.downloadFailureStore.show.mockReset();
 		failureStoreMock.downloadFailureStore.dismiss.mockReset();
 		apiMock.downloadStream.mockReset();
+		apiMock.availabilityBatch.mockReset();
+		apiMock.availabilityBatch.mockResolvedValue({ cached: {}, playable_episode_counts: {} });
 		// add() returns the new id; default to a known one so each
 		// test can assert the lifecycle calls happened against it.
 		storeMock.downloadStore.add.mockReturnValue('dl-1');
@@ -166,14 +170,54 @@ describe('startDownload', () => {
 			key: 'error.play.episode_unavailable'
 		});
 		startDownload(baseArgs);
-		await Promise.resolve();
-		await Promise.resolve();
+		await vi.waitFor(() => expect(storeMock.downloadStore.markError).toHaveBeenCalled());
 		expect(storeMock.downloadStore.markError).toHaveBeenCalledWith(
 			'dl-1',
 			expect.stringMatching(/this episode/i)
 		);
 		expect(storeMock.downloadStore.markError).not.toHaveBeenCalledWith('dl-1', 'Download failed');
 		expect(failureStoreMock.downloadFailureStore.show).not.toHaveBeenCalled();
+	});
+
+	it('suggests the other audio in the dock only when the cache has this episode in it', async () => {
+		// The episode verdict says this audio lacks the episode; what
+		// the dock row adds about the other audio comes from the
+		// availability cache and nowhere else.
+		const verdict = { kind: 'episode_unavailable', key: 'error.play.episode_unavailable' };
+		const cases: [Record<string, unknown> | Error, string][] = [
+			[
+				{ cached: { '40684': true }, playable_episode_counts: { '40684': 12 } },
+				m.play_play_failure_episode_unavailable_try_other_audio()
+			],
+			[
+				{ cached: { '40684': true }, playable_episode_counts: { '40684': 4 } },
+				m.play_play_failure_episode_unavailable()
+			],
+			[
+				{ cached: { '40684': false }, playable_episode_counts: {} },
+				m.play_play_failure_episode_unavailable()
+			],
+			[{ cached: {}, playable_episode_counts: {} }, m.play_play_failure_episode_unavailable()],
+			[new Error('sidecar gone'), m.play_play_failure_episode_unavailable()]
+		];
+		for (const [answer, expected] of cases) {
+			storeMock.downloadStore.markError.mockReset();
+			apiMock.availabilityBatch.mockReset();
+			if (answer instanceof Error) apiMock.availabilityBatch.mockRejectedValueOnce(answer);
+			else apiMock.availabilityBatch.mockResolvedValueOnce(answer);
+			apiMock.downloadStream.mockRejectedValueOnce(verdict);
+			startDownload({ ...baseArgs, kitsu_id: '40684', episode: '5', mode: 'sub' });
+			await vi.waitFor(() => expect(storeMock.downloadStore.markError).toHaveBeenCalled());
+			expect(storeMock.downloadStore.markError).toHaveBeenCalledWith('dl-1', expected);
+			expect(apiMock.availabilityBatch).toHaveBeenCalledWith(['40684'], 'dub');
+		}
+	});
+
+	it('asks the cache nothing about the other audio for any other failure', async () => {
+		apiMock.downloadStream.mockRejectedValueOnce({ kind: 'no_results' });
+		startDownload({ ...baseArgs, kitsu_id: '40684' });
+		await vi.waitFor(() => expect(storeMock.downloadStore.markError).toHaveBeenCalled());
+		expect(apiMock.availabilityBatch).not.toHaveBeenCalled();
 	});
 
 	// The dock row's tooltip is user copy. A thrown Error's message
