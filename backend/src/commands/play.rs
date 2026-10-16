@@ -457,6 +457,15 @@ where
     create_session_with_kind(state, &session_args, kind)
 }
 
+/// `resp` naming the played show's `versions` and the `version` that
+/// played.
+pub(crate) fn with_versions_of(
+    _resp: &mut CreateSessionResponse,
+    _versions: &[crate::commands::play_native_versions::VersionInfo],
+    _version: Option<crate::commands::play_native_versions::VersionKind>,
+) {
+}
+
 /// The cache row a native resolve leaves behind: the stream, the
 /// referer its provider named (the empty string being the proxy's and
 /// the HEAD check's "none"), and the show identity the mark-watched

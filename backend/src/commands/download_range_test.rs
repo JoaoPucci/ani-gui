@@ -40,3 +40,52 @@ mod props {
         }
     }
 }
+
+/// A range's start resolves against the version the download names
+/// when the pick has several, as a single episode does.
+#[tokio::test]
+async fn a_range_starts_from_the_version_it_names() {
+    use super::super::play_native_versions::VersionKind;
+    use super::{Attempt, RangeStartAttempt};
+    use crate::scraper::provider::BrowseHit;
+    use crate::scraper::table_provider::{listing_of, TableProvider};
+    let card = |slug: &str, title: &str| BrowseHit {
+        slug: slug.into(),
+        title: title.into(),
+        kind: Some("TV".into()),
+        jname: None,
+    };
+    let provider = TableProvider::new()
+        .search_default(vec![
+            card("the-show-1", "The Show"),
+            card("the-show-2", "The Show (Uncensored)"),
+        ])
+        .listing(1, listing_of(1, 3))
+        .listing(2, listing_of(2, 3))
+        .year(1, Some(2020))
+        .year(2, Some(2020))
+        .stream(1001, "sub", "https://cdn.example/plain/master.m3u8")
+        .mode(1001, "sub", true)
+        .stream(2001, "sub", "https://cdn.example/uncensored/master.m3u8")
+        .mode(2001, "sub", true);
+    for (version, slug) in [
+        (Some(VersionKind::Standard), "the-show-1"),
+        (Some(VersionKind::Uncensored), "the-show-2"),
+        (None, "the-show-2"),
+    ] {
+        let args: super::DownloadArgs = serde_json::from_value(serde_json::json!({
+            "title": "The Show", "episode": "1-3", "mode": "sub",
+            "episode_count": 3, "year": 2020, "subtype": "TV",
+        }))
+        .expect("args");
+        let args = super::DownloadArgs { version, ..args };
+        let mut attempt = RangeStartAttempt {
+            args: &args,
+            first: 1,
+            quality: "best",
+            answered_by: None,
+        };
+        let (picked, _) = attempt.run(&provider).await.expect("started");
+        assert_eq!(picked.hit.slug, slug, "{version:?}");
+    }
+}

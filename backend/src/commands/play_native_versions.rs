@@ -183,3 +183,7 @@ pub(crate) fn with_versions(
 #[cfg(test)]
 #[path = "play_native_versions_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "play_native_versions_flow_test.rs"]
+mod flow_tests;

@@ -303,6 +303,15 @@ impl<'a> ResolveVerdict<'a> {
         }
     }
 
+    /// The verdict naming the served pick's `versions`.
+    #[must_use]
+    pub fn with_versions(
+        self,
+        _versions: &'a [crate::commands::play_native_versions::VersionInfo],
+    ) -> Self {
+        self
+    }
+
     /// A clean miss — every search completed and nothing matched —
     /// from the provider that answered it.
     #[must_use]
@@ -1457,6 +1466,10 @@ mod positive_ttl_tests;
 #[cfg(test)]
 #[path = "availability_test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "availability_versions_test.rs"]
+mod versions_tests;
 
 #[cfg(test)]
 #[path = "availability_subtype_args_test.rs"]
