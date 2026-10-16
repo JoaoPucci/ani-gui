@@ -851,6 +851,7 @@ fn resolve_dest_prefers_explicit_args_over_paths_helper() {
         alt_titles: vec![],
         kitsu_id: None,
         download_dir: Some("/tmp/explicit".into()),
+        version: None,
     };
     let p = resolve_dest(&a).expect("ok");
     assert_eq!(p, PathBuf::from("/tmp/explicit"));

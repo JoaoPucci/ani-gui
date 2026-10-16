@@ -1614,6 +1614,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1660,6 +1662,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1725,6 +1729,8 @@ mod tests {
                 resolved_slot: Some(5),
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // A later resolve moved the display stamp to its own row.
@@ -1778,6 +1784,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // The stamp names display 4 as slot 5.
@@ -1835,6 +1843,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1890,6 +1900,8 @@ mod tests {
                     resolved_slot: Some(1),
                     subtitles: Vec::new(),
                     kitsu_id: None,
+                    versions: Vec::new(),
+                    version: None,
                 },
             );
         }
@@ -1973,6 +1985,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -2075,6 +2089,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -2166,6 +2182,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -2268,6 +2286,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
 
@@ -2376,6 +2396,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2429,6 +2451,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2558,6 +2582,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let pool = state.cache_pool.clone();

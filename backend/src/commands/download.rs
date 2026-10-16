@@ -76,6 +76,10 @@ pub struct DownloadArgs {
     /// default provider order and stamps nothing.
     #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub kitsu_id: Option<String>,
+    /// The version of the show to download when the pick has several
+    /// ([`crate::commands::play::PlayArgs::version`]).
+    #[serde(default)]
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
     /// Absolute path to the directory the download lands in. The
     /// frontend's confirmation modal opens on `paths::download_dir()`
     /// and lets the user pick a different folder; the chosen path
@@ -214,6 +218,7 @@ where
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        version: None,
     };
     let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {

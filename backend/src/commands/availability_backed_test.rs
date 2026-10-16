@@ -18,6 +18,7 @@ fn negative_row(provider: Option<crate::scraper::provider::ProviderId>) -> Avail
         gate_refused: false,
         unsettled: false,
         provider,
+        versions: Vec::new(),
     }
 }
 

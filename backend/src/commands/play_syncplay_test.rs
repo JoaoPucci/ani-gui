@@ -74,6 +74,7 @@ fn play_args() -> PlayArgs {
         alt_titles: Vec::new(),
         prefetch: false,
         kitsu_id: None,
+        version: None,
     }
 }
 
@@ -153,6 +154,8 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
         },
     );
 
@@ -231,6 +234,8 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
         },
     );
 
@@ -368,6 +373,8 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
         },
     );
     crate::history::upsert_and_write(

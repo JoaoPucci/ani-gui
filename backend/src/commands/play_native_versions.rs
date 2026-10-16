@@ -22,6 +22,16 @@ pub enum VersionKind {
     Uncensored,
 }
 
+/// A version as the answers that carry a pick name it: its kind and
+/// the show key it plays under.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VersionInfo {
+    /// Which copy it is.
+    pub kind: VersionKind,
+    /// The show key the copy plays under (`hianime:<slug>`).
+    pub show_key: String,
+}
+
 /// One version of a pick: the copy's hit and the listing its probe
 /// already heard.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -107,6 +107,12 @@ pub struct PlayArgs {
     /// ([`crate::kitsu_id`]), reads the same way.
     #[serde(default, deserialize_with = "crate::kitsu_id::deserialize_optional")]
     pub kitsu_id: Option<String>,
+    /// The version of the show to play when the pick has several
+    /// (`"uncensored"`, `"standard"` — see "Versions of one pick" in
+    /// `docs/title-resolution.md`). `None`, or a version the pick does
+    /// not carry, plays the pick's default.
+    #[serde(default)]
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
 // `deserialize_alt_titles`, `deserialize_loose_bool`, and the
@@ -192,6 +198,7 @@ pub(super) async fn stamp_availability_after_native(
             provider,
             episode_cap,
             extra_tags,
+            versions: &[],
         },
     )
     .await;
@@ -325,6 +332,7 @@ where
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        version: None,
     };
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider
@@ -457,6 +465,8 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         resolved_slot: Some(native.resolved_slot),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
+        versions: Vec::new(),
+        version: None,
     }
 }
 
@@ -501,6 +511,7 @@ pub(crate) mod tests {
                 alt_titles: vec![],
                 prefetch,
                 kitsu_id,
+                version: None,
             };
             let got = scrape_priority(&args);
             let want = if prefetch {
@@ -566,6 +577,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("42".into()),
+            version: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
             &state,
@@ -618,6 +630,7 @@ pub(crate) mod tests {
                 gate_refused: false,
                 unsettled: false,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
+                versions: Vec::new(),
             },
         );
         let args = PlayArgs {
@@ -631,6 +644,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("42".into()),
+            version: None,
         };
         let at_start = crate::commands::availability::RowAtStart::read(
             &state,
@@ -686,6 +700,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         for i in 0..crate::scraper::gate::FAILURE_THRESHOLD + 1 {
             let r = play_with_progress(&state, &mk(&format!("absent show {i}")), |_| {}).await;
@@ -743,6 +758,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         }
     }
 
@@ -964,6 +980,8 @@ pub(crate) mod tests {
             resolved_slot: None,
             subtitles: Vec::new(),
             kitsu_id: None,
+            versions: Vec::new(),
+            version: None,
         }
     }
 
@@ -1016,6 +1034,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         write_history_on_cache_hit(
             &state,
@@ -1259,6 +1278,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         }
     }
 
@@ -1302,6 +1322,8 @@ pub(crate) mod tests {
                 resolved_slot: Some(1),
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
     }
@@ -1348,6 +1370,8 @@ pub(crate) mod tests {
                 resolved_slot: None,
                 subtitles,
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
     }
@@ -1401,6 +1425,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         let mut cached = cached_blank(
             "https://u.example/x.mp4".into(),
@@ -1535,6 +1560,7 @@ pub(crate) mod tests {
                 gate_refused: false,
                 unsettled: false,
                 provider: Some(crate::scraper::provider::ProviderId::Hianime),
+                versions: Vec::new(),
             },
         );
         seed_play_cache_from(
@@ -1743,6 +1769,8 @@ pub(crate) mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                versions: Vec::new(),
+                version: None,
             },
         );
         let cfg = external_cfg();
@@ -1853,6 +1881,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: None,
+            version: None,
         };
         assert_eq!(args.quality.as_deref().unwrap_or("best"), "best");
     }
@@ -2003,6 +2032,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("race-1".into()),
+            version: None,
         };
         let row = crate::commands::availability::cache_key("race-1", "sub");
         let at_start =
@@ -2054,6 +2084,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("cap-1".into()),
+            version: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("cap-1"), "sub").await;
@@ -2101,6 +2132,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("dub-2".into()),
+            version: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("dub-2"), "dub").await;
@@ -2153,6 +2185,7 @@ pub(crate) mod tests {
             alt_titles: vec![],
             prefetch: false,
             kitsu_id: Some("dub-1".into()),
+            version: None,
         };
         let at_start =
             crate::commands::availability::RowAtStart::read(&state, Some("dub-1"), "dub").await;

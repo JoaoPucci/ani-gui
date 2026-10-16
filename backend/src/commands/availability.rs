@@ -168,6 +168,12 @@ pub struct AvailabilityResponse {
     /// from every cached row, which hold verdicts.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unsettled: bool,
+    /// The show's versions, in the provider's order, when its pick has
+    /// several — copies of one season under a version tag ("Versions of
+    /// one pick" in `docs/title-resolution.md`); absent otherwise. The
+    /// uncensored version is the one a play naming none plays.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
 }
 
 impl AvailabilityResponse {
@@ -184,6 +190,7 @@ impl AvailabilityResponse {
             gate_refused: false,
             provider: None,
             unsettled: true,
+            versions: Vec::new(),
         }
     }
 }
@@ -274,6 +281,8 @@ pub struct ResolveVerdict<'a> {
     pub episode_cap: Option<u32>,
     /// The listing's fractional extras, when it served.
     pub extra_tags: &'a [String],
+    /// The pick's versions, when it served one with several.
+    pub versions: &'a [crate::commands::play_native_versions::VersionInfo],
 }
 
 impl<'a> ResolveVerdict<'a> {
@@ -290,6 +299,7 @@ impl<'a> ResolveVerdict<'a> {
             provider: Some(provider),
             episode_cap,
             extra_tags,
+            versions: &[],
         }
     }
 
@@ -302,6 +312,7 @@ impl<'a> ResolveVerdict<'a> {
             provider,
             episode_cap: None,
             extra_tags: &[],
+            versions: &[],
         }
     }
 }
@@ -479,6 +490,7 @@ pub async fn stamp_after_native(
                             gate_refused: false,
                             unsettled: false,
                             provider: verdict.provider,
+                            versions: Vec::new(),
                         },
                     );
                 }
@@ -884,6 +896,7 @@ pub async fn check_availability(
                 gate_refused,
                 unsettled: false,
                 provider,
+                versions: Vec::new(),
             });
         };
         // A verdict is measured against the row as it stands now,
@@ -904,6 +917,7 @@ pub async fn check_availability(
                 gate_refused,
                 unsettled: false,
                 provider,
+                versions: Vec::new(),
             });
         }
         seed_airing_for_negative(state, id, available, args.status.as_deref()).await;
@@ -923,6 +937,7 @@ pub async fn check_availability(
                 // Cached: a cache hit must still say whose catalogue
                 // carries the show.
                 provider,
+                versions: Vec::new(),
             },
         );
     }
@@ -935,6 +950,7 @@ pub async fn check_availability(
         gate_refused,
         unsettled: false,
         provider,
+        versions: Vec::new(),
     })
 }
 
@@ -1071,6 +1087,7 @@ pub fn write_cache(
             gate_refused: false,
             unsettled: false,
             provider,
+            versions: Vec::new(),
         },
     );
 }

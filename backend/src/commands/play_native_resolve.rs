@@ -65,6 +65,11 @@ pub struct NativeResolved {
     /// The matched row's display tag, stamped beside the offset when
     /// it differs from the slot so the read boundary can translate.
     pub resolved_tag: Option<String>,
+    /// The pick's versions, in the provider's order — empty when it
+    /// has one.
+    pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
+    /// The version that played, when the pick has several.
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -115,6 +120,9 @@ pub struct NativeResolveRequest<'a> {
     /// when the caller has it. Format disproof against the browse
     /// cards' badges.
     pub subtype: Option<&'a str>,
+    /// The version to play when the pick has several; `None` plays
+    /// the pick's default.
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
 /// Ceiling on one complete native resolution — every search, probe
@@ -269,6 +277,8 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
+                            versions: Vec::new(),
+                            version: None,
                         });
                     }
                     // A rejected pool is a clean verdict about THIS

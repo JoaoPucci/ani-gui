@@ -86,6 +86,8 @@ fn sample_resolution() -> CachedResolution {
         resolved_slot: None,
         subtitles: Vec::new(),
         kitsu_id: None,
+        versions: Vec::new(),
+        version: None,
     }
 }
 

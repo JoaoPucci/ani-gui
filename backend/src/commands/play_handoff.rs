@@ -55,6 +55,7 @@ pub async fn resolve_launch_args(
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        version: None,
     };
     let at_start = crate::commands::availability::RowAtStart::read(
         state,

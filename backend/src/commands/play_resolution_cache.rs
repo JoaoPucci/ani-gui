@@ -201,6 +201,13 @@ pub struct CachedResolution {
     /// request named one. Absent on rows written before the field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kitsu_id: Option<String>,
+    /// The resolve's versions, so a replay answers with them as the
+    /// fresh resolve did — empty when the pick had one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
+    /// The version the row plays, when the pick had several.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the

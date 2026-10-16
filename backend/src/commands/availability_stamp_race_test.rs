@@ -45,6 +45,7 @@ fn positive_row(provider: ProviderId, cap: Option<u32>) -> AvailabilityResponse 
         gate_refused: false,
         unsettled: false,
         provider: Some(provider),
+        versions: Vec::new(),
     }
 }
 

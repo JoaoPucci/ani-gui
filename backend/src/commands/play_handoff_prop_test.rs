@@ -36,6 +36,8 @@ proptest::proptest! {
             referer: referer.clone(),
             subtitles: Vec::new(),
             provider: crate::scraper::provider::ProviderId::TestA,
+            versions: Vec::new(),
+            version: None,
         };
         let args: PlayArgs = serde_json::from_value(serde_json::json!({
             "title": show_title,
