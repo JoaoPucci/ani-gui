@@ -78,13 +78,14 @@ interface Asked {
 function useHandlers(
 	mode: 'sub' | 'dub',
 	other: CacheAnswer | 'fails',
-	probeAvailable = false
+	probeAvailable = false,
+	subtype: string | null = null
 ): Asked {
 	const asked: Asked = { batch: [], probeModes: [], warms: 0 };
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig(mode))),
 		http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
-			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished' })
+			HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'finished', subtype })
 		),
 		http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
 			HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
@@ -261,5 +262,20 @@ describe('detail — a new question starts from no answer', () => {
 		await until(() => askedDub, 'the lookup for dub');
 		expect(notice()).toContain(m.detail_unavailable_message());
 		release();
+	});
+});
+
+describe('detail — a music title never names the other audio', () => {
+	it('keeps the catalogue sentence and asks nothing, whatever the cache holds', async () => {
+		// A music title is unavailable in both audios by the page's own
+		// rule, so "switch the audio" would lead to the same notice.
+		// A positive row for its id is plausible — a probe can match an
+		// unrelated show for it — and must not be believed.
+		const asked = useHandlers('dub', HAS, false, 'music');
+		app = mount(DetailPage, { target });
+		await until(() => notice() !== null, 'the unavailable notice');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(notice()).toContain(m.detail_unavailable_message());
+		expect(asked.batch.filter((b) => b.mode === 'sub')).toEqual([]);
 	});
 });

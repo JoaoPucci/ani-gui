@@ -25,6 +25,13 @@ describe('unavailableMessage — the notice that replaces Play', () => {
 		}
 	});
 
+	it('says the switch brings back download as well as playback', () => {
+		// The notice it replaces says both are unavailable; the switch
+		// restores both.
+		expect(m.detail_unavailable_in_dub_message()).toMatch(/watch or download/);
+		expect(m.detail_unavailable_in_sub_message()).toMatch(/watch or download/);
+	});
+
 	it('every locale names the audio that has the title, translated', () => {
 		for (const locale of ['pt-BR', 'es-419', 'ru'] as const) {
 			const dub = m.detail_unavailable_in_dub_message({}, { locale });
