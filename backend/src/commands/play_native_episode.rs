@@ -127,12 +127,22 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
         // back ([`provider_fraction`]).
         Err(_) => provider_fraction(episode.trim(), offset),
     };
+    // A row's tag now wins; failing one, a row an earlier version
+    // tagged so (a stitched recap it placed a part later) — a history
+    // row from then may still ask for it.
     let ep = picked
         .episodes
         .iter()
         .find(|e| match e.number2.as_deref() {
             Some(tag) => tag_matches(tag, &target),
             None => tag_matches(&e.number.to_string(), &target),
+        })
+        .or_else(|| {
+            picked.episodes.iter().find(|e| {
+                e.former_tag
+                    .as_deref()
+                    .is_some_and(|t| tag_matches(t, &target))
+            })
         })
         .ok_or_else(|| dead_end(AniError::NoResults))?;
     // One step, validated by the provider: the master answered and
