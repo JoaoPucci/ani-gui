@@ -52,7 +52,14 @@
 	import { describeSettingsFailure } from '$lib/settings/failure-copy';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache } from '$lib/play/other-audio';
-	import { claimPlay, playArgsFor, runOwnedPlay } from '$lib/play/owned-play';
+	import {
+		claimPlay,
+		playArgsFor,
+		playMode,
+		playQuality,
+		recordPlayed,
+		runOwnedPlay
+	} from '$lib/play/owned-play';
 	import { progressLabel } from '$lib/play/format';
 	import { airingPending, epAirState, formatAirDate } from '$lib/detail/episode-airing';
 	import { datedAired, withAiredFloor } from '$lib/detail/aired-evidence';
@@ -159,7 +166,7 @@
 	 * the page does, so a click in that gap asks with the fallback and
 	 * the real mode can arrive while the answer is out.
 	 */
-	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
+	const capGateMode = (): 'sub' | 'dub' => playMode(config);
 	/**
 	 * The context once this page is gone.
 	 *
@@ -698,7 +705,7 @@
 	// unchanged, and a derived that compares equal does not wake its
 	// dependents — so the common case costs one lookup, not two
 	// identical ones against a source that rate-limits.
-	const availabilityMode = $derived((config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub');
+	const availabilityMode = $derived(playMode(config));
 
 	// Availability against the provider. Result gates the Play + Download
 	// CTAs so titles outside the catalogue (Western animation, etc.)
@@ -971,7 +978,7 @@
 						.then((hits) => {
 							if (id !== currentId) return null;
 							const trimmed = hits.filter((h) => h.id !== d.id).slice(0, 12);
-							const mode: 'sub' | 'dub' = config?.mode === 'dub' ? 'dub' : 'sub';
+							const mode: 'sub' | 'dub' = playMode(config);
 							return filterAvailable(trimmed, mode);
 						})
 						.then((filtered) => {
@@ -1024,8 +1031,8 @@
 		// cap as unbounded, so the warm would resolve
 		// aired-but-uncatalogued padded tiles (Codex P2 #3566100686).
 		if (!availabilityResolved) return;
-		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config.quality ?? 'best';
+		const mode = playMode(config);
+		const quality = playQuality(config);
 
 		// Fan out a prefetch for every visible AIRED episode tile in
 		// the strip. The play-cache dedupes simultaneous calls —
@@ -1049,31 +1056,24 @@
 			playableCount: playableEpisodeCount,
 			listed: warmListed
 		});
-		const altTitles = altTitlesFromKitsu(detail);
 		for (const ep of targets) {
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
+				// A prefetch must NOT update Continue Watching — the calls
+				// fired here resolve in arbitrary order, so whichever
+				// finished last would overwrite the user's actual click.
+				// The Kitsu id rides along so the backend can record the
+				// (provider show_id → kitsu_id) reverse mapping even if the
+				// user only ever prefetches.
 				playStream(
-					{
+					playArgsFor({
 						title,
-						episode: String(ep),
+						episode: ep,
 						mode,
 						quality,
-						episode_count: detail?.episode_count ?? null,
-						year: yearFromKitsuRef(detail),
-						subtype: detail?.subtype ?? null,
-						alt_titles: altTitles,
-						// Prefetches must NOT update Continue Watching — the
-						// 12 calls fired here resolve in arbitrary order, so
-						// whichever finishes last would overwrite the user's
-						// actual click. The click handler leaves this false.
-						prefetch: true,
-						// Carry kitsu_id so the backend can record the
-						// (provider show_id → kitsu_id) reverse mapping
-						// even if the user only ever prefetches and never
-						// clicks (defense-in-depth; click-side carries it
-						// too via markWatched).
-						kitsu_id: id
-					},
+						show: detail,
+						kitsuId: id,
+						prefetch: true
+					}),
 					emit,
 					signal
 				)
@@ -1295,8 +1295,8 @@
 			notify(m.detail_notify_no_title());
 			return;
 		}
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config?.quality ?? 'best';
+		const mode = playMode(config);
+		const quality = playQuality(config);
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
 		// against them, and records the show the viewer clicked.
@@ -1348,20 +1348,15 @@
 			// so the backend's auto-history-write stayed silent for
 			// cache-hit clicks — markWatched covers that gap. The backend
 			// op is idempotent.
-			void markWatched(playArgs).catch(() => {});
-			// Mirror the progress to any connected tracker (best-effort,
-			// renderer-driven fan-out — see /play/[id] for the rationale).
 			// Completion is decided against the FULL finite series total
 			// (Kitsu's mode-independent count), NOT episodeCap — in dub
 			// mode the playable cap is only the dubbed slice (Codex P2
 			// #3387467149) — and only for a finished series (Codex P2
-			// #3387184082). progress itself is the played episode number.
-			void syncWatchedToTrackers(
-				owner.showId,
-				ep,
-				show?.episode_count ?? null,
-				show?.status === 'finished'
-			).catch(() => {});
+			// #3387184082).
+			recordPlayed(
+				{ args: playArgs, showId: owner.showId, episode: ep, show, mirror: true },
+				{ markWatched, syncTrackers: syncWatchedToTrackers }
+			);
 			if (outcome.current) {
 				// `kind` rides along so the player page knows whether to
 				// mount hls.js or a plain `<video src>`. The no-resolve
@@ -1410,8 +1405,8 @@
 
 	function onDownload() {
 		if (!detail || nothingAiredYet || airingIsPending) return;
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config?.quality ?? 'best';
+		const mode = playMode(config);
+		const quality = playQuality(config);
 		// `episode_count` must stay Kitsu's announced total — that's
 		// what the backend picker compares against the provider's planned
 		// `episodeCount`. The modal's range cap (the provider's released-

@@ -115,7 +115,14 @@
 	import { isStaleDragCallback } from '$lib/play/drag-generation';
 	import { describeError } from '$lib/play/error-copy';
 	import { describePlayFailureFromCache, otherAudioForFailure } from '$lib/play/other-audio';
-	import { claimPlay, playArgsFor, runOwnedPlay } from '$lib/play/owned-play';
+	import {
+		claimPlay,
+		playArgsFor,
+		playMode,
+		playQuality,
+		recordPlayed,
+		runOwnedPlay
+	} from '$lib/play/owned-play';
 	import { describeExternalLaunchFailure } from '$lib/play/external-launch-copy';
 	import { externalLaunchSuccessToast } from '$lib/play/external-toast';
 	import {
@@ -878,7 +885,7 @@
 	 * the page does, so a click in that gap asks with the fallback and
 	 * the real mode can arrive while the answer is out.
 	 */
-	const capGateMode = (): 'sub' | 'dub' => (config?.mode === 'dub' ? 'dub' : 'sub');
+	const capGateMode = (): 'sub' | 'dub' => playMode(config);
 	/**
 	 * The context once this page is gone.
 	 *
@@ -1094,7 +1101,7 @@
 	// unchanged, and a derived that compares equal does not wake its
 	// dependents — so the common case costs one lookup, not two
 	// identical ones against a source that rate-limits.
-	const availabilityMode = $derived((config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub');
+	const availabilityMode = $derived(playMode(config));
 
 	$effect(() => {
 		const d = detail;
@@ -1862,9 +1869,8 @@
 		if (!availabilityResolved) return;
 		const title = detail.canonical_title;
 		if (!title) return;
-		const mode = (config.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config.quality ?? 'best';
-		const altTitles = altTitlesFromKitsu(detail);
+		const mode = playMode(config);
+		const quality = playQuality(config);
 		// Which tiles to warm — and how wide, given the caching
 		// setting — is the module's decision; the page only feeds it
 		// the runtime inputs.
@@ -1878,22 +1884,18 @@
 		});
 		for (const targetEp of targets) {
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
+				// A prefetch must NOT update Continue Watching —
+				// switchToEpisode (the click path) does that.
 				playStream(
-					{
+					playArgsFor({
 						title,
-						episode: String(targetEp),
+						episode: targetEp,
 						mode,
 						quality,
-						episode_count: detail?.episode_count ?? null,
-						year: yearFromKitsuRef(detail),
-						subtype: detail?.subtype ?? null,
-						alt_titles: altTitles,
-						// Prefetches must NOT update Continue Watching —
-						// switchToEpisode (the click path) does that
-						// directly via prefetch:false (default).
-						prefetch: true,
-						kitsu_id: recordableId(id, fromGuess)
-					},
+						show: detail,
+						kitsuId: recordableId(id, fromGuess),
+						prefetch: true
+					}),
 					emit,
 					signal
 				)
@@ -1927,7 +1929,7 @@
 		}
 		const title = detail.canonical_title;
 		if (!title) return;
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
+		const mode = playMode(config);
 		// The show, visit and flags this switch is for, and its request,
 		// taken at the click ($lib/play/owned-play): the route's component
 		// is reused across shows and across a round trip back, so a late
@@ -1940,7 +1942,7 @@
 		const show = detail;
 		const guess = fromGuess;
 		const row = fromRow;
-		const quality = config?.quality ?? 'best';
+		const quality = playQuality(config);
 		const playArgs = playArgsFor({
 			title,
 			episode: targetEp,
@@ -2003,23 +2005,13 @@
 			// Stamp Continue Watching — see the equivalent block in
 			// /anime/[id] for the rationale (getOrFire reuse). The watch
 			// is the clicked show's even when the viewer has moved on.
-			void markWatched(playArgs).catch(() => {});
-			// Mirror the progress to any connected tracker (AniList / MAL).
-			// Best-effort and renderer-driven — the backend is stateless,
-			// so the renderer fans the write out per provider.
-			// Completion is decided against the FULL finite series total
-			// (Kitsu's mode-independent count), NOT episodeCap — in dub
-			// mode the playable cap is only the dubbed slice (Codex P2
-			// #3387467149) — and only for a finished series (Codex P2
-			// #3387184082). progress itself is the played episode number.
-			if (!guess) {
-				void syncWatchedToTrackers(
-					owner.showId,
-					targetEp,
-					show.episode_count ?? null,
-					show.status === 'finished'
-				).catch(() => {});
-			}
+			// The tracker mirror is renderer-driven — the backend is
+			// stateless — and a guessed match writes nothing to the
+			// user's trackers.
+			recordPlayed(
+				{ args: playArgs, showId: owner.showId, episode: targetEp, show, mirror: !guess },
+				{ markWatched, syncTrackers: syncWatchedToTrackers }
+			);
 			// The player on screen belongs to another visit: leave it.
 			if (!outcome.current) return;
 			/* eslint-disable svelte/no-navigation-without-resolve */
@@ -2083,20 +2075,20 @@
 		// Settings is intentionally NOT a precondition — falling back to
 		// sub/best matches switchToEpisode's pattern. A permanently null
 		// config (settingsGet rejected) shouldn't leave Reload no-op.
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config?.quality ?? 'best';
+		const mode = playMode(config);
+		const quality = playQuality(config);
 		console.info('[play] stale-stream recovery:', reason);
 		try {
-			await evictPlayCache({
-				title,
-				episode: String(episodeNum),
-				mode,
-				quality,
-				episode_count: detail.episode_count ?? null,
-				year: yearFromKitsuRef(detail),
-				subtype: detail.subtype ?? null,
-				alt_titles: altTitlesFromKitsu(detail)
-			});
+			await evictPlayCache(
+				playArgsFor({
+					title,
+					episode: episodeNum,
+					mode,
+					quality,
+					show: detail,
+					kitsuId: undefined
+				})
+			);
 		} catch {
 			/* eviction-endpoint failure shouldn't block retry — the
 			 *  server may have already evicted on HEAD-fail */
@@ -2379,8 +2371,8 @@
 		// flight the modal's cap would fall back to the announced
 		// total and an All download could range into unaired episodes.
 		if (!detail || airingIsPending) return;
-		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
-		const quality = config?.quality ?? 'best';
+		const mode = playMode(config);
+		const quality = playQuality(config);
 		downloadArgs = buildDownloadArgs({
 			detail,
 			episode: episodeNum,
