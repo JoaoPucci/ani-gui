@@ -52,6 +52,7 @@ pub mod kitsu;
 pub(crate) mod kitsu_gone;
 pub(crate) mod kitsu_played;
 pub(crate) mod kitsu_search;
+pub mod kitsu_tail;
 pub(crate) mod kitsu_title_words;
 pub mod kitsu_warm;
 pub mod play;

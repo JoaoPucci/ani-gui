@@ -87,7 +87,7 @@ pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u
 
 /// How many of the count's last episodes must carry the listing's own
 /// titles: three, or all of them for a shorter show.
-const ALIGNED: u32 = 3;
+pub const ALIGNED: u32 = 3;
 
 /// `listing` with its rows past `count` tagged as extras — `count.1`,
 /// `count.2`, … in listing order, each row otherwise the row it was —

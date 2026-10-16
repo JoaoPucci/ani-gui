@@ -789,9 +789,13 @@ pub async fn check_availability(
     // records it under the play path's mapping: answered verdicts
     // (the clean miss included) are health, weather is distress, a
     // gate refusal records nothing.
+    let tail = super::kitsu_tail::KitsuTail::for_entry(state, args.kitsu_id.as_deref());
     let mut attempt = ProbeAttempt {
         args,
         mode,
+        tail: tail
+            .as_ref()
+            .map(|t| t as &dyn super::play_native_appended::TailSource),
         answered_by: None,
     };
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
@@ -958,6 +962,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     client: &P,
     args: &AvailabilityArgs,
     mode: &str,
+    tail: Option<&dyn super::play_native_appended::TailSource>,
 ) -> std::result::Result<
     (crate::commands::play_native::PickedShow, Option<bool>),
     crate::commands::play_native_resolve::NativeError,
@@ -969,7 +974,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         args.episode_count,
         args.year,
         args.subtype.as_deref(),
-        None,
+        tail,
     )
     .await?;
     let present = crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)
@@ -987,6 +992,9 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
 struct ProbeAttempt<'r> {
     args: &'r AvailabilityArgs,
     mode: &'r str,
+    /// The evidence about the entry's last episodes, when the probe
+    /// knows the entry.
+    tail: Option<&'r dyn super::play_native_appended::TailSource>,
     /// The provider whose miss the walk returned — set by the walk,
     /// which knows whose verdict survived.
     answered_by: Option<crate::scraper::provider::ProviderId>,
@@ -1000,7 +1008,7 @@ impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
         &mut self,
         provider: &dyn crate::scraper::provider::Provider,
     ) -> std::result::Result<Self::Output, crate::commands::play_native_resolve::NativeError> {
-        probe_show(provider, self.args, self.mode).await
+        probe_show(provider, self.args, self.mode, self.tail).await
     }
 
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {
