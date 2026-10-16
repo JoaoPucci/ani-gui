@@ -545,7 +545,13 @@ pub fn title_match_put(
 ///   Mo Du Zhe, whose count it merely fit — where the title carries no
 ///   cour marker the guard could refuse it on; re-keying lets the next
 ///   resolve re-derive it.
-pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 7;
+/// - v8: a dated entry with a count takes only a hit a name vouches
+///   for, and a hit its own page files under Hentai is never a pick. A
+///   v7 row can bind a same-year show's key to such an entry — Medaka
+///   Box Abnormal's to HenSemi (TV) — where the title carries no cour
+///   marker the guard could refuse it on; re-keying lets the next
+///   resolve re-derive it.
+pub(crate) const ALLMANGA_KITSU_VERSION: u32 = 8;
 
 pub(crate) fn allmanga_kitsu_key(show_id: &str) -> String {
     format!("allmanga2kitsu:v{ALLMANGA_KITSU_VERSION}:{show_id}")

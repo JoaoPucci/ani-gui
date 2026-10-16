@@ -155,7 +155,12 @@ use crate::proxy::MediaKind;
 // entry can hold another show's stream — one whose count merely fit —
 // under the entry's key, and a HEAD-passing hit would keep serving it;
 // bumping re-resolves.
-const SCHEMA: &str = "v19";
+// v20: a dated entry with a count takes only a hit a name vouches for,
+// and a hit its own page files under Hentai is never a pick. A v19 row
+// for such an entry can hold a same-year show's stream under the
+// entry's key — HenSemi (TV) playing Medaka Box Abnormal — and a
+// HEAD-passing hit would keep serving it; bumping re-resolves.
+const SCHEMA: &str = "v20";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
