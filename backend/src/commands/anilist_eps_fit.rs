@@ -19,6 +19,9 @@ use crate::meta::kitsu::KitsuEpisode;
 /// episode count decides instead.
 const MIN_COMPARED: usize = 3;
 
+/// Shortest squashed title that counts as contained in another.
+const MIN_CONTAINED: usize = 3;
+
 /// Words too common in episode titles to say two titles are the same
 /// episode.
 const STOP_WORDS: &[&str] = &["the", "and", "for", "from", "with", "part", "episode"];
@@ -55,6 +58,7 @@ fn shape_fits(listing: &StreamingListing) -> bool {
 }
 
 /// `(Kitsu title, listing title)` for every page episode both title.
+/// A Kitsu placeholder ("Episode 5") is no title.
 fn compared_titles<'a>(
     listing: &'a StreamingListing,
     page: &'a [KitsuEpisode],
@@ -63,15 +67,33 @@ fn compared_titles<'a>(
         .filter_map(|ep| {
             let ours = ep.canonical_title.as_deref()?;
             let theirs = listing.entries.get(&ep.number?)?.title.as_str();
-            (!squashed(ours).is_empty() && !squashed(theirs).is_empty()).then_some((ours, theirs))
+            (!is_placeholder(ours) && !squashed(theirs).is_empty()).then_some((ours, theirs))
         })
         .collect()
 }
 
+/// A title with no words, or only the word "episode" and a number.
+fn is_placeholder(title: &str) -> bool {
+    let words: Vec<String> = tokens(title).collect();
+    match words.as_slice() {
+        [] => true,
+        [word, number] => word == "episode" && number.chars().all(|c| c.is_ascii_digit()),
+        _ => false,
+    }
+}
+
+/// One squashed title holds the other, and the held one is at least
+/// [`MIN_CONTAINED`] characters long: "go" is inside nearly anything.
+fn contains_other(a: &str, b: &str) -> bool {
+    let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
+    short.chars().count() >= MIN_CONTAINED && long.contains(short)
+}
+
 /// How many of `pairs` name the same episode: one title's letters and
-/// digits contain the other's, or the two share a distinctive word.
-/// A word in more than a quarter of the pairs is the show's own
-/// vocabulary ("Kaguya Wants to …") and is not distinctive.
+/// digits contain the other's ([`contains_other`]), or the two share a
+/// distinctive word. A word in more than a quarter of the pairs — in
+/// more than one, when fewer than eight are compared — is the show's
+/// own vocabulary ("Kaguya Wants to …") and is not distinctive.
 fn titles_agree(pairs: &[(&str, &str)]) -> usize {
     let words: Vec<(HashSet<String>, HashSet<String>)> = pairs
         .iter()
@@ -88,9 +110,7 @@ fn titles_agree(pairs: &[(&str, &str)]) -> usize {
         .iter()
         .zip(&words)
         .filter(|((a, b), (wa, wb))| {
-            let (sa, sb) = (squashed(a), squashed(b));
-            sa.contains(&sb)
-                || sb.contains(&sa)
+            contains_other(&squashed(a), &squashed(b))
                 || wa
                     .intersection(wb)
                     .any(|w| spread.get(w.as_str()).is_some_and(|n| *n <= common))
