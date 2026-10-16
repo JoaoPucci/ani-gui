@@ -64,4 +64,18 @@ describe('createDownloadQueue', () => {
 		// a seventh would wait for one with nothing saying so.
 		expect(DOWNLOAD_CONCURRENCY).toBe(6);
 	});
+
+	it('a start that throws still gives its slot back', async () => {
+		const queue = createDownloadQueue(1);
+		const run = queue.run(() => Promise.resolve('never'), {
+			signal: new AbortController().signal,
+			onStart: () => {
+				throw new Error('start');
+			}
+		});
+		await expect(run).rejects.toThrow('start');
+		const next = held();
+		void queue.run(next.task, { signal: new AbortController().signal, onStart: next.onStart });
+		expect(next.state.started).toBe(true);
+	});
 });
