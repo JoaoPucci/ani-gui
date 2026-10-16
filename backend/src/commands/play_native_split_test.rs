@@ -172,6 +172,28 @@ fn stitching_places_a_recap_before_a_cumulative_parts_first_episode() {
         .find(|e| e.number2.as_deref() == Some("12.5"))
         .expect("the recap");
     assert_eq!(recap.id, 201);
+    // An earlier version tagged it one part later, and may have stored
+    // that tag; the row remembers it. No other row has a former tag.
+    assert_eq!(recap.former_tag.as_deref(), Some("24.5"));
+    assert!(merged
+        .iter()
+        .filter(|e| e.id != 201)
+        .all(|e| e.former_tag.is_none()));
+}
+
+#[test]
+fn stitching_a_part_numbered_from_one_leaves_no_former_tag() {
+    // A later part numbered from 1 with a recap before its first
+    // episode was tagged the same by every version.
+    let first = listing(100, 12);
+    let second = vec![
+        row(201, 1, Some("0.5")),
+        row(202, 2, Some("1")),
+        row(203, 3, Some("2")),
+    ];
+    let merged = merge_parts(&[&first, &second]);
+    assert!(merged.iter().all(|e| e.former_tag.is_none()));
+    assert!(merged.iter().any(|e| e.number2.as_deref() == Some("12.5")));
 }
 
 #[test]

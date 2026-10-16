@@ -766,3 +766,34 @@ mod verdict_props {
         }
     }
 }
+
+#[tokio::test]
+async fn a_request_for_a_rows_former_tag_still_finds_it() {
+    // A stitched recap an earlier version tagged "24.5", now "12.5": a
+    // history row from then reads back as "24.5", and asking for it
+    // plays the recap rather than ending in episode-unavailable.
+    let mut recap = ep(13, 13, Some("12.5"));
+    recap.former_tag = Some("24.5".into());
+    let mut rows: Vec<EpisodeRef> = (1..=12).map(|n| ep(u64::from(n), n, None)).collect();
+    rows.push(recap);
+    rows.push(ep(14, 14, Some("13")));
+    let picked = show(rows);
+    let client = only_episode(13);
+    let resolved = resolve_episode(&client, &picked, "24.5", "sub", "best")
+        .await
+        .expect("the former tag still names the recap");
+    assert_eq!(resolved.slot, 13);
+    assert_eq!(resolved.tag.as_deref(), Some("12.5"), "the row's tag now");
+}
+
+#[tokio::test]
+async fn a_rows_tag_wins_over_another_rows_former_tag() {
+    let mut odd = ep(20, 3, Some("2.5"));
+    odd.former_tag = Some("4.5".into());
+    let picked = show(vec![ep(19, 1, None), odd, ep(21, 4, Some("4.5"))]);
+    let client = only_episode(21);
+    let resolved = resolve_episode(&client, &picked, "4.5", "sub", "best")
+        .await
+        .expect("the row tagged 4.5 now");
+    assert_eq!(resolved.slot, 4);
+}
