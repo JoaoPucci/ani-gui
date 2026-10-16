@@ -49,6 +49,7 @@ fn native() -> NativeResolved {
         provider: crate::scraper::provider::ProviderId::TestA,
         referer: None,
         subtitles: Vec::new(),
+        former_tags: Vec::new(),
     }
 }
 

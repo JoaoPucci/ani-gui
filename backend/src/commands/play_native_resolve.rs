@@ -65,6 +65,11 @@ pub struct NativeResolved {
     /// The matched row's display tag, stamped beside the offset when
     /// it differs from the slot so the read boundary can translate.
     pub resolved_tag: Option<String>,
+    /// Rows of the picked listing an earlier version tagged otherwise:
+    /// (slot, the tag it had then, the tag it has now) — a stitched
+    /// recap before a cumulatively numbered part. Empty for any other
+    /// listing.
+    pub former_tags: Vec<(u32, String, String)>,
 }
 
 /// A failed resolution, carrying the typed error plus whether the
@@ -269,6 +274,7 @@ where
                             extra_tags,
                             resolved_slot: resolved.slot,
                             resolved_tag: resolved.tag,
+                            former_tags: Vec::new(),
                         });
                     }
                     // A rejected pool is a clean verdict about THIS
