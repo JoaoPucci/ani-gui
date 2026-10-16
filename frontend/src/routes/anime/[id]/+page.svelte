@@ -1295,9 +1295,21 @@
 		// reuses this component, so `id` can name another show by the
 		// time the play answers.
 		const showId = id;
+		const show = detail;
+		const playArgs = {
+			title,
+			episode: String(ep),
+			mode,
+			quality,
+			episode_count: show?.episode_count ?? null,
+			year: yearFromKitsuRef(show),
+			subtype: show?.subtype ?? null,
+			alt_titles: altTitlesFromKitsu(show),
+			kitsu_id: showId
+		};
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if the player never opens.
-		markStarted(id, ep);
+		markStarted(showId, ep);
 		// LoadingOverlay binds to actionBusy; it stays up until goto
 		// fires (which unmounts this page) or the catch branch resets
 		// busy and surfaces an error toast.
@@ -1312,23 +1324,8 @@
 			// variant feeds progress events into the overlay so the user
 			// sees `<provider> ✓` ticks while resolution runs.
 			const session = await getOrFire(
-				makeKey(id, ep, mode, quality),
-				(emit, signal) =>
-					playStream(
-						{
-							title,
-							episode: String(ep),
-							mode,
-							quality,
-							episode_count: detail?.episode_count ?? null,
-							year: yearFromKitsuRef(detail),
-							subtype: detail?.subtype ?? null,
-							alt_titles: altTitlesFromKitsu(detail),
-							kitsu_id: id
-						},
-						emit,
-						signal
-					),
+				makeKey(showId, ep, mode, quality),
+				(emit, signal) => playStream(playArgs, emit, signal),
 				(p) => {
 					actionProgress = progressLabel(p);
 				}
@@ -1345,17 +1342,7 @@
 			// cache-hit clicks — markWatched covers that gap. Cache-miss
 			// clicks ALSO call this; the backend op is idempotent (looks
 			// up cache by key, no-op when missing).
-			void markWatched({
-				title,
-				episode: String(ep),
-				mode,
-				quality,
-				episode_count: detail?.episode_count ?? null,
-				year: yearFromKitsuRef(detail),
-				subtype: detail?.subtype ?? null,
-				alt_titles: altTitlesFromKitsu(detail),
-				kitsu_id: id
-			}).catch(() => {});
+			void markWatched(playArgs).catch(() => {});
 			// Mirror the progress to any connected tracker (best-effort,
 			// renderer-driven fan-out — see /play/[id] for the rationale).
 			// Completion is decided against the FULL finite series total
@@ -1364,13 +1351,20 @@
 			// #3387467149) — and only for a finished series (Codex P2
 			// #3387184082). progress itself is the played episode number.
 			void syncWatchedToTrackers(
-				id,
+				showId,
 				ep,
-				detail?.episode_count ?? null,
-				detail?.status === 'finished'
+				show?.episode_count ?? null,
+				show?.status === 'finished'
 			).catch(() => {});
+			// The page moved on to another show (a Similar-title link
+			// reuses this component): the watch above is still this
+			// show's, but taking the viewer back to its player is not.
+			if (id !== showId) {
+				actionBusy = false;
+				return;
+			}
 			/* eslint-disable svelte/no-navigation-without-resolve */
-			void goto(resolve('/play/[id]', { id }) + buildPlayQuery(session, ep));
+			void goto(resolve('/play/[id]', { id: showId }) + buildPlayQuery(session, ep));
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} catch (e) {
 			// Fixed-position overlay rather than an inline banner — the

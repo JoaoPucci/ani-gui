@@ -1923,10 +1923,24 @@
 		if (!title) return;
 		const mode = (config?.mode === 'dub' ? 'dub' : 'sub') as 'sub' | 'dub';
 		// The show this switch is for, read once: the route's component
-		// is reused across shows, so `id` can name another by the time the
-		// play answers.
+		// is reused across shows, so `id`, `detail` and the URL's flags
+		// can describe another by the time the play answers.
 		const showId = id;
+		const show = detail;
+		const guess = fromGuess;
+		const row = fromRow;
 		const quality = config?.quality ?? 'best';
+		const playArgs = {
+			title,
+			episode: String(targetEp),
+			mode,
+			quality,
+			episode_count: show.episode_count ?? null,
+			year: yearFromKitsuRef(show),
+			subtype: show.subtype ?? null,
+			alt_titles: altTitlesFromKitsu(show),
+			kitsu_id: recordableId(showId, guess)
+		};
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
 		markStarted(id, targetEp, undefined, fromRow);
@@ -1939,23 +1953,8 @@
 			// surfaces `<provider> ✓` ticks under the Lottie when the
 			// click races a prefetch that hasn't finished yet.
 			const session = await getOrFire(
-				makeKey(id, targetEp, mode, quality),
-				(emit, signal) =>
-					playStream(
-						{
-							title,
-							episode: String(targetEp),
-							mode,
-							quality,
-							episode_count: detail?.episode_count ?? null,
-							year: yearFromKitsuRef(detail),
-							subtype: detail?.subtype ?? null,
-							alt_titles: altTitlesFromKitsu(detail),
-							kitsu_id: recordableId(id, fromGuess)
-						},
-						emit,
-						signal
-					),
+				makeKey(showId, targetEp, mode, quality),
+				(emit, signal) => playStream(playArgs, emit, signal),
 				(p) => {
 					switchProgress = progressLabel(p);
 				}
@@ -1964,6 +1963,10 @@
 			// below is theirs any more, least of all a navigation back
 			// into the player.
 			if (gone) return;
+			// The page moved on to another show (the component is reused):
+			// the watch below is still this show's, but the player on
+			// screen is not, so nothing else here touches it.
+			const moved = id !== showId;
 			// Reset the one-shot auto-retry budget only on a real episode
 			// switch — Next/Prev/pick are distinct session-classes, so
 			// each gets its own shot. Resetting on a same-episode landing
@@ -1971,7 +1974,10 @@
 			// let chronically expired CDN URLs loop unbounded through
 			// eviction + resolve, hammering the resolver and upstream until a
 			// non-network error happens. See Codex P1 #3366915811.
-			if (shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })) {
+			if (
+				!moved &&
+				shouldResetStaleStreamBudget({ currentEpisode: episodeNum, targetEpisode: targetEp })
+			) {
 				hasAutoRetried = false;
 				stallMachine.reset();
 			}
@@ -1983,17 +1989,7 @@
 			// `goto(resolve(...))` call, so we suppress around the call.
 			// Stamp Continue Watching — see the equivalent block in
 			// /anime/[id] for the rationale (getOrFire reuse).
-			void markWatched({
-				title,
-				episode: String(targetEp),
-				mode,
-				quality,
-				episode_count: detail?.episode_count ?? null,
-				year: yearFromKitsuRef(detail),
-				subtype: detail?.subtype ?? null,
-				alt_titles: altTitlesFromKitsu(detail),
-				kitsu_id: recordableId(id, fromGuess)
-			}).catch(() => {});
+			void markWatched(playArgs).catch(() => {});
 			// Mirror the progress to any connected tracker (AniList / MAL).
 			// Best-effort and renderer-driven — the backend is stateless,
 			// so the renderer fans the write out per provider.
@@ -2002,14 +1998,15 @@
 			// mode the playable cap is only the dubbed slice (Codex P2
 			// #3387467149) — and only for a finished series (Codex P2
 			// #3387184082). progress itself is the played episode number.
-			if (!fromGuess) {
+			if (!guess) {
 				void syncWatchedToTrackers(
-					id,
+					showId,
 					targetEp,
-					detail?.episode_count ?? null,
-					detail?.status === 'finished'
+					show.episode_count ?? null,
+					show.status === 'finished'
 				).catch(() => {});
 			}
+			if (moved) return;
 			/* eslint-disable svelte/no-navigation-without-resolve */
 			// replaceState: true so prev/next don't accumulate history
 			// entries — back from /play/[id] always returns to
@@ -2025,8 +2022,8 @@
 			// not a failed play, so it does not reach the play-failure
 			// overlay below.
 			await goto(
-				resolve('/play/[id]', { id }) +
-					withRow(withGuess(buildPlayQuery(session, targetEp), fromGuess), fromRow),
+				resolve('/play/[id]', { id: showId }) +
+					withRow(withGuess(buildPlayQuery(session, targetEp), guess), row),
 				{ replaceState: true }
 			).catch(() => {});
 			/* eslint-enable svelte/no-navigation-without-resolve */
