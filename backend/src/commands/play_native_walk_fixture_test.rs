@@ -2944,8 +2944,11 @@ async fn dated_entries_the_catalogue_does_not_list_are_refused() {
 /// them. Here each entry is given the hentai's own premiere year, and
 /// the hentai's title among its names — so its year, its count and a
 /// name all vouch for it — and the walk still takes nothing, the pool
-/// it answered from holding nothing else the entry could be; with the
-/// genre left off the page, the same walk takes the hentai.
+/// it answered from holding nothing else the entry could be, which is
+/// the clean miss a pool of other years' shows is; with the genre left
+/// off the page, the same walk takes the hentai. The same holds with
+/// the entry's count taken away: a dated countless entry reads the page
+/// too.
 #[tokio::test]
 async fn a_hit_filed_under_hentai_is_never_picked() {
     for (id, slug) in [
@@ -2978,13 +2981,27 @@ async fn a_hit_filed_under_hentai_is_never_picked() {
             }
             site
         };
-        if let Ok(p) = walk_over(vouched_for(true)).await {
-            panic!("{id}: picked {} ({})", p.hit.slug, p.hit.title);
+        // With its count and without one: every path that reads the
+        // page drops the hit, a dated countless entry's included.
+        for counted in [true, false] {
+            let site = |genres: bool| {
+                let mut site = vouched_for(genres);
+                if !counted {
+                    site.doc.kitsu.episode_count = None;
+                }
+                site
+            };
+            match walk_over(site(true)).await {
+                Ok(p) => panic!("{id} {counted}: picked {} ({})", p.hit.slug, p.hit.title),
+                // The page says the listing is not the entry's, as a
+                // year off it would: the clean miss.
+                Err(e) => assert!(e.clean_miss, "{id} {counted}: {:?}", e.error),
+            }
+            let control = walk_over(site(false))
+                .await
+                .unwrap_or_else(|e| panic!("{id} {counted}: the control refused: {e:?}"));
+            assert_eq!(control.hit.slug, slug, "{id} {counted}: the control's pick");
         }
-        let control = walk_over(vouched_for(false))
-            .await
-            .unwrap_or_else(|e| panic!("{id}: the control refused: {e:?}"));
-        assert_eq!(control.hit.slug, slug, "{id}: the control's pick");
     }
 }
 

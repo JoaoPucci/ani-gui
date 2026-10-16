@@ -582,6 +582,11 @@ impl<P: Provider> Provider for Gated<'_, P> {
         self.inner.detail_year(slug).await
     }
 
+    async fn detail_page(&self, slug: &str) -> Result<crate::scraper::provider::EntryPage> {
+        self.admit().await?;
+        self.inner.detail_page(slug).await
+    }
+
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
         *self.last_attempt_at.lock().expect("stamp")
     }
@@ -632,6 +637,10 @@ impl<P: Provider + ?Sized> Provider for &P {
 
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
         (**self).detail_year(slug).await
+    }
+
+    async fn detail_page(&self, slug: &str) -> Result<crate::scraper::provider::EntryPage> {
+        (**self).detail_page(slug).await
     }
 
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
@@ -688,6 +697,10 @@ impl<P: Provider + ?Sized> Provider for Arc<P> {
 
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>> {
         (**self).detail_year(slug).await
+    }
+
+    async fn detail_page(&self, slug: &str) -> Result<crate::scraper::provider::EntryPage> {
+        (**self).detail_page(slug).await
     }
 
     fn last_attempt_at(&self) -> Option<tokio::time::Instant> {
