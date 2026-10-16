@@ -3,7 +3,7 @@
 //! [`super`] so each file stays inside the CRAP gate's per-file bar.
 
 use super::*;
-use crate::commands::play_native_count_alone::unvouched_counted;
+use crate::commands::play_native_count_alone::{count_vouches, unvouched_counted};
 use crate::commands::play_native_dated_name::{may_win, unnamed_dated};
 use crate::commands::play_native_single_video::unvouched_single_videos;
 use crate::commands::play_native_title_grammar::normalized;
@@ -111,7 +111,9 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                         pos,
                         could_win,
                     );
-                    note_dead(&mut dead, h, could_win, entry);
+                    let vouched =
+                        count_vouches(&h.title, &needle, entry, expected, year, year_confirmed);
+                    note_dead(&mut dead, h, could_win, vouched, entry);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
