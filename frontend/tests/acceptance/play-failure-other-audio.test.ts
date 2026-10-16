@@ -842,3 +842,79 @@ describe('a play whose page is left before it answers', () => {
 		expect(vi.mocked(goto)).not.toHaveBeenCalled();
 	});
 });
+
+describe('detail — warms queued before the page moved to another show', () => {
+	it('carry the show they were queued for', async () => {
+		// Warms run two at a time; the rest wait for a slot. The page
+		// moves to another show (the component is reused) while some
+		// wait. When they fire, they must still describe the show they
+		// were queued for — they are keyed and titled for it, and the
+		// backend records their Kitsu id against the provider's show.
+		const OTHER_ID = '777';
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () =>
+				HttpResponse.json({ ...appConfig('sub'), cache_resolutions: true })
+			)
+		);
+		useHandlers({ cached: {}, playable_episode_counts: {} });
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () =>
+				HttpResponse.json({ ...appConfig('sub'), cache_resolutions: true })
+			),
+			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(OTHER_ID, 'Another Show', 24), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
+				HttpResponse.json({ aired: 24, next_episode: null, next_airing_at: null, upcoming: [] })
+			)
+		);
+		app = mount(DetailPage, { target });
+		const warms = () => FakeEventSource.instances.filter((i) => i.url.includes('prefetch=1'));
+		await until(() => warms().length >= 2, 'the first warms');
+		// Two are running and the rest are queued behind them.
+		expect(warms().length).toBe(2);
+		expect(warms().every((w) => w.url.includes(`kitsu_id=${KITSU_ID}`))).toBe(true);
+		setParams({ id: OTHER_ID });
+		await until(() => (target.textContent ?? '').includes('Another Show'), 'the other show');
+		const before = warms().length;
+		for (const w of warms().slice(0, 2)) w.dispatch('error', JSON.stringify({ kind: 'timeout' }));
+		await until(() => warms().length > before, 'a queued warm to fire');
+		const fired = warms()
+			.slice(before)
+			.filter((w) => w.url.includes(`title=${encodeURIComponent(TITLE).replace(/%20/g, '+')}`));
+		expect(fired.length).toBeGreaterThan(0);
+		for (const w of fired) {
+			expect(w.url, 'a queued warm keeps its own show').toContain(`kitsu_id=${KITSU_ID}`);
+			expect(w.url).not.toContain(`kitsu_id=${OTHER_ID}`);
+		}
+	});
+});
+
+describe('play — a switch whose page is left before it answers', () => {
+	it('asks the cache nothing and shows nothing', async () => {
+		const asked = useHandlers({
+			cached: { [KITSU_ID]: true },
+			playable_episode_counts: { [KITSU_ID]: 12 }
+		});
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-gone', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await until(() => tile(2) !== null, 'the tile for episode 2');
+		tile(2)!.click();
+		await until(
+			() =>
+				FakeEventSource.instances.some(
+					(i) => i.url.includes('episode=2') && !i.url.includes('prefetch=1')
+				),
+			"the click's interactive stream"
+		);
+		const stream = FakeEventSource.instances
+			.filter((i) => i.url.includes('episode=2') && !i.url.includes('prefetch=1'))
+			.pop()!;
+		unmount(app!);
+		app = null;
+		stream.dispatch('error', VERDICT);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(asked.batch.filter((b) => b.mode === 'dub')).toEqual([]);
+	});
+});

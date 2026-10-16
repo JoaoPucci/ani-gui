@@ -308,12 +308,14 @@ describe('recordPlayed', () => {
 		expect(syncTrackers).toHaveBeenCalledWith('42', 5, 12, true);
 	});
 
-	it('mirrors nothing for a guessed match', () => {
+	it('mirrors nothing for a guessed match, and still stamps the watch', () => {
+		const markWatched = vi.fn(async () => {});
 		const syncTrackers = vi.fn(async () => {});
 		recordPlayed(
 			{ args, showId: '42', episode: 5, show, mirror: false },
-			{ markWatched: vi.fn(async () => {}), syncTrackers }
+			{ markWatched, syncTrackers }
 		);
+		expect(markWatched).toHaveBeenCalledWith(args);
 		expect(syncTrackers).not.toHaveBeenCalled();
 	});
 
@@ -330,7 +332,21 @@ describe('recordPlayed', () => {
 				{ markWatched, syncTrackers }
 			)
 		).not.toThrow();
-		await Promise.resolve();
 		expect(syncTrackers).toHaveBeenCalledWith('42', 5, null, false);
+	});
+
+	it('settles once both writes have, without rejecting when either fails', async () => {
+		const markWatched = vi.fn(async () => {
+			throw new Error('down');
+		});
+		const syncTrackers = vi.fn(async () => {
+			throw new Error('down');
+		});
+		await expect(
+			recordPlayed(
+				{ args, showId: '42', episode: 5, show, mirror: true },
+				{ markWatched, syncTrackers }
+			)
+		).resolves.toBeUndefined();
 	});
 });
