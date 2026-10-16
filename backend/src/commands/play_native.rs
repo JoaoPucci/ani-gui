@@ -15,13 +15,15 @@
 use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, Provider};
 
-use super::play_native_choice::{could_have_won, entry_rank, select_winner, strongest_dead};
+use super::play_native_choice::{entry_rank, select_winner, strongest_dead};
 use super::play_native_countless::pick_without_count;
 use super::play_native_format::format_survivors;
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
-use super::play_native_title_verdict::{countless_miss, probe_head, rejection, rescuable};
+use super::play_native_title_verdict::{
+    countless_miss, probe_head, rejection, rescuable, DeadListings,
+};
 use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
@@ -126,17 +128,18 @@ pub fn ep_count_threshold(expected: u32) -> u32 {
 ///   pick only fails when no probed candidate survives.
 ///
 /// # Errors
-/// The answered dead end `Upstream { status: 404 }` when every probed
-/// candidate's listing answered not-found, or when a candidate that
-/// could have won — admitted, not another entry and, for a dated entry
-/// with a count, vouched for by a name — answered its listing
-/// not-found and nothing was picked, whatever else the pool held; and
-/// without a count, when an eligible listing it tried was dead and
+/// The answered dead end `Upstream { status: 404 }` when a candidate
+/// that could have won — admitted, not another entry, and let stand by
+/// the rule that reads its name (`may_win`) — answered its listing
+/// not-found and nothing was picked, whatever else the pool held, or
+/// when every probed listing answered not-found and none was refused;
+/// and without a count, when an eligible listing it tried was dead and
 /// none after it served. Failing that, the refusal by name
 /// [`crate::error::AniError::RefusedByName`] when the titles, or the
 /// rules that read how a hit is named, refused a candidate the count
-/// accepted, or without a count refused a hit and nothing else was
-/// picked; and [`crate::error::AniError::NoResults`] when `hits` is
+/// accepted — or every listing answered not-found and those the pool
+/// held were refused so — or without a count refused a hit and nothing
+/// else was picked; and [`crate::error::AniError::NoResults`] when `hits` is
 /// empty or no candidate survives the threshold.
 pub async fn pick_candidate<P: Provider + ?Sized>(
     client: &P,

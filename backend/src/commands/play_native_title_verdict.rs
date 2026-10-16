@@ -90,16 +90,51 @@ pub(super) fn countless_miss(
     }
 }
 
+/// What the listings that answered not-found say about a pool: whether
+/// one of them could have won — the entry's titles admit it, it is not
+/// another entry, and the rule that reads its name would have let it
+/// stand ([`super::play_native_dated_name::may_win`]) — and whether one
+/// was refused, by the titles or by that rule.
+#[derive(Default)]
+pub(super) struct DeadListings {
+    pub(super) could_win: bool,
+    pub(super) refused: bool,
+}
+
+impl DeadListings {
+    /// Note a candidate titled `title` whose listing answered
+    /// not-found; `could_win` is what the name rules say of it.
+    pub(super) fn note(&mut self, entry: EntryTitles<'_>, title: &str, could_win: bool) {
+        let admitted = entry.admits(title);
+        let another = admitted && entry.another_entry(title);
+        let stands = could_win && admitted;
+        self.could_win |= stands && !another;
+        self.refused |= !(another || stands);
+    }
+
+    /// The verdict on a pool every probe of which failed: weather when
+    /// any died in transport, the dead end on a listing that could have
+    /// won, the refusal by name when every dead listing was refused or
+    /// another entry and one was refused, and otherwise the dead end on
+    /// the pool's dead listings.
+    pub(super) fn verdict(&self, any_transport_failure: bool) -> crate::error::AniError {
+        if any_transport_failure {
+            crate::error::AniError::Network
+        } else if self.refused && !self.could_win {
+            refused_by_title()
+        } else {
+            crate::error::AniError::Upstream { status: 404 }
+        }
+    }
+}
+
 /// The verdict on a pool no candidate fit: weather when a probe died
 /// unheard — the right show may have been the dead one — the
 /// [`refused_by_title`] dead end when the titles refused a candidate
 /// the count accepted, and the clean miss only when every candidate
 /// answered and the count refused them all. A pool holding a candidate
-/// that could have won — admitted, not another entry, and for a dated
-/// entry with a count vouched for by a name; the count-alone and
-/// single-video rules are not consulted — and whose listing answered
-/// not-found
-/// (`dead_listing`) is the answered dead end on that dead listing,
+/// that could have won ([`DeadListings`]) and whose listing answered
+/// not-found (`dead_listing`) is the answered dead end on that dead listing,
 /// which may have been the entry's, whatever else it holds: not the
 /// clean miss, and no refusal by name.
 pub(super) fn rejection(
