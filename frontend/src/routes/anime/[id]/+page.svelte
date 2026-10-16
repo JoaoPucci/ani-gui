@@ -94,7 +94,8 @@
 		applyChoice,
 		selectedVersion,
 		storedChoice,
-		versionsToOffer
+		versionsToOffer,
+		versionsInMode
 	} from '$lib/versions/version-choice';
 	import { handleRadioKey } from '$lib/versions/radio-keys';
 	import { versionLabel } from '$lib/versions/version-label';
@@ -166,7 +167,12 @@
 	// leaves the backend's default, the uncensored copy.
 	let showVersions = $state<VersionInfo[]>([]);
 	let versionChoice = $state<VersionKind | undefined>(undefined);
-	const offeredVersions = $derived(versionsToOffer(showVersions));
+	// The mode the versions were answered in: what they say of each
+	// version's mode is that mode's.
+	let versionsMode = $state<'sub' | 'dub'>('sub');
+	const offeredVersions = $derived.by(() =>
+		versionsToOffer(versionsInMode(showVersions, versionsMode, availabilityMode))
+	);
 	const shownVersion = $derived(selectedVersion(offeredVersions, versionChoice));
 	function chooseVersion(kind: VersionKind) {
 		// The version already shown is the one requests play; a click on
@@ -782,7 +788,10 @@
 					apply: applyAvailabilityPatch,
 					setResolved: (r) => (availabilityResolved = r),
 					setListed: (l) => (warmListed = l),
-					setVersions: (v) => (showVersions = v)
+					setVersions: (v, m) => {
+						showVersions = v;
+						versionsMode = m;
+					}
 				}
 			)
 		);

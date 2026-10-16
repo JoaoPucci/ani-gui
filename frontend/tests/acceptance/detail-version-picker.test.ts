@@ -167,6 +167,18 @@ describe('detail route — the versions of a show listed twice', () => {
 		expect(target.textContent).not.toContain(m.detail_version_group_label());
 	});
 
+	it('offers no choice in a mode only one version carries', async () => {
+		const h = useShowHandlers([
+			{ ...TWO_VERSIONS[0], has_mode: false },
+			{ ...TWO_VERSIONS[1], has_mode: true }
+		]);
+		app = mount(DetailPage, { target });
+		await until(() => h.probes() > 0, 'the page-load availability lookup');
+		await until(() => playAction() !== null, 'the play action to render');
+		await new Promise((r) => setTimeout(r, 50));
+		expect(versionGroup()).toBeNull();
+	});
+
 	it('offers both versions with Uncensored selected when nothing was chosen', async () => {
 		useShowHandlers(TWO_VERSIONS);
 		app = mount(DetailPage, { target });

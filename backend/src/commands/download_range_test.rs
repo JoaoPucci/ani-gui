@@ -133,6 +133,9 @@ async fn a_range_in_a_mode_only_the_plain_copy_carries_starts_from_it() {
         quality: "best",
         answered_by: None,
     };
-    let (picked, _) = attempt.run(&provider).await.expect("started");
-    assert_eq!(picked.hit.slug, "the-show-1");
+    let (picked, first) = attempt.run(&provider).await.expect("started");
+    // The first episode streams from the copy that carries the dub; the
+    // range keeps the version it names for the episodes after it.
+    assert_eq!(first.master_url, "https://cdn.example/plain/master.m3u8");
+    assert_eq!(picked.hit.slug, "the-show-2");
 }

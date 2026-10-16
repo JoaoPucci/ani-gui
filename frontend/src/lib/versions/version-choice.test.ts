@@ -8,6 +8,7 @@ import {
 	selectedVersion,
 	storedChoice,
 	versionsToOffer,
+	versionsInMode,
 	type ChoiceStorage
 } from './version-choice';
 
@@ -236,5 +237,20 @@ describe('applying a choice', () => {
 		expect(applyChoice('42', 'uncensored', refusing)).toBe('standard');
 		expect(applyChoice('9', 'standard', throwing)).toBeUndefined();
 		expect(applyChoice('9', 'standard', null)).toBeUndefined();
+	});
+});
+
+describe('the versions a page holds, in the mode it shows', () => {
+	const dubbedPlain: VersionInfo[] = [
+		{ ...standard, has_mode: true },
+		{ ...uncensored, has_mode: false }
+	];
+
+	it('are the answer as given in the mode it was asked in', () => {
+		expect(versionsInMode(dubbedPlain, 'dub', 'dub')).toEqual(dubbedPlain);
+	});
+
+	it('say nothing of a mode after the page switched to another, until it answers', () => {
+		expect(versionsInMode(dubbedPlain, 'dub', 'sub')).toEqual([{ ...standard }, { ...uncensored }]);
 	});
 });

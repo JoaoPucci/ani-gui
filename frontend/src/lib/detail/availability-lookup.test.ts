@@ -26,6 +26,7 @@ function harness(respond?: () => Promise<AvailabilityResponse>) {
 	const resolved: boolean[] = [];
 	const listed: (boolean | null)[] = [];
 	const versions: VersionInfo[][] = [];
+	const modes: string[] = [];
 	const sent: unknown[] = [];
 	const deps: AvailabilityLookupDeps = {
 		check: (args) => {
@@ -42,9 +43,12 @@ function harness(respond?: () => Promise<AvailabilityResponse>) {
 		apply: (p) => applied.push(p),
 		setResolved: (r) => resolved.push(r),
 		setListed: (l) => listed.push(l),
-		setVersions: (v) => versions.push(v)
+		setVersions: (v, mode) => {
+			versions.push(v);
+			modes.push(mode);
+		}
 	};
-	return { deps, applied, resolved, listed, versions, sent };
+	return { deps, applied, resolved, listed, versions, modes, sent };
 }
 
 const settled = () => new Promise((r) => setTimeout(r, 0));
@@ -275,9 +279,12 @@ describe("startAvailabilityLookup — the show's versions", () => {
 			{ kind: 'standard', show_key: 'hianime:show-2' }
 		];
 		const h = harness(() => Promise.resolve(answer({ versions: two })));
-		startAvailabilityLookup(SUBJECT, 'sub', h.deps);
+		startAvailabilityLookup(SUBJECT, 'dub', h.deps);
 		await settled();
 		expect(h.versions).toEqual([two]);
+		// with the mode the answer was asked in: what it says of each
+		// version's mode is that mode's
+		expect(h.modes).toEqual(['dub']);
 
 		const plain = harness();
 		startAvailabilityLookup(SUBJECT, 'sub', plain.deps);

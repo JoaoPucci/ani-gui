@@ -50,9 +50,11 @@ export interface AvailabilityLookupDeps {
 	 *  re-ask's patch is what sets it then. */
 	setListed: (listed: boolean | null) => void;
 	/** The show's versions from a settled answer — empty when it has
-	 *  one. Not called while the question is open, nor when it fails
-	 *  or settles nothing: the page keeps the versions it had. */
-	setVersions?: (versions: VersionInfo[]) => void;
+	 *  one — with the mode it was asked in, which what they say of each
+	 *  version's mode is about. Not called while the question is open,
+	 *  nor when it fails or settles nothing: the page keeps the versions
+	 *  it had. */
+	setVersions?: (versions: VersionInfo[], mode: 'sub' | 'dub') => void;
 }
 
 /**
@@ -96,7 +98,7 @@ export function startAvailabilityLookup(
 			});
 			if (patch.available !== undefined) deps.setListed(patch.available);
 			deps.apply(patch);
-			deps.setVersions?.(r.versions ?? []);
+			deps.setVersions?.(r.versions ?? [], mode);
 		})
 		.catch(() => {
 			// Nothing established. The page keeps what it had, and the

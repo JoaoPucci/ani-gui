@@ -68,10 +68,13 @@ pub(crate) async fn resolve_in_any_version<P: Provider + ?Sized>(
 /// Whether each of the pick's versions carries `mode`, in the
 /// provider's order: `default` for the version it plays, already asked,
 /// and one mode probe for each other version — the same bounded scan
-/// of its rows ([`super::availability_mode::mode_present`]).
+/// of its rows ([`super::availability_mode::mode_present`]). Another
+/// version's probe failing leaves its mode unknown rather than failing
+/// the answer ([`version_for_mode`] combines what is known).
 ///
 /// # Errors
-/// A mode probe's own failures.
+/// A block or the gate's refusal on another version's probe: every
+/// further request repeats it.
 pub(crate) async fn modes_of_versions<P: Provider + ?Sized>(
     client: &P,
     picked: &PickedShow,
@@ -83,27 +86,38 @@ pub(crate) async fn modes_of_versions<P: Provider + ?Sized>(
         let present = if v.hit.slug == picked.hit.slug {
             default
         } else {
-            super::availability_mode::mode_present(client, &v.episodes, mode).await?
+            match super::availability_mode::mode_present(client, &v.episodes, mode).await {
+                Ok(present) => present,
+                Err(e)
+                    if e.is_provider_block()
+                        || matches!(e, crate::error::AniError::GateRefused) =>
+                {
+                    return Err(e)
+                }
+                Err(_) => None,
+            }
         };
         out.push((v.kind, present));
     }
     Ok(out)
 }
 
-/// The version to answer with for a mode: the one `picked` plays when
-/// it carries the mode or nothing says otherwise, else the first in the
-/// provider's order that does — with whether the show carries the mode
-/// at all.
+/// The version to answer with for a mode, and whether the show carries
+/// it: the one `picked` plays when it carries the mode, else the first
+/// in the provider's order that does — the show carrying it; absent
+/// only when every version answered absence; unknown otherwise. A pick
+/// with one version answers as its own probe did.
 pub(crate) fn version_for_mode(
     picked: PickedShow,
     modes: &[(VersionKind, Option<bool>)],
     default: Option<bool>,
 ) -> (PickedShow, Option<bool>) {
-    if default != Some(false) {
+    if default == Some(true) || modes.is_empty() {
         return (picked, default);
     }
-    match modes.iter().find(|(_, m)| *m == Some(true)) {
-        Some((kind, _)) => (picked.choose(Some(*kind)), Some(true)),
-        None => (picked, default),
+    if let Some((kind, _)) = modes.iter().find(|(_, m)| *m == Some(true)) {
+        return (picked.choose(Some(*kind)), Some(true));
     }
+    let absent = modes.iter().all(|(_, m)| *m == Some(false));
+    (picked, absent.then_some(false))
 }
