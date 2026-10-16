@@ -62,7 +62,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // own detail year positively matched Kitsu's.
     let mut probed_ok: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = Vec::new();
     let mut any_transport_failure = false;
-    // A candidate that could have won whose listing answered not-found.
+    // What the listings that answered not-found say about the pool.
     let mut dead = DeadListings::default();
     // Identity carried by transport-DEAD candidates
     // ([`entry_rank`]), with their provider position: a dead
@@ -201,7 +201,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         return Err(rejection(
             any_transport_failure,
             refused_a_fit,
-            dead.could_win,
+            dead.might_decide(&probed_ok, expected),
         ));
     }
     let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
