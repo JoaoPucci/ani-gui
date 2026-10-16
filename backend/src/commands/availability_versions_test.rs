@@ -195,3 +195,101 @@ fn a_row_keyed_v20_elsewhere_is_not_read() {
         "the key must have moved past v20: {current}"
     );
 }
+
+/// [`two_copies`] with the plain copy's sub rows answering as
+/// `plain`, the uncensored copy's as `tagged`.
+fn modes_answering(
+    plain: impl Fn() -> crate::scraper::table_provider::Answer<bool>,
+    tagged: impl Fn() -> crate::scraper::table_provider::Answer<bool>,
+) -> Arc<TableProvider> {
+    let table = TableProvider::new()
+        .search_default(vec![
+            card("the-show-1", "The Show"),
+            card("the-show-2", "The Show (Uncensored)"),
+        ])
+        .listing(1, listing_of(1, 3))
+        .listing(2, listing_of(2, 3))
+        .year(1, Some(YEAR))
+        .year(2, Some(YEAR));
+    let table = [1001, 1002, 1003]
+        .into_iter()
+        .fold(table, |t, r| t.mode(r, "sub", plain()));
+    Arc::new(
+        [2001, 2002, 2003]
+            .into_iter()
+            .fold(table, |t, r| t.mode(r, "sub", tagged())),
+    )
+}
+
+async fn sub_answer(provider: Arc<TableProvider>) -> crate::error::Result<AvailabilityResponse> {
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    state.providers.set_stub(provider);
+    check_availability(&state, &args()).await
+}
+
+#[tokio::test]
+async fn another_versions_failed_mode_probe_leaves_its_mode_unknown() {
+    use crate::scraper::table_provider::Answer;
+    let got = sub_answer(modes_answering(
+        || Answer::fails(|| crate::error::AniError::Network),
+        || true.into(),
+    ))
+    .await
+    .expect("the playing copy answered");
+    assert!(got.available);
+    let modes: Vec<Option<bool>> = got.versions.iter().map(|v| v.has_mode).collect();
+    assert_eq!(modes, vec![None, Some(true)]);
+}
+
+#[tokio::test]
+async fn a_mode_the_playing_version_leaves_unanswered_is_found_in_another() {
+    use crate::scraper::table_provider::Answer;
+    let got = sub_answer(modes_answering(
+        || true.into(),
+        || Answer::fails(|| crate::error::AniError::Upstream { status: 404 }),
+    ))
+    .await
+    .expect("answered");
+    assert!(got.available, "the plain copy carries sub");
+}
+
+#[tokio::test]
+async fn an_absence_one_version_never_answered_is_not_settled() {
+    use crate::scraper::table_provider::Answer;
+    let got = sub_answer(modes_answering(
+        || Answer::fails(|| crate::error::AniError::Upstream { status: 404 }),
+        || false.into(),
+    ))
+    .await
+    .expect("answered");
+    assert!(got.unsettled, "the plain copy never answered: {got:?}");
+}
+
+#[tokio::test]
+async fn a_plays_stamp_keeps_what_the_probe_said_of_each_version() {
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    state.providers.set_stub(dubbed_plain_copy());
+    let probed = check_availability(&state, &args()).await.expect("answered");
+    // A play's stamp names the versions without their modes.
+    let at_start = RowAtStart::read(&state, Some("777"), "sub").await;
+    let versions = both_versions();
+    stamp_after_native(
+        &state,
+        Some("777"),
+        "sub",
+        &at_start,
+        ResolveVerdict::served(crate::provider_set::ProviderSet::TEST_DEFAULT, Some(3), &[])
+            .with_versions(&versions),
+    )
+    .await;
+    let body = crate::cache::meta_cache_get(&state.cache_pool, &cache_key("777", "sub"))
+        .expect("read")
+        .expect("a row");
+    let row: AvailabilityResponse = serde_json::from_str(&body).expect("row");
+    assert_eq!(
+        row.versions, probed.versions,
+        "the probe's per-version answers stand"
+    );
+}
