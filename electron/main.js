@@ -47,6 +47,7 @@ const { launchBackend, reapOnExit, stoppable } = require("./lib/backend-spawn.cj
 const { closePromptOptions, handleBeforeQuit } = require("./lib/quit.cjs");
 const { bootFailureDialog, showBounded } = require("./lib/boot-failure.cjs");
 const { resolveLocale } = require("./lib/main-messages.cjs");
+const { rendererConsoleLine } = require("./lib/console-message.cjs");
 const {
   bootApp,
   firstShowTimeoutMs,
@@ -455,8 +456,7 @@ async function createWindow(apiBase, internalSecret) {
     console.error(`[renderer] did-fail-load ${url}: ${code} ${desc}`);
   });
   win.webContents.on("console-message", (_e, level, msg, line, source) => {
-    const tag = ["log", "warning", "error"][level] || "log";
-    console.log(`[renderer:${tag}] ${msg} (${source}:${line})`);
+    console.log(rendererConsoleLine(level, msg, line, source));
   });
 
   // "Open maximized" is a two-step belt-and-suspenders pattern.
