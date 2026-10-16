@@ -16,7 +16,7 @@
 
 import type { AvailabilityArgs, AvailabilityResponse } from '$lib/api';
 import type { AvailabilityAnswer, AvailabilityPatch } from './availability-writeback';
-import { availabilityVerdict } from '$lib/availability/verdict';
+import { availabilityVerdict, refusedByName } from '$lib/availability/verdict';
 
 /** The show being asked about, in the shape the request wants. */
 export interface AvailabilitySubject {
@@ -50,8 +50,8 @@ export interface AvailabilityLookupDeps {
 	 *  nothing is published here — the page's own handling of the
 	 *  re-ask's patch is what sets it then. */
 	setListed: (listed: boolean | null) => void;
-	/** Whether the answer was the provider refusing the title by name.
-	 *  Not reported yet. */
+	/** Whether the answer was the provider refusing the title by name:
+	 *  false when the question opens, then the answer's word. */
 	setRefused?: (refused: boolean) => void;
 }
 
@@ -68,6 +68,7 @@ export function startAvailabilityLookup(
 	let cancelled = false;
 	deps.setResolved(false);
 	deps.setListed(null);
+	deps.setRefused?.(false);
 	const settle = deps.begin();
 	void deps
 		.check({
@@ -82,6 +83,7 @@ export function startAvailabilityLookup(
 		})
 		.then((r) => {
 			if (cancelled) return;
+			deps.setRefused?.(refusedByName(r));
 			// An unsettled answer reached the provider and established
 			// nothing: its `available: false` is not a verdict, so the
 			// page keeps what it had, as it does when the lookup fails —

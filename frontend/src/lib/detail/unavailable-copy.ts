@@ -26,14 +26,16 @@ export function unavailableMessage(mode: string, otherAudio: OtherAudio): string
 
 /** Whether the notice asks the cache about the other audio: while it
  *  is up (`unavailable`), and never for a music title, which this page
- *  holds unavailable in both audios. `refused` — the provider refused
- *  the title by name — is not read yet. */
+ *  holds unavailable in both audios, nor for a title the provider
+ *  refused by name (`refused`), which it lists under nothing named for
+ *  the title in either audio — the notice then keeps "Not in the
+ *  streaming catalogue". */
 export function asksOtherAudio(state: {
 	unavailable: boolean;
 	music: boolean;
 	refused: boolean;
 }): boolean {
-	return state.unavailable && !state.music;
+	return state.unavailable && !state.music && !state.refused;
 }
 
 /** Ask the cache about the other audio of `q`'s title and hand the
