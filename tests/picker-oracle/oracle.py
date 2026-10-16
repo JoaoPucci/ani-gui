@@ -750,11 +750,27 @@ def countless_pick(titles, searched, rows, entry_year):
     return sorted(vouched, key=lambda r: 0 if part_agrees(titles, r[1]) else 1)[0]
 
 
-def counted_pick(titles, searched, rows, count):
+def vouched_by_name(titles, searched, cand):
+    """The title searched, or a title the entry names — what alone vouches
+    for a hit when the entry's count stands alone."""
+    return written(cand) == written(searched) or names(titles, cand)
+
+
+def count_stands_alone(count, entry_year):
+    """"A count with no year is no identity either": a count above one,
+    and no year."""
+    return count is not None and count > 1 and entry_year is None
+
+
+def counted_pick(titles, searched, rows, count, entry_year):
     """The pick with a count and no broad listing: the best distance within
     the tolerance among the hits that could be picked; ties prefer the
-    exact title, then part agreement, then the provider's order."""
+    exact title, then part agreement, then the provider's order. When the
+    count stands alone, only a hit the title searched or the entry's names
+    vouch for can be picked."""
     adm, _ = head(titles, rows, True)
+    if count_stands_alone(count, entry_year):
+        adm = [r for r in adm if vouched_by_name(titles, searched, r[1])]
     tol = max(3, count // 10)
     fits = [r for r in adm if abs(r[2] - count) <= tol]
     if not fits:
@@ -817,7 +833,7 @@ def predict(case):
         if count is None:
             r = countless_pick(titles, searched, rows, year)
         else:
-            r = counted_pick(titles, searched, rows, count)
+            r = counted_pick(titles, searched, rows, count, year)
         if r:
             return {"pick": r[0], "count": r[2]}
     return None
@@ -833,7 +849,14 @@ def clean_miss_expected(case):
         return not any(not admitted(titles, r[1]) for r in rows)
     _, evidence = head(titles, rows, True)
     tol = max(3, count // 10)
-    return not any(abs(r[2] - count) <= tol and not admitted(titles, r[1]) for r in evidence)
+    if any(abs(r[2] - count) <= tol and not admitted(titles, r[1]) for r in evidence):
+        return False
+    # the count-alone refusal is a refusal by title too: a fitting hit
+    # nothing names, among the hits probed, leaves no clean miss
+    if count_stands_alone(count, case["entry_year"]):
+        adm, _ = head(titles, rows, True)
+        return not any(abs(r[2] - count) <= tol for r in adm)
+    return True
 
 
 def refusal_expected(case):
