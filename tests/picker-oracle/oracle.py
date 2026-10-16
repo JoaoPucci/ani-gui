@@ -70,6 +70,27 @@ def version_of(t):
     return written(VTAG.sub(" ", low)), kind
 
 
+_VTAG_ANY = re.compile(VTAG.pattern, re.IGNORECASE)
+
+
+def _past_vtag(cand):
+    return " ".join(_VTAG_ANY.sub(" ", cand).split())
+
+
+def admitted_as_read(titles, cand):
+    """The title rule for a probed candidate: admission read past a
+    bracketed version tag, as past a catalogue tag — the tag hides no
+    division before it. The probe head reads the title as written."""
+    return admitted(titles, _past_vtag(cand))
+
+
+def pickable_as_read(titles, cand):
+    """A probed candidate the selectors choose among: `pickable`, read past
+    a bracketed version tag — so "Show 1 [Uncensored]" is the entry before
+    "Show 2" as "Show 1" is."""
+    return pickable(titles, _past_vtag(cand))
+
+
 def versions_of(winner, tied):
     """The versions of `winner` among the candidates `tied` with it on
     distance that could be picked: every one whose title is the winner's
@@ -770,6 +791,7 @@ def countless_pick(titles, searched, rows, entry_year):
     year the entry's, or the entry naming it — part agreement, then the
     provider's order (every listing's year is the same here)."""
     adm, _ = head(titles, rows, False)
+    adm = [r for r in adm if pickable_as_read(titles, r[1])]
     if not adm:
         return None
     exact = [r for r in adm if written(r[1]) == written(searched)]
@@ -858,6 +880,7 @@ def counted_pick(titles, searched, rows, count, entry_year, names_of=lambda slug
     vouch for can be picked; with a year beside the count, only a hit the
     title searched or a name of the show (`names_of`) vouches for."""
     adm, _ = head(titles, rows, True)
+    adm = [r for r in adm if pickable_as_read(titles, r[1])]
     if count_stands_alone(count, entry_year):
         adm = [r for r in adm if vouched_by_name(titles, searched, r[1])]
     if needs_a_name(count, entry_year):
@@ -950,10 +973,16 @@ def clean_miss_expected(case):
     titles, count = case["titles"], case["count"]
     rows = [tuple(r) for r in case["rows"]]
     if count is None:
-        return not any(not admitted(titles, r[1]) for r in rows)
-    _, evidence = head(titles, rows, True)
+        # a hit the head took that the title rule refuses past its
+        # version tag is passed over, a refusal by title as a dropped one is
+        taken, _ = head(titles, rows, False)
+        late = any(not admitted_as_read(titles, r[1]) for r in taken)
+        return not late and not any(not admitted(titles, r[1]) for r in rows)
+    taken, evidence = head(titles, rows, True)
     tol = max(3, count // 10)
     if any(abs(r[2] - count) <= tol and not admitted(titles, r[1]) for r in evidence):
+        return False
+    if any(abs(r[2] - count) <= tol and not admitted_as_read(titles, r[1]) for r in taken):
         return False
     # the count-alone refusal is a refusal by title too: a fitting hit
     # nothing names, among the hits probed, leaves no clean miss
@@ -1392,20 +1421,12 @@ def gen():
     # a copy of the pick under a version tag beside it — after it or before
     # it at the same count, after it one short — the tag in each spelling in
     # turn, in every pool whose one hit is the pick (Versions of one pick); a
-    # card that names the pick names its copy too. Only titles that end on
-    # no division: every other rule reads the tag as bracketed words, and
-    # how bracketed words after a division read — "Show 2 0 (Uncensored)",
-    # "Kaiju No. 7 (Uncensored)" — is a shape the docs do not settle and the
-    # model and the picker read differently (docs/deferred-work.md, "Bracketed
-    # words after a division"); those pools are not generated.
+    # card that names the pick names its copy too
     for i, c in enumerate(list(cases)):
         fam = c["family"].split("/")[0]
         if fam not in ("admission", "counted-dated", "counted-noyear") or len(c["rows"]) != 1:
             continue
         x = c["rows"][0]
-        stem, ends_on = strip_trailing(_word_ordinals(norm(x[1])))
-        if ends_on or bare_number(stem) is not None or re.search(r"\d$", stem):
-            continue
         vtag = ("(Uncensored)", "[UNCENSORED]", "（Uncensored）")[i % 3]
         same = [x[0] + "-u", f"{x[1]} {vtag}", x[2]]
         short = [x[0] + "-u", f"{x[1]} {vtag}", x[2] - 1]
