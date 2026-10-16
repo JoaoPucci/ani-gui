@@ -330,8 +330,8 @@ fn a_decimal_placeholder_is_no_title() {
 
 #[test]
 fn untitled_pages_refuse_a_listing_past_the_count_even_when_it_is_right() {
-    // The rule's measured cost. Sengoku Youko's first cour (13
-    // episodes) carries all three cours (1-35), and Rurouni Kenshin's
+    // The rule's measured cost. Sengoku Youko's first part (13
+    // episodes) carries the whole series (1-35), and Rurouni Kenshin's
     // Kyoto Douran (23) its own season numbered on from the first
     // (25-47); Kitsu titles neither, and the same shapes are wrong
     // elsewhere (Dr. Stone: Stone Wars carries New World's 1-16,
