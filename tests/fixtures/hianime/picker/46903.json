@@ -37,5 +37,17 @@
  "years": {
   "bleach-thousand-year-blood-war-the-separation-1009": 2023,
   "bleach-thousand-year-blood-war-the-separation-recap-3863": 2023
+ },
+ "jnames": {
+  "bleach-thousand-year-blood-war-the-separation-1009": "Bleach: Sennen Kessen-hen - Ketsubetsu-tan",
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": "Bleach: Sennen Kessen-hen - Ketsubetsu-tan Recap"
+ },
+ "page_names": {
+  "bleach-thousand-year-blood-war-the-separation-1009": ["BLEACH 千年血戦篇-訣別譚-", "Bleach: Sennen Kessen-hen - Ketsubetsu-tan"],
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": ["BLEACH 千年血戦篇-訣別譚-", "Bleach: Sennen Kessen-hen - Ketsubetsu-tan Recap"]
+ },
+ "genres": {
+  "bleach-thousand-year-blood-war-the-separation-1009": ["Adventure", "Fantasy", "Shounen", "Supernatural", "Action"],
+  "bleach-thousand-year-blood-war-the-separation-recap-3863": ["Adventure", "Fantasy", "Shounen", "Action"]
  }
 }

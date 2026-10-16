@@ -57,5 +57,24 @@
   "oshi-no-ko-final-7206": null,
   "oshi-no-ko-season-2-682": 2024,
   "oshi-no-ko-season-3-672": 2026
+ },
+ "jnames": {
+  "my-star-specials-9656": "Oshi no Ko Specials",
+  "oshi-no-ko-675": "My Star",
+  "oshi-no-ko-final-7206": "[Oshi no Ko] Final Season",
+  "oshi-no-ko-season-2-682": "Oshi no Ko 2nd Season",
+  "oshi-no-ko-season-3-672": "[Oshi no Ko] 3rd Season"
+ },
+ "page_names": {
+  "oshi-no-ko-675": ["【推しの子】"],
+  "oshi-no-ko-final-7206": ["【OSHI NO KO】Season 4"],
+  "oshi-no-ko-season-2-682": ["【推しの子】第2期", "Oshi no Ko 2nd Season"],
+  "oshi-no-ko-season-3-672": ["【推しの子】 第3期", "[Oshi no Ko] 3rd Season"]
+ },
+ "genres": {
+  "oshi-no-ko-675": ["Seinen", "Drama", "Supernatural", "Reincarnation", "Music", "Award Winning", "Showbiz"],
+  "oshi-no-ko-final-7206": ["Drama", "Psychological", "Mystery", "Supernatural"],
+  "oshi-no-ko-season-2-682": ["Seinen", "Drama", "Psychological", "Mystery", "Supernatural", "Reincarnation", "Showbiz"],
+  "oshi-no-ko-season-3-672": ["Seinen", "Drama", "Reincarnation", "Showbiz"]
  }
 }

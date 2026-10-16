@@ -1,0 +1,10 @@
+[
+ {"id": "dated-name/1", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["o", "Other", 12]], "jnames": {}, "page_names": {"o": ["Show2"]}, "expect": {"pick": "o", "count": 12}, "family": "dated-name"},
+ {"id": "dated-name/2", "titles": ["ショー"], "count": 12, "entry_year": 2020, "rows": [["o", "Other", 12]], "jnames": {}, "page_names": {"o": ["ショー第2期"]}, "expect": {"pick": "o", "count": 12}, "family": "dated-name"},
+ {"id": "dated-name/3", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["o", "Other", 12]], "jnames": {}, "page_names": {"o": ["Showtime"]}, "expect": null, "family": "dated-name"},
+ {"id": "dated-name/4", "titles": ["86"], "count": 12, "entry_year": 2020, "rows": [["o", "Other", 12]], "jnames": {}, "page_names": {"o": ["861"]}, "expect": null, "family": "dated-name"},
+ {"id": "dated-name/5", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["x", "Other", 2]], "jnames": {}, "expect": null, "family": "dated-name"},
+ {"id": "dated-name/6", "titles": ["Show"], "count": 24, "entry_year": 2020, "rows": [["a", "Other", 12], ["b", "Other Part 2", 12]], "jnames": {}, "expect": null, "family": "dated-name"},
+ {"id": "dated-name/7", "titles": ["Show"], "count": 12, "entry_year": 2020, "rows": [["x", "Other", 40]], "jnames": {}, "expect": null, "family": "dated-name"},
+ {"id": "dated-name/8", "titles": ["Season 2"], "count": 12, "entry_year": 2020, "rows": [["o", "Other Show", 12]], "jnames": {}, "expect": null, "family": "dated-name"}
+]

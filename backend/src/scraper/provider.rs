@@ -110,6 +110,25 @@ pub struct BrowseHit {
     /// markup carries one. `None` reads as unknown — a soft signal,
     /// like an unparseable year.
     pub kind: Option<String>,
+    /// The romanized name the card carries beside its display title
+    /// (hianime's `data-jname`), when the markup carries one: another
+    /// name the provider gives the show, read from the page the search
+    /// already fetched.
+    pub jname: Option<String>,
+}
+
+/// What a show's entry page says about it: the premiere year, the
+/// other names it lists for the show — its Japanese title and its
+/// synonyms, as written there — and the genres it files the show
+/// under.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EntryPage {
+    /// The premiere year the page names, when it names one.
+    pub year: Option<u32>,
+    /// Every other name the page gives the show, in page order.
+    pub names: Vec<String>,
+    /// The genres the page lists, as written, in page order.
+    pub genres: Vec<String>,
 }
 
 /// One episode row: the id the per-episode endpoints are keyed on
@@ -305,6 +324,20 @@ pub trait Provider: Send + Sync {
     /// # Errors
     /// Provider blocks and transport errors, verbatim.
     async fn detail_year(&self, slug: &str) -> Result<Option<u32>>;
+
+    /// The show's entry page as [`EntryPage`] reads it — the year
+    /// [`Self::detail_year`] answers, the other names the page gives
+    /// the show and its genres — from the one request. A provider
+    /// whose pages carry neither answers the year alone.
+    ///
+    /// # Errors
+    /// As [`Self::detail_year`].
+    async fn detail_page(&self, slug: &str) -> Result<EntryPage> {
+        Ok(EntryPage {
+            year: self.detail_year(slug).await?,
+            ..EntryPage::default()
+        })
+    }
 
     /// The post-admission start of this provider's most recent
     /// attempt, when its transport tracks one. The walk stamps

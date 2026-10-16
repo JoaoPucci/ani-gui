@@ -603,6 +603,13 @@ pub struct AvailabilityBatchResponse {
 }
 
 pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
+    // v19: a dated entry with a count takes only a hit a name vouches
+    //      for, and a dated entry's hit its own page files under
+    //      Hentai is never a pick. A v18 row for such an entry can be
+    //      a positive for a show the provider does not list, capped at
+    //      a same-year show's count (HenSemi (TV) holding Medaka Box
+    //      Abnormal's 12); nothing in a row says which hit it was
+    //      stamped from, so re-keying re-probes.
     // v18: an entry with a count and no year takes only a hit the
     //      title searched or one of its own names vouches for. A v17
     //      row for such an entry can be a positive for a show the
@@ -711,7 +718,7 @@ pub(crate) fn cache_key(kitsu_id: &str, mode: &str) -> String {
     // v2: episode_count switched from "len of availableEpisodes list"
     //     to "max integer episode" via fetch_show.
     let m = if mode == "dub" { "dub" } else { "sub" };
-    format!("availability:v18:{kitsu_id}:{m}")
+    format!("availability:v19:{kitsu_id}:{m}")
 }
 
 /// Reuses the play path's `pick_title_and_index` so the cache

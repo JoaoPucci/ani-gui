@@ -34,5 +34,18 @@
  },
  "years": {
   "dragon-ball-super-super-hero-1402": 2022
+ },
+ "jnames": {
+  "dragon-ball-super-super-hero-1402": "Dragon Ball Super: Super Hero",
+  "super-dragon-ball-heroes-6951": "Super Dragon Ball Heroes",
+  "super-dragon-ball-heroes-big-bang-mission-9851": "Super Dragon Ball Heroes: Big Bang Mission!!!",
+  "super-dragon-ball-heroes-meteor-mission-9529": "Super Dragon Ball Heroes: Meteor Mission",
+  "super-dragon-ball-heroes-ultra-god-mission-9850": "Super Dragon Ball Heroes: Ultra God Mission"
+ },
+ "page_names": {
+  "dragon-ball-super-super-hero-1402": ["ドラゴンボール超スーパーヒーロー"]
+ },
+ "genres": {
+  "dragon-ball-super-super-hero-1402": ["Adventure", "Fantasy", "Shounen", "Martial Arts", "Action"]
  }
 }

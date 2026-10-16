@@ -26,6 +26,7 @@ fn show(episodes: Vec<EpisodeRef>) -> PickedShow {
             slug: "the-show-77".into(),
             title: "The Show".into(),
             kind: None,
+            jname: None,
         },
         episodes,
     }
@@ -573,6 +574,7 @@ impl crate::scraper::provider::Provider for ListedTracks {
             slug: "the-show-77".into(),
             title: "The Show".into(),
             kind: None,
+            jname: None,
         }])
     }
     async fn episodes(&self, _s: &str) -> crate::error::Result<Vec<EpisodeRef>> {

@@ -37,6 +37,7 @@ fn walked() -> Arc<TableProvider> {
             slug: "the-show-7".into(),
             title: "The Show".into(),
             kind: None,
+            jname: None,
         }])
         .listing(7, rows);
     for n in 1..=12u64 {

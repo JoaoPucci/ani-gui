@@ -101,5 +101,17 @@
  "years": {
   "jojo-s-bizarre-adventure-part-4-diamond-is-unbreakable-9758": 2016,
   "jojos-bizarre-adventure-diamond-is-unbreakable-1388": 2016
+ },
+ "jnames": {
+  "jojo-s-bizarre-adventure-part-4-diamond-is-unbreakable-9758": "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai",
+  "jojos-bizarre-adventure-diamond-is-unbreakable-1388": "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai (Uncensored)"
+ },
+ "page_names": {
+  "jojo-s-bizarre-adventure-part-4-diamond-is-unbreakable-9758": ["JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai"],
+  "jojos-bizarre-adventure-diamond-is-unbreakable-1388": ["ジョジョの奇妙な冒険 ダイヤモンドは砕けない", "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai (Uncensored)"]
+ },
+ "genres": {
+  "jojo-s-bizarre-adventure-part-4-diamond-is-unbreakable-9758": ["Adventure", "Fantasy", "Supernatural", "Action"],
+  "jojos-bizarre-adventure-diamond-is-unbreakable-1388": ["Adventure", "Shounen", "Comedy", "Drama", "Supernatural", "Super Power", "Action"]
  }
 }

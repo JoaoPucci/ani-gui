@@ -50,5 +50,19 @@
  "years": {
   "solo-leveling-235": 2024,
   "solo-leveling-season-2-arise-from-the-shadow-84": 2025
+ },
+ "jnames": {
+  "solo-leveling-235": "Ore dake Level Up na Ken",
+  "solo-leveling-how-to-get-stronger-4232": "Ore dake Level Up na Ken: Specials",
+  "solo-leveling-reawakening-2787": "Ore dake Level Up na Ken: ReAwakening",
+  "solo-leveling-season-2-arise-from-the-shadow-84": "Ore dake Level Up na Ken Season 2: Arise from the Shadow"
+ },
+ "page_names": {
+  "solo-leveling-235": ["나 혼자만 레벨업", "Ore dake Level Up na Ken"],
+  "solo-leveling-season-2-arise-from-the-shadow-84": ["俺だけレベルアップな件 Season 2 -Arise from the Shadow-", "Ore dake Level Up na Ken Season 2: Arise from the Shadow"]
+ },
+ "genres": {
+  "solo-leveling-235": ["Adventure", "Fantasy", "Urban Fantasy", "Adult Cast", "Action"],
+  "solo-leveling-season-2-arise-from-the-shadow-84": ["Adventure", "Fantasy", "Urban Fantasy", "Adult Cast", "Action"]
  }
 }

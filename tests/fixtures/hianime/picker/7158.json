@@ -95,5 +95,40 @@
   "jojos-bizarre-adventure-diamond-is-unbreakable-1388": 2016,
   "jojos-bizarre-adventure-stardust-crusaders-718": 2014,
   "jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710": 2015
+ },
+ "jnames": {
+  "jojo-s-bizarre-adventure-9761": "JoJo no Kimyou na Bouken",
+  "jojo-s-bizarre-adventure-battle-tendency-9719": "JoJo no Kimyou na Bouken: Battle Tendency",
+  "jojo-s-bizarre-adventure-part-2-stardust-crusaders-9760": "JoJo no Kimyou na Bouken Part 2: Stardust Crusaders",
+  "jojo-s-bizarre-adventure-part-3-stardust-crusaders-2nd-season-9759": "JoJo no Kimyou na Bouken Part 3: Stardust Crusaders 2nd Season",
+  "jojo-s-bizarre-adventure-part-4-diamond-is-unbreakable-9758": "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai",
+  "jojo-s-bizarre-adventure-part-5-golden-wind-9757": "JoJo no Kimyou na Bouken Part 5: Ougon no Kaze",
+  "jojos-bizarre-adventure-2000-5182": "JoJo no Kimyou na Bouken: Adventure",
+  "jojos-bizarre-adventure-2012-708": "JoJo no Kimyou na Bouken (Uncensored)",
+  "jojos-bizarre-adventure-706": "JoJo no Kimyou na Bouken",
+  "jojos-bizarre-adventure-diamond-is-unbreakable-1388": "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai (Uncensored)",
+  "jojos-bizarre-adventure-golden-wind-695": "JoJo no Kimyou na Bouken Part 5: Ougon no Kaze (Uncensored)",
+  "jojos-bizarre-adventure-phantom-blood-5183": "JoJo no Kimyou na Bouken: Phantom Blood",
+  "jojos-bizarre-adventure-stardust-crusaders-718": "JoJo no Kimyou na Bouken Part 2: Stardust Crusaders (Uncensored)",
+  "jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710": "JoJo no Kimyou na Bouken Part 3: Stardust Crusaders 2nd Season (Uncensored)",
+  "jojos-bizarre-adventure-stone-ocean-1460": "JoJo no Kimyou na Bouken Part 6: Stone Ocean",
+  "jojos-bizarre-adventure-stone-ocean-part-2-1464": "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 2",
+  "jojos-bizarre-adventure-stone-ocean-part-3-2834": "JoJo no Kimyou na Bouken Part 6: Stone Ocean Part 3",
+  "steel-ball-run-jojo-s-bizarre-adventure-2nd-stage-10465": "Steel Ball Run: JoJo no Kimyou na Bouken 2nd Stage",
+  "steel-ball-run-jojos-bizarre-adventure-4": "Steel Ball Run: JoJo no Kimyou na Bouken"
+ },
+ "page_names": {
+  "jojo-s-bizarre-adventure-9761": ["JoJo no Kimyou na Bouken"],
+  "jojos-bizarre-adventure-2012-708": ["ジョジョの奇妙な冒険", "JoJo no Kimyou na Bouken (Uncensored)"],
+  "jojos-bizarre-adventure-diamond-is-unbreakable-1388": ["ジョジョの奇妙な冒険 ダイヤモンドは砕けない", "JoJo no Kimyou na Bouken Part 4: Diamond wa Kudakenai (Uncensored)"],
+  "jojos-bizarre-adventure-stardust-crusaders-718": ["ジョジョの奇妙な冒険 スターダストクルセイダース", "JoJo no Kimyou na Bouken Part 2: Stardust Crusaders (Uncensored)"],
+  "jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710": ["ジョジョの奇妙な冒険 スターダストクルセイダース エジプト編", "JoJo no Kimyou na Bouken Part 3: Stardust Crusaders 2nd Season (Uncensored)"]
+ },
+ "genres": {
+  "jojo-s-bizarre-adventure-9761": ["Adventure", "Shounen", "Supernatural", "Vampire", "Action"],
+  "jojos-bizarre-adventure-2012-708": ["Adventure", "Shounen", "Historical", "Supernatural", "Vampire", "Action"],
+  "jojos-bizarre-adventure-diamond-is-unbreakable-1388": ["Adventure", "Shounen", "Comedy", "Drama", "Supernatural", "Super Power", "Action"],
+  "jojos-bizarre-adventure-stardust-crusaders-718": ["Adventure", "Shounen", "Drama", "Supernatural", "Super Power", "Action"],
+  "jojos-bizarre-adventure-stardust-crusaders-battle-in-egypt-710": ["Adventure", "Shounen", "Drama", "Supernatural", "Super Power", "Action"]
  }
 }

@@ -53,5 +53,27 @@
   "jujutsu-kaisen-official-pvs-714": 2018,
   "jujutsu-kaisen-season-2-415": 2023,
   "jujutsu-kaisen-the-culling-game-part-1-809": 2026
+ },
+ "jnames": {
+  "jujutsu-kaisen-0-413": "Jujutsu Kaisen 0 Movie",
+  "jujutsu-kaisen-237": "Jujutsu Kaisen (TV)",
+  "jujutsu-kaisen-execution-1943": "Jujutsu Kaisen Movie: Shibuya Jihen Tokubetsu Henshuu-ban x Shimetsu Kaiyuu Senkou Jouei",
+  "jujutsu-kaisen-hidden-inventorypremature-death-3651": "Jujutsu Kaisen: Kaigyoku/Gyokusetsu",
+  "jujutsu-kaisen-official-pvs-714": "Jujutsu Kaisen Official PVs",
+  "jujutsu-kaisen-season-2-415": "Jujutsu Kaisen 2nd Season",
+  "jujutsu-kaisen-season-2-recaps-3513": "Jujutsu Kaisen: Specials",
+  "jujutsu-kaisen-the-culling-game-part-1-809": "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen"
+ },
+ "page_names": {
+  "jujutsu-kaisen-237": ["呪術廻戦"],
+  "jujutsu-kaisen-official-pvs-714": ["呪術廻戦 公式PV"],
+  "jujutsu-kaisen-season-2-415": ["呪術廻戦 懐玉・玉折／渋谷事変"],
+  "jujutsu-kaisen-the-culling-game-part-1-809": ["Jujutsu Kaisen 3rd Season 呪術廻戦 「死滅回游 前編」 Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen", "Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen"]
+ },
+ "genres": {
+  "jujutsu-kaisen-237": ["Shounen", "Supernatural", "Horror", "School", "Award Winning", "Demons", "Action"],
+  "jujutsu-kaisen-official-pvs-714": ["Fantasy", "Shounen", "School"],
+  "jujutsu-kaisen-season-2-415": ["Fantasy", "Shounen", "Supernatural", "School", "Gore", "Action"],
+  "jujutsu-kaisen-the-culling-game-part-1-809": ["Shounen", "Drama", "Supernatural", "School", "Action"]
  }
 }
