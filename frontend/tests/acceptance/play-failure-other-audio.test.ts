@@ -35,6 +35,9 @@ import DetailPage from '../../src/routes/anime/[id]/+page.svelte';
 import PlayPage from '../../src/routes/play/[id]/+page.svelte';
 import HomePage from '../../src/routes/+page.svelte';
 import { __resetApiBaseForTests } from '../../src/lib/api';
+import { toastStore } from '../../src/lib/toasts/store.svelte';
+import { externalLaunchSuccessToast } from '../../src/lib/play/external-toast';
+import { syncplayLaunchSuccessToast } from '../../src/lib/play/syncplay-toast';
 
 const KITSU_ID = '40684';
 const TITLE = 'Ongoing Show';
@@ -427,4 +430,69 @@ describe('home — the Continue card stays busy while the failure is worded', ()
 			'the card to settle'
 		);
 	});
+});
+
+describe('play — a handoff names the episode it launched, not the one on screen when it answers', () => {
+	// A slow launch can outlast an episode switch. The overlay, the
+	// cache lookup and the success toast are all about the episode the
+	// launch was for. The cache has the other audio up to episode 3, so
+	// a lookup for episode 4 would drop the suggestion.
+	const labels: [Handoff, () => string, () => string][] = [
+		[
+			'external',
+			() => m.play_external_label(),
+			() => m.play_error_external_headline({ episode: '3' })
+		],
+		[
+			'syncplay',
+			() => m.play_hamburger_syncplay_label(),
+			() => m.play_error_syncplay_headline({ episode: '3' })
+		]
+	];
+	const successToast = (h: Handoff) =>
+		h === 'external'
+			? externalLaunchSuccessToast({ episode: 3, kind: 'mpv', isSingleVideo: false }).message
+			: syncplayLaunchSuccessToast({ episode: 3, isSingleVideo: false }).message;
+
+	async function launchThenSwitch(handoff: Handoff, label: () => string, answer: () => Response) {
+		useHandlers({ cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 3 } });
+		let release!: () => void;
+		const held = new Promise<void>((r) => (release = r));
+		let launched = false;
+		server.use(
+			http.post(`${API_BASE}/api/play/${handoff}`, async () => {
+				launched = true;
+				await held;
+				return answer();
+			})
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-slow', episode: '3', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => moreButton() !== null, 'the More actions button under the player');
+		moreButton()!.click();
+		await until(() => menuItem(label()) !== undefined, `the "${label()}" menu item`);
+		menuItem(label())!.click();
+		await until(() => launched, 'the launch request');
+		// The viewer moves on to episode 4 while the launch is out.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-slow', episode: '4', kind: 'mp4' });
+		await new Promise((r) => setTimeout(r, 20));
+		release();
+	}
+
+	for (const [handoff, label, headline] of labels) {
+		it(`${handoff}: a failed launch names episode 3 and looks episode 3 up`, async () => {
+			await launchThenSwitch(handoff, label, () =>
+				HttpResponse.json(JSON.parse(VERDICT), { status: 404 })
+			);
+			await expectCopy(SUGGESTS);
+			expect(target.textContent).toContain(headline());
+		});
+
+		it(`${handoff}: a launch that started announces episode 3`, async () => {
+			const before = toastStore.items.length;
+			await launchThenSwitch(handoff, label, () => new HttpResponse(null, { status: 202 }));
+			await until(() => toastStore.items.length > before, 'the launch toast');
+			expect(toastStore.items[toastStore.items.length - 1].message).toBe(successToast(handoff));
+		});
+	}
 });
