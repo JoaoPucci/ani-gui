@@ -200,8 +200,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // persistable clean miss. Weather stays weather.
         return Err(rejection(
             any_transport_failure,
-            refused_a_fit,
-            dead.might_decide(&probed_ok, expected),
+            dead.refused_or(refused_a_fit),
+            dead.might_decide(&probed_ok, expected, entry),
         ));
     }
     let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);

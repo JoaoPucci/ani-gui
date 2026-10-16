@@ -11,16 +11,16 @@ use super::play_native_wide_listing::{Probed, UNFIT};
 /// one of them could have won — the entry's titles admit it, it is not
 /// another entry, and the rule that reads its name would have let it
 /// stand ([`super::play_native_dated_name::may_win`]) — whether one was
-/// refused, by the titles or by that rule, and whether one the titles
-/// refused was among them: with a count such a hit is probed as
-/// evidence, and as a broad listing's completing sibling it decides the
-/// pick. A dead listing that is another entry of the same show counts
-/// for none: answered, it would have been scored out.
+/// refused, by the titles or by that rule, and the titles of those the
+/// titles refused: with a count such a hit is probed as evidence, and
+/// as a broad listing's completing sibling it decides the pick. A dead
+/// listing that is another entry of the same show counts for none:
+/// answered, it would have been scored out.
 #[derive(Default)]
 pub(super) struct DeadListings {
     pub(super) could_win: bool,
     pub(super) refused: bool,
-    unadmitted: bool,
+    unadmitted: Vec<String>,
 }
 
 impl DeadListings {
@@ -32,19 +32,42 @@ impl DeadListings {
         let stands = could_win && admitted;
         self.could_win |= stands && !another;
         self.refused |= !(another || stands);
-        self.unadmitted |= !admitted;
+        if !admitted {
+            self.unadmitted.push(title.to_string());
+        }
     }
 
     /// Whether the pool's dead listings may have decided its pick: one
-    /// could have won, or one the titles refused stands beside a live
-    /// candidate listing more episodes than the entry has — a broad
-    /// listing it may have completed.
-    pub(super) fn might_decide(&self, probed: &[Probed<'_>], expected: u32) -> bool {
+    /// could have won, or one the titles refused would, had it answered,
+    /// have been the completing sibling of a broad listing the span table
+    /// cuts — a live candidate still in the running, from the entry's
+    /// year, listing more episodes than the entry, headed by the entry,
+    /// of which the dead hit names a later part.
+    pub(super) fn might_decide(
+        &self,
+        probed: &[Probed<'_>],
+        expected: u32,
+        entry: EntryTitles<'_>,
+    ) -> bool {
         self.could_win
-            || (self.unadmitted
-                && probed
-                    .iter()
-                    .any(|(_, eps, d, _)| *d != UNFIT && regular_episode_count(eps) > expected))
+            || probed.iter().any(|(w, eps, d, confirmed)| {
+                *confirmed
+                    && *d != UNFIT
+                    && regular_episode_count(eps) > expected
+                    && entry.names(&w.title)
+                    && self
+                        .unadmitted
+                        .iter()
+                        .any(|sibling| entry.names_later_part(sibling, &w.title))
+            })
+    }
+
+    /// Whether the pool refused a hit: a live one the count accepted
+    /// (`refused_a_fit`), or a dead one the titles or the name rule
+    /// refuse — a refused hit the pool holds whatever its count, since
+    /// nothing it holds could be the entry.
+    pub(super) fn refused_or(&self, refused_a_fit: bool) -> bool {
+        refused_a_fit || self.refused
     }
 
     /// The verdict on a pool every probe of which failed: weather when
