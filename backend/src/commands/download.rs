@@ -301,7 +301,16 @@ where
         dest = %dest.display(),
         "download: spawning tool on natively resolved stream",
     );
-    let file_stem = format!("{} Episode {}", resolved.title, args.episode);
+    // Named for the episode it plays, or for the number an earlier
+    // version gave it where that version's download is in the folder.
+    let played = crate::commands::play_native_record::matched_episode(&resolved, &args.episode);
+    let former = crate::commands::play_native_merge::former_tag_of(
+        &resolved.former_tags,
+        resolved.resolved_slot,
+    )
+    .map(|t| crate::commands::numbering_offset::kitsu_ep_no(t, resolved.numbering_offset));
+    let file_stem =
+        super::download_names::episode_stem(&dest, &resolved.title, &played, former.as_deref());
     let source = StreamSource {
         master_url: resolved.master_url,
         referer: resolved.referer,
