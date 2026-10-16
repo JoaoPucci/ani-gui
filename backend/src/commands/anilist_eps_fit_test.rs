@@ -383,3 +383,53 @@ fn a_leading_number_is_not_contained_in_a_longer_number() {
     ];
     assert!(!listing_fits(&l, &page));
 }
+
+#[test]
+fn a_number_followed_by_another_number_word_is_still_contained() {
+    // "Chapter 1" against "Chapter 1 - 100 Years Later": squashed, the
+    // 1 runs into the 100, but the title writes them as two words, so
+    // the number is whole. Every title here shares only "chapter",
+    // which all three pairs carry, so containment alone decides.
+    let l = listing(
+        Some(3),
+        true,
+        &[
+            (1, "Chapter 1 - 100 Years Later"),
+            (2, "Chapter 2 - 200 Miles Away"),
+            (3, "Chapter 3 - 300 Steps Down"),
+        ],
+    );
+    let page = [
+        ep(1, Some("Chapter 1")),
+        ep(2, Some("Chapter 2")),
+        ep(3, Some("Chapter 3")),
+    ];
+    assert!(listing_fits(&l, &page));
+}
+
+#[test]
+fn full_width_digits_read_as_their_ascii_forms() {
+    // Kitsu "Arc, Part １" is the listing's "Arc, Part 1" ...
+    let page = [
+        ep(1, Some("Arc, Part １")),
+        ep(2, Some("Arc, Part ２")),
+        ep(3, Some("Arc, Part ３")),
+    ];
+    let same = listing(
+        Some(3),
+        true,
+        &[(1, "Arc, Part 1"), (2, "Arc, Part 2"), (3, "Arc, Part 3")],
+    );
+    assert!(listing_fits(&same, &page));
+    // ... and, read that way, still not inside "Arc, Part 11".
+    let longer = listing(
+        Some(3),
+        true,
+        &[
+            (1, "Arc, Part 11"),
+            (2, "Arc, Part 21"),
+            (3, "Arc, Part 31"),
+        ],
+    );
+    assert!(!listing_fits(&longer, &page));
+}
