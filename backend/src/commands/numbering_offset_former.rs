@@ -3,7 +3,7 @@
 //! is now — and putting them right. Split from [`super`] for the
 //! per-file complexity bar.
 
-use super::numbering_offset_store::{parse, retag_row, store_path, Row};
+use super::numbering_offset_store::{parse, rewrite, store_path, Row};
 use super::{display_stamp, AppState};
 
 /// Put a display stamp an earlier version wrote right: when the slug's
@@ -19,6 +19,32 @@ pub fn retag_display(state: &AppState, slug: &str, former_tags: &[(u32, String, 
         .any(|(slot, former, _)| *slot == stamped && *former == tag)
     {
         retag_row(state, slug, former_tags);
+    }
+}
+
+/// Put the slug's display stamp right: where it names one of
+/// `former_tags`' slots by the tag an earlier version gave that row,
+/// it names the row's tag now, and remembers the one it replaced.
+/// Decided under the store's locks, against the row as it stands
+/// there; any other row, or a slug with none, is left alone.
+fn retag_row(state: &AppState, slug: &str, former_tags: &[(u32, String, String)]) {
+    let change = |rows: &mut Vec<Row>| {
+        let Some(row) = rows.iter_mut().find(|r| r.slug == slug) else {
+            return;
+        };
+        let Some((stamped, tag)) = row.display.clone() else {
+            return;
+        };
+        if let Some((slot, former, now)) = former_tags
+            .iter()
+            .find(|(slot, former, _)| *slot == stamped && *former == tag)
+        {
+            row.display = Some((*slot, now.clone()));
+            row.former = Some((*slot, former.clone()));
+        }
+    };
+    if let Err(e) = rewrite(state, change) {
+        tracing::warn!(slug, error = ?e, "numbering stamp repair failed");
     }
 }
 

@@ -72,32 +72,6 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
     }
 }
 
-/// Put the slug's display stamp right: where it names one of
-/// `former_tags`' slots by the tag an earlier version gave that row,
-/// it names the row's tag now, and remembers the one it replaced.
-/// Decided under the store's locks, against the row as it stands
-/// there; any other row, or a slug with none, is left alone.
-pub(super) fn retag_row(state: &AppState, slug: &str, former_tags: &[(u32, String, String)]) {
-    let change = |rows: &mut Vec<Row>| {
-        let Some(row) = rows.iter_mut().find(|r| r.slug == slug) else {
-            return;
-        };
-        let Some((stamped, tag)) = row.display.clone() else {
-            return;
-        };
-        if let Some((slot, former, now)) = former_tags
-            .iter()
-            .find(|(slot, former, _)| *slot == stamped && *former == tag)
-        {
-            row.display = Some((*slot, now.clone()));
-            row.former = Some((*slot, former.clone()));
-        }
-    };
-    if let Err(e) = rewrite(state, change) {
-        tracing::warn!(slug, error = ?e, "numbering stamp repair failed");
-    }
-}
-
 /// Drop every row `forget` picks, under the same locks as a put.
 pub(super) fn remove_rows(state: &AppState, forget: impl Fn(&Row) -> bool) -> std::io::Result<()> {
     rewrite(state, |rows| rows.retain(|r| !forget(r)))
@@ -105,7 +79,7 @@ pub(super) fn remove_rows(state: &AppState, forget: impl Fn(&Row) -> bool) -> st
 
 /// Read the store, apply `change`, and write it back atomically, under
 /// the process mutex and the cross-process file lock.
-fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> std::io::Result<()> {
+pub(super) fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> std::io::Result<()> {
     let path = store_path(&state.history_path);
     let _guard = PUT_LOCK.lock().expect("offset put lock");
     let write = || -> std::io::Result<()> {
