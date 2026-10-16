@@ -27,3 +27,7 @@ pub struct HistoryNumber {
 pub fn history_number(_state: &AppState, _id: &str) -> Result<Option<HistoryNumber>> {
     Ok(None)
 }
+
+#[cfg(test)]
+#[path = "history_number_test.rs"]
+mod tests;
