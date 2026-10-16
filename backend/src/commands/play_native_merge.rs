@@ -31,18 +31,47 @@ fn display_in_entry(e: &EpisodeRef, offset: u32, shift: u32) -> String {
 }
 
 /// The tag an earlier version gave a stitched row, when it differs
-/// from the one it has now: that version passed a part's fraction at
-/// its offset (a cumulative part's recap before its first episode,
-/// "12.5" under offset 12) through untranslated before shifting it, so
-/// the recap came out a part later ("24.5").
-fn former_display(e: &EpisodeRef, offset: u32, shift: u32, shown: &str) -> Option<String> {
+/// from `shown`, the one it has now. That version passed a part's
+/// fraction at its offset (a cumulative part's recap before its first
+/// episode, "12.5" under offset 12) through untranslated before
+/// shifting it, so the recap came out a part later ("24.5"); and it
+/// gave a recap the tag of one before it between the same episodes,
+/// which `shown` no longer repeats ([`own_fraction`]). `in_entry` is
+/// the row's place in the entry's numbering before that.
+fn former_display(
+    e: &EpisodeRef,
+    offset: u32,
+    shift: u32,
+    in_entry: &str,
+    shown: &str,
+) -> Option<String> {
     let t = e.number2.as_deref()?;
     let (int, _) = t.split_once('.')?;
-    if int.parse::<u32>().ok()? != offset || offset == 0 {
-        return None;
-    }
-    let former = shifted_fraction(t, shift);
+    let at_offset = offset != 0 && int.parse::<u32>().ok()? == offset;
+    let former = if at_offset {
+        shifted_fraction(t, shift)
+    } else {
+        in_entry.to_string()
+    };
     (former != shown).then_some(former)
+}
+
+/// A fraction a row before it in the stitched listing already carries
+/// moves halfway on toward the next episode — "12.5" taken, "12.75" —
+/// until no row before it has it, so each fraction names one row. A
+/// whole number, or a tag that is not a number, is left as it is.
+fn own_fraction(tag: String, taken: &[f64]) -> String {
+    let Ok(mut v) = tag.parse::<f64>() else {
+        return tag;
+    };
+    if v.fract() == 0.0 || !taken.contains(&v) {
+        return tag;
+    }
+    let next = v.floor() + 1.0;
+    while taken.contains(&v) {
+        v = (v + next) / 2.0;
+    }
+    v.to_string()
 }
 
 /// The parts' listings as one, in the entry's own numbering: each
@@ -60,13 +89,16 @@ fn former_display(e: &EpisodeRef, offset: u32, shift: u32, shown: &str) -> Optio
 pub(crate) fn merge_parts(parts: &[&[EpisodeRef]]) -> Vec<EpisodeRef> {
     use super::play_native_numbering::{kitsu_episode_cap, numbering_offset};
     let mut out: Vec<EpisodeRef> = Vec::new();
+    let mut fractions: Vec<f64> = Vec::new();
     let mut shift = 0u32;
     for part in parts {
         let offset = numbering_offset(part);
         for e in *part {
             let slot = u32::try_from(out.len() + 1).unwrap_or(u32::MAX);
-            let shown = display_in_entry(e, offset, shift);
-            let former_tag = former_display(e, offset, shift, &shown);
+            let in_entry = display_in_entry(e, offset, shift);
+            let shown = own_fraction(in_entry.clone(), &fractions);
+            fractions.extend(shown.parse::<f64>().ok().filter(|v| v.fract() != 0.0));
+            let former_tag = former_display(e, offset, shift, &in_entry, &shown);
             out.push(EpisodeRef {
                 id: e.id,
                 number: slot,
