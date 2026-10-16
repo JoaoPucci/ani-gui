@@ -254,21 +254,21 @@ async fn a_copy_the_year_excludes_is_no_version() {
 }
 
 #[tokio::test]
-async fn a_tagged_copy_whose_plain_copy_is_refused_stays_one_pick() {
-    // "The Show Season 2" names a season the entry does not; the tag
-    // hides that marker from the title rule, so the tagged copy alone
-    // is admitted — as it is today. Its plain copy cannot be picked,
-    // so the two are not versions of a pick.
+async fn a_tag_after_a_season_the_entry_does_not_name_hides_nothing() {
+    // "The Show Season 2" names a season the entry does not, and so
+    // does its tagged copy: a version tag is read past by the title
+    // rule, so the tag no longer hides the marker before it, and
+    // neither copy is the entry's. The refusal is by title, not the
+    // clean miss.
     let client = site(&[(1, 12), (2, 12)]);
     let hits = [
         hit("the-show-season-2-1", "The Show Season 2"),
         hit("the-show-season-2-2", "The Show Season 2 (Uncensored)"),
     ];
-    let p = pick(&client, &hits, Some(12), &["The Show"])
+    let err = pick(&client, &hits, Some(12), &["The Show"])
         .await
-        .expect("picked");
-    assert_eq!(p.hit.slug, "the-show-season-2-2");
-    assert!(p.versions.is_empty());
+        .expect_err("neither copy is the entry");
+    assert!(matches!(err, AniError::Upstream { status: 404 }), "{err:?}");
 }
 
 #[tokio::test]

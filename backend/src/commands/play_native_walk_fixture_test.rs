@@ -242,6 +242,16 @@ const JOJO_COPIES: &[(&str, &str, &str)] = &[
         "jojos-bizarre-adventure-golden-wind-695",
         "jojo-s-bizarre-adventure-part-5-golden-wind-9757",
     ),
+    (
+        "45512",
+        "chained-soldier-uncensored-9454",
+        "chained-soldier-3873",
+    ),
+    (
+        "48639",
+        "chained-soldier-season-2-uncensored-10415",
+        "chained-soldier-season-2-5834",
+    ),
 ];
 
 /// Every JoJo season the provider lists twice is picked as one show
@@ -326,6 +336,13 @@ const AUDITED_RIGHT: &[Expectation] = &[
     (
         "41410",
         Some(("jojos-bizarre-adventure-golden-wind-695", 39)),
+    ),
+    // Chained Soldier: both seasons listed twice, the second season's
+    // tagged copy "Chained Soldier Season 2 [Uncensored]".
+    ("45512", Some(("chained-soldier-uncensored-9454", 12))),
+    (
+        "48639",
+        Some(("chained-soldier-season-2-uncensored-10415", 12)),
     ),
     (
         "44294",

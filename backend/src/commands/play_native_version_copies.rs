@@ -135,3 +135,7 @@ pub(crate) fn note_dead<'h>(
         dead.push(hit);
     }
 }
+
+#[cfg(test)]
+#[path = "play_native_version_tag_test.rs"]
+mod tag_tests;
