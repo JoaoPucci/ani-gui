@@ -113,7 +113,7 @@ interface Seen {
 	aniskip: string[];
 }
 
-function useHandlers(): Seen {
+function useHandlers(extras: string[] = ['7.5']): Seen {
 	const seen: Seen = { external: [], aniskip: [] };
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
@@ -129,7 +129,7 @@ function useHandlers(): Seen {
 			HttpResponse.json({
 				available: true,
 				episode_count: 12,
-				extra_episodes: ['7.5'],
+				extra_episodes: extras,
 				episode_count_approximate: false
 			})
 		),
@@ -219,5 +219,21 @@ describe('play route — on a fractional extra', () => {
 		menuItem(m.play_external_label())!.click();
 		await until(() => seen.external.length === 1, 'the external-player request');
 		expect(seen.external[0].episode).toBe('7.5');
+	});
+});
+
+describe('play route — recaps at the edges of a strip page', () => {
+	it('shows a recap before episode 1 and one after the page’s last episode on page 1', async () => {
+		// Pages of five: 0.5 comes before 1, and 5.5 follows 5, so both
+		// belong on page 1 — neither was shown on any page.
+		useHandlers(['0.5', '5.5']);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-edge', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => target.querySelector('li[data-ep-num="1"]') !== null, 'the strip');
+		await until(
+			() => target.querySelector('li[data-ep-num="5.5"]') !== null,
+			'the 5.5 tile on page 1'
+		);
+		expect(target.querySelector('li[data-ep-num="0.5"]')).not.toBeNull();
 	});
 });

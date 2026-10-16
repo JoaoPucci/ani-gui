@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextEpisode, parseEpisodeNumber, previousEpisode } from './episode-number';
+import { extraOnPage, nextEpisode, parseEpisodeNumber, previousEpisode } from './episode-number';
 
 describe('parseEpisodeNumber', () => {
 	it('keeps a fractional extra as the number it is', () => {
@@ -35,5 +35,22 @@ describe('previousEpisode / nextEpisode', () => {
 		expect(nextEpisode(7.5)).toBe(8);
 		expect(previousEpisode(0.5)).toBe(0);
 		expect(nextEpisode(0.5)).toBe(1);
+	});
+});
+
+describe('extraOnPage', () => {
+	it('places a recap on the page of the whole episode it follows', () => {
+		// Pages of five: 1–5, 6–10. 5.5 follows 5, so page 1; 10.5
+		// follows 10, so page 2.
+		expect(extraOnPage(5.5, 1, 5)).toBe(true);
+		expect(extraOnPage(5.5, 2, 5)).toBe(false);
+		expect(extraOnPage(7.5, 2, 5)).toBe(true);
+		expect(extraOnPage(10.5, 2, 5)).toBe(true);
+		expect(extraOnPage(10.5, 3, 5)).toBe(false);
+	});
+
+	it('places a recap before episode 1 on page 1', () => {
+		expect(extraOnPage(0.5, 1, 5)).toBe(true);
+		expect(extraOnPage(0.5, 2, 5)).toBe(false);
 	});
 });

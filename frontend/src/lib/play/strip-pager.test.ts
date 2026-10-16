@@ -434,3 +434,17 @@ describe('StripPager', () => {
 		});
 	});
 });
+
+describe('StripPager.pageOf — a fractional extra', () => {
+	it('opens a recap on the page of the whole episode it follows', () => {
+		// 5.5 sits beside 5, on page 1 of five; ceil(5.5 / 5) said 2.
+		const pager = new StripPager(5);
+		expect(pager.pageOf(5.5)).toBe(1);
+		expect(pager.pageOf(7.5)).toBe(2);
+		expect(pager.pageOf(10.5)).toBe(2);
+	});
+
+	it('opens a recap before episode 1 on page 1', () => {
+		expect(new StripPager(5).pageOf(0.5)).toBe(1);
+	});
+});

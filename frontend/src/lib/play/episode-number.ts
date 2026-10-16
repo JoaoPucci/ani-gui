@@ -27,3 +27,8 @@ export function previousEpisode(episode: number): number {
 export function nextEpisode(episode: number): number {
 	return Number.isInteger(episode) ? episode + 1 : Math.ceil(episode);
 }
+
+/** Stub: whether an extra numbered `episode` belongs on `page`. */
+export function extraOnPage(episode: number, page: number, pageSize: number): boolean {
+	return episode >= (page - 1) * pageSize + 1 && episode <= page * pageSize;
+}
