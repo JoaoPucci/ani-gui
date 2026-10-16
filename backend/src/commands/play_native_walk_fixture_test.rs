@@ -2813,19 +2813,19 @@ async fn assert_refused_unpersisted(ids: &[&str]) {
 /// sits within the count tolerance of the entry: a hentai OVA two
 /// episodes long for a five-episode idol OVA, a twelve-episode romance
 /// for a twelve-episode donghua. With a count and no year, the count is
-/// all that vouches for a hit, so each is played as the entry. Nothing
+/// all that vouched for a hit, so each was played as the entry. Nothing
 /// but its count fits any of them — not the title searched, not a name
 /// of the entry's, not a year — and every pool should be refused: the
 /// answered dead end, since a hit the count accepted is refused on how
 /// it is named, which the availability cache does not persist.
 const UNDATED_REFUSED: &[&str] = &[
-    "8404",  // Tsubu★Doll (5): picks a 2-episode OVA
-    "43745", // Chuan Shu Zijiu Zhinan 2nd Season (10): picks Fei Ren Zai 2nd Season (12)
-    "45637", // Mo Du Zhe (12): picks Girlfriend, Girlfriend (12)
-    "45049", // Lady Napoleon (13): picks a 12-episode isekai
-    "45494", // Liu Yao (13): picks Zhen Dao Ge: Qian li bu Liu Xing (12)
-    "40684", // Ohanashi de Te Koi (5): picks a 4-episode hentai OVA
-    "45500", // Zai Xia Ying Tai (12): picks Hero Return (12)
+    "8404",  // Tsubu★Doll (5): picked a 2-episode OVA
+    "43745", // Chuan Shu Zijiu Zhinan 2nd Season (10): picked Fei Ren Zai 2nd Season (12)
+    "45637", // Mo Du Zhe (12): picked Girlfriend, Girlfriend (12)
+    "45049", // Lady Napoleon (13): picked a 12-episode isekai
+    "45494", // Liu Yao (13): picked Zhen Dao Ge: Qian li bu Liu Xing (12)
+    "40684", // Ohanashi de Te Koi (5): picked a 4-episode hentai OVA
+    "45500", // Zai Xia Ying Tai (12): picked Hero Return (12)
 ];
 
 #[tokio::test]

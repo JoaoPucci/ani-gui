@@ -227,7 +227,7 @@ class TheModelReadsTheDocs(unittest.TestCase):
             (["Show: Arc"], [other, ("s", "Show: Arc", E)], pick("s")),
             (["Show: Arc", "Shou Arc"], [other, ("a", "Shou Arc", E)], pick("a")),
             (
-                ["Yi Ren Zhi Xia 6th Season", "The Outcast 6th Season", "一人之下6", "Hitori No Shita: The Outcast 6th Season"],
+                ["Yi Ren Zhi Xia 6th Season", "The Outcast 6th Season"],
                 [("s5", "The Outcast 5th Season", 12), ("s6", "The Outcast 6", 26), ("m", "The Outcast Movie: The Rusted Blade Resurfaces", 1), ("f", "Yi Ren Zhi Xia: Fanwai Pian", 2)],
                 pick("s6", 26),
             ),

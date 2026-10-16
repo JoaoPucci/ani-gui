@@ -752,7 +752,11 @@ def countless_pick(titles, searched, rows, entry_year):
 
 def vouched_by_name(titles, searched, cand):
     """The title searched, or a title the entry names — what alone vouches
-    for a hit when the entry's count stands alone."""
+    for a hit when the entry's count stands alone. The searched half is
+    the docs' wording; in every generated pool it is subsumed by the
+    other, since one of the entry's titles always names itself, so the
+    agreement says nothing about how the two sides compare the title
+    searched."""
     return written(cand) == written(searched) or names(titles, cand)
 
 

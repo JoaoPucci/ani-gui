@@ -106,5 +106,5 @@
  {"id": "doc-table/105", "titles": ["Show: Arc", "Shou Arc"], "count": 12, "entry_year": null, "rows": [["o", "Other", 12], ["a", "Shou Arc", 12]], "expect": {"pick": "a", "count": 12}, "family": "doc-table"},
  {"id": "doc-table/106", "titles": ["Show: Arc"], "count": 12, "entry_year": 2020, "rows": [["o", "Other", 12]], "expect": {"pick": "o", "count": 12}, "family": "doc-table"},
  {"id": "doc-table/107", "titles": ["Show: Arc"], "count": null, "entry_year": null, "rows": [["o", "Other", 12]], "expect": null, "family": "doc-table"},
- {"id": "doc-table/108", "titles": ["Yi Ren Zhi Xia 6th Season", "The Outcast 6th Season", "一人之下6", "Hitori No Shita: The Outcast 6th Season"], "count": 26, "entry_year": null, "rows": [["s5", "The Outcast 5th Season", 12], ["s6", "The Outcast 6", 26], ["m", "The Outcast Movie: The Rusted Blade Resurfaces", 1], ["f", "Yi Ren Zhi Xia: Fanwai Pian", 2]], "expect": {"pick": "s6", "count": 26}, "family": "doc-table"}
+ {"id": "doc-table/108", "titles": ["Yi Ren Zhi Xia 6th Season", "The Outcast 6th Season"], "count": 26, "entry_year": null, "rows": [["s5", "The Outcast 5th Season", 12], ["s6", "The Outcast 6", 26], ["m", "The Outcast Movie: The Rusted Blade Resurfaces", 1], ["f", "Yi Ren Zhi Xia: Fanwai Pian", 2]], "expect": {"pick": "s6", "count": 26}, "family": "doc-table"}
 ]

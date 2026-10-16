@@ -29,7 +29,7 @@ says which pool.
 |---|---|
 | `oracle.py` | The model and the comparison. Standard library only. |
 | `test_oracle.py` | The model's own tests: rows transcribed from the docs' tables predict as the tables say; the generated set is reproducible; the comparison refuses what it must. |
-| `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row; the others are the shapes that surfaced while reviewing picker changes. |
+| `cases/*.json` | Hand-written pools, each with the pick the docs answer. `doc-table.json` is the docs' pool table row by row, but for two rows the driver cannot express (below); the others are the shapes that surfaced while reviewing picker changes. |
 | `allowlist.json` | Disagreements accepted for now, each with its reason and the outcome it accepts. |
 | `fixtures-golden.json` | Every recorded fixture's outcome, one show per line. |
 
@@ -44,7 +44,7 @@ From the repository root, with `python3` (3.12 or later) and the Rust
 toolchain:
 
 ```sh
-# The model against the docs' tables (about twenty seconds)
+# The model against the docs' tables (about thirty seconds)
 python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
 
 # The picker against the model: generate, run, compare
@@ -116,8 +116,10 @@ either without touching the picker is asking the checker to look away.
 Every reported mispick becomes a recorded fixture under
 `tests/fixtures/hianime/picker/` — the entry's Kitsu arguments and
 every search, listing and entry-page year the walk read for it — with a
-`MANIFEST.json` entry and an expectation in the fixture test's table
-(`AUDITED_RIGHT` in `play_native_walk_fixture_test.rs`), in the pull
+`MANIFEST.json` entry and an expectation in one of the fixture test's
+tables in `play_native_walk_fixture_test.rs` — a pick or a clean miss in
+an `Expectation` table (`AUDITED_RIGHT`, `UNDATED_AUDITED_RIGHT`), a
+refusal that is not the clean miss in `UNDATED_REFUSED` — in the pull
 request that fixes it. That recording then holds the fix: the golden
 records its outcome, and the fixture test asserts its pick.
 
@@ -132,7 +134,12 @@ complete (the spanning cut), a bare title beside parts of it whose
 counts could together explain the entry's (stitching), a dead listing,
 a one-video entry — are tabled: `gen()` writes their expectations row
 by row from the decision tables, and `cases/doc-table.json` carries
-the table itself. `predict()` answers `NOT_MODELLED` for those shapes,
+the table itself — all but two rows, which the driver cannot express
+because it names 2020 on every page and badges every hit TV: the
+dated "Show: Arc" whose hit's page names no year, pinned by the fixture
+test `only_an_entry_with_a_count_and_no_year_needs_a_hit_named_for_it`,
+and Tsubu★Doll, whose refusal rests on a format badge and is pinned by
+its recording (8404, in `UNDATED_REFUSED`). `predict()` answers `NOT_MODELLED` for those shapes,
 and the model's tests assert that where both a predicate and a tabled
 row speak, they agree.
 
