@@ -61,9 +61,11 @@ impl Attempt for RangeStartAttempt<'_> {
         )
         .await?
         .choose(self.args.version);
-        let (picked, first) = super::play_native_version_modes::resolve_in_any_version(
+        // The first episode from the version named, or the next that
+        // carries it; the range keeps the version named for the rest.
+        let (_, first) = super::play_native_version_modes::resolve_in_any_version(
             provider,
-            picked,
+            picked.clone(),
             &self.first.to_string(),
             &self.args.mode,
             self.quality,
