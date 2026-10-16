@@ -96,6 +96,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/proxy-base-url", get(get_proxy_base_url))
         .route("/api/history", get(get_history).delete(delete_history))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
+        .route("/api/history/:id/number", get(get_history_number))
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
@@ -200,6 +201,17 @@ async fn get_history_by_kitsu(
 ) -> Result<Json<Option<HistoryEntry>>, AniError> {
     let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
     Ok(Json(h_inner::history_by_kitsu(&state, kitsu_id)?))
+}
+
+/// The episode one history row reads as now — `null` when no row is
+/// the show's ([`crate::commands::history_number`]).
+async fn get_history_number(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Option<crate::commands::history_number::HistoryNumber>>, AniError> {
+    Ok(Json(crate::commands::history_number::history_number(
+        &state, &id,
+    )?))
 }
 
 async fn post_external_player(
