@@ -61,15 +61,15 @@ impl Attempt for RangeStartAttempt<'_> {
         )
         .await?
         .choose(self.args.version);
-        let first = resolve_episode(
+        let (picked, first) = super::play_native_version_modes::resolve_in_any_version(
             provider,
-            &picked,
+            picked,
             &self.first.to_string(),
             &self.args.mode,
             self.quality,
         )
-        .await?;
-        Ok((picked, first))
+        .await;
+        Ok((picked, first?))
     }
 
     fn missed_by(&mut self, provider: crate::scraper::provider::ProviderId) {

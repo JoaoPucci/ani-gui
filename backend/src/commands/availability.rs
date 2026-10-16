@@ -824,7 +824,7 @@ pub async fn check_availability(
     let probed = crate::commands::providers::run_from(state, remembered, prio, &mut attempt).await;
     let (available, episode_count, extra_episodes, provider, versions) = match probed {
         Ok(attempted) => {
-            let (p, present) = attempted.value;
+            let (p, present, modes) = attempted.value;
             let Some(present) = present else {
                 // Every row the mode search touched was missing. The
                 // walk moves on from that answer and surfaces the
@@ -840,7 +840,17 @@ pub async fn check_availability(
                     crate::commands::play_native_numbering::kitsu_episode_cap(&p.episodes),
                     crate::commands::play_native_numbering::extra_episode_tags(&p.episodes),
                     Some(attempted.provider),
-                    crate::commands::play_native_versions::named_versions(attempted.provider, &p).0,
+                    crate::commands::play_native_versions::named_versions(attempted.provider, &p)
+                        .0
+                        .into_iter()
+                        .map(|v| crate::commands::play_native_versions::VersionInfo {
+                            has_mode: modes
+                                .iter()
+                                .find(|(k, _)| *k == v.kind)
+                                .and_then(|(_, m)| *m),
+                            ..v
+                        })
+                        .collect(),
                 )
             } else if attempted.past_undenied_affinity {
                 // The provider answered absence, but past the
@@ -996,10 +1006,7 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
     client: &P,
     args: &AvailabilityArgs,
     mode: &str,
-) -> std::result::Result<
-    (crate::commands::play_native::PickedShow, Option<bool>),
-    crate::commands::play_native_resolve::NativeError,
-> {
+) -> std::result::Result<ShowModes, crate::commands::play_native_resolve::NativeError> {
     let picked = pick_native_walk(
         client,
         &args.title,
@@ -1009,15 +1016,37 @@ async fn probe_show<P: crate::scraper::provider::Provider + ?Sized>(
         args.subtype.as_deref(),
     )
     .await?;
+    let fail = |error| crate::commands::play_native_resolve::NativeError {
+        error,
+        clean_miss: false,
+        failed_at: None,
+    };
     let present = crate::commands::availability_mode::mode_present(client, &picked.episodes, mode)
         .await
-        .map_err(|error| crate::commands::play_native_resolve::NativeError {
-            error,
-            clean_miss: false,
-            failed_at: None,
-        })?;
-    Ok((picked, present))
+        .map_err(fail)?;
+    // Each version is asked too: the provider need not carry one mode
+    // for every copy of a season.
+    let modes = crate::commands::play_native_version_modes::modes_of_versions(
+        client, &picked, present, mode,
+    )
+    .await
+    .map_err(fail)?;
+    let (picked, present) =
+        crate::commands::play_native_version_modes::version_for_mode(picked, &modes, present);
+    Ok((picked, present, modes))
 }
+
+/// What a probe found: the pick, playing a version that carries the
+/// mode when one does; whether the show carries the mode; and whether
+/// each of its versions does.
+type ShowModes = (
+    crate::commands::play_native::PickedShow,
+    Option<bool>,
+    Vec<(
+        crate::commands::play_native_versions::VersionKind,
+        Option<bool>,
+    )>,
+);
 
 /// [`probe_show`] as an attempt the runner can move between
 /// providers.
@@ -1031,7 +1060,7 @@ struct ProbeAttempt<'r> {
 
 #[async_trait::async_trait]
 impl crate::commands::providers::Attempt for ProbeAttempt<'_> {
-    type Output = (crate::commands::play_native::PickedShow, Option<bool>);
+    type Output = ShowModes;
 
     async fn run(
         &mut self,

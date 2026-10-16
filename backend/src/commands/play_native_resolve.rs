@@ -22,6 +22,7 @@ pub use super::play_native_episode::resolve_episode;
 use super::play_native_episode::{classify_chain_failure, ChainOutcome};
 use super::play_native_numbering::{extra_episode_tags, kitsu_episode_cap, numbering_offset};
 use super::play_native_transient::{attempt_at, Transients, WalkStage};
+use super::play_native_version_modes::resolve_in_any_version;
 
 /// A fully resolved native play: what the orchestrator needs to open
 /// a session, stamp caches, and write history.
@@ -220,23 +221,25 @@ where
                 {
                     Ok(picked) => {
                         let picked = picked.choose(req.version);
+                        on_progress(ProgressLine::Matched {
+                            title: picked.hit.title.clone(),
+                        });
+                        // The version asked for, or the next that
+                        // carries the episode in the mode.
+                        let (picked, resolved) = resolve_in_any_version(
+                            client,
+                            picked,
+                            req.episode,
+                            req.mode,
+                            req.quality,
+                        )
+                        .await;
                         let (versions, version) =
                             crate::commands::play_native_versions::named_versions(
                                 client.id(),
                                 &picked,
                             );
-                        on_progress(ProgressLine::Matched {
-                            title: picked.hit.title.clone(),
-                        });
-                        let resolved = match resolve_episode(
-                            client,
-                            &picked,
-                            req.episode,
-                            req.mode,
-                            req.quality,
-                        )
-                        .await
-                        {
+                        let resolved = match resolved {
                             Ok(resolved) => resolved,
                             Err(ne) => match classify_chain_failure(ne) {
                                 ChainOutcome::Stop(ne) => return Err(ne),
