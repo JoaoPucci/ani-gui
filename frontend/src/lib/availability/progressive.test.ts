@@ -131,19 +131,25 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 	});
 
 	it('keeps a finished show whose probe answers unsettled, and remembers no verdict for it', async () => {
-		// An unsettled answer is the probe reaching no verdict — the
-		// provider's listing refused on how it is named — delivered as a
-		// normal answer instead of the error it used to be. Its
+		// An unsettled answer is the probe reaching no settled verdict —
+		// dead listings, a mode nobody answered for, or the reason-less
+		// `true` a backend before reasons sent — delivered as a normal
+		// answer instead of the error it used to be. Its
 		// `available: false` means nothing: the card stays, as it did
 		// when the request threw, and nothing is cached against the id.
-		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
-		apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled: true });
-		const emit = vi.fn();
-		await filterAvailableProgressive([ref('a', { status: 'finished' })], 'sub', emit);
-		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual(['a']);
+		for (const unsettled of [true, 'unanswered'] as const) {
+			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+			apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled });
+			const emit = vi.fn();
+			await filterAvailableProgressive([ref('a', { status: 'finished' })], 'sub', emit);
+			expect(
+				emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id),
+				String(unsettled)
+			).toEqual(['a']);
+		}
 	});
 
-	it('drops a show the catalogue refused by name, as one it does not carry', async () => {
+	it('drops a finished show the catalogue refused by name, as one it does not carry', async () => {
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 		apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled: 'refused' });
 		const emit = vi.fn();
@@ -151,11 +157,11 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual([]);
 	});
 
-	it('keeps a refused show that is airing, upcoming or of unknown status, as any unlisted one', async () => {
+	it('keeps a refused show of every status but finished, as any unlisted one', async () => {
 		// A refusal is the verdict false, and the status rule decides what
-		// a false hides: only a finished show is confidently gone — an
-		// airing or upcoming one may simply not be listed yet.
-		for (const status of ['current', 'upcoming', undefined]) {
+		// a false hides: only a finished show is confidently gone — any
+		// other may simply not be listed yet.
+		for (const status of ['current', 'upcoming', 'tba', 'unreleased', undefined]) {
 			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 			apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled: 'refused' });
 			const emit = vi.fn();

@@ -3094,7 +3094,7 @@ mod tests {
     }
 
     /// A probe that reaches the provider and comes back without a
-    /// verdict — here an entry with a count and no year whose only
+    /// settled verdict — here an entry with a count and no year whose only
     /// fitting hit is refused on how it is named — answers 200 with
     /// `unsettled: "refused"`, not 404: a normal answer naming why it
     /// settled nothing, where an error status went to the renderer's

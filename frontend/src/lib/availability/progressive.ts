@@ -53,8 +53,8 @@ async function probeInline<T extends KitsuAnimeRef>(
 				// refusal by name is the verdict that the catalogue
 				// does not carry the show, recorded as `false` — which
 				// prunes a finished show's card and, by `keepCard`'s
-				// status rule, leaves an airing, upcoming or
-				// unknown-status one, as for any show not listed yet.
+				// status rule, leaves every other status's, as for any
+				// show not listed yet.
 				const verdict = availabilityVerdict(r);
 				if (verdict !== null) cached[item.id] = verdict;
 			} catch {
