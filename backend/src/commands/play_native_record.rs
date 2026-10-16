@@ -15,6 +15,10 @@ use crate::history::guard::{Asked, Epoch};
 mod record_id;
 use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id};
 
+#[path = "play_native_record_matched.rs"]
+mod matched;
+pub(crate) use matched::matched_episode;
+
 /// Stamp the show's numbering offset while it is known.
 ///
 /// The cache-hit and mark-watched writers and the history read

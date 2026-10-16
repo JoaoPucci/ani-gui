@@ -456,9 +456,11 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         show_id: native.slug.clone(),
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
+        played: Some(crate::commands::play_native_record::matched_episode(
+            native, "",
+        )),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
-        played: None,
     }
 }
 
