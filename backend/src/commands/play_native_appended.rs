@@ -106,3 +106,11 @@ pub async fn fit_appended(
         None => picked,
     }
 }
+
+#[cfg(test)]
+#[path = "play_native_appended_test.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "play_native_appended_prop_test.rs"]
+mod prop_tests;
