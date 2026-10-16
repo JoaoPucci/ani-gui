@@ -349,3 +349,37 @@ describe('home — a Continue Watching verdict and the other audio', () => {
 		});
 	}
 });
+
+describe('detail — the page stays busy while the failure is worded', () => {
+	it('keeps Play disabled until the other-audio answer lands', async () => {
+		// The overlay waits on the cache lookup. Releasing the page's
+		// busy state first left a window with neither the loading
+		// overlay nor the failure, in which a second click could start
+		// a play the late message then covered.
+		useHandlers({ cached: {}, playable_episode_counts: {} });
+		let release!: () => void;
+		const answered = new Promise<void>((r) => (release = r));
+		let asked = false;
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { mode: string };
+				if (body.mode === 'dub') {
+					asked = true;
+					await answered;
+				}
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			})
+		);
+		const play = () =>
+			target.querySelector('div.actions button.btn-glass') as HTMLButtonElement | null;
+		app = mount(DetailPage, { target });
+		await until(() => play() !== null && !play()!.disabled, 'the Play button');
+		await clickAndFail(5);
+		await until(() => asked, 'the other-audio lookup');
+		expect(play()!.disabled, 'Play stays disabled while the message is worded').toBe(true);
+		expect(target.textContent).not.toContain(PLAIN());
+		release();
+		await expectCopy(PLAIN);
+		await until(() => !play()!.disabled, 'Play to come back');
+	});
+});

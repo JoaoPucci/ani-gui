@@ -425,7 +425,7 @@ describe('describePlayFailure — an episode missing from this audio', () => {
 		const msg = describePlayFailure(e, { otherAudio: false });
 		expect(msg).toBe(m.play_play_failure_episode_unavailable());
 		expect(msg).not.toMatch(OTHER_AUDIO);
-		expect(msg).toMatch(/another episode/i);
+		expect(msg).toMatch(/try another episode or try again later\.$/);
 	});
 
 	it('does not promise an audio nobody has asked about', () => {

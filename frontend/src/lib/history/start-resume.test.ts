@@ -147,6 +147,29 @@ describe('makeStartResume (click orchestration)', () => {
 		expect(h.deps.navigateToSession).not.toHaveBeenCalled();
 	});
 
+	it('stays busy while the failure surface words its message', async () => {
+		// The page looks the other audio up before it shows the
+		// failure. Clearing busy first left a window with neither the
+		// loading state nor the failure on screen, in which a second
+		// click could start a play the late message then covered.
+		let release!: () => void;
+		const worded = new Promise<void>((r) => (release = r));
+		const h = makeHarness({
+			resolvePlay: vi.fn().mockRejectedValue(new Error('no sources')),
+			onFailure: () => worded
+		});
+		const start = makeStartResume(h.deps);
+		const done = start(makeEntry('h1', '5', 'Show'), makeMatch('k1', 12), 12, true);
+		await vi.waitFor(() => expect(h.deps.resolvePlay).toHaveBeenCalled());
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(h.busyLog, 'busy holds until the message is worded').toEqual(['k1']);
+		expect(h.deps.isBusy()).toBe(true);
+		release();
+		await done;
+		expect(h.busyLog).toEqual(['k1', null]);
+	});
+
 	it('a countless interactive lookup writes no cap and falls back to the Kitsu count', async () => {
 		const h = makeHarness({
 			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('down'))
