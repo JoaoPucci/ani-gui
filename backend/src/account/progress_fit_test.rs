@@ -27,8 +27,8 @@ fn finale(ep: u32) -> EntryUpdate {
 
 #[test]
 fn the_last_episode_beside_a_larger_tracker_total_is_not_filled_or_completed() {
-    // Air: Kitsu numbers 12 episodes, MAL and AniList count 13 with the
-    // prologue as their episode 1. A count gap alone says nothing about
+    // Air: Kitsu and MAL number 12 episodes, AniList counts 13 with the
+    // prologue as its episode 1. A count gap alone says nothing about
     // which episodes the tracker has that Kitsu lacks — a prologue, or
     // recaps a long show lists as 0.5s — so the watched number goes as
     // it is, and the tracker is not told the show is complete when it
@@ -46,7 +46,7 @@ fn the_last_episode_sends_its_own_number_when_the_totals_agree() {
 
 #[test]
 fn the_last_episode_never_sends_more_than_a_smaller_tracker_total() {
-    // Ranma ½: Kitsu's 161-episode show maps to an 18-episode MAL entry.
+    // Ranma ½: AniList's entry for Kitsu's 161-episode show has 18.
     // Clamped, and — the totals differing — not completed either.
     assert_eq!(fit_to_tracker_total(finale(161), Some(18)), episode(18));
 }

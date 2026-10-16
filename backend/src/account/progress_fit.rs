@@ -14,7 +14,8 @@ use crate::account::status::ListStatus;
 ///
 /// The count is sent as its own number, but never past the tracker's
 /// total: where the tracker's entry is shorter than Kitsu's show
-/// (Ranma ½ maps 161 episodes onto an 18-episode MAL entry) the count
+/// (AniList splits Ranma ½'s 161 episodes into an 18-episode entry and
+/// its sequel) the count
 /// stops at the entry's end, and the monotonic reconcile then drops the
 /// repeated value.
 ///
@@ -23,8 +24,8 @@ use crate::account::status::ListStatus;
 /// renderer's `watchedStatus`). It is kept only where the tracker's
 /// total is that episode. Beside any other known total the write
 /// carries progress alone: a count gap does not say what the tracker's
-/// other episodes are — a prologue it numbers as episode 1 (Air: 13
-/// against Kitsu's 12), recaps a long show lists as 0.5s, a different
+/// other episodes are — a prologue it numbers as episode 1 (Air on
+/// AniList: 13 against Kitsu's and MyAnimeList's 12), recaps a long show lists as 0.5s, a different
 /// cut — so the gap is not filled, and the tracker is not told the show
 /// is complete while it counts episodes the user is not credited with.
 ///

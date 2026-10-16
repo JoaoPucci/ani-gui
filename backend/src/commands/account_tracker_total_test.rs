@@ -1,8 +1,8 @@
 //! The mark-watched write path against each tracker's own episode
 //! total: what `push_progress_via` reads, and what it writes, when the
-//! tracker counts a prologue Kitsu does not (Air: 13 against 12), when
+//! tracker counts a prologue Kitsu does not (Air on AniList: 13 against 12), when
 //! the totals agree, when the tracker's entry is shorter than Kitsu's
-//! show (Ranma ½: 18 against 161), and when the total is unknown.
+//! show (Ranma ½ on AniList: 18 against 161), and when the total is unknown.
 
 use super::*;
 use crate::account::provider::EntryUpdate;
@@ -95,8 +95,9 @@ async fn mal_the_finale_sends_its_own_number_when_the_totals_agree() {
 
 #[tokio::test]
 async fn mal_an_episode_past_a_shorter_entry_writes_nothing_once_the_entry_is_full() {
-    // Ranma ½: watching Kitsu's 30 against MAL's 18-episode entry, the
-    // row already at 18 — nothing is sent, and nothing past 18 ever is.
+    // Ranma ½'s shape (AniList's 18-episode entry for Kitsu's 161),
+    // served here by the MAL mock: watching Kitsu's 30 with the row
+    // already at 18 — nothing is sent, and nothing past 18 ever is.
     let server = mal_server(18, 18, &[], 0).await;
     assert!(push_to_mal(&server, episode(30)).await.is_none());
 }
