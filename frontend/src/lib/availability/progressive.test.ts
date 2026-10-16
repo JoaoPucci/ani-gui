@@ -15,6 +15,7 @@ const apiMock = vi.hoisted(() => ({
 vi.mock('$lib/api', () => apiMock);
 
 import { filterAvailableProgressive } from './progressive';
+import { probeScope } from './probe-scope';
 
 function ref(id: string, overrides: Partial<KitsuAnimeRef> = {}): KitsuAnimeRef {
 	return {
@@ -224,5 +225,31 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 			kitsu_id: 'wing',
 			year: 1995
 		});
+	});
+
+	it("a pool whose page was left sends no more probes, and hands its page's signal to the ones it sent", async () => {
+		// Settling a navigation aborts only what is in flight; a pool
+		// that kept draining would go on asking, now under the next
+		// page's path, for answers nobody reads.
+		const g = globalThis as unknown as { location?: { pathname: string } };
+		g.location = { pathname: '/search' };
+		try {
+			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+			const resolvers = hangingProbes();
+			const items = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ref(id));
+			const done = filterAvailableProgressive(items, 'sub', () => {}, 2000, 2);
+			await vi.waitFor(() => expect(apiMock.checkAvailability).toHaveBeenCalledTimes(2));
+			const signal = apiMock.checkAvailability.mock.calls[0][1]?.signal as AbortSignal;
+			expect(signal).toBeInstanceOf(AbortSignal);
+			g.location = { pathname: '/anime/1' };
+			probeScope.settle();
+			expect(signal.aborted).toBe(true);
+			resolvers.get('a')!({ available: true });
+			resolvers.get('b')!({ available: true });
+			await done;
+			expect(apiMock.checkAvailability).toHaveBeenCalledTimes(2);
+		} finally {
+			delete g.location;
+		}
 	});
 });
