@@ -200,3 +200,65 @@ async fn an_entry_kitsu_cannot_serve_gives_no_tail() {
     let source = KitsuTail::for_entry(&state, Some("7881")).expect("an entry");
     assert_eq!(source.tail(12).await, None);
 }
+
+/// The tail carries the entries Kitsu relates the show to, read whole,
+/// and a TV sequel's first page of titles: Noragami's OVA, two
+/// episodes long, and Noragami Aragoto's thirteen titles.
+#[tokio::test]
+async fn noragami_s_tail_carries_its_relations_and_its_sequel_s_titles() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let kitsu = MockServer::start().await;
+    for (route, file) in [
+        ("/anime/7881", "kitsu-anime-7881.json"),
+        ("/anime/7881/episodes", "kitsu-episodes-7881-p1.json"),
+        (
+            "/anime/7881/media-relationships",
+            "kitsu-relations-7881.json",
+        ),
+        ("/anime/10800/episodes", "kitsu-episodes-10800-p1.json"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture(file)))
+            .mount(&kitsu)
+            .await;
+    }
+    let state = state_with_kitsu(&kitsu.uri());
+    let airing =
+        crate::meta::anilist_airing::parse_airing_response(&fixture("anilist-airing-7881.json"))
+            .expect("airing")
+            .expect("known");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:7881",
+        &serde_json::to_string(&airing).expect("json"),
+        60,
+    )
+    .expect("airing row");
+    let tail = KitsuTail::for_entry(&state, Some("7881"))
+        .expect("an entry")
+        .tail(12)
+        .await
+        .expect("read");
+    assert!(tail.related_complete);
+    let ova = tail
+        .related
+        .iter()
+        .find(|r| r.subtype.as_deref() == Some("OVA"))
+        .expect("the OVA");
+    assert_eq!((ova.anime, ova.episode_count), (true, Some(2)));
+    assert_eq!(ova.episode_titles, None);
+    let sequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "sequel")
+        .expect("the sequel");
+    let titles = sequel.episode_titles.as_ref().expect("the sequel's titles");
+    assert_eq!(titles.len(), 13);
+    assert_eq!(titles[0], "Bearing a Posthumous Name");
+    assert!(
+        tail.related.iter().any(|r| !r.anime),
+        "the manga is related too"
+    );
+}

@@ -87,9 +87,11 @@ fn state_over(td: &tempfile::TempDir, provider: &Arc<TableProvider>) -> crate::a
     }
 }
 
-/// The cache as a visit to Noragami's detail page leaves it: Kitsu's
+/// The cache as a visit to Noragami's detail page leaves it — Kitsu's
 /// entry, its first episode page, and AniList's airing answer, with
-/// Kitsu's status replaced by `status`.
+/// Kitsu's status replaced by `status` — and as a first read of its
+/// evidence leaves it: the entries Kitsu relates it to, and its TV
+/// sequel's first episode page.
 fn seed_kitsu(state: &crate::app::AppState, status: &str) {
     use crate::cache::meta_cache_put;
     let mut detail =
@@ -116,6 +118,28 @@ fn seed_kitsu(state: &crate::app::AppState, status: &str) {
         day,
     )
     .expect("page row");
+    let relations =
+        crate::meta::kitsu::parse_relationships_response(&fixture("kitsu-relations-7881.json"))
+            .expect("relations");
+    meta_cache_put(
+        &state.cache_pool,
+        &format!("kitsu:relations:v1:{KITSU}"),
+        &serde_json::to_string(&relations).expect("json"),
+        day,
+    )
+    .expect("relations row");
+    // The sequel's first page, which the rows past the count are
+    // checked against.
+    let sequel =
+        crate::meta::kitsu::parse_episodes_response(&fixture("kitsu-episodes-10800-p1.json"))
+            .expect("sequel page");
+    meta_cache_put(
+        &state.cache_pool,
+        "kitsu:episodes:10800:p1",
+        &serde_json::to_string(&sequel).expect("json"),
+        day,
+    )
+    .expect("sequel page row");
     meta_cache_put(
         &state.cache_pool,
         &format!("airing:v2:{KITSU}"),

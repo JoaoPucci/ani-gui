@@ -85,3 +85,7 @@ impl KitsuClient {
         parse_relationships_response(&body)
     }
 }
+
+#[cfg(test)]
+#[path = "kitsu_relations_test.rs"]
+mod tests;
