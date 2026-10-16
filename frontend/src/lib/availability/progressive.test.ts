@@ -151,6 +151,22 @@ describe('filterAvailableProgressive (search / render-then-prune)', () => {
 		expect(emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id)).toEqual([]);
 	});
 
+	it('keeps a refused show that is airing, upcoming or of unknown status, as any unlisted one', async () => {
+		// A refusal is the verdict false, and the status rule decides what
+		// a false hides: only a finished show is confidently gone — an
+		// airing or upcoming one may simply not be listed yet.
+		for (const status of ['current', 'upcoming', undefined]) {
+			apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
+			apiMock.checkAvailability.mockResolvedValue({ available: false, unsettled: 'refused' });
+			const emit = vi.fn();
+			await filterAvailableProgressive([ref('a', { status })], 'sub', emit);
+			expect(
+				emit.mock.calls.at(-1)![0].map((r: KitsuAnimeRef) => r.id),
+				String(status)
+			).toEqual(['a']);
+		}
+	});
+
 	it('keeps an item whose probe throws (defer to lazy path)', async () => {
 		apiMock.availabilityBatch.mockResolvedValueOnce({ cached: {} });
 		apiMock.checkAvailability.mockRejectedValue(new Error('upstream 520'));
