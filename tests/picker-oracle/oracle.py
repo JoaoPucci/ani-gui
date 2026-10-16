@@ -34,8 +34,10 @@ E = 12
 
 #: The year the driver writes on every listing's entry page, and the
 #: year a generated entry carries when it carries one — so with a year
-#: every hit is vouched for by it, and the titles alone decide. The
-#: driver's `LISTING_YEAR` is this number; the two move together.
+#: every hit's year is the entry's, and, with the entry's name on every
+#: card unless a pool says otherwise (`card_names`), the titles alone
+#: decide. The driver's `LISTING_YEAR` is this number; the two move
+#: together.
 LISTING_YEAR = 2020
 
 #: What `predict` answers for a pool the predicates do not read: a
@@ -760,21 +762,77 @@ def vouched_by_name(titles, searched, cand):
     return written(cand) == written(searched) or names(titles, cand)
 
 
+def card_names(case, slug):
+    """The names the driver gives a hit beside its listing's title: the
+    romanized name its search card carries — the entry's canonical title
+    on every card, as the provider's cards for an entry's own listings
+    carry the entry's romaji, unless the pool says otherwise (`jnames`,
+    slug to name; a slug it leaves out carries none) — and the names its
+    entry page gives (`page_names`, slug to names)."""
+    j = case.get("jnames")
+    card = [case["titles"][0]] if j is None else ([j[slug]] if slug in j else [])
+    return card + list(case.get("page_names", {}).get(slug, []))
+
+
+def _starts_with_name(title, other):
+    """`title` starts with `other`'s name — at a word's end, or with a
+    digit or 第 glued to it, no digit when the name itself ends in one
+    ("Show2" and "ショー第2期" start with "Show" and "ショー", "Showtime"
+    does not, nor "861" with "86"); a name of no words — a title that is
+    nothing but a division — starts nothing."""
+    nm = Reading(other).name
+    if not nm:
+        return False
+    toks = _tokenize(norm(title))
+    if len(toks) < len(nm) or toks[: len(nm) - 1] != nm[:-1]:
+        return False
+    last, word = nm[-1], toks[len(nm) - 1]
+    if word == last:
+        return True
+    rest = word[len(last):] if word.startswith(last) else None
+    return bool(rest) and (rest[0] == "第" or (rest[0].isdigit() and not last[-1].isdigit()))
+
+
+def shares_name(titles, cand):
+    """One of the entry's titles and `cand` share a name: one starts with
+    the other's name, whatever follows it."""
+    return any(_starts_with_name(cand, t) or _starts_with_name(t, cand) for t in titles)
+
+
+def needs_a_name(count, entry_year):
+    """"A year and a count are no identity either": a count above one,
+    and a year."""
+    return count is not None and count > 1 and entry_year is not None
+
+
+def vouched_dated(titles, searched, cand, others):
+    """The title searched, or a name of the show — the listing's title,
+    its card's romanized name, its page's names (`others`) — that the
+    entry names or shares a name with: what vouches for a hit when the
+    entry has a year and a count."""
+    return written(cand) == written(searched) or any(
+        names(titles, n) or shares_name(titles, n) for n in [cand] + list(others)
+    )
+
+
 def count_stands_alone(count, entry_year):
     """"A count with no year is no identity either": a count above one,
     and no year."""
     return count is not None and count > 1 and entry_year is None
 
 
-def counted_pick(titles, searched, rows, count, entry_year):
+def counted_pick(titles, searched, rows, count, entry_year, names_of=lambda slug: []):
     """The pick with a count and no broad listing: the best distance within
     the tolerance among the hits that could be picked; ties prefer the
     exact title, then part agreement, then the provider's order. When the
     count stands alone, only a hit the title searched or the entry's names
-    vouch for can be picked."""
+    vouch for can be picked; with a year beside the count, only a hit the
+    title searched or a name of the show (`names_of`) vouches for."""
     adm, _ = head(titles, rows, True)
     if count_stands_alone(count, entry_year):
         adm = [r for r in adm if vouched_by_name(titles, searched, r[1])]
+    if needs_a_name(count, entry_year):
+        adm = [r for r in adm if vouched_dated(titles, searched, r[1], names_of(r[0]))]
     tol = max(3, count // 10)
     fits = [r for r in adm if abs(r[2] - count) <= tol]
     if not fits:
@@ -837,7 +895,7 @@ def predict(case):
         if count is None:
             r = countless_pick(titles, searched, rows, year)
         else:
-            r = counted_pick(titles, searched, rows, count, year)
+            r = counted_pick(titles, searched, rows, count, year, lambda slug: card_names(case, slug))
         if r:
             return {"pick": r[0], "count": r[2]}
     return None
@@ -860,6 +918,20 @@ def clean_miss_expected(case):
     if count_stands_alone(count, case["entry_year"]):
         adm, _ = head(titles, rows, True)
         return not any(abs(r[2] - count) <= tol for r in adm)
+    # so is the dated-name refusal: a fitting hit no name vouches for —
+    # under any title searched, since every title's search answers with
+    # the same rows here and the walk reads every pool
+    # — any hit the year and count would have taken: within the
+    # tolerance, or from the entry's year (every listing's here) and
+    # shorter than the entry, as the airing rescue and the stitching take
+    if needs_a_name(count, case["entry_year"]):
+        adm, _ = head(titles, rows, True)
+        confirmed = case["entry_year"] == LISTING_YEAR
+        return not any(
+            (abs(r[2] - count) <= tol or (confirmed and r[2] < count))
+            and not all(vouched_dated(titles, s, r[1], card_names(case, r[0])) for s in titles)
+            for r in adm
+        )
     return True
 
 
