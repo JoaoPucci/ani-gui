@@ -129,7 +129,7 @@ records its outcome, and the fixture test asserts its pick.
 
 The predicates compute admission (the title rule), the entry before,
 the season before, the sequel guard, the probe head, the pick by count
-when no listing is broader than the entry and its versions, and the countless order
+and its versions when no listing is broader than the entry, and the countless order
 through the one reader that decides whether the entry names a hit.
 Pools the predicates do not compute — a broad listing a sibling could
 complete (the spanning cut), a bare title beside parts of it whose

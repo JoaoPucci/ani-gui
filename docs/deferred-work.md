@@ -268,8 +268,9 @@ starting it, and delete it when you find it done.
   one pick" in `docs/title-resolution.md`), the availability probe asks
   whether the requested audio mode exists of the default — uncensored —
   version alone. Should the provider dub only the plain copy, a dub
-  lookup answers that the show is listed without a dub, though
-  choosing Standard would play one. No recording yet says whether
+  lookup answers that the show is listed without a dub and names no
+  versions, so the detail page offers no choice of one, though playing
+  Standard would find a dub. No recording yet says whether
   hianime's modes differ between the copies, and finding out costs one
   mode request per version per look, which is why it waited.
 

@@ -292,8 +292,9 @@ When the pick by count has its winner, every candidate that could be picked at t
 | A plain copy the title rule refuses — the tag hides a season marker from the rule, so "Show Season 2 (Uncensored)" is admitted for "Show" while "Show Season 2" is not | one pick: the tagged copy alone, as before |
 | An entry with a count and no year: the tagged copy is not named by the entry's titles, since the tag's words follow the name | the tagged copy is scored out: one pick |
 | Only the plain copy probed, the tagged one past the probe head (or the other way round) | one pick, as before |
-| The airing rescue, the countless pick, a stitched pick, a cut broad listing | one pick, as before |
-| A copy whose probe died unheard | the pick is transient, as when a stronger candidate dies: playing one copy now and the other once the dead one answers would split the show's history across two keys on the strength of weather |
+| The airing rescue, the countless pick, a stitched pick, a cut broad listing with every copy heard | one pick, as before |
+| A copy whose probe died unheard, one every rule would have let be picked — the pick by count, a cut broad listing included | the pick is transient, as when a stronger candidate dies: playing one copy now and the other once the dead one answers would split the show's history across two keys on the strength of weather |
+| A dead copy no rule would pick — for an entry with a count and no year, or one video long and no year, a tagged copy the entry's titles do not name | blocks nothing: one pick, as before |
 
 Every other rule reads a tagged title as it did: the tag is bracketed words, not a catalogue tag, and only this rule sets it aside. The probe head is not widened for copies: every recorded JoJo season's first answering pool holds both copies inside the head, a copy past it costs nothing but the choice — the pick plays as before — and widening the head would cost probes on every pool for listings that are rare.
 
