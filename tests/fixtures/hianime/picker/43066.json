@@ -48,5 +48,19 @@
  "years": {
   "86-eighty-six-1260": 2021,
   "86-eighty-six-part-2-1421": 2021
+ },
+ "jnames": {
+  "86-eighty-six-1260": "86",
+  "86-eighty-six-part-2-1421": "86: 2nd Season",
+  "86-eighty-six-season-2-recap-9822": "86 EIGHTY-SIX Season 2 Recap",
+  "86-eighty-six-special-edition-the-poppies-bloom-red-on-the-battlefield-2622": "86 Special Edition: Senya ni Akaku Hinageshi no Saku"
+ },
+ "page_names": {
+  "86-eighty-six-1260": ["86―エイティシックス―"],
+  "86-eighty-six-part-2-1421": ["86―エイティシックス―", "86: 2nd Season"]
+ },
+ "genres": {
+  "86-eighty-six-1260": ["Drama", "Sci-Fi", "Mecha", "Military", "Action"],
+  "86-eighty-six-part-2-1421": ["Drama", "Sci-Fi", "Mecha", "Military", "Action"]
  }
 }

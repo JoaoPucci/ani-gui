@@ -62,5 +62,37 @@
   "dr-stone-science-future-part-3-98": 2026,
   "dr-stone-stone-wars-1100": 2021,
   "snickers-x-dr-stone-2849": 2020
+ },
+ "jnames": {
+  "dr-stone-1235": "Dr. Stone",
+  "dr-stone-new-world-1104": "Dr. Stone 3rd Season",
+  "dr-stone-new-world-part-2-1080": "Dr. Stone: New World Part 2",
+  "dr-stone-ryusui-1081": "Dr. Stone: Ryuusui",
+  "dr-stone-science-future-2583": "Dr. Stone: Science Future",
+  "dr-stone-science-future-part-2-74": "Dr. Stone: Science Future Part 2",
+  "dr-stone-science-future-part-3-98": "Dr. Stone: Science Future Part 3",
+  "dr-stone-stone-wars-1100": "Dr. Stone: Stone Wars",
+  "dr-stone-stone-wars-eve-of-the-battle-special-feature-2584": "Dr. Stone: Stone Wars - Kaisen Zenya Special Eizou",
+  "snickers-x-dr-stone-2849": "Sekikashita Kusanagi"
+ },
+ "page_names": {
+  "dr-stone-1235": ["ドクターストーン"],
+  "dr-stone-new-world-1104": ["Dr.STONE NEW WORLD", "Dr. Stone 3rd Season"],
+  "dr-stone-new-world-part-2-1080": ["Dr.STONE NEW WORLD", "Dr. Stone: New World Part 2"],
+  "dr-stone-science-future-2583": ["Dr.STONE SCIENCE FUTURE"],
+  "dr-stone-science-future-part-2-74": ["Dr.STONE SCIENCE FUTURE 第2クール"],
+  "dr-stone-science-future-part-3-98": ["Dr. Stone 4th Season Part 3 Dr.STONE SCIENCE FUTURE 第3クール Dr. Stone: Science Future Part 3"],
+  "dr-stone-stone-wars-1100": ["ドクターストーン STONE WARS"],
+  "snickers-x-dr-stone-2849": ["石化した草薙", "Sekikashita Kusanagi"]
+ },
+ "genres": {
+  "dr-stone-1235": ["Adventure", "Shounen", "Comedy", "Sci-Fi"],
+  "dr-stone-new-world-1104": ["Adventure", "Shounen", "Comedy", "Sci-Fi"],
+  "dr-stone-new-world-part-2-1080": ["Adventure", "Shounen", "Comedy", "Sci-Fi", "Action"],
+  "dr-stone-science-future-2583": ["Adventure", "Shounen", "Comedy", "Sci-Fi"],
+  "dr-stone-science-future-part-2-74": ["Adventure", "Shounen", "Comedy", "Sci-Fi", "Action"],
+  "dr-stone-science-future-part-3-98": ["Adventure", "Shounen", "Comedy", "Sci-Fi", "Action"],
+  "dr-stone-stone-wars-1100": ["Adventure", "Shounen", "Comedy", "Sci-Fi"],
+  "snickers-x-dr-stone-2849": ["Comedy"]
  }
 }

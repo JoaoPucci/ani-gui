@@ -72,5 +72,47 @@
   "attack-on-titan-season-3-866": 2018,
   "attack-on-titan-season-3-part-2-1895": 2019,
   "attack-on-titan-since-that-day-5127": 2013
+ },
+ "jnames": {
+  "attack-on-titan-240": "Shingeki no Kyojin",
+  "attack-on-titan-chronicle-2051": "Shingeki no Kyojin: Chronicle",
+  "attack-on-titan-crimson-bow-and-arrow-2028": "Shingeki no Kyojin Movie 1: Guren no Yumiya",
+  "attack-on-titan-final-season-1372": "Shingeki no Kyojin: Final Season, Part 1",
+  "attack-on-titan-final-season-part-2-868": "Shingeki no Kyojin: The Final Season Part 2",
+  "attack-on-titan-final-season-the-final-chapters-867": "Shingeki no Kyojin: The Final Season - Kanketsu-hen",
+  "attack-on-titan-in-the-dome-soldiers-starry-sky-3243": "Shingeki no Kyojin in the Dome: Heishi-tachi no Hoshizora",
+  "attack-on-titan-junior-high-2969": "Shingeki! Kyojin Chuugakkou",
+  "attack-on-titan-lost-girls-1824": "Shingeki no Kyojin: Lost Girls",
+  "attack-on-titan-no-regrets-908": "Shingeki no Kyojin: Kuinaki Sentaku",
+  "attack-on-titan-oad-1897": "Shingeki no Kyojin OVA",
+  "attack-on-titan-season-2-865": "Shingeki no Kyojin Season 2",
+  "attack-on-titan-season-3-866": "Shingeki no Kyojin Season 3",
+  "attack-on-titan-season-3-part-2-1895": "Shingeki no Kyojin Season 3 Part 2",
+  "attack-on-titan-since-that-day-5127": "Shingeki no Kyojin: Ano Hi Kara",
+  "attack-on-titan-the-last-attack-3690": "Shingeki no Kyojin Movie: Kanketsu-hen - The Last Attack",
+  "attack-on-titan-the-roar-of-awakening-2027": "Shingeki no Kyojin Season 2 Movie: Kakusei no Houkou",
+  "attack-on-titan-wings-of-freedom-1786": "Shingeki no Kyojin Movie 2: Jiyuu no Tsubasa"
+ },
+ "page_names": {
+  "attack-on-titan-240": ["進撃の巨人", "Shingeki no Kyojin"],
+  "attack-on-titan-final-season-1372": ["進撃の巨人 The Final Season", "Shingeki no Kyojin: Final Season, Part 1"],
+  "attack-on-titan-final-season-part-2-868": ["進撃の巨人 The Final Season Part 2", "Shingeki no Kyojin: The Final Season Part 2"],
+  "attack-on-titan-final-season-the-final-chapters-867": ["進撃の巨人 The Final Season完結編", "Shingeki no Kyojin: The Final Season - Kanketsu-hen"],
+  "attack-on-titan-junior-high-2969": ["進撃！巨人中学校", "Shingeki! Kyojin Chuugakkou"],
+  "attack-on-titan-season-2-865": ["進撃の巨人 Season2", "Shingeki no Kyojin Season 2"],
+  "attack-on-titan-season-3-866": ["進撃の巨人 Season3", "Shingeki no Kyojin Season 3"],
+  "attack-on-titan-season-3-part-2-1895": ["進撃の巨人 Season3 Part.2", "Shingeki no Kyojin Season 3 Part 2"],
+  "attack-on-titan-since-that-day-5127": ["進撃の巨人 総集編「あの日から」", "Shingeki no Kyojin: Ano Hi Kara"]
+ },
+ "genres": {
+  "attack-on-titan-240": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Award Winning", "Survival", "Action"],
+  "attack-on-titan-final-season-1372": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-final-season-part-2-868": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-final-season-the-final-chapters-867": ["Shounen", "Drama", "Suspense", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-junior-high-2969": ["Shounen", "Comedy", "Parody", "School"],
+  "attack-on-titan-season-2-865": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-season-3-866": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-season-3-part-2-1895": ["Shounen", "Drama", "Suspense", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-since-that-day-5127": ["Shounen", "Drama", "Suspense", "Gore", "Survival", "Action"]
  }
 }

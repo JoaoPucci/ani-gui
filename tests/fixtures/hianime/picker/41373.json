@@ -50,5 +50,21 @@
   "kaguya-sama-love-is-war-1-437": 2019,
   "kaguya-sama-love-is-war-416": 2020,
   "kaguya-sama-love-is-war-ultra-romantic-418": 2022
+ },
+ "jnames": {
+  "kaguya-sama-love-is-war-1-437": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+  "kaguya-sama-love-is-war-416": "Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen",
+  "kaguya-sama-love-is-war-ova-556": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen OVA",
+  "kaguya-sama-love-is-war-ultra-romantic-418": "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen 3rd Season"
+ },
+ "page_names": {
+  "kaguya-sama-love-is-war-1-437": ["かぐや様は告らせたい～天才たちの恋愛頭脳戦～", "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen"],
+  "kaguya-sama-love-is-war-416": ["かぐや様は告らせたい？～天才たちの恋愛頭脳戦～", "Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen"],
+  "kaguya-sama-love-is-war-ultra-romantic-418": ["かぐや様は告らせたい-ウルトラロマンティック-", "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen 3rd Season"]
+ },
+ "genres": {
+  "kaguya-sama-love-is-war-1-437": ["Comedy", "Seinen", "Psychological", "Romance", "School"],
+  "kaguya-sama-love-is-war-416": ["Comedy", "Seinen", "Psychological", "Romance", "School"],
+  "kaguya-sama-love-is-war-ultra-romantic-418": ["Comedy", "Seinen", "Psychological", "Romance", "School"]
  }
 }

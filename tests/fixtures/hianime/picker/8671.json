@@ -36,5 +36,21 @@
   "attack-on-titan-final-season-part-2-868": 2022,
   "attack-on-titan-season-2-865": 2017,
   "attack-on-titan-season-3-part-2-1895": 2019
+ },
+ "jnames": {
+  "attack-on-titan-final-season-part-2-868": "Shingeki no Kyojin: The Final Season Part 2",
+  "attack-on-titan-season-2-865": "Shingeki no Kyojin Season 2",
+  "attack-on-titan-season-3-part-2-1895": "Shingeki no Kyojin Season 3 Part 2",
+  "attack-on-titan-the-roar-of-awakening-2027": "Shingeki no Kyojin Season 2 Movie: Kakusei no Houkou"
+ },
+ "page_names": {
+  "attack-on-titan-final-season-part-2-868": ["進撃の巨人 The Final Season Part 2", "Shingeki no Kyojin: The Final Season Part 2"],
+  "attack-on-titan-season-2-865": ["進撃の巨人 Season2", "Shingeki no Kyojin Season 2"],
+  "attack-on-titan-season-3-part-2-1895": ["進撃の巨人 Season3 Part.2", "Shingeki no Kyojin Season 3 Part 2"]
+ },
+ "genres": {
+  "attack-on-titan-final-season-part-2-868": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-season-2-865": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-season-3-part-2-1895": ["Shounen", "Drama", "Suspense", "Gore", "Military", "Survival", "Action"]
  }
 }

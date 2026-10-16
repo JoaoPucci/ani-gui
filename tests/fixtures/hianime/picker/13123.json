@@ -42,5 +42,29 @@
   "dragon-ball-z-bardock-the-father-of-goku-1405": 1990,
   "dragon-ball-z-the-history-of-trunks-2883": 1993,
   "one-piece-4d-5301": 2015
+ },
+ "jnames": {
+  "beyblade-metal-fury-2991": "Metal Fight Beyblade 4D",
+  "dragon-ball-z-bardock-the-father-of-goku-1405": "Dragon Ball Z Special 1: Tatta Hitori no Saishuu Kessen",
+  "dragon-ball-z-broly-the-legendary-super-saiyan-2879": "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen",
+  "dragon-ball-z-kai-bring-peace-to-the-future-gokus-spirit-is-eternal-5424": "Dragon Ball Kai: Mirai ni Heiwa wo! Goku no Tamashii yo Eien ni",
+  "dragon-ball-z-kai-the-final-chapters-3848": "Dragon Ball Kai (2014)",
+  "dragon-ball-z-the-history-of-trunks-2883": "Dragon Ball Z Special 2: Zetsubou e no Hankou!! Nokosareta Chousenshi - Gohan to Trunks",
+  "dragon-ball-z-the-return-of-cooler-2876": "Dragon Ball Z Movie 06: Gekitotsu!! 100-oku Power no Senshi-tachi",
+  "dragon-ball-z-the-tree-of-might-2885": "Dragon Ball Z Movie 03: Chikyuu Marugoto Choukessen",
+  "dragon-ball-z-the-worlds-strongest-2888": "Dragon Ball Z Movie 02: Kono Yo de Ichiban Tsuyoi Yatsu",
+  "dragon-ball-z-wrath-of-the-dragon-2880": "Dragon Ball Z Movie 13: Ryuuken Bakuhatsu!! Gokuu ga Yaraneba Dare ga Yaru",
+  "looking-back-at-it-all-the-dragon-ball-z-year-end-show-5219": "Dragon Ball Z: Zenbu Misemasu Toshi Wasure Dragon Ball Z!",
+  "one-piece-4d-5301": "One Piece 4D",
+  "pokemon-4d-pikachus-ocean-adventure-5354": "Pokemon 3D Adventure 2: Pikachu no Kaitei Daibouken"
+ },
+ "page_names": {
+  "dragon-ball-z-bardock-the-father-of-goku-1405": ["DRAGON BALL Z スペシャル たったひとりの最終決戦~フリーザに挑んだZ戦士孫悟空の父~", "Dragon Ball Z Special 1: Tatta Hitori no Saishuu Kessen"],
+  "dragon-ball-z-the-history-of-trunks-2883": ["ドラゴンボールＺ・絶望への反抗！！残された超戦士・悟飯とトランク", "Dragon Ball Z Special 2: Zetsubou e no Hankou!! Nokosareta Chousenshi - Gohan to Trunks"]
+ },
+ "genres": {
+  "dragon-ball-z-bardock-the-father-of-goku-1405": ["Adventure", "Fantasy", "Shounen", "Comedy", "Sci-Fi"],
+  "dragon-ball-z-the-history-of-trunks-2883": ["Adventure", "Fantasy", "Shounen", "Drama"],
+  "one-piece-4d-5301": ["Adventure", "Shounen", "Action"]
  }
 }

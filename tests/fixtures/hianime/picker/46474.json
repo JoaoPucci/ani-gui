@@ -79,5 +79,23 @@
   "frieren-beyond-journeys-end-mini-anime-2851": 2023,
   "frieren-beyond-journeys-end-season-2-808": 2026,
   "sousou-no-frieren-3rd-7220": 2027
+ },
+ "jnames": {
+  "frieren-beyond-journeys-end-481": "Sousou no Frieren",
+  "frieren-beyond-journeys-end-mini-anime-2851": "Sousou no Frieren: no Mahou",
+  "frieren-beyond-journeys-end-season-2-808": "Sousou no Frieren 2nd Season",
+  "sousou-no-frieren-3rd-7220": "Sousou no Frieren 3rd Season"
+ },
+ "page_names": {
+  "frieren-beyond-journeys-end-481": ["葬送のフリーレン", "Sousou no Frieren"],
+  "frieren-beyond-journeys-end-mini-anime-2851": ["葬送のフリーレン ～●●の魔法～", "Sousou no Frieren: no Mahou"],
+  "frieren-beyond-journeys-end-season-2-808": ["葬送のフリーレン 第2期", "Sousou no Frieren 2nd Season"],
+  "sousou-no-frieren-3rd-7220": ["葬送のフリーレン 第3期【黄金郷編】"]
+ },
+ "genres": {
+  "frieren-beyond-journeys-end-481": ["Adventure", "Fantasy", "Shounen", "Drama", "Award Winning"],
+  "frieren-beyond-journeys-end-mini-anime-2851": ["Fantasy", "Shounen", "Comedy"],
+  "frieren-beyond-journeys-end-season-2-808": ["Adventure", "Fantasy", "Shounen", "Drama"],
+  "sousou-no-frieren-3rd-7220": ["Adventure", "Fantasy", "Drama"]
  }
 }

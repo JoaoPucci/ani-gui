@@ -16,6 +16,9 @@ use std::collections::BTreeMap;
 #[path = "play_native_walk_oracle_test.rs"]
 mod oracle;
 
+#[path = "play_native_walk_record_test.rs"]
+mod record;
+
 #[derive(serde::Deserialize)]
 struct Entry {
     canonical: String,

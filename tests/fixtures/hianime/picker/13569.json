@@ -67,5 +67,20 @@
   "attack-on-titan-final-season-the-final-chapters-867": 2023,
   "attack-on-titan-season-3-866": 2018,
   "attack-on-titan-season-3-part-2-1895": 2019
+ },
+ "jnames": {
+  "attack-on-titan-final-season-the-final-chapters-867": "Shingeki no Kyojin: The Final Season - Kanketsu-hen",
+  "attack-on-titan-season-3-866": "Shingeki no Kyojin Season 3",
+  "attack-on-titan-season-3-part-2-1895": "Shingeki no Kyojin Season 3 Part 2"
+ },
+ "page_names": {
+  "attack-on-titan-final-season-the-final-chapters-867": ["進撃の巨人 The Final Season完結編", "Shingeki no Kyojin: The Final Season - Kanketsu-hen"],
+  "attack-on-titan-season-3-866": ["進撃の巨人 Season3", "Shingeki no Kyojin Season 3"],
+  "attack-on-titan-season-3-part-2-1895": ["進撃の巨人 Season3 Part.2", "Shingeki no Kyojin Season 3 Part 2"]
+ },
+ "genres": {
+  "attack-on-titan-final-season-the-final-chapters-867": ["Shounen", "Drama", "Suspense", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-season-3-866": ["Fantasy", "Shounen", "Drama", "Suspense", "Mystery", "Super Power", "Gore", "Military", "Survival", "Action"],
+  "attack-on-titan-season-3-part-2-1895": ["Shounen", "Drama", "Suspense", "Gore", "Military", "Survival", "Action"]
  }
 }

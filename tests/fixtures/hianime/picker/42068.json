@@ -77,5 +77,26 @@
   "fire-force-season-2-364": 2020,
   "fire-force-season-3-352": 2025,
   "fire-force-season-3-part-2-2563": 2026
+ },
+ "jnames": {
+  "fire-force-1107": "Enen no Shouboutai",
+  "fire-force-mini-anime-5438": "Enen no Shouboutai Mini Anime",
+  "fire-force-season-2-364": "Enen no Shouboutai: Ni no Shou",
+  "fire-force-season-3-352": "Enen no Shouboutai: San no Shou",
+  "fire-force-season-3-part-2-2563": "Enen no Shouboutai: San no Shou Part 2"
+ },
+ "page_names": {
+  "fire-force-1107": ["炎炎ノ消防隊", "Enen no Shouboutai"],
+  "fire-force-mini-anime-5438": ["炎炎ノ消防隊 ミニアニメ", "Enen no Shouboutai Mini Anime"],
+  "fire-force-season-2-364": ["炎炎ノ消防隊 弐ノ章", "Enen no Shouboutai: Ni no Shou"],
+  "fire-force-season-3-352": ["炎炎ノ消防隊 参ノ章", "Enen no Shouboutai: San no Shou"],
+  "fire-force-season-3-part-2-2563": ["炎炎ノ消防隊 参ノ章 第2クール", "Enen no Shouboutai: San no Shou Part 2"]
+ },
+ "genres": {
+  "fire-force-1107": ["Fantasy", "Shounen", "Supernatural", "Sci-Fi", "Urban Fantasy", "Action"],
+  "fire-force-mini-anime-5438": ["Comedy"],
+  "fire-force-season-2-364": ["Fantasy", "Shounen", "Supernatural", "Sci-Fi", "Urban Fantasy", "Action"],
+  "fire-force-season-3-352": ["Fantasy", "Shounen", "Supernatural", "Sci-Fi", "Urban Fantasy", "Action"],
+  "fire-force-season-3-part-2-2563": ["Fantasy", "Shounen", "Drama", "Supernatural", "Sci-Fi", "Urban Fantasy", "Action"]
  }
 }

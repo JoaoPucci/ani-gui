@@ -50,5 +50,23 @@
   "kusuriya-no-hitorigoto-7209": 2026,
   "the-apothecary-diaries-438": 2023,
   "the-apothecary-diaries-season-2-296": 2025
+ },
+ "jnames": {
+  "kusuriya-no-hitorigoto-3rd-season-1898": "Kusuriya no Hitorigoto 3rd Season",
+  "kusuriya-no-hitorigoto-7209": "Kusuriya no Hitorigoto Movie",
+  "the-apothecary-diaries-438": "Kusuriya no Hitorigoto",
+  "the-apothecary-diaries-movie-2836": "Kusuriya no Hitorigoto Movie: Bouhi no Hihou",
+  "the-apothecary-diaries-season-2-296": "Kusuriya no Hitorigoto 2nd Season"
+ },
+ "page_names": {
+  "kusuriya-no-hitorigoto-3rd-season-1898": ["薬屋のひとりごと 第3期", "Kusuriya no Hitorigoto 3rd Season"],
+  "the-apothecary-diaries-438": ["薬屋のひとりごと", "Kusuriya no Hitorigoto"],
+  "the-apothecary-diaries-season-2-296": ["薬屋のひとりごと 第2期", "Kusuriya no Hitorigoto 2nd Season"]
+ },
+ "genres": {
+  "kusuriya-no-hitorigoto-3rd-season-1898": ["Historical", "Drama", "Mystery", "Medical"],
+  "kusuriya-no-hitorigoto-7209": ["Drama", "Mystery"],
+  "the-apothecary-diaries-438": ["Historical", "Drama", "Mystery", "Medical"],
+  "the-apothecary-diaries-season-2-296": ["Historical", "Drama", "Mystery", "Medical"]
  }
 }

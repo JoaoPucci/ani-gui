@@ -49,5 +49,23 @@
   "vinland-saga-season-2-902": 2023,
   "vinland-saga-season-2-drowning-in-the-shadow-5185": 2023,
   "vinland-saga-season-2-same-old-story-3420": 2023
+ },
+ "jnames": {
+  "vinland-saga-901": "Vinland Saga",
+  "vinland-saga-season-2-902": "Vinland Saga Season 2",
+  "vinland-saga-season-2-drowning-in-the-shadow-5185": "Vinland Saga Season 2: Drowning in the Shadow",
+  "vinland-saga-season-2-same-old-story-3420": "Vinland Saga Season 2: Same Old Story"
+ },
+ "page_names": {
+  "vinland-saga-901": ["ヴィンランド・サガ"],
+  "vinland-saga-season-2-902": ["ヴィンランド・サガ SEASON2", "Vinland Saga Season 2"],
+  "vinland-saga-season-2-drowning-in-the-shadow-5185": ["ヴィンランド・サガ SEASON2 Drowning in the Shadow"],
+  "vinland-saga-season-2-same-old-story-3420": ["ヴィンランド・サガ SEASON2 Same old story"]
+ },
+ "genres": {
+  "vinland-saga-901": ["Adventure", "Historical", "Seinen", "Drama", "Gore", "Action"],
+  "vinland-saga-season-2-902": ["Adventure", "Historical", "Seinen", "Drama", "Gore", "Action"],
+  "vinland-saga-season-2-drowning-in-the-shadow-5185": ["Adventure", "Historical", "Seinen", "Drama", "Gore", "Action"],
+  "vinland-saga-season-2-same-old-story-3420": ["Adventure", "Historical", "Seinen", "Drama", "Gore", "Action"]
  }
 }

@@ -34,5 +34,21 @@
   "dragon-ball-super-broly-2763": 2018,
   "dragon-ball-z-broly-second-coming-2877": 1994,
   "dragon-ball-z-broly-the-legendary-super-saiyan-2879": 1993
+ },
+ "jnames": {
+  "dragon-ball-super-broly-2763": "Dragon Ball Super Movie: Broly",
+  "dragon-ball-super-broly-skytree-super-5426": "Dragon Ball Super: Broly - Skytree Super",
+  "dragon-ball-z-broly-second-coming-2877": "Dragon Ball Z Movie 10: Kiken na Futari! Super Senshi wa Nemurenai",
+  "dragon-ball-z-broly-the-legendary-super-saiyan-2879": "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen"
+ },
+ "page_names": {
+  "dragon-ball-super-broly-2763": ["ドラゴンボール超（スーパー） ブロリー", "Dragon Ball Super Movie: Broly"],
+  "dragon-ball-z-broly-second-coming-2877": ["ドラゴンボールZ 危険なふたり!超戦士はねむれない", "Dragon Ball Z Movie 10: Kiken na Futari! Super Senshi wa Nemurenai"],
+  "dragon-ball-z-broly-the-legendary-super-saiyan-2879": ["ドラゴンボールZ 燃えつきろ!!熱戦・烈戦・超激戦", "Dragon Ball Z Movie 08: Moetsukiro!! Nessen, Ressen, Chougekisen"]
+ },
+ "genres": {
+  "dragon-ball-super-broly-2763": ["Adventure", "Fantasy", "Shounen", "Martial Arts", "Super Power", "Action"],
+  "dragon-ball-z-broly-second-coming-2877": ["Adventure", "Fantasy", "Shounen", "Comedy", "Martial Arts", "Super Power", "Demons", "Action"],
+  "dragon-ball-z-broly-the-legendary-super-saiyan-2879": ["Adventure", "Fantasy", "Shounen", "Comedy", "Sci-Fi", "Action"]
  }
 }

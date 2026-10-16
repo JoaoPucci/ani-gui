@@ -50,5 +50,22 @@
   "kaiju-no-8-257": 2024,
   "kaiju-no-8-narumis-week-at-work-3090": 2026,
   "kaiju-no-8-season-2-144": 2025
+ },
+ "jnames": {
+  "kaiju-no-8-257": "Kaijuu 8-gou",
+  "kaiju-no-8-hoshinas-day-off-341": "Kaijuu 8-gou: Hoshina no Kyuujitsu",
+  "kaiju-no-8-mission-recon-3654": "Kaijuu 8-gou Movie",
+  "kaiju-no-8-narumis-week-at-work-3090": "Kaijuu 8-gou: Narumi no Heijitsu",
+  "kaiju-no-8-season-2-144": "Kaijuu 8-gou 2nd Season"
+ },
+ "page_names": {
+  "kaiju-no-8-257": ["怪獣8号", "Kaijuu 8-gou"],
+  "kaiju-no-8-narumis-week-at-work-3090": ["怪獣8号 鳴海の平日", "Kaijuu 8-gou: Narumi no Heijitsu"],
+  "kaiju-no-8-season-2-144": ["怪獣8号 第2期", "Kaijuu 8-gou 2nd Season"]
+ },
+ "genres": {
+  "kaiju-no-8-257": ["Adventure", "Fantasy", "Shounen", "Sci-Fi", "Urban Fantasy", "Adult Cast", "Military", "Action"],
+  "kaiju-no-8-narumis-week-at-work-3090": ["Shounen", "Sci-Fi", "Adult Cast"],
+  "kaiju-no-8-season-2-144": ["Fantasy", "Shounen", "Sci-Fi", "Urban Fantasy", "Adult Cast", "Military", "Action"]
  }
 }

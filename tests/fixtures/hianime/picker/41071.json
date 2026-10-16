@@ -34,5 +34,17 @@
  "years": {
   "mob-psycho-100-ii-918": 2019,
   "mob-psycho-100-iii-917": 2022
+ },
+ "jnames": {
+  "mob-psycho-100-ii-918": "Mob Psycho 100 II",
+  "mob-psycho-100-iii-917": "Mob Psycho 100 III"
+ },
+ "page_names": {
+  "mob-psycho-100-ii-918": ["モブサイコ100 II"],
+  "mob-psycho-100-iii-917": ["モブサイコ100 III"]
+ },
+ "genres": {
+  "mob-psycho-100-ii-918": ["Comedy", "Supernatural", "Slice of Life", "Action"],
+  "mob-psycho-100-iii-917": ["Comedy", "Psychological", "Supernatural", "Slice of Life", "Action"]
  }
 }
