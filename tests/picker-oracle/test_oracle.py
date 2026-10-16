@@ -244,6 +244,10 @@ class TheModelReadsTheDocs(unittest.TestCase):
         tagged_before = pool(["Show 2"], E, [("x", "Show 1 [Uncensored]", E)])
         self.assertIsNone(oracle.predict(tagged_before))
         self.assertEqual(oracle.refusal_expected(tagged_before), ("NoResults", True))
+        # part agreement reads past the tag: the cour whose part agrees
+        cours = [("a", "Show Season 2 Part 2 [Uncensored]", E), ("b", "Show Season 2 [Uncensored]", E)]
+        self.assertEqual(oracle.predict(pool(["Show Season 2"], E, cours)), pick("b"))
+        self.assertEqual(oracle.predict(pool(["Show Season 2"], None, cours)), pick("b"))
         # after the entry's own season, it admits as before
         self.assertEqual(oracle.predict(pool(["Show 2nd Season"], E, [("x", "Show 2nd Season [Uncensored]", E)])), pick("x"))
 
