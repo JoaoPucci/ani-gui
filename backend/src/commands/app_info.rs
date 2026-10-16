@@ -11,7 +11,8 @@ pub struct AppInfo {
     pub version: String,
     /// Where this build of ani-gui keeps its own watch history.
     pub history_path: String,
-    /// `http://127.0.0.1:<port>` for the streaming proxy.
+    /// `http://127.0.0.1:<port>` for the streaming proxy — the stream
+    /// lane's origin, not the API's.
     pub proxy_base_url: String,
     /// What the boot sweep deleted of the script copy earlier versions
     /// kept current (see `crate::legacy_script`). Empty on every launch
