@@ -326,3 +326,42 @@ async fn every_rule_that_refuses_a_pool_by_name_is_a_refusal_by_name() {
         assert!(ne.refused_by_name, "{rule}: not a refusal by name");
     }
 }
+
+/// A dead listing inside the refused pool is no refusal by name either:
+/// "The Show"'s listing answers not-found — stale, perhaps the show's —
+/// beside a hit refused on how it is named, with a count and without.
+#[tokio::test]
+async fn a_dead_listing_inside_a_refused_pool_is_no_refusal_by_name() {
+    let cases: [RefusalCase; 2] = [
+        (
+            "with a count",
+            Pool::Hits(&[("ghost-1", "The Show"), ("the-show-77", "Some Other")]),
+            "the show",
+            Some(3),
+            None,
+        ),
+        (
+            "without a count",
+            Pool::Hits(&[
+                ("ghost-1", "The Show"),
+                ("the-show-77", "The Show Season 2"),
+            ]),
+            "the show",
+            None,
+            None,
+        ),
+    ];
+    for (label, pool, title, expected, year) in cases {
+        let ne = refused_walk(pool, title, expected, year).await;
+        assert!(
+            matches!(ne.error, AniError::NoResults),
+            "{label}: {:?}",
+            ne.error
+        );
+        assert!(!ne.clean_miss, "{label}: persisted");
+        assert!(
+            !ne.refused_by_name,
+            "{label}: a dead listing may have been the show's"
+        );
+    }
+}

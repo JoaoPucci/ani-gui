@@ -51,6 +51,9 @@ enum Behavior {
     /// The show found, the episode not: the provider's own verdict
     /// on the episode.
     MissEpisode,
+    /// The answered dead end of a walk whose every pool was refused
+    /// on how its hits are named.
+    Refused,
     Stall,
 }
 
@@ -113,6 +116,12 @@ impl Attempt for Scripted {
                 clean_miss: clean,
                 failed_at: None,
                 refused_by_name: false,
+            }),
+            Behavior::Refused => Err(NativeError {
+                error: AniError::NoResults,
+                clean_miss: false,
+                failed_at: None,
+                refused_by_name: true,
             }),
             Behavior::MissEpisode => Err(NativeError {
                 error: AniError::EpisodeUnavailable,
@@ -3026,4 +3035,83 @@ async fn the_walk_clears_the_deadline_before_handing_the_client_back() {
         Some(None),
         "the client is handed back with no deadline: {told:?}"
     );
+}
+
+/// A refusal by name says the catalogue lists nothing named for the
+/// show — which only holds when no provider might list it. Past a
+/// remembered provider that has not denied the show, the refusal is
+/// not the verdict: that provider proved the show, and the walk's miss
+/// says nothing about it.
+#[tokio::test]
+async fn a_refusal_past_an_undenied_remembered_provider_is_no_refusal_by_name() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::TestB,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::TestA, Behavior::Refused),
+    ]);
+    let ne = run_with(
+        &gates,
+        &ORDER,
+        Some(ProviderId::TestB),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("no provider answered with the show");
+    assert!(
+        !ne.refused_by_name,
+        "{:?} clean={}",
+        ne.error, ne.clean_miss
+    );
+}
+
+/// Two providers' misses stand against each other where the walk sets
+/// a remembered provider's miss aside and asks the rest: a refusal by
+/// one beside the other's dead end on dead listings is no refusal by
+/// name, since the dead listing may have been the show's — whichever
+/// of the two answered which.
+#[tokio::test]
+async fn a_refusal_beside_another_providers_dead_end_is_no_refusal_by_name() {
+    for (remembered, rest) in [
+        (Behavior::Refused, Behavior::Miss { clean: false }),
+        (Behavior::Miss { clean: false }, Behavior::Refused),
+    ] {
+        let gates = Gates::new();
+        let mut attempt =
+            Scripted::new(&[(ProviderId::TestB, remembered), (ProviderId::TestA, rest)]);
+        let ne = run_with(
+            &gates,
+            &ORDER,
+            Some(ProviderId::TestB),
+            ScrapePriority::Interactive,
+            &mut attempt,
+        )
+        .await
+        .expect_err("both missed");
+        assert_eq!(attempt.asked().len(), 2, "both were asked");
+        assert!(!ne.refused_by_name, "{:?}", attempt.asked());
+    }
+}
+
+/// Every provider asked refusing by name is the refusal by name.
+#[tokio::test]
+async fn refusals_by_every_provider_asked_are_a_refusal_by_name() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::TestA, Behavior::Refused),
+        (ProviderId::TestB, Behavior::Refused),
+    ]);
+    let ne = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("refused");
+    assert!(ne.refused_by_name);
 }
