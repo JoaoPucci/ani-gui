@@ -25,7 +25,8 @@ export interface LadderLevel {
 
 /** A level the viewer pinned, as the next stream is matched against
  *  it: the height its playlist lists, or — for a level that lists
- *  none — its rank by bandwidth from the top. */
+ *  none — its rank from the top of the ladder (by height, then by
+ *  bandwidth, so among levels that list no height, by bandwidth). */
 export type QualityPinChoice = number | { rank: number };
 
 /** The level a pin choice matches on a stream: the level of that
@@ -34,7 +35,7 @@ export type QualityPinChoice = number | { rank: number };
 export function pinnedLevel(pin: QualityPinChoice, levels: readonly LadderLevel[]): number {
 	if (typeof pin === 'number') return targetLevel({ kind: 'height', height: pin }, levels);
 	const ladder = ladderOrder(levels);
-	return ladder[Math.max(0, ladder.length - 1 - pin.rank)];
+	return ladder[Math.max(0, ladder.length - 1 - pin.rank)] ?? -1;
 }
 
 /** The setting's target. Anything that is neither `worst` nor a

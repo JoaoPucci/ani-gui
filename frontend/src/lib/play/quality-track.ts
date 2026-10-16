@@ -8,7 +8,7 @@
 import type { QualityGovernor, QualityMove } from './quality-governor';
 import { ladderOrder, type LadderLevel, type QualityPinChoice } from './quality-ladder';
 import type { QualityView } from './quality-menu';
-import { isMain } from './quality-report';
+import { isMain } from './quality-rendition';
 
 export class QualityTrack {
 	private playlist: LadderLevel[] = [];
@@ -45,7 +45,7 @@ export class QualityTrack {
 
 	/** What to keep for a pin of `level`: the height its playlist
 	 *  lists, which the next stream's levels are matched by, or — when
-	 *  it lists none — its rank by bandwidth from the top. */
+	 *  it lists none — its rank from the top of the ladder. */
 	pinFor(level: number): QualityPinChoice {
 		const { height } = this.playlist[level];
 		if (height > 0) return height;

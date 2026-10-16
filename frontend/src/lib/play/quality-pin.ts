@@ -1,6 +1,6 @@
 /**
  * The level the viewer pinned, by the height its playlist lists — or,
- * for a level that lists none, by its bandwidth rank from the top — for
+ * for a level that lists none, by its rank from the ladder's top — for
  * the rest of the app's run: the next episode, and a stream recovered
  * in its place, start at the same height or the nearest below it, or
  * at the same rank, rather than at the setting's. "Auto" clears it.

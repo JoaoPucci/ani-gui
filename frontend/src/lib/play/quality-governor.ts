@@ -77,13 +77,17 @@ export class QualityGovernor extends QualityHold {
 	}
 
 	/** hls.js left the level held for `level` over a failure of a
-	 *  side rendition — audio whose group the held level shares. That
-	 *  is no trouble of the video: the governor holds the level the
-	 *  engine moved to, neither counting a step down nor putting the
-	 *  engine back on the failing audio, which would only repeat the
-	 *  switch. A level that failed, or the one held, is no move. */
+	 *  side rendition — audio or subtitles in a group the held level
+	 *  has. That is no trouble of the video: the governor holds the
+	 *  level the engine moved to — above the setting's level too, when
+	 *  the levels below share the failing group — without counting a
+	 *  step down. The level left is left for the stream: hls.js forgets
+	 *  a level's load errors once one of its video segments buffers, so
+	 *  a climb back would fail the same audio and repeat the switch. A
+	 *  level that failed, or the one held, is no move. */
 	follow(level: number): QualityMove | null {
 		if (!this.engaged || level === this.current || this.unavailable.has(level)) return null;
+		this.unavailable.add(this.current);
 		return this.move(level, 'followed', 'load');
 	}
 

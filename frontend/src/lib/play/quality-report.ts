@@ -4,13 +4,13 @@
  * failed; an init segment as the height a level is encoded at.
  */
 
-import type { ErrorData, ErrorDetails, NetworkErrorAction, PlaylistLevelType } from 'hls.js';
+import type { ErrorData, ErrorDetails, NetworkErrorAction } from 'hls.js';
 import type { QualityGovernor, QualityMove } from './quality-governor';
+import { isMain, isSideRendition } from './quality-rendition';
 
 // hls.js's own names, spelled out so the engine double of a test that
 // mocks the module still meets them, and typed against the engine's
 // enums so a renamed one is a compile error.
-const MAIN: `${PlaylistLevelType.MAIN}` = 'main';
 const BUFFER_STALLED: `${ErrorDetails.BUFFER_STALLED_ERROR}` = 'bufferStalledError';
 const levelFailures: `${ErrorDetails}`[] = [
 	'levelLoadError',
@@ -32,22 +32,23 @@ export type QualityReport =
 	/** hls.js switched to `level` over a side rendition's failure. */
 	| { kind: 'followed'; level: number };
 
-/** Whether a fragment is of the main rendition — the video the levels
- *  are levels of. */
-export function isMain(frag: { type?: unknown } | undefined): boolean {
-	return String(frag?.type) === MAIN;
-}
+export { isMain } from './quality-rendition';
 
 /** An engine error as the governor weighs it, or null when it is none
  *  of its business. A stall counts unless the element is seeking. A
  *  failure counts once the engine has given up on it: switched to
  *  another level, or — for a playlist or a video segment — stopped.
  *  A retry still pending is no verdict, though the level controller
- *  flags a playlist's as `levelRetry`. Any switch away is a failure of
- *  the level it names, or of the level held when it names none, so the
- *  governor steps down from it rather than putting the engine back. */
+ *  flags a playlist's as `levelRetry`. A switch over a side rendition
+ *  — audio or subtitles — is followed; any other switch away is a
+ *  failure of the level it names, or of the level held when it names
+ *  none, so the governor steps down from it rather than putting the
+ *  engine back. */
 export function readError(
-	data: Pick<ErrorData, 'details' | 'fatal' | 'errorAction' | 'level' | 'context' | 'frag'>,
+	data: Pick<
+		ErrorData,
+		'details' | 'fatal' | 'errorAction' | 'level' | 'context' | 'frag' | 'sourceBufferName'
+	>,
 	seeking: boolean
 ): QualityReport | null {
 	const details: string = data.details;
@@ -59,16 +60,18 @@ export function readError(
 		const level = data.level ?? data.context?.level;
 		return typeof level === 'number' ? { kind: 'level-failed', level } : null;
 	}
-	// An audio or subtitle segment: the engine's switch is over a side
-	// rendition, and the video level follows it rather than failing.
-	if (data.frag && !isMain(data.frag)) {
+	// An audio or subtitle segment, playlist or buffer: the engine's
+	// switch is over a side rendition, and the video level follows it
+	// rather than failing.
+	if (isSideRendition(data)) {
 		return next === undefined ? null : { kind: 'followed', level: next };
 	}
-	// The level the failure names — the video segment's, or for an
-	// append or codec error with no segment the one hls.js itself
-	// switches away from (`data.level`). Naming none, it is the level
-	// the engine was loading, which hls.js falls back to as well
-	// (`hls.loadLevel`) and which is the level the governor holds.
+	// The level the failure names: the video segment's, or `data.level`,
+	// which hls.js's own switch reads before falling back to the level
+	// it was loading (`data.level ?? hls.loadLevel`). In hls.js 1.6.19
+	// the segment-less errors that reach here — a video buffer refusing
+	// its codec — set neither, so the failure is of the level loading,
+	// which is the level the governor holds.
 	const level = data.frag?.level ?? data.level;
 	if (typeof level === 'number') return { kind: 'fragments-failed', level };
 	return next === undefined ? null : { kind: 'fragments-failed', level: null };
