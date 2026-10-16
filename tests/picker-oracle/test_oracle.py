@@ -318,7 +318,8 @@ def outcome_of(case):
     the pick, or a refusal carrying the clean-miss verdict the docs give."""
     expect = case["expect"]
     if expect is None:
-        return {"err": "NoResults", "clean_miss": oracle.clean_miss_expected(case)}
+        err, clean = oracle.refusal_expected(case)
+        return {"err": err, "clean_miss": clean}
     return {"ok": expect["pick"], "count": expect["count"], "episodes": [[k, k, None] for k in range(1, expect["count"] + 1)]}
 
 
@@ -400,6 +401,38 @@ class Comparison(unittest.TestCase):
         code, out = self.run_cmp(allowlist=[{"id": "a", "got": REFUSED}], got=got)
         self.assertEqual(code, 1)
         self.assertIn("reason", out)
+
+    def test_a_pick_must_list_the_episodes_the_docs_give_it(self):
+        # every generated listing numbers its rows 1..n; a pick plays the
+        # first `count` of them — a cut its entry's own episodes from the
+        # start, an uncut pick the whole listing
+        for episodes in ([[k, k, None] for k in range(13, 25)], list(reversed(outcome_of(self.cases[0])["episodes"])), [[k + 100, k, None] for k in range(1, 13)]):
+            got = dict(self.got, a={"ok": "x", "count": E, "episodes": episodes})
+            code, out = self.run_cmp(got=got)
+            self.assertEqual(code, 1, episodes)
+            self.assertIn("a [test]", out)
+
+    def test_an_allowlist_entry_records_a_pick_s_episodes(self):
+        got = dict(self.got, a={"ok": "x", "count": E, "episodes": [[k, k, None] for k in range(13, 25)]})
+        listed = {"pick": "x", "count": E, "episodes": [[k, k, None] for k in range(13, 25)]}
+        code, out = self.run_cmp(allowlist=[{"id": "a", "got": listed, "reason": "known"}], got=got)
+        self.assertEqual(code, 0, out)
+
+    def test_a_refusal_must_name_the_error_the_docs_give_it(self):
+        # nothing matching is NoResults; a transport failure is the network
+        # failure it is
+        code, out = self.run_cmp(got=dict(self.got, c={"err": "Network", "clean_miss": True}))
+        self.assertEqual(code, 1, out)
+
+    def test_a_dead_listing_that_blocks_the_winner_leaves_a_transient_verdict(self):
+        dead = dict(pool(["Show 2"], E, [("dead", "Show 2nd Season", E), ("own", "Show Season 2", E)], dead=["dead"]), id="d", expect=None)
+        self.cases.append(dead)
+        self.assertEqual(outcome_of(dead), {"err": "Network", "clean_miss": False})
+        for wrong in ({"err": "NoResults", "clean_miss": True}, {"err": "NoResults", "clean_miss": False}, {"err": "Network", "clean_miss": True}):
+            code, out = self.run_cmp(got=dict(self.got, d=wrong))
+            self.assertEqual(code, 1, wrong)
+        code, out = self.run_cmp(got=dict(self.got, d={"err": "Network", "clean_miss": False}))
+        self.assertEqual(code, 0, out)
 
     def test_a_panic_or_a_missing_outcome_fails(self):
         code, out = self.run_cmp(got=dict(self.got, a={"panic": True}))
