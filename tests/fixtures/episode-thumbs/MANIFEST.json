@@ -134,6 +134,30 @@
       "sha256": "4e944e0ff7abcb1994774ef666584ad067da11745b53c9970f5899870ee846b8",
       "notes": "Mushoku Tensei part 1 (11 episodes) — AniList lists Mushoku Tensei II's episodes 0-24; Kitsu has no titles"
     },
+    "nichijou.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 10165 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 4010,
+      "sha256": "7e761e87f58609793e66e149aa85cf6851995f93d1115b2fb82e0d4ddf1dadb7",
+      "notes": "Nichijou (26 episodes) — every listing title is a placeholder (\"Episode 1 - Episode 1\")"
+    },
+    "nichijou.kitsu-p1.json": {
+      "request": "GET /anime/6062/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 10975,
+      "sha256": "7f57f174cfa93d9b777168b852a811134530c47352ea8afa75747bd223a13c09",
+      "notes": "Nichijou (26 episodes) — every listing title is a placeholder (\"Episode 1 - Episode 1\")"
+    },
+    "nisemonogatari.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 11597 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 2138,
+      "sha256": "c1ff90568d72459f2a31ad5544f5062c1a5ae933bc27d03ee61fe873f593eb5d",
+      "notes": "Nisemonogatari (11 episodes) — right listing whose titles spell part numbers as digits where Kitsu spells them out (\"Karen Bee, Part 1\" against \"Part One\")"
+    },
+    "nisemonogatari.kitsu-p1.json": {
+      "request": "GET /anime/6546/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 6448,
+      "sha256": "9e0de61b4b919f4a2b66b86ad7480488fecda8f4740718e4debc02c11990d118",
+      "notes": "Nisemonogatari (11 episodes) — right listing whose titles spell part numbers as digits where Kitsu spells them out (\"Karen Bee, Part 1\" against \"Part One\")"
+    },
     "one-piece.anilist.json": {
       "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 21 } (the production query: episodes status streamingEpisodes { title thumbnail })",
       "size": 13570,
@@ -145,6 +169,30 @@
       "size": 9926,
       "sha256": "1d19b1ee87de13b26f4acbe44064df927ba7c18c5ff4ac348404e4613e5bef46",
       "notes": "One Piece — ongoing, AniList count null; listing covers 62-130; Kitsu page 4 (61-80)"
+    },
+    "rurouni-kenshin-kyoto.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 57554 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 3802,
+      "sha256": "4daf29b053b97638445a50b15565fe2ebe92018f5dddf58b392c1e2e52d32b9a",
+      "notes": "Rurouni Kenshin: Kyoto Douran (23 episodes) — its own season numbered across seasons (25-47); Kitsu has no titles"
+    },
+    "rurouni-kenshin-kyoto.kitsu-p1.json": {
+      "request": "GET /anime/48393/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 5568,
+      "sha256": "cade8c14916f12bfb0d450b4783d4d74ef976f6f8b16df01a599cd5fcb9d2b18",
+      "notes": "Rurouni Kenshin: Kyoto Douran (23 episodes) — its own season numbered across seasons (25-47); Kitsu has no titles"
+    },
+    "sengoku-youko.anilist.json": {
+      "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 56242 } (the production query: episodes status streamingEpisodes { title thumbnail })",
+      "size": 6060,
+      "sha256": "3fc565f2496f2abc23abd8655d174c52039ed246cbdb21c78d7818b8a41597ae",
+      "notes": "Sengoku Youko (13 episodes, first of three cours) — AniList lists all three cours (1-35); Kitsu has no titles"
+    },
+    "sengoku-youko.kitsu-p1.json": {
+      "request": "GET /anime/47891/episodes?page[limit]=20&page[offset]=0&fields[episodes]=canonicalTitle,seasonNumber,number,relativeNumber,length,synopsis,airdate,thumbnail&sort=number",
+      "size": 3641,
+      "sha256": "73f3ba367a47560b46d49082c0ca05e2386f1fdd6b02dc782ac55bd7da0c6c19",
+      "notes": "Sengoku Youko (13 episodes, first of three cours) — AniList lists all three cours (1-35); Kitsu has no titles"
     },
     "spy-family.anilist.json": {
       "request": "POST https://graphql.anilist.co StreamingEpsByMal { \"idMal\": 50265 } (the production query: episodes status streamingEpisodes { title thumbnail })",

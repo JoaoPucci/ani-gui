@@ -291,3 +291,54 @@ fn a_title_of_one_or_two_characters_contains_nothing() {
     ];
     assert!(!listing_fits(&l, &page));
 }
+
+// --- Numbers, placeholders, and what an untitled page cannot tell ---
+
+#[test]
+fn a_number_spelled_out_is_the_number() {
+    // Nisemonogatari: Kitsu has "Karen Bee, Part One", the listing
+    // "Karen Bee, Part 1", and the arc's name runs through seven of
+    // the eleven titles, so only the number tells the episodes apart.
+    let (listing, page) = recorded("nisemonogatari", 1);
+    assert!(listing_fits(&listing, &page));
+}
+
+#[test]
+fn a_listing_of_placeholder_titles_is_judged_by_its_count() {
+    // Nichijou: every listing title is "Episode N - Episode N", which
+    // says nothing about Kitsu's "Nichijou The First"; the count
+    // decides, and 26 entries fit 26 episodes.
+    let (listing, page) = recorded("nichijou", 1);
+    assert!(listing_fits(&listing, &page));
+}
+
+#[test]
+fn a_decimal_placeholder_is_no_title() {
+    let l = listing(
+        Some(4),
+        true,
+        &[(1, "Alpha"), (2, "Bravo"), (3, "Charlie"), (4, "Delta")],
+    );
+    let page = [
+        ep(1, Some("Episode 1.5")),
+        ep(2, Some("Episode 2.5")),
+        ep(3, Some("Episode 3")),
+        ep(4, Some("Delta")),
+    ];
+    assert!(listing_fits(&l, &page));
+}
+
+#[test]
+fn untitled_pages_refuse_a_listing_past_the_count_even_when_it_is_right() {
+    // The rule's measured cost. Sengoku Youko's first cour (13
+    // episodes) carries all three cours (1-35), and Rurouni Kenshin's
+    // Kyoto Douran (23) its own season numbered on from the first
+    // (25-47); Kitsu titles neither, and the same shapes are wrong
+    // elsewhere (Dr. Stone: Stone Wars carries New World's 1-16,
+    // Shangri-La Frontier's first season its second's 26-50).
+    for slug in ["sengoku-youko", "rurouni-kenshin-kyoto"] {
+        let (listing, page) = recorded(slug, 1);
+        assert!(page.iter().all(|e| e.canonical_title.is_none()), "{slug}");
+        assert!(!listing_fits(&listing, &page), "{slug}");
+    }
+}
