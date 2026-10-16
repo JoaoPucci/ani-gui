@@ -2046,8 +2046,8 @@ async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_noth
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v19:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v19:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v20:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v20:kid-1:dub");
 }
 
 /// A verdict the picker stamped before a dated entry with a count
