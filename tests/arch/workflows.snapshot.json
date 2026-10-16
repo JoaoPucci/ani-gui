@@ -83,6 +83,7 @@
       "deny": "cargo deny (licenses + advisories)",
       "filter": "filter",
       "fmt": "cargo fmt",
+      "picker-oracle": "picker oracle agreement",
       "test": "cargo test"
     },
     "title.yml": {

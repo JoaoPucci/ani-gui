@@ -11,6 +11,9 @@ use crate::error::Result;
 use crate::scraper::provider::{BrowseHit, EpisodeRef, ProviderId, StreamSource};
 use std::collections::BTreeMap;
 
+#[path = "play_native_walk_oracle_test.rs"]
+mod oracle;
+
 #[derive(serde::Deserialize)]
 struct Entry {
     canonical: String,

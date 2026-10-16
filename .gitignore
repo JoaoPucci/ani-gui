@@ -53,6 +53,9 @@ test-results/
 playwright-report/
 .cache/
 
+# Python bytecode the picker oracle's tests leave behind
+__pycache__/
+
 # Bash test scratch
 .bats-tmp/
 tests/.bats-cache/

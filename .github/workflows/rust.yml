@@ -20,12 +20,16 @@ env:
 
 jobs:
   filter:
-    # Outputs `relevant = true|false` based on whether the PR diff
-    # touches anything Rust-shaped. On push events (merge to master)
-    # we always run the real pipeline.
+    # Outputs `relevant = true|false` — whether the diff touches
+    # anything Rust-shaped — and `picker = true|false` — whether it
+    # touches anything the picker oracle reads. tools/rust-workflow-
+    # filter.sh decides both, and the bats suite runs it over every
+    # shape of change it has to tell apart. On push events (merge to
+    # master) both are true and the whole pipeline runs.
     runs-on: ubuntu-latest
     outputs:
       relevant: ${{ steps.detect.outputs.relevant }}
+      picker: ${{ steps.detect.outputs.picker }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,23 +38,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # Capture the diff first, then grep the result via a here-string.
-          # The naive `git diff | grep -q` pipeline interacts badly with
-          # pipefail: grep -q closes the pipe on first match and `git diff`
-          # gets killed by SIGPIPE, the pipeline exits non-zero, and the
-          # if-condition wrongly takes the else branch on relevant PRs.
-          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          if grep -qE '^(backend/|tests/fixtures/|rust-toolchain\.toml$|\.github/workflows/rust\.yml$)' <<<"$changed"; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "relevant=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: tools/rust-workflow-filter.sh "${{ github.event_name }}" "$BASE_SHA" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
 
   fmt:
     needs: filter
@@ -162,6 +150,55 @@ jobs:
         env:
           RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '-D warnings -C target-feature=+crt-static' || '-D warnings' }}
         run: cargo test --workspace --all-features
+
+  picker-oracle:
+    needs: filter
+    name: picker oracle agreement
+    # The season picker against the model of docs/title-resolution.md
+    # under tests/picker-oracle/: every generated pool and every row of
+    # the docs' own table must pick as the model says, or be carried by
+    # the allowlist with a reason. The recorded fixtures' golden is the
+    # ordinary `recorded_fixtures_pick_as_the_golden_dump_records` test
+    # the `test` job already runs. The model is standard-library Python,
+    # run with the runner's python3.
+    runs-on: ubuntu-latest
+    steps:
+      - if: needs.filter.outputs.picker != 'true'
+        run: 'echo "Not required: no picker, fixture, oracle or title-resolution changes in this PR"'
+      - if: needs.filter.outputs.picker == 'true'
+        uses: actions/checkout@v4
+      - if: needs.filter.outputs.picker == 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: needs.filter.outputs.picker == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - if: needs.filter.outputs.picker == 'true'
+        name: The model's own tests
+        run: python3 -I -m unittest discover -s tests/picker-oracle -p 'test_*.py'
+      - if: needs.filter.outputs.picker == 'true'
+        name: Generate the pools
+        run: python3 -I tests/picker-oracle/oracle.py gen "$RUNNER_TEMP/cases.json"
+      - if: needs.filter.outputs.picker == 'true'
+        name: Run the picker over them
+        working-directory: backend
+        env:
+          PICKER_ORACLE_CASES: ${{ runner.temp }}/cases.json
+          PICKER_ORACLE_OUT: ${{ runner.temp }}/out.json
+        # The exact test name, and the outcome file has to exist after:
+        # a filter that matches no test exits 0 having run nothing.
+        run: |
+          cargo test --lib -- --ignored --exact commands::play_native_walk::fixture_tests::oracle::run_the_oracle_cases
+          test -s "$PICKER_ORACLE_OUT" || {
+            echo "run_the_oracle_cases wrote no outcomes to $PICKER_ORACLE_OUT"
+            exit 1
+          }
+      - if: needs.filter.outputs.picker == 'true'
+        name: Compare with the model
+        run: >
+          python3 -I tests/picker-oracle/oracle.py cmp
+          "$RUNNER_TEMP/cases.json" "$RUNNER_TEMP/out.json"
+          --allowlist tests/picker-oracle/allowlist.json
 
   coverage:
     needs: filter
