@@ -1057,26 +1057,25 @@
 			listed: warmListed
 		});
 		for (const ep of targets) {
+			// Built now, not when the warm's slot frees up: a warm queued
+			// behind others must describe the show it was queued for even
+			// if the page has moved to another by then. A prefetch must
+			// NOT update Continue Watching — the calls resolve in arbitrary
+			// order, so whichever finished last would overwrite the user's
+			// actual click. The Kitsu id rides along so the backend can
+			// record the (provider show_id → kitsu_id) reverse mapping even
+			// if the user only ever prefetches.
+			const args = playArgsFor({
+				title,
+				episode: ep,
+				mode,
+				quality,
+				show: detail,
+				kitsuId: id,
+				prefetch: true
+			});
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
-				// A prefetch must NOT update Continue Watching — the calls
-				// fired here resolve in arbitrary order, so whichever
-				// finished last would overwrite the user's actual click.
-				// The Kitsu id rides along so the backend can record the
-				// (provider show_id → kitsu_id) reverse mapping even if the
-				// user only ever prefetches.
-				playStream(
-					playArgsFor({
-						title,
-						episode: ep,
-						mode,
-						quality,
-						show: detail,
-						kitsuId: id,
-						prefetch: true
-					}),
-					emit,
-					signal
-				)
+				playStream(args, emit, signal)
 			).catch(() => {
 				/* the click handler will see the error if it ever fires;
 				 *  unmount-cancel rejects with "aborted" which we swallow */

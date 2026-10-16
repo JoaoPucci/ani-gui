@@ -113,7 +113,8 @@ export function playQuality(config: { quality: string } | null | undefined): str
  *  nothing; the backend op is idempotent), and mirror the progress to
  *  the connected trackers unless the match was a guess (`mirror`).
  *  Completion is decided against the show's full finite total, and only
- *  for a finished series. Both are best-effort. */
+ *  for a finished series. Both are best-effort: the returned promise
+ *  settles once both have, and never rejects. */
 export function recordPlayed(
 	input: {
 		args: PlayArgs;
@@ -131,15 +132,17 @@ export function recordPlayed(
 			seriesFinished: boolean
 		) => Promise<void>;
 	}
-): void {
-	void deps.markWatched(input.args).catch(() => {});
-	if (!input.mirror) return;
-	void deps
-		.syncTrackers(
-			input.showId,
-			input.episode,
-			input.show?.episode_count ?? null,
-			input.show?.status === 'finished'
-		)
-		.catch(() => {});
+): Promise<void> {
+	const writes: Promise<void>[] = [deps.markWatched(input.args)];
+	if (input.mirror) {
+		writes.push(
+			deps.syncTrackers(
+				input.showId,
+				input.episode,
+				input.show?.episode_count ?? null,
+				input.show?.status === 'finished'
+			)
+		);
+	}
+	return Promise.allSettled(writes).then(() => undefined);
 }

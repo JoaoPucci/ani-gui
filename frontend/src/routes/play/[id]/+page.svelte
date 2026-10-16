@@ -1883,22 +1883,20 @@
 			listed: warmListed
 		});
 		for (const targetEp of targets) {
+			// Built now, not when the warm's slot frees up (see the detail
+			// page's warm). A prefetch must NOT update Continue Watching —
+			// switchToEpisode (the click path) does that.
+			const args = playArgsFor({
+				title,
+				episode: targetEp,
+				mode,
+				quality,
+				show: detail,
+				kitsuId: recordableId(id, fromGuess),
+				prefetch: true
+			});
 			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
-				// A prefetch must NOT update Continue Watching —
-				// switchToEpisode (the click path) does that.
-				playStream(
-					playArgsFor({
-						title,
-						episode: targetEp,
-						mode,
-						quality,
-						show: detail,
-						kitsuId: recordableId(id, fromGuess),
-						prefetch: true
-					}),
-					emit,
-					signal
-				)
+				playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
 				 *  rejects with "aborted" which we swallow */
@@ -2237,7 +2235,7 @@
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
 		const cfg = config;
-		const launch = { kitsuId: id, mode: cfg.mode, episode: ep };
+		const launch = { kitsuId: id, mode: playMode(cfg), episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on (another show, or away and back) is
 		// not shown to them, and asks the cache nothing.
@@ -2306,7 +2304,7 @@
 		// re-aim its lookup, or re-word its success toast.
 		const ep = episodeNum;
 		const cfg = config;
-		const launch = { kitsuId: id, mode: cfg.mode, episode: ep };
+		const launch = { kitsuId: id, mode: playMode(cfg), episode: ep };
 		// The visit it is for ($lib/play/owned-play): a failure that lands
 		// after the viewer moved on is not shown to them.
 		const owner = claimPlay(
