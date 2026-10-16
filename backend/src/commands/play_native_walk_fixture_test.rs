@@ -2988,6 +2988,43 @@ async fn a_hit_filed_under_hentai_is_never_picked() {
     }
 }
 
+/// What the year and count would have accepted is more than a hit
+/// within the tolerance: a short listing from the entry's year is
+/// rescued as an airing part, and same-year parts of a split are
+/// stitched. A dated entry's candidate no name vouches for is refused
+/// in either shape too, and that refusal is by name, never the clean
+/// miss the availability cache persists; a pool whose unnamed hit
+/// nothing would have taken — longer than the entry by more than the
+/// tolerance — is still the clean miss it was.
+#[tokio::test]
+async fn a_refused_rescue_or_split_is_not_a_clean_miss() {
+    let y = Some(2020);
+    for (label, count, rows) in [
+        ("an airing part", 12, vec![("x", "Other", 2, y)]),
+        (
+            "a split",
+            24,
+            vec![("a", "Other", 12, y), ("b", "Other Part 2", 12, y)],
+        ),
+    ] {
+        match walk_over(inline_pool(&["Show"], Some(count), Some(2020), "TV", &rows)).await {
+            Ok(p) => panic!("{label}: picked {}", p.hit.slug),
+            Err(e) => assert!(!e.clean_miss, "{label}: a refusal by name persisted"),
+        }
+    }
+    let longer = inline_pool(
+        &["Show"],
+        Some(12),
+        Some(2020),
+        "TV",
+        &[("x", "Other", 40, y)],
+    );
+    match walk_over(longer).await {
+        Ok(p) => panic!("longer: picked {}", p.hit.slug),
+        Err(e) => assert!(e.clean_miss, "longer: {:?}", e.error),
+    }
+}
+
 /// What vouches for a hit depends on what the entry knows. An entry
 /// with a count takes only a hit a name vouches for, dated or not: a
 /// year and a count fit many shows as a count alone does, so a hit

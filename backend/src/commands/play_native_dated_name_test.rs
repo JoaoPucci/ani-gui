@@ -9,7 +9,7 @@ use crate::commands::play_native_title_grammar::normalized;
 use crate::commands::play_native_title_marker::EntryTitles;
 use crate::commands::play_native_wide_listing::UNFIT;
 use crate::commands::play_native_year::PageNames;
-use crate::scraper::provider::BrowseHit;
+use crate::scraper::provider::{BrowseHit, EpisodeRef};
 use proptest::prelude::*;
 
 const ENTRY: [&str; 2] = ["Show: Arc", "Shou Arc"];
@@ -133,20 +133,32 @@ proptest! {
     /// matching the entry's vouches for nothing — or it was already
     /// out; every other row is scored out, keeping its place, listing
     /// and year; and the refusal is reported exactly when a row scored
-    /// out here sat within the count tolerance.
+    /// out here is one the year and count would have taken: within the
+    /// count tolerance, or from the entry's year and listing fewer
+    /// episodes than the entry has — an airing part's shape, and every
+    /// part of a split's.
     #[test]
     fn a_dated_counted_entry_keeps_only_a_named_candidate(
         rows in rows(),
+        listed in proptest::collection::vec(0u32..40, 8),
         expected in 2u32..30,
         year in 1900u32..2100,
     ) {
         let hits = hits(&rows);
         let names = page_names(&rows);
-        let mut probed: Vec<_> = hits.iter().zip(&rows).map(|(h, r)| (h, Vec::new(), r.3, r.4)).collect();
+        let listing = |n: u32| -> Vec<EpisodeRef> {
+            (1..=n).map(|k| EpisodeRef { id: u64::from(k), number: k, number2: None }).collect()
+        };
+        let mut probed: Vec<_> = hits
+            .iter()
+            .zip(&rows)
+            .zip(&listed)
+            .map(|((h, r), n)| (h, listing(*n), r.3, r.4))
+            .collect();
         let refused = unnamed_dated(&mut probed, expected, NEEDLE, EntryTitles::new(&ENTRY), Some(year), &names);
         let tolerance = crate::commands::play_native::ep_count_threshold(expected);
         let mut want_refused = false;
-        for ((row, (t, j, p, d, confirmed)), h) in probed.iter().zip(&rows).zip(&hits) {
+        for (((row, (t, j, p, d, confirmed)), h), n) in probed.iter().zip(&rows).zip(&hits).zip(&listed) {
             prop_assert_eq!(row.0.slug.as_str(), h.slug.as_str());
             prop_assert_eq!(row.3, *confirmed);
             let vouched = [Some(*t), *j, *p].into_iter().flatten().any(|i| NAMES[i].1);
@@ -154,7 +166,7 @@ proptest! {
                 prop_assert_eq!(row.2, *d, "{} kept", NAMES[*t].0);
             } else {
                 prop_assert_eq!(row.2, UNFIT, "{} scored out", NAMES[*t].0);
-                want_refused |= *d <= tolerance;
+                want_refused |= *d <= tolerance || (*confirmed && *n < expected);
             }
         }
         prop_assert_eq!(refused, want_refused);
