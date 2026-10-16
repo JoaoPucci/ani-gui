@@ -681,3 +681,125 @@ fn titles_that_are_only_numbers_prove_no_numbering() {
     }
     assert_eq!(appended_extras(&rows, 12, &tail), None);
 }
+
+// ── a reading the evidence once proved ─────────────────────────────
+
+/// A source whose evidence is `tail`, keeping what it is told to.
+#[derive(Debug)]
+struct Kept {
+    tail: Option<EntryTail>,
+    kept: std::sync::Mutex<Option<Remembered>>,
+}
+
+#[async_trait::async_trait]
+impl TailSource for Kept {
+    async fn tail(&self, _count: u32) -> Option<EntryTail> {
+        self.tail.clone()
+    }
+    fn remembered(&self) -> Option<Remembered> {
+        self.kept.lock().expect("lock").clone()
+    }
+    fn remember(&self, reading: Option<&Remembered>) {
+        *self.kept.lock().expect("lock") = reading.cloned();
+    }
+}
+
+fn picked(rows: Vec<EpisodeRef>) -> PickedShow {
+    PickedShow {
+        hit: crate::scraper::provider::BrowseHit {
+            slug: "noragami-916".into(),
+            title: "Noragami".into(),
+            kind: None,
+            jname: None,
+        },
+        episodes: rows,
+    }
+}
+
+/// The evidence is cached for hours, not for good: AniList's answer
+/// for a finished show lasts three. A request whose evidence cannot
+/// be read — AniList limiting, Kitsu down, the budget spent — reads
+/// the listing as the evidence last proved it, so it stamps the same
+/// cap and extras as the request before it rather than putting the
+/// OADs back as episodes 13 and 14.
+#[tokio::test]
+async fn a_reading_once_proved_stands_while_the_evidence_cannot_be_read() {
+    let (rows, tail) = noragami();
+    let source = Kept {
+        tail: Some(tail),
+        kept: std::sync::Mutex::new(None),
+    };
+    let first = fit_appended(picked(rows.clone()), Some(12), Some(&source)).await;
+    assert_eq!(extra_episode_tags(&first.episodes), vec!["12.1", "12.2"]);
+    let unread = Kept {
+        tail: None,
+        kept: std::sync::Mutex::new(source.remembered()),
+    };
+    let later = fit_appended(picked(rows.clone()), Some(12), Some(&unread)).await;
+    assert_eq!(later.episodes, first.episodes);
+    // Without a reading kept, no evidence is no reading.
+    let never = Kept {
+        tail: None,
+        kept: std::sync::Mutex::new(None),
+    };
+    let plain = fit_appended(picked(rows.clone()), Some(12), Some(&never)).await;
+    assert_eq!(plain.episodes, rows);
+}
+
+/// The kept reading is for the rows it was proved on: a listing whose
+/// rows past the count are other rows, or another number of them, is
+/// read without it.
+#[tokio::test]
+async fn a_kept_reading_is_for_the_rows_it_was_proved_on() {
+    let (rows, _) = noragami();
+    let kept = Remembered {
+        count: 12,
+        ids: rows[12..].iter().map(|e| e.id).collect(),
+    };
+    let unread = |r: Remembered| Kept {
+        tail: None,
+        kept: std::sync::Mutex::new(Some(r)),
+    };
+    let mut other = rows.clone();
+    other[13].id += 1;
+    let got = fit_appended(picked(other.clone()), Some(12), Some(&unread(kept.clone()))).await;
+    assert_eq!(got.episodes, other, "another row");
+    let shorter: Vec<EpisodeRef> = rows[..13].to_vec();
+    let got = fit_appended(
+        picked(shorter.clone()),
+        Some(12),
+        Some(&unread(kept.clone())),
+    )
+    .await;
+    assert_eq!(got.episodes, shorter, "fewer rows");
+    let got = fit_appended(
+        picked(rows.clone()),
+        Some(12),
+        Some(&unread(Remembered { count: 11, ..kept })),
+    )
+    .await;
+    assert_eq!(got.episodes, rows, "another count");
+}
+
+/// Evidence that reads and no longer proves the reading takes the
+/// kept one away: the next request without evidence reads the listing
+/// as picked.
+#[tokio::test]
+async fn evidence_that_no_longer_proves_the_reading_forgets_it() {
+    let (rows, mut tail) = noragami();
+    tail.finished = false;
+    let (_, proved) = noragami();
+    let source = Kept {
+        tail: Some(proved),
+        kept: std::sync::Mutex::new(None),
+    };
+    fit_appended(picked(rows.clone()), Some(12), Some(&source)).await;
+    assert!(source.remembered().is_some(), "kept once proved");
+    let disproved = Kept {
+        tail: Some(tail),
+        kept: std::sync::Mutex::new(source.remembered()),
+    };
+    let got = fit_appended(picked(rows.clone()), Some(12), Some(&disproved)).await;
+    assert_eq!(got.episodes, rows);
+    assert_eq!(disproved.remembered(), None);
+}

@@ -351,3 +351,30 @@ async fn a_range_download_ends_at_the_last_episode() {
     assert!(calls.contains(&master(noragami_rows()[11].id)), "{calls}");
     assert!(!calls.contains(&master(first_oad())), "{calls}");
 }
+
+/// Once availability proved the reading, a play whose evidence cannot
+/// be read — AniList's answer gone from the cache and Kitsu
+/// unreachable — reads the listing the same way: it stamps twelve with
+/// the two extras, not the listing's fourteen, and the OAD still plays
+/// as `12.1`.
+#[tokio::test]
+async fn a_play_without_its_evidence_keeps_the_reading_availability_proved() {
+    let td = tempfile::tempdir().expect("td");
+    let provider = hianime();
+    let state = state_over(&td, &provider);
+    seed_kitsu(&state, "finished");
+    check_availability(&state, &availability_args())
+        .await
+        .expect("answered");
+    crate::cache::meta_cache_delete(&state.cache_pool, &format!("airing:v2:{KITSU}"))
+        .expect("airing row gone");
+    crate::commands::play::play_with_progress(&state, &play_args("5"), |_| {})
+        .await
+        .expect("episode 5 plays");
+    assert_eq!(stamped(&state), (Some(12), oads()));
+    crate::commands::play::play_with_progress(&state, &play_args("12.1"), |_| {})
+        .await
+        .expect("the OAD plays");
+    assert_eq!(mastered(&provider).last().copied(), Some(first_oad()));
+    assert_eq!(stamped(&state), (Some(12), oads()));
+}
