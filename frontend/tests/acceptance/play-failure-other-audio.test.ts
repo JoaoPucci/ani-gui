@@ -523,3 +523,69 @@ describe('detail — a fractional extra and the other audio', () => {
 		expectCacheOnly(asked);
 	});
 });
+
+describe('a failure for one show, landing after the page moved to another', () => {
+	// SvelteKit reuses the route's component when a Similar-title link
+	// leads to another show, so the page's id is the new show's by the
+	// time the old play fails. The lookup is about the show that
+	// failed: the cache has its other audio, and nothing for the new one.
+	const OTHER_ID = '777';
+	const OTHER_TITLE = 'Another Show';
+	const HAS_IT = { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 12 } };
+
+	function useOtherShow() {
+		server.use(
+			http.get(`${API_BASE}/api/kitsu/anime/${OTHER_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(OTHER_ID, OTHER_TITLE, 12), status: 'finished' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${OTHER_ID}`, () =>
+				HttpResponse.json({ aired: 12, next_episode: null, next_airing_at: null, upcoming: [] })
+			)
+		);
+	}
+
+	async function clickThenMove(episode: number, moveTo: () => void) {
+		await until(() => tile(episode) !== null, `the tile for episode ${episode}`);
+		tile(episode)!.click();
+		await until(
+			() =>
+				FakeEventSource.instances.some(
+					(i) => i.url.includes(`episode=${episode}`) && !i.url.includes('prefetch=1')
+				),
+			"the click's interactive stream"
+		);
+		const stream = FakeEventSource.instances
+			.filter((i) => i.url.includes(`episode=${episode}`) && !i.url.includes('prefetch=1'))
+			.pop()!;
+		moveTo();
+		await new Promise((r) => setTimeout(r, 30));
+		stream.dispatch('error', VERDICT);
+	}
+
+	it('detail: asks about the show whose play failed', async () => {
+		const asked = useHandlers(HAS_IT);
+		useOtherShow();
+		app = mount(DetailPage, { target });
+		await clickThenMove(5, () => setParams({ id: OTHER_ID }));
+		await expectCopy(SUGGESTS);
+		const dubAsks = asked.batch.filter((b) => b.mode === 'dub');
+		expect(dubAsks).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
+		expect(dubAsks).not.toContainEqual({ kitsu_ids: [OTHER_ID], mode: 'dub' });
+	});
+
+	it('play: asks about the show whose episode switch failed', async () => {
+		const asked = useHandlers(HAS_IT);
+		useOtherShow();
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await clickThenMove(2, () => {
+			setParams({ id: OTHER_ID });
+			setUrl(`/play/${OTHER_ID}`, { session: 'session-move', episode: '1', kind: 'mp4' });
+		});
+		await expectCopy(SUGGESTS);
+		const dubAsks = asked.batch.filter((b) => b.mode === 'dub');
+		expect(dubAsks).toContainEqual({ kitsu_ids: [KITSU_ID], mode: 'dub' });
+		expect(dubAsks).not.toContainEqual({ kitsu_ids: [OTHER_ID], mode: 'dub' });
+	});
+});
