@@ -568,3 +568,84 @@ fn a_former_tag_shifts_by_the_parts_before_not_by_the_parts_offset() {
         vec![(recap.number, "22.5".to_string(), "10.5".to_string())]
     );
 }
+
+#[test]
+fn a_parts_leading_recap_beside_the_part_befores_trailing_one_has_a_tag_of_its_own() {
+    // Part 1 ends with a recap after its twelfth episode ("12.5");
+    // part 2, numbered from 13, opens with one before its first. Both
+    // sit between episodes 12 and 13. The first keeps "12.5"; the
+    // second takes the next tag between them, "12.75", so a request
+    // names one row. An earlier version tagged the second "24.5".
+    let mut first = listing(100, 12);
+    first.push(row(113, 13, Some("12.5")));
+    let second = vec![row(201, 1, Some("12.5")), row(202, 2, Some("13"))];
+    let merged = merge_parts(&[&first, &second]);
+    let tag_of = |id: u64| {
+        merged
+            .iter()
+            .find(|e| e.id == id)
+            .and_then(|e| e.number2.clone())
+    };
+    assert_eq!(tag_of(113).as_deref(), Some("12.5"));
+    assert_eq!(tag_of(201).as_deref(), Some("12.75"));
+    let recap = merged.iter().find(|e| e.id == 201).expect("recap");
+    assert_eq!(recap.former_tag.as_deref(), Some("24.5"));
+    // The trailing recap was "12.5" in every version.
+    let trailing = merged.iter().find(|e| e.id == 113).expect("trailing");
+    assert_eq!(trailing.former_tag, None);
+}
+
+#[test]
+fn a_part_numbered_from_one_opening_on_a_recap_after_a_trailing_one_has_its_own_tag() {
+    // The same pair with part 2 numbered from 1 ("0.5"): an earlier
+    // version tagged both rows "12.5", so the second row's former tag
+    // is the one it now shares with the first.
+    let mut first = listing(100, 12);
+    first.push(row(113, 13, Some("12.5")));
+    let second = vec![row(201, 1, Some("0.5")), row(202, 2, Some("1"))];
+    let merged = merge_parts(&[&first, &second]);
+    let recap = merged.iter().find(|e| e.id == 201).expect("recap");
+    assert_eq!(recap.number2.as_deref(), Some("12.75"));
+    assert_eq!(recap.former_tag.as_deref(), Some("12.5"));
+}
+
+proptest::proptest! {
+    #[test]
+    fn stitched_fractional_tags_name_one_row_each(
+        parts in proptest::collection::vec(
+            proptest::collection::vec(
+                (1u32..60, proptest::option::of(proptest::prop_oneof![
+                    (1u32..60).prop_map(|n| n.to_string()),
+                    (0u32..60).prop_map(|n| format!("{n}.5")),
+                ])),
+                0..12,
+            ),
+            1..4,
+        ),
+    ) {
+        let mut next_id = 0u64;
+        let listings: Vec<Vec<EpisodeRef>> = parts
+            .iter()
+            .map(|rows| {
+                rows.iter()
+                    .map(|(number, tag)| {
+                        next_id += 1;
+                        row(next_id, *number, tag.as_deref())
+                    })
+                    .collect()
+            })
+            .collect();
+        let refs: Vec<&[EpisodeRef]> = listings.iter().map(Vec::as_slice).collect();
+        let merged = merge_parts(&refs);
+        let fractions: Vec<f64> = merged
+            .iter()
+            .filter_map(|e| e.number2.as_deref()?.parse::<f64>().ok())
+            .filter(|v| v.fract() != 0.0)
+            .collect();
+        for (i, a) in fractions.iter().enumerate() {
+            for b in &fractions[i + 1..] {
+                proptest::prop_assert!(a != b, "two rows tagged {}", a);
+            }
+        }
+    }
+}
