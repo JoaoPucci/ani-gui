@@ -597,3 +597,27 @@ describe('executeKitsuGroupDelete (rows read again while it is out)', () => {
 		expect(result.remainingHistory).toEqual([{ id: 'a', ep_no: '12.5', title: 'A' }]);
 	});
 });
+
+describe('executeKitsuGroupDelete (applying what it leaves)', () => {
+	test('applies the rows in the same turn it reads them', async () => {
+		// Nothing may run between reading the strip and putting the rows
+		// back: a row read again in between would be overwritten.
+		const events: string[] = [];
+		const current: HistoryEntry[] = [
+			{ id: 'a', ep_no: '12.5', title: 'A' },
+			{ id: 'b', ep_no: '3', title: 'B' }
+		];
+		await executeKitsuGroupDelete('b', {
+			history: current,
+			currentHistory: () => {
+				events.push('read');
+				queueMicrotask(() => events.push('tick'));
+				return current;
+			},
+			applyRemaining: (rows) => events.push(`apply ${rows.map((r) => r.id).join(',')}`),
+			matches: {},
+			historyDelete: async () => {}
+		});
+		expect(events.slice(0, 2)).toEqual(['read', 'apply a']);
+	});
+});

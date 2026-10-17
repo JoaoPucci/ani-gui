@@ -47,7 +47,10 @@ describe('refreshedResume (a row put right before the page read it)', () => {
 			move
 		);
 		expect(move).toHaveBeenCalledWith('42', 24.5, 12.5);
-		expect(next).toBeNull();
+		// Given anew, so the page offers Play again with the position
+		// where it reads it now.
+		expect(next).toEqual(at);
+		expect(next).not.toBe(at);
 	});
 });
 

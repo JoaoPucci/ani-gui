@@ -61,3 +61,33 @@ describe('refreshedRows', () => {
 		expect(next).toEqual([{ id: 'a', ep_no: '12.5', title: 'A' }]);
 	});
 });
+
+describe('refreshedRows (a position kept under the old number)', () => {
+	it('moves the position before the rows it gives are read', async () => {
+		const events: string[] = [];
+		const next = await refreshedRows(
+			'a',
+			() => rows,
+			async () => ({ ep_no: '12.5', former_ep_no: '24.5' }),
+			(from, to) => events.push(`move ${from}->${to}`)
+		);
+		expect(events).toEqual(['move 24.5->12.5']);
+		expect(next?.[0].ep_no).toBe('12.5');
+	});
+
+	it('moves it, and gives the rows anew, for a row that reads as it did', async () => {
+		// Put right before the page read it: the row is "12.5" already,
+		// and the card has to be offered again once the position moved.
+		const move = vi.fn();
+		const at: HistoryEntry[] = [{ id: 'a', ep_no: '12.5', title: 'A' }];
+		const next = await refreshedRows(
+			'a',
+			() => at,
+			async () => ({ ep_no: '12.5', former_ep_no: '24.5' }),
+			move
+		);
+		expect(move).toHaveBeenCalledWith(24.5, 12.5);
+		expect(next).toEqual(at);
+		expect(next).not.toBe(at);
+	});
+});

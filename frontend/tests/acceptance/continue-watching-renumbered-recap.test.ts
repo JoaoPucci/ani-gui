@@ -32,6 +32,7 @@ import HomePage from '../../src/routes/+page.svelte';
 import { goto } from '$app/navigation';
 import { __resetApiBaseForTests } from '../../src/lib/api';
 import { m } from '../../src/lib/paraglide/messages';
+import { savePosition } from '../../src/lib/play/watch-position';
 
 type EsHandler = (ev: MessageEvent) => void;
 class FakeEventSource {
@@ -73,6 +74,7 @@ let target: HTMLElement;
 let app: ReturnType<typeof mount> | null = null;
 
 beforeEach(() => {
+	window.localStorage.clear();
 	vi.mocked(goto).mockClear();
 	__resetApiBaseForTests(API_BASE);
 	server.use(
@@ -179,5 +181,12 @@ describe('a Continue card over a renumbered recap', () => {
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the navigation to the play page');
 		const url = String(vi.mocked(goto).mock.calls.at(-1)?.[0] ?? '');
 		expect(new URL(url, 'http://app.test').searchParams.get('episode')).toBe('13');
+	});
+
+	it('offers the recap left part-way under the number it had before', async () => {
+		savePosition('1', 24.5, 600, 1420);
+		mountRenumbered();
+		await until(() => offers(12.5), 'the card to offer the recap left part-way');
+		expect(offers(13)).toBe(false);
 	});
 });
