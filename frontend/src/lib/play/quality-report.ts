@@ -30,7 +30,7 @@ export type QualityReport =
 	/** `level` null: the error named none, so the level held failed. */
 	| { kind: 'fragments-failed'; level: number | null }
 	/** hls.js switched to `level` over a side rendition's failure. */
-	| { kind: 'followed'; level: number };
+	| { kind: 'followed'; level: number; blame?: boolean };
 
 export { isMain } from './quality-rendition';
 
@@ -86,7 +86,7 @@ export function reactTo(
 	if (!report) return null;
 	if (report.kind === 'stall') return governor.stall(now);
 	if (report.kind === 'level-failed') return governor.levelFailed(report.level, now);
-	if (report.kind === 'followed') return governor.follow(report.level, now);
+	if (report.kind === 'followed') return governor.follow(report.level, now, report.blame ?? true);
 	return governor.fragmentsFailed(report.level ?? governor.level, now);
 }
 

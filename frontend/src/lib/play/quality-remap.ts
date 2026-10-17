@@ -85,16 +85,21 @@ export class RemapWindow {
 	private origin: readonly unknown[] | null = null;
 	private mapping: readonly number[] | null = null;
 	private closed = false;
+	/** Whether the removal took the level held, re-seating the hold. */
+	private reseated = false;
 
-	/** Levels went from `before` to `after`. */
-	opened(before: readonly unknown[], after: readonly unknown[]): void {
+	/** Levels went from `before` to `after`; `reseated`, when the level
+	 *  held was among those removed. */
+	opened(before: readonly unknown[], after: readonly unknown[], reseated: boolean): void {
 		if (!this.origin) {
 			this.origin = before;
+			this.reseated = false;
 			queueMicrotask(() => {
 				this.origin = null;
 				this.mapping = null;
 			});
 		}
+		this.reseated ||= reseated;
 		this.mapping = levelMapping(this.origin, after);
 	}
 
@@ -107,7 +112,7 @@ export class RemapWindow {
 		if (!this.mapping || !report || report.kind === 'stall') return report;
 		if (report.kind !== 'followed') return null;
 		const level = remapIndex(report.level, this.mapping);
-		return level === null ? null : { kind: 'followed', level };
+		return level === null ? null : { kind: 'followed', level, blame: !this.reseated };
 	}
 
 	/** The stream retired: nothing scheduled acts on it any more. */

@@ -6,7 +6,7 @@
 import type Hls from 'hls.js';
 import type { QualityGovernor, QualityMove } from './quality-governor';
 import type { LadderLevel } from './quality-ladder';
-import type { RemapWindow } from './quality-remap';
+import { levelMapping, remapIndex, type RemapWindow } from './quality-remap';
 import type { QualityTrack } from './quality-track';
 
 /** Makes a move on the engine and logs it: `next` replaces the buffer
@@ -59,8 +59,13 @@ export function levelsUpdated(
 	removal: RemapWindow,
 	log: (message: string) => void
 ): void {
-	removal.opened(track.engineLevels, levels);
-	const mapping = track.remap(levels);
+	const mapping = levelMapping(track.engineLevels, levels);
+	removal.opened(
+		track.engineLevels,
+		levels,
+		governor !== null && remapIndex(governor.level, mapping) === null
+	);
+	track.remap(levels);
 	if (!governor) return;
 	governor.remap(mapping, track.levels());
 	log(`levels updated: ${levels.length} left, holding ${track.describe(governor.level)}`);
