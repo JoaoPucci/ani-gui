@@ -58,3 +58,25 @@ describe('decideAutoPlayNext', () => {
 		});
 	});
 });
+
+describe('decideAutoPlayNext — from a fractional extra', () => {
+	it('advances from a recap to the whole episode after it', () => {
+		expect(decideAutoPlayNext({ enabled: true, episodeNum: 7.5, totalEpisodes: 12 })).toEqual({
+			advance: true,
+			target: 8
+		});
+	});
+
+	it('advances from a recap just below the last episode to it', () => {
+		expect(decideAutoPlayNext({ enabled: true, episodeNum: 11.5, totalEpisodes: 12 })).toEqual({
+			advance: true,
+			target: 12
+		});
+	});
+
+	it('stops after a recap past the last episode', () => {
+		expect(decideAutoPlayNext({ enabled: true, episodeNum: 12.5, totalEpisodes: 12 })).toEqual({
+			advance: false
+		});
+	});
+});

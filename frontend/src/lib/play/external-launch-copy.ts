@@ -5,7 +5,7 @@
  */
 
 import { m } from '$lib/paraglide/messages';
-import { describePlayFailure } from './error-copy';
+import { describePlayFailure, type OtherAudio } from './error-copy';
 
 /** User-facing copy for an "Open in external player" failure. The
  *  common case is a `player_spawn_failed` payload — the configured
@@ -16,8 +16,10 @@ import { describePlayFailure } from './error-copy';
  *
  *  Returns the body text only — the surrounding modal's headline
  *  comes from `play_error_external_headline` and is interpolated
- *  with the episode number by the caller. */
-export function describeExternalLaunchFailure(e: unknown): string {
+ *  with the episode number by the caller. `otherAudio` is what the
+ *  availability cache says about the other audio, for the episode
+ *  verdict (see `describePlayFailure`). */
+export function describeExternalLaunchFailure(e: unknown, otherAudio: OtherAudio): string {
 	const obj = typeof e === 'object' && e !== null ? (e as Record<string, unknown>) : null;
 	if (
 		obj &&
@@ -31,5 +33,5 @@ export function describeExternalLaunchFailure(e: unknown): string {
 	// step) reuse the embedded path's copy so the user sees a
 	// polished message instead of a debug-y "External player
 	// failed: <kind>".
-	return describePlayFailure(e);
+	return describePlayFailure(e, { otherAudio });
 }

@@ -254,3 +254,18 @@ describe('detailWarmTargets', () => {
 		).toEqual([7]);
 	});
 });
+
+describe('playPageWarmTargets — from a fractional extra', () => {
+	it('warms the whole episode after a recap, not a recap that does not exist', () => {
+		expect(
+			playPageWarmTargets({
+				cacheResolutions: false,
+				visible: [6, 7, 7.5, 8, 9],
+				currentEpisode: 7.5,
+				airing: aired(12),
+				playableCount: 12,
+				listed: true
+			})
+		).toEqual([8]);
+	});
+});

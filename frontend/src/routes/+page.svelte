@@ -14,10 +14,8 @@
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { createAnimationGate, shiftedSurvivorIds } from '$lib/history/animation-gate';
-	import {
-		describeError,
-		describePlayFailure as sharedDescribePlayFailure
-	} from '$lib/play/error-copy';
+	import { describeError } from '$lib/play/error-copy';
+	import { describePlayFailureFromCache } from '$lib/play/other-audio';
 	import { progressLabel } from '$lib/play/format';
 
 	// Per-id, split-per-transition gate for the Continue Watching
@@ -113,7 +111,7 @@
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { isSingleVideo } from '$lib/detail/play-label';
-	import { pickResumeEpisode } from '$lib/play/next-episode';
+	import { continueEpisode } from '$lib/play/next-episode';
 	import {
 		clearRowPositions,
 		clearShowPositions,
@@ -642,12 +640,6 @@
 		if (stale) void refreshWatchLater();
 	}
 
-	/** Play-call failure copy: the shared mapper, default phrasing.
-	 *  (The strings this replaces were hardcoded English.) */
-	function describePlayFailure(e: unknown): string {
-		return sharedDescribePlayFailure(e);
-	}
-
 	/** Click handler for a Continue Watching card. Resolves the play
 	 *  through the same getOrFire/playStream pipeline /anime/[id]
 	 *  uses, then navigates straight to /play/[id]?session=… —
@@ -689,8 +681,16 @@
 		onProgress: (label) => {
 			resumeProgress = label;
 		},
-		onFailure: (title, e) => {
-			resumeFailure = { title, message: describePlayFailure(e) };
+		// The shared mapper, default phrasing; the other audio's answer
+		// comes from the availability cache for the show and episode
+		// the resume asked for.
+		onFailure: async (title, e, args) => {
+			const message = await describePlayFailureFromCache(e, {
+				kitsuId: args.match.id,
+				mode: args.mode,
+				episode: args.episode
+			});
+			resumeFailure = { title, message };
 		},
 		getSettings: () => resolveResumeSettings(config, settingsPromise),
 		getPlayableCount: (id) => historyPlayableCounts[id] ?? null,
@@ -992,11 +992,11 @@
 				match?.status ?? null
 			)}
 			{@const playableCount = historyPlayableCounts[entry.id]}
-			{@const lastWatched = parseInt(entry.ep_no, 10)}
-			{@const nextEpisode = pickResumeEpisode(
-				Number.isFinite(lastWatched) ? lastWatched : null,
+			{@const nextEpisode = continueEpisode(
+				match?.id ?? '',
+				entry.ep_no,
 				playableCount ?? match?.episode_count ?? null,
-				!!match && Number.isFinite(lastWatched) && leftPartWay(match.id, lastWatched)
+				match ? leftPartWay : undefined
 			)}
 			<!-- Both transitions are gated on `deleteBusy` so they only
 		     run for user-confirmed deletes. On home re-mount,

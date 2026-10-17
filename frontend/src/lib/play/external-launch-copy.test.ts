@@ -8,10 +8,13 @@ describe('describeExternalLaunchFailure', () => {
 		// *which* command went missing so the user can fix it in
 		// settings without guessing. The backend ships the binary in
 		// the typed payload.
-		const msg = describeExternalLaunchFailure({
-			kind: 'player_spawn_failed',
-			binary: 'mpv'
-		});
+		const msg = describeExternalLaunchFailure(
+			{
+				kind: 'player_spawn_failed',
+				binary: 'mpv'
+			},
+			null
+		);
 		expect(msg).toMatch(/mpv/);
 	});
 
@@ -21,10 +24,13 @@ describe('describeExternalLaunchFailure', () => {
 		// otherwise the modal just relabels the failure without
 		// helping. Pin a stable substring so a copy refresh that
 		// drops the actionable hint gets caught.
-		const msg = describeExternalLaunchFailure({
-			kind: 'player_spawn_failed',
-			binary: 'vlc'
-		});
+		const msg = describeExternalLaunchFailure(
+			{
+				kind: 'player_spawn_failed',
+				binary: 'vlc'
+			},
+			null
+		);
 		expect(msg).toMatch(/PATH|Settings/i);
 	});
 
@@ -34,19 +40,19 @@ describe('describeExternalLaunchFailure', () => {
 		// Reusing describePlayFailure keeps the user-facing copy
 		// consistent across both surfaces (no debug-y "External
 		// player failed: scraper" leak).
-		expect(describeExternalLaunchFailure({ kind: 'timeout' })).toMatch(/took too long/);
-		expect(describeExternalLaunchFailure({ kind: 'network' })).toMatch(/Network trouble/);
+		expect(describeExternalLaunchFailure({ kind: 'timeout' }, null)).toMatch(/took too long/);
+		expect(describeExternalLaunchFailure({ kind: 'network' }, null)).toMatch(/Network trouble/);
 	});
 
 	it('rejects payloads with the wrong shape and falls back to generic copy', () => {
 		// Defensive: a backend drift that drops `binary` or sends a
 		// non-string shouldn't crash the renderer. The generic
 		// "try again" message is the right safety net.
-		expect(describeExternalLaunchFailure({ kind: 'player_spawn_failed' })).toMatch(
+		expect(describeExternalLaunchFailure({ kind: 'player_spawn_failed' }, null)).toMatch(
 			/Couldn't start this episode right now/
 		);
-		expect(describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: '' })).toMatch(
-			/Couldn't start this episode right now/
-		);
+		expect(
+			describeExternalLaunchFailure({ kind: 'player_spawn_failed', binary: '' }, null)
+		).toMatch(/Couldn't start this episode right now/);
 	});
 });
