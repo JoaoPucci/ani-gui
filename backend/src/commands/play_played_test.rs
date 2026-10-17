@@ -405,3 +405,92 @@ async fn a_watch_marked_on_a_prefetched_recap_reads_back_as_the_recap() {
         .ep_no;
     assert_eq!(listed, "0.5");
 }
+
+fn cumulative_ask(episode: &str) -> PlayArgs {
+    serde_json::from_value(serde_json::json!({
+        "title": crate::commands::play_native_test_provider::CUMULATIVE,
+        "episode": episode,
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+    }))
+    .expect("args")
+}
+
+fn cumulative_listed(state: &AppState) -> String {
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        crate::commands::play_native_test_provider::CUMULATIVE_SLUG,
+    )
+    .to_string();
+    crate::commands::history::history_list(state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == key)
+        .expect("row")
+        .ep_no
+}
+
+#[tokio::test]
+async fn a_fresh_play_overtaken_by_a_later_watch_leaves_that_watchs_stamp() {
+    // The recap's resolve began before episode 1 was watched and lands
+    // after it: its row is refused, and so must its stamp be.
+    use crate::commands::play_native_test_provider::{cumulative_opening_recap, CUMULATIVE};
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    let table = cumulative_opening_recap();
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap()));
+    let begun_before = crate::history::guard::Asked::now(&state.history_path, None);
+    play_with_progress(&state, &cumulative_ask("1"), |_| {})
+        .await
+        .expect("plays episode 1");
+    // The player marks episode 1 watched: a watch the recap's resolve,
+    // begun before it, gives way to.
+    let cached = play_resolution_cache::get(&state.cache_pool, &key_for(&cumulative_ask("1"), "1"))
+        .expect("readable")
+        .expect("kept");
+    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "1");
+    crate::commands::play_native_record::record_watch(&state, &watch, None).await;
+    let recap = crate::commands::play_native_resolve::resolve_native(
+        &table,
+        crate::commands::play_native_resolve::NativeResolveRequest {
+            title: CUMULATIVE,
+            alt_titles: &[],
+            episode: "0.5",
+            mode: "sub",
+            quality: "best",
+            expected_count: Some(2),
+            year: Some(2026),
+            subtype: None,
+            stamps_beside: None,
+        },
+        &mut |_| {},
+    )
+    .await
+    .expect("resolves the recap");
+    crate::commands::play_native_record::record_fresh_watch(&state, &recap, "0.5", begun_before);
+    assert_eq!(cumulative_listed(&state), "1");
+}
+
+#[tokio::test]
+async fn a_handoff_that_fails_to_start_leaves_the_watched_stamp() {
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::cumulative_opening_recap(),
+    ));
+    play_with_progress(&state, &cumulative_ask("0.5"), |_| {})
+        .await
+        .expect("plays the recap");
+    std::fs::write(
+        &state.config_path,
+        "external_player = \"/nonexistent/player\"\n",
+    )
+    .expect("config");
+    let failed =
+        crate::commands::play_external_command::play_external(&state, &cumulative_ask("1")).await;
+    assert!(failed.is_err(), "the player never started");
+    assert_eq!(cumulative_listed(&state), "0.5");
+}
