@@ -26,7 +26,8 @@ import {
 	readError,
 	readInitSegment
 } from './quality-report';
-import { afterError, engineMover, levelsUpdated, pickMove, whenSettled } from './quality-sink';
+import { pickMove } from './quality-choice';
+import { afterError, engineMover, levelsUpdated, whenSettled } from './quality-sink';
 import { RemapWindow } from './quality-remap';
 import { QualityTrack } from './quality-track';
 
@@ -93,10 +94,10 @@ export function armQuality(input: {
 	// would be `best`'s. With `holdsStart` the engine waits too, and is
 	// started here once its start level is set.
 	const begin = (setting: QualitySetting): void => {
-		const count = track.levels().length;
+		const count = track.declared().length;
 		if (retired) return;
 		const g = new QualityGovernor(
-			track.levels(),
+			track.declared(),
 			parseQualitySetting(setting),
 			qualityPin.choice()
 		);

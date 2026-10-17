@@ -91,18 +91,17 @@ export class QualityTrack {
 		return { ...seen, listed };
 	}
 
-	/** The switch a choice already in force still needs: the level held,
-	 *  when a segment of another level is what plays; null otherwise. */
-	staleChoice(governor: QualityGovernor, choice: 'auto' | number): QualityMove | null {
-		const held = governor.level;
-		const inForce = choice === 'auto' ? !governor.isPinned : governor.isPinned && held === choice;
-		if (!inForce || this.playing === null || this.playing === held) return null;
-		return {
-			level: held,
-			from: this.playing,
-			reason: choice === 'auto' ? 'auto' : 'pick',
-			via: 'next'
-		};
+	/** The level whose segment plays; null before one plays. */
+	get playingLevel(): number | null {
+		return this.playing;
+	}
+
+	/** The levels as their playlists declare them. The policy — the
+	 *  governor's ladder and ceiling, and a pin matched against the next
+	 *  stream — reads these; only the menu and the log read `levels()`,
+	 *  with the heights segments turned out to be encoded at. */
+	declared(): LadderLevel[] {
+		return this.playlist.map((l) => ({ ...l }));
 	}
 
 	/** What the menu shows. */

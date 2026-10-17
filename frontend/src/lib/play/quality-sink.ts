@@ -69,8 +69,8 @@ export function levelsUpdated(
 	track.remap(levels);
 	if (!governor) return;
 	const wasPinned = governor.isPinned;
-	governor.remap(mapping, track.levels());
-	repinAfterReplacement(governor, mapping, wasPinned, track.levels());
+	governor.remap(mapping, track.declared());
+	repinAfterReplacement(governor, mapping, wasPinned, track.declared());
 	log(`levels updated: ${levels.length} left, holding ${track.describe(governor.level)}`);
 	queueMicrotask(() => putBack(engine, governor, track, removal, log));
 }
@@ -86,23 +86,6 @@ function putBack(
 	if (!engine.autoLevelEnabled && engine.loadLevel === governor.level) return;
 	engine.loadLevel = governor.level;
 	log(`held at ${track.describe(governor.level)} after the levels changed`);
-}
-
-/** The move a menu choice makes: the governor's own; or the level held
- *  again when a lower one still plays from the buffer; or, when the
- *  engine was left choosing (the control had been released), the level
- *  held, so the choice the menu shows is the one the engine plays. */
-export function pickMove(
-	governor: QualityGovernor,
-	choice: 'auto' | number,
-	now: number,
-	track: QualityTrack,
-	engine: Pick<Hls, 'autoLevelEnabled'>
-): QualityMove | null {
-	const move = governor.pick(choice, now) ?? track.staleChoice(governor, choice);
-	if (move || !governor.isEngaged || !engine.autoLevelEnabled) return move;
-	const reason = choice === 'auto' ? 'auto' : 'pick';
-	return { level: governor.level, from: governor.level, reason, via: 'next' };
 }
 
 /** Hands `then` the value, at once when it is in hand and once it
