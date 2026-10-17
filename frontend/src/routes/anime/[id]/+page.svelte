@@ -95,7 +95,7 @@
 	import { pickResumeEpisode } from '$lib/play/next-episode';
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
 	import { markStarted, movePosition, readPosition } from '$lib/play/watch-position';
-	import { refreshedResume } from '$lib/detail/resume-refresh';
+	import { joinResumeRefresh, refreshedResume } from '$lib/detail/resume-refresh';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
@@ -757,7 +757,7 @@
 					apply: applyAvailabilityPatch,
 					setResolved: (r) => {
 						availabilityResolved = r;
-						if (r) void readResumeAgain();
+						if (r) resumeRefresh.resolved();
 					},
 					setListed: (l) => (warmListed = l)
 				}
@@ -767,10 +767,12 @@
 
 	// The resume row read again once the lookup answered: it paid for
 	// the listing that can put the row's numbering right.
-	async function readResumeAgain() {
-		const entry = resumeEntry;
+	// Once the row has arrived and the lookup has answered, in either
+	// order.
+	const resumeRefresh = joinResumeRefresh((entry) => void readResumeAgain(entry));
+	async function readResumeAgain(entry: HistoryEntry) {
 		const showId = id;
-		if (!entry || !showId) return;
+		if (!showId) return;
 		// No measured cap means no listing stood behind the lookup.
 		const warm =
 			playableEpisodeCount === null && detail ? (ep: number) => warmResume(ep) : undefined;
@@ -781,7 +783,10 @@
 			(k, f, t) => movePosition(k, f, t),
 			warm
 		);
-		if (next && id === showId && resumeEntry === entry) resumeEntry = next;
+		// The row the refresh read, still the page's: compared by value,
+		// since the page keeps its own copy of the row.
+		const same = resumeEntry?.id === entry.id && resumeEntry?.ep_no === entry.ep_no;
+		if (next && id === showId && same) resumeEntry = next;
 	}
 
 	// A resolve of the resume episode that records no watch.
@@ -981,12 +986,14 @@
 		playableEpisodeCount = null;
 		extraEpisodes = [];
 		resumeEntry = null;
+		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
 		const detailServed = kitsuAnimeDetail(currentId);
 		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
 				if (id !== currentId) return;
 				resumeEntry = h;
+				resumeRefresh.row(h);
 			})
 			.catch(() => {
 				// Resume is a hint, not load-bearing — drop silently.

@@ -59,6 +59,27 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => void): {
 	resolved: () => void;
 	reset: () => void;
 } {
-	void refresh;
-	return { row: () => {}, resolved: () => {}, reset: () => {} };
+	let row: HistoryEntry | null = null;
+	let answered = false;
+	let ran = false;
+	const fire = () => {
+		if (ran || !answered || !row) return;
+		ran = true;
+		refresh(row);
+	};
+	return {
+		row: (entry) => {
+			row = entry;
+			fire();
+		},
+		resolved: () => {
+			answered = true;
+			fire();
+		},
+		reset: () => {
+			row = null;
+			answered = false;
+			ran = false;
+		}
+	};
 }
