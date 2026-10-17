@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Hls from 'hls.js';
+import { m } from '$lib/paraglide/messages';
 import { armQuality, qualityPin } from './arm-quality';
 import {
 	HEALTHY_BUFFER_S,
@@ -7,7 +8,7 @@ import {
 	SEEK_GRACE_MS,
 	STEP_DOWN_COOLDOWN_MS
 } from './quality-governor';
-import type { QualityView } from './quality-menu';
+import { qualityMenu, type QualityView } from './quality-menu';
 
 const E = Hls.Events;
 const D = Hls.ErrorDetails;
@@ -740,6 +741,35 @@ describe('armQuality — levels hls.js removes', () => {
 		s.at(10_000 + HEALTHY_WINDOWS_MS[0]);
 		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 0 } });
 		expect(s.engine.loads.at(-1)).toBe(1);
+	});
+
+	it('the menu lists levels in the order the player moves through them, named as encoded', () => {
+		// Two variants tagged 720p; the higher-bitrate one turns out to be
+		// encoded at 480p. The player's "below" and "above" follow the
+		// playlists, so the menu does too: a step down or a pin's re-seat
+		// is always a row further down, whatever the labels say.
+		const ladder = [
+			{ height: 360, bitrate: 800_000 },
+			{ height: 720, bitrate: 2_000_000 },
+			{ height: 720, bitrate: 3_000_000 }
+		];
+		const s = armObjects('best', ladder);
+		for (const [level, height] of [
+			[1, 720],
+			[2, 480]
+		]) {
+			s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
+				frag: { type: 'main', level },
+				tracks: { video: { metadata: { width: 1, height } } }
+			});
+		}
+		const menu = qualityMenu(s.lastView() ?? null);
+		expect(menu?.items.map((i) => i.key)).toEqual(['auto', 2, 1, 0]);
+		expect(menu?.items[1].label).toBe(m.play_quality_height({ height: '480' }));
+		// The log names a level by both heights when they differ.
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		expect(s.logs.join('\n')).toMatch(/stall: 480p \(level 2, listed 720p.*→ 720p \(level 1/);
 	});
 
 	it('a pin is kept at the playlist height of the level picked, whatever it was encoded at', () => {
