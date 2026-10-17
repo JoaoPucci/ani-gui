@@ -714,6 +714,49 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.lastView()?.levels.map((l) => l.height)).toEqual([240, 480, 720]);
 	});
 
+	it('the policy keeps reading playlist heights after a removal, whatever a segment revealed', () => {
+		// Two variants tagged 720p; the one the setting holds is removed,
+		// and the survivor's segments turned out to be encoded at 1080p.
+		// The ceiling is the 720p-tagged survivor, so after a stall Auto
+		// climbs back to it.
+		const ladder = [
+			{ height: 360, bitrate: 800_000 },
+			{ height: 720, bitrate: 2_000_000 },
+			{ height: 720, bitrate: 3_000_000 }
+		];
+		const s = armObjects('720', ladder);
+		expect(s.engine.loads).toEqual([2]);
+		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 1 },
+			tracks: { video: { metadata: { width: 1920, height: 1080 } } }
+		});
+		s.remove(2);
+		// The menu names the survivor by what it is encoded at.
+		expect(s.lastView()?.levels[1].height).toBe(1080);
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		expect(s.engine.loads.at(-1)).toBe(0);
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(10_000 + HEALTHY_WINDOWS_MS[0]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 0 } });
+		expect(s.engine.loads.at(-1)).toBe(1);
+	});
+
+	it('a pin is kept at the playlist height of the level picked, whatever it was encoded at', () => {
+		const s = armObjects();
+		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 0 },
+			tracks: { video: { metadata: { width: 854, height: 480 } } }
+		});
+		s.control.pick(0);
+		expect(qualityPin.get()).toBe(360);
+		// A full replacement re-pins by that same playlist height.
+		const fresh = s.engine.levels.map((l) => ({ ...l }));
+		s.engine.levels = fresh;
+		s.engine.emit(E.LEVELS_UPDATED, { levels: fresh });
+		expect(s.lastView()?.pinned).toBe(0);
+	});
+
 	it('a pinned level removed re-seats at the nearest level below it, still pinned', async () => {
 		const s = armObjects();
 		s.control.pick(1);
