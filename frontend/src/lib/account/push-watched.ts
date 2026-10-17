@@ -1,7 +1,7 @@
 // Fan-out trigger for write-back: on mark-watched, push the episode
 // the user just watched to every connected tracker. Renderer-driven
 // (the backend is stateless) — we hold the per-provider bearers, so
-// the renderer orchestrates the calls. Green commit implements.
+// the renderer orchestrates the calls.
 
 import type { ListEntry, Provider } from './types';
 import { updateProgress } from './api';

@@ -74,7 +74,7 @@ describe('pushWatchedToTrackers finale status', () => {
 
 	it('sends no status at the latest episode of a still-airing series', async () => {
 		// Codex P2 #3387184082: the playable cap for an airing show is
-		// the latest released episode, so episode >= cap is true — but a
+		// the latest released episode, so the episode reaches the cap — but a
 		// non-finished series must not be completed (progress only).
 		const { d, calls } = deps();
 		await pushWatchedToTrackers(d, 'kitsu-12', 12, 12, false);
