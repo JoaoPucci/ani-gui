@@ -10,6 +10,7 @@ fn entry(title: &str, watched_at: Option<i64>, kitsu_id: Option<&str>) -> Histor
         title: title.into(),
         watched_at,
         kitsu_id: kitsu_id.map(str::to_owned),
+        own_number: false,
     }
 }
 
@@ -107,7 +108,7 @@ proptest! {
             id: "hianime:x-1".into(),
             title: title.clone(),
             watched_at: moment,
-            kitsu_id: kitsu.clone(),
+            kitsu_id: kitsu.clone(), own_number: false,
         };
         prop_assert_eq!(parse(&serialize(std::slice::from_ref(&row))), vec![row]);
     }

@@ -13,14 +13,18 @@ use crate::history::{read_all, HistoryEntry};
 // complexity bar; callers reach it here as before.
 pub use super::history_remove::{history_clear, history_delete};
 
-/// Translate a row's on-disk `ep_no` — the provider's numbering,
-/// which the history file keys on — back to the per-entry (Kitsu) numbering
-/// every GUI surface counts in, using the offset the resolver
-/// stamped for the row's slug. Rows without a stamp pass through
-/// unchanged: that is the no-shift case, and the pre-stamp behavior
-/// for shows the GUI never resolved.
+/// The row's episode in the per-entry (Kitsu) numbering every GUI
+/// surface counts in. A row in the app's own numbering already is one.
+/// A row from before holds the provider slot it resolved to, which is
+/// translated back through the offset and display stamp the resolver
+/// stamped for the row's slug; a row without a stamp passes through
+/// unchanged, the no-shift case.
 fn to_kitsu_numbering(state: &crate::app::AppState, mut entry: HistoryEntry) -> HistoryEntry {
-    entry.ep_no = crate::commands::numbering_offset::read_ep_no(state, &entry.id, &entry.ep_no);
+    // A row in the app's own numbering is already the episode; only a
+    // provider slot needs the sidecar.
+    if !entry.own_number {
+        entry.ep_no = crate::commands::numbering_offset::read_ep_no(state, &entry.id, &entry.ep_no);
+    }
     entry
 }
 

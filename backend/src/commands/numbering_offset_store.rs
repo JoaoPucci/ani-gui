@@ -1,7 +1,8 @@
 //! The offsets store's file format and locked I/O — split from the
 //! translation boundary for the per-file complexity bar. One TSV
 //! row per slug: `slug\toffset[\tslot\ttag]`, the optional pair
-//! being the last watch's display stamp.
+//! being the display stamp the last displaced watch left before rows
+//! recorded the app's own number.
 
 use std::path::{Path, PathBuf};
 
@@ -26,11 +27,11 @@ fn lock_path(store: &Path) -> PathBuf {
     store.with_file_name("ani-gui-offsets.lock")
 }
 
-/// One store row: the slug's offset plus, when the last native
-/// watch landed on a row whose display tag differs from its slot,
-/// that (slot, tag) pair — the bridge that lets the history file
-/// carry the slot a resume looks up while the read boundary presents
-/// the display identity.
+/// One store row: the slug's offset plus, when the last displaced
+/// watch before rows recorded the app's own number landed on a row
+/// whose display tag differs from its slot, that (slot, tag) pair —
+/// the bridge that lets such a row, which holds the slot, read back
+/// as the episode it was.
 ///
 /// The slot is stored for this app and no other. Nothing outside it
 /// reads this file: it sits beside a history the CLI cannot reach,
@@ -48,9 +49,7 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
         Some(row) => {
             row.offset = offset;
             // An offset-only put must not erase the display
-            // stamp — every fresh resolve re-stamps the offset,
-            // and the last fractional watch has to stay
-            // translatable until something replaces it.
+            // stamp: the rows from before read through it.
             if display.is_some() {
                 row.display = display;
             }

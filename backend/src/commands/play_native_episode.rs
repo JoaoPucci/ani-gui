@@ -159,8 +159,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
 }
 
 /// A resolved episode: the playable URL plus the matched row's slot
-/// and display tag — the slot is what a resume looks the row up by in
-/// the provider listing, the tag what the GUI displays.
+/// (its position in the provider's listing) and display tag.
 #[derive(Debug)]
 pub struct ResolvedEpisode {
     /// The validated master-playlist URL.
@@ -171,7 +170,7 @@ pub struct ResolvedEpisode {
     /// The sidecar subtitle tracks the provider listed beside it.
     pub subtitles: Vec<SubtitleTrack>,
     /// The row's integer `number` — the provider's own position for
-    /// it, which is how a later resume finds this row again.
+    /// it.
     pub slot: u32,
     /// The row's display tag, when it carries one.
     pub tag: Option<String>,

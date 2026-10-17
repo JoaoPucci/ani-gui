@@ -59,6 +59,7 @@ fn list_translates_provider_numbering_back_to_kitsu() {
                 title: "The Sequel".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "5".into(),
@@ -66,6 +67,7 @@ fn list_translates_provider_numbering_back_to_kitsu() {
                 title: "Plain Show".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -90,6 +92,7 @@ fn by_kitsu_translates_provider_numbering_back_to_kitsu() {
             title: "The Sequel".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -115,6 +118,7 @@ fn by_kitsu_returns_the_matching_entry() {
                 title: "Show A (10 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "12".into(),
@@ -122,6 +126,7 @@ fn by_kitsu_returns_the_matching_entry() {
                 title: "Show B (24 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -151,6 +156,7 @@ fn by_kitsu_returns_none_when_no_history_entry_maps_to_id() {
             title: "Show A (10 episodes)".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -188,6 +194,7 @@ fn delete_removes_matching_row_and_preserves_others() {
                 title: "Show A".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "12".into(),
@@ -195,6 +202,7 @@ fn delete_removes_matching_row_and_preserves_others() {
                 title: "Show B".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "3".into(),
@@ -202,6 +210,7 @@ fn delete_removes_matching_row_and_preserves_others() {
                 title: "Show C".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ],
     )
@@ -231,6 +240,7 @@ fn delete_unknown_id_is_idempotent_no_op() {
             title: "Show A".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -266,6 +276,7 @@ fn delete_with_empty_id_returns_false() {
             title: "Show A".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -289,6 +300,7 @@ fn list_then_clear_round_trip() {
             title: "T (10 episodes)".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();
@@ -318,6 +330,7 @@ fn by_kitsu_reads_the_kitsu_id_the_row_records() {
                 title: "There Is Also a Hole in the Student Organization!".into(),
                 watched_at: None,
                 kitsu_id: Some("49877".into()),
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "5".into(),
@@ -325,6 +338,7 @@ fn by_kitsu_reads_the_kitsu_id_the_row_records() {
                 title: "Here is Greenwood".into(),
                 watched_at: None,
                 kitsu_id: Some("1623".into()),
+                own_number: false,
             },
         ],
     )
@@ -358,6 +372,7 @@ fn row(id: &str, title: &str) -> HistoryEntry {
         title: title.into(),
         watched_at: None,
         kitsu_id: Some("49877".into()),
+        own_number: false,
     }
 }
 

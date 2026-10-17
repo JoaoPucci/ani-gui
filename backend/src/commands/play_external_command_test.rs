@@ -185,12 +185,11 @@ async fn an_external_play_lands_in_history_under_the_provider_slug() {
 }
 
 #[tokio::test]
-async fn an_external_play_records_the_provider_slot_not_the_display_number() {
-    // The history file speaks the provider's numbering: the script's
-    // reader greps the stored number against the show's own listing.
-    // On a show with a recap, display episode 4 is slot 5 — storing
-    // the display number points the row at the recap instead, and
-    // the rail then offers to resume "3.5".
+async fn an_external_play_records_the_episode_the_user_played() {
+    // On a show with a recap, episode 4 is slot 5. The row records the
+    // app's own number, 4, marked as such: a slot read back through the
+    // numbering sidecar named another episode once a later resolve
+    // moved its one stamp.
     let mock = MockServer::start().await;
     let provider = Arc::new(stub_provider_with_a_recap(&mock, "the show"));
     let dir = tempfile::tempdir().expect("tmp");
@@ -210,9 +209,10 @@ async fn an_external_play_records_the_provider_slot_not_the_display_number() {
 
     let hsts = std::fs::read_to_string(&state.history_path).expect("history written");
     let ep_no = hsts.split_whitespace().next().expect("a history row");
-    assert_eq!(
-        ep_no, "5",
-        "the row must carry the resolved provider slot, not the display tag: {hsts}"
+    assert_eq!(ep_no, "4", "the row carries the episode played: {hsts}");
+    assert!(
+        hsts.contains("\tThe Show\tep:own"),
+        "and marks it as the app's own number: {hsts}"
     );
 }
 
@@ -298,6 +298,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
         },
     );
     let before = std::time::SystemTime::now()
@@ -407,6 +408,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
         },
     );
 
@@ -509,6 +511,7 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");
@@ -586,6 +589,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             resolved_slot: Some(2),
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
         },
     );
     crate::history::upsert_and_write(
@@ -596,6 +600,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             title: "The Show".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         },
     )
     .expect("seed row");

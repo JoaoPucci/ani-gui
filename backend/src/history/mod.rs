@@ -62,12 +62,15 @@ use crate::error::Result;
 /// One row of the history file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
-    /// Episode number the user last watched, in the provider's
-    /// numbering. Written after each play — by
-    /// `play_native_record::write_history` on a fresh resolve, and
-    /// directly by `play::write_history_on_cache_hit` when the
-    /// resolution came from cache — so on the next launch the
-    /// "Continue Watching" row knows where to resume.
+    /// Episode number the user last watched. Every write since rows
+    /// carried [`Self::own_number`] stores the app's own number for it
+    /// — the episode the play resolved to, "8" or "7.5" — by
+    /// `play_native_record::write_history` on a fresh resolve,
+    /// `play::write_history_on_cache_hit` on a cache hit, and the
+    /// watch a handoff or mark-watched records. A row from before holds
+    /// the provider's number for it — the slot it resolved to, or the
+    /// display number plus the offset where no listing was at hand —
+    /// which the read boundary translates through the numbering sidecar.
     pub ep_no: String,
     /// The provider's show id — a slug on every row written since the
     /// migration. Older rows carry the retired provider's opaque id
@@ -92,6 +95,13 @@ pub struct HistoryEntry {
     /// before the column, or a play no page stood behind, has none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kitsu_id: Option<String>,
+    /// Whether `ep_no` is the app's own number for the episode — the
+    /// tile's, "8" or "7.5" — rather than a provider slot the read
+    /// boundary translates back through the numbering sidecar. The file's
+    /// concern only: the read boundary has already applied it to what
+    /// the routes return, so it is not part of their JSON.
+    #[serde(default, skip_serializing)]
+    pub own_number: bool,
 }
 
 /// Parse the entire history file into a `Vec<HistoryEntry>`.
@@ -123,13 +133,15 @@ pub fn parse(body: &str) -> Vec<HistoryEntry> {
                 return None;
             }
             let (rest, kitsu_id) = split_kitsu_id(rest);
-            let (title, watched_at) = split_moment(rest);
+            let (rest, watched_at) = split_moment(rest);
+            let (title, own_number) = split_own_number(rest);
             Some(HistoryEntry {
                 ep_no,
                 id,
                 title: title.to_string(),
                 watched_at,
                 kitsu_id,
+                own_number,
             })
         })
         .collect()
@@ -148,6 +160,22 @@ const WATCHED_AT_CEILING_MS: i64 = 4_102_444_800_000;
 
 /// The marker the fifth column starts with.
 const KITSU_MARK: &str = "kitsu:";
+
+/// The column right after the title of a row whose episode is the
+/// app's own number ([`HistoryEntry::own_number`]); a row without it
+/// holds a provider slot. Placed there, not last, because a build from
+/// before it splits the Kitsu id and the moment off the end of the row
+/// and reads the rest as the title: the marker then rides in that
+/// build's title, and the id and the moment still read.
+const OWN_NUMBER_MARK: &str = "ep:own";
+
+/// Split the own-number marker off what follows the id column.
+fn split_own_number(rest: &str) -> (&str, bool) {
+    match rest.rsplit_once('\t') {
+        Some((before, OWN_NUMBER_MARK)) => (before, true),
+        _ => (rest, false),
+    }
+}
 
 /// A Kitsu id as the row may record it: digits and nothing else, once
 /// surrounding whitespace is trimmed. Anything else is not one.
@@ -242,6 +270,10 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
         out.push_str(&e.id);
         out.push('\t');
         out.push_str(&e.title);
+        if e.own_number {
+            out.push('\t');
+            out.push_str(OWN_NUMBER_MARK);
+        }
         if let Some(at) = e.watched_at {
             out.push('\t');
             out.push_str(&at.to_string());
@@ -265,6 +297,7 @@ pub fn serialize(entries: &[HistoryEntry]) -> String {
 pub fn upsert(entries: &mut Vec<HistoryEntry>, new: HistoryEntry) {
     if let Some(existing) = entries.iter_mut().find(|e| e.id == new.id) {
         existing.ep_no = new.ep_no;
+        existing.own_number = new.own_number;
         existing.title = new.title;
         if new.watched_at.is_some() {
             existing.watched_at = new.watched_at;
@@ -348,6 +381,7 @@ mod tests {
             title: format!("Test ({id})"),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }
     }
 
@@ -552,6 +586,7 @@ mod tests {
             title: "New Title".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         };
         upsert(&mut v, updated);
         assert_eq!(v.len(), 3);
@@ -608,6 +643,7 @@ mod tests {
                 title: "Attack on Titan (25 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "3".into(),
@@ -615,6 +651,7 @@ mod tests {
                 title: "Demon Slayer (26 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
             HistoryEntry {
                 ep_no: "1".into(),
@@ -622,6 +659,7 @@ mod tests {
                 title: "Spy x Family (12 episodes)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         ];
         let our_bytes = serialize(&entries);
@@ -669,6 +707,7 @@ mod tests {
                 title: "Test (a)".into(),
                 watched_at: None,
                 kitsu_id: None,
+                own_number: false,
             },
         )
         .unwrap();
@@ -726,6 +765,7 @@ mod tests {
                 title,
                 watched_at,
                 kitsu_id: None,
+                own_number: false,
             })
     }
 
@@ -755,6 +795,7 @@ mod tests {
             id in tsv_field(1, 32),
             segments in proptest::collection::vec(tsv_field(0, 12), 1..4),
             watched_at in proptest::option::of(WINDOW_START_MS..WINDOW_END_MS),
+            own_number in proptest::bool::ANY,
         ) {
             let title = segments.join("\t");
             // A stampless row whose title already ends in something
@@ -762,7 +803,9 @@ mod tests {
             // window narrows but cannot close; it is not a claim
             // this property makes.
             prop_assume!(watched_at.is_some() || !tail_reads_as_a_watch(&title));
-            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None };
+            // Nor does it claim a title ending in the marker column.
+            prop_assume!(own_number || !title.ends_with("\tep:own"));
+            let entry = HistoryEntry { ep_no, id, title, watched_at, kitsu_id: None, own_number };
             let parsed = parse(&serialize(std::slice::from_ref(&entry)));
             prop_assert_eq!(parsed, vec![entry]);
         }
@@ -823,3 +866,7 @@ mod kitsu_column_tests;
 #[cfg(test)]
 #[path = "guard_test.rs"]
 mod guard_tests;
+
+#[cfg(test)]
+#[path = "own_number_test.rs"]
+mod own_number_tests;

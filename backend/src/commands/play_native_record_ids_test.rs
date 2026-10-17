@@ -154,6 +154,7 @@ fn a_title_match_naming_an_id_that_is_not_digits_is_not_stored() {
             title: watch.title.clone(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .unwrap();

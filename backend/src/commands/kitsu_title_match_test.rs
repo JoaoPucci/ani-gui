@@ -94,6 +94,7 @@ fn a_bare_rows_title_match_lives_under_the_legacy_segment() {
             title: "Stone Ocean".into(),
             watched_at: None,
             kitsu_id: None,
+            own_number: false,
         }],
     )
     .expect("history");

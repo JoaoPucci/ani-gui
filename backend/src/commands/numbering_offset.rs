@@ -1,13 +1,22 @@
-//! Provider-numbering offset store — the bridge between the two
-//! numbering spaces the history file has to span.
+//! Provider-numbering offset store — the bridge that keeps history rows
+//! from before rows recorded the app's own number readable.
 //!
 //! A provider can carry a franchise's cumulative episode count into
 //! continuation cours — anidb.app listed TYBW's fourth part as 41 and
-//! 42 — and a resume looks the stored `ep_no` up in that provider's
-//! list, so the history file speaks PROVIDER numbering. Every GUI
-//! surface counts per-entry like Kitsu. The resolver computes the shift
-//! once per show; this module persists it keyed by show key so the
-//! history writers can add it and the read boundary can subtract it.
+//! 42 — and rows written then hold the provider's number for the
+//! episode: the slot a watch resolved to, or, for a write with no
+//! listing at hand, the display number plus the offset. Every GUI
+//! surface counts per-entry like Kitsu, and every row written now
+//! records that number itself, marked as such
+//! ([`crate::history::HistoryEntry::own_number`]). For the rows from
+//! before, the resolver's shift is persisted per show key, with the
+//! (slot, tag) display stamp the last displaced resolve left — warms
+//! included, so a row past a recap whose stamp a warm moved before
+//! this build reads one episode high until its show is next watched —
+//! and the read boundary subtracts and translates through them. A
+//! resolve stamps the offset only for a show with no row here, and no
+//! longer stamps the displaced row it lands on, so neither moves to
+//! another row under such a row.
 //! The rows anidb.app's resolves stamped stay: they are what keeps the
 //! history rows from its days readable.
 //! A show the GUI never resolved has no stamp and reads as offset 0,
@@ -26,16 +35,16 @@ use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
 
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
-/// Last write wins, so a re-resolve can correct a stale stamp.
+/// Last write wins; resolves call it only for a show with no row yet.
 pub fn put(state: &AppState, slug: &str, offset: u32) {
     merge_row(state, slug, offset, None);
 }
 
-/// Persist the slug's offset together with the last watch's
-/// (slot, display tag) pair — written when a native resolve lands
-/// on a row whose display differs from its slot, so the history can
-/// carry the slot a resume needs while the read boundary translates
-/// it back for display. Last write wins, like the offset.
+/// Test setup only: no resolve stamps the row it lands on now. Persist the
+/// slug's offset together with a (slot, display tag) pair, the stamp
+/// a displaced watch left before rows recorded the app's own number.
+/// Last write wins, like the offset.
+#[cfg(test)]
 pub fn put_display(state: &AppState, slug: &str, offset: u32, slot: u32, tag: &str) {
     merge_row(state, slug, offset, Some((slot, tag.to_string())));
 }
@@ -57,6 +66,12 @@ pub fn display_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
     parse(&body).into_iter().find(|r| r.slug == slug)?.display
 }
 
+/// Whether the slug has a row in the store at all.
+pub fn has(state: &AppState, slug: &str) -> bool {
+    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
+    parse(&body).iter().any(|r| r.slug == slug)
+}
+
 /// The slug's stamped numbering offset; 0 on a missing row or an
 /// unreadable file — the no-shift case.
 pub fn get(state: &AppState, slug: &str) -> u32 {
@@ -65,22 +80,6 @@ pub fn get(state: &AppState, slug: &str) -> u32 {
         .into_iter()
         .find(|r| r.slug == slug)
         .map_or(0, |r| r.offset)
-}
-
-/// The ep_no a listing-less writer (mark-watched, cache-hit) should
-/// store for `episode`: the offset translation, except when the
-/// provider-space value names the stamped display tag — by numeric
-/// identity, since the frontend normalizes — in which case the slot
-/// is written instead, because that is what a resume looks the row up
-/// by in the provider listing.
-pub fn write_ep_no(state: &AppState, slug: &str, episode: &str, offset: u32) -> String {
-    let provider = provider_ep_no(episode, offset);
-    if let Some((slot, tag)) = display_stamp(state, slug) {
-        if super::play_native_episode::tag_matches(&tag, &provider) {
-            return slot.to_string();
-        }
-    }
-    provider
 }
 
 /// The per-entry (Kitsu-space) reading of a stored row: the stamped
