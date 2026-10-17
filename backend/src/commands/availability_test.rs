@@ -31,6 +31,7 @@ fn numbered(ids: &[u64]) -> Vec<EpisodeRef> {
             id: *id,
             number,
             number2: None,
+            former_tag: None,
         })
         .collect()
 }
@@ -1416,21 +1417,25 @@ async fn a_native_probe_reports_the_listings_fractional_extras() {
                         id: 311,
                         number: 1,
                         number2: None,
+                        former_tag: None,
                     },
                     EpisodeRef {
                         id: 312,
                         number: 2,
                         number2: None,
+                        former_tag: None,
                     },
                     EpisodeRef {
                         id: 313,
                         number: 3,
                         number2: Some("2.5".into()),
+                        former_tag: None,
                     },
                     EpisodeRef {
                         id: 314,
                         number: 4,
                         number2: Some("3".into()),
+                        former_tag: None,
                     },
                 ],
             )
@@ -1647,11 +1652,13 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
                         id: 941,
                         number: 41,
                         number2: None,
+                        former_tag: None,
                     },
                     EpisodeRef {
                         id: 942,
                         number: 42,
                         number2: None,
+                        former_tag: None,
                     },
                 ],
             )
@@ -2113,8 +2120,8 @@ async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v19:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v19:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v20:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v20:kid-1:dub");
 }
 
 /// A verdict the picker stamped before a dated entry with a count

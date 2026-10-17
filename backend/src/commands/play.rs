@@ -157,6 +157,8 @@ fn write_history_on_cache_hit(
             return Ok(());
         }
         held.upsert(entry)?;
+        // The row holds the cached slot now: the stamp names it.
+        crate::commands::play_cache::restamp_cached(state, cached);
         held.played_from(&cached.show_id, asked.page);
         Ok::<_, AniError>(())
     });
@@ -325,6 +327,7 @@ where
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        stamps_beside: Some(&state.history_path),
     };
     // Against the providers in order — starting from the one a
     // positive availability row remembers — and bounded: a provider
@@ -390,10 +393,17 @@ where
         &native.extra_tags,
     )
     .await;
-    crate::commands::play_native_record::stamp_numbering(state, &native, asked);
-    // Prefetches stay out of the user's history exactly as before.
-    if !args.prefetch {
-        crate::commands::play_native_record::write_history(state, &native, &args.episode, asked);
+    // Only a play that records its watch moves the display stamp, and
+    // prefetches stay out of the user's history.
+    if args.prefetch {
+        crate::commands::play_native_record::stamp_numbering_unwatched(state, &native, asked);
+    } else {
+        crate::commands::play_native_record::record_fresh_watch(
+            state,
+            &native,
+            &args.episode,
+            asked,
+        );
     }
 
     let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {
@@ -425,20 +435,47 @@ where
     // in hand from the walk, `write_history_on_cache_hit` reads it
     // back from here. Nothing outside this app writes that file.
     // Written whatever cache_resolutions says: the row doubles as the
-    // watch metadata /api/play/mark-watched reads back (show identity,
+    // watch metadata /api/play/mark-watched reads back — under the
+    // episode the session plays, which the renderer marks watched (show identity,
     // title, the numbering slot this resolve stamped) — only the
     // REPLAY reads are the user's cache_resolutions call. Every fresh
     // resolve overwriting the row also keeps that metadata current.
     // From here on, the one thing that withholds it is the show's
     // removal from history since this play began.
-    play_resolution_cache::store(state, asked, &cache_key, &cached_resolution);
+    //
+    // The episode the session plays, and the number an earlier version
+    // gave it: the player follows the one, a position kept from then
+    // is under the other. A resolve the request named by a tag its row
+    // no longer carries is kept under the episode it played, so the
+    // tag answers for the row that carries it now.
+    let episode = crate::commands::play_native_record::matched_episode(&native, &args.episode);
+    let kept_under =
+        if crate::commands::play_native_episode::tag_matches(&episode, args.episode.trim()) {
+            cache_key
+        } else {
+            play_resolution_cache::cache_key(
+                &args.title,
+                &args.mode,
+                quality,
+                &episode,
+                args.year,
+                args.episode_count,
+                args.subtype.as_deref(),
+            )
+        };
+    play_resolution_cache::store(state, asked, &kept_under, &cached_resolution);
 
+    let former_episode = crate::commands::play_native_merge::former_number(&native);
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
         referer: cached_resolution.referer,
         subtitles: cached_resolution.subtitles,
     };
-    create_session_with_kind(state, &session_args, kind)
+    Ok(CreateSessionResponse {
+        episode: Some(episode),
+        former_episode,
+        ..create_session_with_kind(state, &session_args, kind)?
+    })
 }
 
 /// The cache row a native resolve leaves behind: the stream, the
@@ -455,6 +492,10 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         show_id: native.slug.clone(),
         show_title: native.title.clone(),
         resolved_slot: Some(native.resolved_slot),
+        played: Some(crate::commands::play_native_record::matched_episode(
+            native, "",
+        )),
+        former_episode: crate::commands::play_native_merge::former_number(native),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
     }
@@ -964,6 +1005,8 @@ pub(crate) mod tests {
             resolved_slot: None,
             subtitles: Vec::new(),
             kitsu_id: None,
+            played: None,
+            former_episode: None,
         }
     }
 
@@ -1302,6 +1345,8 @@ pub(crate) mod tests {
                 resolved_slot: Some(1),
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
     }
@@ -1348,6 +1393,8 @@ pub(crate) mod tests {
                 resolved_slot: None,
                 subtitles,
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
     }
@@ -1743,6 +1790,8 @@ pub(crate) mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         let cfg = external_cfg();
@@ -2187,6 +2236,9 @@ mod affinity_tests;
 #[cfg(test)]
 #[path = "play_after_removal_test.rs"]
 mod after_removal_tests;
+#[cfg(test)]
+#[path = "play_played_test.rs"]
+mod played_tests;
 #[cfg(test)]
 #[path = "play_referer_prop_test.rs"]
 mod referer_prop_tests;

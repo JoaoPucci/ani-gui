@@ -144,6 +144,12 @@ pub struct EpisodeRef {
     /// recaps and specials stream under decimal tags ("1061.5"),
     /// and a decimal play request matches this field verbatim.
     pub number2: Option<String>,
+    /// A tag an earlier version gave this row and may have stored in
+    /// the numbering sidecar, when it differs from the row's tag now —
+    /// set only by the stitched listing, whose recap before a
+    /// cumulatively numbered part an earlier version tagged one part
+    /// later. A request for it still finds the row.
+    pub former_tag: Option<String>,
 }
 
 pub use super::show_key::{slug_numeric_id, slug_search_term, slug_words, ShowKey};

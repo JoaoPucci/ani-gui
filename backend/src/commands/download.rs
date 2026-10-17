@@ -214,6 +214,7 @@ where
         expected_count: args.episode_count,
         year: args.year,
         subtype: args.subtype.as_deref(),
+        stamps_beside: Some(&state.history_path),
     };
     let mut forward = |p: crate::commands::progress::ProgressLine| {
         let text = match p {
@@ -290,6 +291,9 @@ where
             }
         };
 
+    // As a play does: a stamp an earlier version wrote with a stitched
+    // row's former tag reads right.
+    crate::commands::numbering_offset::retag_from_resolve(state, &resolved);
     tracing::info!(
         slug = %resolved.slug,
         episode = %args.episode,
@@ -297,7 +301,12 @@ where
         dest = %dest.display(),
         "download: spawning tool on natively resolved stream",
     );
-    let file_stem = format!("{} Episode {}", resolved.title, args.episode);
+    // Named for the episode it plays, or for the number an earlier
+    // version gave it where that version's download is in the folder.
+    let played = crate::commands::play_native_record::matched_episode(&resolved, &args.episode);
+    let former = crate::commands::play_native_merge::former_number(&resolved);
+    let file_stem =
+        super::download_names::episode_stem(&dest, &resolved.title, &played, former.as_deref());
     let source = StreamSource {
         master_url: resolved.master_url,
         referer: resolved.referer,

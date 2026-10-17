@@ -21,10 +21,18 @@ pub(in crate::commands::numbering_offset) fn parse(body: &str) -> Vec<Row> {
                 }
                 _ => None,
             };
+            // Optional fifth+sixth: the (slot, tag) a repair replaced.
+            let former = match (cols.next(), cols.next()) {
+                (Some(slot), Some(tag)) if !tag.is_empty() => {
+                    slot.trim().parse().ok().map(|n| (n, tag.to_string()))
+                }
+                _ => None,
+            };
             Some(Row {
                 slug: slug.to_string(),
                 offset,
                 display,
+                former,
             })
         })
         .collect()
@@ -41,6 +49,12 @@ pub(super) fn serialize(rows: &[Row]) -> String {
             out.push_str(&slot.to_string());
             out.push('\t');
             out.push_str(tag);
+            if let Some((slot, tag)) = &row.former {
+                out.push('\t');
+                out.push_str(&slot.to_string());
+                out.push('\t');
+                out.push_str(tag);
+            }
         }
         out.push('\n');
     }

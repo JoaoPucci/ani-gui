@@ -24,6 +24,13 @@ use crate::app::AppState;
 mod numbering_offset_store;
 use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
 
+#[path = "numbering_offset_former.rs"]
+mod former;
+pub use former::{
+    former_stamp, put_watched_display, retag_display, retag_from_listing, retag_from_resolve,
+    stamp_beside,
+};
+
 /// Persist the slug's numbering offset. Best-effort — a failed write
 /// degrades to the unstamped (offset 0) read, never breaks a play.
 /// Last write wins, so a re-resolve can correct a stale stamp.
@@ -118,8 +125,8 @@ pub fn kitsu_ep_no(ep_no: &str, offset: u32) -> String {
     match ep_no.trim().parse::<u32>() {
         Ok(n) if n > offset => (n - offset).to_string(),
         Ok(_) => ep_no.to_string(),
-        // per_entry_fraction keeps its own at-or-below-offset
-        // pass-through, mirroring the integer rule.
+        // per_entry_fraction passes a fraction below the offset
+        // through; one at the offset is the recap before episode 1.
         Err(_) => super::play_native_numbering::per_entry_fraction(ep_no.trim(), offset),
     }
 }

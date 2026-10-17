@@ -68,7 +68,7 @@ async fn the_handoff_resolves_through_the_native_walk() {
     let server = stub_provider();
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server);
-    let (launch, _watch) =
+    let (launch, _watch, _display) =
         super::play_handoff::resolve_launch_args(&state, &args_for(), asked_now(&state))
             .await
             .expect("the native walk resolves the stream");
@@ -165,6 +165,7 @@ fn launch_args_carry_the_resolves_sidecar_tracks() {
             default: true,
             url: "https://cdn.example/x/subs/en.vtt".into(),
         }],
+        former_tags: Vec::new(),
     };
     let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
     assert_eq!(
@@ -188,6 +189,7 @@ fn launch_args_carry_the_resolves_referer() {
         provider: crate::scraper::provider::ProviderId::TestA,
         referer: referer.map(str::to_string),
         subtitles: Vec::new(),
+        former_tags: Vec::new(),
     };
     let with = super::play_handoff::launch_args_for(
         native(Some("https://embed.example/")),
@@ -225,6 +227,7 @@ fn launch_args_lead_with_the_providers_default_track() {
         resolved_tag: None,
         referer: None,
         subtitles: vec![track("ar", false), track("en", true), track("es", false)],
+        former_tags: Vec::new(),
     };
     let launch = super::play_handoff::launch_args_for(native, &args_for(), &cfg);
     assert_eq!(
@@ -297,7 +300,7 @@ async fn the_resolve_records_no_watch_before_the_spawn() {
     let server = stub_provider();
     let td = tempfile::tempdir().expect("td");
     let state = state_for(&td, &server);
-    let (_launch, _native) =
+    let (_launch, _native, _display) =
         super::play_handoff::resolve_launch_args(&state, &args_for(), asked_now(&state))
             .await
             .expect("the native walk resolves the stream");

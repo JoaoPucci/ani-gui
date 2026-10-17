@@ -40,6 +40,10 @@ use crate::commands::session::{
 };
 use crate::scraper::provider::{ProviderId, ShowKey};
 
+#[path = "play_cache_restamp.rs"]
+mod restamp;
+pub(crate) use restamp::{restamp_after_handoff, restamp_cached, restamp_recorded};
+
 /// The provider a cached row was resolved through: the one its show
 /// key names. A bare key — anidb.app's, written before its removal —
 /// names none, and so does the empty key of a row from before the
@@ -196,6 +200,10 @@ pub(crate) async fn try_serve_cached(
     // retryable (cache hit can be evicted + re-resolved) or terminal
     // (fresh fetch, no cache to clear).
     resp.cache_hit = true;
+    // The episode the resolve behind the row played; a row from before
+    // the field names none.
+    resp.episode.clone_from(&cached.played);
+    resp.former_episode.clone_from(&cached.former_episode);
     Some(resp)
 }
 

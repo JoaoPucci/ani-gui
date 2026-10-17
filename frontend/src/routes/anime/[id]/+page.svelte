@@ -30,6 +30,7 @@
 		yearFromKitsuRef,
 		checkAvailability,
 		historyByKitsu,
+		historyNumber,
 		imageProxyUrl,
 		kitsuAnimeDetail,
 		kitsuEpisodes,
@@ -92,11 +93,14 @@
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
+	import { followPlayed } from '$lib/play/played-episode';
 	import { computePlayLabel, isSingleVideo } from '$lib/detail/play-label';
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
-	import { markStarted, readPosition } from '$lib/play/watch-position';
+	import { markStarted, movePosition, readPosition } from '$lib/play/watch-position';
+	import { joinResumeRefresh, refreshedResume } from '$lib/detail/resume-refresh';
+	import { settledWithin } from '$lib/detail/resume-join';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
@@ -256,6 +260,8 @@
 	}
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
 		applyAvailabilityPatch(writeback.refresh(refresh));
+		// The re-probe paid for a listing: the resume row is read again.
+		resumeRefresh.again();
 	}
 	const capGate = createCapGateProbe({
 		probe: async () => {
@@ -768,12 +774,64 @@
 					check: checkAvailability,
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
-					setResolved: (r) => (availabilityResolved = r),
+					setResolved: (r) => {
+						availabilityResolved = r;
+						if (r) resumeRefresh.resolved();
+						else resumeRefresh.unresolved();
+					},
 					setListed: (l) => (warmListed = l)
 				}
 			)
 		);
 	});
+
+	// The resume row read again once the lookup answered: it paid for
+	// the listing that can put the row's numbering right.
+	// The warms whose answer has asked the resume row to be read again.
+	const warmsAnswered = new WeakSet<Promise<unknown>>();
+	/** How long a click waits on the resume row being read again. */
+	const RESUME_WAIT_MS = 15_000;
+	// Once the row has arrived and the lookup has answered, in either
+	// order.
+	const resumeRefresh = joinResumeRefresh((entry) => readResumeAgain(entry));
+	async function readResumeAgain(entry: HistoryEntry) {
+		const showId = id;
+		if (!showId) return;
+		// No measured cap means no listing stood behind the lookup.
+		const warm =
+			playableEpisodeCount === null && detail ? (ep: number) => warmResume(ep) : undefined;
+		const next = await refreshedResume(
+			entry,
+			showId,
+			historyNumber,
+			(k, f, t) => movePosition(k, f, t),
+			warm
+		);
+		// The row the refresh read, still the page's: compared by value,
+		// since the page keeps its own copy of the row.
+		const same = resumeEntry?.id === entry.id && resumeEntry?.ep_no === entry.ep_no;
+		if (next && id === showId && same) {
+			resumeEntry = next;
+			// The next lookup's refresh reads again against this row.
+			resumeRefresh.row(next);
+		}
+	}
+
+	// A resolve of the resume episode that records no watch.
+	function warmResume(ep: number) {
+		const d = detail;
+		const title = playTitle();
+		if (!d || !title) return Promise.resolve();
+		const args = playArgsFor({
+			title,
+			episode: ep,
+			mode: playMode(config),
+			quality: playQuality(config),
+			show: d,
+			kitsuId: d.id
+		});
+		return playStream({ ...args, prefetch: true }, () => {});
+	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
 	// dominant otherwise); expands on user request.
@@ -798,6 +856,8 @@
 	// disable themselves to keep the user from double-clicking into a second resolve
 	// into a stack of concurrent spawns.
 	let actionBusy = $state(false);
+	// A click waiting on the resume row being read again.
+	let resumeWaiting = $state(false);
 	let actionProgress = $state<string | null>(null);
 
 	// The show's live list entry, folded from EVERY connected tracker so the
@@ -957,12 +1017,14 @@
 		playableEpisodeCount = null;
 		extraEpisodes = [];
 		resumeEntry = null;
+		resumeRefresh.reset();
 		resetEpisodePageCache(kitsuPageCache);
 		const detailServed = kitsuAnimeDetail(currentId);
 		void lookupResume(currentId, historyByKitsu, detailServed)
 			.then((h) => {
 				if (id !== currentId) return;
 				resumeEntry = h;
+				resumeRefresh.row(h);
 			})
 			.catch(() => {
 				// Resume is a hint, not load-bearing — drop silently.
@@ -1095,9 +1157,22 @@
 				kitsuId: id,
 				prefetch: true
 			});
-			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
+			const warmedVisit = visit;
+			const warm = getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
 				playStream(args, emit, signal)
-			).catch(() => {
+			);
+			// The warm paid for a listing: the resume row is read again —
+			// once per warm, not on every re-run that finds it cached.
+			if (!warmsAnswered.has(warm)) {
+				warmsAnswered.add(warm);
+				void warm.then(
+					() => {
+						if (visit === warmedVisit) resumeRefresh.again();
+					},
+					() => {}
+				);
+			}
+			void warm.catch(() => {
 				/* the click handler will see the error if it ever fires;
 				 *  unmount-cancel rejects with "aborted" which we swallow */
 			});
@@ -1373,8 +1448,17 @@
 			// mode the playable cap is only the dubbed slice (Codex P2
 			// #3387467149) — and only for a finished series (Codex P2
 			// #3387184082).
+			// The episode the session plays: the request may have named it
+			// by a number it no longer carries.
+			const played = followPlayed(owner.showId, outcome.session, ep);
 			recordPlayed(
-				{ args: playArgs, showId: owner.showId, episode: ep, show, mirror: true },
+				{
+					args: { ...playArgs, episode: String(played) },
+					showId: owner.showId,
+					episode: played,
+					show,
+					mirror: true
+				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
 			);
 			if (outcome.current) {
@@ -1383,7 +1467,7 @@
 				// lint rule only recognises a literal `goto(resolve(...))`.
 				/* eslint-disable svelte/no-navigation-without-resolve */
 				void goto(
-					resolve('/play/[id]', { id: owner.showId }) + buildPlayQuery(outcome.session, ep)
+					resolve('/play/[id]', { id: owner.showId }) + buildPlayQuery(outcome.session, played)
 				);
 				/* eslint-enable svelte/no-navigation-without-resolve */
 				return;
@@ -1406,7 +1490,25 @@
 	// primary CTA too (Codex P2 #3565666393).
 	const nothingAiredYet = $derived(airedCap(episodeCap, airing) === 0);
 
-	function onPlay() {
+	/** Waits, busy, while the resume row is being read again — it is
+	 *  the one a click goes on from — for at most a bound; whether the
+	 *  click still belongs to this visit after. */
+	async function resumeRowSettled(): Promise<boolean> {
+		const atVisit = visit;
+		const current = () => visit === atVisit && !gone;
+		resumeWaiting = true;
+		try {
+			await settledWithin(resumeRefresh, RESUME_WAIT_MS, current);
+		} finally {
+			resumeWaiting = false;
+		}
+		// Another action started meanwhile owns the page now.
+		return current() && !actionBusy;
+	}
+
+	async function onPlay() {
+		if (nothingAiredYet || airingIsPending) return;
+		if (resumeRefresh.refreshing() && !(await resumeRowSettled())) return;
 		if (nothingAiredYet || airingIsPending) return;
 		void startPlay(defaultEpisode());
 	}
@@ -1423,7 +1525,9 @@
 		})
 		.catch(() => {});
 
-	function onDownload() {
+	async function onDownload() {
+		if (!detail || nothingAiredYet || airingIsPending) return;
+		if (resumeRefresh.refreshing() && !(await resumeRowSettled())) return;
 		if (!detail || nothingAiredYet || airingIsPending) return;
 		const mode = playMode(config);
 		const quality = playQuality(config);
@@ -1585,7 +1689,7 @@
 									class="btn btn-glass"
 									style:--btn-glow="var(--accent)"
 									onclick={onPlay}
-									disabled={actionBusy || nothingAiredYet || airingIsPending}
+									disabled={actionBusy || resumeWaiting || nothingAiredYet || airingIsPending}
 									title={nothingAiredYet ? m.detail_ep_unaired_tooltip() : undefined}
 								>
 									<span aria-hidden="true">▸</span>
@@ -2095,7 +2199,7 @@
 	{/if}
 </main>
 
-<LoadingOverlay visible={actionBusy} progress={actionProgress} />
+<LoadingOverlay visible={actionBusy || resumeWaiting} progress={actionProgress} />
 
 {#if playFailure}
 	<ErrorOverlay

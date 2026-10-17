@@ -64,10 +64,11 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             asked.begun,
         )
         .await;
+        crate::commands::play_cache::restamp_after_handoff(state, args);
         return Ok(());
     }
 
-    let (launch, watch) =
+    let (launch, watch, display) =
         crate::commands::play_handoff::resolve_launch_args(state, args, asked).await?;
     open_syncplay(&syncplay_launch_for(
         launch,
@@ -83,6 +84,9 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
         asked.begun,
     )
     .await;
+    if let Some(display) = &display {
+        crate::commands::play_native_record::put_if_recorded(state, display);
+    }
     Ok(())
 }
 

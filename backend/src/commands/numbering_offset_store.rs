@@ -1,7 +1,8 @@
 //! The offsets store's file format and locked I/O — split from the
 //! translation boundary for the per-file complexity bar. One TSV
-//! row per slug: `slug\toffset[\tslot\ttag]`, the optional pair
-//! being the last watch's display stamp.
+//! row per slug: `slug\toffset[\tslot\ttag[\tslot\ttag]]`, the optional pair
+//! being the last watch's display stamp, and the pair after it the one
+//! a repair of that stamp replaced.
 
 use std::path::{Path, PathBuf};
 
@@ -40,6 +41,10 @@ pub(super) struct Row {
     pub(super) slug: String,
     pub(super) offset: u32,
     pub(super) display: Option<(u32, String)>,
+    /// The (slot, tag) the display stamp named its row by before a
+    /// repair put it right ([`super::retag_display`]); it describes
+    /// the stamp's row only while the stamp names the same slot.
+    pub(super) former: Option<(u32, String)>,
 }
 
 /// The locked read-merge-write every put shares.
@@ -59,6 +64,7 @@ pub(super) fn merge_row(state: &AppState, slug: &str, offset: u32, display: Opti
             slug: slug.to_string(),
             offset,
             display,
+            former: None,
         }),
     };
     if let Err(e) = rewrite(state, merge) {
@@ -73,7 +79,7 @@ pub(super) fn remove_rows(state: &AppState, forget: impl Fn(&Row) -> bool) -> st
 
 /// Read the store, apply `change`, and write it back atomically, under
 /// the process mutex and the cross-process file lock.
-fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> std::io::Result<()> {
+pub(super) fn rewrite(state: &AppState, change: impl FnOnce(&mut Vec<Row>)) -> std::io::Result<()> {
     let path = store_path(&state.history_path);
     let _guard = PUT_LOCK.lock().expect("offset put lock");
     let write = || -> std::io::Result<()> {

@@ -15,6 +15,19 @@ use crate::history::guard::{Asked, Epoch};
 mod record_id;
 use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id};
 
+#[path = "play_native_record_matched.rs"]
+mod matched;
+pub(crate) use matched::matched_episode;
+
+#[path = "play_native_record_unwatched.rs"]
+mod unwatched;
+pub(crate) use unwatched::stamp_numbering_unwatched;
+
+#[path = "play_native_record_display.rs"]
+mod display;
+pub use display::WatchedDisplay;
+pub(crate) use display::{put_if_recorded, record_fresh_watch, watched_display};
+
 /// Stamp the show's numbering offset while it is known.
 ///
 /// The cache-hit and mark-watched writers and the history read
@@ -23,38 +36,18 @@ use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id
 /// its slot, the pair goes in too so the boundary can translate
 /// between the number the provider stores and the one the UI shows.
 ///
-/// Prefetches stamp as well: their resolve is exactly as
-/// authoritative as a click's.
+/// The pair is the watch's: it goes in once the show's history row
+/// holds that slot. A resolve that recorded none — a prefetch, a play
+/// another watch overtook, a handoff whose player did not start —
+/// leaves the pair the row reads through.
 ///
 /// `asked` is the request the resolve served: a show removed from
 /// history since it began is not stamped, the removal having taken its
 /// numbering with the row ([`crate::history::guard`]).
 pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: Asked<'_>) {
-    crate::history::guard::hold(&state.history_path, |held| {
-        if !held.removed_since(asked, &native.slug) {
-            put_numbering(state, native);
-        }
-    });
-}
-
-/// The offset, with the (slot, display tag) pair when they differ.
-fn put_numbering(state: &AppState, native: &NativeResolved) {
-    match &native.resolved_tag {
-        Some(tag)
-            if !crate::commands::play_native_episode::tag_matches(
-                tag,
-                &native.resolved_slot.to_string(),
-            ) =>
-        {
-            crate::commands::numbering_offset::put_display(
-                state,
-                &native.slug,
-                native.numbering_offset,
-                native.resolved_slot,
-                tag,
-            );
-        }
-        _ => crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset),
+    stamp_numbering_unwatched(state, native, asked);
+    if let Some(display) = watched_display(native) {
+        put_if_recorded(state, &display);
     }
 }
 

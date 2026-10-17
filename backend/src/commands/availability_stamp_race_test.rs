@@ -712,6 +712,7 @@ fn stub_one_show_slowly(count: u32) -> std::sync::Arc<TableProvider> {
             id: 5000 + u64::from(n),
             number: n,
             number2: None,
+            former_tag: None,
         })
         .collect();
     let last = 5000 + u64::from(count);
@@ -808,6 +809,7 @@ async fn a_refusal_a_play_overtook_while_it_was_out_is_superseded() {
                         id: 7000 + u64::from(n),
                         number: n,
                         number2: None,
+                        former_tag: None,
                     })
                     .collect::<Vec<_>>(),
             )
