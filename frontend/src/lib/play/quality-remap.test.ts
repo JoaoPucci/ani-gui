@@ -29,37 +29,51 @@ describe('quality remap', () => {
 		]);
 	});
 
-	it('a held level removed moves to the ceiling, or to the nearest loadable level to it', () => {
+	it('a held level removed re-seats below it, or the nearest loadable level to that', () => {
 		const left = [LEVELS[0], LEVELS[1]];
 		const base = {
 			ladder: [0, 1, 2],
 			ceiling: 2,
 			current: 2,
 			engaged: true,
+			pinned: false,
 			unavailable: new Set<number>()
 		};
-		// Ceiling and held level both gone: the setting's level among those left.
-		expect(remapHold(base, [0, 1, -1], left, { kind: 'best' }).current).toBe(1);
-		// That level left unavailable: the nearest below it.
-		const below = remapHold({ ...base, unavailable: new Set([1]) }, [0, 1, -1], left, {
+		const removeTop = [0, 1, -1];
+		// The nearest level below that is left.
+		expect(remapHold(base, removeTop, left, { kind: 'best' }).current).toBe(1);
+		// That level left unavailable: the nearest loadable below it.
+		const below = remapHold({ ...base, unavailable: new Set([1]) }, removeTop, left, {
 			kind: 'best'
 		});
 		expect(below.current).toBe(0);
-		// Nothing below either: the nearest above.
-		const above = remapHold(
-			{ ...base, ceiling: 0, current: 2, unavailable: new Set([0]) },
-			[0, 1, -1],
-			left,
-			{ kind: 'worst' }
-		);
-		expect(above.current).toBe(1);
-		// Nothing loadable at all: the ceiling, for the engine to settle.
-		const none = remapHold(
-			{ ...base, ceiling: 0, current: 2, unavailable: new Set([0, 1]) },
-			[0, 1, -1],
-			left,
-			{ kind: 'worst' }
-		);
-		expect(none.current).toBe(0);
+		// Nothing loadable at all: the seat stands, for the engine to settle.
+		const none = remapHold({ ...base, unavailable: new Set([0, 1]) }, removeTop, left, {
+			kind: 'best'
+		});
+		expect(none.current).toBe(1);
+	});
+
+	it('a pin re-seated below holds; one re-seated above, or released, is let go', () => {
+		const pinned = {
+			ladder: [0, 1, 2],
+			ceiling: 2,
+			current: 0,
+			engaged: true,
+			pinned: true,
+			unavailable: new Set<number>()
+		};
+		const removeBottom = [-1, 0, 1];
+		const above = remapHold(pinned, removeBottom, [LEVELS[1], LEVELS[2]], { kind: 'best' });
+		expect(above.current).toBe(0);
+		expect(above.pinned).toBe(false);
+		const belowKept = remapHold({ ...pinned, current: 1 }, [0, -1, 1], [LEVELS[0], LEVELS[2]], {
+			kind: 'best'
+		});
+		expect(belowKept.current).toBe(0);
+		expect(belowKept.pinned).toBe(true);
+		const one = remapHold({ ...pinned, current: 1 }, [-1, -1, 0], [LEVELS[2]], { kind: 'best' });
+		expect(one.engaged).toBe(false);
+		expect(one.pinned).toBe(false);
 	});
 });
