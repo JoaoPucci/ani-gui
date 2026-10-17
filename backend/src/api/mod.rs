@@ -3120,11 +3120,14 @@ mod tests {
     }
 
     /// A probe that reaches the provider and comes back without a
-    /// verdict — here an entry with a count and no year whose only
+    /// settled verdict — here an entry with a count and no year whose only
     /// fitting hit is refused on how it is named — answers 200 with
-    /// `unsettled: true`, not 404. The renderer reads it as unknown and
-    /// keeps the card and the lazy play; an error status went to its
-    /// console as a failure of a request that in fact succeeded.
+    /// `unsettled: "refused"`, not 404: a normal answer naming why it
+    /// settled nothing, where an error status went to the renderer's
+    /// console as a failure of a request that in fact succeeded. The
+    /// renderer reads a refusal by name as the show not being in the
+    /// catalogue (`$lib/availability/verdict`); every other reason as
+    /// unknown.
     #[tokio::test]
     async fn post_availability_answers_an_unsettled_probe_as_a_normal_answer() {
         use crate::scraper::provider::{BrowseHit, EpisodeRef};
@@ -3171,7 +3174,7 @@ mod tests {
         );
         let body: serde_json::Value =
             serde_json::from_str(&body_string(r).await).expect("a JSON answer");
-        assert_eq!(body["unsettled"], serde_json::Value::Bool(true));
+        assert_eq!(body["unsettled"], "refused", "the answer says why");
         assert_eq!(body["available"], serde_json::Value::Bool(false));
         assert!(body["episode_count"].is_null(), "{body}");
     }

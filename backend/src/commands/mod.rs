@@ -69,6 +69,7 @@ mod play_native_choice;
 mod play_native_count_alone;
 mod play_native_countless;
 mod play_native_dated_name;
+mod play_native_dead_listings;
 pub mod play_native_episode;
 pub mod play_native_format;
 mod play_native_kanji_number;

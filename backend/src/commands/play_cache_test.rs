@@ -558,7 +558,7 @@ fn refresh_verdict() -> crate::commands::availability::AvailabilityResponse {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(crate::scraper::provider::ProviderId::Hianime),
     }
 }

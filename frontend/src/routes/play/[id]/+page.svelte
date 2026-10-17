@@ -998,9 +998,10 @@
 				// being questioned and never reaches the provider.
 				bypass_cache: true
 			});
-			// The whole row, not one field of it — and an unsettled
-			// answer as none. The controller decides which parts of a
-			// fresh answer are safe to write back.
+			// The whole row, not one field of it — an unsettled answer
+			// as none, a refusal by name as the show unavailable. The
+			// controller decides which parts of a fresh answer are safe
+			// to write back.
 			return capGateAnswerFrom(r);
 		},
 		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),

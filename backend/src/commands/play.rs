@@ -649,7 +649,7 @@ pub(crate) mod tests {
                 extra_episodes: vec!["999.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
-                unsettled: false,
+                unsettled: None,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             },
         );
@@ -1569,7 +1569,7 @@ pub(crate) mod tests {
                 extra_episodes: vec!["3.5".into()],
                 episode_count_approximate: false,
                 gate_refused: false,
-                unsettled: false,
+                unsettled: None,
                 provider: Some(crate::scraper::provider::ProviderId::Hianime),
             },
         );

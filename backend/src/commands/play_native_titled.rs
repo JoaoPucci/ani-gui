@@ -62,6 +62,8 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // own detail year positively matched Kitsu's.
     let mut probed_ok: Vec<(&BrowseHit, Vec<EpisodeRef>, u32, bool)> = Vec::new();
     let mut any_transport_failure = false;
+    // What the listings that answered not-found say about the pool.
+    let mut dead = DeadListings::default();
     // Identity carried by transport-DEAD candidates
     // ([`entry_rank`]), with their provider position: a dead
     // candidate that outranks the eventual winner — or ties an
@@ -94,6 +96,7 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                     // further probe repeats the same answer.
                     return Err(e);
                 }
+                let could_win = may_win(h, expected, &needle, entry, year, &pages, year_confirmed);
                 if !matches!(e, crate::error::AniError::Upstream { .. }) {
                     any_transport_failure = true;
                     best_failed = strongest_dead(
@@ -103,8 +106,12 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
                         &needle,
                         year_confirmed,
                         pos,
-                        may_win(h, expected, &needle, entry, year, &pages),
+                        could_win,
                     );
+                } else {
+                    // Answered not-found: a stale listing that may have
+                    // been the entry's, if it could have won.
+                    dead.note(entry, &h.title, could_win);
                 }
                 tracing::debug!(slug = %h.slug, error = ?e, "pick: probe failed, skipping candidate");
             }
@@ -136,16 +143,11 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
     // is healthy — the not-found-shaped verdict, so the breaker never
     // opens on a provider that answered every request. Neither is
     // ever the persistable absence.
-    let best_dist =
-        probed_ok
-            .iter()
-            .map(|(_, _, d, _)| *d)
-            .min()
-            .ok_or(if any_transport_failure {
-                crate::error::AniError::Network
-            } else {
-                crate::error::AniError::Upstream { status: 404 }
-            })?;
+    let best_dist = probed_ok
+        .iter()
+        .map(|(_, _, d, _)| *d)
+        .min()
+        .ok_or_else(|| dead.verdict(any_transport_failure))?;
     // One Kitsu entry the provider lists as several shows: every part
     // was probed, so stitching them costs nothing. Only with every
     // candidate heard — a dead probe may have been one of the parts.
@@ -193,7 +195,11 @@ pub async fn pick_candidate_titled<P: Provider + ?Sized>(
         // got to answer: a transiently dead probe may have hidden
         // the right show, and NoResults rides the walk into a
         // persistable clean miss. Weather stays weather.
-        return Err(rejection(any_transport_failure, refused_a_fit));
+        return Err(rejection(
+            any_transport_failure,
+            dead.refused_or(refused_a_fit),
+            dead.might_decide(&probed_ok, expected, entry),
+        ));
     }
     let (winner_idx, winner_rank) = select_winner(&probed_ok, best_dist, &needle, entry);
     if dead_outranks(best_failed, winner_rank, positions[winner_idx]) {

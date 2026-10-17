@@ -34,6 +34,10 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
         .collect();
     let mut transients = Transients::default();
     let mut any_answered_dead_end = false;
+    // Which dead ends the pools answered: refusals by name, and
+    // candidates whose listings answered not-found.
+    let mut any_refused_by_name = false;
+    let mut any_dead_listings = false;
     for t in std::iter::once(title).chain(alt_titles.iter().map(String::as_str)) {
         match client.search(t).await {
             Ok(hits) => {
@@ -60,12 +64,20 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                             error: e,
                             clean_miss: false,
                             failed_at: None,
+                            refused_by_name: false,
                         });
+                    }
+                    // Refused on how its hits are named: the answered
+                    // dead end, and the walk moves on.
+                    Err(AniError::RefusedByName) => {
+                        any_answered_dead_end = true;
+                        any_refused_by_name = true;
                     }
                     // All-answered-not-found: dead candidates on a
                     // healthy provider; the walk moves on.
                     Err(AniError::Upstream { .. }) => {
                         any_answered_dead_end = true;
+                        any_dead_listings = true;
                     }
                     Err(e) => {
                         transients.note(WalkStage::Pick, e, attempt_at(client));
@@ -77,6 +89,7 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                     error: AniError::Upstream { status },
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             Err(AniError::GateRefused) => {
@@ -84,6 +97,7 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
                     error: AniError::GateRefused,
                     clean_miss: false,
                     failed_at: None,
+                    refused_by_name: false,
                 });
             }
             Err(e) => {
@@ -95,16 +109,21 @@ pub async fn pick_native_walk<P: Provider + ?Sized>(
         return Err(ne);
     }
     if any_answered_dead_end {
+        // A refusal by name when every dead end was one: the catalogue
+        // answered, and lists nothing named for the entry. A dead
+        // listing beside it may have been the entry's.
         return Err(NativeError {
             error: AniError::NoResults,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: any_refused_by_name && !any_dead_listings,
         });
     }
     Err(NativeError {
         error: AniError::NoResults,
         clean_miss: true,
         failed_at: None,
+        refused_by_name: false,
     })
 }
 

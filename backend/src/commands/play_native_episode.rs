@@ -115,6 +115,7 @@ pub async fn resolve_episode<P: Provider + ?Sized>(
         },
         clean_miss: false,
         failed_at: None,
+        refused_by_name: false,
     };
     // A row's identity is its effective display tag — number2 when
     // present, the integer slot otherwise. A recap occupying slot 4
