@@ -59,11 +59,12 @@ async function readRow(
  *  has arrived and the page's availability lookup has answered — in
  *  either order, and again for each later lookup that answers
  *  (`unresolved` as it goes out). `reset` starts a new visit. */
-export function joinResumeRefresh(refresh: (entry: HistoryEntry) => void): {
+export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
 	row: (entry: HistoryEntry | null) => void;
 	resolved: () => void;
 	unresolved: () => void;
 	reset: () => void;
+	settled: () => Promise<void>;
 } {
 	let row: HistoryEntry | null = null;
 	let answered = false;
@@ -86,6 +87,7 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => void): {
 			answered = false;
 			ran = false;
 		},
+		settled: () => Promise.resolve(),
 		reset: () => {
 			row = null;
 			answered = false;
