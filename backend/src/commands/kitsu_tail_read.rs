@@ -89,7 +89,9 @@ impl KitsuTail<'_> {
             episodes.extend(self.page(page).await?);
             last = page;
         }
-        if episodes.iter().all(|e| e.number.is_none_or(|n| n <= count)) {
+        // A count that ends a page already read the page after it.
+        let looked_ahead = count % KITSU_PAGE == 0;
+        if !looked_ahead && episodes.iter().all(|e| e.number.is_none_or(|n| n <= count)) {
             episodes.extend(self.page(last + 1).await?);
         }
         Some(episodes)
