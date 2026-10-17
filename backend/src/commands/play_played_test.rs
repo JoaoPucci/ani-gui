@@ -305,3 +305,103 @@ async fn a_replay_names_the_former_number_its_row_keeps() {
     assert!(resp.cache_hit);
     assert_eq!(resp.former_episode.as_deref(), Some("24.5"));
 }
+
+#[tokio::test]
+async fn a_prefetch_after_a_watched_recap_leaves_the_row_reading_as_the_recap() {
+    // The recap is watched — the row holds its slot, the stamp names it
+    // "0.5" — then the player prefetches episode 1, a displaced row of
+    // its own. The prefetch records no watch, and the row still reads
+    // as the recap.
+    use crate::commands::play_native_test_provider::{
+        cumulative_opening_recap, CUMULATIVE, CUMULATIVE_SLUG,
+    };
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap()));
+    let ask = |episode: &str, prefetch: bool| -> PlayArgs {
+        serde_json::from_value(serde_json::json!({
+            "title": CUMULATIVE,
+            "episode": episode,
+            "mode": "sub",
+            "episode_count": 2,
+            "year": 2026,
+            "prefetch": prefetch,
+        }))
+        .expect("args")
+    };
+    play_with_progress(&state, &ask("0.5", false), |_| {})
+        .await
+        .expect("plays the recap");
+    play_with_progress(&state, &ask("1", true), |_| {})
+        .await
+        .expect("prefetches episode 1");
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        CUMULATIVE_SLUG,
+    )
+    .to_string();
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == key)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "0.5");
+}
+
+#[tokio::test]
+async fn a_watch_marked_on_a_prefetched_recap_reads_back_as_the_recap() {
+    // A click that shared the page's prefetch of the recap records its
+    // watch through mark-watched: the row then reads as the recap,
+    // though only the prefetch resolved it.
+    use crate::commands::play_native_test_provider::{
+        cumulative_opening_recap, CUMULATIVE, CUMULATIVE_SLUG,
+    };
+    use tower::ServiceExt as _;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap()));
+    let asked = serde_json::json!({
+        "title": CUMULATIVE,
+        "episode": "0.5",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+    });
+    let mut prefetch: PlayArgs = serde_json::from_value(asked.clone()).expect("args");
+    prefetch.prefetch = true;
+    play_with_progress(&state, &prefetch, |_| {})
+        .await
+        .expect("prefetches the recap");
+    let router = crate::api::build_api_router(std::sync::Arc::new(state.clone()));
+    let response = router
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/play/mark-watched")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::to_vec(&asked).expect("json"),
+                ))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert!(response.status().is_success());
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        CUMULATIVE_SLUG,
+    )
+    .to_string();
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == key)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "0.5");
+}
