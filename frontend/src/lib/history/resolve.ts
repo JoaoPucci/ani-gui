@@ -45,12 +45,6 @@
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
 import { sharesWords } from './title-words';
 
-/** UI tile count per page in /anime/[id]'s episode grid. Must match
- *  the `UI_PAGE_SIZE` used in that route — the resolver computes
- *  which UI page contains the resumed episode, which only works if
- *  both ends agree. */
-export const EPISODES_UI_PAGE_SIZE = 12;
-
 /** Kitsu's `page[limit]` hard cap on the episodes endpoint. */
 export const EPISODES_KITSU_PAGE_SIZE = 20;
 
@@ -92,8 +86,6 @@ export interface ResumeTarget {
 	 *  `displayEpisode` for single-cour shows; offset by
 	 *  `(cour − 1) × courSize` when a cour suffix was detected. */
 	kitsuEpisode: number | null;
-	/** 1-based UI page of /anime/[id] that contains kitsuEpisode. */
-	uiPage: number;
 
 	/** Diagnostic — which branch of the resolver fired. Surfaced in
 	 *  case we want to log misses or tag cards visually. */
@@ -215,7 +207,6 @@ export function resolveHistoryEntry(
 
 	const kitsuEpisode = kitsuMatch ? displayEpisode : null;
 	const mappingNote: ResumeTarget['mappingNote'] = kitsuMatch ? 'direct' : 'no-kitsu-match';
-	const uiPage = kitsuEpisode ? Math.max(1, Math.ceil(kitsuEpisode / EPISODES_UI_PAGE_SIZE)) : 1;
 
 	// Match the detail page when we have a Kitsu hit; fall through to
 	// the stripped history title only when the resolver couldn't find
@@ -231,7 +222,6 @@ export function resolveHistoryEntry(
 		cour,
 		kitsuId: kitsuMatch?.id ?? null,
 		kitsuEpisode,
-		uiPage,
 		mappingNote,
 		allmangaShowId: entry.id,
 		recordedKitsuId: entry.kitsu_id ?? null
@@ -661,16 +651,4 @@ export function pickKitsuMatch(
 	if (courInTitle) return courInTitle;
 
 	return candidates[0];
-}
-
-/** Compose the query-string portion of a Resume URL — caller appends
- *  it to the route base built via SvelteKit's `resolve()`. Returns an
- *  empty string when there's nothing worth deep-linking (UI page 1,
- *  no episode target). */
-export function resumeQueryString(target: ResumeTarget): string {
-	const params = new URLSearchParams();
-	if (target.uiPage > 1) params.set('page', String(target.uiPage));
-	if (target.kitsuEpisode) params.set('ep', String(target.kitsuEpisode));
-	const s = params.toString();
-	return s ? `?${s}` : '';
 }

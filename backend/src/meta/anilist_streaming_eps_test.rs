@@ -26,32 +26,20 @@ fn parse_streaming_episodes_response_extracts_ep_num_and_url() {
         }
     }"##;
     let got = parse_streaming_episodes_response(body).expect("parses");
-    assert_eq!(got.len(), 3);
-    assert_eq!(got[0].0, 1);
-    assert!(got[0].1.contains("abc_full.jpg"));
-    assert_eq!(got[1].0, 2);
-    assert_eq!(got[2].0, 3);
-}
-
-#[test]
-fn parse_streaming_episodes_response_drops_entries_without_thumbnail() {
-    // AniList sometimes lists an entry with title but null thumbnail
-    // (the listing got scraped before Crunchyroll uploaded the still).
-    // Those entries are useless for backfill — skip them entirely.
-    let body = br##"{
-        "data": {
-            "Media": {
-                "streamingEpisodes": [
-                    { "title": "Episode 1 - ...", "thumbnail": "https://x.cdn/1.jpg" },
-                    { "title": "Episode 2 - ...", "thumbnail": null },
-                    { "title": "Episode 3 - ...", "thumbnail": "https://x.cdn/3.jpg" }
-                ]
-            }
-        }
-    }"##;
-    let got = parse_streaming_episodes_response(body).expect("parses");
-    let nums: Vec<u32> = got.iter().map(|(n, _)| *n).collect();
-    assert_eq!(nums, vec![1, 3]);
+    let nums: Vec<u32> = got.entries.keys().copied().collect();
+    assert_eq!(nums, vec![1, 2, 3]);
+    assert!(got.entries[&1]
+        .thumbnail
+        .as_deref()
+        .is_some_and(|t| t.contains("abc_full.jpg")));
+    assert_eq!(
+        got.entries[&1].title,
+        "You Guys!! Do You Even Have a Gintama? (Part 1)"
+    );
+    assert_eq!(
+        got.entries[&3].title,
+        "Nobody with Naturally Wavy Hair Can Be That Bad"
+    );
 }
 
 #[test]
@@ -73,7 +61,7 @@ fn parse_streaming_episodes_response_drops_titles_without_episode_prefix() {
         }
     }"##;
     let got = parse_streaming_episodes_response(body).expect("parses");
-    let nums: Vec<u32> = got.iter().map(|(n, _)| *n).collect();
+    let nums: Vec<u32> = got.entries.keys().copied().collect();
     assert_eq!(nums, vec![1, 2]);
 }
 
@@ -95,7 +83,7 @@ fn parse_streaming_episodes_response_drops_half_episode_decimals() {
         }
     }"##;
     let got = parse_streaming_episodes_response(body).expect("parses");
-    let nums: Vec<u32> = got.iter().map(|(n, _)| *n).collect();
+    let nums: Vec<u32> = got.entries.keys().copied().collect();
     assert_eq!(nums, vec![1, 2]);
 }
 
@@ -106,7 +94,7 @@ fn parse_streaming_episodes_response_returns_empty_when_media_is_null() {
     // not an error.
     let body = br#"{"data":{"Media":null}}"#;
     let got = parse_streaming_episodes_response(body).expect("parses");
-    assert!(got.is_empty());
+    assert_eq!(got, StreamingListing::default());
 }
 
 #[test]
@@ -115,7 +103,7 @@ fn parse_streaming_episodes_response_returns_empty_when_field_is_null() {
     // for shows AniList catalogues without any Crunchyroll listing.
     let body = br#"{"data":{"Media":{"streamingEpisodes":null}}}"#;
     let got = parse_streaming_episodes_response(body).expect("parses");
-    assert!(got.is_empty());
+    assert_eq!(got, StreamingListing::default());
 }
 
 #[test]
@@ -125,8 +113,60 @@ fn parse_streaming_episodes_response_rejects_non_envelope_payload() {
     assert!(matches!(err, AniError::ParseFailed { .. }));
 }
 
+#[test]
+fn parse_streaming_episodes_response_reads_the_count_and_status() {
+    let body = br#"{"data":{"Media":{"episodes":12,"status":"FINISHED","streamingEpisodes":[]}}}"#;
+    let got = parse_streaming_episodes_response(body).expect("parses");
+    assert_eq!(got.episodes, Some(12));
+    assert!(got.finished);
+    let body =
+        br#"{"data":{"Media":{"episodes":null,"status":"RELEASING","streamingEpisodes":[]}}}"#;
+    let got = parse_streaming_episodes_response(body).expect("parses");
+    assert_eq!(got.episodes, None);
+    assert!(!got.finished);
+}
+
+#[test]
+fn parse_streaming_episodes_response_keeps_the_first_entry_per_episode() {
+    // Live AniList sometimes lists multiple streamingEpisodes for the
+    // same ep number when a show has subbed + dubbed tracks both
+    // registered with Crunchyroll; the first one is kept.
+    let body = br#"{"data":{"Media":{"streamingEpisodes":[
+        {"title":"Episode 1 - sub","thumbnail":"https://x.cdn/1-sub.jpg"},
+        {"title":"Episode 1 - dub","thumbnail":"https://x.cdn/1-dub.jpg"},
+        {"title":"Episode 2 - sub","thumbnail":"https://x.cdn/2.jpg"}
+    ]}}}"#;
+    let got = parse_streaming_episodes_response(body).expect("parses");
+    assert_eq!(got.entries.len(), 2);
+    assert_eq!(got.entries[&1].title, "sub");
+    assert!(got.entries[&1]
+        .thumbnail
+        .as_deref()
+        .is_some_and(|t| t.contains("1-sub")));
+    assert!(got.entries[&2]
+        .thumbnail
+        .as_deref()
+        .is_some_and(|t| t.contains("2.jpg")));
+}
+
+#[test]
+fn split_episode_title_reads_the_number_and_the_words_after_it() {
+    assert_eq!(
+        parse::split_episode_title("Episode 7 - Seven"),
+        Some((7, "Seven"))
+    );
+    assert_eq!(
+        parse::split_episode_title("  episode 12: Twelve  "),
+        Some((12, "Twelve"))
+    );
+    assert_eq!(parse::split_episode_title("Episode 3"), Some((3, "")));
+    assert_eq!(parse::split_episode_title("Episode 3.5 - Recap"), None);
+    assert_eq!(parse::split_episode_title("Episode - None"), None);
+    assert_eq!(parse::split_episode_title("OVA 1 - Special"), None);
+}
+
 #[tokio::test]
-async fn streaming_episodes_for_mal_id_posts_correct_query() {
+async fn streaming_listing_for_media_by_mal_id_posts_correct_query() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .and(wiremock::matchers::body_json(serde_json::json!({
@@ -134,75 +174,36 @@ async fn streaming_episodes_for_mal_id_posts_correct_query() {
             "variables": { "idMal": 918 },
         })))
         .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r##"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 1 - …","thumbnail":"https://x.cdn/1.jpg"}]}}}"##,
+            r#"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 1 - One","thumbnail":"https://x.cdn/1.jpg"}]}}}"#,
         ))
         .mount(&server)
         .await;
     let client = reqwest::Client::new();
-    let got = streaming_episodes_for_mal_id(&client, 918, Some(&server.uri()))
+    let got = streaming_listing_for_media(&client, MediaRef::Mal(918), Some(&server.uri()))
         .await
         .expect("ok");
-    assert_eq!(got.len(), 1);
-    assert_eq!(got[0].0, 1);
+    assert_eq!(
+        got.entries.get(&1).and_then(|e| e.thumbnail.as_deref()),
+        Some("https://x.cdn/1.jpg")
+    );
 }
 
 #[tokio::test]
-async fn streaming_episodes_for_mal_id_propagates_upstream_5xx() {
+async fn streaming_listing_for_media_propagates_upstream_5xx() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(wiremock::ResponseTemplate::new(502))
         .mount(&server)
         .await;
     let client = reqwest::Client::new();
-    let err = streaming_episodes_for_mal_id(&client, 918, Some(&server.uri()))
+    let err = streaming_listing_for_media(&client, MediaRef::Mal(918), Some(&server.uri()))
         .await
         .unwrap_err();
     assert!(matches!(err, AniError::Upstream { status: 502 }));
 }
 
 #[tokio::test]
-async fn streaming_eps_map_for_mal_id_dedups_first_wins() {
-    // Live AniList sometimes lists multiple streamingEpisodes for
-    // the same ep number when a show has subbed + dubbed tracks
-    // both registered with Crunchyroll. The pair list preserves
-    // order; the map wrapper collapses to first-wins so the
-    // backfill caller doesn't have to.
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r##"{"data":{"Media":{"streamingEpisodes":[
-                {"title":"Episode 1 - sub","thumbnail":"https://x.cdn/1-sub.jpg"},
-                {"title":"Episode 1 - dub","thumbnail":"https://x.cdn/1-dub.jpg"},
-                {"title":"Episode 2 - sub","thumbnail":"https://x.cdn/2.jpg"}
-            ]}}}"##,
-        ))
-        .mount(&server)
-        .await;
-    let client = reqwest::Client::new();
-    let got = streaming_eps_map_for_mal_id(&client, 918, Some(&server.uri()))
-        .await
-        .expect("ok");
-    assert_eq!(got.len(), 2);
-    assert!(got[&1].contains("1-sub"));
-    assert!(got[&2].contains("2.jpg"));
-}
-
-#[tokio::test]
-async fn streaming_eps_map_for_mal_id_propagates_upstream_5xx() {
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .respond_with(wiremock::ResponseTemplate::new(503))
-        .mount(&server)
-        .await;
-    let client = reqwest::Client::new();
-    let err = streaming_eps_map_for_mal_id(&client, 918, Some(&server.uri()))
-        .await
-        .unwrap_err();
-    assert!(matches!(err, AniError::Upstream { status: 503 }));
-}
-
-#[tokio::test]
-async fn streaming_episodes_for_mal_id_returns_empty_when_media_unmapped() {
+async fn streaming_listing_for_media_returns_empty_when_media_unmapped() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .respond_with(
@@ -212,14 +213,14 @@ async fn streaming_episodes_for_mal_id_returns_empty_when_media_unmapped() {
         .mount(&server)
         .await;
     let client = reqwest::Client::new();
-    let got = streaming_episodes_for_mal_id(&client, 99_999_999, Some(&server.uri()))
+    let got = streaming_listing_for_media(&client, MediaRef::Mal(99_999_999), Some(&server.uri()))
         .await
         .expect("ok");
-    assert!(got.is_empty());
+    assert_eq!(got, StreamingListing::default());
 }
 
 #[tokio::test]
-async fn streaming_eps_map_for_media_by_anilist_id_queries_media_by_id() {
+async fn streaming_listing_for_media_by_anilist_id_queries_media_by_id() {
     let server = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("POST"))
         .and(wiremock::matchers::body_string_contains("Media(id: $id"))
@@ -233,30 +234,13 @@ async fn streaming_eps_map_for_media_by_anilist_id_queries_media_by_id() {
         .mount(&server)
         .await;
     let client = reqwest::Client::new();
-    let got = streaming_eps_map_for_media(&client, MediaRef::AniList(207_141), Some(&server.uri()))
+    let got = streaming_listing_for_media(&client, MediaRef::AniList(207_141), Some(&server.uri()))
         .await
         .expect("ok");
-    assert_eq!(got.get(&2).map(String::as_str), Some("https://x.cdn/2.jpg"));
-}
-
-#[tokio::test]
-async fn streaming_eps_map_for_media_by_mal_id_keeps_the_idmal_query() {
-    let server = wiremock::MockServer::start().await;
-    wiremock::Mock::given(wiremock::matchers::method("POST"))
-        .and(wiremock::matchers::body_json(serde_json::json!({
-            "query": STREAMING_EPS_BY_MAL_GQL,
-            "variables": { "idMal": 918 },
-        })))
-        .respond_with(wiremock::ResponseTemplate::new(200).set_body_string(
-            r#"{"data":{"Media":{"streamingEpisodes":[{"title":"Episode 1 - One","thumbnail":"https://x.cdn/1.jpg"}]}}}"#,
-        ))
-        .mount(&server)
-        .await;
-    let client = reqwest::Client::new();
-    let got = streaming_eps_map_for_media(&client, MediaRef::Mal(918), Some(&server.uri()))
-        .await
-        .expect("ok");
-    assert_eq!(got.get(&1).map(String::as_str), Some("https://x.cdn/1.jpg"));
+    assert_eq!(
+        got.entries.get(&2).and_then(|e| e.thumbnail.as_deref()),
+        Some("https://x.cdn/2.jpg")
+    );
 }
 
 async fn mount_media(
@@ -284,7 +268,7 @@ async fn mount_media(
 }
 
 #[tokio::test]
-async fn streaming_eps_map_for_ids_retries_by_anilist_id_when_anilist_lacks_the_mal_id() {
+async fn streaming_listing_for_ids_retries_by_anilist_id_when_anilist_lacks_the_mal_id() {
     let server = wiremock::MockServer::start().await;
     mount_media(
         &server,
@@ -301,14 +285,17 @@ async fn streaming_eps_map_for_ids_retries_by_anilist_id_when_anilist_lacks_the_
     )
     .await;
     let client = reqwest::Client::new();
-    let got = streaming_eps_map_for_ids(&client, Some(21), Some(30), Some(&server.uri()))
+    let got = streaming_listing_for_ids(&client, Some(21), Some(30), Some(&server.uri()))
         .await
         .expect("ok");
-    assert_eq!(got.get(&3).map(String::as_str), Some("https://x.cdn/3.jpg"));
+    assert_eq!(
+        got.entries.get(&3).and_then(|e| e.thumbnail.as_deref()),
+        Some("https://x.cdn/3.jpg")
+    );
 }
 
 #[tokio::test]
-async fn streaming_eps_map_for_ids_does_not_retry_a_media_without_episodes() {
+async fn streaming_listing_for_ids_does_not_retry_a_media_without_episodes() {
     let server = wiremock::MockServer::start().await;
     mount_media(
         &server,
@@ -325,27 +312,52 @@ async fn streaming_eps_map_for_ids_does_not_retry_a_media_without_episodes() {
     )
     .await;
     let client = reqwest::Client::new();
-    let got = streaming_eps_map_for_ids(&client, Some(21), Some(30), Some(&server.uri()))
+    let got = streaming_listing_for_ids(&client, Some(21), Some(30), Some(&server.uri()))
         .await
         .expect("ok");
-    assert!(got.is_empty());
+    assert!(got.entries.is_empty());
 }
 
 proptest::proptest! {
-    /// Every episode number AniList listed keeps the URL it was listed
-    /// with first, and nothing else appears. Episode numbers come from
-    /// a small range so duplicates are the common case.
+    /// Every episode number AniList listed keeps the entry it was
+    /// listed with first, and nothing else appears. Episode numbers
+    /// come from a small range so duplicates are the common case.
     #[test]
-    fn dedup_keeps_each_episodes_first_url(
-        pairs in proptest::collection::vec((0u32..12, "[a-z]{0,6}"), 0..40),
+    fn parse_keeps_each_episodes_first_entry(
+        pairs in proptest::collection::vec((0u32..12, "[a-z]{1,6}"), 0..40),
     ) {
-        let got = dedup_first_wins(pairs.clone());
-        let mut want = HashMap::new();
+        let eps: Vec<serde_json::Value> = pairs
+            .iter()
+            .map(|(n, url)| serde_json::json!({
+                "title": format!("Episode {n} - {url}"),
+                "thumbnail": url,
+            }))
+            .collect();
+        let body = serde_json::json!({ "data": { "Media": { "streamingEpisodes": eps } } });
+        let got = parse_streaming_episodes_response(body.to_string().as_bytes())
+            .expect("parses");
+        let mut want = BTreeMap::new();
         for (n, url) in &pairs {
-            if !want.contains_key(n) {
-                want.insert(*n, url.clone());
-            }
+            want.entry(*n).or_insert(StreamingEntry {
+                title: url.clone(),
+                thumbnail: Some(url.clone()),
+            });
         }
-        proptest::prop_assert_eq!(got, want);
+        proptest::prop_assert_eq!(got.entries, want);
     }
+}
+
+#[test]
+fn parse_keeps_a_numbered_entry_without_a_thumbnail() {
+    // A row with no still still says the listing numbers that episode,
+    // which the fit rule reads; it fills nothing.
+    let body = br#"{"data":{"Media":{"episodes":2,"status":"FINISHED","streamingEpisodes":[
+        {"title":"Episode 1 - One","thumbnail":"https://x.cdn/1.jpg"},
+        {"title":"Episode 2 - Two","thumbnail":null},
+        {"title":"Episode 3 - Three","thumbnail":null}
+    ]}}}"#;
+    let got = parse_streaming_episodes_response(body).expect("parses");
+    let nums: Vec<u32> = got.entries.keys().copied().collect();
+    assert_eq!(nums, vec![1, 2, 3]);
+    assert_eq!(got.entries[&3].title, "Three");
 }
