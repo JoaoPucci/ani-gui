@@ -189,4 +189,23 @@ describe('a Continue card over a renumbered recap', () => {
 		await until(() => offers(12.5), 'the card to offer the recap left part-way');
 		expect(offers(13)).toBe(false);
 	});
+
+	it('moves the position under the old number when the probe fails', async () => {
+		// Another listing put the stamp right before this load, and the
+		// probe fails: the row says what it read as before all the same.
+		savePosition('1', 24.5, 600, 1420);
+		server.use(
+			...homeHandlers({ history: [{ ep_no: '12.5', id: ROW, title: SHOW }] }, [
+				http.post(`${API_BASE}/api/kitsu/search`, () =>
+					HttpResponse.json([kitsuRef('1', SHOW, 36)])
+				),
+				http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 })),
+				http.get(`${API_BASE}/api/history/:id/number`, () =>
+					HttpResponse.json({ ep_no: '12.5', former_ep_no: '24.5' })
+				)
+			])
+		);
+		app = mount(HomePage, { target });
+		await until(() => offers(12.5), 'the card to offer the recap left part-way');
+	});
 });
