@@ -239,5 +239,7 @@ describe('/search late prune', () => {
 		// Time enough for a probe it did send to reach the handler.
 		await new Promise((r) => setTimeout(r, 100));
 		expect(staleProbeServed, 'a replaced run probes nothing').toBe(false);
+		// And the guard still holds once that time has passed.
+		expect(screen()).not.toContain('Stale Result');
 	});
 });
