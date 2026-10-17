@@ -869,7 +869,7 @@ list count and mean score) and list sync; and two artwork fields: the
 banner, which the home and detail heroes show first, with Kitsu's cover
 as the fallback, and which stands in for the cover where Kitsu has none;
 and per-episode thumbnails, which fill episodes Kitsu has no thumbnail
-for.
+for when AniList's listing is the show's.
 
 - **Accent colour.** AniList `coverImage.color` gives a show's colour as
   a hex string (`#bbf1a1` for Frieren) where AniList has one; the field
