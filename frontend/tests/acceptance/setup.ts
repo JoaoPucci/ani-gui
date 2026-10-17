@@ -10,7 +10,8 @@
 //     Only the members a route actually touches are faked; anything
 //     else should fail loudly rather than silently return undefined.
 
-import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { afterAll, afterEach, aroundEach, beforeAll } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 
@@ -45,7 +46,9 @@ export const API_BASE = 'http://127.0.0.1:31337';
  * - the background warm of an episode the user has not asked for:
  *   with no EventSource installed it is a plain `/api/play` POST
  *   marked `prefetch`. A play the user asked for carries no
- *   `prefetch`, and still has to be described.
+ *   `prefetch`: this handler answers it too, so it cannot slip past
+ *   to the real port, but records it as undescribed, which fails the
+ *   scenario that sent it.
  */
 const absentBackend = () => HttpResponse.error();
 const incidental = [
@@ -60,7 +63,8 @@ const incidental = [
 			.clone()
 			.json()
 			.catch(() => null)) as { prefetch?: boolean } | null;
-		return body?.prefetch === true ? absentBackend() : undefined;
+		if (body?.prefetch !== true) undescribedRequest(request);
+		return absentBackend();
 	})
 ];
 
@@ -73,39 +77,81 @@ export const server = setupServer(
 	...incidental
 );
 
-// What the HTTP boundary saw that no scenario accounts for. MSW's
-// own `error` strategy only fails the request, and the page under
-// test catches that, so on its own a request no handler answered
-// goes unnoticed while the scenario passes; and a request a page
-// sends after its scenario ended — a queued warm, a timer — reaches
-// the real port once the server has closed. Both fail a scenario
-// here instead.
+// What the HTTP boundary saw that no scenario accounts for, and the
+// scenario it belongs to.
+//
+// MSW's own `error` strategy only fails a request no handler answers,
+// and the page under test catches that, so on its own such a request
+// goes unnoticed while the scenario passes. A request a page sends
+// after its scenario ended — a queued warm, a timer — is worse: it is
+// answered by whatever handlers the next scenario installed, or
+// reaches the real port once the server has closed.
+//
+// So every request is attributed to the scenario that caused it. Each
+// scenario runs inside an AsyncLocalStorage context, which every
+// timer, promise and fetch it starts inherits, however late they
+// run; a request carries its sender's scenario across the boundary
+// into the next one. A scenario fails on:
+//
+// - a request of its own that no handler answered, or that a handler
+//   let through to the network (matched, but returned no response);
+// - a request of its own sent after its teardown unmounted its page;
+// - such a late request from an earlier scenario, or one sent outside
+//   any scenario, seen while it ran — named as such.
+//
+// What it cannot see: a late request sent after the last scenario of
+// a file ended, later than the file's grace below, when the server
+// has closed; and work whose async context was not created inside a
+// scenario (module-level timers started at import, which would show
+// up as "outside any scenario" only if they fire while one runs).
 
-/** Requests no handler answered while a scenario ran. */
-const undescribed: string[] = [];
-/** Every request, answered or not, sent while no scenario ran: after
- *  one scenario's teardown and before the next one starts, or after
- *  the file's last. Whatever sends it outlived the page that
- *  mounted it. */
-const afterItsScenario: string[] = [];
-let scenarioRunning = false;
+interface Scenario {
+	name: string;
+	/** The scenario's teardown has unmounted its page. */
+	ended: boolean;
+}
 
-/** How long the file's teardown waits for a request the last
- *  scenario's page sends late before MSW stops intercepting. A request
- *  later than this is not caught; it would reach the closed port. */
+const owner = new AsyncLocalStorage<Scenario>();
+const matched = new Set<string>();
+/** Requests a scenario sent that nothing answered, by scenario. */
+const undescribed = new Map<Scenario, string[]>();
+/** Requests sent by a scenario that had ended, or outside any. */
+const strays: string[] = [];
+
+/** How long the file's teardown waits for a late request before MSW
+ *  stops intercepting. A request later than this is not caught; it
+ *  would reach the closed port. */
 const LATE_REQUEST_GRACE_MS = 100;
 
-function failOn(seen: string[], what: string) {
-	if (seen.length === 0) return;
-	throw new Error(`${what}:\n${seen.splice(0).join('\n')}`);
+const label = (request: Request) => `${request.method} ${request.url}`;
+
+function undescribedRequest(request: Request) {
+	const sender = owner.getStore();
+	if (sender === undefined || sender.ended) return; // a stray; counted as one
+	const seen = undescribed.get(sender) ?? [];
+	seen.push(label(request));
+	undescribed.set(sender, seen);
 }
 
 server.events.on('request:start', ({ request }) => {
-	if (!scenarioRunning) afterItsScenario.push(`${request.method} ${request.url}`);
+	const sender = owner.getStore();
+	if (sender === undefined) strays.push(`${label(request)} — sent outside any scenario`);
+	else if (sender.ended)
+		strays.push(`${label(request)} — sent by "${sender.name}" after its page was unmounted`);
 });
-server.events.on('request:unhandled', ({ request }) => {
-	if (scenarioRunning) undescribed.push(`${request.method} ${request.url}`);
+server.events.on('request:match', ({ requestId }) => {
+	matched.add(requestId);
 });
+server.events.on('request:unhandled', ({ request }) => undescribedRequest(request));
+server.events.on('request:end', ({ request, requestId }) => {
+	// Ended without a response from any handler: passed through.
+	if (!matched.delete(requestId)) undescribedRequest(request);
+});
+
+function failOn(seen: string[] | undefined, what: string) {
+	if (seen === undefined || seen.length === 0) return;
+	throw new Error(`${what}:\n${seen.splice(0).join('\n')}`);
+}
 
 beforeAll(() => {
 	// `error` rather than `warn`: an unhandled request means the
@@ -115,29 +161,34 @@ beforeAll(() => {
 	server.listen({ onUnhandledRequest: 'error' });
 });
 
-// Registered before every scenario's own hooks, so this `beforeEach`
-// runs before them and this `afterEach` after them: the page has
-// been unmounted by the time the scenario stops counting.
-beforeEach(() => {
-	failOn(afterItsScenario, 'requests sent after the previous scenario ended');
-	scenarioRunning = true;
+aroundEach(async (runScenario, context) => {
+	await owner.run({ name: context.task.name, ended: false }, runScenario);
 });
 
+// Registered before every scenario's own hooks, so this `afterEach`
+// runs after them: the page has been unmounted by the time the
+// scenario stops counting.
 afterEach(async () => {
-	// The scenario's own teardown has run and its page is gone, so from
-	// here a request is one that outlived it. One turn for what the
-	// unmount set off.
-	scenarioRunning = false;
+	const scenario = owner.getStore();
+	if (scenario) scenario.ended = true;
+	// One turn for what the unmount set off.
 	await new Promise((r) => setTimeout(r, 0));
 	server.resetHandlers();
-	failOn(undescribed, 'requests no handler answered during this scenario');
-	failOn(afterItsScenario, "requests sent after this scenario's page was unmounted");
+	try {
+		failOn(
+			scenario && undescribed.get(scenario),
+			'requests no handler answered during this scenario'
+		);
+	} finally {
+		if (scenario) undescribed.delete(scenario);
+	}
+	failOn(strays, 'requests sent by no live scenario');
 });
 
 afterAll(async () => {
 	await new Promise((r) => setTimeout(r, LATE_REQUEST_GRACE_MS));
 	try {
-		failOn(afterItsScenario, "requests sent after this file's last scenario ended");
+		failOn(strays, "requests sent by no live scenario, after this file's last one ended");
 	} finally {
 		server.close();
 	}
