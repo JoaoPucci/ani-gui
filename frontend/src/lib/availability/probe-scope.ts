@@ -21,16 +21,28 @@
  * aborts nothing.
  */
 
+/** One run of probes on a page: a search, a lookup, a load. */
+export interface ProbeRun {
+	signal: AbortSignal;
+	/** The run is over — superseded or done. */
+	end(): void;
+}
+
 export interface ProbeScope {
 	/** The signal for probes asked now, on the current path. */
 	signal(): AbortSignal;
+	/** Start a run of probes on the current path. */
+	begin(): ProbeRun;
 	/** A navigation has settled: abort every other path's probes. */
 	settle(): void;
 }
 
 export function createProbeScope(currentPath: () => string): ProbeScope {
 	const scopes = new Map<string, AbortController>();
-	return {
+	const scope: ProbeScope = {
+		begin() {
+			return { signal: scope.signal(), end: () => {} };
+		},
 		signal() {
 			const path = currentPath();
 			let scope = scopes.get(path);
@@ -49,6 +61,7 @@ export function createProbeScope(currentPath: () => string): ProbeScope {
 			}
 		}
 	};
+	return scope;
 }
 
 export const probeScope = createProbeScope(() =>

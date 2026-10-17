@@ -71,6 +71,8 @@ export interface ContinueWatchingLoaderDeps {
 	 * many cards at the cost of higher the provider load.
 	 */
 	probeConcurrency?: number;
+	/** The run the load belongs to; the page's path when absent. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -126,7 +128,7 @@ export async function loadContinueWatchingState(
 	const modePromise = deps.getMode().catch(() => 'sub' as const);
 	// Taken once, when the load starts: leaving the page aborts the
 	// probes in flight, and the rows still queued are not probed.
-	const signal = probeScope.signal();
+	const signal = deps.signal ?? probeScope.signal();
 
 	const queue: { entry: HistoryEntry; match: KitsuAnimeRef }[] = [];
 	let drainResolve!: () => void;

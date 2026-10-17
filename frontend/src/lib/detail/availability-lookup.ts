@@ -29,7 +29,7 @@ export interface AvailabilitySubject {
 }
 
 export interface AvailabilityLookupDeps {
-	check: (args: AvailabilityArgs) => Promise<AvailabilityResponse>;
+	check: (args: AvailabilityArgs, opts?: { signal?: AbortSignal }) => Promise<AvailabilityResponse>;
 	/** Opens the writeback ticket. Called before the request goes out,
 	 *  so what it captures describes the moment the question was asked. */
 	begin: () => (answer: AvailabilityAnswer) => AvailabilityPatch;

@@ -35,7 +35,10 @@ export interface SearchRunnerDeps {
 	filter: (
 		items: KitsuAnimeRef[],
 		mode: 'sub' | 'dub',
-		emit: (visible: KitsuAnimeRef[]) => void
+		emit: (visible: KitsuAnimeRef[]) => void,
+		/** Aborts the page's probes; the run's own, so a run that is
+		 *  superseded can stop them. */
+		signal?: AbortSignal
 	) => Promise<void>;
 	onResults: (visible: KitsuAnimeRef[]) => void;
 	onError: (e: unknown) => void;

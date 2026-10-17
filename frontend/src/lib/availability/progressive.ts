@@ -82,7 +82,8 @@ export async function filterAvailableProgressive<T extends KitsuAnimeRef>(
 	mode: 'sub' | 'dub',
 	emit: (visible: T[]) => void,
 	graceMs = 2000,
-	concurrency = 4
+	concurrency = 4,
+	run?: AbortSignal
 ): Promise<void> {
 	if (items.length === 0) {
 		emit(items);
@@ -122,7 +123,7 @@ export async function filterAvailableProgressive<T extends KitsuAnimeRef>(
 	}, graceMs);
 	// Taken once, when the page asks: every probe this pool sends
 	// belongs to the page that started it.
-	const signal = probeScope.signal();
+	const signal = run ?? probeScope.signal();
 	await probeInline(uncached, mode, cached, concurrency, signal, () => {
 		if (deadlinePassed) emitIfChanged();
 	});
