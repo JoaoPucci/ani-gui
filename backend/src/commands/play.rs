@@ -432,12 +432,29 @@ where
     // resolve overwriting the row also keeps that metadata current.
     // From here on, the one thing that withholds it is the show's
     // removal from history since this play began.
-    play_resolution_cache::store(state, asked, &cache_key, &cached_resolution);
-
+    //
     // The episode the session plays, and the number an earlier version
     // gave it: the player follows the one, a position kept from then
-    // is under the other.
+    // is under the other. A resolve the request named by a tag its row
+    // no longer carries is kept under the episode it played, so the
+    // tag answers for the row that carries it now.
     let episode = crate::commands::play_native_record::matched_episode(&native, &args.episode);
+    let kept_under =
+        if crate::commands::play_native_episode::tag_matches(&episode, args.episode.trim()) {
+            cache_key
+        } else {
+            play_resolution_cache::cache_key(
+                &args.title,
+                &args.mode,
+                quality,
+                &episode,
+                args.year,
+                args.episode_count,
+                args.subtype.as_deref(),
+            )
+        };
+    play_resolution_cache::store(state, asked, &kept_under, &cached_resolution);
+
     let former_episode = crate::commands::play_native_merge::former_number(&native);
     let session_args = CreateSessionArgs {
         upstream_url: native.master_url,
