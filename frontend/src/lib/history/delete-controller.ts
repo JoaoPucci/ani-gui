@@ -17,7 +17,7 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	currentHistory?: () => readonly HistoryEntry[];
 	/** Puts the rows the delete leaves on the strip. Omitted, the caller
 	 *  applies `remainingHistory` itself. */
-	applyRemaining?: (rows: HistoryEntry[]) => void;
+	applyRemaining?: (rows: HistoryEntry[], removedIds: string[]) => void;
 	matches: Record<string, KitsuAnimeRef | null | undefined>;
 	historyDelete: (id: string) => Promise<void>;
 	/** The moment the removed rows are gone (watch-position-clear.ts): the
@@ -82,6 +82,8 @@ export async function executeKitsuGroupDelete(
 	// Off the strip as it stands now: a row read again while the
 	// deletes were out keeps what it read.
 	const remainingHistory = remainingOf(deps.currentHistory?.() ?? deps.history, groupIds);
+	// In the same turn: nothing re-read in between is overwritten.
+	deps.applyRemaining?.(remainingHistory, groupIds);
 	// Telling a remaining row's show can take a Kitsu read; the card's
 	// removal does not wait on it.
 	const forgetting = forgetLeftWithoutRows(shows, groupIds, remainingHistory, deps, since).catch(

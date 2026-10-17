@@ -36,8 +36,11 @@ export async function refreshedResume(
 	if (!now) return null;
 	const to = parseHistoryEpisode(now.ep_no);
 	const from = parseHistoryEpisode(now.former_ep_no);
-	if (to !== null && from !== null && from !== to) move(kitsuId, from, to);
-	return now.ep_no === entry.ep_no ? null : { ...entry, ep_no: now.ep_no };
+	const moved = to !== null && from !== null && from !== to;
+	if (moved) move(kitsuId, from, to);
+	// Given anew when a position moved, so Play is offered again.
+	if (now.ep_no === entry.ep_no) return moved ? { ...entry } : null;
+	return { ...entry, ep_no: now.ep_no };
 }
 
 async function readRow(

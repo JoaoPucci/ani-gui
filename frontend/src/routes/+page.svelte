@@ -230,7 +230,13 @@
 	 */
 	// A row read again once its probe answered, as it reads now.
 	async function readRowAgain(id: string) {
-		const next = await refreshedRows(id, () => history, historyNumber);
+		const kitsuId = historyMatches[id]?.id;
+		const next = await refreshedRows(
+			id,
+			() => history,
+			historyNumber,
+			kitsuId ? (from, to) => movePosition(kitsuId, from, to) : undefined
+		);
 		if (!next) return;
 		history = next;
 		for (const h of next) historyById.set(h.id, h);
@@ -296,9 +302,18 @@
 			// concurrent dedupe firing during the gate's window has
 			// different ids and short-circuits.
 			const snapshot = dedupedHistory.map((e) => e.id);
-			const result = await executeKitsuGroupDelete(deleteCandidate.entry.id, {
+			await executeKitsuGroupDelete(deleteCandidate.entry.id, {
 				history: history ?? [],
 				currentHistory: () => history ?? [],
+				// Open the gate IMMEDIATELY before the optimistic mutation
+				// so the 350ms auto-close window starts when Svelte's
+				// out-transition factory is about to fire — not when the
+				// click was first received. See $lib/history/animation-gate
+				// for the per-id scope + Svelte-batched-reset story.
+				applyRemaining: (rows, removedIds) => {
+					deleteAnimationGate.open(removedIds, shiftedSurvivorIds(snapshot, removedIds));
+					history = rows;
+				},
 				matches: historyMatches,
 				historyDelete,
 				snapshotPositions,
@@ -312,13 +327,6 @@
 						(e) => (kitsuEntryGone(e) ? true : Promise.reject(e))
 					)
 			});
-			// Open the gate IMMEDIATELY before the optimistic mutation
-			// so the 350ms auto-close window starts when Svelte's
-			// out-transition factory is about to fire — not when the
-			// click was first received. See $lib/history/animation-gate
-			// for the per-id scope + Svelte-batched-reset story.
-			deleteAnimationGate.open(result.removedIds, shiftedSurvivorIds(snapshot, result.removedIds));
-			history = result.remainingHistory;
 		} finally {
 			deleteBusy = false;
 			deleteCandidate = null;
