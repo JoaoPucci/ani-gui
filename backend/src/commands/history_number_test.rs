@@ -25,6 +25,7 @@ fn repair(state: &AppState) {
         state,
         SHOW,
         &[(2, "2.5".into(), "1.5".into())],
+        &|_| false,
     );
 }
 

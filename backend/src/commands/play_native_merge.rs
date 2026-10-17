@@ -6,7 +6,7 @@ use crate::scraper::provider::EpisodeRef;
 
 #[path = "play_native_merge_former.rs"]
 mod former;
-pub(crate) use former::{former_tag_of, former_tags_of};
+pub(crate) use former::{former_tag_of, former_tags_of, names_a_row_now};
 
 /// A fractional tag moved `shift` episodes later: "1.5" by 2 is "3.5".
 fn shifted_fraction(tag: &str, shift: u32) -> String {

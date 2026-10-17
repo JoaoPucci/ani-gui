@@ -42,6 +42,7 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: 
                 state,
                 &native.slug,
                 &native.former_tags,
+                &|former| crate::commands::play_native_merge::names_a_row_now(former, native),
             );
             put_numbering(state, native);
         }

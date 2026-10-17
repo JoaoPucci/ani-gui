@@ -14,7 +14,9 @@ const SHOW: &str = "hianime:the-show-1";
 /// A stitched recap's stamp, (13, "24.5"), put right to "12.5".
 fn repaired(state: &AppState) {
     crate::commands::numbering_offset::put_display(state, SHOW, 0, 13, "24.5");
-    retag_display(state, SHOW, &[(13, "24.5".into(), "12.5".into())]);
+    retag_display(state, SHOW, &[(13, "24.5".into(), "12.5".into())], &|_| {
+        false
+    });
 }
 
 #[test]

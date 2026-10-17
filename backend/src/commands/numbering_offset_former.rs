@@ -10,7 +10,16 @@ use super::{display_stamp, AppState};
 /// stamp names one of `former_tags`' slots with the tag that version
 /// gave it, it names the tag the row has now. Any other stamp is left
 /// alone, and a show whose stamp names no such row is not written.
-pub fn retag_display(state: &AppState, slug: &str, former_tags: &[(u32, String, String)]) {
+///
+/// `shared` says whether a former tag is one a row of the listing
+/// carries now.
+pub fn retag_display(
+    state: &AppState,
+    slug: &str,
+    former_tags: &[(u32, String, String)],
+    shared: &dyn Fn(&str) -> bool,
+) {
+    let _ = shared;
     let Some((stamped, tag)) = display_stamp(state, slug) else {
         return;
     };
@@ -55,10 +64,18 @@ pub fn retag_from_listing(
     slug: &str,
     episodes: &[crate::scraper::provider::EpisodeRef],
 ) {
+    let shared = |former: &str| {
+        episodes.iter().any(|e| {
+            e.number2
+                .as_deref()
+                .is_some_and(|t| crate::commands::play_native_episode::tag_matches(t, former))
+        })
+    };
     retag_display(
         state,
         slug,
         &crate::commands::play_native_merge::former_tags_of(episodes),
+        &shared,
     );
 }
 

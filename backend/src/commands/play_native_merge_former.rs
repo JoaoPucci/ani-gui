@@ -24,3 +24,19 @@ pub(crate) fn former_tag_of(former_tags: &[(u32, String, String)], slot: u32) ->
         .find(|(s, _, _)| *s == slot)
         .map(|(_, former, _)| former.as_str())
 }
+
+/// Whether `former`, a tag in the resolve's listing numbering, is one
+/// a row of that listing carries now — among its fractional extras.
+pub(crate) fn names_a_row_now(
+    former: &str,
+    native: &crate::commands::play_native_resolve::NativeResolved,
+) -> bool {
+    let own = crate::commands::numbering_offset::kitsu_ep_no(former, native.numbering_offset);
+    native
+        .extra_tags
+        .iter()
+        .any(|t| match (t.parse::<f64>(), own.parse::<f64>()) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => *t == own,
+        })
+}
