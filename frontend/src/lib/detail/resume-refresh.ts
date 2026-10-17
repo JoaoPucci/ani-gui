@@ -20,7 +20,7 @@ export async function refreshedResume(
 	entry: HistoryEntry,
 	kitsuId: string,
 	read: (id: string) => Promise<{ ep_no: string; former_ep_no?: string } | null>,
-	move: (kitsuId: string, from: number, to: number) => void,
+	move: (kitsuId: string, from: number, to: number) => unknown,
 	warm?: (episode: number) => Promise<unknown>
 ): Promise<HistoryEntry | null> {
 	let now = await readRow(read, entry.id);

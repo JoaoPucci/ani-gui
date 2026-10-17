@@ -72,8 +72,10 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
  *  most `ms`; whether none is out by then. */
 export async function settledWithin(
 	join: { refreshing: () => boolean; settled: () => Promise<void> },
-	ms: number
+	ms: number,
+	isCurrent: () => boolean = () => true
 ): Promise<boolean> {
+	void isCurrent;
 	const deadline = Date.now() + ms;
 	while (join.refreshing()) {
 		const left = deadline - Date.now();
