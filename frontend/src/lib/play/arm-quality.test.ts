@@ -714,6 +714,30 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.lastView()?.levels.map((l) => l.height)).toEqual([240, 480, 720]);
 	});
 
+	it('a switch followed after the hold was re-seated blames no level', () => {
+		// 480p is held for a `480` setting; the audio codec of 480p and
+		// 240p is refused. hls.js removes both, the hold re-seats on 360p,
+		// and the error's switch goes to 600p. 360p never failed: it must
+		// stay a level to step down to.
+		const ladder = [
+			{ height: 240, bitrate: 400_000 },
+			{ height: 360, bitrate: 800_000 },
+			{ height: 480, bitrate: 1_400_000 },
+			{ height: 600, bitrate: 2_000_000 }
+		];
+		const s = armObjects('480', ladder);
+		s.engine.manual = -1;
+		s.remove(2, 0);
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_ADD_CODEC_ERROR,
+			fatal: false,
+			sourceBufferName: 'audio',
+			errorAction: SWITCHED(3)
+		});
+		expect(s.engine.loads.at(-1)).toBe(1);
+		expect(s.lastView()?.unavailable).toEqual([]);
+	});
+
 	it('several removals in one dispatch are read from the list the error named', () => {
 		const s = armObjects('worst', LADDER5);
 		s.engine.manual = -1;
