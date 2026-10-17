@@ -3,8 +3,12 @@
 //! is now — and putting them right. Split from [`super`] for the
 //! per-file complexity bar.
 
-use super::numbering_offset_store::{parse, rewrite, store_path, Row};
+use super::numbering_offset_store::{rewrite, Row};
 use super::{display_stamp, AppState};
+
+#[path = "numbering_offset_former_read.rs"]
+mod read;
+pub use read::{former_stamp, stamp_beside};
 
 /// Put a display stamp an earlier version wrote right: when the slug's
 /// stamp names one of `former_tags`' slots with the tag that version
@@ -94,31 +98,6 @@ pub fn retag_from_listing(
         &crate::commands::play_native_merge::former_tags_of(episodes),
         &shared,
     );
-}
-
-/// The (slot, tag) a repaired display stamp named its row by before
-/// [`retag_display`] put it right.
-pub fn former_stamp(state: &AppState, slug: &str) -> Option<(u32, String)> {
-    former_of(&row_of(state, slug)?)
-}
-
-/// The display stamp the sidecar beside the history file at
-/// `history_path` keeps for the slug — [`super::display_stamp`] for a
-/// caller that holds the path rather than the state.
-pub fn stamp_beside(history_path: &std::path::Path, slug: &str) -> Option<(u32, String)> {
-    let body = std::fs::read_to_string(store_path(history_path)).unwrap_or_default();
-    parse(&body).into_iter().find(|r| r.slug == slug)?.display
-}
-
-fn row_of(state: &AppState, slug: &str) -> Option<Row> {
-    let body = std::fs::read_to_string(store_path(&state.history_path)).unwrap_or_default();
-    parse(&body).into_iter().find(|r| r.slug == slug)
-}
-
-/// The row's former pair, while its stamp still names that slot.
-fn former_of(row: &Row) -> Option<(u32, String)> {
-    let (slot, _) = row.display.as_ref()?;
-    row.former.clone().filter(|(was, _)| was == slot)
 }
 
 #[cfg(test)]
