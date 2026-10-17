@@ -77,22 +77,45 @@ function nearestLoadable(ladder: number[], unavailable: Set<number>, level: numb
 	);
 }
 
-/** The mapping of a removal, for the rest of its dispatch: the error
- *  that caused it names its switch in the old list. */
+/** A removal, for the rest of its dispatch. hls.js removes levels one
+ *  at a time, each with its own LEVELS_UPDATED, inside the error that
+ *  caused them, which names its switch in the list the dispatch began
+ *  with: the window maps from that list to the levels now. */
 export class RemapWindow {
+	private origin: readonly unknown[] | null = null;
 	private mapping: readonly number[] | null = null;
+	private closed = false;
 
-	opened(mapping: readonly number[]): void {
-		this.mapping = mapping;
-		queueMicrotask(() => {
-			this.mapping = null;
-		});
+	/** Levels went from `before` to `after`. */
+	opened(before: readonly unknown[], after: readonly unknown[]): void {
+		if (!this.origin) {
+			this.origin = before;
+			queueMicrotask(() => {
+				this.origin = null;
+				this.mapping = null;
+			});
+		}
+		this.mapping = levelMapping(this.origin, after);
 	}
 
-	/** A report read in the levels as they are now. */
+	/** A report read in the levels as they are now. A switch is read
+	 *  from the list the error named; a segment failure inside a
+	 *  removal is hls.js's own, resolved by the removal, and moves
+	 *  nothing — the hold has been re-seated on a level that did not
+	 *  fail. */
 	read(report: QualityReport | null): QualityReport | null {
-		if (!this.mapping || report?.kind !== 'followed') return report;
+		if (!this.mapping || !report || report.kind === 'stall') return report;
+		if (report.kind !== 'followed') return null;
 		const level = remapIndex(report.level, this.mapping);
 		return level === null ? null : { kind: 'followed', level };
+	}
+
+	/** The stream retired: nothing scheduled acts on it any more. */
+	close(): void {
+		this.closed = true;
+	}
+
+	get isClosed(): boolean {
+		return this.closed;
 	}
 }

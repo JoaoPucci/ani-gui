@@ -26,7 +26,7 @@ import {
 	readError,
 	readInitSegment
 } from './quality-report';
-import { afterError, engineMover, remapAll, whenSettled } from './quality-sink';
+import { afterError, engineMover, levelsUpdated, whenSettled } from './quality-sink';
 import { RemapWindow } from './quality-remap';
 import { QualityTrack } from './quality-track';
 
@@ -92,7 +92,8 @@ export function armQuality(input: {
 	// The start waits for the setting: a level chosen before it is known
 	// would be `best`'s. With `holdsStart` the engine waits too, and is
 	// started here once its start level is set.
-	const begin = (setting: QualitySetting, count: number): void => {
+	const begin = (setting: QualitySetting): void => {
+		const count = track.levels().length;
 		if (retired) return;
 		const g = new QualityGovernor(
 			track.levels(),
@@ -114,7 +115,7 @@ export function armQuality(input: {
 
 	engine.on(events.MANIFEST_PARSED, (_event, data) => {
 		track.arrive(data.levels);
-		whenSettled(input.setting(), (setting) => begin(setting, data.levels.length));
+		whenSettled(input.setting(), (setting) => begin(setting));
 	});
 
 	engine.on(events.ERROR, (_event, data) => {
@@ -129,10 +130,8 @@ export function armQuality(input: {
 	// hls.js removed levels it cannot play: every index held moves to
 	// the levels left before any is used again.
 	engine.on(events.LEVELS_UPDATED, (_event, data) => {
-		const g = governor;
-		if (!g) return;
-		removal.opened(remapAll(g, track, data.levels, log));
-		publish(g);
+		levelsUpdated(engine, governor, track, data.levels, removal, log);
+		if (governor) publish(governor);
 	});
 
 	engine.on(events.FRAG_BUFFERED, (_event, data) => {
@@ -179,6 +178,7 @@ export function armQuality(input: {
 		dispose() {
 			video.removeEventListener('seeking', onSeeking);
 			retired = true;
+			removal.close();
 			governor = null;
 			onView(null);
 		}

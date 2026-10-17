@@ -6,6 +6,7 @@
 import type Hls from 'hls.js';
 import type { QualityGovernor, QualityMove } from './quality-governor';
 import type { LadderLevel } from './quality-ladder';
+import type { RemapWindow } from './quality-remap';
 import type { QualityTrack } from './quality-track';
 
 /** Makes a move on the engine and logs it: `next` replaces the buffer
@@ -45,18 +46,38 @@ export function afterError(
 	}
 }
 
-/** hls.js removed levels: the governor and the track carried to the
- *  levels left, and the mapping, for the error being dispatched. */
-export function remapAll(
-	governor: QualityGovernor,
+/** hls.js removed levels: the track, and the governor once there is
+ *  one, carried to the levels left; the removal's window kept open for
+ *  the error being dispatched; and, once the dispatch is over, the
+ *  engine put back on the level held — a removal outside an error
+ *  leaves hls.js on its own choice, or on an index that has shifted. */
+export function levelsUpdated(
+	engine: Pick<Hls, 'loadLevel' | 'autoLevelEnabled'>,
+	governor: QualityGovernor | null,
 	track: QualityTrack,
 	levels: readonly LadderLevel[],
+	removal: RemapWindow,
 	log: (message: string) => void
-): number[] {
+): void {
+	removal.opened(track.engineLevels, levels);
 	const mapping = track.remap(levels);
+	if (!governor) return;
 	governor.remap(mapping, track.levels());
 	log(`levels updated: ${levels.length} left, holding ${track.describe(governor.level)}`);
-	return mapping;
+	queueMicrotask(() => putBack(engine, governor, track, removal, log));
+}
+
+function putBack(
+	engine: Pick<Hls, 'loadLevel' | 'autoLevelEnabled'>,
+	governor: QualityGovernor,
+	track: QualityTrack,
+	removal: RemapWindow,
+	log: (message: string) => void
+): void {
+	if (removal.isClosed || !governor.isEngaged) return;
+	if (!engine.autoLevelEnabled && engine.loadLevel === governor.level) return;
+	engine.loadLevel = governor.level;
+	log(`held at ${track.describe(governor.level)} after the levels changed`);
 }
 
 /** Hands `then` the value, at once when it is in hand and once it

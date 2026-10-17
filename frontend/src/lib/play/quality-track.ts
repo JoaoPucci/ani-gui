@@ -26,6 +26,11 @@ export class QualityTrack {
 		this.playing = null;
 	}
 
+	/** The engine's level objects as last known. */
+	get engineLevels(): readonly LadderLevel[] {
+		return this.objects;
+	}
+
 	/** hls.js removed levels: the heights learned and the level playing
 	 *  are carried to the levels left; the mapping comes back. */
 	remap(levels: readonly LadderLevel[]): number[] {
