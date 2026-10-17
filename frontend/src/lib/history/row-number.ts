@@ -32,8 +32,9 @@ export async function refreshedRows(
 	if (!now || !current || !row) return null;
 	const to = parseHistoryEpisode(now.ep_no);
 	const from = parseHistoryEpisode(now.former_ep_no);
-	const moved = !!move && to !== null && from !== null && from !== to;
-	if (moved) move(from, to);
+	// Given anew only when a point really moved: a repaired stamp names
+	// its former number for good.
+	const moved = !!move && to !== null && from !== null && from !== to && move(from, to) === true;
 	if (row.ep_no === now.ep_no) return moved ? [...current] : null;
 	const epNo = now.ep_no;
 	return current.map((r) => (r.id === id ? { ...r, ep_no: epNo } : r));

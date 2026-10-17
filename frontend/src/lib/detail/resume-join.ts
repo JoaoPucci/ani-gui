@@ -26,14 +26,22 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
 	let ran = false;
 	let pending: Promise<unknown> = Promise.resolve();
 	let out = false;
+	let again = false;
 	const fire = () => {
 		if (ran || !answered || !row) return;
 		ran = true;
 		out = true;
-		const run = Promise.resolve(refresh(row))
+		const run: Promise<unknown> = Promise.resolve(refresh(row))
 			.catch(() => {})
 			.finally(() => {
-				if (pending === run) out = false;
+				if (pending !== run) return;
+				out = false;
+				// Asked again while it was out: once more, now.
+				if (again) {
+					again = false;
+					ran = false;
+					fire();
+				}
 			});
 		pending = run;
 	};
@@ -53,7 +61,12 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
 		settled: () => pending.then(() => {}),
 		refreshing: () => out,
 		again: () => {
-			answered = true;
+			// A lookup out runs the refresh when it answers.
+			if (!answered) return;
+			if (out) {
+				again = true;
+				return;
+			}
 			ran = false;
 			fire();
 		},
@@ -64,6 +77,7 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
 			// A refresh the last visit left out is not this one's.
 			pending = Promise.resolve();
 			out = false;
+			again = false;
 		}
 	};
 }
@@ -75,12 +89,12 @@ export async function settledWithin(
 	ms: number,
 	isCurrent: () => boolean = () => true
 ): Promise<boolean> {
-	void isCurrent;
 	const deadline = Date.now() + ms;
 	while (join.refreshing()) {
 		const left = deadline - Date.now();
-		if (left <= 0) return false;
-		await Promise.race([join.settled(), new Promise((r) => setTimeout(r, left))]);
+		if (left <= 0 || !isCurrent()) return false;
+		// In slices, so a visit that ends stops the wait.
+		await Promise.race([join.settled(), new Promise((r) => setTimeout(r, Math.min(left, 100)))]);
 	}
-	return true;
+	return isCurrent();
 }

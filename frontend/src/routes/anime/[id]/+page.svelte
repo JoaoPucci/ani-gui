@@ -771,6 +771,8 @@
 
 	// The resume row read again once the lookup answered: it paid for
 	// the listing that can put the row's numbering right.
+	// The warms whose answer has asked the resume row to be read again.
+	const warmsAnswered = new WeakSet<Promise<unknown>>();
 	/** How long a click waits on the resume row being read again. */
 	const RESUME_WAIT_MS = 15_000;
 	// Once the row has arrived and the lookup has answered, in either
@@ -838,6 +840,8 @@
 	// disable themselves to keep the user from double-clicking into a second resolve
 	// into a stack of concurrent spawns.
 	let actionBusy = $state(false);
+	// A click waiting on the resume row being read again.
+	let resumeWaiting = $state(false);
 	let actionProgress = $state<string | null>(null);
 
 	// The show's live list entry, folded from EVERY connected tracker so the
@@ -1136,18 +1140,25 @@
 				kitsuId: id,
 				prefetch: true
 			});
-			const warmedShow = id;
-			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
+			const warmedVisit = visit;
+			const warm = getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
 				playStream(args, emit, signal)
-			)
-				// The warm paid for a listing: the resume row is read again.
-				.then(() => {
-					if (id === warmedShow) resumeRefresh.again();
-				})
-				.catch(() => {
-					/* the click handler will see the error if it ever fires;
-					 *  unmount-cancel rejects with "aborted" which we swallow */
-				});
+			);
+			// The warm paid for a listing: the resume row is read again —
+			// once per warm, not on every re-run that finds it cached.
+			if (!warmsAnswered.has(warm)) {
+				warmsAnswered.add(warm);
+				void warm.then(
+					() => {
+						if (visit === warmedVisit) resumeRefresh.again();
+					},
+					() => {}
+				);
+			}
+			void warm.catch(() => {
+				/* the click handler will see the error if it ever fires;
+				 *  unmount-cancel rejects with "aborted" which we swallow */
+			});
 		}
 	});
 
@@ -1467,13 +1478,15 @@
 	 *  click still belongs to this visit after. */
 	async function resumeRowSettled(): Promise<boolean> {
 		const atVisit = visit;
-		actionBusy = true;
+		const current = () => visit === atVisit && !gone;
+		resumeWaiting = true;
 		try {
-			await settledWithin(resumeRefresh, RESUME_WAIT_MS);
+			await settledWithin(resumeRefresh, RESUME_WAIT_MS, current);
 		} finally {
-			actionBusy = false;
+			resumeWaiting = false;
 		}
-		return visit === atVisit && !gone;
+		// Another action started meanwhile owns the page now.
+		return current() && !actionBusy;
 	}
 
 	async function onPlay() {
@@ -1659,7 +1672,7 @@
 									class="btn btn-glass"
 									style:--btn-glow="var(--accent)"
 									onclick={onPlay}
-									disabled={actionBusy || nothingAiredYet || airingIsPending}
+									disabled={actionBusy || resumeWaiting || nothingAiredYet || airingIsPending}
 									title={nothingAiredYet ? m.detail_ep_unaired_tooltip() : undefined}
 								>
 									<span aria-hidden="true">▸</span>
@@ -2169,7 +2182,7 @@
 	{/if}
 </main>
 
-<LoadingOverlay visible={actionBusy} progress={actionProgress} />
+<LoadingOverlay visible={actionBusy || resumeWaiting} progress={actionProgress} />
 
 {#if playFailure}
 	<ErrorOverlay
