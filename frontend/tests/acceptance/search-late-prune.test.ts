@@ -174,8 +174,16 @@ describe('/search late prune', () => {
 		});
 		let searchCalls = 0;
 		let staleProbeServed = false;
+		let staleBatchServed = false;
 
 		server.use(
+			// The stale run's cache read, its last network call: a run
+			// that has been replaced asks the provider nothing more.
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { kitsu_ids?: string[] };
+				if (body.kitsu_ids?.includes('9')) staleBatchServed = true;
+				return HttpResponse.json({ cached: {}, playable_episode_counts: {} });
+			}),
 			...baseHandlers(),
 			http.post(`${API_BASE}/api/kitsu/search/page`, async ({ request }) => {
 				const { query } = (await request.json()) as { query: string };
@@ -192,9 +200,7 @@ describe('/search late prune', () => {
 			}),
 			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
 				const body = (await request.json()) as { kitsu_id?: string };
-				// The stale run's only item. Serving its probe is the
-				// last network call that run makes, so it marks the
-				// point after which its filter can resolve and emit.
+				// The stale run's only item, which must never be probed.
 				if (body.kitsu_id === '9') staleProbeServed = true;
 				return HttpResponse.json({ available: true, episode_count: 12, approximate: false });
 			})
@@ -217,17 +223,21 @@ describe('/search late prune', () => {
 		// The wait is on the stale run reaching the end of its own
 		// pipeline, not on a fixed delay: a timed bet can expire before
 		// a loaded worker has carried the released response through its
-		// batch and probe calls, and would then pass with the guard
-		// removed. After its last probe is served the rest is
-		// microtasks, so flushing those plus a Svelte tick is enough to
-		// let a broken guard paint.
+		// calls, and would then pass with the guard removed. Its last
+		// call is its cache read — a replaced run sends no probe, which
+		// would hold a slot the current run's probes need — and after it
+		// the rest is microtasks, so flushing those plus a Svelte tick
+		// is enough to let a broken guard paint.
 		releaseFirstA();
-		await until(() => staleProbeServed, "the stale run's probe to be served");
+		await until(() => staleBatchServed, "the stale run's cache read to be served");
 		await tick();
 		await new Promise((r) => setTimeout(r, 0));
 		await tick();
 
 		expect(screen()).not.toContain('Stale Result');
 		expect(screen()).toContain('Fresh Result');
+		// Time enough for a probe it did send to reach the handler.
+		await new Promise((r) => setTimeout(r, 100));
+		expect(staleProbeServed, 'a replaced run probes nothing').toBe(false);
 	});
 });

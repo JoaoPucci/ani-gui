@@ -42,4 +42,23 @@ describe('createProbeScope', () => {
 		expect(again.aborted).toBe(false);
 		expect(again).not.toBe(first);
 	});
+
+	it('a run is aborted when it ends, and only it', () => {
+		const scope = createProbeScope(() => '/search');
+		const first = scope.begin();
+		const second = scope.begin();
+		first.end();
+		expect(first.signal.aborted).toBe(true);
+		expect(second.signal.aborted).toBe(false);
+		expect(scope.signal().aborted).toBe(false);
+	});
+
+	it('leaving the page aborts the runs begun on it', () => {
+		let path = '/search';
+		const scope = createProbeScope(() => path);
+		const run = scope.begin();
+		path = '/anime/1';
+		scope.settle();
+		expect(run.signal.aborted).toBe(true);
+	});
 });

@@ -264,4 +264,19 @@ describe('startAvailabilityLookup — cancellation is idempotent', () => {
 
 		expect(h.resolved).toEqual([false]);
 	});
+
+	it('a lookup cancelled before it answers aborts its probe', () => {
+		let signal: AbortSignal | undefined;
+		const h = harness(() => new Promise<AvailabilityResponse>(() => {}));
+		const check = h.deps.check;
+		h.deps.check = (args, opts) => {
+			signal = opts?.signal;
+			return check(args, opts);
+		};
+		const cancel = startAvailabilityLookup(SUBJECT, 'sub', h.deps);
+		expect(signal).toBeInstanceOf(AbortSignal);
+		expect(signal?.aborted).toBe(false);
+		cancel();
+		expect(signal?.aborted).toBe(true);
+	});
 });
