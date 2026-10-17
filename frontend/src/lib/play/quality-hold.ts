@@ -14,6 +14,7 @@ import {
 	type QualityPinChoice,
 	type QualityTarget
 } from './quality-ladder';
+import { remapHold } from './quality-remap';
 
 /** Why the level changed, for the log. */
 export type QualityReason =
@@ -38,15 +39,19 @@ export interface QualityMove {
 
 export abstract class QualityHold {
 	/** Level indices, lowest first. */
-	protected readonly ladder: number[];
+	protected ladder: number[];
 	/** The setting's level: auto never climbs above it. */
-	protected readonly ceiling: number;
+	protected ceiling: number;
 	protected current: number;
 	protected pinned: boolean;
 	protected engaged: boolean;
-	protected readonly unavailable = new Set<number>();
+	protected unavailable = new Set<number>();
 
-	constructor(levels: readonly LadderLevel[], target: QualityTarget, pin: QualityPinChoice | null) {
+	constructor(
+		levels: readonly LadderLevel[],
+		private readonly target: QualityTarget,
+		pin: QualityPinChoice | null
+	) {
 		this.ladder = ladderOrder(levels);
 		this.ceiling = targetLevel(target, levels);
 		this.pinned = pin !== null;
@@ -74,6 +79,24 @@ export abstract class QualityHold {
 	/** Levels the engine could not load, left for the stream. */
 	get unavailableLevels(): number[] {
 		return [...this.unavailable];
+	}
+
+	/** hls.js removed levels: every index held is carried to the levels
+	 *  left (`quality-remap.ts`). */
+	remap(mapping: readonly number[], levels: readonly LadderLevel[]): void {
+		const held = {
+			ladder: this.ladder,
+			ceiling: this.ceiling,
+			current: this.current,
+			engaged: this.engaged,
+			unavailable: this.unavailable
+		};
+		const next = remapHold(held, mapping, levels, this.target);
+		this.ladder = next.ladder;
+		this.ceiling = next.ceiling;
+		this.current = next.current;
+		this.engaged = next.engaged;
+		this.unavailable = next.unavailable;
 	}
 
 	/** The level to start at. */

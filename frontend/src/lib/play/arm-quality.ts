@@ -26,7 +26,8 @@ import {
 	readError,
 	readInitSegment
 } from './quality-report';
-import { engineMover, whenSettled } from './quality-sink';
+import { afterError, engineMover, remapAll, whenSettled } from './quality-sink';
+import { RemapWindow } from './quality-remap';
 import { QualityTrack } from './quality-track';
 
 export { qualityPin } from './quality-pin';
@@ -35,7 +36,12 @@ export { qualityPin } from './quality-pin';
  *  names them. */
 export type QualityEvents = Pick<
 	typeof Hls.Events,
-	'MANIFEST_PARSED' | 'ERROR' | 'FRAG_BUFFERED' | 'FRAG_CHANGED' | 'FRAG_PARSING_INIT_SEGMENT'
+	| 'MANIFEST_PARSED'
+	| 'ERROR'
+	| 'FRAG_BUFFERED'
+	| 'FRAG_CHANGED'
+	| 'FRAG_PARSING_INIT_SEGMENT'
+	| 'LEVELS_UPDATED'
 >;
 
 /** As much of the video element as the control reads. */
@@ -79,6 +85,7 @@ export function armQuality(input: {
 	let governor: QualityGovernor | null = null;
 
 	let retired = false;
+	const removal = new RemapWindow();
 	const apply = engineMover(engine, track, log);
 	const publish = (g: QualityGovernor): void => onView(track.view(g));
 
@@ -114,18 +121,17 @@ export function armQuality(input: {
 		const g = governor;
 		if (!g) return;
 		const engaged = g.isEngaged;
-		apply(reactTo(g, readError(data, video.seeking), now()));
-		// hls.js answers a level's error by handing the choice back to
-		// its own estimate before any listener runs; the governor takes
-		// it back, unless there is nothing left for it to hold.
-		const held = g.reclaim(engine.autoLevelEnabled);
-		if (held !== null) {
-			engine.loadLevel = held;
-			log(`held at ${track.describe(held)} after ${data.details}`);
-		}
-		if (engaged !== g.isEngaged) {
-			log(`released to the engine after ${data.details}: no level left below the one failing`);
-		}
+		apply(reactTo(g, removal.read(readError(data, video.seeking)), now()));
+		afterError(engine, g, engaged, data.details, track, log);
+		publish(g);
+	});
+
+	// hls.js removed levels it cannot play: every index held moves to
+	// the levels left before any is used again.
+	engine.on(events.LEVELS_UPDATED, (_event, data) => {
+		const g = governor;
+		if (!g) return;
+		removal.opened(remapAll(g, track, data.levels, log));
 		publish(g);
 	});
 

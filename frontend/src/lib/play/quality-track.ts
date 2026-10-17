@@ -9,17 +9,32 @@ import type { QualityGovernor, QualityMove } from './quality-governor';
 import { ladderOrder, type LadderLevel, type QualityPinChoice } from './quality-ladder';
 import type { QualityView } from './quality-menu';
 import { isMain } from './quality-rendition';
+import { levelMapping, remapIndex, remapKeys } from './quality-remap';
 
 export class QualityTrack {
 	private playlist: LadderLevel[] = [];
-	private readonly encoded = new Map<number, number>();
+	/** The engine's level objects, which a removal is matched by. */
+	private objects: readonly LadderLevel[] = [];
+	private encoded = new Map<number, number>();
 	private playing: number | null = null;
 
 	/** The master's levels arrived. */
 	arrive(levels: readonly LadderLevel[]): void {
+		this.objects = levels;
 		this.playlist = levels.map((l) => ({ height: l.height, bitrate: l.bitrate }));
 		this.encoded.clear();
 		this.playing = null;
+	}
+
+	/** hls.js removed levels: the heights learned and the level playing
+	 *  are carried to the levels left; the mapping comes back. */
+	remap(levels: readonly LadderLevel[]): number[] {
+		const mapping = levelMapping(this.objects, levels);
+		this.objects = levels;
+		this.playlist = levels.map((l) => ({ height: l.height, bitrate: l.bitrate }));
+		this.encoded = remapKeys(this.encoded, mapping);
+		this.playing = remapIndex(this.playing, mapping);
+		return mapping;
 	}
 
 	/** The levels, at the height each is known to be encoded at. */
