@@ -368,3 +368,41 @@ async fn a_replays_stamp_names_the_versions_it_replayed() {
     .await;
     assert_eq!(row_of(&state, "sub").versions, both_versions());
 }
+
+#[tokio::test]
+async fn the_version_that_served_carries_the_mode_in_the_row() {
+    // The probe sampled the uncensored copy's dub rows and found none;
+    // a dub play then served from it. The stamp says it carries dub.
+    let td = tempfile::tempdir().expect("tempdir");
+    let mut state = cache_only_state(&td);
+    state.providers.set_stub(dubbed_plain_copy());
+    let dub = AvailabilityArgs {
+        mode: "dub".into(),
+        ..args()
+    };
+    check_availability(&state, &dub).await.expect("answered");
+    let at_start = RowAtStart::read(&state, Some("777"), "dub").await;
+    let versions = both_versions();
+    stamp_after_native(
+        &state,
+        Some("777"),
+        "dub",
+        &at_start,
+        ResolveVerdict::served(crate::provider_set::ProviderSet::TEST_DEFAULT, Some(3), &[])
+            .with_versions(&versions)
+            .with_played(Some(VersionKind::Uncensored)),
+    )
+    .await;
+    let modes: Vec<(VersionKind, Option<bool>)> = row_of(&state, "dub")
+        .versions
+        .iter()
+        .map(|v| (v.kind, v.has_mode))
+        .collect();
+    assert_eq!(
+        modes,
+        vec![
+            (VersionKind::Standard, Some(true)),
+            (VersionKind::Uncensored, Some(true)),
+        ]
+    );
+}
