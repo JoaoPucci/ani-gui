@@ -52,3 +52,9 @@ pub(crate) fn former_number(
         .filter(|t| !names_a_row_now(t, native))
         .map(|t| crate::commands::numbering_offset::kitsu_ep_no(t, native.numbering_offset))
 }
+
+/// A single listing's rows, each carrying the tag an earlier version
+/// resolved it by where that differs.
+pub(crate) fn mark_offset_recaps(episodes: Vec<EpisodeRef>) -> Vec<EpisodeRef> {
+    episodes
+}

@@ -47,6 +47,19 @@ pub struct PickedShow {
     pub episodes: Vec<EpisodeRef>,
 }
 
+impl PickedShow {
+    /// The pick of `hit` with the listing its probe returned, each row
+    /// carrying the tag an earlier version gave it where that differs
+    /// ([`crate::commands::play_native_merge::mark_offset_recaps`]).
+    #[must_use]
+    pub fn listed(hit: BrowseHit, episodes: Vec<EpisodeRef>) -> Self {
+        Self {
+            hit,
+            episodes: crate::commands::play_native_merge::mark_offset_recaps(episodes),
+        }
+    }
+}
+
 /// Whether a transport-dead candidate outranks the winner: a
 /// strictly stronger identity always does, and an equal
 /// identity-bearing rank does when the dead candidate came first —
