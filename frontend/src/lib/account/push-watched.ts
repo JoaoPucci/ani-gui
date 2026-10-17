@@ -57,7 +57,10 @@ export function watchedStatus(
 	seriesTotal: number | null,
 	seriesFinished: boolean
 ): string | null {
-	const atFinale = !!seriesTotal && seriesTotal > 0 && episode >= seriesTotal;
+	// Kitsu's own last episode, not any episode at or past it: one the
+	// provider lists past Kitsu's count has no known place in the
+	// tracker's numbering, so it completes nothing.
+	const atFinale = !!seriesTotal && seriesTotal > 0 && episode === seriesTotal;
 	return seriesFinished && atFinale ? 'completed' : null;
 }
 
