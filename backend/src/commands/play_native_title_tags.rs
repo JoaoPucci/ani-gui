@@ -52,7 +52,7 @@ pub(crate) fn split_tags(title: &str) -> (String, Vec<String>) {
 
 /// A full-width form's ASCII letter, digit or mark, lowercased; any
 /// other character as it is.
-fn ascii_form(c: char) -> char {
+pub(crate) fn ascii_form(c: char) -> char {
     match c {
         '！'..='～' => char::from_u32(c as u32 - 0xFEE0).map_or(c, |a| a.to_ascii_lowercase()),
         _ => c,
