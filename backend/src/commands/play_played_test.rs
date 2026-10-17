@@ -54,8 +54,9 @@ async fn a_request_by_a_rows_number_now_opens_a_session_named_for_it() {
 
 #[tokio::test]
 async fn a_replay_opens_a_session_named_for_the_episode_its_resolve_played() {
-    // A cached resolution keyed by the request "2.5" records that its
-    // resolve played "1.5"; the replay's session names that.
+    // A cached resolution records that its resolve played "1.5" — here
+    // a row an earlier build kept under the request "2.5" — and the
+    // replay's session names that.
     let upstream = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("HEAD"))
         .respond_with(wiremock::ResponseTemplate::new(200))

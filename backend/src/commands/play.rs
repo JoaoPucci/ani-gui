@@ -426,7 +426,8 @@ where
     // in hand from the walk, `write_history_on_cache_hit` reads it
     // back from here. Nothing outside this app writes that file.
     // Written whatever cache_resolutions says: the row doubles as the
-    // watch metadata /api/play/mark-watched reads back (show identity,
+    // watch metadata /api/play/mark-watched reads back — under the
+    // episode the session plays, which the renderer marks watched (show identity,
     // title, the numbering slot this resolve stamped) — only the
     // REPLAY reads are the user's cache_resolutions call. Every fresh
     // resolve overwriting the row also keeps that metadata current.
