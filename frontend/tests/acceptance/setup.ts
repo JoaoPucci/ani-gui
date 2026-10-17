@@ -108,14 +108,13 @@ export const server = setupServer(
 // one. A scenario fails on:
 //
 // - a request of its own that no handler answered: one that reached
-//   the final catch-all, one a handler let through with
-//   `passthrough()`, or one whose handler threw;
+//   the final catch-all, or one whose handler threw;
 // - a request of its own sent, or still unanswered, after its
 //   teardown unmounted its page;
 // - such a late request from an earlier scenario, or one sent outside
 //   any scenario, seen while it ran — named as such.
 //
-// What it cannot see:
+// What it cannot see, or gets wrong:
 //
 // - a late request after the last scenario of a file, later than the
 //   file's grace below, once the server has closed;
@@ -123,12 +122,18 @@ export const server = setupServer(
 //   its `beforeEach`/`afterEach`: a timer started at import, or a
 //   request sent from `beforeAll`/`afterAll`, counts as sent outside
 //   any scenario, even when a handler answers it;
-// - a callback a page leaves registered somewhere other than a DOM
-//   event target — a store subscription, a callback queue — that a
-//   later scenario triggers: it runs in the context of whatever
-//   triggers it, and its request is taken for that scenario's. DOM
-//   event listeners are bound to the scenario that added them (see
-//   `bindListenersToTheirScenario`), so a leaked one is caught;
+// - a callback a page leaves registered anywhere but as a function
+//   passed to `addEventListener` — an event handler property such as
+//   `onclick`, a listener object, a MutationObserver, a store
+//   subscription, a callback queue — that a later scenario triggers:
+//   it runs in the context of whatever triggers it, and its request
+//   is taken for that scenario's;
+// - a handler that sends a request on with MSW's `passthrough()`.
+//   One the network answers raises `response:bypass` and fails its
+//   scenario; one the network refuses — the tier's port never listens
+//   — raises nothing that tells it from a mocked answer. The lint
+//   config bans importing `passthrough` and `bypass` in this tier
+//   instead;
 // - a WebSocket, which raises no request events at all (the app opens
 //   none).
 
@@ -193,26 +198,34 @@ server.events.on('request:end', ({ requestId }) => {
 /**
  * Binds every DOM event listener to the scenario that added it, so a
  * listener a page leaves behind, fired by a later scenario, still
- * sends as the page's own. A listener is bound when it is added and
- * remembered per target, type and phase, so the matching remove finds
- * it; once removed, the same function added again — as Svelte re-adds
- * its delegated handler on each mount — is bound afresh, to the
- * scenario adding it then. One re-added without being removed (after a
- * `once` fired, say) keeps the scenario that first added it. Only function listeners; a listener object's
- * `handleEvent` keeps the caller's context.
+ * sends as the page's own.
  *
- * Patched where the listeners land: the EventTarget every happy-dom
- * node inherits from, and the window, whose global carries its own
- * `addEventListener` under vitest.
+ * What the DOM registered is remembered per target, type and phase,
+ * with the scenario that added it (none, outside a scenario), so one
+ * function keeps one identity: a remove finds what was registered,
+ * and a repeated add from the same scenario stays one listener. An
+ * add from a different scenario — the same function re-added after a
+ * `once` fired or a `signal` aborted, which the DOM let go of without
+ * a remove, or simply added again — replaces what is there with a
+ * listener bound to the new scenario.
+ *
+ * Only function listeners; a listener object's `handleEvent` keeps
+ * the context of whatever fires it. Patched where listeners land: the
+ * EventTarget every happy-dom node inherits from, and the window,
+ * whose global carries its own `addEventListener` under vitest.
  */
 function bindListenersToTheirScenario() {
-	const bound = new WeakMap<object, Map<string, Map<unknown, EventListener>>>();
+	interface Registered {
+		listener: EventListener;
+		scenario: Scenario | undefined;
+	}
+	const registered = new WeakMap<object, Map<string, Map<unknown, Registered>>>();
 	const slot = (target: object, type: string, options?: boolean | EventListenerOptions) => {
 		const capture = typeof options === 'boolean' ? options : Boolean(options?.capture);
-		let byKey = bound.get(target);
+		let byKey = registered.get(target);
 		if (!byKey) {
 			byKey = new Map();
-			bound.set(target, byKey);
+			registered.set(target, byKey);
 		}
 		const key = `${type}|${capture}`;
 		let byListener = byKey.get(key);
@@ -228,29 +241,31 @@ function bindListenersToTheirScenario() {
 	}) => {
 		const add = target.addEventListener;
 		const remove = target.removeEventListener;
-		target.addEventListener = function (this: EventTarget, type, listener, options) {
-			if (typeof listener !== 'function' || owner.getStore() === undefined) {
-				return add.call(this, type, listener, options);
+		target.addEventListener = function (this: EventTarget | undefined, type, listener, options) {
+			// A bare `addEventListener(...)` is the window's.
+			const self = this ?? (globalThis as unknown as EventTarget);
+			if (typeof listener !== 'function') return add.call(self, type, listener, options);
+			const listeners = slot(self, type, options);
+			const scenario = owner.getStore();
+			const before = listeners.get(listener);
+			if (before && before.scenario === scenario) {
+				return add.call(self, type, before.listener, options);
 			}
-			const listeners = slot(this, type, options);
-			// Added before and not removed since: hand the DOM the same
-			// bound listener, which it ignores if still registered and
-			// takes back if a `once` let it go.
-			let b = listeners.get(listener);
-			if (!b) {
-				b = AsyncLocalStorage.bind(listener) as EventListener;
-				listeners.set(listener, b);
-			}
-			return add.call(this, type, b, options);
+			if (before) remove.call(self, type, before.listener, options);
+			const bound =
+				scenario === undefined ? listener : (AsyncLocalStorage.bind(listener) as EventListener);
+			listeners.set(listener, { listener: bound, scenario });
+			return add.call(self, type, bound, options);
 		};
-		target.removeEventListener = function (this: EventTarget, type, listener, options) {
-			const listeners = slot(this, type, options);
-			const b = listeners.get(listener);
-			if (b) {
+		target.removeEventListener = function (this: EventTarget | undefined, type, listener, options) {
+			const self = this ?? (globalThis as unknown as EventTarget);
+			const listeners = slot(self, type, options);
+			const now = listeners.get(listener);
+			if (now) {
 				listeners.delete(listener);
-				return remove.call(this, type, b, options);
+				return remove.call(self, type, now.listener, options);
 			}
-			return remove.call(this, type, listener, options);
+			return remove.call(self, type, listener, options);
 		};
 	};
 	patch(Object.getPrototypeOf(window.Node.prototype));
