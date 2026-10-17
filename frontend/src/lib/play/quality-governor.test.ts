@@ -350,6 +350,48 @@ describe('QualityGovernor — the viewer chooses', () => {
 	});
 });
 
+describe('QualityGovernor — a pin is never exceeded while it is shown', () => {
+	it('a pinned lowest level whose segments fail releases the choice and the pin with it', () => {
+		const g = governor(BEST, 360);
+		g.start();
+		expect(g.fragmentsFailed(0, 1_000)).toBeNull();
+		expect(g.isEngaged).toBe(false);
+		expect(g.isPinned).toBe(false);
+	});
+
+	it('a pinned lowest level whose playlist fails moves up only as Auto', () => {
+		const g = governor(BEST, 360);
+		g.start();
+		expect(g.levelFailed(0, 1_000)?.level).toBe(1);
+		expect(g.isPinned).toBe(false);
+		// Below the pin, the pin holds.
+		const h = governor(BEST, 720);
+		h.start();
+		expect(h.levelFailed(1, 1_000)?.level).toBe(0);
+		expect(h.isPinned).toBe(true);
+	});
+
+	it('every level failing releases the pin too', () => {
+		const g = governor(BEST, 720);
+		g.start();
+		g.levelFailed(2, 1_000);
+		g.levelFailed(0, 1_000);
+		expect(g.levelFailed(1, 1_000)).toBeNull();
+		expect(g.isPinned).toBe(false);
+	});
+
+	it('a switch followed above the pin shows as Auto; one below keeps the pin', () => {
+		const up = governor(BEST, 720);
+		up.start();
+		expect(up.follow(2, 1_000)?.level).toBe(2);
+		expect(up.isPinned).toBe(false);
+		const down = governor(BEST, 720);
+		down.start();
+		expect(down.follow(0, 1_000)?.level).toBe(0);
+		expect(down.isPinned).toBe(true);
+	});
+});
+
 describe('QualityGovernor — whatever happens', () => {
 	type Step =
 		| { k: 'stall'; dt: number }

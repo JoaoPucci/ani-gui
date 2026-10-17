@@ -714,6 +714,52 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.lastView()?.levels.map((l) => l.height)).toEqual([240, 480, 720]);
 	});
 
+	it('a pinned level removed re-seats at the nearest level below it, still pinned', async () => {
+		const s = armObjects();
+		s.control.pick(1);
+		s.remove(1);
+		expect(s.lastView()?.pinned).toBe(0);
+		await tickOver();
+		expect(s.engine.loads.at(-1)).toBe(0);
+		expect(s.lastView()?.levels[0].height).toBe(360);
+	});
+
+	it('a pinned level removed with nothing below it shows as Auto on the level nearest above', () => {
+		const s = armObjects();
+		s.control.pick(0);
+		s.remove(0);
+		expect(s.lastView()?.pinned).toBeNull();
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		// Held at 720p (now level 0): nothing below to step to.
+		expect(s.engine.loads.filter((l) => l === 1)).toEqual([]);
+		// The run keeps the viewer's height for the next stream.
+		expect(qualityPin.get()).toBe(360);
+	});
+
+	it('a stepped-down hold removed re-seats below it, not back at the setting', () => {
+		const s = armObjects();
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		expect(s.engine.loads).toEqual([2, 1]);
+		s.remove(1);
+		expect(s.logs.join('\n')).toMatch(/holding 360p/);
+	});
+
+	it('the choice released to the engine clears the pin the menu shows', () => {
+		const s = armObjects();
+		s.control.pick(0);
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(1),
+			frag: { type: 'main', level: 0 }
+		});
+		expect(s.lastView()?.pinned).toBeNull();
+		expect(qualityPin.get()).toBe(360);
+	});
+
 	it('a switch followed after the hold was re-seated blames no level', () => {
 		// 480p is held for a `480` setting; the audio codec of 480p and
 		// 240p is refused. hls.js removes both, the hold re-seats on 360p,
