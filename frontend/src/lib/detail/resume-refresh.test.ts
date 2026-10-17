@@ -155,3 +155,35 @@ describe('joinResumeRefresh (a click while the refresh is out)', () => {
 		expect(settled).toBe(true);
 	});
 });
+
+describe('joinResumeRefresh (a refresh that fails)', () => {
+	it('settles, and says none is out, once a refresh has failed', async () => {
+		const join = joinResumeRefresh(() => Promise.reject(new Error('offline')));
+		join.row(entry);
+		join.resolved();
+		expect(join.refreshing()).toBe(true);
+		await join.settled();
+		expect(join.refreshing()).toBe(false);
+	});
+
+	it('keeps saying one is out while a newer refresh is', async () => {
+		let finishFirst: () => void = () => {};
+		let calls = 0;
+		const join = joinResumeRefresh(() => {
+			calls += 1;
+			return calls === 1
+				? new Promise<void>((r) => {
+						finishFirst = r;
+					})
+				: new Promise<void>(() => {});
+		});
+		join.row(entry);
+		join.resolved();
+		join.unresolved();
+		join.resolved();
+		finishFirst();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(join.refreshing()).toBe(true);
+	});
+});
