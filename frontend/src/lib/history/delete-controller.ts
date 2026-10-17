@@ -137,6 +137,6 @@ export function remainingOf(
 	current: readonly HistoryEntry[],
 	removedIds: readonly string[]
 ): HistoryEntry[] {
-	void removedIds;
-	return [...current];
+	const removed = new Set(removedIds);
+	return current.filter((e) => !removed.has(e.id));
 }

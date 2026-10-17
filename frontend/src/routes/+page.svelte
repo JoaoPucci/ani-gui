@@ -91,7 +91,7 @@
 	import { recordableId, withGuess, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
-	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
+	import { executeKitsuGroupDelete, remainingOf } from '$lib/history/delete-controller';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
@@ -314,7 +314,9 @@
 			// click was first received. See $lib/history/animation-gate
 			// for the per-id scope + Svelte-batched-reset story.
 			deleteAnimationGate.open(result.removedIds, shiftedSurvivorIds(snapshot, result.removedIds));
-			history = result.remainingHistory;
+			// Off the rows as they stand now: a row read again while the
+			// delete was out keeps what it read.
+			history = remainingOf(history ?? [], result.removedIds);
 		} finally {
 			deleteBusy = false;
 			deleteCandidate = null;
