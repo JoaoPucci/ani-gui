@@ -111,3 +111,20 @@ describe('joinResumeRefresh', () => {
 		expect(run).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('joinResumeRefresh (a second lookup)', () => {
+	it('runs again for every lookup that answers, and waits for one going out', () => {
+		// The first lookup can go out in the wrong audio before the
+		// settings land; the second is the one that puts the row right.
+		const run = vi.fn();
+		const join = joinResumeRefresh(run);
+		join.row(entry);
+		join.resolved();
+		expect(run).toHaveBeenCalledTimes(1);
+		join.unresolved();
+		join.row(entry);
+		expect(run).toHaveBeenCalledTimes(1);
+		join.resolved();
+		expect(run).toHaveBeenCalledTimes(2);
+	});
+});

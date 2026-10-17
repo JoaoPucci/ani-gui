@@ -55,6 +55,18 @@ type GlobalLike = { EventSource?: typeof FakeEventSource };
 const g = globalThis as unknown as GlobalLike;
 
 const SHOW = 'Stitched Show';
+/** Kitsu's episode list, each titled by its number. */
+const EPISODES = Array.from({ length: 36 }, (_, i) => ({
+	id: `e${i + 1}`,
+	canonical_title: `Title ${i + 1}`,
+	season_number: 1,
+	number: i + 1,
+	relative_number: i + 1,
+	length: 24,
+	synopsis: null,
+	airdate: null,
+	thumbnail: null
+}));
 const ROW = 'hianime:stitched-show-4';
 
 let target: HTMLElement;
@@ -95,7 +107,7 @@ const offers = (episode: number) =>
 
 /** The home route over the row; the backend puts its numbering right
  *  when the probe pays for the listing. */
-function mountRenumbered() {
+function mountRenumbered(titled = false) {
 	let repaired = false;
 	server.use(
 		...homeHandlers({ history: [{ ep_no: '24.5', id: ROW, title: SHOW }] }, [
@@ -106,6 +118,9 @@ function mountRenumbered() {
 			}),
 			http.get(`${API_BASE}/api/history/:id/number`, () =>
 				HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () =>
+				HttpResponse.json(titled ? EPISODES : [])
 			)
 		])
 	);
@@ -117,6 +132,15 @@ describe('a Continue card over a renumbered recap', () => {
 		mountRenumbered();
 		await until(() => offers(13), 'the card to offer episode 13');
 		expect(offers(25)).toBe(false);
+	});
+
+	it('names the episode it offers, not the one it read before', async () => {
+		mountRenumbered(true);
+		await until(
+			() => (resumeButton()?.textContent ?? '').includes('Title 13'),
+			"the card to carry episode 13's title"
+		);
+		expect(resumeButton()?.textContent ?? '').not.toContain('Title 25');
 	});
 
 	it('resumes from the episode the row reads as when clicked before its probe has answered', async () => {

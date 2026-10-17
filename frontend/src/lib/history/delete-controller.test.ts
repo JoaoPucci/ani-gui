@@ -574,3 +574,26 @@ describe('remainingOf', () => {
 		expect(remainingOf(now, ['b'])).toEqual([{ id: 'a', ep_no: '12.5', title: 'A' }]);
 	});
 });
+
+describe('executeKitsuGroupDelete (rows read again while it is out)', () => {
+	test('leaves the rows as they stand when the deletes land', async () => {
+		// A Continue card's row is read again while the delete is out:
+		// what the delete leaves keeps what the row read.
+		let current: HistoryEntry[] = [
+			{ id: 'a', ep_no: '24.5', title: 'A' },
+			{ id: 'b', ep_no: '3', title: 'B' }
+		];
+		const result = await executeKitsuGroupDelete('b', {
+			history: current,
+			currentHistory: () => current,
+			matches: {},
+			historyDelete: async () => {
+				current = [
+					{ id: 'a', ep_no: '12.5', title: 'A' },
+					{ id: 'b', ep_no: '3', title: 'B' }
+				];
+			}
+		});
+		expect(result.remainingHistory).toEqual([{ id: 'a', ep_no: '12.5', title: 'A' }]);
+	});
+});
