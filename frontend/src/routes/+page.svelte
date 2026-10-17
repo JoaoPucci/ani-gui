@@ -380,8 +380,8 @@
 		// the sub playable counts (mismatching what startResume reads
 		// at click time).
 		// The Continue Watching load and its retries are one run of
-		// probes, ended with this effect: the strip's probes stop with
-		// it, whether the page is left or the effect runs again.
+		// probes, ended when the page unmounts: the strip's probes stop
+		// with it.
 		const continueProbes = probeScope.begin();
 		settingsPromise = settingsGet().catch(() => null as Config | null);
 		void settingsPromise.then((c) => {
