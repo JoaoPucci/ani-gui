@@ -144,7 +144,10 @@ async fn a_fresh_external_play_resolves_natively_and_hands_the_player_the_master
     let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
-        format!("external_player = \"{}\"\n", player.display()),
+        format!(
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(&player)
+        ),
     )
     .expect("write config");
 
@@ -170,7 +173,10 @@ async fn an_external_play_lands_in_history_under_the_provider_slug() {
     let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
-        format!("external_player = \"{}\"\n", player.display()),
+        format!(
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(&player)
+        ),
     )
     .expect("write config");
 
@@ -198,7 +204,10 @@ async fn an_external_play_records_the_provider_slot_not_the_display_number() {
     let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
-        format!("external_player = \"{}\"\n", player.display()),
+        format!(
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(&player)
+        ),
     )
     .expect("write config");
 
@@ -229,8 +238,8 @@ async fn a_failed_spawn_records_no_watch() {
     std::fs::write(
         &state.config_path,
         format!(
-            "external_player = \"{}\"\n",
-            dir.path().join("no-such-player").display()
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(dir.path().join("no-such-player"))
         ),
     )
     .expect("write config");
@@ -271,8 +280,8 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
     std::fs::write(
         &state.config_path,
         format!(
-            "external_player = \"{}\"\ncache_resolutions = true\n",
-            player.display()
+            "external_player = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&player)
         ),
     )
     .expect("write config");
@@ -340,7 +349,10 @@ async fn an_external_play_persists_the_shows_kitsu_mapping() {
     let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
-        format!("external_player = \"{}\"\n", player.display()),
+        format!(
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(&player)
+        ),
     )
     .expect("write config");
     let args = PlayArgs {
@@ -377,8 +389,8 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
     std::fs::write(
         &state.config_path,
         format!(
-            "external_player = \"{}\"\ncache_resolutions = true\n",
-            player.display()
+            "external_player = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&player)
         ),
     )
     .expect("write config");
@@ -498,7 +510,10 @@ async fn an_external_play_begun_before_the_show_was_removed_records_nothing() {
     let state = std::sync::Arc::new(state_for(dir.path(), &provider));
     std::fs::write(
         &state.config_path,
-        format!("external_player = \"{}\"\n", player.display()),
+        format!(
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(&player)
+        ),
     )
     .expect("write config");
     crate::history::upsert_and_write(
@@ -559,8 +574,8 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
     std::fs::write(
         &state.config_path,
         format!(
-            "external_player = \"{}\"\ncache_resolutions = true\n",
-            player.display()
+            "external_player = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&player)
         ),
     )
     .expect("write config");

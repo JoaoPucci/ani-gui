@@ -88,7 +88,10 @@ async fn a_fresh_syncplay_launch_resolves_natively_and_receives_the_master_url()
     let state = state_for(dir.path(), &provider);
     std::fs::write(
         &state.config_path,
-        format!("syncplay_binary = \"{}\"\n", binary.display()),
+        format!(
+            "syncplay_binary = {}\n",
+            crate::stub_file::toml_quote(&binary)
+        ),
     )
     .expect("write config");
 
@@ -126,8 +129,8 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
     std::fs::write(
         &state.config_path,
         format!(
-            "syncplay_binary = \"{}\"\ncache_resolutions = true\n",
-            binary.display()
+            "syncplay_binary = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&binary)
         ),
     )
     .expect("write config");
@@ -201,8 +204,8 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
     std::fs::write(
         &state.config_path,
         format!(
-            "syncplay_binary = \"{}\"\ncache_resolutions = true\n",
-            binary.display()
+            "syncplay_binary = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&binary)
         ),
     )
     .expect("write config");
@@ -267,7 +270,10 @@ async fn a_syncplay_launch_begun_before_the_show_was_removed_records_nothing() {
     let state = std::sync::Arc::new(state_for(dir.path(), &provider));
     std::fs::write(
         &state.config_path,
-        format!("syncplay_binary = \"{}\"\n", binary.display()),
+        format!(
+            "syncplay_binary = {}\n",
+            crate::stub_file::toml_quote(&binary)
+        ),
     )
     .expect("write config");
     crate::history::upsert_and_write(
@@ -341,8 +347,8 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
     std::fs::write(
         &state.config_path,
         format!(
-            "syncplay_binary = \"{}\"\ncache_resolutions = true\n",
-            binary.display()
+            "syncplay_binary = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&binary)
         ),
     )
     .expect("write config");

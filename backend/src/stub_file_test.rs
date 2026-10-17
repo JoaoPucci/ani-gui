@@ -21,6 +21,47 @@ pub(crate) fn sh_quote(word: impl AsRef<std::ffi::OsStr>) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
 }
 
+/// `word` as a TOML string value that reads back as exactly `word`
+/// (the toml crate picks the quoting form),
+/// for a config file a case writes with a staged path in it. A path
+/// with a double quote or a backslash in it would otherwise end the
+/// string early or start an escape.
+///
+/// # Panics
+/// On a word that is not UTF-8, which TOML cannot carry.
+pub(crate) fn toml_quote(word: impl AsRef<std::ffi::OsStr>) -> String {
+    let word = word
+        .as_ref()
+        .to_str()
+        .expect("a word embedded in a config file is UTF-8");
+    toml::Value::String(word.to_owned()).to_string()
+}
+
+/// `word` as a POSIX extended regular expression that matches exactly
+/// `word`: every character the syntax gives a meaning is escaped. For
+/// a staged path a stub hands a matcher like `pgrep -f`, where a `.` or
+/// a `$` in a directory's name would otherwise match something else
+/// or nothing.
+///
+/// # Panics
+/// On a word that is not UTF-8.
+pub(crate) fn ere_literal(word: impl AsRef<std::ffi::OsStr>) -> String {
+    let word = word
+        .as_ref()
+        .to_str()
+        .expect("a word matched by a stub script is UTF-8");
+    let mut out = String::with_capacity(word.len());
+    for c in word.chars() {
+        // `]` and `}` are ordinary outside a bracket expression or a
+        // bound, and escaping them is undefined in POSIX.
+        if "\\.[()*+?{|^$".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// A shell line that publishes `producer`'s output at `path` whole:
 /// written beside it, then renamed over it, so a reader finds either
 /// no file or the complete one — never one still being written.
@@ -90,4 +131,47 @@ fn a_file_is_published_under_a_directory_whose_name_a_shell_reads_specially() {
         std::fs::read_to_string(&path).expect("published at the path"),
         "--player-path=mpv\nhttp://x/master.m3u8\n"
     );
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(64))]
+
+    // Whatever the word holds, the shell reads the quoted form back as
+    // that word, in one piece.
+    #[test]
+    fn a_quoted_word_reads_back_as_itself(word in "[ -~\n\t]{0,40}") {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("printf '%s' {}", sh_quote(&word)))
+            .output()
+            .expect("sh");
+        proptest::prop_assert!(out.status.success());
+        proptest::prop_assert_eq!(String::from_utf8(out.stdout).expect("utf-8"), word);
+    }
+
+    // The escaped form matches the word and only text that contains it.
+    #[test]
+    fn an_escaped_word_matches_itself_literally(word in "[ -~]{1,30}") {
+        let pattern = ere_literal(&word);
+        let found = |line: &str| {
+            std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("printf '%s\\n' {} | grep -Eq -- {}", sh_quote(line), sh_quote(&pattern)))
+                .status()
+                .expect("sh")
+                .success()
+        };
+        let around = format!("x{word}y");
+        proptest::prop_assert!(found(&around));
+        let mangled: String = word.chars().map(|c| if c == 'z' { 'y' } else { 'z' }).collect();
+        proptest::prop_assume!(!mangled.contains(&word));
+        proptest::prop_assert!(!found(&mangled));
+    }
+
+    // A TOML string built from the word parses back as the word.
+    #[test]
+    fn a_toml_quoted_word_parses_back_as_itself(word in "[\\PC\n\t]{0,40}") {
+        let doc: toml::Value = toml::from_str(&format!("v = {}", toml_quote(&word))).expect("toml");
+        proptest::prop_assert_eq!(doc.get("v").and_then(toml::Value::as_str), Some(word.as_str()));
+    }
 }

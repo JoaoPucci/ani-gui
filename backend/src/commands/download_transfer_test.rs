@@ -71,7 +71,10 @@ async fn sidecars_are_fetched_while_the_transfer_runs() {
         .mount(&server)
         .await;
     let bin = tempfile::tempdir().expect("bin");
-    let path_env = stage_tool(bin.path(), &format!("sleep 2\ntouch '{}'", flag.display()));
+    let path_env = stage_tool(
+        bin.path(),
+        &format!("sleep 2\ntouch {}", crate::stub_file::sh_quote(&flag)),
+    );
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
         &crate::proxy::host_budget::HostBudget::fresh(),
@@ -242,9 +245,9 @@ async fn a_sidecar_takes_its_name_only_once_the_transfer_has_succeeded() {
     let path_env = stage_tool(
         bin.path(),
         &format!(
-            "sleep 2\nif [ -e '{}' ]; then touch '{}'; fi",
-            name.display(),
-            seen_early.display()
+            "sleep 2\nif [ -e {} ]; then touch {}; fi",
+            crate::stub_file::sh_quote(&name),
+            crate::stub_file::sh_quote(&seen_early)
         ),
     );
     let written = transfer_with_sidecars(
@@ -340,7 +343,10 @@ async fn sidecars_install_beside_an_episode_already_at_its_name() {
     std::fs::write(&media, "video from an earlier download").expect("media");
     let bin = tempfile::tempdir().expect("bin");
     let ran = dest.path().join("tool-ran");
-    let path_env = stage_tool(bin.path(), &format!("touch '{}'", ran.display()));
+    let path_env = stage_tool(
+        bin.path(),
+        &format!("touch {}", crate::stub_file::sh_quote(&ran)),
+    );
     let written = transfer_with_sidecars(
         &reqwest::Client::new(),
         &crate::proxy::host_budget::HostBudget::fresh(),
