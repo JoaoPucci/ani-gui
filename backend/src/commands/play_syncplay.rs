@@ -64,6 +64,7 @@ pub async fn play_syncplay(state: &AppState, args: &PlayArgs) -> Result<()> {
             asked.begun,
         )
         .await;
+        crate::commands::play_cache::restamp_after_handoff(state, args);
         return Ok(());
     }
 
