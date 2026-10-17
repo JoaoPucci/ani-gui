@@ -25,20 +25,17 @@ pub(crate) fn restamp_recorded(state: &AppState, cached: &play_resolution_cache:
 }
 
 /// Put the show's display stamp on the slot a cached resolution played,
-/// as the fresh resolve that wrote the row did: history stores the
-/// slot, and reads it back through the one stamp, which a later resolve
-/// of another displaced row moved. The tag is the played episode in
-/// the provider's numbering. A show with no stamp is left alone — its
-/// row is not displaced, or it was removed. The caller holds the
-/// history guard.
+/// as a fresh play that records its watch does: history stores the
+/// slot, and reads it back through the one stamp, which another watch,
+/// or the prefetch that alone resolved this row, left elsewhere or
+/// never wrote. The tag is the played episode in the provider's
+/// numbering; an undisplaced row writes nothing. The caller holds the
+/// history guard and has the show's row holding that slot.
 pub(crate) fn restamp_cached(state: &AppState, cached: &play_resolution_cache::CachedResolution) {
-    use crate::commands::numbering_offset::{display_stamp, get, put_display};
+    use crate::commands::numbering_offset::{get, put_display};
     let (Some(slot), Some(played)) = (cached.resolved_slot, cached.played.as_deref()) else {
         return;
     };
-    if display_stamp(state, &cached.show_id).is_none() {
-        return;
-    }
     let offset = get(state, &cached.show_id);
     let tag = match played.parse::<u32>() {
         Ok(n) => n.saturating_add(offset).to_string(),
