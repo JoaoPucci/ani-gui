@@ -3,13 +3,34 @@
 //! running when the test polls for the file — so the test can read the
 //! file while the stub is writing it.
 
+/// `word` as one POSIX shell word that reads back as exactly `word`:
+/// single-quoted, with each apostrophe in it closed out, escaped and
+/// reopened (`'\''`). Inside single quotes nothing else is special —
+/// not `$`, a backtick, a double quote, a backslash or a space — so a
+/// path embedded in a generated script this way is that path whatever
+/// it is named.
+///
+/// # Panics
+/// On a word that is not UTF-8, which the script it goes into could
+/// not carry as written.
+pub(crate) fn sh_quote(word: impl AsRef<std::ffi::OsStr>) -> String {
+    let word = word
+        .as_ref()
+        .to_str()
+        .expect("a word embedded in a stub script is UTF-8");
+    format!("'{}'", word.replace('\'', r"'\''"))
+}
+
 /// A shell line that publishes `producer`'s output at `path` whole:
 /// written beside it, then renamed over it, so a reader finds either
 /// no file or the complete one — never one still being written.
 pub(crate) fn publish(path: &std::path::Path, producer: &str) -> String {
+    let mut part = path.as_os_str().to_owned();
+    part.push(".part");
     format!(
-        "{producer} > '{path}.part' && mv -f '{path}.part' '{path}'",
-        path = path.display()
+        "{producer} > {part} && mv -f {part} {path}",
+        part = sh_quote(&part),
+        path = sh_quote(path)
     )
 }
 
