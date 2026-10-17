@@ -771,10 +771,33 @@
 		const entry = resumeEntry;
 		const showId = id;
 		if (!entry || !showId) return;
-		const next = await refreshedResume(entry, showId, historyNumber, (k, f, t) =>
-			movePosition(k, f, t)
+		// No measured cap means no listing stood behind the lookup.
+		const warm =
+			playableEpisodeCount === null && detail ? (ep: number) => warmResume(ep) : undefined;
+		const next = await refreshedResume(
+			entry,
+			showId,
+			historyNumber,
+			(k, f, t) => movePosition(k, f, t),
+			warm
 		);
 		if (next && id === showId && resumeEntry === entry) resumeEntry = next;
+	}
+
+	// A resolve of the resume episode that records no watch.
+	function warmResume(ep: number) {
+		const d = detail;
+		const title = playTitle();
+		if (!d || !title) return Promise.resolve();
+		const args = playArgsFor({
+			title,
+			episode: ep,
+			mode: playMode(config),
+			quality: playQuality(config),
+			show: d,
+			kitsuId: d.id
+		});
+		return playStream({ ...args, prefetch: true }, () => {});
 	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
@@ -1378,7 +1401,13 @@
 			// by a number it no longer carries.
 			const played = followPlayed(owner.showId, outcome.session, ep);
 			recordPlayed(
-				{ args: playArgs, showId: owner.showId, episode: played, show, mirror: true },
+				{
+					args: { ...playArgs, episode: String(played) },
+					showId: owner.showId,
+					episode: played,
+					show,
+					mirror: true
+				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
 			);
 			if (outcome.current) {

@@ -2025,7 +2025,13 @@
 			// by a number it no longer carries.
 			const played = followPlayed(owner.showId, outcome.session, targetEp);
 			recordPlayed(
-				{ args: playArgs, showId: owner.showId, episode: played, show, mirror: !guess },
+				{
+					args: { ...playArgs, episode: String(played) },
+					showId: owner.showId,
+					episode: played,
+					show,
+					mirror: !guess
+				},
 				{ markWatched, syncTrackers: syncWatchedToTrackers }
 			);
 			// The player on screen belongs to another visit: leave it.

@@ -182,7 +182,9 @@ export function makeStartResume(
 			// The episode the session plays, which the request may have
 			// named by a number it no longer carries.
 			const played = deps.followPlayed?.(match.id, session, episode) ?? episode;
-			void deps.markWatched(args).catch(() => {});
+			// Marked as the episode played: a resolve the request named by a
+			// former tag is kept under it.
+			void deps.markWatched({ ...args, episode: played }).catch(() => {});
 			// A guessed match writes nothing to the user's tracker accounts.
 			if (!guess) {
 				void deps.syncTrackers(match.id, played, seriesTotal, seriesFinished).catch(() => {});

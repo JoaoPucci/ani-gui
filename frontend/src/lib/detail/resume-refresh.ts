@@ -12,7 +12,10 @@ import { parseHistoryEpisode } from '$lib/play/episode-number';
 
 /** `entry` as it reads now, with a position kept under the number it
  *  read as before moved to it; null when it reads as it did or cannot
- *  be read. */
+ *  be read. `warm`, given when no listing stood behind the lookup,
+ *  resolves a fractional row the read leaves as it was — the one kind
+ *  a renumbering leaves under a number it no longer has — before it is
+ *  read again. */
 export async function refreshedResume(
 	entry: HistoryEntry,
 	kitsuId: string,
@@ -20,16 +23,30 @@ export async function refreshedResume(
 	move: (kitsuId: string, from: number, to: number) => void,
 	warm?: (episode: number) => Promise<unknown>
 ): Promise<HistoryEntry | null> {
-	void warm;
-	let now: { ep_no: string; former_ep_no?: string } | null;
-	try {
-		now = await read(entry.id);
-	} catch {
-		return null;
+	let now = await readRow(read, entry.id);
+	const last = parseHistoryEpisode(now?.ep_no);
+	if (warm && now && !now.former_ep_no && last !== null && !Number.isInteger(last)) {
+		try {
+			await warm(last);
+			now = await readRow(read, entry.id);
+		} catch {
+			return null;
+		}
 	}
-	if (!now || now.ep_no === entry.ep_no) return null;
+	if (!now) return null;
 	const to = parseHistoryEpisode(now.ep_no);
 	const from = parseHistoryEpisode(now.former_ep_no);
 	if (to !== null && from !== null && from !== to) move(kitsuId, from, to);
-	return { ...entry, ep_no: now.ep_no };
+	return now.ep_no === entry.ep_no ? null : { ...entry, ep_no: now.ep_no };
+}
+
+async function readRow(
+	read: (id: string) => Promise<{ ep_no: string; former_ep_no?: string } | null>,
+	id: string
+): Promise<{ ep_no: string; former_ep_no?: string } | null> {
+	try {
+		return await read(id);
+	} catch {
+		return null;
+	}
 }
