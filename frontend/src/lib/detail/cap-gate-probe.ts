@@ -187,6 +187,9 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 		supersede: () => {
 			run?.end();
 			run = null;
+			// A click from here on asks afresh rather than joining the
+			// stopped lookup.
+			pending = null;
 		},
 		request: (episode) => {
 			if (waiting.has(episode)) return;
@@ -203,10 +206,13 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			if (!pending) {
 				const own = probeScope.begin();
 				run = own;
-				pending = deps.probe(own.signal).finally(() => {
-					pending = null;
+				const asking: Promise<CapGateAnswer | null> = deps.probe(own.signal).finally(() => {
+					// Only its own: a lookup superseded and replaced must
+					// not clear the one that replaced it.
+					if (pending === asking) pending = null;
 					if (run === own) run = null;
 				});
+				pending = asking;
 			}
 			void pending
 				.then((answer) => {
