@@ -154,6 +154,7 @@ async fn a_cached_syncplay_launch_records_the_watch_after_the_spawn() {
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
 
@@ -233,6 +234,7 @@ async fn a_cached_syncplay_launch_persists_the_shows_kitsu_mapping() {
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
 
@@ -371,6 +373,7 @@ async fn a_syncplay_launch_whose_show_was_removed_during_the_cache_check_stamps_
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
     crate::history::upsert_and_write(

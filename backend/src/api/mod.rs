@@ -1628,6 +1628,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1675,6 +1676,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1741,6 +1743,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         // A later resolve moved the display stamp to its own row.
@@ -1795,6 +1798,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         // The stamp names display 4 as slot 5.
@@ -1853,6 +1857,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1909,6 +1914,7 @@ mod tests {
                     subtitles: Vec::new(),
                     kitsu_id: None,
                     played: None,
+                    former_episode: None,
                 },
             );
         }
@@ -1993,6 +1999,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -2096,6 +2103,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -2188,6 +2196,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -2291,6 +2300,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
 
@@ -2400,6 +2410,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2454,6 +2465,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2584,6 +2596,7 @@ mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();

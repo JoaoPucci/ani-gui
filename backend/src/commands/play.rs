@@ -488,6 +488,7 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         played: Some(crate::commands::play_native_record::matched_episode(
             native, "",
         )),
+        former_episode: None,
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
     }
@@ -998,6 +999,7 @@ pub(crate) mod tests {
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         }
     }
 
@@ -1337,6 +1339,7 @@ pub(crate) mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
     }
@@ -1384,6 +1387,7 @@ pub(crate) mod tests {
                 subtitles,
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
     }
@@ -1780,6 +1784,7 @@ pub(crate) mod tests {
                 subtitles: Vec::new(),
                 kitsu_id: None,
                 played: None,
+                former_episode: None,
             },
         );
         let cfg = external_cfg();

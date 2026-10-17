@@ -85,7 +85,7 @@ fn sample_resolution() -> CachedResolution {
         show_title: "Naruto: Shippuuden (500 episodes)".into(),
         resolved_slot: None,
         subtitles: Vec::new(),
-        kitsu_id: None, played: None,
+        kitsu_id: None, played: None, former_episode: None,
     }
 }
 

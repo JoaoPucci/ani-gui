@@ -300,6 +300,7 @@ async fn a_cached_external_play_records_the_watch_after_the_spawn() {
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
     let before = std::time::SystemTime::now()
@@ -410,6 +411,7 @@ async fn a_cached_external_play_persists_the_shows_kitsu_mapping() {
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
 
@@ -590,6 +592,7 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
             subtitles: Vec::new(),
             kitsu_id: None,
             played: None,
+            former_episode: None,
         },
     );
     crate::history::upsert_and_write(
@@ -657,6 +660,7 @@ fn two_recaps(state: &crate::app::AppState, upstream: &str, args: &PlayArgs) -> 
             subtitles: Vec::new(),
             kitsu_id: None,
             played: Some("12.5".into()),
+            former_episode: None,
         },
     );
     show

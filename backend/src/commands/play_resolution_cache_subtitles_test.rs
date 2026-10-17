@@ -23,6 +23,7 @@ fn the_row_round_trips_its_sidecar_tracks() {
         }],
         kitsu_id: None,
         played: None,
+        former_episode: None,
     };
     put(&pool, "play:test:row", &row);
     assert_eq!(get(&pool, "play:test:row").expect("read"), Some(row));

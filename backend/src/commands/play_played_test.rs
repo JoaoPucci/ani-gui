@@ -92,6 +92,7 @@ async fn a_replay_opens_a_session_named_for_the_episode_its_resolve_played() {
             subtitles: Vec::new(),
             kitsu_id: None,
             played: Some("1.5".into()),
+            former_episode: None,
         },
     );
     let resp = play_with_progress(&state, &asked, |_| {})
@@ -198,6 +199,7 @@ fn first_recap_row(upstream: &str) -> CachedResolution {
         subtitles: Vec::new(),
         kitsu_id: None,
         played: Some("12.5".into()),
+        former_episode: None,
     }
 }
 

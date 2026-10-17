@@ -204,6 +204,11 @@ pub struct CachedResolution {
     /// replays record the request.
     #[serde(default)]
     pub played: Option<String>,
+    /// The number an earlier version gave that episode, where the
+    /// resolve's listing records one no row carries now — what a
+    /// position kept from then is under, which a replay's session names.
+    #[serde(default)]
+    pub former_episode: Option<String>,
     /// The sidecar subtitle tracks the resolve listed, so a replay
     /// offers the same tracks a fresh resolve did.
     #[serde(default)]
