@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
-import { executeKitsuGroupDelete } from './delete-controller';
+import { executeKitsuGroupDelete, remainingOf } from './delete-controller';
 import {
 	clearRowPositions,
 	clearShowPositions,
@@ -561,5 +561,16 @@ describe('executeKitsuGroupDelete — what the user plays after the removal', ()
 		expect(readPosition('k-7', 1, s), 'rewritten since').toBe(650);
 		expect(readPosition('k-7', 2, s), 'written since').toBe(300);
 		expect(readPosition('k-7', 3, s), 'kept before').toBeNull();
+	});
+});
+
+describe('remainingOf', () => {
+	test('takes the delete off the rows as they stand when it lands', () => {
+		// A row read again while the delete was out keeps what it read.
+		const now = [
+			{ id: 'a', ep_no: '12.5', title: 'A' },
+			{ id: 'b', ep_no: '3', title: 'B' }
+		];
+		expect(remainingOf(now, ['b'])).toEqual([{ id: 'a', ep_no: '12.5', title: 'A' }]);
 	});
 });
