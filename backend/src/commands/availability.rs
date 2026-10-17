@@ -504,7 +504,18 @@ pub async fn stamp_after_native(
                         },
                     );
                 }
-                _ => write_cache(state, id, mode, verdict.available, verdict.provider),
+                // A positive whose cap is no evidence of the count (a
+                // dub, or none listed) writes the boolean row, the
+                // versions kept; a miss names none.
+                _ if verdict.available => write_boolean_row(
+                    state,
+                    id,
+                    mode,
+                    true,
+                    verdict.provider,
+                    with_modes_kept(state, &row, verdict.versions),
+                ),
+                _ => write_cache(state, id, mode, false, verdict.provider),
             }
         },
     )
@@ -578,7 +589,7 @@ pub async fn stamp_after_cache_hit(
     mode: &str,
     at_start: &RowAtStart,
     provider: crate::scraper::provider::ProviderId,
-    _versions: &[crate::commands::play_native_versions::VersionInfo],
+    versions: &[crate::commands::play_native_versions::VersionInfo],
 ) {
     let Some(id) = kitsu_id.filter(|s| !s.is_empty()) else {
         return;
@@ -593,7 +604,14 @@ pub async fn stamp_after_cache_hit(
             if positive_row_stands(state, &row) {
                 state.availability_refreshes.note_replay(&row);
             } else {
-                write_cache(state, id, mode, true, Some(provider));
+                write_boolean_row(
+                    state,
+                    id,
+                    mode,
+                    true,
+                    Some(provider),
+                    with_modes_kept(state, &row, versions),
+                );
             }
         },
     )
@@ -1154,6 +1172,20 @@ pub fn write_cache(
     available: bool,
     provider: Option<crate::scraper::provider::ProviderId>,
 ) {
+    write_boolean_row(state, kitsu_id, mode, available, provider, Vec::new());
+}
+
+/// [`write_cache`] naming the show's `versions`: a positive stamp keeps
+/// them, so the row still says the show has versions — and what was
+/// learned of each one's mode — where its count is not known.
+fn write_boolean_row(
+    state: &AppState,
+    kitsu_id: &str,
+    mode: &str,
+    available: bool,
+    provider: Option<crate::scraper::provider::ProviderId>,
+    versions: Vec<crate::commands::play_native_versions::VersionInfo>,
+) {
     // Status unknown at this call site (play / download success /
     // failure paths). Use ongoing TTL — the next detail-page probe
     // will overwrite this row anyway, since check_availability's
@@ -1174,7 +1206,7 @@ pub fn write_cache(
             gate_refused: false,
             unsettled: false,
             provider,
-            versions: Vec::new(),
+            versions,
         },
     );
 }
