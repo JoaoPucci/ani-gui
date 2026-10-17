@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { refreshedResume } from './resume-refresh';
+import { joinResumeRefresh, refreshedResume } from './resume-refresh';
 
 const entry = { id: 'hianime:show-4', ep_no: '24.5', title: 'Show' };
 
@@ -79,5 +79,35 @@ describe('refreshedResume (no listing behind the lookup)', () => {
 			await refreshedResume(entry, '42', async () => ({ ep_no: '24.5' }), vi.fn(), warm)
 		).toBeNull();
 		expect(warm).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('joinResumeRefresh', () => {
+	it('runs once the row and the lookup have both landed, in either order', () => {
+		const run = vi.fn();
+		const join = joinResumeRefresh(run);
+		join.resolved();
+		expect(run).not.toHaveBeenCalled();
+		join.row(entry);
+		expect(run).toHaveBeenCalledWith(entry);
+		const other = vi.fn();
+		const later = joinResumeRefresh(other);
+		later.row(entry);
+		expect(other).not.toHaveBeenCalled();
+		later.resolved();
+		expect(other).toHaveBeenCalledWith(entry);
+	});
+
+	it('runs nothing for a visit with no row, and starts over on reset', () => {
+		const run = vi.fn();
+		const join = joinResumeRefresh(run);
+		join.row(null);
+		join.resolved();
+		expect(run).not.toHaveBeenCalled();
+		join.reset();
+		join.row(entry);
+		expect(run).not.toHaveBeenCalled();
+		join.resolved();
+		expect(run).toHaveBeenCalledTimes(1);
 	});
 });

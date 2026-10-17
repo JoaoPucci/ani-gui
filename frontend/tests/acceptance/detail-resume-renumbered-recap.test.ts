@@ -92,7 +92,7 @@ async function until(predicate: () => boolean, what: string, timeoutMs = 8000) {
 	throw new Error(`timed out waiting for ${what}\n--- DOM ---\n${target.textContent}`);
 }
 
-function useShowHandlers() {
+function useShowHandlers(rowDelayMs = 0) {
 	let repaired = false;
 	server.use(
 		http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
@@ -114,9 +114,12 @@ function useShowHandlers() {
 			});
 		}),
 		http.get(`${API_BASE}/api/download/default-dir`, () => HttpResponse.json('/dl')),
-		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, () =>
-			HttpResponse.json({ id: ROW, ep_no: '24.5', title: TITLE })
-		),
+		http.get(`${API_BASE}/api/history/by-kitsu/${KITSU_ID}`, async () => {
+			// Read before the lookup put the row right, answered after it.
+			const row = { id: ROW, ep_no: '24.5', title: TITLE };
+			if (rowDelayMs > 0) await new Promise((r) => setTimeout(r, rowDelayMs));
+			return HttpResponse.json(row);
+		}),
 		http.get(`${API_BASE}/api/history/:id/number`, () =>
 			HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
 		)
@@ -143,5 +146,12 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		app = mount(DetailPage, { target });
 		const label = m.detail_play_button_resume({ episode: '12.5' });
 		await until(() => playButton(label) !== null, 'the Play button naming the recap');
+	});
+
+	it('reads the row again when it arrives after the lookup has answered', async () => {
+		useShowHandlers(300);
+		app = mount(DetailPage, { target });
+		const label = m.detail_play_button_resume({ episode: '13' });
+		await until(() => playButton(label) !== null, 'the Play button naming episode 13');
 	});
 });
