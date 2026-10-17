@@ -54,7 +54,28 @@ pub(crate) fn former_number(
 }
 
 /// A single listing's rows, each carrying the tag an earlier version
-/// resolved it by where that differs.
-pub(crate) fn mark_offset_recaps(episodes: Vec<EpisodeRef>) -> Vec<EpisodeRef> {
+/// resolved it by where that differs. Under a continuation offset, that
+/// version passed a recap at the offset ("12.5" under 12) through as
+/// the entry's own number, and asked the provider for it with the
+/// offset added back ("24.5"); it is the entry's 0.5 now, and "24.5" is
+/// the tag a request by the old number names.
+pub(crate) fn mark_offset_recaps(mut episodes: Vec<EpisodeRef>) -> Vec<EpisodeRef> {
+    use crate::commands::play_native_numbering::{numbering_offset, provider_fraction};
+    let offset = numbering_offset(&episodes);
+    if offset == 0 {
+        return episodes;
+    }
+    for e in episodes.iter_mut().filter(|e| e.former_tag.is_none()) {
+        let Some(tag) = e.number2.as_deref() else {
+            continue;
+        };
+        let at_offset = tag
+            .split_once('.')
+            .and_then(|(int, _)| int.parse::<u32>().ok())
+            .is_some_and(|n| n == offset);
+        if at_offset {
+            e.former_tag = Some(provider_fraction(tag, offset));
+        }
+    }
     episodes
 }
