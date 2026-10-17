@@ -148,3 +148,30 @@ async fn a_resolve_by_a_former_tag_is_kept_under_the_episode_it_played() {
     let kept = under("1.5").expect("kept under the episode played");
     assert_eq!(kept.played.as_deref(), Some("1.5"));
 }
+
+#[tokio::test]
+async fn a_cumulative_listings_opening_recap_asked_for_by_its_former_number_plays_as_itself() {
+    // An earlier version advertised the opening recap as "12.5"; it is
+    // "0.5" now. A request by the old number plays the recap, and the
+    // session names "0.5" and the "12.5" a position from then is under.
+    use crate::commands::play_native_test_provider::{cumulative_opening_recap, CUMULATIVE};
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state
+        .providers
+        .set_stub(std::sync::Arc::new(cumulative_opening_recap()));
+    let asked: PlayArgs = serde_json::from_value(serde_json::json!({
+        "title": CUMULATIVE,
+        "episode": "12.5",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+        "kitsu_id": "88",
+    }))
+    .expect("args");
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays the recap");
+    assert_eq!(resp.episode.as_deref(), Some("0.5"));
+    assert_eq!(resp.former_episode.as_deref(), Some("12.5"));
+}

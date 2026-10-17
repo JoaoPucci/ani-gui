@@ -164,3 +164,26 @@ pub(crate) fn stitched_shared_former() -> TableProvider {
     }
     table
 }
+
+/// A continuation the provider numbers on from 13 (offset 12) and that
+/// opens on a recap tagged "12.5": the entry's 0.5, which an earlier
+/// version advertised as "12.5" and resolved by asking for "24.5".
+/// Kitsu counts two episodes. Every row streams in sub.
+pub(crate) const CUMULATIVE: &str = "Cumulative Show";
+pub(crate) const CUMULATIVE_SLUG: &str = "cumulative-show-66";
+
+pub(crate) fn cumulative_opening_recap() -> TableProvider {
+    let rows = vec![
+        row(6601, 1, Some("12.5")),
+        row(6602, 2, Some("13")),
+        row(6603, 3, Some("14")),
+    ];
+    let mut table = TableProvider::new()
+        .hits(CUMULATIVE, hits(&[(CUMULATIVE_SLUG, CUMULATIVE)]))
+        .listing(66, rows)
+        .year(66, Some(2026));
+    for id in [6601, 6602, 6603] {
+        table = table.stream(id, "sub", MASTER).mode(id, "sub", true);
+    }
+    table
+}

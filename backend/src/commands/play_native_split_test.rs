@@ -649,3 +649,36 @@ proptest::proptest! {
         }
     }
 }
+
+#[test]
+fn a_cumulative_listings_opening_recap_carries_the_tag_an_earlier_version_resolved_it_by() {
+    // Offset 12: the opening "12.5" is the entry's 0.5 now. An earlier
+    // version called it "12.5" and asked the provider for "24.5" by
+    // that name: that is the tag it remembers.
+    let rows = vec![
+        row(1, 1, Some("12.5")),
+        row(2, 2, Some("13")),
+        row(3, 3, Some("14")),
+    ];
+    let marked = crate::commands::play_native_merge::mark_offset_recaps(rows);
+    assert_eq!(marked[0].former_tag.as_deref(), Some("24.5"));
+    assert!(marked[1..].iter().all(|e| e.former_tag.is_none()));
+}
+
+#[test]
+fn a_listing_numbered_from_one_or_a_recap_past_the_offset_carries_no_former_tag() {
+    let from_one = vec![row(1, 1, Some("0.5")), row(2, 2, Some("1"))];
+    assert!(
+        crate::commands::play_native_merge::mark_offset_recaps(from_one)
+            .iter()
+            .all(|e| e.former_tag.is_none())
+    );
+    let past = vec![
+        row(1, 1, Some("13")),
+        row(2, 2, Some("13.5")),
+        row(3, 3, Some("14")),
+    ];
+    assert!(crate::commands::play_native_merge::mark_offset_recaps(past)
+        .iter()
+        .all(|e| e.former_tag.is_none()));
+}
