@@ -15,7 +15,7 @@ export function describeLevel(
 	level: number
 ): string {
 	const { height, bitrate } = levels[level];
-	const listed = declared[level]?.height ?? height;
+	const listed = declared[level].height;
 	const also = listed > 0 && listed !== height ? `, listed ${listed}p` : '';
 	const mbps = `${(bitrate / 1_000_000).toFixed(1)} Mbps`;
 	return height > 0 ? `${height}p (level ${level}${also}, ${mbps})` : `level ${level} (${mbps})`;
