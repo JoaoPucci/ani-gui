@@ -13,8 +13,10 @@ import type { HistoryEntry } from '$lib/api';
 export async function refreshedRows(
 	id: string,
 	rows: () => readonly HistoryEntry[] | null,
-	read: (id: string) => Promise<{ ep_no: string } | null>
+	read: (id: string) => Promise<{ ep_no: string; former_ep_no?: string } | null>,
+	move?: (from: number, to: number) => void
 ): Promise<HistoryEntry[] | null> {
+	void move;
 	let now: { ep_no: string } | null;
 	try {
 		now = await read(id);

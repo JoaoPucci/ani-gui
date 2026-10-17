@@ -15,6 +15,9 @@ export interface ConfirmDeleteDeps extends RowShowDeps {
 	/** The strip's rows as they stand now, which the remaining rows are
 	 *  read off once the deletes land. Omitted, `history`. */
 	currentHistory?: () => readonly HistoryEntry[];
+	/** Puts the rows the delete leaves on the strip. Omitted, the caller
+	 *  applies `remainingHistory` itself. */
+	applyRemaining?: (rows: HistoryEntry[]) => void;
 	matches: Record<string, KitsuAnimeRef | null | undefined>;
 	historyDelete: (id: string) => Promise<void>;
 	/** The moment the removed rows are gone (watch-position-clear.ts): the
