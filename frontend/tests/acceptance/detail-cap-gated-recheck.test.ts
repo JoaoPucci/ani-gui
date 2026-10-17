@@ -713,4 +713,58 @@ describe('detail route — clicking a dimmed aired episode', () => {
 
 		expect(probes.filter((p) => !p.bypass_cache)).toHaveLength(1);
 	});
+
+	it('keeps "not in the streaming catalogue" when the re-ask is a refusal by name', async () => {
+		// The page-load lookup found the show; the re-ask the click sends
+		// is refused by name. The title is then in no audio, so the
+		// notice must not name the other one, and the cache — which
+		// holds the title dubbed — is never asked about it.
+		const batches: string[] = [];
+		server.use(
+			http.get(`${API_BASE}/api/settings`, () => HttpResponse.json(appConfig())),
+			http.get(`${API_BASE}/api/kitsu/anime/${KITSU_ID}`, () =>
+				HttpResponse.json({ ...kitsuRef(KITSU_ID, TITLE, 12), status: 'current' })
+			),
+			http.get(`${API_BASE}/api/kitsu/airing/${KITSU_ID}`, () =>
+				HttpResponse.json({
+					aired: AIRED,
+					next_episode: AIRED + 1,
+					next_airing_at: null,
+					upcoming: []
+				})
+			),
+			http.get(`${API_BASE}/api/kitsu/episodes/:id`, () => HttpResponse.json([])),
+			http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+				const body = (await request.json()) as { bypass_cache?: boolean };
+				return HttpResponse.json(
+					body.bypass_cache
+						? { available: false, episode_count: null, extra_episodes: [], unsettled: 'refused' }
+						: {
+								available: true,
+								episode_count: CACHED_COUNT,
+								extra_episodes: [],
+								episode_count_approximate: false
+							}
+				);
+			}),
+			http.post(`${API_BASE}/api/availability/batch`, async ({ request }) => {
+				const body = (await request.json()) as { mode: string };
+				batches.push(body.mode);
+				return HttpResponse.json(
+					body.mode === 'dub'
+						? { cached: { [KITSU_ID]: true }, playable_episode_counts: { [KITSU_ID]: 4 } }
+						: { cached: {}, playable_episode_counts: {} }
+				);
+			})
+		);
+
+		app = mount(DetailPage, { target });
+		await until(() => tile(AIRED) !== null, `the tile for episode ${AIRED}`);
+		tile(AIRED)!.click();
+		const notice = () => target.querySelector('p.unavailable[role="status"]')?.textContent ?? null;
+		await until(() => notice() !== null, 'the unavailable notice');
+		await new Promise((r) => setTimeout(r, 100));
+		expect(notice()).toContain(m.detail_unavailable_message());
+		expect(batches, 'the other audio is never asked').not.toContain('dub');
+	});
 });

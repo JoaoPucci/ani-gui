@@ -1,5 +1,25 @@
 use super::*;
 
+/// A listing carrying `pairs` as (episode number, thumbnail) entries
+/// with empty titles and no episode count.
+fn listing(pairs: &[(u32, &str)]) -> StreamingListing {
+    StreamingListing {
+        entries: pairs
+            .iter()
+            .map(|(n, url)| {
+                (
+                    *n,
+                    crate::meta::anilist_streaming_eps::StreamingEntry {
+                        title: String::new(),
+                        thumbnail: Some((*url).to_string()),
+                    },
+                )
+            })
+            .collect(),
+        ..StreamingListing::default()
+    }
+}
+
 fn ep_with(num: u32, thumb: Option<&str>) -> KitsuEpisode {
     KitsuEpisode {
         id: format!("e{num}"),
@@ -19,8 +39,7 @@ fn ep_with(num: u32, thumb: Option<&str>) -> KitsuEpisode {
 #[test]
 fn merge_thumbs_keeps_kitsu_thumb_when_present() {
     let eps = vec![ep_with(1, Some("https://kitsu.cdn/1.jpg"))];
-    let mut anilist = HashMap::new();
-    anilist.insert(1u32, "https://crunchyroll.cdn/1.jpg".to_string());
+    let anilist = listing(&[(1, "https://crunchyroll.cdn/1.jpg")]);
     let merged = merge_thumbs(eps, &anilist);
     assert_eq!(
         merged[0]
@@ -37,8 +56,7 @@ fn merge_thumbs_keeps_kitsu_thumb_when_present() {
 #[test]
 fn merge_thumbs_fills_null_thumb_from_anilist() {
     let eps = vec![ep_with(54, None)];
-    let mut anilist = HashMap::new();
-    anilist.insert(54u32, "https://crunchyroll.cdn/54.jpg".to_string());
+    let anilist = listing(&[(54, "https://crunchyroll.cdn/54.jpg")]);
     let merged = merge_thumbs(eps, &anilist);
     assert_eq!(
         merged[0]
@@ -57,7 +75,7 @@ fn merge_thumbs_leaves_null_thumb_when_anilist_missing() {
     // The "both gap" case (One Piece eps 54-61, 131-1010+): Kitsu
     // null, AniList also has nothing. Placeholder still renders.
     let eps = vec![ep_with(131, None)];
-    let anilist = HashMap::<u32, String>::new();
+    let anilist = StreamingListing::default();
     let merged = merge_thumbs(eps, &anilist);
     assert!(merged[0].thumbnail.is_none());
 }
@@ -73,9 +91,10 @@ fn merge_thumbs_handles_mixed_pool() {
         ep_with(62, None),
         ep_with(130, None),
     ];
-    let mut anilist = HashMap::new();
-    anilist.insert(62u32, "https://cr.cdn/62.jpg".to_string());
-    anilist.insert(130u32, "https://cr.cdn/130.jpg".to_string());
+    let anilist = listing(&[
+        (62, "https://cr.cdn/62.jpg"),
+        (130, "https://cr.cdn/130.jpg"),
+    ]);
     let merged = merge_thumbs(eps, &anilist);
     assert_eq!(
         merged[0]
@@ -118,8 +137,7 @@ fn merge_thumbs_skips_eps_without_number() {
     let mut ep = ep_with(1, None);
     ep.number = None;
     let eps = vec![ep];
-    let mut anilist = HashMap::new();
-    anilist.insert(1u32, "https://cr.cdn/1.jpg".to_string());
+    let anilist = listing(&[(1, "https://cr.cdn/1.jpg")]);
     let merged = merge_thumbs(eps, &anilist);
     assert!(merged[0].thumbnail.is_none());
 }
@@ -132,8 +150,7 @@ fn merge_thumbs_replaces_thumbnail_with_only_null_original() {
     let mut ep = ep_with(1, None);
     ep.thumbnail = Some(KitsuEpisodeThumbnail { original: None });
     let eps = vec![ep];
-    let mut anilist = HashMap::new();
-    anilist.insert(1u32, "https://cr.cdn/1.jpg".to_string());
+    let anilist = listing(&[(1, "https://cr.cdn/1.jpg")]);
     let merged = merge_thumbs(eps, &anilist);
     assert_eq!(
         merged[0]
@@ -148,15 +165,14 @@ fn merge_thumbs_replaces_thumbnail_with_only_null_original() {
 }
 
 #[test]
-fn cache_anilist_eps_thumbs_caches_success_map_by_kitsu_id() {
+fn cache_anilist_eps_thumbs_caches_success_listing_by_kitsu_id() {
     let pool = crate::cache::open_in_memory().expect("in-mem pool");
-    let mut map = HashMap::new();
-    map.insert(1u32, "https://cr.cdn/1.jpg".to_string());
+    let map = listing(&[(1, "https://cr.cdn/1.jpg")]);
     cache_anilist_eps_thumbs(&pool, "12", &Ok(map.clone()));
-    let body = meta_cache_get(&pool, "anilist:eps-thumbs:v1:k12")
+    let body = meta_cache_get(&pool, "anilist:eps-thumbs:v2:k12")
         .expect("cache read")
         .expect("cache hit");
-    let back: HashMap<u32, String> = serde_json::from_str(&body).expect("json");
+    let back: StreamingListing = serde_json::from_str(&body).expect("json");
     assert_eq!(back, map);
 }
 
@@ -169,17 +185,17 @@ fn cache_anilist_eps_thumbs_negative_caches_empty_on_error() {
     // re-running the Kitsu /mappings lookup.
     let pool = crate::cache::open_in_memory().expect("in-mem pool");
     cache_anilist_eps_thumbs(&pool, "12", &Err(()));
-    let body = meta_cache_get(&pool, "anilist:eps-thumbs:v1:k12")
+    let body = meta_cache_get(&pool, "anilist:eps-thumbs:v2:k12")
         .expect("cache read")
         .expect("cache hit — empty is still a hit");
-    let back: HashMap<u32, String> = serde_json::from_str(&body).expect("json");
-    assert!(back.is_empty());
+    let back: StreamingListing = serde_json::from_str(&body).expect("json");
+    assert_eq!(back, StreamingListing::default());
 }
 
 #[test]
 fn anilist_eps_thumbs_key_namespace_separates_kitsu_ids() {
-    assert_eq!(anilist_eps_thumbs_key("12"), "anilist:eps-thumbs:v1:k12");
-    assert_eq!(anilist_eps_thumbs_key("818"), "anilist:eps-thumbs:v1:k818");
+    assert_eq!(anilist_eps_thumbs_key("12"), "anilist:eps-thumbs:v2:k12");
+    assert_eq!(anilist_eps_thumbs_key("818"), "anilist:eps-thumbs:v2:k818");
     assert_ne!(anilist_eps_thumbs_key("12"), anilist_eps_thumbs_key("818"));
 }
 
@@ -270,16 +286,14 @@ fn needs_backfill_false_for_empty_page() {
 }
 
 #[tokio::test]
-async fn thumbs_for_show_returns_cached_map_without_network() {
+async fn thumbs_for_show_returns_cached_listing_without_network() {
     // The hot path: cache is warm, hit returns instantly with no
     // Kitsu /mappings call and no AniList round-trip. The state's
     // kitsu base is pointed at an unbound port so any miss-path
     // attempt would error visibly — the test passes precisely
     // because the cache-hit branch short-circuits before that.
     let state = state_for_cache_only_tests();
-    let mut prefilled = HashMap::new();
-    prefilled.insert(1u32, "https://x.cdn/1.jpg".to_string());
-    prefilled.insert(2u32, "https://x.cdn/2.jpg".to_string());
+    let prefilled = listing(&[(1, "https://x.cdn/1.jpg"), (2, "https://x.cdn/2.jpg")]);
     cache_anilist_eps_thumbs(&state.cache_pool, "777", &Ok(prefilled.clone()));
     let got = thumbs_for_show(&state, "777").await;
     assert_eq!(got, prefilled);
@@ -294,13 +308,13 @@ async fn thumbs_for_show_negative_caches_on_cache_miss_with_unreachable_kitsu() 
     // second call hits cache and returns instantly.
     let state = state_for_cache_only_tests();
     let first = thumbs_for_show(&state, "999").await;
-    assert!(first.is_empty());
+    assert!(first.entries.is_empty());
     // Verify the negative cache was written.
-    let body = meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v1:k999")
+    let body = meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k999")
         .expect("cache read")
         .expect("negative cache hit");
-    let cached: HashMap<u32, String> = serde_json::from_str(&body).expect("json");
-    assert!(cached.is_empty());
+    let cached: StreamingListing = serde_json::from_str(&body).expect("json");
+    assert_eq!(cached, StreamingListing::default());
 }
 
 #[tokio::test]
@@ -311,7 +325,7 @@ async fn thumbs_for_show_returns_empty_on_cached_negative() {
     let state = state_for_cache_only_tests();
     cache_anilist_eps_thumbs(&state.cache_pool, "778", &Err(()));
     let got = thumbs_for_show(&state, "778").await;
-    assert!(got.is_empty());
+    assert!(got.entries.is_empty());
 }
 
 // --- Which id the AniList lookup uses -----------------------------
@@ -384,8 +398,10 @@ async fn mount_anilist(
         .await;
 }
 
-fn one_ep_map() -> HashMap<u32, String> {
-    HashMap::from([(1u32, "https://cr.cdn/1.jpg".to_string())])
+fn one_ep_listing() -> StreamingListing {
+    let mut l = listing(&[(1, "https://cr.cdn/1.jpg")]);
+    l.entries.get_mut(&1).expect("entry").title = "Pilot".to_string();
+    l
 }
 
 #[tokio::test]
@@ -401,7 +417,7 @@ async fn a_show_mapped_to_anilist_alone_gets_thumbs_by_anilist_id() {
     .await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "50551", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]
@@ -411,7 +427,7 @@ async fn a_show_mapped_to_mal_alone_keeps_the_mal_query() {
     mount_anilist(&anilist, serde_json::json!({ "idMal": 21 }), ONE_EP_BODY, 1).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]
@@ -423,7 +439,7 @@ async fn a_show_mapped_to_both_keeps_the_mal_query() {
     mount_anilist(&anilist, serde_json::json!({ "id": 21 }), ONE_EP_BODY, 0).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]
@@ -437,11 +453,14 @@ async fn a_show_with_neither_mapping_never_asks_anilist_and_negative_caches() {
         .await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "7", Some(&anilist.uri())).await;
-    assert!(got.is_empty());
-    let body = meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v1:k7")
+    assert!(got.entries.is_empty());
+    let body = meta_cache_get(&state.cache_pool, "anilist:eps-thumbs:v2:k7")
         .expect("cache read")
         .expect("negative cache hit");
-    assert_eq!(body, "{}");
+    assert_eq!(
+        serde_json::from_str::<StreamingListing>(&body).expect("json"),
+        StreamingListing::default()
+    );
 }
 
 #[tokio::test]
@@ -460,8 +479,8 @@ async fn anilist_knowing_nothing_by_anilist_id_is_cached_as_empty() {
     let state = state_with_kitsu_at(&kitsu.uri());
     let first = thumbs_for_show_with_anilist_base(&state, "50551", Some(&anilist.uri())).await;
     let second = thumbs_for_show_with_anilist_base(&state, "50551", Some(&anilist.uri())).await;
-    assert!(first.is_empty());
-    assert!(second.is_empty());
+    assert!(first.entries.is_empty());
+    assert!(second.entries.is_empty());
 }
 
 #[tokio::test]
@@ -479,7 +498,7 @@ async fn a_mal_id_anilist_lacks_falls_back_to_the_anilist_id_for_thumbs() {
     mount_anilist(&anilist, serde_json::json!({ "id": 30 }), ONE_EP_BODY, 1).await;
     let state = state_with_kitsu_at(&kitsu.uri());
     let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
-    assert_eq!(got, one_ep_map());
+    assert_eq!(got, one_ep_listing());
 }
 
 #[tokio::test]
@@ -498,6 +517,207 @@ async fn both_ids_unknown_to_anilist_cache_empty_thumbs_after_two_requests() {
     let state = state_with_kitsu_at(&kitsu.uri());
     let first = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
     let second = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
-    assert!(first.is_empty());
-    assert!(second.is_empty());
+    assert!(first.entries.is_empty());
+    assert!(second.entries.is_empty());
+}
+
+// --- A listing that is not the show's -----------------------------
+
+/// AniList's recorded reply for `slug` under
+/// `tests/fixtures/episode-thumbs/`.
+fn recorded_anilist(slug: &str) -> String {
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../tests/fixtures/episode-thumbs"
+    );
+    std::fs::read_to_string(format!("{dir}/{slug}.anilist.json")).expect("anilist fixture")
+}
+
+/// Kitsu's recorded first episode page for `slug`.
+fn recorded_kitsu_page(slug: &str) -> Vec<KitsuEpisode> {
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../tests/fixtures/episode-thumbs"
+    );
+    let body = std::fs::read(format!("{dir}/{slug}.kitsu-p1.json")).expect("kitsu fixture");
+    crate::meta::kitsu::parse_episodes_response(&body).expect("kitsu parses")
+}
+
+#[tokio::test]
+async fn gintama_dot_keeps_its_placeholders_instead_of_the_2006_stills() {
+    // Kitsu 12553 "Gintama." maps to MAL 34096; AniList answers with the
+    // 49-entry Crunchyroll listing of the 2006 series. Kitsu has no
+    // stills for the twelve episodes, so before the fit rule every one
+    // took a 2006 still.
+    let kitsu = kitsu_with_mappings("12553", &[("myanimelist/anime", 34096)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 34096 }),
+        &recorded_anilist("gintama-dot"),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let page = recorded_kitsu_page("gintama-dot");
+    assert!(needs_backfill(&page));
+    let got = thumbs_for_show_with_anilist_base(&state, "12553", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(page, &got);
+    assert!(
+        merged.iter().all(|e| e
+            .thumbnail
+            .as_ref()
+            .and_then(|t| t.original.as_ref())
+            .is_none()),
+        "a 2006 still landed on Gintama."
+    );
+}
+
+#[tokio::test]
+async fn the_2006_gintama_keeps_the_stills_of_its_own_listing() {
+    let kitsu = kitsu_with_mappings("818", &[("myanimelist/anime", 918)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 918 }),
+        &recorded_anilist("gintama"),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let page = recorded_kitsu_page("gintama");
+    let got = thumbs_for_show_with_anilist_base(&state, "818", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(page, &got);
+    assert!(merged.iter().all(|e| e
+        .thumbnail
+        .as_ref()
+        .and_then(|t| t.original.as_ref())
+        .is_some()));
+}
+
+#[tokio::test]
+async fn a_cached_row_that_is_not_a_listing_is_fetched_again() {
+    // A row this version cannot read (a hand-edited or truncated
+    // body) is a miss: the lookup runs and its listing replaces it.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(&anilist, serde_json::json!({ "idMal": 21 }), ONE_EP_BODY, 1).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    meta_cache_put(&state.cache_pool, &anilist_eps_thumbs_key("12"), "[1,2", 60).expect("put");
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    assert_eq!(got, one_ep_listing());
+}
+
+#[tokio::test]
+async fn an_anilist_failure_is_cached_as_an_empty_listing() {
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("POST"))
+        .respond_with(wiremock::ResponseTemplate::new(502))
+        .expect(1)
+        .mount(&anilist)
+        .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let first = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let second = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    assert_eq!(first, StreamingListing::default());
+    assert_eq!(second, StreamingListing::default());
+}
+
+/// An AniList reply listing episodes 1..=`listed` of a finished show
+/// counted at `count`, with a still only for the first `with_stills`.
+fn listing_body(count: u32, listed: u32, with_stills: u32) -> String {
+    let eps: Vec<serde_json::Value> = (1..=listed)
+        .map(|n| {
+            serde_json::json!({
+                "title": format!("Episode {n} - Title {n}"),
+                "thumbnail": (n <= with_stills).then(|| format!("https://cr.cdn/{n}.jpg")),
+            })
+        })
+        .collect();
+    serde_json::json!({ "data": { "Media": {
+        "episodes": count, "status": "FINISHED", "streamingEpisodes": eps,
+    } } })
+    .to_string()
+}
+
+/// An untitled, unstilled Kitsu page of episodes 1..=`count`.
+fn untitled_page(count: u32) -> Vec<KitsuEpisode> {
+    (1..=count)
+        .map(|n| {
+            let mut e = ep_with(n, None);
+            e.canonical_title = None;
+            e
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn entries_without_stills_still_number_the_listing_for_the_fit_rule() {
+    // A 12-episode show whose listing runs to 24, stills only on 1-12:
+    // the listing is past the count and refused, though every entry
+    // that has a still is within it.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 21 }),
+        &listing_body(12, 24, 12),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(untitled_page(12), &got);
+    assert!(merged.iter().all(|e| e
+        .thumbnail
+        .as_ref()
+        .and_then(|t| t.original.as_ref())
+        .is_none()));
+}
+
+#[tokio::test]
+async fn an_entry_without_a_still_fills_nothing() {
+    // Within its count the listing fits; episode 2 has no still and
+    // keeps its placeholder, episode 1 takes its still.
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(
+        &anilist,
+        serde_json::json!({ "idMal": 21 }),
+        &listing_body(2, 2, 1),
+        1,
+    )
+    .await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(untitled_page(2), &got);
+    let stills: Vec<Option<&str>> = merged
+        .iter()
+        .map(|e| e.thumbnail.as_ref().and_then(|t| t.original.as_deref()))
+        .collect();
+    assert_eq!(stills, vec![Some("https://cr.cdn/1.jpg"), None]);
+}
+
+#[tokio::test]
+async fn a_later_entry_with_a_still_fills_an_episode_its_first_entry_left_bare() {
+    // Subbed and dubbed tracks list the same episode; the first may
+    // have no still where the second has one.
+    let body = r#"{"data":{"Media":{"episodes":1,"status":"FINISHED","streamingEpisodes":[
+        {"title":"Episode 1 - Sub","thumbnail":null},
+        {"title":"Episode 1 - Dub","thumbnail":"https://cr.cdn/1-dub.jpg"}
+    ]}}}"#;
+    let kitsu = kitsu_with_mappings("12", &[("myanimelist/anime", 21)]).await;
+    let anilist = wiremock::MockServer::start().await;
+    mount_anilist(&anilist, serde_json::json!({ "idMal": 21 }), body, 1).await;
+    let state = state_with_kitsu_at(&kitsu.uri());
+    let got = thumbs_for_show_with_anilist_base(&state, "12", Some(&anilist.uri())).await;
+    let merged = merge_thumbs(untitled_page(1), &got);
+    assert_eq!(
+        merged[0]
+            .thumbnail
+            .as_ref()
+            .and_then(|t| t.original.as_deref()),
+        Some("https://cr.cdn/1-dub.jpg")
+    );
 }

@@ -22,6 +22,7 @@
 //! them.
 
 use super::play_native::ep_count_threshold;
+use super::play_native_count_alone::{count_stands_alone, vouched_beyond_count};
 use super::play_native_numbering::regular_episode_count;
 use super::play_native_title_grammar::normalized;
 use super::play_native_title_marker::EntryTitles;
@@ -63,9 +64,14 @@ pub(crate) fn named_for_entry(
         .any(|name| entry.names(name) || entry.shares_name(name))
 }
 
-/// Whether this rule leaves `hit` able to win: the entry needs no name
-/// ([`needs_a_name`]), or a name vouches for it ([`named_for_entry`]).
-/// A candidate that could not, dying unheard, blocks no winner.
+/// Whether the rule that reads how a hit is named leaves `hit` able to
+/// win: for a dated entry with a count, a name vouches for it
+/// ([`named_for_entry`]); for an entry one video long, or one with a
+/// count and no year, something beyond its count does — its matched
+/// year (`confirmed`), the title searched, or the entry's name for it
+/// ([`vouched_beyond_count`]); any other entry reads no name. A
+/// candidate that could not, dying unheard, blocks no winner, and
+/// answering not-found withdraws no refusal.
 pub(super) fn may_win(
     hit: &BrowseHit,
     expected: u32,
@@ -73,8 +79,15 @@ pub(super) fn may_win(
     entry: EntryTitles<'_>,
     year: Option<u32>,
     pages: &PageNames,
+    confirmed: bool,
 ) -> bool {
-    !needs_a_name(expected, year) || named_for_entry(hit, needle, entry, pages)
+    if needs_a_name(expected, year) {
+        named_for_entry(hit, needle, entry, pages)
+    } else if expected == 1 || count_stands_alone(expected, year) {
+        vouched_beyond_count(&hit.title, needle, entry, confirmed)
+    } else {
+        true
+    }
 }
 
 /// For a dated entry with a count ([`needs_a_name`]), scores [`UNFIT`]

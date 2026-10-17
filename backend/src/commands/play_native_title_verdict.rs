@@ -94,13 +94,21 @@ pub(super) fn countless_miss(
 /// unheard — the right show may have been the dead one — the
 /// [`refused_by_title`] dead end when the titles refused a candidate
 /// the count accepted, and the clean miss only when every candidate
-/// answered and the count refused them all.
+/// answered and the count refused them all. A pool holding a candidate
+/// that could have won ([`super::play_native_dead_listings::DeadListings`])
+/// and whose listing answered
+/// not-found (`dead_listing`) is the answered dead end on that dead listing,
+/// which may have been the entry's, whatever else it holds: not the
+/// clean miss, and no refusal by name.
 pub(super) fn rejection(
     any_transport_failure: bool,
     refused_a_fit: bool,
+    dead_listing: bool,
 ) -> crate::error::AniError {
     if any_transport_failure {
         crate::error::AniError::Network
+    } else if dead_listing {
+        crate::error::AniError::Upstream { status: 404 }
     } else if refused_a_fit {
         refused_by_title()
     } else {
@@ -114,9 +122,12 @@ pub(super) fn rejection(
 /// written, and a wrong one must not be persisted as the show's
 /// absence: the verdict is the answered dead end the walk moves on
 /// from without a clean miss — never weather, which would open the
-/// breaker on a provider that answered.
+/// breaker on a provider that answered — and it is its own,
+/// [`crate::error::AniError::RefusedByName`], so the walk can tell it
+/// from a pool of dead listings and say that the catalogue lists
+/// nothing named for the entry.
 pub(super) fn refused_by_title() -> crate::error::AniError {
-    crate::error::AniError::Upstream { status: 404 }
+    crate::error::AniError::RefusedByName
 }
 
 #[cfg(test)]
