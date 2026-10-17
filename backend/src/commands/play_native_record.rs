@@ -19,6 +19,10 @@ use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id
 mod matched;
 pub(crate) use matched::matched_episode;
 
+#[path = "play_native_record_unwatched.rs"]
+mod unwatched;
+pub(crate) use unwatched::stamp_numbering_unwatched;
+
 /// Stamp the show's numbering offset while it is known.
 ///
 /// The cache-hit and mark-watched writers and the history read
@@ -40,23 +44,6 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: 
             // with a row's former tag gets the row's tag now.
             crate::commands::numbering_offset::retag_from_resolve(state, native);
             put_numbering(state, native);
-        }
-    });
-}
-
-/// [`stamp_numbering`] for a resolve that records no watch — a
-/// prefetch, a warm: the display stamp is the one the show's history
-/// row reads through, and only a watch moves it. A former tag is still
-/// put right, and the offset stamped.
-pub(crate) fn stamp_numbering_unwatched(
-    state: &AppState,
-    native: &NativeResolved,
-    asked: Asked<'_>,
-) {
-    crate::history::guard::hold(&state.history_path, |held| {
-        if !held.removed_since(asked, &native.slug) {
-            crate::commands::numbering_offset::retag_from_resolve(state, native);
-            crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset);
         }
     });
 }
