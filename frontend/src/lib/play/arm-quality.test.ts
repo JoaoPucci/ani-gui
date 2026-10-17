@@ -659,6 +659,129 @@ describe('armQuality — the edges', () => {
 	});
 });
 
+describe('armQuality — levels hls.js removes', () => {
+	// On a mixed-codec master hls.js removes the variants the browser
+	// refuses (`removeLevel`): the remaining levels are re-indexed and
+	// LEVELS_UPDATED carries the same level objects, fewer of them. It
+	// does so inside the error's own dispatch, before the app's ERROR
+	// listener runs, and that error's `nextAutoLevel` still names the
+	// old list.
+	function armObjects() {
+		const s = arm();
+		const objects = MASTER.map((l) => ({ ...l }));
+		s.engine.levels = objects;
+		s.engine.emit(E.MANIFEST_PARSED, { levels: objects });
+		const remove = (...gone: number[]) => {
+			const left = objects.filter((_, i) => !gone.includes(i));
+			s.engine.levels = left;
+			s.engine.emit(E.LEVELS_UPDATED, { levels: left });
+			return left;
+		};
+		return { ...s, objects, remove };
+	}
+
+	it('keeps holding the same level under its new index', () => {
+		const s = armObjects();
+		s.remove(1);
+		expect(s.lastView()?.levels).toEqual([MASTER[0], MASTER[2]]);
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		// 1080p was level 2 and is level 1 now; the step down is to 360p.
+		expect(s.engine.loads).toEqual([2, 0]);
+		s.control.pick(1);
+		expect(s.engine.nexts).toEqual([1]);
+		expect(qualityPin.get()).toBe(1080);
+	});
+
+	it('the level held removed moves to the best level left, and the engine is put there', () => {
+		const s = armObjects();
+		s.remove(2);
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, { details: D.FRAG_LOAD_ERROR, fatal: false, frag: { type: 'main' } });
+		expect(s.engine.loads.at(-1)).toBe(1);
+		expect(s.lastView()?.levels).toEqual([MASTER[0], MASTER[1]]);
+	});
+
+	it('remaps the levels left unavailable, the heights learned and the level playing', () => {
+		const s = armObjects();
+		s.engine.emit(E.FRAG_PARSING_INIT_SEGMENT, {
+			frag: { type: 'main', level: 2 },
+			tracks: { video: { metadata: { width: 1920, height: 1088 } } }
+		});
+		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 2 } });
+		s.engine.emit(E.ERROR, { details: D.LEVEL_LOAD_ERROR, fatal: true, level: 1 });
+		s.remove(0);
+		expect(s.lastView()).toEqual({
+			levels: [MASTER[1], { height: 1088, bitrate: MASTER[2].bitrate }],
+			pinned: null,
+			playing: 1,
+			unavailable: [0]
+		});
+	});
+
+	it("an error's switch named in the old list is read in the new one", () => {
+		const s = armObjects();
+		s.remove(0);
+		s.engine.manual = -1;
+		// The audio buffer refused its codec: hls.js switched to what was
+		// level 1 (720p), which is level 0 now.
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_ADD_CODEC_ERROR,
+			fatal: false,
+			sourceBufferName: 'audio',
+			errorAction: SWITCHED(1)
+		});
+		expect(s.engine.loads.at(-1)).toBe(0);
+		expect(s.logs.join('\n')).toMatch(/followed: 1080p.*→ 720p/);
+	});
+
+	it('a switch named in the old list for a level removed follows nothing', () => {
+		const s = armObjects();
+		s.remove(1);
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_ADD_CODEC_ERROR,
+			fatal: false,
+			sourceBufferName: 'audio',
+			errorAction: SWITCHED(1)
+		});
+		expect(s.logs.join('\n')).not.toMatch(/followed/);
+	});
+
+	it('a later error is read in the new list as it is', async () => {
+		const s = armObjects();
+		s.remove(0);
+		await new Promise((r) => setTimeout(r, 0));
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(0),
+			frag: { type: 'audio', level: 1 }
+		});
+		expect(s.engine.loads.at(-1)).toBe(0);
+	});
+
+	it('a removal that leaves one level hands the choice to the engine', () => {
+		const s = armObjects();
+		s.remove(0, 1);
+		expect(s.lastView()?.levels).toEqual([MASTER[2]]);
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, { details: D.FRAG_LOAD_ERROR, fatal: false, frag: { type: 'main' } });
+		expect(s.engine.autoLevelEnabled).toBe(true);
+	});
+
+	it('a removal before the levels are known, or after the stream retires, changes nothing', () => {
+		const s = arm();
+		s.engine.emit(E.LEVELS_UPDATED, { levels: [MASTER[0]] });
+		expect(s.views).toEqual([]);
+		const t = armObjects();
+		t.control.dispose();
+		const published = t.views.length;
+		t.remove(0);
+		expect(t.views.length).toBe(published);
+	});
+});
+
 describe('armQuality — settings still on their way', () => {
 	function armHeld(setting: () => string | null | undefined | Promise<string | null | undefined>) {
 		const engine = new FakeEngine();
