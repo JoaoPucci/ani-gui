@@ -189,4 +189,14 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		const label = m.detail_play_button_resume({ episode: '13' });
 		await until(() => playButton(label) !== null, 'the Play button naming episode 13');
 	});
+
+	it('takes what each lookup leaves the row reading as, not only the first', async () => {
+		// The sub lookup puts the row at 12.5; the dub lookup leaves it
+		// at 13. Play goes on from the row as the last one left it.
+		useShowHandlers();
+		useTwoLookups(['24.5', '12.5', '13']);
+		app = mount(DetailPage, { target });
+		const label = m.detail_play_button_resume({ episode: '14' });
+		await until(() => playButton(label) !== null, 'the Play button naming episode 14');
+	});
 });
