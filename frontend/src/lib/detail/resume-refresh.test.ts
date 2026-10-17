@@ -38,7 +38,7 @@ describe('refreshedResume (a row put right before the page read it)', () => {
 	it('moves the position kept under the number it read as before, though it reads as it did', async () => {
 		// The home page's probe put the row right before this page read
 		// it; nothing on the way moved the recap's position.
-		const move = vi.fn();
+		const move = vi.fn().mockReturnValue(true);
 		const at = { ...entry, ep_no: '12.5' };
 		const next = await refreshedResume(
 			at,
@@ -185,5 +185,18 @@ describe('joinResumeRefresh (a refresh that fails)', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(join.refreshing()).toBe(true);
+	});
+});
+
+describe('refreshedResume (nothing to move)', () => {
+	it('gives nothing back when nothing moved, though the row names a former number', async () => {
+		const at = { ...entry, ep_no: '12.5' };
+		const next = await refreshedResume(
+			at,
+			'42',
+			async () => ({ ep_no: '12.5', former_ep_no: '24.5' }),
+			() => false
+		);
+		expect(next).toBeNull();
 	});
 });

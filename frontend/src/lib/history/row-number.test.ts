@@ -78,7 +78,7 @@ describe('refreshedRows (a position kept under the old number)', () => {
 	it('moves it, and gives the rows anew, for a row that reads as it did', async () => {
 		// Put right before the page read it: the row is "12.5" already,
 		// and the card has to be offered again once the position moved.
-		const move = vi.fn();
+		const move = vi.fn().mockReturnValue(true);
 		const at: HistoryEntry[] = [{ id: 'a', ep_no: '12.5', title: 'A' }];
 		const next = await refreshedRows(
 			'a',
@@ -89,5 +89,18 @@ describe('refreshedRows (a position kept under the old number)', () => {
 		expect(move).toHaveBeenCalledWith(24.5, 12.5);
 		expect(next).toEqual(at);
 		expect(next).not.toBe(at);
+	});
+
+	it('gives nothing back when nothing moved, though the row names a former number', async () => {
+		// The stamp keeps naming its former number; once the position has
+		// moved, a read that moves nothing changes nothing.
+		const at: HistoryEntry[] = [{ id: 'a', ep_no: '12.5', title: 'A' }];
+		const next = await refreshedRows(
+			'a',
+			() => at,
+			async () => ({ ep_no: '12.5', former_ep_no: '24.5' }),
+			() => false
+		);
+		expect(next).toBeNull();
 	});
 });
