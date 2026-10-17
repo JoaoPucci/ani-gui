@@ -380,3 +380,15 @@ describe('movePosition', () => {
 		expect(readPosition('42', 12.5, s)).toBeNull();
 	});
 });
+
+describe('movePosition (what it answers)', () => {
+	it('answers whether a point now sits under the number it moved to', () => {
+		const s = memory();
+		expect(movePosition('42', 24.5, 12.5, s)).toBe(false);
+		savePosition('42', 24.5, 612, 1420, s);
+		expect(movePosition('42', 24.5, 12.5, s)).toBe(true);
+		savePosition('42', 24.5, 300, 1420, s);
+		expect(movePosition('42', 24.5, 12.5, s)).toBe(false);
+		expect(readPosition('42', 12.5, s)).toBe(612);
+	});
+});
