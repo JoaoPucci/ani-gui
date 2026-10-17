@@ -52,7 +52,8 @@ pub(crate) fn put_if_recorded(state: &AppState, display: &WatchedDisplay) {
 
 /// A fresh play's numbering and history row: the offset and any former
 /// tag put right whatever happens, the display pair once the row holds
-/// its slot — a play overtaken by a later watch records neither.
+/// its slot — a play overtaken by a later watch records no row, and
+/// moves the pair only where that watch's row holds the same slot.
 pub(crate) fn record_fresh_watch(
     state: &AppState,
     native: &NativeResolved,

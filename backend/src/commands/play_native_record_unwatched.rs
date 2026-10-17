@@ -5,8 +5,9 @@ use crate::app::AppState;
 use crate::commands::play_native_resolve::NativeResolved;
 use crate::history::guard::Asked;
 
-/// [`super::stamp_numbering`] for a resolve that records no watch — a
-/// prefetch, a warm: the display stamp is the one the show's history
+/// [`super::stamp_numbering`] for a resolve that records no watch, or
+/// none yet — a prefetch, a warm, a handoff before its player starts:
+/// the display stamp is the one the show's history
 /// row reads through, and only a watch moves it. A former tag is still
 /// put right, and the offset stamped.
 pub(crate) fn stamp_numbering_unwatched(
