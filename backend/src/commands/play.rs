@@ -235,6 +235,7 @@ pub(super) async fn stamp_availability_after_native(
             episode_cap,
             extra_tags,
             versions,
+            played: None,
         },
     )
     .await;

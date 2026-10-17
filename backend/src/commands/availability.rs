@@ -283,6 +283,9 @@ pub struct ResolveVerdict<'a> {
     pub extra_tags: &'a [String],
     /// The pick's versions, when it served one with several.
     pub versions: &'a [crate::commands::play_native_versions::VersionInfo],
+    /// The version that served, when the pick has several: it carries
+    /// the mode, whatever an earlier probe sampled.
+    pub played: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
 impl<'a> ResolveVerdict<'a> {
@@ -300,6 +303,7 @@ impl<'a> ResolveVerdict<'a> {
             episode_cap,
             extra_tags,
             versions: &[],
+            played: None,
         }
     }
 
@@ -313,6 +317,16 @@ impl<'a> ResolveVerdict<'a> {
         self
     }
 
+    /// The verdict naming the version that served.
+    #[must_use]
+    pub fn with_played(
+        mut self,
+        _played: Option<crate::commands::play_native_versions::VersionKind>,
+    ) -> Self {
+        self.played = None;
+        self
+    }
+
     /// A clean miss — every search completed and nothing matched —
     /// from the provider that answered it.
     #[must_use]
@@ -323,6 +337,7 @@ impl<'a> ResolveVerdict<'a> {
             episode_cap: None,
             extra_tags: &[],
             versions: &[],
+            played: None,
         }
     }
 }
