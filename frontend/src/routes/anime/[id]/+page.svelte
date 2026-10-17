@@ -251,23 +251,26 @@
 		applyAvailabilityPatch(writeback.refresh(refresh));
 	}
 	const capGate = createCapGateProbe({
-		probe: async () => {
+		probe: async (signal) => {
 			const d = detail;
 			if (!d) return null;
-			const r = await checkAvailability({
-				title: d.canonical_title,
-				mode: capGateMode(),
-				alt_titles: altTitlesFromKitsu(d),
-				episode_count: d.episode_count ?? undefined,
-				year: yearFromKitsuRef(d) ?? undefined,
-				kitsu_id: d.id,
-				subtype: d.subtype ?? undefined,
-				status: d.status ?? undefined,
-				background: false,
-				// Without this the lookup answers from the very row
-				// being questioned and never reaches the provider.
-				bypass_cache: true
-			});
+			const r = await checkAvailability(
+				{
+					title: d.canonical_title,
+					mode: capGateMode(),
+					alt_titles: altTitlesFromKitsu(d),
+					episode_count: d.episode_count ?? undefined,
+					year: yearFromKitsuRef(d) ?? undefined,
+					kitsu_id: d.id,
+					subtype: d.subtype ?? undefined,
+					status: d.status ?? undefined,
+					background: false,
+					// Without this the lookup answers from the very row
+					// being questioned and never reaches the provider.
+					bypass_cache: true
+				},
+				{ signal }
+			);
 			// The whole row, not one field of it — and an unsettled
 			// answer as none. The controller decides which parts of a
 			// fresh answer are safe to write back.
@@ -299,6 +302,18 @@
 			actionBusy = false;
 			actionProgress = null;
 		}
+	});
+
+	// What a recheck is about, as a value: when it changes under an
+	// in-flight recheck (another show on this route, another mode),
+	// the recheck's answer would be discarded, so its probe is stopped
+	// rather than left holding a limiter slot.
+	// The visit, not the loaded detail, which is briefly null on any
+	// load: a recheck nobody navigated away from must not be stopped.
+	const capGateKey = $derived(`${visit}:${capGateMode()}`);
+	$effect(() => {
+		void capGateKey;
+		return () => capGate.supersede();
 	});
 
 	/**
