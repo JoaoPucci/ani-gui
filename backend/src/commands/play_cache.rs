@@ -77,6 +77,7 @@ pub(crate) async fn stamp_availability_on_cache_hit(
         args.mode.as_str(),
         at_start,
         provider,
+        &cached.versions,
     )
     .await;
 }

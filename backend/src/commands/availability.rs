@@ -578,6 +578,7 @@ pub async fn stamp_after_cache_hit(
     mode: &str,
     at_start: &RowAtStart,
     provider: crate::scraper::provider::ProviderId,
+    _versions: &[crate::commands::play_native_versions::VersionInfo],
 ) {
     let Some(id) = kitsu_id.filter(|s| !s.is_empty()) else {
         return;
