@@ -12,6 +12,9 @@ import { rowShow, rowShowIds, type RowShowDeps } from './row-show';
  */
 export interface ConfirmDeleteDeps extends RowShowDeps {
 	history: HistoryEntry[];
+	/** The strip's rows as they stand now, which the remaining rows are
+	 *  read off once the deletes land. Omitted, `history`. */
+	currentHistory?: () => readonly HistoryEntry[];
 	matches: Record<string, KitsuAnimeRef | null | undefined>;
 	historyDelete: (id: string) => Promise<void>;
 	/** The moment the removed rows are gone (watch-position-clear.ts): the

@@ -57,6 +57,7 @@ async function readRow(
 export function joinResumeRefresh(refresh: (entry: HistoryEntry) => void): {
 	row: (entry: HistoryEntry | null) => void;
 	resolved: () => void;
+	unresolved: () => void;
 	reset: () => void;
 } {
 	let row: HistoryEntry | null = null;
@@ -76,6 +77,7 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => void): {
 			answered = true;
 			fire();
 		},
+		unresolved: () => {},
 		reset: () => {
 			row = null;
 			answered = false;
