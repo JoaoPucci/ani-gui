@@ -1,0 +1,98 @@
+{
+  "anilist-airing-10800.json": {
+    "source": "POST https://graphql.anilist.co with the airing query and idMal 30503 (Kitsu 10800), verbatim",
+    "captured": "2026-10-17",
+    "size": 109,
+    "sha256": "9c35940a3e6383a59f0a82c414e40da3c6a75df8f1266890f5e5b0a9714e6b78"
+  },
+  "anilist-airing-13715.json": {
+    "source": "POST https://graphql.anilist.co with the airing query and idMal 35994 (Kitsu 13715), verbatim",
+    "captured": "2026-10-17",
+    "size": 109,
+    "sha256": "393a85b4c83f549e01c7d030d22a30b93c9e2542dab9c009e0a8a4fd9885023e"
+  },
+  "anilist-airing-7881.json": {
+    "source": "POST https://graphql.anilist.co with the airing query (AIRING_GQL) and idMal 20507 — the MAL id Kitsu maps 7881 to — verbatim",
+    "captured": "2026-10-17",
+    "size": 109,
+    "sha256": "393a85b4c83f549e01c7d030d22a30b93c9e2542dab9c009e0a8a4fd9885023e"
+  },
+  "corpus.json": {
+    "source": "113 Kitsu entries — every multi-episode pick recorded under hianime/picker/ and every other show checked while looking for numbering disagreements — each with the Kitsu status and episode count (GET /anime/:id), AniList's status, episode count and next episode for the MAL id Kitsu maps it to (Page(media(idMal_in:))), the Kitsu episode pages the evidence reader asks for that count (/anime/:id/episodes, 20 to a page, sorted by number; [number, canonicalTitle, airdate]), the entries Kitsu relates it to (/anime/:id/media-relationships, reduced to [role, type, id, subtype, status, episodeCount, and for a TV sequel whose Kitsu episode list was fetched, its first page of titles]) with whether that page held them all, and the picked hianime listing (/api/theme/episode/list/:id through the impersonating transport) reduced by script to [slot, data-number, title] with the title's entities decoded. Fetched on 2026-10-17, paced (hianime ≥3 s apart, Kitsu ≥1.2 s, AniList ≥1.5 s). `appended` marks the three whose listings append extras after Kitsu's last episode.",
+    "captured": "2026-10-17",
+    "size": 322976,
+    "sha256": "90ac94f21d118d860a42da3c80f6c28273daa877cdcb37d12bbfdaf36cacef8e"
+  },
+  "episode-list-1549.json": {
+    "source": "GET https://hianime.at/api/theme/episode/list/1549 as above, verbatim: Angels of Death (angels-of-death-1549), the pick for Kitsu 13715 (Satsuriku no Tenshi) — the twelve broadcast episodes, then the four web-only episodes as rows 13 to 16",
+    "captured": "2026-10-17",
+    "size": 16949,
+    "sha256": "6fa06d47ddc89c3cec6100c28193cce330209081704968d57883dde71dd5ba27"
+  },
+  "episode-list-913.json": {
+    "source": "GET https://hianime.at/api/theme/episode/list/913 as above, verbatim: Noragami Aragoto (noragami-aragoto-913), the pick for Kitsu 10800 — thirteen episodes, then two OADs as rows 14 and 15",
+    "captured": "2026-10-17",
+    "size": 15625,
+    "sha256": "77a6f951d34a769add59ee6bb72ab6de6145adf4391f19dab65e32cf58ce7858"
+  },
+  "episode-list-916.json": {
+    "source": "GET https://hianime.at/api/theme/episode/list/916 with X-Requested-With: XMLHttpRequest, through the bundled impersonating transport (curl-impersonate --impersonate chrome136 --compressed), verbatim: Noragami (noragami-916), the pick for Kitsu 7881 — twelve episodes, then OAD 01 and OAD 02 as rows 13 and 14",
+    "captured": "2026-10-17",
+    "size": 14363,
+    "sha256": "32573bc14a5a434d4e9c5c255097152a5e4211553634acfc9aefb18ead2783c0"
+  },
+  "kitsu-anime-10800.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/10800?fields[anime]=<ANIME_FIELDS>, verbatim",
+    "captured": "2026-10-17",
+    "size": 2362,
+    "sha256": "7ef5d73326e4cc394835c6c4ebe5812a9488c9aa6ae75dbbca26dbee121fbe6e"
+  },
+  "kitsu-anime-13715.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/13715?fields[anime]=<ANIME_FIELDS>, verbatim",
+    "captured": "2026-10-17",
+    "size": 1668,
+    "sha256": "156d4488f66cbc60bcc33f18e9c4b6bd463f1d9468cc10df2bd34afa42ec34d7"
+  },
+  "kitsu-anime-7881.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/7881?fields[anime]=<ANIME_FIELDS>, verbatim, with the proxy client's User-Agent",
+    "captured": "2026-10-17",
+    "size": 2477,
+    "sha256": "2a64c0f9ce50c0c3950111e23b79e8a61b23bfb1378b80b2013cebb19f7f74cf"
+  },
+  "kitsu-episodes-10800-p1.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/10800/episodes as above, verbatim",
+    "captured": "2026-10-17",
+    "size": 6199,
+    "sha256": "9242de00481908f7f24e990698471cff9e329abc3866a9d11c7cf2c8bd7cf803"
+  },
+  "kitsu-episodes-13715-p1.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/13715/episodes as above, verbatim",
+    "captured": "2026-10-17",
+    "size": 7218,
+    "sha256": "ce13c914860a2f357c5e6ad39a780184ab34f904d4772db630804f242ee7008f"
+  },
+  "kitsu-episodes-7881-p1.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/7881/episodes?page[limit]=20&page[offset]=0&fields[episodes]=<EPISODE_FIELDS>&sort=number, verbatim — the page the backend requests",
+    "captured": "2026-10-17",
+    "size": 15472,
+    "sha256": "5cb11ddab60d46877d4d1ccbe051f8e8aa50137ebb901b5a1798779af6380913"
+  },
+  "kitsu-relations-10800.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/10800/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent",
+    "captured": "2026-10-17",
+    "size": 3444,
+    "sha256": "3e95b9f341766337cbe231b59a8363c5115d32a8df9cde98237c1dbd2f393289"
+  },
+  "kitsu-relations-13715.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/13715/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent",
+    "captured": "2026-10-17",
+    "size": 2054,
+    "sha256": "f3347fbe03afd19721b04645a75451ba62b58b2c0ee1d45be8cccc3b6c165f3a"
+  },
+  "kitsu-relations-7881.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/7881/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent",
+    "captured": "2026-10-17",
+    "size": 3470,
+    "sha256": "0544614355e9616e3daf9c6e7288cecf372461de5fc067cabac8c408233dd129"
+  }
+}
