@@ -129,3 +129,14 @@ async function removedShows(ids: string[], deps: ConfirmDeleteDeps): Promise<Set
 	}
 	return shows;
 }
+
+/** The strip's rows once a delete of `removedIds` has landed, read off
+ *  the rows as they stand then — a row read again while the delete was
+ *  out keeps what it read. */
+export function remainingOf(
+	current: readonly HistoryEntry[],
+	removedIds: readonly string[]
+): HistoryEntry[] {
+	void removedIds;
+	return [...current];
+}
