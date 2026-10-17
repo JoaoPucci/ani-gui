@@ -52,5 +52,16 @@ pub(crate) fn restamp_cached(state: &AppState, cached: &play_resolution_cache::C
 /// [`restamp_recorded`] for a handoff served from the cache: the row it
 /// played is the one kept under `args`.
 pub(crate) fn restamp_after_handoff(state: &AppState, args: &crate::commands::play::PlayArgs) {
-    let _ = (state, args);
+    let key = play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        args.quality.as_deref().unwrap_or("best"),
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    if let Ok(Some(cached)) = play_resolution_cache::get(&state.cache_pool, &key) {
+        restamp_recorded(state, &cached);
+    }
 }
