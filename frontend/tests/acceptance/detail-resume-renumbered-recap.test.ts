@@ -8,7 +8,7 @@
 // reads now — 13, not 25 — and back to the recap when it was left
 // part-way under the number it had then.
 
-import { describe, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { mount, unmount } from 'svelte';
 
@@ -198,5 +198,83 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 		app = mount(DetailPage, { target });
 		const label = m.detail_play_button_resume({ episode: '14' });
 		await until(() => playButton(label) !== null, 'the Play button naming episode 14');
+	});
+
+	it('reads the row again after a warm of the show puts it right', async () => {
+		// The lookup answers with a search-hit count: no listing behind
+		// it. The page's own warm of the hero episode pays for one.
+		let repaired = false;
+		useShowHandlers();
+		server.use(
+			http.post(`${API_BASE}/api/availability`, () =>
+				HttpResponse.json({
+					available: true,
+					episode_count: 36,
+					extra_episodes: ['12.5'],
+					episode_count_approximate: true
+				})
+			),
+			http.get(`${API_BASE}/api/history/:id/number`, () =>
+				HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+			)
+		);
+		app = mount(DetailPage, { target });
+		await until(
+			() => playButton(m.detail_play_button_resume({ episode: '25' })) !== null,
+			'the Play button naming what the page read'
+		);
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('prefetch=1')),
+			'the hero warm'
+		);
+		repaired = true;
+		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('prefetch=1'))) {
+			warm.dispatch(
+				'done',
+				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '25' })
+			);
+		}
+		await until(
+			() => playButton(m.detail_play_button_resume({ episode: '13' })) !== null,
+			'the Play button naming episode 13'
+		);
+	});
+
+	it('goes on from the row read again when Play is clicked while it is', async () => {
+		// The lookup fails, so the refresh warms the row's own episode
+		// first; Play is clicked while that warm is out.
+		let repaired = false;
+		useShowHandlers();
+		server.use(
+			http.post(`${API_BASE}/api/availability`, () => new HttpResponse(null, { status: 503 })),
+			http.get(`${API_BASE}/api/history/:id/number`, () =>
+				HttpResponse.json(repaired ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' })
+			)
+		);
+		app = mount(DetailPage, { target });
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('episode=24.5')),
+			'the warm of the row'
+		);
+		playButton(m.detail_play_button_resume({ episode: '25' }))?.click();
+		repaired = true;
+		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('episode=24.5'))) {
+			warm.dispatch(
+				'done',
+				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '12.5' })
+			);
+		}
+		await until(
+			() =>
+				FakeEventSource.instances.some(
+					(i) => i.url.includes('episode=13') && !i.url.includes('prefetch=1')
+				),
+			'the click to resolve episode 13'
+		);
+		expect(
+			FakeEventSource.instances.some(
+				(i) => i.url.includes('episode=25') && !i.url.includes('prefetch=1')
+			)
+		).toBe(false);
 	});
 });
