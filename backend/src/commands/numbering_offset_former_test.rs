@@ -76,3 +76,17 @@ fn the_stamp_beside_a_history_file_is_the_one_its_sidecar_keeps() {
     );
     assert_eq!(stamp_beside(&state.history_path, "hianime:unstamped"), None);
 }
+
+#[test]
+fn a_repair_keeps_no_former_tag_a_row_carries_now() {
+    // The listing tags another row "24.5" now: a position or a file
+    // under "24.5" may be that row's, so the repaired stamp names no
+    // former tag a reader would take for this one's.
+    let state = state();
+    crate::commands::numbering_offset::put_display(&state, SHOW, 0, 13, "24.5");
+    retag_display(&state, SHOW, &[(13, "24.5".into(), "12.5".into())], &|f| {
+        f == "24.5"
+    });
+    assert_eq!(display_stamp(&state, SHOW), Some((13, "12.5".to_string())));
+    assert_eq!(former_stamp(&state, SHOW), None);
+}

@@ -133,3 +133,34 @@ pub(crate) fn stitched_recap() -> TableProvider {
     }
     table
 }
+
+/// [`stitched_recap`] with a second recap after the entry's episode 2:
+/// stitched, the opening recap is slot 2, "1.5" now and "2.5" before,
+/// and the new one is slot 4, "2.5" now. The former tag of the one is
+/// the tag of the other.
+pub(crate) fn stitched_shared_former() -> TableProvider {
+    let first = vec![row(4001, 1, None)];
+    let mut second = vec![
+        row(STITCHED_RECAP, 1, Some("1.5")),
+        row(10_465_002, 2, Some("2")),
+        row(10_465_025, 3, Some("2.5")),
+    ];
+    second.extend((3..=12).map(|n| row(10_465_000 + u64::from(n), n + 1, Some(&n.to_string()))));
+    let ids: Vec<u64> = first.iter().chain(&second).map(|e| e.id).collect();
+    let mut table = TableProvider::new()
+        .hits(
+            STITCHED,
+            hits(&[
+                (STITCHED_SLUG, STITCHED),
+                ("stitched-show-2nd-stage-10465", "Stitched Show 2nd Stage"),
+            ]),
+        )
+        .listing(4, first)
+        .listing(10465, second)
+        .year(4, Some(2026))
+        .year(10465, Some(2026));
+    for id in ids {
+        table = table.stream(id, "sub", MASTER).mode(id, "sub", true);
+    }
+    table
+}

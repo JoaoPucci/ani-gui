@@ -99,3 +99,20 @@ async fn a_replay_opens_a_session_named_for_the_episode_its_resolve_played() {
     assert!(resp.cache_hit);
     assert_eq!(resp.episode.as_deref(), Some("1.5"));
 }
+
+#[tokio::test]
+async fn a_session_names_no_former_number_another_row_carries_now() {
+    // The opening recap was "2.5" before; the listing tags another
+    // recap "2.5" now. A position kept under "2.5" may be that one's,
+    // so the session names no former number for the opening recap.
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::stitched_shared_former(),
+    ));
+    let resp = play_with_progress(&state, &args("1.5"), |_| {})
+        .await
+        .expect("plays");
+    assert_eq!(resp.episode.as_deref(), Some("1.5"));
+    assert_eq!(resp.former_episode, None);
+}

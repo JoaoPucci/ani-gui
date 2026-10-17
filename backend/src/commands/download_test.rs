@@ -7479,3 +7479,38 @@ async fn a_download_asked_for_by_a_former_number_is_named_for_the_episode_it_is(
     assert!(dest.path().join("Stitched Show Episode 1.5.mp4").exists());
     assert!(!dest.path().join("Stitched Show Episode 2.5.mp4").exists());
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_under_a_former_number_another_row_carries_now_is_not_the_episode() {
+    // The opening recap was "2.5" before; "Episode 2.5" in the folder
+    // may be the recap the listing tags "2.5" now, so a download of
+    // "1.5" fetches its own.
+    use crate::commands::play_native_test_provider::{stitched_shared_former, STITCHED};
+    let server = std::sync::Arc::new(stitched_shared_former());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let dest = tempfile::tempdir().expect("dest");
+    let other = dest.path().join("Stitched Show Episode 2.5.mp4");
+    std::fs::write(&other, b"the other recap").expect("stage");
+    let bin = tempfile::tempdir().expect("bin");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": STITCHED,
+        "episode": "1.5",
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    assert!(dest.path().join("Stitched Show Episode 1.5.mp4").exists());
+}
