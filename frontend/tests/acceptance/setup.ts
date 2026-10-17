@@ -196,18 +196,17 @@ server.events.on('request:end', ({ requestId }) => {
 });
 
 /**
- * Binds every DOM event listener to the scenario that added it, so a
- * listener a page leaves behind, fired by a later scenario, still
+ * Binds every DOM event listener to the scenario that last added it,
+ * so a listener a page leaves behind, fired by a later scenario, still
  * sends as the page's own.
  *
- * What the DOM registered is remembered per target, type and phase,
- * with the scenario that added it (none, outside a scenario), so one
- * function keeps one identity: a remove finds what was registered,
- * and a repeated add from the same scenario stays one listener. An
- * add from a different scenario — the same function re-added after a
- * `once` fired or a `signal` aborted, which the DOM let go of without
- * a remove, or simply added again — replaces what is there with a
- * listener bound to the new scenario.
+ * Each function gets one wrapper per target, type and phase, which the
+ * DOM sees in its place and which runs the function in the scenario
+ * recorded for it. An add records the adding scenario (none, outside
+ * one) and hands the DOM the same wrapper: the DOM ignores it if it is
+ * still registered — keeping its place and its first options, as it
+ * would for the function itself — and takes it back if a `once` fired
+ * or a `signal` aborted. A remove finds the wrapper and forgets it.
  *
  * Only function listeners; a listener object's `handleEvent` keeps
  * the context of whatever fires it. Patched where listeners land: the
@@ -216,7 +215,7 @@ server.events.on('request:end', ({ requestId }) => {
  */
 function bindListenersToTheirScenario() {
 	interface Registered {
-		listener: EventListener;
+		wrapper: EventListener;
 		scenario: Scenario | undefined;
 	}
 	const registered = new WeakMap<object, Map<string, Map<unknown, Registered>>>();
@@ -246,24 +245,27 @@ function bindListenersToTheirScenario() {
 			const self = this ?? (globalThis as unknown as EventTarget);
 			if (typeof listener !== 'function') return add.call(self, type, listener, options);
 			const listeners = slot(self, type, options);
-			const scenario = owner.getStore();
-			const before = listeners.get(listener);
-			if (before && before.scenario === scenario) {
-				return add.call(self, type, before.listener, options);
+			let reg = listeners.get(listener);
+			if (!reg) {
+				const entry: Registered = {
+					scenario: undefined,
+					wrapper(this: unknown, ...args: [Event]) {
+						return owner.run(entry.scenario as Scenario, () => listener.apply(this, args));
+					}
+				};
+				reg = entry;
+				listeners.set(listener, reg);
 			}
-			if (before) remove.call(self, type, before.listener, options);
-			const bound =
-				scenario === undefined ? listener : (AsyncLocalStorage.bind(listener) as EventListener);
-			listeners.set(listener, { listener: bound, scenario });
-			return add.call(self, type, bound, options);
+			reg.scenario = owner.getStore();
+			return add.call(self, type, reg.wrapper, options);
 		};
 		target.removeEventListener = function (this: EventTarget | undefined, type, listener, options) {
 			const self = this ?? (globalThis as unknown as EventTarget);
 			const listeners = slot(self, type, options);
-			const now = listeners.get(listener);
-			if (now) {
+			const reg = listeners.get(listener);
+			if (reg) {
 				listeners.delete(listener);
-				return remove.call(self, type, now.listener, options);
+				return remove.call(self, type, reg.wrapper, options);
 			}
 			return remove.call(self, type, listener, options);
 		};
