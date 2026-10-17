@@ -393,15 +393,17 @@ where
         &native.extra_tags,
     )
     .await;
-    // Only a play that records its watch moves the display stamp.
+    // Only a play that records its watch moves the display stamp, and
+    // prefetches stay out of the user's history.
     if args.prefetch {
         crate::commands::play_native_record::stamp_numbering_unwatched(state, &native, asked);
     } else {
-        crate::commands::play_native_record::stamp_numbering(state, &native, asked);
-    }
-    // Prefetches stay out of the user's history exactly as before.
-    if !args.prefetch {
-        crate::commands::play_native_record::write_history(state, &native, &args.episode, asked);
+        crate::commands::play_native_record::record_fresh_watch(
+            state,
+            &native,
+            &args.episode,
+            asked,
+        );
     }
 
     let upstream_url = url::Url::parse(&native.master_url).map_err(|_| AniError::ParseFailed {

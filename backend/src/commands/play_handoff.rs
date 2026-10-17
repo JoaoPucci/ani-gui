@@ -42,7 +42,11 @@ pub async fn resolve_launch_args(
     state: &AppState,
     args: &PlayArgs,
     asked: crate::history::guard::Asked<'_>,
-) -> Result<(LaunchArgs, crate::commands::play_native_record::Watch)> {
+) -> Result<(
+    LaunchArgs,
+    crate::commands::play_native_record::Watch,
+    Option<crate::commands::play_native_record::WatchedDisplay>,
+)> {
     let quality = args.quality.as_deref().unwrap_or("best");
     let cfg = read_config(&state.config_path).unwrap_or_default();
     let prio = crate::scraper::gate::ScrapePriority::Interactive;
@@ -105,7 +109,8 @@ pub async fn resolve_launch_args(
         };
     crate::commands::play_native_record::stamp_numbering(state, &native, asked);
     let watch = crate::commands::play_native_record::Watch::of(&native);
-    Ok((launch_args_for(native, args, &cfg), watch))
+    let display = crate::commands::play_native_record::watched_display(&native);
+    Ok((launch_args_for(native, args, &cfg), watch, display))
 }
 
 /// The launch a resolve describes: the stream, the referer its

@@ -23,6 +23,11 @@ pub(crate) use matched::matched_episode;
 mod unwatched;
 pub(crate) use unwatched::stamp_numbering_unwatched;
 
+#[path = "play_native_record_display.rs"]
+mod display;
+pub use display::WatchedDisplay;
+pub(crate) use display::{put_if_recorded, record_fresh_watch, watched_display};
+
 /// Stamp the show's numbering offset while it is known.
 ///
 /// The cache-hit and mark-watched writers and the history read
