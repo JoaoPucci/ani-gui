@@ -26,6 +26,7 @@
  */
 
 import { QualityHold, type QualityMove, type QualityReason } from './quality-hold';
+import { isAbove } from './quality-ladder';
 import { QualityPace } from './quality-pace';
 
 export type { QualityMove, QualityReason } from './quality-hold';
@@ -65,10 +66,7 @@ export class QualityGovernor extends QualityHold {
 	fragmentsFailed(level: number, now: number): QualityMove | null {
 		if (!this.engaged || level !== this.current) return null;
 		const lower = this.neighbour(this.current, -1);
-		if (lower === null) {
-			this.engaged = false;
-			return null;
-		}
+		if (lower === null) return this.release();
 		return this.stepDown(lower, now, 'fragments-failed');
 	}
 
@@ -97,15 +95,10 @@ export class QualityGovernor extends QualityHold {
 		// `blame` false: the level held was not the one the engine left —
 		// a removal re-seated the hold on a level that never played.
 		if (blame) this.unavailable.add(this.current);
+		// The engine moved above the pin: it can no longer be honoured.
+		if (this.pinned && isAbove(this.ladder, level, this.current)) this.pinned = false;
 		this.settled(now);
 		return this.move(level, 'followed', 'load');
-	}
-
-	/** The level to put the engine back at after hls.js resumed its own
-	 *  choice — as it does after a level's error — or null when the
-	 *  governor holds nothing. */
-	reclaim(engineChoosing: boolean): number | null {
-		return this.engaged && engineChoosing ? this.current : null;
 	}
 
 	protected override restarted(now: number): void {

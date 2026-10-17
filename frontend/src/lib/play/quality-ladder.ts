@@ -65,6 +65,30 @@ export function targetLevel(target: QualityTarget, levels: readonly LadderLevel[
 	return fits.length > 0 ? fits[fits.length - 1] : ladder[0];
 }
 
+/** Where a level removed from `oldLadder` re-seats: the nearest level
+ *  below it that `mapping` keeps — or, with none below, the nearest
+ *  above — as its new index, with whether it lies above. Null when no
+ *  level is kept. */
+export function survivorOf(
+	oldLadder: readonly number[],
+	mapping: readonly number[],
+	level: number
+): { level: number; above: boolean } | null {
+	const rank = oldLadder.indexOf(level);
+	for (const direction of [-1, 1] as const) {
+		for (let r = rank + direction; r >= 0 && r < oldLadder.length; r += direction) {
+			const kept = mapping[oldLadder[r]] ?? -1;
+			if (kept >= 0) return { level: kept, above: direction === 1 };
+		}
+	}
+	return null;
+}
+
+/** Whether `a` sits above `b` on a ladder. */
+export function isAbove(ladder: readonly number[], a: number, b: number): boolean {
+	return ladder.indexOf(a) > ladder.indexOf(b);
+}
+
 /** The nearest level above (`1`) or below (`-1`) `level` on a ladder
  *  that is not among `unavailable`; null when there is none. */
 export function neighbourLevel(

@@ -12,7 +12,7 @@
  * still names the old list; `RemapWindow` reads it in the new one.
  */
 
-import { ladderOrder, neighbourLevel, targetLevel } from './quality-ladder';
+import { ladderOrder, neighbourLevel, survivorOf, targetLevel } from './quality-ladder';
 import type { LadderLevel, QualityTarget } from './quality-ladder';
 import type { QualityReport } from './quality-report';
 
@@ -46,12 +46,16 @@ export interface HoldState {
 	ceiling: number;
 	current: number;
 	engaged: boolean;
+	pinned: boolean;
 	unavailable: Set<number>;
 }
 
 /** The hold carried to the levels left. A ceiling removed is the
- *  setting's level among them; a held level removed moves to the
- *  ceiling, or the nearest loadable level to it. */
+ *  setting's level among them. A held level removed re-seats at the
+ *  nearest level below it that is left — never above a pin, nor above
+ *  where trouble had stepped the hold — or, with none below, at the
+ *  nearest above, where a pin can no longer be honoured and is
+ *  released. Released control releases the pin too. */
 export function remapHold(
 	state: HoldState,
 	mapping: readonly number[],
@@ -63,9 +67,12 @@ export function remapHold(
 		remapKeys(new Map([...state.unavailable].map((i) => [i, i])), mapping).keys()
 	);
 	const ceiling = remapIndex(state.ceiling, mapping) ?? targetLevel(target, levels);
-	const current =
-		remapIndex(state.current, mapping) ?? nearestLoadable(ladder, unavailable, ceiling);
-	return { ladder, ceiling, current, unavailable, engaged: state.engaged && levels.length > 1 };
+	const kept = remapIndex(state.current, mapping);
+	const seat = kept === null ? survivorOf(state.ladder, mapping, state.current) : null;
+	const current = nearestLoadable(ladder, unavailable, kept ?? seat?.level ?? ceiling);
+	const engaged = state.engaged && levels.length > 1;
+	const pinned = state.pinned && engaged && !seat?.above;
+	return { ladder, ceiling, current, unavailable, engaged, pinned };
 }
 
 function nearestLoadable(ladder: number[], unavailable: Set<number>, level: number): number {

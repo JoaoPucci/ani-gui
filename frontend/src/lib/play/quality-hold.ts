@@ -89,6 +89,7 @@ export abstract class QualityHold {
 			ceiling: this.ceiling,
 			current: this.current,
 			engaged: this.engaged,
+			pinned: this.pinned,
 			unavailable: this.unavailable
 		};
 		const next = remapHold(held, mapping, levels, this.target);
@@ -96,6 +97,7 @@ export abstract class QualityHold {
 		this.ceiling = next.ceiling;
 		this.current = next.current;
 		this.engaged = next.engaged;
+		this.pinned = next.pinned;
 		this.unavailable = next.unavailable;
 	}
 
@@ -112,11 +114,11 @@ export abstract class QualityHold {
 	levelFailed(level: number, now?: number): QualityMove | null {
 		this.unavailable.add(level);
 		if (!this.engaged || level !== this.current) return null;
-		const next = this.neighbour(level, -1) ?? this.neighbour(level, 1);
-		if (next === null) {
-			this.engaged = false;
-			return null;
-		}
+		const lower = this.neighbour(level, -1);
+		const next = lower ?? this.neighbour(level, 1);
+		if (next === null) return this.release();
+		// Only a level above is left: a pin cannot be honoured there.
+		if (lower === null) this.pinned = false;
 		this.settled(now);
 		return this.move(next, 'level-failed', 'load');
 	}
@@ -129,6 +131,22 @@ export abstract class QualityHold {
 		this.pinned = true;
 		this.engaged = true;
 		return choice === this.current ? null : this.move(choice, 'pick', 'next');
+	}
+
+	/** The choice goes back to the engine, and the stream's pin with it:
+	 *  the menu must not show a level the engine is not held at. The
+	 *  run's pin, by height, stays for the next stream. */
+	protected release(): null {
+		this.engaged = false;
+		this.pinned = false;
+		return null;
+	}
+
+	/** The level to put the engine back at after hls.js resumed its own
+	 *  choice — as it does after a level's error — or null when the
+	 *  governor holds nothing. */
+	reclaim(engineChoosing: boolean): number | null {
+		return this.engaged && engineChoosing ? this.current : null;
 	}
 
 	/** The choice went back to auto at `now`. */
