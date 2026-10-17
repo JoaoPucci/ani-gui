@@ -629,3 +629,109 @@ async fn an_external_play_whose_show_was_removed_during_the_cache_check_stamps_n
         "and no row"
     );
 }
+
+/// A stitched show whose two recaps between episodes 12 and 13 sit in
+/// slots 13 ("12.5") and 14 ("12.75"), the second watched last.
+fn two_recaps(state: &crate::app::AppState, upstream: &str, args: &PlayArgs) -> String {
+    let show = walked_key("stitched-show-4");
+    crate::commands::numbering_offset::put_display(state, &show, 0, 14, "12.75");
+    let key = crate::commands::play_resolution_cache::cache_key(
+        &args.title,
+        &args.mode,
+        "best",
+        &args.episode,
+        args.year,
+        args.episode_count,
+        args.subtype.as_deref(),
+    );
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &crate::commands::play_resolution_cache::CachedResolution {
+            upstream_url: format!("{upstream}/cached/master.m3u8"),
+            referer: String::new(),
+            media_kind: crate::proxy::MediaKind::Hls,
+            show_id: show.clone(),
+            show_title: "Stitched Show".into(),
+            resolved_slot: Some(13),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            played: Some("12.5".into()),
+        },
+    );
+    show
+}
+
+#[tokio::test]
+async fn a_cached_external_play_of_one_recap_after_another_reads_back_as_the_one_played() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/cached/master.m3u8"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let dir = tempfile::tempdir().expect("tmp");
+    let (player, argv_file) = stage_recorder(dir.path());
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
+    std::fs::write(
+        &state.config_path,
+        format!(
+            "external_player = \"{}\"\ncache_resolutions = true\n",
+            player.display()
+        ),
+    )
+    .expect("write config");
+    let mut args = play_args();
+    args.episode = "12.5".into();
+    let show = two_recaps(&state, &mock.uri(), &args);
+    play_external(&state, &args)
+        .await
+        .expect("plays from the cache");
+    wait_for(&argv_file).await;
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == show)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "12.5");
+}
+
+#[tokio::test]
+async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched() {
+    // Through the route the player calls.
+    use tower::ServiceExt as _;
+    let dir = tempfile::tempdir().expect("tmp");
+    let state = state_for(dir.path(), &Arc::new(TableProvider::unreachable()));
+    let mut args = play_args();
+    args.episode = "12.5".into();
+    let show = two_recaps(&state, "http://127.0.0.1:1", &args);
+    let router = crate::api::build_api_router(Arc::new(state.clone()));
+    let response = router
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/play/mark-watched")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "title": args.title,
+                        "episode": args.episode,
+                        "mode": args.mode,
+                        "episode_count": args.episode_count,
+                    }))
+                    .expect("json"),
+                ))
+                .expect("req"),
+        )
+        .await
+        .expect("oneshot");
+    assert!(response.status().is_success());
+    let listed = crate::commands::history::history_list(&state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == show)
+        .expect("row")
+        .ep_no;
+    assert_eq!(listed, "12.5");
+}
