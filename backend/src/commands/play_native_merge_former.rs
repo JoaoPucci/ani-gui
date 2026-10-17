@@ -40,3 +40,15 @@ pub(crate) fn names_a_row_now(
             _ => *t == own,
         })
 }
+
+/// The number, in the entry's numbering, an earlier version gave the
+/// row `native` resolved to — none when it gave none, or when a row of
+/// the listing carries that number now ([`names_a_row_now`]): what is
+/// kept under it may be that row's.
+pub(crate) fn former_number(
+    native: &crate::commands::play_native_resolve::NativeResolved,
+) -> Option<String> {
+    former_tag_of(&native.former_tags, native.resolved_slot)
+        .filter(|t| !names_a_row_now(t, native))
+        .map(|t| crate::commands::numbering_offset::kitsu_ep_no(t, native.numbering_offset))
+}

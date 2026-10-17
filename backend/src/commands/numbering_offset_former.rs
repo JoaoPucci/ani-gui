@@ -19,7 +19,6 @@ pub fn retag_display(
     former_tags: &[(u32, String, String)],
     shared: &dyn Fn(&str) -> bool,
 ) {
-    let _ = shared;
     let Some((stamped, tag)) = display_stamp(state, slug) else {
         return;
     };
@@ -27,7 +26,7 @@ pub fn retag_display(
         .iter()
         .any(|(slot, former, _)| *slot == stamped && *former == tag)
     {
-        retag_row(state, slug, former_tags);
+        retag_row(state, slug, former_tags, shared);
     }
 }
 
@@ -35,8 +34,15 @@ pub fn retag_display(
 /// `former_tags`' slots by the tag an earlier version gave that row,
 /// it names the row's tag now, and remembers the one it replaced.
 /// Decided under the store's locks, against the row as it stands
-/// there; any other row, or a slug with none, is left alone.
-fn retag_row(state: &AppState, slug: &str, former_tags: &[(u32, String, String)]) {
+/// there; any other row, or a slug with none, is left alone. A
+/// replaced tag a row of the listing carries now (`shared`) is not
+/// remembered: what is kept under it may be that row's.
+fn retag_row(
+    state: &AppState,
+    slug: &str,
+    former_tags: &[(u32, String, String)],
+    shared: &dyn Fn(&str) -> bool,
+) {
     let change = |rows: &mut Vec<Row>| {
         let Some(row) = rows.iter_mut().find(|r| r.slug == slug) else {
             return;
@@ -49,7 +55,7 @@ fn retag_row(state: &AppState, slug: &str, former_tags: &[(u32, String, String)]
             .find(|(slot, former, _)| *slot == stamped && *former == tag)
         {
             row.display = Some((*slot, now.clone()));
-            row.former = Some((*slot, former.clone()));
+            row.former = (!shared(former)).then(|| (*slot, former.clone()));
         }
     };
     if let Err(e) = rewrite(state, change) {
