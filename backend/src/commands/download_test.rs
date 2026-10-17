@@ -106,7 +106,7 @@ async fn tool_spawn_prefers_ytdlp_and_passes_v5_arguments() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "echo \"ytdlp $*\" >&2\n{}\nexit 0",
+            "printf '%s\\n' \"ytdlp $*\" >&2\n{}\nexit 0",
             writes_its_output("video")
         ),
     );
@@ -148,7 +148,11 @@ async fn tool_spawn_maps_quality_onto_ytdlps_resolution_sort() {
     // same preference through its resolution sort.
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "echo \"ytdlp $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "printf '%s\\n' \"ytdlp $*\" >&2; exit 0",
+    );
     let mut lines = Vec::new();
     spawn_download_tool(
         &StreamSource {
@@ -198,7 +202,11 @@ async fn tool_spawn_falls_back_to_ffmpeg_when_ytdlp_fails() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
-    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "printf '%s\\n' \"ffmpeg $*\" >&2; exit 0",
+    );
     let mut lines = Vec::new();
     spawn_download_tool(
         &StreamSource {
@@ -311,8 +319,8 @@ async fn a_range_download_resolves_and_spawns_per_episode() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "echo \"$*\" >> '{}'\n{}\nexit 0",
-            log.display(),
+            "printf '%s\\n' \"$*\" >> {}\n{}\nexit 0",
+            crate::stub_file::sh_quote(&log),
             writes_its_output("video")
         ),
     );
@@ -365,7 +373,10 @@ async fn a_range_download_stops_at_the_first_failing_episode() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("echo \"$*\" >> '{}'; exit 0", log.display()),
+        &format!(
+            "printf '%s\\n' \"$*\" >> {}; exit 0",
+            crate::stub_file::sh_quote(&log)
+        ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
         "title": "Range Show",
@@ -409,8 +420,8 @@ async fn a_download_finds_the_bundled_tools_without_a_system_install() {
         bundle.path(),
         "yt-dlp",
         &format!(
-            "echo \"$*\" >> '{}'\n{}\nexit 0",
-            log.display(),
+            "printf '%s\\n' \"$*\" >> {}\n{}\nexit 0",
+            crate::stub_file::sh_quote(&log),
             writes_its_output("video")
         ),
     );
@@ -564,7 +575,7 @@ async fn a_busy_executable_is_retried_rather_than_failed() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("touch '{}'; exit 0", marker.display()),
+        &format!("touch {}; exit 0", crate::stub_file::sh_quote(&marker)),
     );
     let held = std::fs::OpenOptions::new()
         .write(true)
@@ -611,7 +622,7 @@ async fn the_download_tool_runs_in_a_normalized_environment() {
         bin.path(),
         "yt-dlp",
         // Report the inherited environment, then emit a colored line.
-        "echo \"TERM=$TERM NO_COLOR=$NO_COLOR\" >&2; printf '\\033[1;31mred progress\\033[0m\\n' >&2; exit 0",
+        "printf '%s\\n' \"TERM=$TERM NO_COLOR=$NO_COLOR\" >&2; printf '\\033[1;31mred progress\\033[0m\\n' >&2; exit 0",
     );
     let mut lines: Vec<String> = Vec::new();
     // The parent's own environment is left alone — mutating it would
@@ -735,7 +746,10 @@ async fn cancelling_a_download_kills_the_tools_descendants() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
+        &format!(
+            "sleep 30 &\n{}\nwait",
+            crate::stub_file::publish(&pidfile, "echo $!")
+        ),
     );
     let path_env = bin.path().display().to_string();
     let dest_dir = dest.path().to_path_buf();
@@ -916,18 +930,18 @@ async fn a_repackage_failure_retries_through_an_installed_ffmpeg() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "printf '\\107TSDATA' > '{target}'\n\
+            "printf '\\107TSDATA' > {target}\n\
              echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
              exit 0",
-            target = target.display()
+            target = crate::stub_file::sh_quote(&target)
         ),
     );
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "printf 'GOODMP4' > '{target}'\nexit 0",
-            target = target.display()
+            "printf 'GOODMP4' > {target}\nexit 0",
+            target = crate::stub_file::sh_quote(&target)
         ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -977,10 +991,10 @@ async fn the_ffmpeg_retry_never_meets_what_ytdlp_left() {
             // A real MP4 header, not MPEG-TS: the shape that used to
             // survive the discard and block the retry.
             "prev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then \
-             echo \"$a\" >> '{seen}'; printf '\\000\\000\\000\\040ftypmp42' > \"$a\"; fi; prev=\"$a\"; done\n\
+             printf '%s\\n' \"$a\" >> {seen}; printf '\\000\\000\\000\\040ftypmp42' > \"$a\"; fi; prev=\"$a\"; done\n\
              echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
              exit 0",
-            seen = seen.display()
+            seen = crate::stub_file::sh_quote(&seen)
         ),
     );
     stage_tool(
@@ -989,8 +1003,8 @@ async fn the_ffmpeg_retry_never_meets_what_ytdlp_left() {
         &format!(
             "prev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-i\" ]; then :; fi; prev=\"$a\"; done\n\
              last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\n\
-             echo \"$last\" >> '{seen}'\nprintf 'GOODMP4' > \"$last\"\nexit 0",
-            seen = seen.display()
+             printf '%s\\n' \"$last\" >> {seen}\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            seen = crate::stub_file::sh_quote(&seen)
         ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -1054,8 +1068,8 @@ async fn ffmpeg_also_writes_somewhere_other_than_the_target() {
             // ffmpeg takes its output as the last positional argument
             // rather than after `-o`, so the yt-dlp writer would fire
             // for neither the right path nor at all.
-            "printf '%s\\n' \"$@\" > '{argv}'\n             for a in \"$@\"; do last=\"$a\"; done\n             printf 'video' > \"$last\"\nexit 0",
-            argv = argv.display()
+            "printf '%s\\n' \"$@\" > {argv}\n             for a in \"$@\"; do last=\"$a\"; done\n             printf 'video' > \"$last\"\nexit 0",
+            argv = crate::stub_file::sh_quote(&argv)
         ),
     );
     spawn_download_tool(
@@ -1105,19 +1119,19 @@ async fn the_repackage_retry_may_replace_the_file_it_condemned() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "printf '\\000\\000\\000\\040ftypmp42' > '{target}'\n\
+            "printf '\\000\\000\\000\\040ftypmp42' > {target}\n\
              echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
              exit 0",
-            target = target.display()
+            target = crate::stub_file::sh_quote(&target)
         ),
     );
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "printf '%s\\n' \"$@\" > '{argv}'\nprintf 'OK' > '{target}'\nexit 0",
-            argv = argv.display(),
-            target = target.display()
+            "printf '%s\\n' \"$@\" > {argv}\nprintf 'OK' > {target}\nexit 0",
+            argv = crate::stub_file::sh_quote(&argv),
+            target = crate::stub_file::sh_quote(&target)
         ),
     );
     let args: DownloadArgs = serde_json::from_value(serde_json::json!({
@@ -1159,8 +1173,8 @@ async fn two_downloads_of_one_target_do_not_overlap() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "echo start >> '{log}'\nsleep 0.3\necho end >> '{log}'\nexit 0",
-            log = log.display()
+            "echo start >> {log}\nsleep 0.3\necho end >> {log}\nexit 0",
+            log = crate::stub_file::sh_quote(&log)
         ),
     );
     let path_env = bin.path().display().to_string();
@@ -1230,8 +1244,8 @@ async fn waiting_for_a_same_process_download_is_charged_to_the_deadline() {
         // Records the run before sleeping, so a spawn that is later
         // killed at its deadline still leaves evidence it happened.
         &format!(
-            "echo ran >> '{ran}'\nsleep 1.5\nexit 0",
-            ran = ran.display()
+            "echo ran >> {ran}\nsleep 1.5\nexit 0",
+            ran = crate::stub_file::sh_quote(&ran)
         ),
     );
     let path_env = bin.path().display().to_string();
@@ -1322,7 +1336,10 @@ async fn waiting_for_another_instance_is_bounded_by_the_transfer_deadline() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("echo ran >> '{ran}'\nexit 0", ran = ran.display()),
+        &format!(
+            "echo ran >> {ran}\nexit 0",
+            ran = crate::stub_file::sh_quote(&ran)
+        ),
     );
     let target = dest.path().join("Contended Show Episode 1.mp4");
     let lock_path = target_lock_path(&target).expect("a lock path for the target");
@@ -1408,8 +1425,8 @@ async fn an_episode_already_in_the_folder_is_not_downloaded_again() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "echo ran >> '{ran}'\n{writer}\nexit 0",
-            ran = ran.display(),
+            "echo ran >> {ran}\n{writer}\nexit 0",
+            ran = crate::stub_file::sh_quote(&ran),
             writer = writes_its_output("replacement")
         ),
     );
@@ -1708,9 +1725,9 @@ async fn a_claim_that_arrives_mid_transfer_is_reported_like_one_found_before_it(
         bin.path(),
         "yt-dlp",
         &format!(
-            "{writer}\n: > '{claim}'\ntouch -t 202001010000 '{claim}'\nexit 0",
+            "{writer}\n: > {claim}\ntouch -t 202001010000 {claim}\nexit 0",
             writer = writes_its_output("video"),
-            claim = target.display()
+            claim = crate::stub_file::sh_quote(&target)
         ),
     );
 
@@ -1752,9 +1769,9 @@ async fn a_live_claim_at_publication_time_is_reported_as_pending() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "{writer}\n: > '{claim}'\nexit 0",
+            "{writer}\n: > {claim}\nexit 0",
             writer = writes_its_output("video"),
-            claim = target.display()
+            claim = crate::stub_file::sh_quote(&target)
         ),
     );
 
@@ -2109,9 +2126,9 @@ async fn the_tool_writes_somewhere_other_than_the_target() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "printf '%s\n' \"$@\" > '{argv}'\nprev=\"\"\nfor a in \"$@\"; do \
+            "printf '%s\n' \"$@\" > {argv}\nprev=\"\"\nfor a in \"$@\"; do \
              if [ \"$prev\" = \"-o\" ]; then printf 'video' > \"$a\"; fi; prev=\"$a\"; done\nexit 0",
-            argv = argv.display()
+            argv = crate::stub_file::sh_quote(&argv)
         ),
     );
     let mut sink = |_l: &str| {};
@@ -2159,9 +2176,9 @@ async fn a_file_that_appears_mid_transfer_is_not_replaced() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "printf 'winner' > '{target}'\nprev=\"\"\nfor a in \"$@\"; do \
+            "printf 'winner' > {target}\nprev=\"\"\nfor a in \"$@\"; do \
              if [ \"$prev\" = \"-o\" ]; then printf 'loser' > \"$a\"; fi; prev=\"$a\"; done\nexit 0",
-            target = target.display()
+            target = crate::stub_file::sh_quote(&target)
         ),
     );
     let mut sink = |_l: &str| {};
@@ -2278,7 +2295,7 @@ async fn an_abandoned_claim_is_reported_and_never_taken() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("echo ran >> '{}'\nexit 0", ran.display()),
+        &format!("echo ran >> {}\nexit 0", crate::stub_file::sh_quote(&ran)),
     );
     let target = dest.path().join("Abandoned Show Episode 1.mp4");
     std::fs::write(&target, b"").expect("a claim from an earlier crash");
@@ -2478,7 +2495,7 @@ async fn a_directory_at_the_target_refuses_before_the_transfer() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        &format!("echo ran >> '{}'\nexit 0", ran.display()),
+        &format!("echo ran >> {}\nexit 0", crate::stub_file::sh_quote(&ran)),
     );
     std::fs::create_dir(dest.path().join("Blocked Show Episode 1.mp4")).expect("an obstruction");
 
@@ -3678,8 +3695,8 @@ async fn a_range_download_fails_over_when_the_primarys_stream_chain_is_broken() 
         bin.path(),
         "yt-dlp",
         &format!(
-            "echo \"$*\" >> '{}'\n{}\nexit 0",
-            log.display(),
+            "printf '%s\\n' \"$*\" >> {}\n{}\nexit 0",
+            crate::stub_file::sh_quote(&log),
             writes_its_output("video")
         ),
     );
@@ -4019,11 +4036,10 @@ fn stage_waiting_ytdlp(bin: &std::path::Path, log: &std::path::Path, go: &std::p
         bin,
         "yt-dlp",
         &format!(
-            "echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\n{write}\necho \"done $$\" >> '{log}'\nexit 0",
-            log = log.display(),
-            go = go.display(),
-            write = writes_its_output("video"),
-        ),
+            "printf '%s\\n' \"$$ $*\" >> {log}\nwhile [ ! -f {go} ]; do sleep 0.05; done\n{write}\nprintf '%s\\n' \"done $$\" >> {log}\nexit 0",
+            log = crate::stub_file::sh_quote(log),
+            go = crate::stub_file::sh_quote(go),
+            write = writes_its_output("video")),
     );
 }
 
@@ -4376,10 +4392,12 @@ impl SlowTreeKill {
     /// probe happened to serve.
     async fn register_for(delay: &str, bin: &std::path::Path) -> Self {
         Self::register_script(&format!(
-            "if pgrep -g \"$1\" -f '{bin}' >/dev/null; then\n\
+            "if pgrep -g \"$1\" -f -- {bin} >/dev/null; then\n\
              ( sleep {delay}; kill -s KILL -- -\"$1\" ) >/dev/null 2>&1 &\n\
              else kill -s KILL -- -\"$1\"; fi\nexit 0",
-            bin = bin.display()
+            // `pgrep -f` takes a regular expression: the directory's
+            // name is matched as written, whatever it holds.
+            bin = crate::stub_file::sh_quote(crate::stub_file::ere_literal(bin))
         ))
         .await
     }
@@ -4422,13 +4440,12 @@ async fn a_respawn_at_the_other_pace_waits_for_the_old_tree_to_exit() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "for p in $(cut -d' ' -f1 '{log}' 2>/dev/null); do case \"$p\" in *[!0-9]*) ;; *) kill -s 0 -- -\"$p\" 2>/dev/null && echo \"overlap $p\" >> '{log}';; esac; done\n\
+            "for p in $(cut -d' ' -f1 {log} 2>/dev/null); do case \"$p\" in *[!0-9]*) ;; *) kill -s 0 -- -\"$p\" 2>/dev/null && printf '%s\\n' \"overlap $p\" >> {log};; esac; done\n\
              sleep 3 >/dev/null 2>&1 &\n\
-             echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\n{write}\necho \"done $$\" >> '{log}'\nexit 0",
-            log = log.display(),
-            go = go.display(),
-            write = writes_its_output("video"),
-        ),
+             printf '%s\\n' \"$$ $*\" >> {log}\nwhile [ ! -f {go} ]; do sleep 0.05; done\n{write}\nprintf '%s\\n' \"done $$\" >> {log}\nexit 0",
+            log = crate::stub_file::sh_quote(&log),
+            go = crate::stub_file::sh_quote(&go),
+            write = writes_its_output("video")),
     );
     let live = std::sync::atomic::AtomicBool::new(false);
     let is_live = || live.load(std::sync::atomic::Ordering::Relaxed);
@@ -4494,20 +4511,20 @@ async fn the_ffmpeg_retry_waits_for_the_condemned_ytdlp_to_exit() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "sleep 30 &\necho $! > '{pidf}'\n\
+            "sleep 30 &\necho $! > {pidf}\n\
              echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2\n\
              wait",
-            pidf = pidf.display()
+            pidf = crate::stub_file::sh_quote(&pidf)
         ),
     );
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "kill -0 \"$(cat '{pidf}')\" 2>/dev/null && echo overlap > '{seen}'\n\
+            "kill -0 \"$(cat {pidf})\" 2>/dev/null && echo overlap > {seen}\n\
              last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
-            pidf = pidf.display(),
-            seen = seen.display()
+            pidf = crate::stub_file::sh_quote(&pidf),
+            seen = crate::stub_file::sh_quote(&seen)
         ),
     );
     let got = spawn_download_tool(
@@ -4548,9 +4565,9 @@ async fn a_cancelled_download_leaves_nothing_its_dying_tool_wrote() {
         "yt-dlp",
         &format!(
             "out=\"\"\nprev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then out=\"$a\"; fi; prev=\"$a\"; done\n\
-             touch '{started}'\n\
+             touch {started}\n\
              ( while :; do printf x >> \"$out.part\"; sleep 0.02; done ) &\nwait",
-            started = started.display()
+            started = crate::stub_file::sh_quote(&started)
         ),
     );
     let path_env = bin.path().display().to_string();
@@ -4613,8 +4630,8 @@ async fn a_tree_that_outlives_its_teardown_gets_no_retry_beside_it() {
         bin.path(),
         "ffmpeg",
         &format!(
-            "touch '{ran}'\nlast=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
-            ran = ran.display()
+            "touch {ran}\nlast=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
+            ran = crate::stub_file::sh_quote(&ran)
         ),
     );
     let got = spawn_download_tool(
@@ -4653,18 +4670,18 @@ async fn a_failed_tools_helpers_are_gone_before_the_retry_starts() {
         bin.path(),
         "yt-dlp",
         &format!(
-            "sleep 30 >/dev/null 2>&1 &\necho $! > '{pidf}'\nexit 1",
-            pidf = pidf.display()
+            "sleep 30 >/dev/null 2>&1 &\necho $! > {pidf}\nexit 1",
+            pidf = crate::stub_file::sh_quote(&pidf)
         ),
     );
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "kill -0 \"$(cat '{pidf}')\" 2>/dev/null && echo overlap > '{seen}'\n\
+            "kill -0 \"$(cat {pidf})\" 2>/dev/null && echo overlap > {seen}\n\
              last=\"\"\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'GOODMP4' > \"$last\"\nexit 0",
-            pidf = pidf.display(),
-            seen = seen.display()
+            pidf = crate::stub_file::sh_quote(&pidf),
+            seen = crate::stub_file::sh_quote(&seen)
         ),
     );
     let got = spawn_download_tool(
@@ -4886,10 +4903,9 @@ fn stage_waiting_ffmpeg(bin: &std::path::Path, log: &std::path::Path, go: &std::
         bin,
         "ffmpeg",
         &format!(
-            "echo \"$$ $*\" >> '{log}'\nwhile [ ! -f '{go}' ]; do sleep 0.05; done\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'video' > \"$last\"\necho \"done $$\" >> '{log}'\nexit 0",
-            log = log.display(),
-            go = go.display(),
-        ),
+            "printf '%s\\n' \"$$ $*\" >> {log}\nwhile [ ! -f {go} ]; do sleep 0.05; done\nfor a in \"$@\"; do last=\"$a\"; done\nprintf 'video' > \"$last\"\nprintf '%s\\n' \"done $$\" >> {log}\nexit 0",
+            log = crate::stub_file::sh_quote(log),
+            go = crate::stub_file::sh_quote(go)),
     );
 }
 
@@ -5480,8 +5496,8 @@ async fn the_download_command_paces_on_the_proxys_record_of_playback() {
             bin.path(),
             "yt-dlp",
             &format!(
-                "echo \"$*\" >> '{}'\n{}\nexit 0",
-                log.display(),
+                "printf '%s\\n' \"$*\" >> {}\n{}\nexit 0",
+                crate::stub_file::sh_quote(&log),
                 writes_its_output("video")
             ),
         );
@@ -5609,7 +5625,11 @@ async fn an_ffmpeg_fallback_started_while_playback_is_live_reads_at_the_streams_
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
-    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "printf '%s\\n' \"ffmpeg $*\" >&2; exit 0",
+    );
     let is_live = || true;
     let lane = tokio::sync::Semaphore::new(1);
     let pacing = crate::commands::download_pacing::Pacing::new(
@@ -5652,7 +5672,11 @@ async fn an_ffmpeg_fallback_started_while_nothing_plays_reads_at_full_speed() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
-    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "printf '%s\\n' \"ffmpeg $*\" >&2; exit 0",
+    );
     let mut lines = Vec::new();
     spawn_download_tool(
         &StreamSource {
@@ -5807,7 +5831,7 @@ async fn an_ffmpeg_that_rejects_the_extension_option_gets_the_command_without_it
     stage_tool(
         bin.path(),
         "ffmpeg",
-        "echo \"ffmpeg $*\" >&2\nfor a in \"$@\"; do if [ \"$a\" = \"-extension_picky\" ]; then echo \"Unrecognized option 'extension_picky'.\" >&2; echo \"Error splitting the argument list: Option not found\" >&2; exit 8; fi; done\nexit 0",
+        "printf '%s\\n' \"ffmpeg $*\" >&2\nfor a in \"$@\"; do if [ \"$a\" = \"-extension_picky\" ]; then echo \"Unrecognized option 'extension_picky'.\" >&2; echo \"Error splitting the argument list: Option not found\" >&2; exit 8; fi; done\nexit 0",
     );
     let mut lines = Vec::new();
     spawn_download_tool(
@@ -5856,7 +5880,7 @@ async fn an_ffmpeg_that_rejects_the_option_and_outlives_its_teardown_is_not_run_
     stage_tool(
         bin.path(),
         "ffmpeg",
-        "echo \"ffmpeg $*\" >&2\nd=$(dirname \"$0\")\nsh -c \"sleep 30; : '$d'\" >/dev/null 2>&1 &\necho \"Unrecognized option 'extension_picky'.\" >&2\nexit 8",
+        "printf '%s\\n' \"ffmpeg $*\" >&2\nd=$(dirname \"$0\")\nsh -c 'sleep 30; :' helper \"$d\" >/dev/null 2>&1 &\necho \"Unrecognized option 'extension_picky'.\" >&2\nexit 8",
     );
     let mut lines = Vec::new();
     let got = spawn_download_tool(
@@ -5885,7 +5909,11 @@ async fn an_ffmpeg_that_takes_the_extension_option_runs_once() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
-    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "printf '%s\\n' \"ffmpeg $*\" >&2; exit 0",
+    );
     let mut lines = Vec::new();
     spawn_download_tool(
         &StreamSource {
@@ -5920,7 +5948,7 @@ async fn an_ffmpeg_that_fails_otherwise_is_not_run_again() {
     stage_tool(
         bin.path(),
         "ffmpeg",
-        "echo \"ffmpeg $*\" >&2; echo \"Server returned 403 Forbidden\" >&2; exit 1",
+        "printf '%s\\n' \"ffmpeg $*\" >&2; echo \"Server returned 403 Forbidden\" >&2; exit 1",
     );
     let mut lines = Vec::new();
     let got = spawn_download_tool(
@@ -5998,7 +6026,11 @@ const RELAY: &str = "http://127.0.0.1:9/s/relay/master.m3u8";
 async fn a_paced_download_with_a_relay_fetches_through_it() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "printf '%s\\n' \"yt-dlp $*\" >&2; exit 0",
+    );
     let is_live = || true;
     let relay = || Some(RELAY.to_string());
     let lane = tokio::sync::Semaphore::new(1);
@@ -6059,7 +6091,11 @@ async fn a_paced_download_with_a_relay_fetches_through_it() {
 async fn a_download_with_nothing_playing_does_not_use_the_relay() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "printf '%s\\n' \"yt-dlp $*\" >&2; exit 0",
+    );
     let is_live = || false;
     let asked = std::sync::atomic::AtomicBool::new(false);
     let relay = || {
@@ -6109,7 +6145,11 @@ async fn a_download_with_nothing_playing_does_not_use_the_relay() {
 async fn an_ffmpeg_fallback_while_playback_is_live_reads_through_the_relay() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "printf '%s\\n' \"ffmpeg $*\" >&2; exit 0",
+    );
     let is_live = || true;
     let relay = || Some(RELAY.to_string());
     let lane = tokio::sync::Semaphore::new(1);
@@ -6320,7 +6360,11 @@ async fn a_fallback_after_a_relayed_run_failed_reads_from_the_host() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
     stage_tool(bin.path(), "yt-dlp", "echo boom >&2; exit 1");
-    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "printf '%s\\n' \"ffmpeg $*\" >&2; exit 0",
+    );
     let is_live = || true;
     let relay = || Some(RELAY.to_string());
     let lane = tokio::sync::Semaphore::new(1);
@@ -6363,7 +6407,7 @@ async fn a_fallback_after_a_relayed_run_failed_reads_from_the_host() {
 /// Each tool reports the proxy exceptions it was started with.
 #[cfg(unix)]
 const REPORTS_ITS_PROXY_EXCEPTIONS: &str =
-    "echo \"$(basename \"$0\") no_proxy=[$no_proxy] NO_PROXY=[$NO_PROXY]\" >&2";
+    "printf '%s\\n' \"$(basename \"$0\") no_proxy=[$no_proxy] NO_PROXY=[$NO_PROXY]\" >&2";
 
 /// The empty proxy a relayed run passes reaches only the request the
 /// tool makes first: ffmpeg's playlist demuxer drops an empty option
@@ -6469,7 +6513,11 @@ async fn a_repackage_after_a_relayed_run_still_reads_through_the_relay() {
         "yt-dlp",
         "echo 'WARNING: out: Possible MPEG-TS in MP4 container or malformed AAC timestamps. Install ffmpeg to fix this automatically' >&2; exit 0",
     );
-    stage_tool(bin.path(), "ffmpeg", "echo \"ffmpeg $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "ffmpeg",
+        "printf '%s\\n' \"ffmpeg $*\" >&2; exit 0",
+    );
     let is_live = || true;
     let relay = || Some(RELAY.to_string());
     let lane = tokio::sync::Semaphore::new(1);
@@ -6769,8 +6817,8 @@ async fn a_yt_dlp_run_reports_its_speed_to_the_dock() {
     stage_tool(
         bin.path(),
         "yt-dlp",
-        "echo \"yt-dlp $*\" >&2\n\
-         for b in 0 1048576 2097152 3145728 4194304; do echo \"ani-gui-progress $b\"; sleep 0.4; done\n\
+        "printf '%s\\n' \"yt-dlp $*\" >&2\n\
+         for b in 0 1048576 2097152 3145728 4194304; do printf '%s\\n' \"ani-gui-progress $b\"; sleep 0.4; done\n\
          exit 0",
     );
     let mut lines = Vec::new();
@@ -6864,7 +6912,11 @@ async fn a_run_shorter_than_a_report_still_reports_a_speed() {
 async fn a_yt_dlp_run_loads_no_user_configuration() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2\nexit 0");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "printf '%s\\n' \"yt-dlp $*\" >&2\nexit 0",
+    );
     let mut lines = Vec::new();
     spawn_download_tool(
         &StreamSource {
@@ -6902,8 +6954,8 @@ async fn an_ffmpeg_run_reports_its_speed_to_the_dock() {
     stage_tool(
         bin.path(),
         "ffmpeg",
-        "echo \"ffmpeg $*\" >&2\n\
-         for b in 0 1048576 2097152 3145728 4194304; do echo \"total_size=$b\"; echo progress=continue; sleep 0.4; done\n\
+        "printf '%s\\n' \"ffmpeg $*\" >&2\n\
+         for b in 0 1048576 2097152 3145728 4194304; do printf '%s\\n' \"total_size=$b\"; echo progress=continue; sleep 0.4; done\n\
          exit 0",
     );
     let mut lines = Vec::new();
@@ -6956,7 +7008,7 @@ async fn a_run_that_measured_reports_zero_when_it_ends() {
             bin.path(),
             "yt-dlp",
             &format!(
-                "for b in 0 1048576 2097152 3145728; do echo \"ani-gui-progress $b\"; sleep 0.4; done\n{exit}"
+                "for b in 0 1048576 2097152 3145728; do printf '%s\\n' \"ani-gui-progress $b\"; sleep 0.4; done\n{exit}"
             ),
         );
         let mut lines = Vec::new();
@@ -6998,7 +7050,11 @@ async fn a_run_that_measured_reports_zero_when_it_ends() {
 async fn yt_dlp_is_told_the_episode_is_not_live() {
     let bin = tempfile::tempdir().expect("bin");
     let dest = tempfile::tempdir().expect("dest");
-    stage_tool(bin.path(), "yt-dlp", "echo \"yt-dlp $*\" >&2; exit 0");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        "printf '%s\\n' \"yt-dlp $*\" >&2; exit 0",
+    );
     let mut lines = Vec::new();
     spawn_download_tool(
         &StreamSource {
