@@ -116,3 +116,34 @@ async fn a_session_names_no_former_number_another_row_carries_now() {
     assert_eq!(resp.episode.as_deref(), Some("1.5"));
     assert_eq!(resp.former_episode, None);
 }
+
+fn key_for(asked: &PlayArgs, episode: &str) -> String {
+    play_resolution_cache::cache_key(
+        &asked.title,
+        &asked.mode,
+        "best",
+        episode,
+        asked.year,
+        asked.episode_count,
+        asked.subtype.as_deref(),
+    )
+}
+
+#[tokio::test]
+async fn a_resolve_by_a_former_tag_is_kept_under_the_episode_it_played() {
+    // Kept under the request "2.5", the recap's stream would answer a
+    // later request for "2.5" — another row's, should the listing tag
+    // one so — for as long as the row lives. It is the episode "1.5".
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let asked = args("2.5");
+    play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    let under = |ep: &str| {
+        play_resolution_cache::get(&state.cache_pool, &key_for(&asked, ep)).expect("readable")
+    };
+    assert!(under("2.5").is_none(), "nothing under the former tag");
+    let kept = under("1.5").expect("kept under the episode played");
+    assert_eq!(kept.played.as_deref(), Some("1.5"));
+}
