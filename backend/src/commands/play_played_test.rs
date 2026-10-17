@@ -267,3 +267,41 @@ fn a_watch_that_recorded_another_slot_leaves_the_stamp_where_it_is() {
     crate::commands::play_cache::restamp_recorded(&state, &first_recap_row("http://x"));
     assert_eq!(listed_as(&state), "12.75");
 }
+
+#[tokio::test]
+async fn a_resolve_keeps_the_former_number_with_its_cached_row() {
+    // A prefetch's session is never opened, so its former number has to
+    // outlive it for the replay that the click is.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let mut asked = args("1.5");
+    asked.prefetch = true;
+    play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("plays");
+    let kept = play_resolution_cache::get(&state.cache_pool, &key_for(&asked, "1.5"))
+        .expect("readable")
+        .expect("kept");
+    assert_eq!(kept.former_episode.as_deref(), Some("2.5"));
+}
+
+#[tokio::test]
+async fn a_replay_names_the_former_number_its_row_keeps() {
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    let asked = args("12.5");
+    let mut row = first_recap_row(&upstream.uri());
+    row.former_episode = Some("24.5".into());
+    play_resolution_cache::put(&state.cache_pool, &key_for(&asked, "12.5"), &row);
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(resp.former_episode.as_deref(), Some("24.5"));
+}
