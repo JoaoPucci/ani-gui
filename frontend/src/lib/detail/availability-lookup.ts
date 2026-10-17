@@ -14,6 +14,7 @@
  * this side, where it can be driven directly.
  */
 
+import { probeScope } from '$lib/availability/probe-scope';
 import type { AvailabilityArgs, AvailabilityResponse } from '$lib/api';
 import type { AvailabilityAnswer, AvailabilityPatch } from './availability-writeback';
 
@@ -29,7 +30,7 @@ export interface AvailabilitySubject {
 }
 
 export interface AvailabilityLookupDeps {
-	check: (args: AvailabilityArgs) => Promise<AvailabilityResponse>;
+	check: (args: AvailabilityArgs, opts?: { signal?: AbortSignal }) => Promise<AvailabilityResponse>;
 	/** Opens the writeback ticket. Called before the request goes out,
 	 *  so what it captures describes the moment the question was asked. */
 	begin: () => (answer: AvailabilityAnswer) => AvailabilityPatch;
@@ -62,20 +63,26 @@ export function startAvailabilityLookup(
 	deps: AvailabilityLookupDeps
 ): () => void {
 	let cancelled = false;
+	// The lookup's own run: a lookup cancelled — asked again for another
+	// mode or show on the same page — stops its probe too.
+	const run = probeScope.begin();
 	deps.setResolved(false);
 	deps.setListed(null);
 	const settle = deps.begin();
 	void deps
-		.check({
-			title: subject.title,
-			mode,
-			alt_titles: subject.altTitles,
-			episode_count: subject.episodeCount,
-			year: subject.year,
-			kitsu_id: subject.kitsuId,
-			status: subject.status,
-			subtype: subject.subtype
-		})
+		.check(
+			{
+				title: subject.title,
+				mode,
+				alt_titles: subject.altTitles,
+				episode_count: subject.episodeCount,
+				year: subject.year,
+				kitsu_id: subject.kitsuId,
+				status: subject.status,
+				subtype: subject.subtype
+			},
+			{ signal: run.signal }
+		)
 		.then((r) => {
 			if (cancelled) return;
 			// An unsettled answer reached the provider and established
@@ -102,5 +109,6 @@ export function startAvailabilityLookup(
 		});
 	return () => {
 		cancelled = true;
+		run.end();
 	};
 }

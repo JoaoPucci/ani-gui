@@ -15,6 +15,7 @@ import {
 } from '$lib/api';
 import type { KitsuAnimeRef } from '$lib/api';
 import { keepCard } from './filter';
+import { probeScope } from './probe-scope';
 
 /** Inline probe pool: drains `uncached` with capped concurrency,
  *  writing each verdict into `cached`. `onVerdict` fires after
@@ -24,28 +25,34 @@ async function probeInline<T extends KitsuAnimeRef>(
 	mode: 'sub' | 'dub',
 	cached: Record<string, boolean>,
 	concurrency: number,
+	signal: AbortSignal,
 	onVerdict?: () => void
 ): Promise<void> {
 	const queue = uncached.slice();
 	const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-		while (queue.length > 0) {
+		// A page left is a pool done: what is in flight is aborted by
+		// the scope, and nothing more is asked.
+		while (queue.length > 0 && !signal.aborted) {
 			const item = queue.shift();
 			if (!item) break;
 			try {
-				const r = await checkAvailability({
-					title: item.canonical_title,
-					mode,
-					alt_titles: altTitlesFromKitsu(item),
-					episode_count: item.episode_count ?? undefined,
-					year: yearFromKitsuRef(item) ?? undefined,
-					kitsu_id: item.id,
-					subtype: item.subtype ?? undefined,
-					status: item.status ?? undefined
-					// Interactive, unlike the rail fills: the user is
-					// actively waiting on these results, and the gate's
-					// paced background slots would turn a cold ~20-hit
-					// search into a ~20-second wait.
-				});
+				const r = await checkAvailability(
+					{
+						title: item.canonical_title,
+						mode,
+						alt_titles: altTitlesFromKitsu(item),
+						episode_count: item.episode_count ?? undefined,
+						year: yearFromKitsuRef(item) ?? undefined,
+						kitsu_id: item.id,
+						subtype: item.subtype ?? undefined,
+						status: item.status ?? undefined
+						// Interactive, unlike the rail fills: the user is
+						// actively waiting on these results, and the gate's
+						// paced background slots would turn a cold ~20-hit
+						// search into a ~20-second wait.
+					},
+					{ signal }
+				);
 				// An unsettled answer established nothing — its
 				// `available: false` is no verdict — so, like a failed
 				// probe, it leaves the card and remembers nothing.
@@ -75,7 +82,8 @@ export async function filterAvailableProgressive<T extends KitsuAnimeRef>(
 	mode: 'sub' | 'dub',
 	emit: (visible: T[]) => void,
 	graceMs = 2000,
-	concurrency = 4
+	concurrency = 4,
+	run?: AbortSignal
 ): Promise<void> {
 	if (items.length === 0) {
 		emit(items);
@@ -113,7 +121,10 @@ export async function filterAvailableProgressive<T extends KitsuAnimeRef>(
 		deadlinePassed = true;
 		emitIfChanged();
 	}, graceMs);
-	await probeInline(uncached, mode, cached, concurrency, () => {
+	// Taken once, when the page asks: every probe this pool sends
+	// belongs to the page that started it.
+	const signal = run ?? probeScope.signal();
+	await probeInline(uncached, mode, cached, concurrency, signal, () => {
 		if (deadlinePassed) emitIfChanged();
 	});
 	clearTimeout(deadline);

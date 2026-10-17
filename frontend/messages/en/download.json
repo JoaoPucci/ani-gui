@@ -89,6 +89,16 @@
 			}
 		}
 	],
+	"bar_label_multi_queued": [
+		{
+			"declarations": ["input count", "input queued", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Downloading {count} episode · {queued} queued",
+				"countPlural=*": "Downloading {count} episodes · {queued} queued"
+			}
+		}
+	],
 	"bar_cancel_all_aria_label": "Cancel all downloads",
 	"bar_cancel_all_title": "Cancel all downloads",
 	"bar_cancel_confirm_single": "Cancel download of \"{title}\"?",
@@ -97,8 +107,8 @@
 			"declarations": ["input count", "local countPlural = count: plural"],
 			"selectors": ["countPlural"],
 			"match": {
-				"countPlural=one": "Cancel {count} active download?",
-				"countPlural=*": "Cancel {count} active downloads?"
+				"countPlural=one": "Cancel {count} download?",
+				"countPlural=*": "Cancel {count} downloads?"
 			}
 		}
 	],
@@ -109,6 +119,21 @@
 			"match": {
 				"countPlural=one": "{count} download in progress, {speed}",
 				"countPlural=*": "{count} downloads in progress, {speed}"
+			}
+		}
+	],
+	"dock_active_queued_speed_label": [
+		{
+			"declarations": [
+				"input count",
+				"input queued",
+				"input speed",
+				"local countPlural = count: plural"
+			],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} download in progress, {queued} queued, {speed}",
+				"countPlural=*": "{count} downloads in progress, {queued} queued, {speed}"
 			}
 		}
 	],
@@ -130,6 +155,7 @@
 	"dock_ep_label_single": "Ep {episode}",
 	"dock_cancel_aria_label": "Cancel download",
 	"dock_cancel_title": "Cancel",
+	"dock_queued": "Queued",
 	"dock_reveal_aria_label": "Reveal in folder",
 	"dock_reveal_title": "Reveal in folder",
 	"dock_dismiss_aria_label": "Dismiss",
