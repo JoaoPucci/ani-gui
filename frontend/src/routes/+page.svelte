@@ -474,8 +474,12 @@
 						// the user's next click depends on.
 						fetchAvailability: makeFetchAvailability(checkAvailability),
 						mode,
-						onRefined: (id, count) =>
-							publishLoaderCap(id, historyMatches[id] ?? null, count, false),
+						// The retry pays for the listing the first probe
+						// did not: read the row again after it.
+						onRefined: (id, count) => {
+							publishLoaderCap(id, historyMatches[id] ?? null, count, false);
+							void readRowAgain(id);
+						},
 						wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 						cancelled: () => continueRetryCancelled,
 						// A row stops being worth asking about when its cap is

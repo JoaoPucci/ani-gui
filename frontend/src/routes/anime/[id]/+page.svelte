@@ -770,7 +770,7 @@
 	// the listing that can put the row's numbering right.
 	// Once the row has arrived and the lookup has answered, in either
 	// order.
-	const resumeRefresh = joinResumeRefresh((entry) => void readResumeAgain(entry));
+	const resumeRefresh = joinResumeRefresh((entry) => readResumeAgain(entry));
 	async function readResumeAgain(entry: HistoryEntry) {
 		const showId = id;
 		if (!showId) return;
@@ -1451,8 +1451,10 @@
 	// primary CTA too (Codex P2 #3565666393).
 	const nothingAiredYet = $derived(airedCap(episodeCap, airing) === 0);
 
-	function onPlay() {
+	async function onPlay() {
 		if (nothingAiredYet || airingIsPending) return;
+		// A row being read again is the one Play goes on from.
+		if (resumeRefresh.refreshing()) await resumeRefresh.settled();
 		void startPlay(defaultEpisode());
 	}
 	// Download flow — opens DownloadConfirm modal. The dialog lets the
@@ -1468,8 +1470,10 @@
 		})
 		.catch(() => {});
 
-	function onDownload() {
+	async function onDownload() {
 		if (!detail || nothingAiredYet || airingIsPending) return;
+		if (resumeRefresh.refreshing()) await resumeRefresh.settled();
+		if (!detail) return;
 		const mode = playMode(config);
 		const quality = playQuality(config);
 		// `episode_count` must stay Kitsu's announced total — that's

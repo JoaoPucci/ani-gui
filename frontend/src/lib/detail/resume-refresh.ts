@@ -65,14 +65,23 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
 	unresolved: () => void;
 	reset: () => void;
 	settled: () => Promise<void>;
+	refreshing: () => boolean;
 } {
 	let row: HistoryEntry | null = null;
 	let answered = false;
 	let ran = false;
+	let pending: Promise<unknown> = Promise.resolve();
+	let out = false;
 	const fire = () => {
 		if (ran || !answered || !row) return;
 		ran = true;
-		refresh(row);
+		out = true;
+		const run = Promise.resolve(refresh(row))
+			.catch(() => {})
+			.finally(() => {
+				if (pending === run) out = false;
+			});
+		pending = run;
 	};
 	return {
 		row: (entry) => {
@@ -87,7 +96,8 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
 			answered = false;
 			ran = false;
 		},
-		settled: () => Promise.resolve(),
+		settled: () => pending.then(() => {}),
+		refreshing: () => out,
 		reset: () => {
 			row = null;
 			answered = false;
