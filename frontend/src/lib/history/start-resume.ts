@@ -99,6 +99,9 @@ export interface StartResumeDeps {
 	/** Keeps what was kept for `from` of `kitsuId` under `to` instead.
 	 *  Omitted, nothing moves. */
 	movePosition?: (kitsuId: string, from: number, to: number) => void;
+	/** Resolves `args` without recording a watch — a prefetch — so the
+	 *  backend fetches the show's listing. Omitted, nothing is warmed. */
+	warm?: (args: ResumePlayArgs) => Promise<unknown>;
 	/** The episode the opened session plays ({@link followPlayed}).
 	 *  Omitted, the one asked for. */
 	followPlayed?: (
