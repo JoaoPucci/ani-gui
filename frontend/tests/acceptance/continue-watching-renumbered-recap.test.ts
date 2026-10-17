@@ -208,4 +208,33 @@ describe('a Continue card over a renumbered recap', () => {
 		app = mount(HomePage, { target });
 		await until(() => offers(12.5), 'the card to offer the recap left part-way');
 	});
+
+	it('reads the row again after a retried probe puts it right', async () => {
+		// The first probe answers with a search-hit count and no
+		// listing; the retry that follows pays for the listing.
+		let probes = 0;
+		server.use(
+			...homeHandlers({ history: [{ ep_no: '24.5', id: ROW, title: SHOW }] }, [
+				http.post(`${API_BASE}/api/kitsu/search`, () =>
+					HttpResponse.json([kitsuRef('1', SHOW, 36)])
+				),
+				http.post(`${API_BASE}/api/availability`, () => {
+					probes += 1;
+					return HttpResponse.json({
+						available: true,
+						episode_count: 36,
+						episode_count_approximate: probes === 1
+					});
+				}),
+				http.get(`${API_BASE}/api/history/:id/number`, () =>
+					HttpResponse.json(
+						probes > 1 ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
+					)
+				)
+			])
+		);
+		app = mount(HomePage, { target });
+		await until(() => probes > 1, 'the retried probe');
+		await until(() => offers(13), 'the card to offer episode 13');
+	});
 });

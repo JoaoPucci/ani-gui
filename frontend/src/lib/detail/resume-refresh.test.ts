@@ -131,3 +131,27 @@ describe('joinResumeRefresh (a second lookup)', () => {
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe('joinResumeRefresh (a click while the refresh is out)', () => {
+	it('settles once the refresh it ran has, and at once when none is out', async () => {
+		let finish: () => void = () => {};
+		const join = joinResumeRefresh(
+			() =>
+				new Promise<void>((r) => {
+					finish = r;
+				})
+		);
+		let settled = false;
+		await join.settled();
+		join.row(entry);
+		join.resolved();
+		const waiting = join.settled().then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		finish();
+		await waiting;
+		expect(settled).toBe(true);
+	});
+});
