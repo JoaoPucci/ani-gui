@@ -321,9 +321,9 @@ impl<'a> ResolveVerdict<'a> {
     #[must_use]
     pub fn with_played(
         mut self,
-        _played: Option<crate::commands::play_native_versions::VersionKind>,
+        played: Option<crate::commands::play_native_versions::VersionKind>,
     ) -> Self {
-        self.played = None;
+        self.played = played;
         self
     }
 
@@ -515,7 +515,12 @@ pub async fn stamp_after_native(
                             gate_refused: false,
                             unsettled: false,
                             provider: verdict.provider,
-                            versions: with_modes_kept(state, &row, verdict.versions),
+                            versions: with_modes_kept(
+                                state,
+                                &row,
+                                verdict.versions,
+                                verdict.played,
+                            ),
                         },
                     );
                 }
@@ -528,7 +533,7 @@ pub async fn stamp_after_native(
                     mode,
                     true,
                     verdict.provider,
-                    with_modes_kept(state, &row, verdict.versions),
+                    with_modes_kept(state, &row, verdict.versions, verdict.played),
                 ),
                 _ => write_cache(state, id, mode, false, verdict.provider),
             }
@@ -545,6 +550,7 @@ fn with_modes_kept(
     state: &AppState,
     row: &str,
     versions: &[crate::commands::play_native_versions::VersionInfo],
+    played: Option<crate::commands::play_native_versions::VersionKind>,
 ) -> Vec<crate::commands::play_native_versions::VersionInfo> {
     let standing: Vec<crate::commands::play_native_versions::VersionInfo> =
         meta_cache_get(&state.cache_pool, row)
@@ -556,12 +562,17 @@ fn with_modes_kept(
     versions
         .iter()
         .map(|v| crate::commands::play_native_versions::VersionInfo {
-            has_mode: v.has_mode.or_else(|| {
-                standing
-                    .iter()
-                    .find(|s| s.show_key == v.show_key)
-                    .and_then(|s| s.has_mode)
-            }),
+            // The version that served carries the mode, whatever a
+            // probe's sample said of it.
+            has_mode: (played == Some(v.kind))
+                .then_some(true)
+                .or(v.has_mode)
+                .or_else(|| {
+                    standing
+                        .iter()
+                        .find(|s| s.show_key == v.show_key)
+                        .and_then(|s| s.has_mode)
+                }),
             ..v.clone()
         })
         .collect()
@@ -625,7 +636,7 @@ pub async fn stamp_after_cache_hit(
                     mode,
                     true,
                     Some(provider),
-                    with_modes_kept(state, &row, versions),
+                    with_modes_kept(state, &row, versions, None),
                 );
             }
         },

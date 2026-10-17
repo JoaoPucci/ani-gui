@@ -284,7 +284,8 @@ where
                         attempted.value.episode_cap,
                         &attempted.value.extra_tags,
                     )
-                    .with_versions(&attempted.value.versions),
+                    .with_versions(&attempted.value.versions)
+                    .with_played(attempted.value.version),
                 )
                 .await;
                 attempted.value

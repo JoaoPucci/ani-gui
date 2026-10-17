@@ -223,6 +223,7 @@ pub(super) async fn stamp_availability_after_native(
     episode_cap: Option<u32>,
     extra_tags: &[String],
     versions: &[crate::commands::play_native_versions::VersionInfo],
+    played: Option<crate::commands::play_native_versions::VersionKind>,
 ) {
     crate::commands::availability::stamp_after_native(
         state,
@@ -235,7 +236,7 @@ pub(super) async fn stamp_availability_after_native(
             episode_cap,
             extra_tags,
             versions,
-            played: None,
+            played,
         },
     )
     .await;
@@ -389,6 +390,7 @@ where
                     None,
                     &[],
                     &[],
+                    None,
                 )
                 .await;
             }
@@ -417,6 +419,7 @@ where
         native.episode_cap,
         &native.extra_tags,
         &native.versions,
+        native.version,
     )
     .await;
     crate::commands::play_native_record::stamp_numbering(state, &native, asked);
@@ -628,6 +631,7 @@ pub(crate) mod tests {
             Some(1061),
             &["1061.5".to_string()],
             &[],
+            None,
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -696,6 +700,7 @@ pub(crate) mod tests {
             Some(1061),
             &["1061.5".to_string()],
             &[],
+            None,
         )
         .await;
         let key = crate::commands::availability::cache_key("42", "sub");
@@ -2085,8 +2090,18 @@ pub(crate) mod tests {
         );
 
         // The stale resolution now tries to stamp a negative.
-        stamp_availability_after_native(&state, &args, false, None, &at_start, None, &[], &[])
-            .await;
+        stamp_availability_after_native(
+            &state,
+            &args,
+            false,
+            None,
+            &at_start,
+            None,
+            &[],
+            &[],
+            None,
+        )
+        .await;
 
         let cached = crate::commands::availability::batch_cached(
             &state,
@@ -2134,6 +2149,7 @@ pub(crate) mod tests {
             Some(2),
             &[],
             &[],
+            None,
         )
         .await;
         let cached = crate::commands::availability::batch_cached(
@@ -2183,6 +2199,7 @@ pub(crate) mod tests {
             Some(12),
             &[],
             &[],
+            None,
         )
         .await;
         let key = crate::commands::availability::cache_key("dub-2", "dub");
@@ -2237,6 +2254,7 @@ pub(crate) mod tests {
             Some(12),
             &[],
             &[],
+            None,
         )
         .await;
         let cached = crate::commands::availability::batch_cached(
