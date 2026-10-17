@@ -1,4 +1,5 @@
 import type { CreateSessionResponse, PlayProgress } from '$lib/api';
+import { __resetPrefetchSlotsForTests, withSlot } from './prefetch-slots';
 
 /**
  * In-flight + result cache for `play()` calls. Backs the prefetch
@@ -77,71 +78,6 @@ interface CacheEntry {
 const cached = new Map<CacheKey, CacheEntry>();
 
 /**
- * Cap on the number of `fire` calls running at once. Twelve concurrent
- * resolves from a single page mount overloads the backend (CPU
- * contention plus the provider's rate limit) and slows the user's own
- * click; queueing past the cap keeps the active set small while still
- * eventually warming every visible episode.
- *
- * Tunable, but the backend paces provider traffic again through
- * ScraperGate, so raising this mostly moves the queue rather than the
- * throughput. Lower it if the ratio of prefetched-but-unused entries
- * becomes wasteful.
- */
-const PREFETCH_CONCURRENCY = 2;
-let activeFires = 0;
-const fireQueue: Array<() => void> = [];
-
-/**
- * Schedule `fn` under the prefetch concurrency cap. Returns the
- * promise + a `startNow` escape hatch that callers can invoke to cut
- * the queue (used by clicks). `startNow` is a no-op once the slot is
- * already running.
- *
- * Bypassing the cap briefly exceeds PREFETCH_CONCURRENCY by one for
- * each click — that's the explicit trade. The cap is for *background*
- * warming; foreground clicks shouldn't be punished for the warming
- * having queued ahead of them.
- */
-function withSlot<T>(fn: () => Promise<T>): {
-	promise: Promise<T>;
-	startNow: () => void;
-	hasStarted: () => boolean;
-} {
-	let slotResolver: (() => void) | null = null;
-	let started = false;
-	const promise = (async () => {
-		if (activeFires >= PREFETCH_CONCURRENCY) {
-			await new Promise<void>((resolve) => {
-				slotResolver = resolve;
-				fireQueue.push(resolve);
-			});
-		}
-		started = true;
-		slotResolver = null;
-		activeFires += 1;
-		try {
-			return await fn();
-		} finally {
-			activeFires -= 1;
-			const next = fireQueue.shift();
-			if (next) next();
-		}
-	})();
-	const startNow = () => {
-		if (started || !slotResolver) return;
-		// Pull the resolver out of the queue, then resolve it. Bypasses
-		// the cap; activeFires temporarily exceeds PREFETCH_CONCURRENCY.
-		const idx = fireQueue.indexOf(slotResolver);
-		if (idx >= 0) fireQueue.splice(idx, 1);
-		const r = slotResolver;
-		slotResolver = null;
-		r();
-	};
-	return { promise, startNow, hasStarted: () => started };
-}
-
-/**
  * Look up an existing entry for `key` or fire a fresh one. Repeated
  * calls share the in-flight promise; once resolved, the value sticks
  * so a later call is instant.
@@ -188,7 +124,10 @@ export function getOrFire(
 			for (const s of subscribers) s(p);
 		};
 		const fireRef = { current: fire };
-		const slot = withSlot(() => fireRef.current(emit, abortController.signal));
+		const slot = withSlot(
+			() => fireRef.current(emit, abortController.signal),
+			abortController.signal
+		);
 		newEntry.promise = slot.promise;
 		newEntry.startNow = slot.startNow;
 		newEntry.hasStarted = slot.hasStarted;
@@ -271,6 +210,5 @@ export function clearForShow(showId: string): void {
 export function __resetPlayCacheForTests(): void {
 	for (const entry of cached.values()) entry.abortController.abort();
 	cached.clear();
-	activeFires = 0;
-	fireQueue.length = 0;
+	__resetPrefetchSlotsForTests();
 }
