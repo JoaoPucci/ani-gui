@@ -448,9 +448,11 @@
 					// refinement refreshes the same badge metadata.
 					onRowReady: (id, m, count, approximate) => {
 						publishLoaderCap(id, m, count, approximate === true);
-						// The probe paid for the listing that can put the
-						// row's numbering right: read it again.
-						if (count !== null) void readRowAgain(id);
+						// Read the row again once its match is known — the
+						// stamp can name its former number with no listing
+						// behind this load — and again once the probe paid
+						// for the listing that can put its numbering right.
+						if (m) void readRowAgain(id);
 					}
 				}).then(async (state) => {
 					// Second chance for the rows the scraper gate refused.

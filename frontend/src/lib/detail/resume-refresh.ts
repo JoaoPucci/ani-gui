@@ -38,7 +38,8 @@ export async function refreshedResume(
 	const from = parseHistoryEpisode(now.former_ep_no);
 	const moved = to !== null && from !== null && from !== to;
 	if (moved) move(kitsuId, from, to);
-	// Given anew when a position moved, so Play is offered again.
+	// Given anew when the row names a former number, so Play is offered
+	// again with the position where it is now.
 	if (now.ep_no === entry.ep_no) return moved ? { ...entry } : null;
 	return { ...entry, ep_no: now.ep_no };
 }

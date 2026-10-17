@@ -6,9 +6,9 @@ import { rowShow, rowShowIds, type RowShowDeps } from './row-show';
  * Inputs the controller needs to execute a confirmed Continue
  * Watching delete. Kept narrow: the in-memory history snapshot,
  * the resolved Kitsu match map, and the per-id backend delete
- * IPC. The component owns the modal/busy state and is responsible
- * for re-applying `remainingHistory` to its $state after the
- * promise resolves.
+ * IPC. The component owns the modal/busy state, and applies the rows
+ * the delete leaves through `applyRemaining`, called in the turn they
+ * are read off the strip.
  */
 export interface ConfirmDeleteDeps extends RowShowDeps {
 	history: HistoryEntry[];
@@ -62,9 +62,9 @@ export interface ConfirmDeleteResult {
  *      delete, and the calls stay in sequence because nothing is
  *      gained by racing them.
  *
- * Returning the filtered history (rather than mutating) keeps
- * the function pure and lets the test assert ordering + filter
- * without rigging up Svelte's `$state`.
+ * The filtered history is returned too, and handed to
+ * `applyRemaining` rather than written here, so the test can assert
+ * ordering + filter without rigging up Svelte's `$state`.
  */
 export async function executeKitsuGroupDelete(
 	clickedId: string,

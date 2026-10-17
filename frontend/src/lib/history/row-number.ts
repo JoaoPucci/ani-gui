@@ -12,8 +12,9 @@ import { parseHistoryEpisode } from '$lib/play/episode-number';
 /** The rows with `id`'s episode as it reads now, or null when it reads
  *  as it did, has gone, or cannot be read. A position kept under the
  *  number the row read as before its numbering was put right is moved
- *  (`move`) first, and the rows are given anew then even when the row
- *  reads as it did, so what reads the position reads it moved. */
+ *  (`move`) first, and the rows are given anew whenever the row names
+ *  such a number, even when it reads as it did, so what reads the
+ *  position reads it where it is now. */
 export async function refreshedRows(
 	id: string,
 	rows: () => readonly HistoryEntry[] | null,
