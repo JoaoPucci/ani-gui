@@ -787,7 +787,11 @@
 		// The row the refresh read, still the page's: compared by value,
 		// since the page keeps its own copy of the row.
 		const same = resumeEntry?.id === entry.id && resumeEntry?.ep_no === entry.ep_no;
-		if (next && id === showId && same) resumeEntry = next;
+		if (next && id === showId && same) {
+			resumeEntry = next;
+			// The next lookup's refresh reads again against this row.
+			resumeRefresh.row(next);
+		}
 	}
 
 	// A resolve of the resume episode that records no watch.
