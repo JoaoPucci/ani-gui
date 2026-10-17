@@ -808,6 +808,15 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.engine.loadLevel).toBe(1);
 	});
 
+	it('levels all replaced with none at or below the pin show as Auto', () => {
+		const s = armObjects();
+		s.control.pick(0);
+		const fresh = [{ ...MASTER[1] }, { ...MASTER[2] }];
+		s.engine.levels = fresh;
+		s.engine.emit(E.LEVELS_UPDATED, { levels: fresh });
+		expect(s.lastView()?.pinned).toBeNull();
+	});
+
 	it('a run pin below every level of the next stream starts it as Auto, not pinned above', () => {
 		qualityPin.set(240);
 		const s = arm('best');
