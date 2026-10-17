@@ -746,6 +746,76 @@ describe('armQuality — levels hls.js removes', () => {
 		expect(s.logs.join('\n')).toMatch(/holding 360p/);
 	});
 
+	it('a pinned level removed never re-seats above the pin while a level below survives unloadable', () => {
+		const ladder = [
+			{ height: 480, bitrate: 1_400_000 },
+			{ height: 720, bitrate: 2_500_000 },
+			{ height: 1080, bitrate: 5_000_000 }
+		];
+		const s = armObjects('worst', ladder);
+		s.engine.emit(E.ERROR, {
+			details: D.LEVEL_LOAD_ERROR,
+			fatal: false,
+			level: 0,
+			errorAction: SWITCHED(1)
+		});
+		s.control.pick(1);
+		s.remove(1);
+		// 480p is left but cannot load; 1080p is above the pin.
+		expect(s.lastView()?.pinned).toBeNull();
+	});
+
+	it('picking the level held after a release takes the choice back from the engine', () => {
+		const s = arm('worst', [MASTER[0], MASTER[1]]);
+		s.parse();
+		s.engine.emit(E.FRAG_CHANGED, { frag: { type: 'main', level: 0 } });
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(1),
+			frag: { type: 'main', level: 0 }
+		});
+		expect(s.engine.autoLevelEnabled).toBe(true);
+		s.control.pick(0);
+		expect(s.engine.autoLevelEnabled).toBe(false);
+		expect(s.engine.nexts.at(-1)).toBe(0);
+		expect(s.lastView()?.pinned).toBe(0);
+	});
+
+	it('Auto after a release takes the choice back from the engine', () => {
+		const s = arm('worst', [MASTER[0], MASTER[1]]);
+		s.parse();
+		s.engine.manual = -1;
+		s.engine.emit(E.ERROR, {
+			details: D.FRAG_LOAD_ERROR,
+			fatal: false,
+			errorAction: SWITCHED(1),
+			frag: { type: 'main', level: 0 }
+		});
+		s.control.pick('auto');
+		expect(s.engine.autoLevelEnabled).toBe(false);
+	});
+
+	it('levels all replaced keep the stream pinned at the pinned height among the new ones', async () => {
+		const s = armObjects('best', [MASTER[0], { height: 480, bitrate: 1_400_000 }, MASTER[2]]);
+		s.control.pick(1);
+		const fresh = s.engine.levels.map((l) => ({ ...l }));
+		s.engine.levels = fresh;
+		s.engine.emit(E.LEVELS_UPDATED, { levels: fresh });
+		await tickOver();
+		expect(s.lastView()?.pinned).toBe(1);
+		expect(s.engine.loadLevel).toBe(1);
+	});
+
+	it('a run pin below every level of the next stream starts it as Auto, not pinned above', () => {
+		qualityPin.set(240);
+		const s = arm('best');
+		s.parse();
+		expect(s.lastView()?.pinned).toBeNull();
+		expect(s.engine.loads).toEqual([2]);
+	});
+
 	it('the choice released to the engine clears the pin the menu shows', () => {
 		const s = armObjects();
 		s.control.pick(0);
