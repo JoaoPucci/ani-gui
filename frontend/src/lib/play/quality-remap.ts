@@ -68,7 +68,7 @@ export function remapHold(
 	);
 	const ceiling = remapIndex(state.ceiling, mapping) ?? targetLevel(target, levels);
 	const kept = remapIndex(state.current, mapping);
-	const seat = kept === null ? survivorOf(state.ladder, mapping, state.current) : null;
+	const seat = kept === null ? survivorOf(state.ladder, mapping, state.current, unavailable) : null;
 	const current = nearestLoadable(ladder, unavailable, kept ?? seat?.level ?? ceiling);
 	const engaged = state.engaged && levels.length > 1;
 	// A pin holds only where the hold stayed or re-seated below it.

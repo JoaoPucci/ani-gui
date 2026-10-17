@@ -31,9 +31,15 @@ export type QualityPinChoice = number | { rank: number };
 
 /** The level a pin choice matches on a stream: the level of that
  *  height or the nearest below it, or the level of that rank from the
- *  top — the lowest past the end. */
+ *  top — the lowest past the end. -1 when no level is at or below a
+ *  pinned height. */
 export function pinnedLevel(pin: QualityPinChoice, levels: readonly LadderLevel[]): number {
-	if (typeof pin === 'number') return targetLevel({ kind: 'height', height: pin }, levels);
+	if (typeof pin === 'number') {
+		// At the height or below it: a pin is never exceeded, so with
+		// every level above it there is none.
+		const level = targetLevel({ kind: 'height', height: pin }, levels);
+		return (levels[level]?.height ?? Infinity) <= pin ? level : -1;
+	}
 	const ladder = ladderOrder(levels);
 	return ladder[Math.max(0, ladder.length - 1 - pin.rank)] ?? -1;
 }
@@ -66,22 +72,32 @@ export function targetLevel(target: QualityTarget, levels: readonly LadderLevel[
 }
 
 /** Where a level removed from `oldLadder` re-seats: the nearest level
- *  below it that `mapping` keeps — or, with none below, the nearest
+ *  below it that `mapping` keeps and can load — or, with none, the nearest
  *  above — as its new index, with whether it lies above. Null when no
  *  level is kept. */
 export function survivorOf(
 	oldLadder: readonly number[],
 	mapping: readonly number[],
-	level: number
+	level: number,
+	unavailable: ReadonlySet<number>
 ): { level: number; above: boolean } | null {
 	const rank = oldLadder.indexOf(level);
 	for (const direction of [-1, 1] as const) {
 		for (let r = rank + direction; r >= 0 && r < oldLadder.length; r += direction) {
 			const kept = mapping[oldLadder[r]] ?? -1;
-			if (kept >= 0) return { level: kept, above: direction === 1 };
+			if (kept >= 0 && !unavailable.has(kept)) return { level: kept, above: direction === 1 };
 		}
 	}
 	return null;
+}
+
+/** Whether `level` is on the ladder and not among `unavailable`. */
+export function isLoadable(
+	ladder: readonly number[],
+	unavailable: ReadonlySet<number>,
+	level: number
+): boolean {
+	return ladder.includes(level) && !unavailable.has(level);
 }
 
 /** Whether `a` sits above `b` on a ladder. */

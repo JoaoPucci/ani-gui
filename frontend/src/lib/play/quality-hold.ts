@@ -7,6 +7,7 @@
 
 import {
 	ladderOrder,
+	isLoadable,
 	neighbourLevel,
 	pinnedLevel,
 	targetLevel,
@@ -54,8 +55,10 @@ export abstract class QualityHold {
 	) {
 		this.ladder = ladderOrder(levels);
 		this.ceiling = targetLevel(target, levels);
-		this.pinned = pin !== null;
-		this.current = pin === null ? this.ceiling : pinnedLevel(pin, levels);
+		// A pin with no level at or below it starts the stream as Auto.
+		const pinLevel = pin === null ? -1 : pinnedLevel(pin, levels);
+		this.pinned = pinLevel >= 0;
+		this.current = this.pinned ? pinLevel : this.ceiling;
 		this.engaged = levels.length > 1;
 	}
 
@@ -127,7 +130,7 @@ export abstract class QualityHold {
 	pick(choice: 'auto' | number, now: number): QualityMove | null {
 		if (this.ladder.length < 2) return null;
 		if (choice === 'auto') return this.auto(now);
-		if (!this.ladder.includes(choice) || this.unavailable.has(choice)) return null;
+		if (!isLoadable(this.ladder, this.unavailable, choice)) return null;
 		this.pinned = true;
 		this.engaged = true;
 		return choice === this.current ? null : this.move(choice, 'pick', 'next');

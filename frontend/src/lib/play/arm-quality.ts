@@ -26,7 +26,7 @@ import {
 	readError,
 	readInitSegment
 } from './quality-report';
-import { afterError, engineMover, levelsUpdated, whenSettled } from './quality-sink';
+import { afterError, engineMover, levelsUpdated, pickMove, whenSettled } from './quality-sink';
 import { RemapWindow } from './quality-remap';
 import { QualityTrack } from './quality-track';
 
@@ -169,7 +169,7 @@ export function armQuality(input: {
 			if (!g) return;
 			// A choice already in force still switches at once when the
 			// level playing is another — segments from before a climb.
-			const move = g.pick(choice, now()) ?? track.staleChoice(g, choice);
+			const move = pickMove(g, choice, now(), track, engine);
 			const kept = rememberPick(choice, g, track);
 			if (!move && kept) log(kept);
 			apply(move);
