@@ -666,19 +666,106 @@ describe('armQuality — levels hls.js removes', () => {
 	// does so inside the error's own dispatch, before the app's ERROR
 	// listener runs, and that error's `nextAutoLevel` still names the
 	// old list.
-	function armObjects() {
-		const s = arm();
-		const objects = MASTER.map((l) => ({ ...l }));
+	// One LEVELS_UPDATED per level removed, highest index first, as
+	// hls.js's `switchLevel` loop removes them.
+	function removeFrom(engine: FakeEngine, gone: number[]) {
+		let left = engine.levels;
+		for (const index of [...gone].sort((a, b) => b - a)) {
+			left = left.filter((_, i) => i !== index);
+			engine.levels = left;
+			engine.emit(E.LEVELS_UPDATED, { levels: left });
+		}
+		return left;
+	}
+
+	function armObjects(setting = 'best', levels = MASTER) {
+		const s = arm(setting, levels);
+		const objects = levels.map((l) => ({ ...l }));
 		s.engine.levels = objects;
 		s.engine.emit(E.MANIFEST_PARSED, { levels: objects });
-		const remove = (...gone: number[]) => {
-			const left = objects.filter((_, i) => !gone.includes(i));
-			s.engine.levels = left;
-			s.engine.emit(E.LEVELS_UPDATED, { levels: left });
-			return left;
-		};
+		const remove = (...gone: number[]) => removeFrom(s.engine, gone);
 		return { ...s, objects, remove };
 	}
+
+	const LADDER5 = [
+		{ height: 240, bitrate: 400_000 },
+		{ height: 360, bitrate: 800_000 },
+		{ height: 480, bitrate: 1_400_000 },
+		{ height: 720, bitrate: 2_500_000 },
+		{ height: 1080, bitrate: 5_000_000 }
+	];
+	const tickOver = () => new Promise((r) => setTimeout(r, 0));
+
+	it('a video codec error whose levels hls.js removed steps nothing down', () => {
+		// The codec of 1080p and 360p is refused: hls.js removes both and
+		// the hold re-seats on 720p, the best level left. The error that
+		// caused it is no failure of 720p.
+		const s = armObjects('best', LADDER5);
+		s.engine.manual = -1;
+		s.remove(4, 1);
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_ADD_CODEC_ERROR,
+			fatal: false,
+			sourceBufferName: 'video',
+			errorAction: SWITCHED(2)
+		});
+		expect(s.logs.join('\n')).not.toMatch(/fragments-failed/);
+		expect(s.engine.loads.at(-1)).toBe(2);
+		expect(s.lastView()?.levels.map((l) => l.height)).toEqual([240, 480, 720]);
+	});
+
+	it('several removals in one dispatch are read from the list the error named', () => {
+		const s = armObjects('worst', LADDER5);
+		s.engine.manual = -1;
+		s.remove(3, 1);
+		// The audio buffer refused its codec: hls.js switched to what was
+		// level 4 (1080p), level 2 of the three left.
+		s.engine.emit(E.ERROR, {
+			details: D.BUFFER_ADD_CODEC_ERROR,
+			fatal: false,
+			sourceBufferName: 'audio',
+			errorAction: SWITCHED(4)
+		});
+		expect(s.engine.loads.at(-1)).toBe(2);
+		expect(s.logs.join('\n')).toMatch(/followed: 240p.*→ 1080p/);
+	});
+
+	it('a removal outside an error puts the engine back on the level held', async () => {
+		const s = armObjects();
+		// hls.js drops to its own choice when the level it was on goes.
+		s.engine.manual = -1;
+		s.remove(2);
+		await tickOver();
+		expect(s.engine.loads.at(-1)).toBe(1);
+		// A level below removed shifts the one held: its new index is set.
+		const t = armObjects();
+		t.remove(0);
+		await tickOver();
+		expect(t.engine.loads.at(-1)).toBe(1);
+	});
+
+	it('a removal while the settings are on their way is in the levels the start is chosen from', async () => {
+		let answer: (q: string) => void = () => {};
+		const engine = new FakeEngine();
+		const objects = MASTER.map((l) => ({ ...l }));
+		armQuality({
+			engine: engine as unknown as Hls,
+			events: E,
+			video: new FakeVideo(),
+			setting: () => new Promise<string>((r) => (answer = r)),
+			holdsStart: true,
+			onView: () => {},
+			now: () => 1_000,
+			log: () => {}
+		});
+		engine.levels = objects;
+		engine.emit(E.MANIFEST_PARSED, { levels: objects });
+		removeFrom(engine, [2]);
+		answer('best');
+		await tickOver();
+		expect(engine.startLevel).toBe(1);
+		expect(engine.loads).toEqual([1]);
+	});
 
 	it('keeps holding the same level under its new index', () => {
 		const s = armObjects();
