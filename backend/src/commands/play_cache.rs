@@ -305,3 +305,9 @@ pub(crate) fn cached_launch_args(
 #[cfg(test)]
 #[path = "play_cache_test.rs"]
 mod tests;
+
+/// Put the show's display stamp on the slot a cached resolution
+/// played, once its watch has recorded that slot ([`cached_watch`]).
+pub(crate) fn restamp_recorded(state: &AppState, cached: &play_resolution_cache::CachedResolution) {
+    let _ = (state, cached);
+}

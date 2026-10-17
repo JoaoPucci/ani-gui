@@ -742,6 +742,7 @@ async fn post_play_mark_watched(
                 begun,
             )
             .await;
+            crate::commands::play_cache::restamp_recorded(&state, &cached);
         }
     }
     StatusCode::NO_CONTENT
