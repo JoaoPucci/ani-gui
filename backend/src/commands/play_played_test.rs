@@ -494,3 +494,28 @@ async fn a_handoff_that_fails_to_start_leaves_the_watched_stamp() {
     assert!(failed.is_err(), "the player never started");
     assert_eq!(cumulative_listed(&state), "0.5");
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_handoff_whose_player_started_puts_the_pair_its_row_reads_through() {
+    use std::os::unix::fs::PermissionsExt;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state(&td);
+    state.providers.set_stub(std::sync::Arc::new(
+        crate::commands::play_native_test_provider::cumulative_opening_recap(),
+    ));
+    let player = td.path().join("player");
+    std::fs::write(&player, "#!/bin/sh\nexit 0\n").expect("stage player");
+    let mut perms = std::fs::metadata(&player).expect("meta").permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&player, perms).expect("chmod");
+    std::fs::write(
+        &state.config_path,
+        format!("external_player = \"{}\"\n", player.display()),
+    )
+    .expect("config");
+    crate::commands::play_external_command::play_external(&state, &cumulative_ask("0.5"))
+        .await
+        .expect("the player started");
+    assert_eq!(cumulative_listed(&state), "0.5");
+}
