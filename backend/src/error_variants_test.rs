@@ -45,6 +45,7 @@ fn pairs() -> Vec<Pair> {
         },
         AniError::Timeout => AniError::Timeout,
         AniError::NoResults => AniError::NoResults,
+        AniError::RefusedByName => AniError::RefusedByName,
         AniError::EpisodeUnavailable => AniError::EpisodeUnavailable,
         AniError::StreamServerFailed { .. } => AniError::StreamServerFailed {
             stage: "embed",

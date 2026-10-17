@@ -536,6 +536,7 @@ proptest::proptest! {
             error,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         };
         match classify_chain_failure(ne) {
             ChainOutcome::Stop(kept) => {

@@ -2863,6 +2863,9 @@ async fn assert_refused_unpersisted(ids: &[&str]) {
             Err(e) if !matches!(e.error, crate::error::AniError::NoResults) => {
                 wrong.push(format!("{id}: {:?}", e.error));
             }
+            Err(e) if !e.refused_by_name => {
+                wrong.push(format!("{id}: not reported as a refusal by name"));
+            }
             Err(_) => {}
         }
     }
