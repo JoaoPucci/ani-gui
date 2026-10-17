@@ -96,6 +96,7 @@
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
 	import { markStarted, movePosition, readPosition } from '$lib/play/watch-position';
 	import { joinResumeRefresh, refreshedResume } from '$lib/detail/resume-refresh';
+	import { settledWithin } from '$lib/detail/resume-join';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
@@ -252,6 +253,8 @@
 	}
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
 		applyAvailabilityPatch(writeback.refresh(refresh));
+		// The re-probe paid for a listing: the resume row is read again.
+		resumeRefresh.again();
 	}
 	const capGate = createCapGateProbe({
 		probe: async () => {
@@ -768,6 +771,8 @@
 
 	// The resume row read again once the lookup answered: it paid for
 	// the listing that can put the row's numbering right.
+	/** How long a click waits on the resume row being read again. */
+	const RESUME_WAIT_MS = 15_000;
 	// Once the row has arrived and the lookup has answered, in either
 	// order.
 	const resumeRefresh = joinResumeRefresh((entry) => readResumeAgain(entry));
@@ -1131,12 +1136,18 @@
 				kitsuId: id,
 				prefetch: true
 			});
+			const warmedShow = id;
 			void getOrFire(makeKey(id, ep, mode, quality), (emit, signal) =>
 				playStream(args, emit, signal)
-			).catch(() => {
-				/* the click handler will see the error if it ever fires;
-				 *  unmount-cancel rejects with "aborted" which we swallow */
-			});
+			)
+				// The warm paid for a listing: the resume row is read again.
+				.then(() => {
+					if (id === warmedShow) resumeRefresh.again();
+				})
+				.catch(() => {
+					/* the click handler will see the error if it ever fires;
+					 *  unmount-cancel rejects with "aborted" which we swallow */
+				});
 		}
 	});
 
@@ -1451,10 +1462,24 @@
 	// primary CTA too (Codex P2 #3565666393).
 	const nothingAiredYet = $derived(airedCap(episodeCap, airing) === 0);
 
+	/** Waits, busy, while the resume row is being read again — it is
+	 *  the one a click goes on from — for at most a bound; whether the
+	 *  click still belongs to this visit after. */
+	async function resumeRowSettled(): Promise<boolean> {
+		const atVisit = visit;
+		actionBusy = true;
+		try {
+			await settledWithin(resumeRefresh, RESUME_WAIT_MS);
+		} finally {
+			actionBusy = false;
+		}
+		return visit === atVisit && !gone;
+	}
+
 	async function onPlay() {
 		if (nothingAiredYet || airingIsPending) return;
-		// A row being read again is the one Play goes on from.
-		if (resumeRefresh.refreshing()) await resumeRefresh.settled();
+		if (resumeRefresh.refreshing() && !(await resumeRowSettled())) return;
+		if (nothingAiredYet || airingIsPending) return;
 		void startPlay(defaultEpisode());
 	}
 	// Download flow — opens DownloadConfirm modal. The dialog lets the
@@ -1472,8 +1497,8 @@
 
 	async function onDownload() {
 		if (!detail || nothingAiredYet || airingIsPending) return;
-		if (resumeRefresh.refreshing()) await resumeRefresh.settled();
-		if (!detail) return;
+		if (resumeRefresh.refreshing() && !(await resumeRowSettled())) return;
+		if (!detail || nothingAiredYet || airingIsPending) return;
 		const mode = playMode(config);
 		const quality = playQuality(config);
 		// `episode_count` must stay Kitsu's announced total — that's

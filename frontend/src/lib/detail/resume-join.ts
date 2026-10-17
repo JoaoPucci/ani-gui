@@ -9,7 +9,9 @@ import type { HistoryEntry } from '$lib/api';
 /** Runs `refresh` on the resume row once both have happened — the row
  *  has arrived and the page's availability lookup has answered — in
  *  either order, and again for each later lookup that answers
- *  (`unresolved` as it goes out). `reset` starts a new visit. */
+ *  (`unresolved` as it goes out) and for each other answer that can
+ *  put the row right (`again`: a warm of the show, a re-probe).
+ *  `reset` starts a new visit, with no refresh out. */
 export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
 	row: (entry: HistoryEntry | null) => void;
 	resolved: () => void;
@@ -50,11 +52,18 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => unknown): {
 		},
 		settled: () => pending.then(() => {}),
 		refreshing: () => out,
-		again: () => {},
+		again: () => {
+			answered = true;
+			ran = false;
+			fire();
+		},
 		reset: () => {
 			row = null;
 			answered = false;
 			ran = false;
+			// A refresh the last visit left out is not this one's.
+			pending = Promise.resolve();
+			out = false;
 		}
 	};
 }
@@ -65,6 +74,11 @@ export async function settledWithin(
 	join: { refreshing: () => boolean; settled: () => Promise<void> },
 	ms: number
 ): Promise<boolean> {
-	void [join, ms];
+	const deadline = Date.now() + ms;
+	while (join.refreshing()) {
+		const left = deadline - Date.now();
+		if (left <= 0) return false;
+		await Promise.race([join.settled(), new Promise((r) => setTimeout(r, left))]);
+	}
 	return true;
 }
