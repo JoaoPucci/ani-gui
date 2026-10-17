@@ -30,6 +30,7 @@
 		yearFromKitsuRef,
 		checkAvailability,
 		historyByKitsu,
+		historyNumber,
 		imageProxyUrl,
 		kitsuAnimeDetail,
 		kitsuEpisodes,
@@ -93,7 +94,8 @@
 	import { isMusicSubtype } from '$lib/history/resolve';
 	import { pickResumeEpisode } from '$lib/play/next-episode';
 	import { extraOnPage, parseHistoryEpisode, wholeEpisodeCount } from '$lib/play/episode-number';
-	import { markStarted, readPosition } from '$lib/play/watch-position';
+	import { markStarted, movePosition, readPosition } from '$lib/play/watch-position';
+	import { refreshedResume } from '$lib/detail/resume-refresh';
 	import { syncWatchedToTrackers } from '$lib/account/push-watched';
 	import { accountStore } from '$lib/account/store.svelte';
 	import { getEntry } from '$lib/account/entry-api';
@@ -753,12 +755,27 @@
 					check: checkAvailability,
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
-					setResolved: (r) => (availabilityResolved = r),
+					setResolved: (r) => {
+						availabilityResolved = r;
+						if (r) void readResumeAgain();
+					},
 					setListed: (l) => (warmListed = l)
 				}
 			)
 		);
 	});
+
+	// The resume row read again once the lookup answered: it paid for
+	// the listing that can put the row's numbering right.
+	async function readResumeAgain() {
+		const entry = resumeEntry;
+		const showId = id;
+		if (!entry || !showId) return;
+		const next = await refreshedResume(entry, showId, historyNumber, (k, f, t) =>
+			movePosition(k, f, t)
+		);
+		if (next && id === showId && resumeEntry === entry) resumeEntry = next;
+	}
 
 	// Synopsis collapse/expand. Default collapsed (long synopses are
 	// dominant otherwise); expands on user request.

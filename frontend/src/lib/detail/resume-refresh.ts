@@ -8,6 +8,7 @@
  */
 
 import type { HistoryEntry } from '$lib/api';
+import { parseHistoryEpisode } from '$lib/play/episode-number';
 
 /** `entry` as it reads now, with a position kept under the number it
  *  read as before moved to it; null when it reads as it did or cannot
@@ -18,6 +19,15 @@ export async function refreshedResume(
 	read: (id: string) => Promise<{ ep_no: string; former_ep_no?: string } | null>,
 	move: (kitsuId: string, from: number, to: number) => void
 ): Promise<HistoryEntry | null> {
-	void [entry, kitsuId, read, move];
-	return null;
+	let now: { ep_no: string; former_ep_no?: string } | null;
+	try {
+		now = await read(entry.id);
+	} catch {
+		return null;
+	}
+	if (!now || now.ep_no === entry.ep_no) return null;
+	const to = parseHistoryEpisode(now.ep_no);
+	const from = parseHistoryEpisode(now.former_ep_no);
+	if (to !== null && from !== null && from !== to) move(kitsuId, from, to);
+	return { ...entry, ep_no: now.ep_no };
 }
