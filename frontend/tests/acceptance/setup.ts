@@ -58,15 +58,27 @@ const incidental = [
 	http.post(`${API_BASE}/api/availability/batch`, absentBackend),
 	http.post(`${API_BASE}/api/availability/warm`, absentBackend),
 	http.post(`${API_BASE}/api/account/list/:provider`, absentBackend),
-	http.post(`${API_BASE}/api/play`, async ({ request }) => {
+	http.post(`${API_BASE}/api/play`, async ({ request, requestId }) => {
 		const body = (await request
 			.clone()
 			.json()
 			.catch(() => null)) as { prefetch?: boolean } | null;
-		if (body?.prefetch !== true) undescribedRequest(request);
+		if (body?.prefetch !== true) undescribedRequest(request, requestId);
 		return absentBackend();
 	})
 ];
+
+/**
+ * Last of all, behind every handler a scenario installs (`server.use`
+ * puts those first): anything still unanswered here — no handler
+ * matched it, or every one that did returned nothing, which in MSW
+ * falls through to the next — is undescribed, and fails as a network
+ * error rather than reaching the network.
+ */
+const undescribedAnswer = http.all('*', ({ request, requestId }) => {
+	undescribedRequest(request, requestId);
+	return HttpResponse.error();
+});
 
 /** Started with only the defaults above — each scenario installs its own. */
 // Every mounted play page asks the proxy for its session's sidecar
@@ -74,7 +86,8 @@ const incidental = [
 // overrides this per session.
 export const server = setupServer(
 	http.get(`${API_BASE}/s/:session/subtitles`, () => HttpResponse.json([])),
-	...incidental
+	...incidental,
+	undescribedAnswer
 );
 
 // What the HTTP boundary saw that no scenario accounts for, and the
@@ -89,21 +102,35 @@ export const server = setupServer(
 //
 // So every request is attributed to the scenario that caused it. Each
 // scenario runs inside an AsyncLocalStorage context, which every
-// timer, promise and fetch it starts inherits, however late they
-// run; a request carries its sender's scenario across the boundary
-// into the next one. A scenario fails on:
+// timer, promise and fetch it starts inherits, however late they run,
+// and every DOM event listener it adds is bound to: a request sent
+// from those carries its scenario across the boundary into the next
+// one. A scenario fails on:
 //
-// - a request of its own that no handler answered, or that a handler
-//   let through to the network (matched, but returned no response);
-// - a request of its own sent after its teardown unmounted its page;
+// - a request of its own that no handler answered: one that reached
+//   the final catch-all, one a handler let through with
+//   `passthrough()`, or one whose handler threw;
+// - a request of its own sent, or still unanswered, after its
+//   teardown unmounted its page;
 // - such a late request from an earlier scenario, or one sent outside
 //   any scenario, seen while it ran — named as such.
 //
-// What it cannot see: a late request sent after the last scenario of
-// a file ended, later than the file's grace below, when the server
-// has closed; and work whose async context was not created inside a
-// scenario (module-level timers started at import, which would show
-// up as "outside any scenario" only if they fire while one runs).
+// What it cannot see:
+//
+// - a late request after the last scenario of a file, later than the
+//   file's grace below, once the server has closed;
+// - work whose async context was not created in a scenario's body or
+//   its `beforeEach`/`afterEach`: a timer started at import, or a
+//   request sent from `beforeAll`/`afterAll`, counts as sent outside
+//   any scenario, even when a handler answers it;
+// - a callback a page leaves registered somewhere other than a DOM
+//   event target — a store subscription, a callback queue — that a
+//   later scenario triggers: it runs in the context of whatever
+//   triggers it, and its request is taken for that scenario's. DOM
+//   event listeners are bound to the scenario that added them (see
+//   `bindListenersToTheirScenario`), so a leaked one is caught;
+// - a WebSocket, which raises no request events at all (the app opens
+//   none).
 
 interface Scenario {
 	name: string;
@@ -112,7 +139,8 @@ interface Scenario {
 }
 
 const owner = new AsyncLocalStorage<Scenario>();
-const matched = new Set<string>();
+/** The scenario each request in flight was sent by, by request id. */
+const senders = new Map<string, Scenario | undefined>();
 /** Requests a scenario sent that nothing answered, by scenario. */
 const undescribed = new Map<Scenario, string[]>();
 /** Requests sent by a scenario that had ended, or outside any. */
@@ -125,28 +153,110 @@ const LATE_REQUEST_GRACE_MS = 100;
 
 const label = (request: Request) => `${request.method} ${request.url}`;
 
-function undescribedRequest(request: Request) {
-	const sender = owner.getStore();
-	if (sender === undefined || sender.ended) return; // a stray; counted as one
+function stray(request: Request, sender: Scenario | undefined, when: string) {
+	strays.push(
+		sender === undefined
+			? `${label(request)} — sent outside any scenario`
+			: `${label(request)} — ${when} "${sender.name}" had unmounted its page`
+	);
+}
+
+function undescribedRequest(request: Request, requestId: string) {
+	const sender = senders.has(requestId) ? senders.get(requestId) : owner.getStore();
+	if (sender === undefined || sender.ended) {
+		stray(request, sender, 'unanswered after');
+		return;
+	}
 	const seen = undescribed.get(sender) ?? [];
 	seen.push(label(request));
 	undescribed.set(sender, seen);
 }
 
-server.events.on('request:start', ({ request }) => {
+server.events.on('request:start', ({ request, requestId }) => {
 	const sender = owner.getStore();
-	if (sender === undefined) strays.push(`${label(request)} — sent outside any scenario`);
-	else if (sender.ended)
-		strays.push(`${label(request)} — sent by "${sender.name}" after its page was unmounted`);
+	senders.set(requestId, sender);
+	if (sender === undefined || sender.ended) stray(request, sender, 'sent after');
 });
-server.events.on('request:match', ({ requestId }) => {
-	matched.add(requestId);
+// `passthrough()` sends the request on to the network.
+server.events.on('response:bypass', ({ request, requestId }) =>
+	undescribedRequest(request, requestId)
+);
+// A handler that throws answers with a 500, which reads as the
+// backend's own; it is the scenario's error, not the backend's.
+server.events.on('unhandledException', ({ request, requestId }) =>
+	undescribedRequest(request, requestId)
+);
+server.events.on('request:end', ({ requestId }) => {
+	senders.delete(requestId);
 });
-server.events.on('request:unhandled', ({ request }) => undescribedRequest(request));
-server.events.on('request:end', ({ request, requestId }) => {
-	// Ended without a response from any handler: passed through.
-	if (!matched.delete(requestId)) undescribedRequest(request);
-});
+
+/**
+ * Binds every DOM event listener to the scenario that added it, so a
+ * listener a page leaves behind, fired by a later scenario, still
+ * sends as the page's own. A listener is bound when it is added and
+ * remembered per target, type and phase, so the matching remove finds
+ * it; once removed, the same function added again — as Svelte re-adds
+ * its delegated handler on each mount — is bound afresh, to the
+ * scenario adding it then. One re-added without being removed (after a
+ * `once` fired, say) keeps the scenario that first added it. Only function listeners; a listener object's
+ * `handleEvent` keeps the caller's context.
+ *
+ * Patched where the listeners land: the EventTarget every happy-dom
+ * node inherits from, and the window, whose global carries its own
+ * `addEventListener` under vitest.
+ */
+function bindListenersToTheirScenario() {
+	const bound = new WeakMap<object, Map<string, Map<unknown, EventListener>>>();
+	const slot = (target: object, type: string, options?: boolean | EventListenerOptions) => {
+		const capture = typeof options === 'boolean' ? options : Boolean(options?.capture);
+		let byKey = bound.get(target);
+		if (!byKey) {
+			byKey = new Map();
+			bound.set(target, byKey);
+		}
+		const key = `${type}|${capture}`;
+		let byListener = byKey.get(key);
+		if (!byListener) {
+			byListener = new Map();
+			byKey.set(key, byListener);
+		}
+		return byListener;
+	};
+	const patch = (target: {
+		addEventListener: EventTarget['addEventListener'];
+		removeEventListener: EventTarget['removeEventListener'];
+	}) => {
+		const add = target.addEventListener;
+		const remove = target.removeEventListener;
+		target.addEventListener = function (this: EventTarget, type, listener, options) {
+			if (typeof listener !== 'function' || owner.getStore() === undefined) {
+				return add.call(this, type, listener, options);
+			}
+			const listeners = slot(this, type, options);
+			// Added before and not removed since: hand the DOM the same
+			// bound listener, which it ignores if still registered and
+			// takes back if a `once` let it go.
+			let b = listeners.get(listener);
+			if (!b) {
+				b = AsyncLocalStorage.bind(listener) as EventListener;
+				listeners.set(listener, b);
+			}
+			return add.call(this, type, b, options);
+		};
+		target.removeEventListener = function (this: EventTarget, type, listener, options) {
+			const listeners = slot(this, type, options);
+			const b = listeners.get(listener);
+			if (b) {
+				listeners.delete(listener);
+				return remove.call(this, type, b, options);
+			}
+			return remove.call(this, type, listener, options);
+		};
+	};
+	patch(Object.getPrototypeOf(window.Node.prototype));
+	patch(window);
+}
+bindListenersToTheirScenario();
 
 function failOn(seen: string[] | undefined, what: string) {
 	if (seen === undefined || seen.length === 0) return;
