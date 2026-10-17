@@ -277,4 +277,34 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 			)
 		).toBe(false);
 	});
+
+	it('reads a row put right before the visit a bounded number of times', async () => {
+		// The stamp keeps naming its former number for good. Warms that
+		// answer after the row was read must not read it again forever.
+		let reads = 0;
+		useShowHandlers();
+		server.use(
+			http.get(`${API_BASE}/api/history/:id/number`, () => {
+				reads += 1;
+				return HttpResponse.json({ ep_no: '12.5', former_ep_no: '24.5' });
+			})
+		);
+		app = mount(DetailPage, { target });
+		await until(
+			() => playButton(m.detail_play_button_resume({ episode: '13' })) !== null,
+			'the Play button naming episode 13'
+		);
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('prefetch=1')),
+			'the warms'
+		);
+		for (const warm of FakeEventSource.instances.filter((i) => i.url.includes('prefetch=1'))) {
+			warm.dispatch(
+				'done',
+				JSON.stringify({ session_id: 'w', media_url: 'x', media_kind: 'hls', episode: '13' })
+			);
+		}
+		await new Promise((r) => setTimeout(r, 500));
+		expect(reads).toBeLessThan(10);
+	});
 });
