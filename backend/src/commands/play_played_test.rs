@@ -175,3 +175,93 @@ async fn a_cumulative_listings_opening_recap_asked_for_by_its_former_number_play
     assert_eq!(resp.episode.as_deref(), Some("0.5"));
     assert_eq!(resp.former_episode.as_deref(), Some("12.5"));
 }
+
+/// The stitched show's key under the test provider.
+fn stitched_key() -> String {
+    crate::scraper::provider::ShowKey::new(
+        crate::provider_set::ProviderSet::TEST_DEFAULT,
+        STITCHED_SLUG,
+    )
+    .to_string()
+}
+
+/// The cached resolution a fresh play of the first of two recaps left:
+/// slot 13, played as "12.5".
+fn first_recap_row(upstream: &str) -> CachedResolution {
+    CachedResolution {
+        upstream_url: format!("{upstream}/x/master.m3u8"),
+        referer: String::new(),
+        media_kind: MediaKind::Hls,
+        show_id: stitched_key(),
+        show_title: STITCHED.into(),
+        resolved_slot: Some(13),
+        subtitles: Vec::new(),
+        kitsu_id: None,
+        played: Some("12.5".into()),
+    }
+}
+
+fn listed_as(state: &AppState) -> String {
+    crate::commands::history::history_list(state)
+        .expect("list")
+        .into_iter()
+        .find(|e| e.id == stitched_key())
+        .expect("row")
+        .ep_no
+}
+
+#[tokio::test]
+async fn a_replay_of_one_recap_after_another_reads_back_as_the_one_replayed() {
+    // Two recaps sit between episodes 12 and 13: slot 13 ("12.5") and
+    // slot 14 ("12.75"). The second was played last, so the show's one
+    // display stamp names slot 14. Replaying the first from the cache
+    // writes slot 13; it must read back as "12.5", not as the slot.
+    let upstream = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&upstream)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    std::fs::write(&state.config_path, "cache_resolutions = true\n").expect("config");
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 14, "12.75");
+    let asked = args("12.5");
+    play_resolution_cache::put(
+        &state.cache_pool,
+        &key_for(&asked, "12.5"),
+        &first_recap_row(&upstream.uri()),
+    );
+    let resp = play_with_progress(&state, &asked, |_| {})
+        .await
+        .expect("replays");
+    assert!(resp.cache_hit);
+    assert_eq!(listed_as(&state), "12.5");
+}
+
+#[tokio::test]
+async fn a_mark_watched_of_one_recap_after_another_reads_back_as_the_one_watched() {
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 14, "12.75");
+    let cached = first_recap_row("http://x");
+    let watch = crate::commands::play_cache::cached_watch(&state, &cached, "12.5");
+    crate::commands::play_native_record::record_watch(&state, &watch, None).await;
+    crate::commands::play_cache::restamp_recorded(&state, &cached);
+    assert_eq!(listed_as(&state), "12.5");
+}
+
+#[test]
+fn a_watch_that_recorded_another_slot_leaves_the_stamp_where_it_is() {
+    // The row holds slot 14 ("12.75"): a mark-watched of the cached
+    // slot-13 recap that recorded nothing — overtaken by that watch —
+    // must not move the stamp off the row.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    let row = crate::history::parse(&format!("14\t{}\tStitched Show\n", stitched_key()))
+        .pop()
+        .expect("a row");
+    crate::history::upsert_and_write(&state.history_path, row).expect("write");
+    crate::commands::numbering_offset::put_display(&state, &stitched_key(), 0, 14, "12.75");
+    crate::commands::play_cache::restamp_recorded(&state, &first_recap_row("http://x"));
+    assert_eq!(listed_as(&state), "12.75");
+}
