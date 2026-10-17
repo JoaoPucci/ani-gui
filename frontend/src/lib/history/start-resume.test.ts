@@ -535,3 +535,17 @@ describe('makeStartResume (no listing behind the cap)', () => {
 		);
 	});
 });
+
+describe('makeStartResume (what the watch records)', () => {
+	it('marks watched the episode the session plays', async () => {
+		// The resolution the play left is kept under the episode it
+		// played; a mark-watched for the request would find none.
+		const h = makeHarness({
+			fetchInteractiveCount: vi.fn().mockResolvedValue({ count: 36, approximate: false }),
+			resolvePlay: vi.fn().mockResolvedValue({ session_id: 's1', episode: '12.5' }),
+			followPlayed: vi.fn().mockReturnValue(12.5)
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '24', 'Show'), makeMatch('k1', 36), 36, false);
+		expect(h.deps.markWatched).toHaveBeenCalledWith(expect.objectContaining({ episode: 12.5 }));
+	});
+});

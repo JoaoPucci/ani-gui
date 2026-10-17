@@ -33,3 +33,51 @@ describe('refreshedResume', () => {
 		expect(move).not.toHaveBeenCalled();
 	});
 });
+
+describe('refreshedResume (a row put right before the page read it)', () => {
+	it('moves the position kept under the number it read as before, though it reads as it did', async () => {
+		// The home page's probe put the row right before this page read
+		// it; nothing on the way moved the recap's position.
+		const move = vi.fn();
+		const at = { ...entry, ep_no: '12.5' };
+		const next = await refreshedResume(
+			at,
+			'42',
+			async () => ({ ep_no: '12.5', former_ep_no: '24.5' }),
+			move
+		);
+		expect(move).toHaveBeenCalledWith('42', 24.5, 12.5);
+		expect(next).toBeNull();
+	});
+});
+
+describe('refreshedResume (no listing behind the lookup)', () => {
+	it('warms a fractional row the lookup left as it was, then reads it again', async () => {
+		let warmed = false;
+		const warm = vi.fn().mockImplementation(async () => {
+			warmed = true;
+		});
+		const next = await refreshedResume(
+			entry,
+			'42',
+			async () => (warmed ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }),
+			vi.fn(),
+			warm
+		);
+		expect(warm).toHaveBeenCalledWith(24.5);
+		expect(next).toEqual({ ...entry, ep_no: '12.5' });
+	});
+
+	it('warms nothing for a whole episode, and nothing more when the warm fails', async () => {
+		const warm = vi.fn().mockRejectedValue(new Error('offline'));
+		const whole = { ...entry, ep_no: '5' };
+		expect(
+			await refreshedResume(whole, '42', async () => ({ ep_no: '5' }), vi.fn(), warm)
+		).toBeNull();
+		expect(warm).not.toHaveBeenCalled();
+		expect(
+			await refreshedResume(entry, '42', async () => ({ ep_no: '24.5' }), vi.fn(), warm)
+		).toBeNull();
+		expect(warm).toHaveBeenCalledTimes(1);
+	});
+});
