@@ -157,6 +157,8 @@ fn write_history_on_cache_hit(
             return Ok(());
         }
         held.upsert(entry)?;
+        // The row holds the cached slot now: the stamp names it.
+        crate::commands::play_cache::restamp_cached(state, cached);
         held.played_from(&cached.show_id, asked.page);
         Ok::<_, AniError>(())
     });
