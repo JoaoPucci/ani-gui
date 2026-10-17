@@ -18,7 +18,9 @@
  * another's), has moved its own context on — so a probe it loses reads
  * as superseded rather than as a failure on a page still standing. A
  * navigation that keeps the path (a query change on the same page)
- * aborts nothing.
+ * aborts nothing — which is why a surface that can start a second run
+ * of probes on the same page (a new search, a lookup asked again)
+ * begins a run of its own and ends it when the run is superseded.
  */
 
 /** One run of probes on a page: a search, a lookup, a load. */
@@ -41,7 +43,21 @@ export function createProbeScope(currentPath: () => string): ProbeScope {
 	const scopes = new Map<string, AbortController>();
 	const scope: ProbeScope = {
 		begin() {
-			return { signal: scope.signal(), end: () => {} };
+			// A run is a controller of its own that the path's also
+			// aborts: ending it stops its probes and nobody else's, and
+			// leaving the page stops it with the rest.
+			const own = new AbortController();
+			const page = scope.signal();
+			const leave = () => own.abort();
+			if (page.aborted) own.abort();
+			else page.addEventListener('abort', leave, { once: true });
+			return {
+				signal: own.signal,
+				end: () => {
+					page.removeEventListener('abort', leave);
+					own.abort();
+				}
+			};
 		},
 		signal() {
 			const path = currentPath();
