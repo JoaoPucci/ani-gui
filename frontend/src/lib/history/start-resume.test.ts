@@ -475,3 +475,63 @@ describe('makeStartResume (the row as it reads now)', () => {
 		expect(h.deps.syncTrackers).toHaveBeenCalledWith('k1', 12.5, 36, false);
 	});
 });
+
+describe('makeStartResume (no listing behind the cap)', () => {
+	it('warms the row it resumes from when nothing measured the cap, then reads it again', async () => {
+		// The probe never answered and the cap lookup failed: no listing
+		// has put the row right. Warming the row's own episode pays for
+		// one, and the row then reads as it is.
+		let warmed = false;
+		const h = makeHarness({
+			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('offline')),
+			currentNumber: vi
+				.fn()
+				.mockImplementation(async () =>
+					warmed ? { ep_no: '12.5', former_ep_no: '24.5' } : { ep_no: '24.5' }
+				),
+			warm: vi.fn().mockImplementation(async () => {
+				warmed = true;
+			})
+		});
+		const start = makeStartResume(h.deps);
+		await start(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
+		expect(h.deps.warm).toHaveBeenCalledWith(expect.objectContaining({ episode: 24.5 }));
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 13 }),
+			expect.any(Function)
+		);
+	});
+
+	it('warms nothing when a lookup measured the cap or the row is a whole episode', async () => {
+		const measured = makeHarness({
+			currentNumber: vi.fn().mockResolvedValue({ ep_no: '24.5' }),
+			warm: vi.fn().mockResolvedValue(undefined)
+		});
+		await makeStartResume(measured.deps)(
+			makeEntry('h1', '24.5', 'Show'),
+			makeMatch('k1', 36),
+			36,
+			false
+		);
+		expect(measured.deps.warm).not.toHaveBeenCalled();
+		const whole = makeHarness({
+			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('offline')),
+			warm: vi.fn().mockResolvedValue(undefined)
+		});
+		await makeStartResume(whole.deps)(makeEntry('h1', '5', 'Show'), makeMatch('k1', 36), 36, false);
+		expect(whole.deps.warm).not.toHaveBeenCalled();
+	});
+
+	it('resumes from what it read when the warm fails', async () => {
+		const h = makeHarness({
+			fetchInteractiveCount: vi.fn().mockRejectedValue(new Error('offline')),
+			currentNumber: vi.fn().mockResolvedValue({ ep_no: '24.5' }),
+			warm: vi.fn().mockRejectedValue(new Error('offline'))
+		});
+		await makeStartResume(h.deps)(makeEntry('h1', '24.5', 'Show'), makeMatch('k1', 36), 36, false);
+		expect(h.deps.resolvePlay).toHaveBeenCalledWith(
+			expect.objectContaining({ episode: 25 }),
+			expect.any(Function)
+		);
+	});
+});
