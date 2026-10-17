@@ -126,6 +126,32 @@ function useShowHandlers(rowDelayMs = 0) {
 	);
 }
 
+/** The show with settings that land late, in dub: the page's first
+ *  lookup goes out as sub, the second as dub. `reads` is what the row
+ *  reads as after each, by how many lookups have answered. */
+function useTwoLookups(reads: string[]) {
+	let answered = 0;
+	server.use(
+		http.get(`${API_BASE}/api/settings`, async () => {
+			await new Promise((r) => setTimeout(r, 300));
+			return HttpResponse.json(appConfig('dub'));
+		}),
+		http.post(`${API_BASE}/api/availability`, async ({ request }) => {
+			const body = (await request.json()) as { mode?: string };
+			answered = body.mode === 'dub' ? 2 : Math.max(answered, 1);
+			return HttpResponse.json({
+				available: true,
+				episode_count: 36,
+				extra_episodes: ['12.5'],
+				episode_count_approximate: false
+			});
+		}),
+		http.get(`${API_BASE}/api/history/:id/number`, () =>
+			HttpResponse.json({ ep_no: reads[answered] ?? reads.at(-1) })
+		)
+	);
+}
+
 /** The page's primary action, found by what it says. */
 const playButton = (label: string) =>
 	Array.from(target.querySelectorAll('button')).find((b) =>
@@ -150,6 +176,15 @@ describe('detail route — a row an earlier version numbered otherwise', () => {
 
 	it('reads the row again when it arrives after the lookup has answered', async () => {
 		useShowHandlers(300);
+		app = mount(DetailPage, { target });
+		const label = m.detail_play_button_resume({ episode: '13' });
+		await until(() => playButton(label) !== null, 'the Play button naming episode 13');
+	});
+
+	it('reads the row again when a later lookup answers', async () => {
+		// Only the dub lookup, the second, puts the row right.
+		useShowHandlers();
+		useTwoLookups(['24.5', '24.5', '12.5']);
 		app = mount(DetailPage, { target });
 		const label = m.detail_play_button_resume({ episode: '13' });
 		await until(() => playButton(label) !== null, 'the Play button naming episode 13');
