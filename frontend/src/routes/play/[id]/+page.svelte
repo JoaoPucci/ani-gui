@@ -78,6 +78,7 @@
 	import { buildDownloadArgs } from '$lib/download/build-args';
 	import { buildMediaUrl } from '$lib/play/media-url';
 	import { handoffArgs } from '$lib/play/handoff-args';
+	import { storedChoice } from '$lib/versions/version-choice';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { decideAutoPlayNext } from '$lib/play/auto-play-next';
 	import { pickActiveSkip } from '$lib/play/aniskip-active';
@@ -1885,6 +1886,9 @@
 		if (!title) return;
 		const mode = playMode(config);
 		const quality = playQuality(config);
+		// The version remembered for the show on its detail page — the
+		// one the session playing here was resolved for.
+		const version = storedChoice(id);
 		// Which tiles to warm — and how wide, given the caching
 		// setting — is the module's decision; the page only feeds it
 		// the runtime inputs.
@@ -1907,9 +1911,10 @@
 				quality,
 				show: detail,
 				kitsuId: recordableId(id, fromGuess),
-				prefetch: true
+				prefetch: true,
+				version
 			});
-			void getOrFire(makeKey(id, targetEp, mode, quality), (emit, signal) =>
+			void getOrFire(makeKey(id, targetEp, mode, quality, version), (emit, signal) =>
 				playStream(args, emit, signal)
 			).catch(() => {
 				/* click surfaces errors when it fires; abort on unmount
@@ -1955,13 +1960,15 @@
 		const guess = fromGuess;
 		const row = fromRow;
 		const quality = playQuality(config);
+		const version = storedChoice(owner.showId);
 		const playArgs = playArgsFor({
 			title,
 			episode: targetEp,
 			mode,
 			quality,
 			show,
-			kitsuId: recordableId(owner.showId, guess)
+			kitsuId: recordableId(owner.showId, guess),
+			version
 		});
 		// The resolve records the watch; mark the episode started first,
 		// so Continue stays on it even if its stream never attaches.
@@ -1978,7 +1985,7 @@
 				owner,
 				() =>
 					getOrFire(
-						makeKey(owner.showId, targetEp, mode, quality),
+						makeKey(owner.showId, targetEp, mode, quality, version),
 						(emit, signal) => playStream(playArgs, emit, signal),
 						(p) => {
 							switchProgress = progressLabel(p);
@@ -2091,6 +2098,8 @@
 		const quality = playQuality(config);
 		console.info('[play] stale-stream recovery:', reason);
 		try {
+			// The resolution cache keys on the version, so the eviction
+			// names the one the failing session was resolved for.
 			await evictPlayCache(
 				playArgsFor({
 					title,
@@ -2098,7 +2107,8 @@
 					mode,
 					quality,
 					show: detail,
-					kitsuId: undefined
+					kitsuId: undefined,
+					version: storedChoice(id)
 				})
 			);
 		} catch {
@@ -2274,7 +2284,8 @@
 							episode: ep,
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
-							detail
+							detail,
+							version: storedChoice(id)
 						})
 					),
 				// Body text is shaped by describeExternalLaunchFailure so
@@ -2341,7 +2352,8 @@
 							episode: ep,
 							kitsuId: recordableId(id, fromGuess) ?? '',
 							config: cfg,
-							detail
+							detail,
+							version: storedChoice(id)
 						})
 					),
 				async (e) => describeSyncplayLaunchFailure(e, await otherAudioForFailure(e, launch))
@@ -2390,7 +2402,8 @@
 			episode: episodeNum,
 			mode,
 			quality,
-			kitsuId: id
+			kitsuId: id,
+			version: storedChoice(id)
 		});
 		downloadModalOpen = true;
 	}

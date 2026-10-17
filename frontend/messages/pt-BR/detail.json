@@ -150,5 +150,9 @@
 	"unavailable_in_dub_message": "Indisponível dublado — este título está disponível em SUB. Troque o áudio abaixo para assistir ou baixar.",
 	"unavailable_in_sub_message": "Indisponível legendado — este título está disponível em DUB. Troque o áudio abaixo para assistir ou baixar.",
 	"error_no_id_headline": "Nenhum anime selecionado.",
-	"error_no_id_detail": "O endereço não traz o id do título."
+	"error_no_id_detail": "O endereço não traz o id do título.",
+	"version_group_aria_label": "Qual versão reproduzir",
+	"version_group_label": "Versão",
+	"version_standard": "Padrão",
+	"version_uncensored": "Sem censura"
 }

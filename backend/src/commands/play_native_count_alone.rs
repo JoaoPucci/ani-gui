@@ -34,6 +34,26 @@ pub(crate) fn count_stands_alone(expected: u32, year: Option<u32>) -> bool {
     expected > 1 && year.is_none()
 }
 
+/// Whether the rules that read a count with nothing beside it leave a
+/// candidate titled `title` able to be picked: they read only an entry
+/// whose count stands alone ([`count_stands_alone`]) or one video long,
+/// and there take a candidate whose own year matched (`confirmed`),
+/// that is the title searched, or that the entry names — what
+/// [`score_out_unvouched`] keeps. Asked of a candidate whose probe
+/// died, which those rules never saw.
+#[must_use]
+pub(crate) fn count_vouches(
+    title: &str,
+    needle: &str,
+    entry: EntryTitles<'_>,
+    expected: u32,
+    year: Option<u32>,
+    confirmed: bool,
+) -> bool {
+    let read = count_stands_alone(expected, year) || expected == 1;
+    !read || confirmed || normalized(title) == needle || entry.names(title)
+}
+
 /// For an entry whose count stands alone ([`count_stands_alone`]),
 /// scores [`UNFIT`] every probed candidate that carries no identity
 /// beyond its count: not the title searched, and not named as one of

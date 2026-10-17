@@ -160,7 +160,14 @@ use crate::proxy::MediaKind;
 // pick. A v19 row for such an entry can hold a same-year show's stream
 // under the entry's key — HenSemi (TV) playing Medaka Box Abnormal —
 // and a HEAD-passing hit would keep serving it; bumping re-resolves.
-const SCHEMA: &str = "v20";
+// v21: a season the provider lists twice — an "(Uncensored)" copy and
+// a plain one — is one pick with two versions, the uncensored one
+// playing unless the request names another, and a request naming a
+// version keys its own row. A v20 row for such a show holds whichever
+// copy the pool's tie happened to pick, under the key a request naming
+// no version reads, and a HEAD-passing hit would keep serving it;
+// bumping re-resolves.
+const SCHEMA: &str = "v21";
 
 /// What the native resolve produced, frozen for replay. The session
 /// layer rebuilds a fresh `StreamSession` from this on cache hit.
@@ -201,6 +208,13 @@ pub struct CachedResolution {
     /// request named one. Absent on rows written before the field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kitsu_id: Option<String>,
+    /// The resolve's versions, so a replay answers with them as the
+    /// fresh resolve did — empty when the pick had one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<crate::commands::play_native_versions::VersionInfo>,
+    /// The version the row plays, when the pick had several.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<crate::commands::play_native_versions::VersionKind>,
 }
 
 /// Build the SQLite key for a play resolution. Keyed on what the
@@ -238,6 +252,29 @@ pub fn cache_key(
     let e = episode_count.map_or_else(|| "-".to_string(), |v| v.to_string());
     let s = subtype.unwrap_or("-");
     format!("play:{SCHEMA}:{title}:{mode}:{quality}:{episode}:{y}:{e}:{s}")
+}
+
+/// [`cache_key`] for a request naming the version it plays
+/// ([`crate::commands::play::PlayArgs::version`]).
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn cache_key_for_version(
+    title: &str,
+    mode: &str,
+    quality: &str,
+    episode: &str,
+    year: Option<u32>,
+    episode_count: Option<u32>,
+    subtype: Option<&str>,
+    version: Option<crate::commands::play_native_versions::VersionKind>,
+) -> String {
+    let key = cache_key(title, mode, quality, episode, year, episode_count, subtype);
+    match version {
+        // A request naming no version keeps the key it had: a show with
+        // one version is asked for that way, and its row is unchanged.
+        None => key,
+        Some(v) => format!("{key}:{}", v.as_str()),
+    }
 }
 
 /// Look up a cached resolution. Returns `Ok(None)` on miss or expired.

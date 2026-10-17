@@ -22,6 +22,7 @@ use super::play_native_numbering::regular_episode_count;
 use super::play_native_part_title::precedes_entry;
 use super::play_native_title_marker::EntryTitles;
 use super::play_native_title_verdict::{countless_miss, probe_head, rejection, rescuable};
+pub use super::play_native_versions::{ShowVersion, VersionKind};
 use super::play_native_wide_listing::fit_to_entry;
 use super::play_native_year::year_filtered;
 
@@ -45,6 +46,10 @@ pub struct PickedShow {
     pub hit: BrowseHit,
     /// The show's episodes, as returned by the probe.
     pub episodes: Vec<EpisodeRef>,
+    /// Every version of the pick, in the provider's order, the one
+    /// `hit` names among them — empty unless the pick has copies under
+    /// another version tag (see `play_native_versions`).
+    pub versions: Vec<ShowVersion>,
 }
 
 /// Whether a transport-dead candidate outranks the winner: a
@@ -60,6 +65,22 @@ fn dead_outranks(best_failed: Option<(u8, usize)>, winner_rank: u8, winner_pos: 
     };
     let identity = rank == 0 || rank % 2 == 1;
     rank < winner_rank || (rank == winner_rank && identity && pos < winner_pos)
+}
+
+/// Whether the winner at `winner_pos` with `winner_rank` cannot be
+/// told from what died unheard: a stronger dead candidate
+/// ([`dead_outranks`]), or a copy of it under another version tag
+/// among the `dead` that could have been picked
+/// (`play_native_versions::copy_died`).
+fn winner_unheard(
+    best_failed: Option<(u8, usize)>,
+    winner_rank: u8,
+    winner_pos: usize,
+    dead: &[&BrowseHit],
+    winner: &BrowseHit,
+) -> bool {
+    dead_outranks(best_failed, winner_rank, winner_pos)
+        || super::play_native_versions::copy_died(dead, winner)
 }
 
 /// Distance tolerance: long-running shows get proportional slack,

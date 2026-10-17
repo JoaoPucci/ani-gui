@@ -23,6 +23,8 @@ fn native(referer: Option<&str>) -> NativeResolved {
             default: true,
             url: "https://cdn.example/x/subs/en.vtt".into(),
         }],
+        versions: Vec::new(),
+        version: None,
     }
 }
 

@@ -23,6 +23,7 @@ fn body(available: bool) -> String {
         gate_refused: false,
         unsettled: false,
         provider: None,
+        versions: Vec::new(),
     })
     .expect("serializes")
 }
@@ -228,6 +229,7 @@ fn positive_with(count: u32) -> String {
         gate_refused: false,
         unsettled: false,
         provider: None,
+        versions: Vec::new(),
     })
     .expect("serializes")
 }
