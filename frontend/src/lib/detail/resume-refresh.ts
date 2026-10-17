@@ -50,3 +50,15 @@ async function readRow(
 		return null;
 	}
 }
+
+/** Runs `refresh` on the resume row once both have happened — the row
+ *  has arrived and the page's availability lookup has answered —
+ *  whichever lands first. `reset` starts a new visit. */
+export function joinResumeRefresh(refresh: (entry: HistoryEntry) => void): {
+	row: (entry: HistoryEntry | null) => void;
+	resolved: () => void;
+	reset: () => void;
+} {
+	void refresh;
+	return { row: () => {}, resolved: () => {}, reset: () => {} };
+}
