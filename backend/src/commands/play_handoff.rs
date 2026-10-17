@@ -107,7 +107,9 @@ pub async fn resolve_launch_args(
                 return Err(ne.error);
             }
         };
-    crate::commands::play_native_record::stamp_numbering(state, &native, asked);
+    // The display pair waits for the watch: the caller puts it once
+    // the player has started and the row records its slot.
+    crate::commands::play_native_record::stamp_numbering_unwatched(state, &native, asked);
     let watch = crate::commands::play_native_record::Watch::of(&native);
     let display = crate::commands::play_native_record::watched_display(&native);
     Ok((launch_args_for(native, args, &cfg), watch, display))

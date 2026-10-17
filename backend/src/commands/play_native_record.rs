@@ -36,41 +36,18 @@ pub(crate) use display::{put_if_recorded, record_fresh_watch, watched_display};
 /// its slot, the pair goes in too so the boundary can translate
 /// between the number the provider stores and the one the UI shows.
 ///
-/// Prefetches stamp as well: their resolve is exactly as
-/// authoritative as a click's.
+/// The pair is the watch's: it goes in once the show's history row
+/// holds that slot. A resolve that recorded none — a prefetch, a play
+/// another watch overtook, a handoff whose player did not start —
+/// leaves the pair the row reads through.
 ///
 /// `asked` is the request the resolve served: a show removed from
 /// history since it began is not stamped, the removal having taken its
 /// numbering with the row ([`crate::history::guard`]).
 pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: Asked<'_>) {
-    crate::history::guard::hold(&state.history_path, |held| {
-        if !held.removed_since(asked, &native.slug) {
-            // The listing is at hand: a stamp an earlier version wrote
-            // with a row's former tag gets the row's tag now.
-            crate::commands::numbering_offset::retag_from_resolve(state, native);
-            put_numbering(state, native);
-        }
-    });
-}
-
-/// The offset, with the (slot, display tag) pair when they differ.
-fn put_numbering(state: &AppState, native: &NativeResolved) {
-    match &native.resolved_tag {
-        Some(tag)
-            if !crate::commands::play_native_episode::tag_matches(
-                tag,
-                &native.resolved_slot.to_string(),
-            ) =>
-        {
-            crate::commands::numbering_offset::put_display(
-                state,
-                &native.slug,
-                native.numbering_offset,
-                native.resolved_slot,
-                tag,
-            );
-        }
-        _ => crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset),
+    stamp_numbering_unwatched(state, native, asked);
+    if let Some(display) = watched_display(native) {
+        put_if_recorded(state, &display);
     }
 }
 

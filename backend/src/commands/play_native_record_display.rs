@@ -33,16 +33,32 @@ pub(crate) fn watched_display(native: &NativeResolved) -> Option<WatchedDisplay>
 
 /// Put `display` once the show's history row holds its slot.
 pub(crate) fn put_if_recorded(state: &AppState, display: &WatchedDisplay) {
-    let _ = (state, display);
+    crate::history::guard::hold(&state.history_path, |_| {
+        let recorded = crate::history::read_all(&state.history_path)
+            .ok()
+            .and_then(|rows| rows.into_iter().find(|e| e.id == display.slug))
+            .is_some_and(|e| e.ep_no == display.slot.to_string());
+        if recorded {
+            crate::commands::numbering_offset::put_display(
+                state,
+                &display.slug,
+                display.offset,
+                display.slot,
+                &display.tag,
+            );
+        }
+    });
 }
 
-/// A fresh play's numbering and history row.
+/// A fresh play's numbering and history row: the offset and any former
+/// tag put right whatever happens, the display pair once the row holds
+/// its slot — a play overtaken by a later watch records neither.
 pub(crate) fn record_fresh_watch(
     state: &AppState,
     native: &NativeResolved,
     requested: &str,
     asked: Asked<'_>,
 ) {
-    super::stamp_numbering(state, native, asked);
     super::write_history(state, native, requested, asked);
+    super::stamp_numbering(state, native, asked);
 }
