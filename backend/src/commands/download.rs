@@ -293,12 +293,7 @@ where
 
     // As a play does: a stamp an earlier version wrote with a stitched
     // row's former tag reads right.
-    crate::commands::numbering_offset::retag_display(
-        state,
-        &resolved.slug,
-        &resolved.former_tags,
-        &|former| crate::commands::play_native_merge::names_a_row_now(former, &resolved),
-    );
+    crate::commands::numbering_offset::retag_from_resolve(state, &resolved);
     tracing::info!(
         slug = %resolved.slug,
         episode = %args.episode,

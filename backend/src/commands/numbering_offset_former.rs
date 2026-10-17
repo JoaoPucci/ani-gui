@@ -63,6 +63,17 @@ fn retag_row(
     }
 }
 
+/// [`retag_display`] from a resolve — a play's, a download's — for the
+/// show it resolved.
+pub fn retag_from_resolve(
+    state: &AppState,
+    native: &crate::commands::play_native_resolve::NativeResolved,
+) {
+    retag_display(state, &native.slug, &native.former_tags, &|former| {
+        crate::commands::play_native_merge::names_a_row_now(former, native)
+    });
+}
+
 /// [`retag_display`] from a listing at hand — a probe's, a
 /// download's — for the show `slug` keys.
 pub fn retag_from_listing(

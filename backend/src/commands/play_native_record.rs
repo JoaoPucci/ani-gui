@@ -38,12 +38,7 @@ pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: 
         if !held.removed_since(asked, &native.slug) {
             // The listing is at hand: a stamp an earlier version wrote
             // with a row's former tag gets the row's tag now.
-            crate::commands::numbering_offset::retag_display(
-                state,
-                &native.slug,
-                &native.former_tags,
-                &|former| crate::commands::play_native_merge::names_a_row_now(former, native),
-            );
+            crate::commands::numbering_offset::retag_from_resolve(state, native);
             put_numbering(state, native);
         }
     });
