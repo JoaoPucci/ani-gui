@@ -691,6 +691,7 @@
 		currentNumber: (entryId) => historyNumber(entryId),
 		movePosition: (kitsuId, from, to) => movePosition(kitsuId, from, to),
 		followPlayed: (kitsuId, session, requested) => followPlayed(kitsuId, session, requested),
+		warm: (a) => playStream({ ...playArgsFor(a), prefetch: true }, () => {}),
 		isBusy: () => !!resumeBusy,
 		isGuess: (entryId) => rowTrust.isGuess(entryId),
 		onBusy: (id) => {

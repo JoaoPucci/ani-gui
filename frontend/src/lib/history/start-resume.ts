@@ -148,7 +148,14 @@ export function makeStartResume(
 		// for the listing that puts its numbering right, and the card
 		// read it before. A position kept under what it read as moves.
 		const card = Number.isFinite(lastWatchedRaw) ? lastWatchedRaw : null;
-		const now = await rowNow(deps, entry.id, card);
+		const guess = deps.isGuess?.(entry.id) ?? false;
+		const now = await settledRow(deps, entry.id, card, count === null || approximate, {
+			match,
+			title,
+			mode,
+			quality,
+			guess
+		});
 		if (now.former !== null && now.last !== null) {
 			deps.movePosition?.(match.id, now.former, now.last);
 		}
@@ -168,7 +175,6 @@ export function makeStartResume(
 			deps.setPlayableCount(entry.id, count, approximate);
 		}
 
-		const guess = deps.isGuess?.(entry.id) ?? false;
 		const args: ResumePlayArgs = { match, title, episode, mode, quality, guess };
 		deps.markStarted?.(match.id, episode, entry.id);
 		try {
@@ -214,4 +220,26 @@ async function rowNow(
 	} catch {
 		return { last: card, former: null };
 	}
+}
+
+/** {@link rowNow}, with the row's own episode warmed first when no
+ *  listing stands behind the cap (`unmeasured`) and the row reads as a
+ *  fractional episode — the one kind a renumbering leaves under a
+ *  number it no longer has. The warm resolves the listing, which puts
+ *  the row right, and records no watch. */
+async function settledRow(
+	deps: StartResumeDeps,
+	entryId: string,
+	card: number | null,
+	unmeasured: boolean,
+	play: Omit<ResumePlayArgs, 'episode'>
+): Promise<{ last: number | null; former: number | null }> {
+	const now = await rowNow(deps, entryId, card);
+	if (!unmeasured || !deps.warm || now.last === null || Number.isInteger(now.last)) return now;
+	try {
+		await deps.warm({ ...play, episode: now.last });
+	} catch {
+		return now;
+	}
+	return rowNow(deps, entryId, now.last);
 }
