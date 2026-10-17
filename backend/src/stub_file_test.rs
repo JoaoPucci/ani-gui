@@ -45,3 +45,28 @@ fn a_published_file_replaces_the_one_at_its_path_rather_than_writing_into_it() {
         "the file was written in place, where a reader can see it half written"
     );
 }
+
+/// Every staged path comes from the system's temporary directory, and
+/// nothing keeps that directory's name free of what a shell reads
+/// specially: an apostrophe ends a single-quoted word, `$` and a
+/// backtick expand inside double quotes, a space splits an unquoted
+/// one. A path published under such a name still lands whole, at
+/// exactly that name.
+#[test]
+fn a_file_is_published_under_a_directory_whose_name_a_shell_reads_specially() {
+    let root = tempfile::tempdir().expect("tmp");
+    let dir = root.path().join("it's a $HOME `x` \"q\" \\ dir");
+    std::fs::create_dir(&dir).expect("odd dir");
+    let path = dir.join("argv");
+    let status = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(publish(&path, "printf '%s\\n' \"$@\""))
+        .args(["sh", "--player-path=mpv", "http://x/master.m3u8"])
+        .status()
+        .expect("sh");
+    assert!(status.success(), "the line runs under that name");
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("published at the path"),
+        "--player-path=mpv\nhttp://x/master.m3u8\n"
+    );
+}
