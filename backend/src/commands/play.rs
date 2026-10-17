@@ -488,7 +488,7 @@ pub(crate) fn cached_resolution_for(native: &NativeResolved) -> CachedResolution
         played: Some(crate::commands::play_native_record::matched_episode(
             native, "",
         )),
-        former_episode: None,
+        former_episode: crate::commands::play_native_merge::former_number(native),
         subtitles: native.subtitles.clone(),
         kitsu_id: None,
     }

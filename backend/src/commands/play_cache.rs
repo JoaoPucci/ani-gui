@@ -203,6 +203,7 @@ pub(crate) async fn try_serve_cached(
     // The episode the resolve behind the row played; a row from before
     // the field names none.
     resp.episode.clone_from(&cached.played);
+    resp.former_episode.clone_from(&cached.former_episode);
     Some(resp)
 }
 
