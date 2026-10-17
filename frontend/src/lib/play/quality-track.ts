@@ -9,7 +9,13 @@ import type { QualityGovernor, QualityMove } from './quality-governor';
 import { ladderOrder, type LadderLevel, type QualityPinChoice } from './quality-ladder';
 import type { QualityView } from './quality-menu';
 import { isMain } from './quality-rendition';
+import { describeLevel, describeMove } from './quality-names';
 import { levelMapping, remapIndex, remapKeys } from './quality-remap';
+
+/** Whether two sets of the same levels sort into the same ladder. */
+function sameOrder(a: readonly LadderLevel[], b: readonly LadderLevel[]): boolean {
+	return ladderOrder(a).join() === ladderOrder(b).join();
+}
 
 export class QualityTrack {
 	private playlist: LadderLevel[] = [];
@@ -52,15 +58,12 @@ export class QualityTrack {
 
 	/** A level as the log names it. */
 	describe(level: number): string {
-		const { height, bitrate } = this.levels()[level];
-		const mbps = `${(bitrate / 1_000_000).toFixed(1)} Mbps`;
-		return height > 0 ? `${height}p (level ${level}, ${mbps})` : `level ${level} (${mbps})`;
+		return describeLevel(this.levels(), this.playlist, level);
 	}
 
 	/** A move as the log names it. */
 	describeMove(move: QualityMove): string {
-		const from = move.from === null ? '' : `${this.describe(move.from)} → `;
-		return `${move.reason}: ${from}${this.describe(move.level)}`;
+		return describeMove((level) => this.describe(level), move);
 	}
 
 	/** What to keep for a pin of `level`: the height its playlist
@@ -110,7 +113,10 @@ export class QualityTrack {
 			levels: this.levels(),
 			pinned: governor.isPinned ? governor.level : null,
 			playing: this.playing,
-			unavailable: governor.unavailableLevels
+			unavailable: governor.unavailableLevels,
+			// The rows in the order the player moves through the levels,
+			// when the encoded heights would sort them otherwise.
+			order: sameOrder(this.levels(), this.playlist) ? undefined : ladderOrder(this.playlist)
 		};
 	}
 }

@@ -23,6 +23,10 @@ export interface QualityView {
 	readonly playing: number | null;
 	/** Levels the engine could not load, left out of the menu. */
 	readonly unavailable: readonly number[];
+	/** The levels in the order the player moves through them — by the
+	 *  heights their playlists declare — when that differs from the
+	 *  order of the heights named here. */
+	readonly order?: readonly number[];
 }
 
 export interface QualityMenuItem {
@@ -58,7 +62,7 @@ export function levelLabel(levels: readonly LadderLevel[], index: number): strin
 export function qualityMenu(view: QualityView | null): QualityMenu | null {
 	if (!view || view.levels.length < 2) return null;
 	const { levels, pinned, playing, unavailable } = view;
-	const offered = ladderOrder(levels)
+	const offered = [...(view.order ?? ladderOrder(levels))]
 		.reverse()
 		.filter((i) => !unavailable.includes(i));
 	const items: QualityMenuItem[] = [
