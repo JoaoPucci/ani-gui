@@ -76,4 +76,23 @@ describe('quality remap', () => {
 		expect(one.engaged).toBe(false);
 		expect(one.pinned).toBe(false);
 	});
+
+	it('levels all replaced, as a content-steering switch does, seat the hold at the setting and let the pin go', () => {
+		const state = {
+			ladder: [0, 1, 2],
+			ceiling: 2,
+			current: 1,
+			engaged: true,
+			pinned: true,
+			unavailable: new Set<number>([0])
+		};
+		const fresh = [{ ...LEVELS[0] }, { ...LEVELS[1] }, { ...LEVELS[2] }];
+		const next = remapHold(state, [-1, -1, -1], fresh, { kind: 'best' });
+		expect(next.current).toBe(2);
+		expect(next.unavailable.size).toBe(0);
+		// The setting's level may be above the pin: it is let go.
+		expect(next.pinned).toBe(false);
+		// A short mapping reads as every level gone, the same way.
+		expect(remapHold(state, [], fresh, { kind: 'worst' }).current).toBe(0);
+	});
 });
