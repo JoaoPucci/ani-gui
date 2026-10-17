@@ -27,7 +27,8 @@ use numbering_offset_store::{merge_row, parse, remove_rows, store_path};
 #[path = "numbering_offset_former.rs"]
 mod former;
 pub use former::{
-    former_stamp, retag_display, retag_from_listing, retag_from_resolve, stamp_beside,
+    former_stamp, put_watched_display, retag_display, retag_from_listing, retag_from_resolve,
+    stamp_beside,
 };
 
 /// Persist the slug's numbering offset. Best-effort — a failed write

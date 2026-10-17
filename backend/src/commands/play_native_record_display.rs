@@ -39,7 +39,7 @@ pub(crate) fn put_if_recorded(state: &AppState, display: &WatchedDisplay) {
             .and_then(|rows| rows.into_iter().find(|e| e.id == display.slug))
             .is_some_and(|e| e.ep_no == display.slot.to_string());
         if recorded {
-            crate::commands::numbering_offset::put_display(
+            crate::commands::numbering_offset::put_watched_display(
                 state,
                 &display.slug,
                 display.offset,
