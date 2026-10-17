@@ -250,7 +250,7 @@ The player logs which level of an HLS stream it loads and plays with `console.de
 [renderer:verbose] [play] quality: stall: 1080p (level 2, 5.0 Mbps) → 720p (level 1, 2.8 Mbps) …
 ```
 
-`start` is the level the stream began at, `playing` each change of the level on screen, and every other change names its reason (`stall`, `fragments-failed`, `level-failed`, `followed`, `healthy`, `pick`, `auto`). A level whose segments turn out to be encoded at another height than its playlist lists says so once, as `level 0 encodes 480p; its playlist says 360p`.
+`start` is the level the stream began at, `playing` each change of the level on screen, and every other change names its reason (`stall`, `fragments-failed`, `level-failed`, `followed`, `healthy`, `pick`, `auto`). A level whose segments turn out to be encoded at another height than its playlist lists says so once, as `level 0 encodes 480p; its playlist says 360p`. From then on the log names that level by both heights — `480p (level 0, listed 360p, 0.8 Mbps)` — because the player moves through the levels in the order their playlists declare.
 
 The streaming proxy port is logged at startup:
 
