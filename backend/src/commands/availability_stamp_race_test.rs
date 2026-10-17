@@ -809,6 +809,7 @@ async fn a_refusal_a_play_overtook_while_it_was_out_is_superseded() {
                         id: 7000 + u64::from(n),
                         number: n,
                         number2: None,
+                        title: None,
                     })
                     .collect::<Vec<_>>(),
             )
