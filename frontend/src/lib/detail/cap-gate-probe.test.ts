@@ -499,16 +499,33 @@ describe('createCapGateProbe — a superseded recheck', () => {
 				s?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))
 			);
 		};
-		const { gate, superseded, failed, showing } = harness(
-			probe as () => Promise<CapGateAnswer | null>
-		);
+		const { gate, superseded, failed, showing } = harness(probe);
 		gate.request(5);
 		expect(signal).toBeInstanceOf(AbortSignal);
 		showing.mode = 'dub';
-		(gate as unknown as { supersede: () => void }).supersede();
+		gate.supersede();
 		expect(signal?.aborted).toBe(true);
 		await flush();
 		expect(superseded).toEqual([5]);
+		expect(failed).toEqual([]);
+	});
+
+	it('a click right after a supersede asks afresh instead of joining the stopped lookup', async () => {
+		const calls: (AbortSignal | undefined)[] = [];
+		const probe = (s?: AbortSignal) => {
+			calls.push(s);
+			return new Promise<CapGateAnswer | null>((_res, rej) =>
+				s?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')))
+			);
+		};
+		const { gate, failed, showing } = harness(probe);
+		gate.request(5);
+		showing.mode = 'dub';
+		gate.supersede();
+		gate.request(6);
+		expect(calls).toHaveLength(2);
+		expect(calls[1]?.aborted).toBe(false);
+		await flush();
 		expect(failed).toEqual([]);
 	});
 });
