@@ -758,6 +758,7 @@
 					setResolved: (r) => {
 						availabilityResolved = r;
 						if (r) resumeRefresh.resolved();
+						else resumeRefresh.unresolved();
 					},
 					setListed: (l) => (warmListed = l)
 				}

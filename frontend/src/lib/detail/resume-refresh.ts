@@ -52,8 +52,9 @@ async function readRow(
 }
 
 /** Runs `refresh` on the resume row once both have happened — the row
- *  has arrived and the page's availability lookup has answered —
- *  whichever lands first. `reset` starts a new visit. */
+ *  has arrived and the page's availability lookup has answered — in
+ *  either order, and again for each later lookup that answers
+ *  (`unresolved` as it goes out). `reset` starts a new visit. */
 export function joinResumeRefresh(refresh: (entry: HistoryEntry) => void): {
 	row: (entry: HistoryEntry | null) => void;
 	resolved: () => void;
@@ -77,7 +78,10 @@ export function joinResumeRefresh(refresh: (entry: HistoryEntry) => void): {
 			answered = true;
 			fire();
 		},
-		unresolved: () => {},
+		unresolved: () => {
+			answered = false;
+			ran = false;
+		},
 		reset: () => {
 			row = null;
 			answered = false;

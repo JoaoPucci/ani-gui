@@ -76,8 +76,9 @@ export async function executeKitsuGroupDelete(
 	// What is kept from here on is the user's since the removal.
 	const snapshot = deps.snapshotPositions?.();
 	const since: [] | [number] = snapshot === undefined ? [] : [snapshot];
-	const removed = new Set(groupIds);
-	const remainingHistory = deps.history.filter((e) => !removed.has(e.id));
+	// Off the strip as it stands now: a row read again while the
+	// deletes were out keeps what it read.
+	const remainingHistory = remainingOf(deps.currentHistory?.() ?? deps.history, groupIds);
 	// Telling a remaining row's show can take a Kitsu read; the card's
 	// removal does not wait on it.
 	const forgetting = forgetLeftWithoutRows(shows, groupIds, remainingHistory, deps, since).catch(

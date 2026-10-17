@@ -91,7 +91,7 @@
 	import { recordableId, withGuess, withRow } from '$lib/play/play-origin';
 	import { sortByWatchedAt } from '$lib/history/sort';
 	import { dedupeHistoryByKitsuId } from '$lib/history/dedupe';
-	import { executeKitsuGroupDelete, remainingOf } from '$lib/history/delete-controller';
+	import { executeKitsuGroupDelete } from '$lib/history/delete-controller';
 	import { nextHeroIndex, shouldRunHeroRotation } from '$lib/hero-rotation';
 	import {
 		failedHeroImages,
@@ -234,6 +234,9 @@
 		if (!next) return;
 		history = next;
 		for (const h of next) historyById.set(h.id, h);
+		// The card's episode metadata follows the number it offers now.
+		const m = historyMatches[id];
+		if (m) rowReady(id, m, historyPlayableCounts[id] ?? null);
 	}
 	const publishLoaderCap = (
 		id: string,
@@ -295,6 +298,7 @@
 			const snapshot = dedupedHistory.map((e) => e.id);
 			const result = await executeKitsuGroupDelete(deleteCandidate.entry.id, {
 				history: history ?? [],
+				currentHistory: () => history ?? [],
 				matches: historyMatches,
 				historyDelete,
 				snapshotPositions,
@@ -314,9 +318,7 @@
 			// click was first received. See $lib/history/animation-gate
 			// for the per-id scope + Svelte-batched-reset story.
 			deleteAnimationGate.open(result.removedIds, shiftedSurvivorIds(snapshot, result.removedIds));
-			// Off the rows as they stand now: a row read again while the
-			// delete was out keeps what it read.
-			history = remainingOf(history ?? [], result.removedIds);
+			history = result.remainingHistory;
 		} finally {
 			deleteBusy = false;
 			deleteCandidate = null;
