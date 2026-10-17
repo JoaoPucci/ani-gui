@@ -1184,13 +1184,12 @@ pub(crate) fn cached_provider(
     row.available.then_some(row.provider).flatten()
 }
 
-/// Persist a known availability result./// Persist a known availability result. Public so the play and
-/// download paths can update the cache from their own success /
-/// NoResults outcomes — clicks from any tile end up populating the
-/// cache without an extra network round-trip. Episode count is
-/// unknown from these call sites (they don't read availableEpisodes
-/// off the candidate), so the cache row stores None there; the next
-/// detail-page probe will fill it in.
+/// Persist a known availability result./// Persist a boolean availability row with no count and no versions:
+/// what a resolve's clean miss stamps ([`stamp_after_native`]). A
+/// positive a resolve or a replay stamps without a count goes through
+/// [`write_boolean_row`], which keeps the show's versions. Public for
+/// the tests that seed rows; the next detail-page probe fills in a
+/// count-less row.
 pub fn write_cache(
     state: &AppState,
     kitsu_id: &str,
