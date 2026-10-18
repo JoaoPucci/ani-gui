@@ -956,17 +956,16 @@
 	 * in a switch claim navigation as they start, and their re-checks
 	 * carry the epoch in their context ($lib/navigation/claims).
 	 *
-	 * Every navigation counts, the page's own included: `beforeNavigate`
-	 * reports them all. The page's own are a switch's `goto`, made
-	 * after the switch's last check and one switch at a time, and the
-	 * poster link back to the show's page, which leaves. A recovery
-	 * still evicting when a switch navigates stands down, which is the
-	 * outcome wanted: the switch brings a fresh session. A re-check
-	 * superseded by a navigation drops what it learned about the show,
-	 * as one superseded by a move to another show does.
+	 * Only a navigation that leaves this page counts: another path,
+	 * which includes another show, or out of the app. A switch's own
+	 * `goto` changes only the episode query, so it ends no pending
+	 * action; the poster link back to the show's page leaves, and
+	 * does. A re-check superseded by a
+	 * navigation that leaves drops what it learned about the show, as
+	 * one superseded by a move to another show does.
 	 */
 	const navigationClaims = createNavigationClaims();
-	beforeNavigate(() => navigationClaims.started());
+	beforeNavigate((nav) => navigationClaims.started(nav));
 	/**
 	 * Write back what the re-ask learned about the show.
 	 *

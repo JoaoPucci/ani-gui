@@ -170,9 +170,9 @@
 	 * raises the same overlay a play click does, so there is no window
 	 * in which a second tile can be clicked. The route can still change
 	 * under it — Back, or a link reached from the keyboard, which the
-	 * overlay does not hold — and the context
-	 * the answer is checked against says so: another show, a page left,
-	 * or a navigation started (`navigationClaims`). A cleared count
+	 * overlay does not hold — and the context the answer is checked
+	 * against says so: another show, a page left, or a navigation
+	 * started that leaves it (`navigationClaims`). A cleared count
 	 * falls straight through into startPlay, which holds the overlay
 	 * up — the caption just changes from checking to the usual play
 	 * progress.
@@ -238,17 +238,15 @@
 	 * claim navigation as they start, and their re-checks carry the
 	 * epoch in their context ($lib/navigation/claims).
 	 *
-	 * Every navigation counts, the page's own included: `beforeNavigate`
-	 * reports them all. The page's own, besides a play's, is the
-	 * episode pager's, which the overlay covers from the pointer but
-	 * not from the keyboard. A navigation that keeps this page as it
-	 * is, such as a link followed to the URL already on screen, counts
-	 * too. Either ends the pending action quietly, and a re-check
-	 * superseded this way drops what it learned about the show, as one
-	 * superseded by a move to another show does.
+	 * Only a navigation that leaves this page counts: another path,
+	 * which includes another show, or out of the app. One that changes
+	 * only the query — the episode pager, which the overlay covers from
+	 * the pointer but not from the keyboard, or a link to the URL on
+	 * screen — keeps the show on screen, and the action stays the
+	 * viewer's.
 	 */
 	const navigationClaims = createNavigationClaims();
-	beforeNavigate(() => navigationClaims.started());
+	beforeNavigate((nav) => navigationClaims.started(nav));
 	/**
 	 * Write back what the re-ask learned about the show.
 	 *
@@ -1525,7 +1523,7 @@
 	 *  click still belongs to this visit after. */
 	async function resumeRowSettled(): Promise<boolean> {
 		const atVisit = visit;
-		// A navigation started during the wait leaves the click behind
+		// A navigation away started during the wait leaves the click behind
 		// too: the play claims afresh after it, too late to notice.
 		const here = navigationClaims.claim();
 		const current = () => visit === atVisit && !gone && here();

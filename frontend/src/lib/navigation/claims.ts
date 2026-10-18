@@ -8,10 +8,16 @@
  * and asks the claim before it navigates.
  *
  * The page is the adapter: it reports each navigation that starts
- * (SvelteKit's `beforeNavigate`) and its own destruction. Every
- * navigation counts, the page's own included — a claim cannot tell
- * one the viewer asked for from one the page made — so an action that
- * must survive the page's own navigations does not claim.
+ * (SvelteKit's `beforeNavigate`) and its own destruction.
+ *
+ * A claim lapses on a navigation that leaves the page: another
+ * pathname — another route, or another show, whose id is in the path
+ * — another origin, or out of the app (`to` is null, as it is for an
+ * unload). A navigation that changes only the query keeps the page on
+ * screen as it is, and the action is still the viewer's: the detail
+ * page's episode pager, the player's own episode switch, or a link or
+ * goto to the URL already on screen. A navigation reported without
+ * both ends counts as leaving.
  */
 
 /** The part of SvelteKit's `beforeNavigate` navigation a claim reads. */
@@ -21,7 +27,7 @@ export interface NavigationLike {
 }
 
 export interface NavigationClaims {
-	/** Advances each time a navigation starts. */
+	/** Advances each time a navigation that leaves the page starts. */
 	readonly epoch: number;
 	/** Claim navigation for an action starting now; the returned
 	 *  predicate says whether the claim still holds. */
@@ -44,13 +50,23 @@ export function createNavigationClaims(): NavigationClaims {
 			const at = epoch;
 			return () => !gone && epoch === at;
 		},
-		started() {
+		started(nav) {
+			if (nav && staysOnPage(nav)) return;
 			epoch += 1;
 		},
 		left() {
 			gone = true;
 		}
 	};
+}
+
+/** Whether `nav` keeps the page on screen: the same origin and path,
+ *  only the query changing. */
+function staysOnPage(nav: NavigationLike): boolean {
+	const from = nav.from?.url;
+	const to = nav.to?.url;
+	if (!from || !to) return false;
+	return from.origin === to.origin && from.pathname === to.pathname;
 }
 
 /** The claim `claim` takes now; with no claim to take, one that always

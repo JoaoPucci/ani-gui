@@ -126,7 +126,8 @@ export interface CapGateProbeDeps {
 	 *  component across titles, and the audio mode, because the provider
 	 *  catalogues sub and dub separately and settings arrive after the
 	 *  page does. The pages also put in whatever means nobody is left
-	 *  to act on it: the page gone, or a navigation started since. */
+	 *  to act on it: the page gone, or a navigation started since that
+	 *  leaves it. */
 	currentContext: () => string;
 	/** The fresh count reaches the episode — apply the refresh and
 	 *  play. `count` is the same number as `refresh.count`, passed
