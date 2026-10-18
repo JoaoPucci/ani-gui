@@ -3,7 +3,7 @@
 //! Kitsu ids are digits. The renderer only ever holds ones Kitsu or
 //! this backend handed it, but every route it reaches is a loopback
 //! HTTP surface, and a value taken from it ends up in cache keys
-//! (`kitsu:v5:anime:<id>`, `availability:v20:<id>:<mode>`,
+//! (`kitsu:v5:anime:<id>`, `availability:v21:<id>:<mode>`,
 //! `airing:v2:<id>`), in database rows, and in the path of an
 //! outbound Kitsu request. A value that is not an id — `../49877`,
 //! `49877/x`, `12:21` — would name a different row or a different
