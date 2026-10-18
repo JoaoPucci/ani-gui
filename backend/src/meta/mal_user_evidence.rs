@@ -10,6 +10,21 @@ use crate::account::episode_map::TrackerShow;
 pub(super) const MAL_EVIDENCE_FIELDS: &str =
     "num_episodes,status,media_type,start_date,end_date,related_anime";
 
+/// The anime as the episode map reads it: one bearer-scoped
+/// `/anime/{id}` read with [`MAL_EVIDENCE_FIELDS`].
+pub(super) async fn read(
+    provider: &MalProvider,
+    tokens: &Tokens,
+    id: ProviderMediaId,
+) -> Result<MediaEvidence> {
+    let url = format!(
+        "{}/anime/{}?fields={MAL_EVIDENCE_FIELDS}&nsfw=true",
+        provider.api_url(),
+        id.0
+    );
+    parse_media_evidence(&provider.get_auth_bytes(&url, tokens).await?)
+}
+
 /// Parse an `/anime/{id}?fields=num_episodes,status,media_type,start_date,
 /// end_date,related_anime` response. MAL's `0` for a length not announced
 /// is unknown; a date arrives as `YYYY-MM-DD`, `YYYY-MM` or `YYYY` and is

@@ -33,6 +33,10 @@ use crate::error::Result;
 
 #[path = "tracker_map_evidence.rs"]
 mod evidence;
+#[path = "tracker_map_kitsu.rs"]
+mod kitsu_side;
+#[path = "tracker_map_parts.rs"]
+mod parts_walk;
 
 /// Cache key for one show's map on one tracker.
 #[must_use]
@@ -132,7 +136,7 @@ async fn kitsu_show(ask: &MapAsk<'_>, kitsu_id: &str) -> Result<KitsuShow> {
     let detail =
         super::kitsu::kitsu_anime_detail_with_anilist_base(ask.state, kitsu_id, ask.anilist_base)
             .await?;
-    Ok(evidence::kitsu_show_of(&detail))
+    Ok(kitsu_side::kitsu_show_of(&detail))
 }
 
 /// Build the map for a show that resolves to `native`: agreeing or
@@ -171,7 +175,7 @@ async fn build_resolved(
 /// short window.
 async fn build_unresolved(ask: &MapAsk<'_>, kitsu_id: &str) -> Result<EpisodeMap> {
     let ours = kitsu_show(ask, kitsu_id).await?;
-    let Some((root, native)) = evidence::root_through_prequels(ask, kitsu_id).await? else {
+    let Some((root, native)) = parts_walk::root_through_prequels(ask, kitsu_id).await? else {
         return Ok(EpisodeMap::identity(Identity::Unexplained));
     };
     let gathered = evidence::gather_under(ask, ours, root, native).await?;

@@ -234,14 +234,7 @@ impl UserListProvider for MalProvider {
     }
 
     async fn media_evidence(&self, tokens: &Tokens, id: ProviderMediaId) -> Result<MediaEvidence> {
-        let url = format!(
-            "{}/anime/{}?fields={}&nsfw=true",
-            self.api_url(),
-            id.0,
-            evidence::MAL_EVIDENCE_FIELDS
-        );
-        let bytes = self.get_auth_bytes(&url, tokens).await?;
-        evidence::parse_media_evidence(&bytes)
+        evidence::read(self, tokens, id).await
     }
 }
 
