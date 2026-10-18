@@ -1622,6 +1622,7 @@
 			}
 		});
 		playerError = null;
+		failedStreamError = null;
 
 		// One held retry pending per source: a second failure inside
 		// a hold re-arms it rather than adding a second startLoad,
@@ -1950,12 +1951,17 @@
 	});
 
 	/** Switches started on this page, so a recovery can tell whether
-	 *  one started while its eviction was out (recoverFromStaleStream). */
+	 *  one started while its eviction was out, and whether its own
+	 *  fresh resolve started at all (recoverFromStaleStream). */
 	let switchesStarted = 0;
+	/** The playback error of the stream on screen, kept while it is off
+	 *  screen for a replacement that has not attached: a recovery
+	 *  clears it as it begins. Anything that leaves that stream on
+	 *  screen — a switch that fails, or whose navigation does — puts it
+	 *  back. Forgotten when a stream attaches. */
+	let failedStreamError: string | null = null;
 
-	/** `errorOnFailure` is the playback error to show if the switch
-	 *  fails, when the caller has already cleared it (a recovery). */
-	async function switchToEpisode(targetEp: number, errorOnFailure: string | null = null) {
+	async function switchToEpisode(targetEp: number) {
 		if (!detail || switchBusy) return;
 		// Single choke point for every navigation path — tile clicks,
 		// prev/next, auto-play-next: an unaired target is a doomed
@@ -2009,7 +2015,7 @@
 		switchProgress = null;
 		// Cleared for the stream the switch brings; kept to put back if
 		// the switch fails and the failed stream stays on screen.
-		const errorBefore = playerError ?? errorOnFailure;
+		const errorBefore = playerError ?? failedStreamError;
 		playerError = null;
 		try {
 			// Hits the play-cache: ep+1 was prefetched on mount, so the
@@ -2095,7 +2101,10 @@
 				resolve('/play/[id]', { id: owner.showId }) +
 					withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
 				{ replaceState: true }
-			).catch(() => {});
+			).catch(() => {
+				// Nothing replaced the stream on screen: its error stands.
+				playerError ??= errorBefore;
+			});
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} finally {
 			switchBusy = false;
@@ -2133,9 +2142,11 @@
 			() => gone || !here()
 		);
 		const atSwitch = switchesStarted;
-		// What the overlay says now, to put back if the recovery has to
-		// offer Reload again.
-		const shownError = playerError;
+		// What the overlay says now, or one worded from the reason when it
+		// says nothing, to put back while the stream that failed is still
+		// on screen.
+		const restore = playerError ?? m.play_error_playback_technical({ detail: reason });
+		failedStreamError = restore;
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
 		// into a blank frame. The user keeps the Reload button to try
@@ -2184,9 +2195,6 @@
 			switchedSince: switchesStarted !== atSwitch,
 			switchBusyNow: switchBusy
 		});
-		// The error to show again while the stream that failed stays on
-		// screen: the one the viewer saw, or one worded from the reason.
-		const restore = shownError ?? m.play_error_playback_technical({ detail: reason });
 		// A re-check holds the lock and may not switch: the stale stream
 		// is still on screen, so Reload is offered again.
 		if (turn === 'offer-reload') playerError = restore;
@@ -2197,7 +2205,7 @@
 		// So does one the switch declines before it starts — the airing
 		// lookup still out, the show delisted, the episode past the cap.
 		const switchesBefore = switchesStarted;
-		await switchToEpisode(episodeNum, restore);
+		await switchToEpisode(episodeNum);
 		if (switchesStarted === switchesBefore) playerError ??= restore;
 	}
 
