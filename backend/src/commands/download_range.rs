@@ -151,13 +151,16 @@ where
     let (_, played) =
         super::play_native_versions::named_versions(attempted.provider, &first_served);
     // As a play does: a stamp an earlier version wrote with a stitched
-    // row's former tag reads right.
-    crate::commands::numbering_offset::retag_from_listing(
-        state,
-        &crate::scraper::provider::ShowKey::new(attempted.provider, picked.hit.slug.clone())
-            .to_string(),
-        &picked.episodes,
-    );
+    // row's former tag reads right — for every version of the pick,
+    // each keying stamps of its own.
+    for (hit, episodes) in picked.copies() {
+        crate::commands::numbering_offset::retag_from_listing(
+            state,
+            &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
+                .to_string(),
+            episodes,
+        );
+    }
     // The range's first stream is a positive availability fact
     // naming the provider that served it, with the cap the pick's
     // listing paid for — the row the play path writes.

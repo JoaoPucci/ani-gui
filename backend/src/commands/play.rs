@@ -498,7 +498,10 @@ where
         if crate::commands::play_native_episode::tag_matches(&episode, args.episode.trim()) {
             cache_key
         } else {
-            play_resolution_cache::cache_key(
+            // The version the request named keys this row too: kept
+            // under the key of a request naming none, it would answer
+            // for whichever version that request plays.
+            play_resolution_cache::cache_key_for_version(
                 &args.title,
                 &args.mode,
                 quality,
@@ -506,6 +509,7 @@ where
                 args.year,
                 args.episode_count,
                 args.subtype.as_deref(),
+                args.version,
             )
         };
     play_resolution_cache::store(state, asked, &kept_under, &cached_resolution);

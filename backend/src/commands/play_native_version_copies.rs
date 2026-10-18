@@ -96,7 +96,10 @@ pub(crate) fn versions_of(
         .map(|(_, (h, eps, _, _))| ShowVersion {
             kind: version_of(&h.title).1,
             hit: (*h).clone(),
-            episodes: eps.clone(),
+            // Each copy's rows carry the tags an earlier version gave
+            // them, as the listed pick's do: a copy is a show key of its
+            // own, read the same way.
+            episodes: crate::commands::play_native_merge::mark_offset_recaps(eps.clone()),
         })
         .collect();
     let distinct = group

@@ -75,6 +75,25 @@ impl crate::commands::play_native::PickedShow {
         self.episodes = chosen.episodes;
         self
     }
+
+    /// Every copy the pick stands for, each as its browse hit and its
+    /// listing: its versions when it has several, the pick itself
+    /// otherwise.
+    #[must_use]
+    pub fn copies(
+        &self,
+    ) -> Vec<(
+        &crate::scraper::provider::BrowseHit,
+        &[crate::scraper::provider::EpisodeRef],
+    )> {
+        if self.versions.is_empty() {
+            return vec![(&self.hit, self.episodes.as_slice())];
+        }
+        self.versions
+            .iter()
+            .map(|v| (&v.hit, v.episodes.as_slice()))
+            .collect()
+    }
 }
 
 /// The versions of `picked` as the answers name them, each under its
@@ -132,6 +151,7 @@ pub(crate) fn fitted_versions(versions: &[ShowVersion], fitted: &[EpisodeRef]) -
                     .map(|(own, f)| EpisodeRef {
                         number: f.number,
                         number2: f.number2.clone(),
+                        former_tag: f.former_tag.clone(),
                         ..own.clone()
                     })
                     .collect(),

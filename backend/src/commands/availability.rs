@@ -971,13 +971,17 @@ pub async fn check_availability(
             // history row's stamp an earlier version wrote with a
             // stitched row's former tag reads right before its Continue
             // card is clicked, and before the verdict is cached — the
-            // next probe that takes it fetches no listing.
-            crate::commands::numbering_offset::retag_from_listing(
-                state,
-                &crate::scraper::provider::ShowKey::new(attempted.provider, p.hit.slug.clone())
-                    .to_string(),
-                &p.episodes,
-            );
+            // next probe that takes it fetches no listing. Every version
+            // of the pick keys stamps of its own, each put right from its
+            // own listing.
+            for (hit, episodes) in p.copies() {
+                crate::commands::numbering_offset::retag_from_listing(
+                    state,
+                    &crate::scraper::provider::ShowKey::new(attempted.provider, hit.slug.clone())
+                        .to_string(),
+                    episodes,
+                );
+            }
             if present {
                 (
                     true,
