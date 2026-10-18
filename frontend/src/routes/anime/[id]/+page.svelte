@@ -287,6 +287,12 @@
 		}
 		if (patch.count !== undefined) playableEpisodeCount = patch.count;
 		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
+		if (patch.versions !== undefined) {
+			// A patch lands only in the context it was asked in — this
+			// show, this audio — so the versions are this mode's.
+			showVersions = patch.versions;
+			versionsMode = capGateMode();
+		}
 	}
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
 		applyAvailabilityPatch(writeback.refresh(refresh));
@@ -803,11 +809,7 @@
 					begin: () => writeback.begin(),
 					apply: applyAvailabilityPatch,
 					setResolved: (r) => (availabilityResolved = r),
-					setListed: (l) => (warmListed = l),
-					setVersions: (v, m) => {
-						showVersions = v;
-						versionsMode = m;
-					}
+					setListed: (l) => (warmListed = l)
 				}
 			)
 		);
