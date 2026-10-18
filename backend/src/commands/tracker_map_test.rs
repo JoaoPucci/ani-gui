@@ -571,3 +571,120 @@ fn the_window_follows_whether_the_map_is_conclusive() {
     );
     assert!(TRACKER_MAP_UNSETTLED_TTL < TRACKER_MAP_TTL);
 }
+
+#[tokio::test]
+async fn a_later_part_resolving_to_the_same_entry_is_filed_after_the_parts_before_it() {
+    // Shen Yin Wangzuo on MyAnimeList: 52684 is 182 episodes. Kitsu's
+    // 46552 (130) maps to it; its sequel 50289 (52) has only an AniList
+    // mapping, which AniList records as MAL 52684 too — so both Kitsu
+    // parts resolve to the one entry, and the second is its 131st–182nd.
+    let kitsu = MockServer::start().await;
+    kitsu_detail(
+        &kitsu,
+        "50289",
+        detail("50289", Some(52), "2025-05-01", "2026-04-23"),
+        1,
+    )
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/50289/media-relationships"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(relationship(
+            "prequel",
+            "46552",
+            130,
+            "2022-11-10",
+            "2025-04-23",
+        )))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/46552/media-relationships"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(relationship(
+            "sequel",
+            "50289",
+            52,
+            "2025-05-01",
+            "2026-04-23",
+        )))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/46552"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(mappings(
+            "46552",
+            Some(52_684),
+            None,
+        )))
+        .mount(&kitsu)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/anime/50289"))
+        .and(query_param("include", "mappings"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(mappings(
+            "50289",
+            None,
+            Some(185_729),
+        )))
+        .mount(&kitsu)
+        .await;
+    kitsu_mapped(
+        &kitsu,
+        "myanimelist/anime",
+        52_684,
+        r#"{"data":[{"id":"m1","type":"mappings","relationships":{"item":{"data":{"type":"anime","id":"46552"}}}}],
+            "included":[{"id":"46552","type":"anime","attributes":{"canonicalTitle":"Shen Yin Wangzuo 2",
+              "episodeCount":130,"startDate":"2022-11-10","endDate":"2025-04-23","subtype":"ONA"}}]}"#,
+    )
+    .await;
+    let anilist_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(body_string_contains("MalIdByMedia"))
+        .and(body_string_contains("185729"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(r#"{"data":{"Media":{"idMal":52684}}}"#),
+        )
+        .mount(&anilist_server)
+        .await;
+    let mal_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/52684"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"id":52684,"num_episodes":182,"status":"finished_airing","media_type":"ona",
+                "start_date":"2022-11-10","end_date":"2026-04-23","related_anime":[]}"#,
+        ))
+        .expect(1)
+        .mount(&mal_server)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let provider = mal(&mal_server.uri());
+    let tokens = tokens();
+    let anilist_uri = anilist_server.uri();
+    let ask = MapAsk {
+        state: &state,
+        kind: ProviderKind::MyAnimeList,
+        provider: &provider,
+        tokens: &tokens,
+        anilist_base: Some(&anilist_uri),
+    };
+    let map = episode_map_for(&ask, "50289", ProviderMediaId(52_684), Some(182)).await;
+    assert_eq!(map.shape, Shape::SplitParts);
+    assert_eq!(map.segments[0].lead, 130);
+    assert_eq!(map.segments[0].entry_total, 182);
+    // And the first part reads the same chain forward: 1–130 of 182.
+    let state = state_with_kitsu(&kitsu.uri());
+    kitsu_detail(
+        &kitsu,
+        "46552",
+        detail("46552", Some(130), "2022-11-10", "2025-04-23"),
+        1,
+    )
+    .await;
+    let ask = MapAsk {
+        state: &state,
+        ..ask
+    };
+    let map = episode_map_for(&ask, "46552", ProviderMediaId(52_684), Some(182)).await;
+    assert_eq!(map.shape, Shape::SplitParts);
+    assert_eq!(map.segments[0].lead, 0);
+}
