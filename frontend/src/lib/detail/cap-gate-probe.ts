@@ -208,10 +208,11 @@ export function createCapGateProbe(deps: CapGateProbeDeps): {
 			// fixed its show and audio when it started, so a click after
 			// the context moved — settings landing on dub — asks again
 			// rather than taking the other audio's answer, which would
-			// pass the check below once the page is back on that
-			// context. Cleared as soon as the request settles, so a click
-			// after this one gets a current answer instead of joining a
-			// lookup that has already finished.
+			// pass the check below, since the page is still on the
+			// context that click asked in. Cleared as soon as the
+			// request settles, so a click after this one gets a current
+			// answer instead of joining a lookup that has already
+			// finished.
 			if (pending?.context !== asked) {
 				const mine = {
 					context: asked,
