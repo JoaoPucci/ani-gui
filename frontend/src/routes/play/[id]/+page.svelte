@@ -163,6 +163,7 @@
 	import { toastStore } from '$lib/toasts/store.svelte';
 	import { runUnairedClick } from '$lib/detail/unaired-click';
 	import { breadcrumb } from '$lib/breadcrumb';
+	import { audioKey, mergeRow, rowFor, type AvailabilityRow } from '$lib/play/availability-row';
 	import { m } from '$lib/paraglide/messages';
 	import DownloadConfirm from '$lib/components/DownloadConfirm.svelte';
 	import ErrorOverlay from '$lib/components/ErrorOverlay.svelte';
@@ -890,7 +891,14 @@
 	// alongside detail. Same role as on /anime/[id] — authoritative
 	// "what's streamable now" cap, ahead of Kitsu's announced number
 	// for ongoing shows. Falls back to Kitsu's count when null.
-	let playableEpisodeCount = $state<number | null>(null);
+	//
+	// It is one field of the provider's row for the show
+	// ($lib/play/availability-row), which every accepted answer writes
+	// and which is read for the show and audio on screen.
+	let availabilityRow = $state<AvailabilityRow | null>(null);
+	const rowKey = $derived(audioKey(detail?.id, playMode(config)));
+	const knownRow = $derived(rowFor(availabilityRow, rowKey));
+	const playableEpisodeCount = $derived(knownRow.count);
 	/**
 	 * Clicking a cap-gated tile re-asks the provider rather than staying
 	 * inert. The count is a snapshot from when the strip loaded and
@@ -979,17 +987,13 @@
 		gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`
 	);
 	function applyAvailabilityPatch(patch: AvailabilityPatch) {
-		if (patch.available !== undefined) {
-			showListed = patch.available;
-			// Whether that verdict is a refusal by name travels with it
-			// ($lib/detail/availability-writeback).
-			showRefused = patch.refused === true;
-			// A patch that carries the verdict is the current lookup's
-			// or a re-ask's that won it — either way the warm's too.
-			warmListed = patch.available;
-		}
-		if (patch.count !== undefined) playableEpisodeCount = patch.count;
-		if (patch.extraEpisodes !== undefined) extraEpisodes = patch.extraEpisodes;
+		// The writeback and the re-ask have both checked that the answer
+		// is about the show and audio on screen, so it is stamped with
+		// them.
+		availabilityRow = mergeRow(availabilityRow, rowKey, patch);
+		// A patch that carries the verdict is the current lookup's or a
+		// re-ask's that won it — either way the warm's too.
+		if (patch.available !== undefined) warmListed = patch.available;
 	}
 	function applyCapGateRefresh(refresh: CapGateRefresh) {
 		applyAvailabilityPatch(writeback.refresh(refresh));
@@ -1109,13 +1113,13 @@
 	 *  delisted show comes back without a count, so the cap alone
 	 *  cannot express "there is nothing here" — it just stays where it
 	 *  was and keeps every episode under it looking playable. */
-	let showListed = $state<boolean | null>(null);
+	const showListed = $derived(knownRow.listed);
 	/** Whether `showListed`'s verdict is the provider refusing the
 	 *  title by name, which the detail page's notice never answers with
 	 *  the other audio. */
-	let showRefused = $state(false);
+	const showRefused = $derived(knownRow.refused);
 	// Non-integer episode tags the provider has streamable (recaps).
-	let extraEpisodes = $state<string[]>([]);
+	const extraEpisodes = $derived(knownRow.extraEpisodes);
 	const episodeCap = $derived(playableEpisodeCount ?? detail?.episode_count ?? null);
 
 	// Probe the provider for the playable episode count IN THE PLAYBACK

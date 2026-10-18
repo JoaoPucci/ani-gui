@@ -1,0 +1,77 @@
+/**
+ * What the player knows about the provider's row for the show: whether
+ * it lists the show, whether that is a refusal by name, the playable
+ * count and the extra episodes it streams.
+ *
+ * The page writes every availability answer it accepts here — the
+ * page-load lookup's and a cap-gate re-ask's — through `mergeRow`, and
+ * reads the row back through `rowFor`. Each answer is stamped with the
+ * show and audio it was asked for (`audioKey`).
+ *
+ * A patch writes only the fields it carries
+ * ($lib/detail/availability-writeback): absent keys belong to someone
+ * else, and the row keeps what it had for them. A lookup that fails or
+ * comes back unsettled writes nothing, so the row keeps its verdict
+ * then too.
+ */
+
+import type { AvailabilityPatch } from '$lib/detail/availability-writeback';
+
+/** The show and audio an answer is about, or `null` before the page
+ *  knows the show. */
+export function audioKey(show: string | null | undefined, mode: 'sub' | 'dub'): string | null {
+	return show ? `${show}:${mode}` : null;
+}
+
+/** The row as the page reads it. */
+export interface RowView {
+	/** Whether the provider lists the show; `null` until an answer. */
+	listed: boolean | null;
+	/** Whether `listed: false` is the provider refusing the title by
+	 *  name. */
+	refused: boolean;
+	/** The playable count; `null` until an answer carries one. */
+	count: number | null;
+	/** Non-integer episode tags the provider streams (recaps). */
+	extraEpisodes: readonly string[];
+}
+
+/** The row as stored: the view plus the key its answers were for. */
+export interface AvailabilityRow extends RowView {
+	key: string;
+}
+
+const NO_EXTRAS: readonly string[] = Object.freeze([]);
+
+/** Nothing answered yet. */
+export const UNKNOWN_ROW: RowView = Object.freeze({
+	listed: null,
+	refused: false,
+	count: null,
+	extraEpisodes: NO_EXTRAS
+});
+
+/** The row after `patch`, an answer about `key`. */
+export function mergeRow(
+	row: AvailabilityRow | null,
+	key: string | null,
+	patch: AvailabilityPatch
+): AvailabilityRow | null {
+	if (key === null) return row;
+	const next: AvailabilityRow = { ...(row ?? UNKNOWN_ROW), key };
+	if (patch.available !== undefined) {
+		next.listed = patch.available;
+		// Whether that verdict is a refusal by name travels with it.
+		next.refused = patch.refused === true;
+	}
+	if (patch.count !== undefined) next.count = patch.count;
+	if (patch.extraEpisodes !== undefined) next.extraEpisodes = patch.extraEpisodes;
+	return next;
+}
+
+/** What the page knows about the row for `key`: the last answer it
+ *  accepted, whichever show and audio that answer was for. */
+export function rowFor(row: AvailabilityRow | null, key: string | null): RowView {
+	void key;
+	return row ?? UNKNOWN_ROW;
+}
