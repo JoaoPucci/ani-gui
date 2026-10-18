@@ -54,23 +54,34 @@ fn tokens() -> Tokens {
     }
 }
 
-/// Kitsu `/anime/12` mapped to both trackers, so neither account needs
-/// an AniList translation and the one request is the tracker's own.
-const KITSU_BOTH: &str = r#"{
+/// Kitsu `/anime/12` mapped to MAL, so a MAL account needs no AniList
+/// translation and the one request is the tracker's own.
+const KITSU_MAL: &str = r#"{
     "data": { "id": "12", "type": "anime", "attributes": { "canonicalTitle": "One Piece" } },
     "included": [
         { "id": "1", "type": "mappings",
-          "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" } },
+          "attributes": { "externalSite": "myanimelist/anime", "externalId": "21" } }
+    ]
+}"#;
+
+/// Kitsu `/anime/12` mapped to AniList alone. An AniList account
+/// resolves a MAL mapping through AniList's public API first — a
+/// request to graphql.anilist.co, which this case does not stand up —
+/// so the show carries only the direct mapping, and the one request is
+/// again the tracker's own.
+const KITSU_ANILIST: &str = r#"{
+    "data": { "id": "12", "type": "anime", "attributes": { "canonicalTitle": "One Piece" } },
+    "included": [
         { "id": "2", "type": "mappings",
           "attributes": { "externalSite": "anilist/anime", "externalId": "21" } }
     ]
 }"#;
 
-async fn kitsu() -> MockServer {
+async fn kitsu(body: &'static str) -> MockServer {
     let kitsu = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path("/anime/12"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(KITSU_BOTH))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
         .mount(&kitsu)
         .await;
     kitsu
@@ -97,7 +108,7 @@ fn assert_rate_limited_for(err: &AniError, wait: u64) {
 
 #[tokio::test]
 async fn a_mal_429_reaches_the_seed_read_as_a_rate_limit_with_its_wait() {
-    let kitsu = kitsu().await;
+    let kitsu = kitsu(KITSU_MAL).await;
     let mal = rate_limiting_tracker().await;
     let state = state_with_kitsu(&kitsu.uri());
     let provider = MalProvider::with_bases(
@@ -122,7 +133,7 @@ async fn a_mal_429_reaches_the_seed_read_as_a_rate_limit_with_its_wait() {
 
 #[tokio::test]
 async fn an_anilist_429_reaches_the_seed_read_as_a_rate_limit_with_its_wait() {
-    let kitsu = kitsu().await;
+    let kitsu = kitsu(KITSU_ANILIST).await;
     let anilist = rate_limiting_tracker().await;
     let state = state_with_kitsu(&kitsu.uri());
     let provider = AniListProvider::with_bases(
