@@ -868,3 +868,129 @@ async fn the_walked_providers_row_still_replays() {
     let cached = row_of(&state, &args).expect("seeded");
     assert!(try_serve_cached(&state, &cached).await.is_some());
 }
+
+// ── the replay's stamp names the version that served ───────────────
+
+fn two_versions() -> Vec<crate::commands::play_native_versions::VersionInfo> {
+    use crate::commands::play_native_versions::{VersionInfo, VersionKind};
+    vec![
+        VersionInfo {
+            kind: VersionKind::Standard,
+            show_key: "hianime:show-1".into(),
+            has_mode: None,
+        },
+        VersionInfo {
+            kind: VersionKind::Uncensored,
+            show_key: "hianime:show-2".into(),
+            has_mode: None,
+        },
+    ]
+}
+
+/// A live cached dub row served by the uncensored version of two.
+fn seed_versioned_row(
+    state: &crate::app::AppState,
+    args: &crate::commands::play::PlayArgs,
+    mock: &wiremock::MockServer,
+) {
+    let key = args.resolution_key();
+    crate::commands::play_resolution_cache::put(
+        &state.cache_pool,
+        &key,
+        &CachedResolution {
+            upstream_url: format!("{}/cached/master.m3u8", mock.uri()),
+            referer: String::new(),
+            media_kind: MediaKind::Hls,
+            show_id: "hianime:show-2".into(),
+            show_title: "Show (Uncensored)".into(),
+            resolved_slot: Some(1),
+            subtitles: Vec::new(),
+            kitsu_id: None,
+            versions: two_versions(),
+            version: Some(crate::commands::play_native_versions::VersionKind::Uncensored),
+        },
+    );
+}
+
+fn dub_args() -> crate::commands::play::PlayArgs {
+    serde_json::from_value(
+        serde_json::json!({ "title": "Show", "episode": "1", "mode": "dub", "kitsu_id": "12" }),
+    )
+    .expect("args")
+}
+
+/// What the replay's stamp says of each version's dub.
+fn dub_modes(
+    state: &crate::app::AppState,
+) -> Vec<(
+    crate::commands::play_native_versions::VersionKind,
+    Option<bool>,
+)> {
+    let body = crate::cache::meta_cache_get(
+        &state.cache_pool,
+        &crate::commands::availability::cache_key("12", "dub"),
+    )
+    .expect("read")
+    .expect("the replay stamps a row");
+    let row: crate::commands::availability::AvailabilityResponse =
+        serde_json::from_str(&body).expect("row");
+    row.versions.iter().map(|v| (v.kind, v.has_mode)).collect()
+}
+
+fn served_carries_the_mode(state: &crate::app::AppState, what: &str) {
+    use crate::commands::play_native_versions::VersionKind;
+    assert_eq!(
+        dub_modes(state),
+        vec![
+            (VersionKind::Standard, None),
+            (VersionKind::Uncensored, Some(true)),
+        ],
+        "{what}: the version the replay served carries the mode it served"
+    );
+}
+
+/// A handoff replay stamping a row that has expired names the version
+/// its cached resolution served as carrying the mode, as a fresh
+/// play's stamp does.
+#[tokio::test]
+async fn a_handoff_replays_stamp_marks_the_version_it_served() {
+    let mock = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let state = state_in(&td);
+    let args = dub_args();
+    seed_versioned_row(&state, &args, &mock);
+    let cfg = crate::config::Config {
+        cache_resolutions: true,
+        ..Default::default()
+    };
+    assert!(super::try_launch_args_from_cache(&state, &args, &cfg)
+        .await
+        .is_some());
+    served_carries_the_mode(&state, "handoff replay");
+}
+
+/// The embedded player's replay stamps the same way.
+#[tokio::test]
+async fn an_embedded_replays_stamp_marks_the_version_it_served() {
+    let mock = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::method("HEAD"))
+        .respond_with(wiremock::ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let td = tempfile::tempdir().expect("td");
+    let mut state = state_in(&td);
+    let cfg = td.path().join("config.toml");
+    std::fs::write(&cfg, "cache_resolutions = true\n").expect("config write");
+    state.config_path = cfg;
+    let args = dub_args();
+    seed_versioned_row(&state, &args, &mock);
+    let resp = crate::commands::play::play_with_progress(&state, &args, |_| {})
+        .await
+        .expect("served from the cache");
+    assert!(resp.cache_hit);
+    served_carries_the_mode(&state, "embedded replay");
+}
