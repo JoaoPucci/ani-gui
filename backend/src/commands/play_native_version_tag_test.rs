@@ -279,3 +279,32 @@ async fn parts_are_stitched_within_one_version() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_tagged_later_season_whose_listing_is_gone_is_refused_as_its_plain_copy_is() {
+    // The listing of a tagged later season answers not-found. Read as
+    // written, the tag hides its season and the dead listing passes as
+    // one that could have been the entry's — the dead end on a dead
+    // listing; read past the tag, it is the season the entry does not
+    // name, and the pool is refused by title, as it is for the plain
+    // copy whose listing is gone.
+    use crate::scraper::table_provider::Answer;
+    for title in ["Show Season 2 [Uncensored]", "Show Season 2"] {
+        let client = site(&[])
+            .year(1, Some(YEAR))
+            .listing(1, Answer::fails(|| AniError::Upstream { status: 404 }));
+        let hits = [hit("show-season-2-1", title)];
+        let err = pick_candidate_titled(
+            &client,
+            &hits,
+            Some(12),
+            "Show",
+            &["Show"],
+            Some(YEAR),
+            Some("TV"),
+        )
+        .await
+        .expect_err(title);
+        assert!(matches!(err, AniError::RefusedByName), "{title}: {err:?}");
+    }
+}
