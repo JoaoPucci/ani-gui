@@ -1,5 +1,16 @@
 use super::*;
 
+/// The provider's number for a Kitsu-relative episode under `offset`:
+/// what a row from before the own-number marker holds for it, which
+/// the read boundary ([`kitsu_ep_no`]) translates back. Non-numeric
+/// input passes through unchanged.
+fn provider_ep_no(episode: &str, offset: u32) -> String {
+    match episode.trim().parse::<u32>() {
+        Ok(n) => n.saturating_add(offset).to_string(),
+        Err(_) => crate::commands::play_native_numbering::provider_fraction(episode.trim(), offset),
+    }
+}
+
 fn make_state_at(history_path: std::path::PathBuf) -> crate::app::AppState {
     crate::app::AppState {
         secret: crate::proxy::AppSecret::random(),

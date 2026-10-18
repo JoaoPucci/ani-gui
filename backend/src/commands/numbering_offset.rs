@@ -85,7 +85,9 @@ pub fn has(state: &AppState, slug: &str) -> bool {
 }
 
 /// The slug's stamped numbering offset; 0 on a missing row or an
-/// unreadable file — the no-shift case.
+/// unreadable file — the no-shift case. What a case asserts the store
+/// holds; the read boundary takes the offset from its snapshot.
+#[cfg(test)]
 pub fn get(state: &AppState, slug: &str) -> u32 {
     Numbering::read(&state.history_path).offset(slug)
 }
@@ -95,19 +97,6 @@ pub fn get(state: &AppState, slug: &str) -> u32 {
 /// else keeps the plain offset translation.
 pub fn read_ep_no(state: &AppState, slug: &str, ep_no: &str) -> String {
     Numbering::read(&state.history_path).read_ep_no(slug, ep_no)
-}
-
-/// Kitsu-relative episode → the provider's number, for history
-/// writes. Non-numeric input passes through unchanged (defensive —
-/// the play paths only ever see digits).
-#[must_use]
-pub fn provider_ep_no(episode: &str, offset: u32) -> String {
-    match episode.trim().parse::<u32>() {
-        Ok(n) => n.saturating_add(offset).to_string(),
-        // Fractional tags ride the same translation the resolve
-        // uses; non-numeric strings pass through.
-        Err(_) => super::play_native_numbering::provider_fraction(episode.trim(), offset),
-    }
 }
 
 /// The provider's number → Kitsu-relative, for the GUI's history
