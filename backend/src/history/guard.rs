@@ -16,11 +16,11 @@
 //! list, a show's rows by its Kitsu id, a row's number — so none of
 //! them lands inside a writer's hold: a removal forgets a show's
 //! mapping and title matches before it rewrites the file, and a read
-//! between the two would see the row with its mapping gone. Repairing a show's display stamp to the tag a
-//! fresh listing or resolve gives it does not ask for the file: it
-//! rewrites one stamp under the numbering store's own lock, in one
-//! atomic write, so a reader sees the stamp from before it or after
-//! it.
+//! between the two would see the row with its mapping gone.
+//! Repairing a show's display stamp to the tag a fresh listing or
+//! resolve gives it does not ask for the file: it rewrites one stamp
+//! under the numbering store's own lock, in one atomic write, so a
+//! reader sees the stamp from before it or after it.
 //!
 //! Holding the file is not enough for work that waits on the network
 //! between its writes: a watch records its row, waits on Kitsu, then
