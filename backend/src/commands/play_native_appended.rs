@@ -130,7 +130,8 @@ pub trait TailSource: Send + Sync + std::fmt::Debug {
 /// listing from a single one: parts numbered from 1 stitch into
 /// untagged rows numbered by position, so [`fit_appended`] turns a
 /// stitched pick away before asking. A cut spanning listing is cut to
-/// the entry's own episodes, and runs no row past the count.
+/// the entry's own episodes, and runs no whole episode past the count;
+/// a recap it keeps after them is tagged, which this check turns away.
 #[must_use]
 pub fn appended_count(listing: &[EpisodeRef], expected: Option<u32>) -> Option<u32> {
     let count = expected.filter(|c| *c > 0)?;
