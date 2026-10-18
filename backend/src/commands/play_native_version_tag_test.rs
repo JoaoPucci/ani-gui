@@ -308,3 +308,45 @@ async fn a_tagged_later_season_whose_listing_is_gone_is_refused_as_its_plain_cop
         assert!(matches!(err, AniError::RefusedByName), "{title}: {err:?}");
     }
 }
+
+#[tokio::test]
+async fn a_tagged_broad_listing_beside_a_dead_sibling_answers_as_its_plain_copy() {
+    // The broad listing is live, headed by the entry, and its completing
+    // sibling's listing answered not-found: the dead end on a dead
+    // listing that may have decided the pick, whatever version tag the
+    // two carry. Read as written, a tagged broad listing is not headed
+    // by the entry and the pool is refused by title instead.
+    use crate::scraper::table_provider::Answer;
+    for (wide, sibling) in [
+        ("Show Season 3", "Show Season 3 Part 2"),
+        (
+            "Show Season 3 (Uncensored)",
+            "Show Season 3 Part 2 (Uncensored)",
+        ),
+        ("Show Season 3", "Show Season 3 Part 2 (Uncensored)"),
+        ("Show Season 3 (Uncensored)", "Show Season 3 Part 2"),
+    ] {
+        let client = site(&[(1, 22)])
+            .year(2, Some(YEAR))
+            .listing(2, Answer::fails(|| AniError::Upstream { status: 404 }));
+        let hits = [
+            hit("show-season-3-1", wide),
+            hit("show-season-3-part-2-2", sibling),
+        ];
+        let err = pick_candidate_titled(
+            &client,
+            &hits,
+            Some(12),
+            "Show Season 3",
+            &["Show Season 3"],
+            Some(YEAR),
+            Some("TV"),
+        )
+        .await
+        .expect_err(wide);
+        assert!(
+            matches!(err, AniError::Upstream { status: 404 }),
+            "{wide} beside dead {sibling}: {err:?}"
+        );
+    }
+}
