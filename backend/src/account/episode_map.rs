@@ -75,8 +75,8 @@ pub struct Evidence {
     #[serde(default)]
     pub sharing: Vec<KitsuShow>,
     /// The air dates Kitsu's own episode list gives the show's episodes,
-    /// by number — read for the first and last episode of each segment of
-    /// a chain whose counts sum to Kitsu's.
+    /// by number — read only for the bounds of an exact, unclaimed chain
+    /// that Kitsu's start and end dates leave outside its run.
     #[serde(default)]
     pub kitsu_airdates: std::collections::BTreeMap<u32, String>,
     /// Kitsu's chain of parts filed under `entry`: the entry that maps
