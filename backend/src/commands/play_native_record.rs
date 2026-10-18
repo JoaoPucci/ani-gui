@@ -15,16 +15,26 @@ use crate::history::guard::{Asked, Epoch};
 mod record_id;
 use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id};
 
-/// Stamp the show's numbering offset while it is known.
+#[path = "play_native_record_matched.rs"]
+mod matched;
+pub(crate) use matched::matched_episode;
+
+#[path = "play_native_record_display.rs"]
+mod display;
+pub use display::WatchedDisplay;
+pub(crate) use display::{put_display_of, record_fresh_watch, watched_display};
+
+/// Stamp the show's numbering offset while it is known, and put a
+/// stamp an earlier version wrote with a row's former tag right.
 ///
 /// The cache-hit and mark-watched writers and the history read
-/// boundary all key on it by slug, and none of them has a listing to
-/// derive it from. When the matched row's display tag differs from
-/// its slot, the pair goes in too so the boundary can translate
-/// between the number the provider stores and the one the UI shows.
-///
-/// Prefetches stamp as well: their resolve is exactly as
-/// authoritative as a click's.
+/// boundary all key on the offset by slug, and none of them has a
+/// listing to derive it from. The (slot, display tag) pair a row reads
+/// through is not written here: it is the watch's, and goes in with
+/// the row the watch records ([`Watch::display`], [`write_history`]),
+/// so a resolve that records none — a prefetch, a warm, a play another
+/// watch overtook, a handoff whose player did not start — moves no pair
+/// off the slot the show's row holds.
 ///
 /// `asked` is the request the resolve served: a show removed from
 /// history since it began is not stamped, the removal having taken its
@@ -32,30 +42,12 @@ use record_id::{add_accepted_id, judged_by_cache, recorded_id, settle_refused_id
 pub(crate) fn stamp_numbering(state: &AppState, native: &NativeResolved, asked: Asked<'_>) {
     crate::history::guard::hold(&state.history_path, |held| {
         if !held.removed_since(asked, &native.slug) {
-            put_numbering(state, native);
+            // The listing is at hand: a stamp an earlier version wrote
+            // with a row's former tag gets the row's tag now.
+            crate::commands::numbering_offset::retag_from_resolve(state, native);
+            crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset);
         }
     });
-}
-
-/// The offset, with the (slot, display tag) pair when they differ.
-fn put_numbering(state: &AppState, native: &NativeResolved) {
-    match &native.resolved_tag {
-        Some(tag)
-            if !crate::commands::play_native_episode::tag_matches(
-                tag,
-                &native.resolved_slot.to_string(),
-            ) =>
-        {
-            crate::commands::numbering_offset::put_display(
-                state,
-                &native.slug,
-                native.numbering_offset,
-                native.resolved_slot,
-                tag,
-            );
-        }
-        _ => crate::commands::numbering_offset::put(state, &native.slug, native.numbering_offset),
-    }
 }
 
 /// The wall clock's moment, in milliseconds since the epoch.
@@ -89,7 +81,8 @@ fn stamp_watched_at(state: &AppState, show_id: &str, now_ms: i64) {
 }
 
 /// A watch a handoff will record once its player has started: the
-/// history row's three fields, from a fresh resolve or a cached one.
+/// history row's fields and the display pair the row reads through,
+/// from a fresh resolve or a cached one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Watch {
     /// The show key's string.
@@ -98,6 +91,10 @@ pub struct Watch {
     pub title: String,
     /// The row's episode number, in the provider's numbering.
     pub ep_no: String,
+    /// The (slot, display tag) pair the row reads through, where its
+    /// tag is not its slot: written with the row, in the same hold, so
+    /// nothing reads the row by its slot while the watch waits on Kitsu.
+    pub display: Option<WatchedDisplay>,
 }
 
 impl Watch {
@@ -108,6 +105,7 @@ impl Watch {
             show_id: native.slug.clone(),
             title: native.title.clone(),
             ep_no: native.resolved_slot.to_string(),
+            display: watched_display(native),
         }
     }
 }
@@ -196,6 +194,9 @@ pub(crate) async fn record_watch_requested_at(
         // row without one.
         let previous = recorded_id(held, &watch.show_id)?;
         held.upsert(entry)?;
+        // The pair the row reads through goes in with the row: a
+        // reader meanwhile sees the episode, not the slot.
+        put_display_of(state, watch.display.as_ref());
         // The row records the page only once the guard accepts it; a
         // removal before then still has to know it.
         held.played_from(&watch.show_id, given);
@@ -265,6 +266,7 @@ pub(crate) fn write_history(
             return Ok(());
         }
         held.upsert(entry)?;
+        put_display_of(state, watched_display(native).as_ref());
         held.played_from(&native.slug, asked.page);
         Ok::<_, crate::error::AniError>(())
     });

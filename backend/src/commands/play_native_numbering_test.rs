@@ -9,6 +9,7 @@ fn refs(numbers: &[u32]) -> Vec<EpisodeRef> {
             id: i as u64,
             number: *n,
             number2: None,
+            former_tag: None,
             title: None,
         })
         .collect()
@@ -34,7 +35,7 @@ proptest::proptest! {
             .map(|(i, slot)| EpisodeRef {
                 id: i as u64,
                 number: u32::try_from(i).expect("small index") + 1,
-                number2: slot.clone(), title: None,
+                number2: slot.clone(), former_tag: None, title: None,
             })
             .collect();
         proptest::prop_assert_eq!(
@@ -56,12 +57,14 @@ fn offsets_derive_from_display_identities() {
             id: 10,
             number: 1,
             number2: Some("41".into()),
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 11,
             number: 2,
             number2: Some("42".into()),
+            former_tag: None,
             title: None,
         },
     ];
@@ -79,18 +82,21 @@ fn fractional_extras_are_advertised_in_per_entry_numbering() {
             id: 10,
             number: 1,
             number2: Some("41".into()),
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 12,
             number: 2,
             number2: Some("41.5".into()),
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 11,
             number: 3,
             number2: Some("42".into()),
+            former_tag: None,
             title: None,
         },
     ];
@@ -154,12 +160,14 @@ fn whole_number_tags_classify_by_value() {
             id: 10,
             number: 1,
             number2: Some("41.0".into()),
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 11,
             number: 2,
             number2: Some("42.0".into()),
+            former_tag: None,
             title: None,
         },
     ];
@@ -179,18 +187,21 @@ fn the_cap_counts_display_identities_not_integer_slots() {
             id: 1,
             number: 1,
             number2: None,
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 2,
             number: 2,
             number2: None,
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 3,
             number: 3,
             number2: Some("2.5".into()),
+            former_tag: None,
             title: None,
         },
     ];
@@ -213,7 +224,7 @@ proptest::proptest! {
             eps.push(EpisodeRef {
                 id: 900 + i as u64,
                 number: max + 1 + u32::try_from(i).expect("small index"),
-                number2: Some(t.clone()), title: None,
+                number2: Some(t.clone()), former_tag: None, title: None,
             });
         }
         proptest::prop_assert_eq!(kitsu_episode_cap(&eps), base);
@@ -230,24 +241,28 @@ fn extras_are_the_non_integer_display_tags_in_listing_order() {
             id: 1,
             number: 1,
             number2: None,
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 2,
             number: 2,
             number2: Some("42".into()),
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 3,
             number: 3,
             number2: Some("2.5".into()),
+            former_tag: None,
             title: None,
         },
         EpisodeRef {
             id: 4,
             number: 4,
             number2: Some("1061.5".into()),
+            former_tag: None,
             title: None,
         },
     ];
@@ -284,12 +299,12 @@ proptest::proptest! {
         let mut eps: Vec<EpisodeRef> = vec![EpisodeRef {
             id: 999,
             number: 1,
-            number2: None, title: None,
+            number2: None, former_tag: None, title: None,
         }];
         eps.extend(slots.iter().enumerate().map(|(i, slot)| EpisodeRef {
             id: i as u64,
             number: u32::try_from(i).expect("small index") + 2,
-            number2: slot.as_ref().map(|(_, s)| s.clone()), title: None,
+            number2: slot.as_ref().map(|(_, s)| s.clone()), former_tag: None, title: None,
         }));
         let expected: Vec<String> = slots
             .iter()
@@ -356,5 +371,57 @@ proptest::proptest! {
             kitsu_episode_cap(&shifted_eps),
             kitsu_episode_cap(&base_eps)
         );
+    }
+}
+
+/// A continuation cour listed with the franchise's numbers (offset 12,
+/// its episodes tagged 13…) can carry a recap before its first episode,
+/// tagged "12.5". In the entry's own numbering that recap is 0.5, the
+/// extra before episode 1; passed through as "12.5", it advertised a
+/// recap past the entry's twelfth episode, and asking for it named
+/// "24.5", which the listing does not have.
+#[test]
+fn a_recap_before_a_continuations_first_episode_is_its_point_five() {
+    assert_eq!(per_entry_fraction("12.5", 12), "0.5");
+    assert_eq!(provider_fraction("0.5", 12), "12.5");
+    let eps: Vec<EpisodeRef> = [("12.5", 1u32), ("13", 2), ("14", 3)]
+        .iter()
+        .map(|(tag, slot)| EpisodeRef {
+            id: u64::from(*slot),
+            number: *slot,
+            number2: Some((*tag).to_string()),
+            former_tag: None,
+            title: None,
+        })
+        .collect();
+    assert_eq!(numbering_offset(&eps), 12);
+    assert_eq!(extra_episode_tags(&eps), vec!["0.5".to_string()]);
+}
+
+proptest::proptest! {
+    /// The round trip holds for the recap before episode 1 under any
+    /// offset.
+    #[test]
+    fn a_recap_at_the_offset_round_trips(
+        frac in 1u32..10,
+        offset in 1u32..40_000,
+    ) {
+        let provider = format!("{offset}.{frac}");
+        let advertised = per_entry_fraction(&provider, offset);
+        proptest::prop_assert_eq!(&advertised, &format!("0.{frac}"));
+        proptest::prop_assert_eq!(provider_fraction(&advertised, offset), provider);
+    }
+
+    /// The round trip holds from the recap before episode 1 upward.
+    #[test]
+    fn fraction_translation_round_trips_from_the_first_episode(
+        n in proptest::prop_oneof![proptest::strategy::Just(0u32), 0u32..50_000],
+        frac in 1u32..10,
+        offset in 1u32..40_000,
+    ) {
+        let provider = format!("{}.{frac}", n + offset);
+        let advertised = per_entry_fraction(&provider, offset);
+        proptest::prop_assert_eq!(&advertised, &format!("{n}.{frac}"));
+        proptest::prop_assert_eq!(provider_fraction(&advertised, offset), provider);
     }
 }
