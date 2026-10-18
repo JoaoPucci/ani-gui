@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mount, unmount } from 'svelte';
+import { flushSync, mount, unmount } from 'svelte';
 
 import { API_BASE, server } from './setup';
 import { page, setParams, setUrl } from './page-state.svelte';
@@ -289,9 +289,104 @@ describe('play route — a navigation that stays on the player', () => {
 		await new Promise((r) => setTimeout(r, 20));
 
 		(target.querySelector('li[data-ep-num="2"] button') as HTMLButtonElement).click();
-		// The player's own episode query changes, as a switch's goto
+		// The player's own episode query changes, as this switch's goto
 		// does: the show stays on screen.
-		startQueryNavigation({ episode: '3' });
+		startQueryNavigation({ episode: '2' });
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
+	});
+});
+
+// A recovery evicts the stale row, clears the show's cached plays and
+// resolves the episode on screen afresh. The viewer can switch episodes
+// while the eviction is out. That switch brings its own session; a
+// recovery that went on would throw it away and restart the episode
+// just started, or, with the switch still resolving, abort it and show
+// the viewer a failure for a play nothing was wrong with.
+describe('play route — a recovery overtaken by a switch', () => {
+	it('stands down once the episode on screen is another', async () => {
+		let releaseEvict: () => void = () => {};
+		let evictAsked = false;
+		useShowHandlers(async () => {
+			evictAsked = true;
+			await new Promise<void>((r) => {
+				releaseEvict = r;
+			});
+			return new HttpResponse(null, { status: 204 });
+		});
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+		await until(
+			() => FakeEventSource.instances.some((i) => i.url.includes('episode=2')),
+			'the next-episode warm stream'
+		);
+		FakeEventSource.instances
+			.filter((i) => i.url.includes('episode=2'))
+			.at(-1)!
+			.dispatch('done', session('session-2'));
+		await new Promise((r) => setTimeout(r, 20));
+
+		const video = playerVideo();
+		video.currentTime = 720;
+		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		await until(() => evictAsked, 'the recovery to evict the stale row');
+
+		(target.querySelector('li[data-ep-num="2"] button') as HTMLButtonElement).click();
+		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
+		// The switch lands: the player is on episode 2.
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-2', episode: '2', kind: 'mp4' });
+		flushSync();
+		const clickedStreams = () =>
+			FakeEventSource.instances.filter(
+				(i) => i.url.includes('episode=2') && !i.url.includes('prefetch=1')
+			).length;
+		const before = clickedStreams();
+
+		releaseEvict();
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(clickedStreams()).toBe(before);
+		expect(goto).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves a switch still resolving alone', async () => {
+		let releaseEvict: () => void = () => {};
+		let evictAsked = false;
+		useShowHandlers(async () => {
+			evictAsked = true;
+			await new Promise<void>((r) => {
+				releaseEvict = r;
+			});
+			return new HttpResponse(null, { status: 204 });
+		});
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(
+			() => target.querySelector('li[data-ep-num="3"] button') !== null,
+			'the episode strip'
+		);
+
+		const video = playerVideo();
+		video.currentTime = 720;
+		Object.defineProperty(video, 'error', { value: { code: 2 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		await until(() => evictAsked, 'the recovery to evict the stale row');
+
+		(target.querySelector('li[data-ep-num="3"] button') as HTMLButtonElement).click();
+		const switchStream = () =>
+			FakeEventSource.instances.find(
+				(i) => i.url.includes('episode=3') && !i.url.includes('prefetch=1')
+			);
+		await until(() => switchStream() !== undefined, "the switch's session request");
+
+		releaseEvict();
+		await new Promise((r) => setTimeout(r, 100));
+		expect(switchStream()!.closed).toBe(false);
+
+		switchStream()!.dispatch('done', session('session-3'));
 		await until(() => vi.mocked(goto).mock.calls.length > 0, 'the switch to navigate');
 	});
 });
