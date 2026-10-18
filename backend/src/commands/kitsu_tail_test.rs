@@ -654,6 +654,13 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
             None,
             "kitsu-relations-48677.json",
         ),
+        // The prequel Kitsu relates it to, an aired TV entry whose
+        // page the reader asks for.
+        (
+            "/anime/46241/episodes",
+            None,
+            "kitsu-episodes-46241-p1.json",
+        ),
     ] {
         let mock = Mock::given(method("GET")).and(path(route));
         let mock = match offset {
@@ -695,4 +702,74 @@ async fn an_announced_sequel_s_page_is_not_asked_for() {
         .expect("the announced sequel");
     assert_eq!(sequel.status.as_deref(), Some("upcoming"));
     assert_eq!(sequel.first_episodes, None);
+}
+
+/// Every aired TV entry Kitsu relates the show to has its first page
+/// read, whatever the role: Noragami Aragoto's one TV relation is its
+/// prequel, and its page comes back with Noragami's twelve titled
+/// episodes; the OVA Kitsu relates as `other` gets none.
+#[tokio::test]
+async fn every_aired_tv_relation_s_page_is_read() {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/10800/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
+    for (route, file) in [
+        ("/anime/10800", "kitsu-anime-10800.json"),
+        ("/anime/10800/episodes", "kitsu-episodes-10800-p1.json"),
+        (
+            "/anime/10800/media-relationships",
+            "kitsu-relations-10800.json",
+        ),
+        ("/anime/7881/episodes", "kitsu-episodes-7881-p1.json"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture(file)))
+            .mount(&kitsu)
+            .await;
+    }
+    let state = state_with_kitsu(&kitsu.uri());
+    let airing =
+        crate::meta::anilist_airing::parse_airing_response(&fixture("anilist-airing-10800.json"))
+            .expect("airing")
+            .expect("known");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:10800",
+        &serde_json::to_string(&airing).expect("json"),
+        60,
+    )
+    .expect("airing row");
+    let tail = KitsuTail::for_entry(&state, Some("10800"))
+        .expect("an entry")
+        .tail(13)
+        .await
+        .expect("read");
+    let prequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "prequel")
+        .expect("the prequel");
+    let page = prequel.first_episodes.as_ref().expect("the prequel's page");
+    assert_eq!(page.len(), 12);
+    assert_eq!(
+        page[0],
+        SequelEpisode {
+            number: 1,
+            title: Some("A Housecat, a Stray God, and a Tail".into()),
+        }
+    );
+    let ova = tail
+        .related
+        .iter()
+        .find(|r| r.subtype.as_deref() == Some("OVA"))
+        .expect("the OVA");
+    assert_eq!(ova.first_episodes, None);
 }

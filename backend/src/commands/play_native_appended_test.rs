@@ -58,7 +58,7 @@ fn recorded_tail(kitsu: u32) -> EntryTail {
     }
 }
 
-/// The entries Kitsu relates `kitsu` to, as recorded, each TV sequel
+/// The entries Kitsu relates `kitsu` to, as recorded, each TV entry
 /// carrying its first episode page where that page is recorded too.
 fn recorded_related(kitsu: u32) -> Vec<Related> {
     let doc: serde_json::Value =
@@ -81,7 +81,7 @@ fn recorded_related(kitsu: u32) -> Vec<Related> {
                 .unwrap_or_default()
                 .to_string();
             let subtype = attrs["subtype"].as_str().map(str::to_string);
-            let sequel_tv = role == "sequel" && subtype.as_deref() == Some("TV");
+            let tv = dst["type"] == "anime" && subtype.as_deref() == Some("TV");
             let id = dst["id"].as_str().unwrap_or_default();
             let page = format!("kitsu-episodes-{id}-p1.json");
             Related {
@@ -92,7 +92,7 @@ fn recorded_related(kitsu: u32) -> Vec<Related> {
                 episode_count: attrs["episodeCount"]
                     .as_u64()
                     .and_then(|n| u32::try_from(n).ok()),
-                first_episodes: sequel_tv.then(|| {
+                first_episodes: tv.then(|| {
                     crate::meta::kitsu::parse_episodes_response(&fixture(&page))
                         .expect("sequel page")
                         .into_iter()
@@ -992,13 +992,16 @@ fn set_sequel_page(tail: &mut EntryTail, page: Vec<SequelEpisode>) {
 /// two-episode ONA, a three-episode OVA and a five-episode OVA, so each
 /// of those windows has an entry that would explain it; with its
 /// second season's first rows appended and Kitsu titling that season
-/// from episode 3 on, the rows must stay the sequel's episodes.
+/// from episode 3 on, the rows must stay the sequel's episodes. The
+/// season's other TV relation, The Slime Diaries, is given a titled
+/// page throughout, so the sequel's page alone varies.
 #[test]
 fn a_sequel_whose_first_episodes_kitsu_has_not_titled_keeps_the_listing() {
     for k in [1usize, 2, 3, 5] {
         let (rows, mut tail) = slime_with_sequel_rows(k);
         let count = 24;
         assert_eq!(appended_count(&rows, Some(count)), Some(count));
+        set_tv_pages(&mut tail, Some(sequel_page(0, &[])));
         set_sequel_page(&mut tail, sequel_page(u32::try_from(k).expect("k"), &[]));
         assert_eq!(
             appended_extras(&rows, count, &tail),
@@ -1100,4 +1103,233 @@ fn a_sequel_page_is_read_by_episode_number() {
         first_episodes: Some(vec![untitled(1), titled(2), titled(3)]),
     });
     assert_eq!(appended_extras(&rows, 12, &two), None, "a second sequel");
+}
+
+// ── TV entries related in any role ─────────────────────────────────
+
+/// The TV entries Kitsu relates `tail`'s show to, given `page` as their
+/// first episodes, whatever their role.
+fn set_tv_pages(tail: &mut EntryTail, page: Option<Vec<SequelEpisode>>) {
+    for r in &mut tail.related {
+        if r.anime && r.subtype.as_deref() == Some("TV") {
+            r.first_episodes = page.clone();
+        }
+    }
+}
+
+/// Kitsu relates Slime's first season to The Slime Diaries, a TV entry,
+/// as `other`; its Kitsu page is twelve placeholder rows. With the
+/// Diaries' first rows appended to the season's listing, as hianime
+/// lists a merged cour, the special, ONA and OVAs the season relates
+/// would explain one, two, three or five rows, and nothing named the
+/// rows the Diaries' episodes — a TV entry's first episodes are
+/// checked whatever Kitsu calls the relation. The season's TV sequel is
+/// given a titled page throughout (Kitsu titles none of it, and
+/// untitled it would refuse on its own), so the Diaries' page alone
+/// decides: as recorded, titling none of its episodes, it refuses;
+/// titled as hianime titles the rows, the names refuse; titled
+/// otherwise, the rows read as the explaining entry's.
+#[test]
+fn a_tv_entry_related_in_any_role_has_its_first_episodes_checked() {
+    let show = corpus_show("41024");
+    let diaries = listing(1574);
+    for k in [1usize, 2, 3, 5] {
+        let mut rows = show.listing();
+        let count = u32::try_from(rows.len()).expect("a count");
+        for (i, row) in diaries.iter().take(k).enumerate() {
+            rows.push(EpisodeRef {
+                number: count + u32::try_from(i + 1).expect("a slot"),
+                ..row.clone()
+            });
+        }
+        let mut tail = show.tail();
+        set_sequel_page(&mut tail, sequel_page(0, &[]));
+        let other = tail
+            .related
+            .iter()
+            .find(|r| r.role == "other" && r.subtype.as_deref() == Some("TV"))
+            .expect("the Diaries");
+        assert!(
+            other
+                .first_episodes
+                .as_ref()
+                .is_some_and(|p| p.iter().all(|e| e.title.is_none())),
+            "the Diaries' page as recorded titles no episode: {:?}",
+            other.first_episodes
+        );
+        assert_eq!(
+            appended_extras(&rows, count, &tail),
+            None,
+            "{k} rows, as recorded"
+        );
+        let hianime: Vec<&str> = rows[24..]
+            .iter()
+            .filter_map(|r| r.title.as_deref())
+            .collect();
+        let mut named = tail.clone();
+        set_tv_pages(&mut named, Some(sequel_page(0, &hianime)));
+        assert_eq!(
+            appended_extras(&rows, count, &named),
+            None,
+            "{k} rows, hianime's names"
+        );
+        let mut other_names = tail.clone();
+        set_tv_pages(&mut other_names, Some(sequel_page(0, &[])));
+        assert!(
+            appended_extras(&rows, count, &other_names).is_some(),
+            "{k} rows, other names"
+        );
+    }
+}
+
+/// Noragami Aragoto's one TV relation is its prequel. Its OADs read as
+/// extras with the prequel's page as recorded; the same rows titled as
+/// the prequel's first two episodes do not, and a prequel page Kitsu
+/// had not titled refuses as a sequel's does.
+#[test]
+fn a_prequel_s_first_episodes_are_checked_too() {
+    let rows = listing(913);
+    let tail = recorded_tail(10800);
+    let prequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "prequel")
+        .expect("Noragami");
+    assert_eq!(prequel.subtype.as_deref(), Some("TV"));
+    assert_eq!(
+        prequel
+            .first_episodes
+            .as_ref()
+            .map(|p| p.iter().filter(|e| e.title.is_some()).count()),
+        Some(12)
+    );
+    assert!(appended_extras(&rows, 13, &tail).is_some(), "as recorded");
+    let mut as_prequel = rows.clone();
+    for (row, n) in as_prequel[13..].iter_mut().zip(1u32..) {
+        row.title = prequel
+            .first_episodes
+            .as_ref()
+            .and_then(|p| p.iter().find(|e| e.number == n))
+            .and_then(|e| e.title.clone());
+    }
+    assert_eq!(
+        appended_extras(&as_prequel, 13, &tail),
+        None,
+        "the prequel's names"
+    );
+    let mut untitled = tail.clone();
+    set_tv_pages(&mut untitled, Some(Vec::new()));
+    assert_eq!(
+        appended_extras(&rows, 13, &untitled),
+        None,
+        "the prequel untitled"
+    );
+}
+
+/// An entry airing now may be what the rows past the count are,
+/// whatever Kitsu calls the relation and whatever its format: Stone
+/// Ocean Part 3's sequel is an ONA Kitsu calls current, and a non-TV
+/// entry's page is never read, so nothing but its airing tells its
+/// cour from extras. A music video is no cour.
+#[test]
+fn an_entry_airing_now_keeps_the_listing_whatever_its_format() {
+    for (role, subtype) in [
+        ("sequel", "ONA"),
+        ("side_story", "OVA"),
+        ("other", "special"),
+        ("sequel", "movie"),
+    ] {
+        let (rows, mut tail) = noragami();
+        tail.related.push(Related {
+            role: role.into(),
+            anime: true,
+            subtype: Some(subtype.into()),
+            status: Some("current".into()),
+            episode_count: None,
+            first_episodes: None,
+        });
+        assert_eq!(appended_extras(&rows, 12, &tail), None, "{role} {subtype}");
+    }
+    let (rows, mut tail) = noragami();
+    tail.related.push(Related {
+        role: "other".into(),
+        anime: true,
+        subtype: Some("music".into()),
+        status: Some("current".into()),
+        episode_count: Some(1),
+        first_episodes: None,
+    });
+    assert!(appended_extras(&rows, 12, &tail).is_some(), "a music video");
+}
+
+/// A TV entry airing now may be what the rows past the count are,
+/// whatever Kitsu calls the relation.
+#[test]
+fn a_tv_entry_airing_now_keeps_the_listing_whatever_its_role() {
+    for role in ["other", "side_story", "prequel", "spin_off"] {
+        let (rows, mut tail) = noragami();
+        tail.related.push(Related {
+            role: role.into(),
+            anime: true,
+            subtype: Some("TV".into()),
+            status: Some("current".into()),
+            episode_count: None,
+            first_episodes: Some(
+                (1..=3)
+                    .map(|n| SequelEpisode {
+                        number: n,
+                        title: Some(format!("Other {n}")),
+                    })
+                    .collect(),
+            ),
+        });
+        assert_eq!(appended_extras(&rows, 12, &tail), None, "{role}");
+    }
+}
+
+/// The entry that explains the rows is what the rows are, so its own
+/// episodes' titles are never held against them: Kitsu titles
+/// Satsuriku no Tenshi's ONA as hianime titles the web episodes it
+/// appends, case aside, and Noragami's OVA as hianime titles the OADs
+/// past their "OAD 01: ". Given those pages, the readings stand — a
+/// name check on a non-TV relation would refuse Satsuriku.
+#[test]
+fn the_explaining_entry_s_own_titles_are_not_held_against_the_rows() {
+    let page = |id: u32| -> Vec<SequelEpisode> {
+        crate::meta::kitsu::parse_episodes_response(&fixture(&format!(
+            "kitsu-episodes-{id}-p1.json"
+        )))
+        .expect("recorded page")
+        .into_iter()
+        .filter_map(|e| {
+            Some(SequelEpisode {
+                number: e.number?,
+                title: e.canonical_title,
+            })
+        })
+        .collect()
+    };
+    let ona = page(41963);
+    let rows = listing(1549);
+    assert!(
+        ona.iter().zip(&rows[12..]).all(|(e, row)| same_title(
+            e.title.as_deref().expect("titled"),
+            row.title.as_deref().expect("titled")
+        )),
+        "Kitsu's ONA titles are hianime's rows': {ona:?}"
+    );
+    let mut tail = recorded_tail(13715);
+    for r in &mut tail.related {
+        if r.subtype.as_deref() == Some("ONA") {
+            r.first_episodes = Some(ona.clone());
+        }
+    }
+    assert!(appended_extras(&rows, 12, &tail).is_some());
+    let (rows, mut tail) = noragami();
+    for r in &mut tail.related {
+        if r.subtype.as_deref() == Some("OVA") {
+            r.first_episodes = Some(page(8152));
+        }
+    }
+    assert!(appended_extras(&rows, 12, &tail).is_some());
 }
