@@ -942,3 +942,162 @@ async fn a_listing_no_longer_past_the_count_forgets_the_reading() {
     assert_eq!(got.episodes, rows);
     assert_eq!(source.remembered(), None);
 }
+
+// ── a sequel's first episodes, by number ───────────────────────────
+
+/// Slime's first season (Kitsu 41024, twenty-four episodes) with the
+/// first `k` rows of its TV sequel's hianime listing appended, as
+/// hianime lists a merged cour.
+fn slime_with_sequel_rows(k: usize) -> (Vec<EpisodeRef>, EntryTail) {
+    let show = corpus_show("41024");
+    let mut rows = show.listing();
+    let count = rows.len();
+    let sequel = listing(487);
+    for (i, row) in sequel.into_iter().take(k).enumerate() {
+        rows.push(EpisodeRef {
+            number: u32::try_from(count + i + 1).expect("a slot"),
+            ..row
+        });
+    }
+    (rows, show.tail())
+}
+
+/// The sequel's page in the shape Kitsu gives many a second season:
+/// its first `untitled` episodes dated but not titled, the rest titled.
+fn sequel_page(untitled: u32, titles: &[&str]) -> Vec<SequelEpisode> {
+    (1..=12u32)
+        .map(|n| SequelEpisode {
+            number: n,
+            title: (n > untitled).then(|| {
+                titles
+                    .get(n as usize - 1)
+                    .map_or_else(|| format!("Sequel {n}"), |t| (*t).to_string())
+            }),
+        })
+        .collect()
+}
+
+fn set_sequel_page(tail: &mut EntryTail, page: Vec<SequelEpisode>) {
+    for r in &mut tail.related {
+        if r.role == "sequel" && r.subtype.as_deref() == Some("TV") {
+            r.first_episodes = Some(page.clone());
+        }
+    }
+}
+
+/// A TV sequel whose first episodes Kitsu has dated but not titled,
+/// while it has titled later ones, leaves nothing to tell its first
+/// episodes from extras — however many titles the page carries past
+/// them. Slime's first season relates a one-episode special, a
+/// two-episode ONA, a three-episode OVA and a five-episode OVA, so each
+/// of those windows has an entry that would explain it; with its
+/// second season's first rows appended and Kitsu titling that season
+/// from episode 3 on, the rows must stay the sequel's episodes.
+#[test]
+fn a_sequel_whose_first_episodes_kitsu_has_not_titled_keeps_the_listing() {
+    for k in [1usize, 2, 3, 5] {
+        let (rows, mut tail) = slime_with_sequel_rows(k);
+        let count = 24;
+        assert_eq!(appended_count(&rows, Some(count)), Some(count));
+        set_sequel_page(&mut tail, sequel_page(u32::try_from(k).expect("k"), &[]));
+        assert_eq!(
+            appended_extras(&rows, count, &tail),
+            None,
+            "{k} rows, untitled"
+        );
+        // The hole is what refused: the same page with the first
+        // episodes titled as hianime titles them refuses on the names,
+        // and titled otherwise reads the rows as the explaining entry.
+        let hianime: Vec<&str> = rows[24..]
+            .iter()
+            .filter_map(|r| r.title.as_deref())
+            .collect();
+        set_sequel_page(&mut tail, sequel_page(0, &hianime));
+        assert_eq!(
+            appended_extras(&rows, count, &tail),
+            None,
+            "{k} rows, the sequel's names"
+        );
+        set_sequel_page(&mut tail, sequel_page(0, &[]));
+        assert!(
+            appended_extras(&rows, count, &tail).is_some(),
+            "{k} rows, other names"
+        );
+    }
+}
+
+/// The shapes a sequel's page can take, over Noragami's two rows past
+/// twelve: a first episode missing from the page (a placeholder Kitsu
+/// listed with neither title nor date, which the reader drops) or
+/// titled with nothing but spaces refuses; one titled but undated
+/// counts as titled; a title missing past the rows under question does
+/// not matter; and every aired TV sequel has to pass, not one of them.
+#[test]
+fn a_sequel_page_is_read_by_episode_number() {
+    let (rows, proved) = noragami();
+    let aragoto = |page: Vec<SequelEpisode>| {
+        let mut tail = proved.clone();
+        set_sequel_page(&mut tail, page);
+        tail
+    };
+    let titled = |n: u32| SequelEpisode {
+        number: n,
+        title: Some(format!("Aragoto {n}")),
+    };
+    let untitled = |n: u32| SequelEpisode {
+        number: n,
+        title: None,
+    };
+    let blank = |n: u32| SequelEpisode {
+        number: n,
+        title: Some("   ".into()),
+    };
+    let full: Vec<SequelEpisode> = (1..=13).map(titled).collect();
+    assert!(appended_extras(&rows, 12, &aragoto(full.clone())).is_some());
+    let missing_first: Vec<SequelEpisode> = (2..=13).map(titled).collect();
+    assert_eq!(
+        appended_extras(&rows, 12, &aragoto(missing_first)),
+        None,
+        "episode 1 missing"
+    );
+    let mut second_untitled = full.clone();
+    second_untitled[1] = untitled(2);
+    assert_eq!(
+        appended_extras(&rows, 12, &aragoto(second_untitled)),
+        None,
+        "episode 2 untitled"
+    );
+    let mut second_blank = full.clone();
+    second_blank[1] = blank(2);
+    assert_eq!(
+        appended_extras(&rows, 12, &aragoto(second_blank)),
+        None,
+        "episode 2 blank"
+    );
+    let mut later_untitled = full.clone();
+    for e in &mut later_untitled[2..] {
+        e.title = None;
+    }
+    assert!(
+        appended_extras(&rows, 12, &aragoto(later_untitled)).is_some(),
+        "past the rows"
+    );
+    let mut out_of_order = full.clone();
+    out_of_order.reverse();
+    assert!(
+        appended_extras(&rows, 12, &aragoto(out_of_order)).is_some(),
+        "order is nothing"
+    );
+    // A second aired TV sequel with its first episode untitled refuses
+    // even beside one fully titled.
+    let mut two = aragoto(full);
+    two.related.push(Related {
+        role: "sequel".into(),
+        anime: true,
+        subtype: Some("TV".into()),
+        status: Some("finished".into()),
+        episode_count: Some(12),
+        first_episodes: Some(vec![untitled(1), titled(2), titled(3)]),
+    });
+    assert_eq!(appended_extras(&rows, 12, &two), None, "a second sequel");
+}

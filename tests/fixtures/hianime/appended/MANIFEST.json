@@ -29,6 +29,12 @@
     "size": 16949,
     "sha256": "6fa06d47ddc89c3cec6100c28193cce330209081704968d57883dde71dd5ba27"
   },
+  "episode-list-487.json": {
+    "source": "GET https://hianime.at/api/theme/episode/list/487 with X-Requested-With: XMLHttpRequest, through the bundled impersonating transport (curl-impersonate --impersonate chrome136 --compressed), verbatim: That Time I Got Reincarnated as a Slime Season 2 (that-time-i-got-reincarnated-as-a-slime-season-2-487), the pick for Kitsu 42196 — twelve episodes. The first season's TV sequel, whose first rows a test appends to the first season's listing as hianime would list a merged cour.",
+    "captured": "2026-10-17",
+    "size": 12965,
+    "sha256": "bebd9a6fce7c8509fe77859f849a2eaaddcec7bfb4053bacc49df80408c70d00"
+  },
   "episode-list-913.json": {
     "source": "GET https://hianime.at/api/theme/episode/list/913 as above, verbatim: Noragami Aragoto (noragami-aragoto-913), the pick for Kitsu 10800 — thirteen episodes, then two OADs as rows 14 and 15",
     "captured": "2026-10-17",
@@ -53,6 +59,12 @@
     "size": 1668,
     "sha256": "156d4488f66cbc60bcc33f18e9c4b6bd463f1d9468cc10df2bd34afa42ec34d7"
   },
+  "kitsu-anime-48677.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/48677?fields[anime]=<ANIME_FIELDS>, verbatim: Shangri-La Frontier Season 2, finished, 25 episodes",
+    "captured": "2026-10-18",
+    "size": 1525,
+    "sha256": "89e1c04296b4cf08e659c08781bf458b8a9cafe2ba578c7a07599125b98668c5"
+  },
   "kitsu-anime-7881.json": {
     "source": "GET https://kitsu.io/api/edge/anime/7881?fields[anime]=<ANIME_FIELDS>, verbatim, with the proxy client's User-Agent",
     "captured": "2026-10-17",
@@ -71,6 +83,24 @@
     "size": 7218,
     "sha256": "ce13c914860a2f357c5e6ad39a780184ab34f904d4772db630804f242ee7008f"
   },
+  "kitsu-episodes-48677-p2.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/48677/episodes?page[limit]=20&page[offset]=20&fields[episodes]=<EPISODE_FIELDS>&sort=number, verbatim: the page holding the count's last episodes (21–25), which Kitsu has neither titled nor dated",
+    "captured": "2026-10-18",
+    "size": 1931,
+    "sha256": "012fa9745da6bc62202e5f37e64c1a5b0a5949450f605ed0a5afa1c7bf0e4089"
+  },
+  "kitsu-episodes-48677-p3.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/48677/episodes?page[limit]=20&page[offset]=40&fields[episodes]=<EPISODE_FIELDS>&sort=number, verbatim: the page after, empty",
+    "captured": "2026-10-18",
+    "size": 718,
+    "sha256": "6413d94accbfcee3342ffe3ee71a810f3d1f735817bb8c8315b1bb610784556f"
+  },
+  "kitsu-episodes-49778-p1.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/49778/episodes?page[limit]=20&page[offset]=0&fields[episodes]=<EPISODE_FIELDS>&sort=number, verbatim: the first page of the upcoming Shangri-La Frontier 3rd Season — twenty placeholder rows with neither title nor air date, which the parser drops, so the page an announced sequel answers holds no episode",
+    "captured": "2026-10-18",
+    "size": 5608,
+    "sha256": "480fd21a53818d1f05892bdf1b46443af5f691a6cc0e48397c7afa190d2cc789"
+  },
   "kitsu-episodes-7881-p1.json": {
     "source": "GET https://kitsu.io/api/edge/anime/7881/episodes?page[limit]=20&page[offset]=0&fields[episodes]=<EPISODE_FIELDS>&sort=number, verbatim — the page the backend requests",
     "captured": "2026-10-17",
@@ -88,6 +118,12 @@
     "captured": "2026-10-17",
     "size": 2054,
     "sha256": "f3347fbe03afd19721b04645a75451ba62b58b2c0ee1d45be8cccc3b6c165f3a"
+  },
+  "kitsu-relations-48677.json": {
+    "source": "GET https://kitsu.io/api/edge/anime/48677/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent: Shangri-La Frontier Season 2, which Kitsu relates to its upcoming TV sequel (49778, Shangri-La Frontier 3rd Season)",
+    "captured": "2026-10-17",
+    "size": 2852,
+    "sha256": "481b6a74f06081c2023d29f83f392e018eccad92bf9b34972dbe6fa3cb0c2845"
   },
   "kitsu-relations-7881.json": {
     "source": "GET https://kitsu.io/api/edge/anime/7881/media-relationships?include=destination&fields[anime]=subtype,status,episodeCount&fields[manga]=subtype,status&page[limit]=20, verbatim, with the proxy client's User-Agent",

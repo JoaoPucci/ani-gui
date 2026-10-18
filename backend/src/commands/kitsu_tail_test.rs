@@ -537,3 +537,156 @@ async fn a_count_that_ends_a_page_reads_no_page_past_the_look_ahead() {
         .expect("read without a third page");
     assert_eq!(tail.episodes.len(), 20);
 }
+
+/// A sequel's page is read by episode number, holes and all: an episode
+/// Kitsu dated but did not title is there without a title, and one it
+/// listed with neither — a placeholder the parser drops — is not there
+/// at all. Compacting the titles would read episode 2's title as the
+/// first.
+#[tokio::test]
+async fn a_sequel_page_keeps_which_episodes_lack_titles() {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let kitsu = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/anime/7881/episodes"))
+        .and(query_param("page[offset]", "20"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+        .with_priority(1)
+        .mount(&kitsu)
+        .await;
+    for (route, file) in [
+        ("/anime/7881", "kitsu-anime-7881.json"),
+        ("/anime/7881/episodes", "kitsu-episodes-7881-p1.json"),
+        (
+            "/anime/7881/media-relationships",
+            "kitsu-relations-7881.json",
+        ),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(fixture(file)))
+            .mount(&kitsu)
+            .await;
+    }
+    // Aragoto's page as Kitsu gives many a second season: episode 1
+    // dated but untitled, episode 2 titled, episode 3 a placeholder.
+    Mock::given(method("GET"))
+        .and(path("/anime/10800/episodes"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": [
+            {"id": "1", "type": "episodes", "attributes": {"number": 1, "canonicalTitle": null, "airdate": "2015-10-03"}},
+            {"id": "2", "type": "episodes", "attributes": {"number": 2, "canonicalTitle": "One of Her Memories", "airdate": "2015-10-10"}},
+            {"id": "3", "type": "episodes", "attributes": {"number": 3, "canonicalTitle": null, "airdate": null}},
+        ]})))
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    let airing =
+        crate::meta::anilist_airing::parse_airing_response(&fixture("anilist-airing-7881.json"))
+            .expect("airing")
+            .expect("known");
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:7881",
+        &serde_json::to_string(&airing).expect("json"),
+        60,
+    )
+    .expect("airing row");
+    let tail = KitsuTail::for_entry(&state, Some("7881"))
+        .expect("an entry")
+        .tail(12)
+        .await
+        .expect("read");
+    let sequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "sequel")
+        .expect("the sequel");
+    assert_eq!(
+        sequel.first_episodes,
+        Some(vec![
+            SequelEpisode {
+                number: 1,
+                title: None,
+            },
+            SequelEpisode {
+                number: 2,
+                title: Some("One of Her Memories".into()),
+            },
+        ])
+    );
+}
+
+/// Kitsu relates Shangri-La Frontier Season 2 to its upcoming third
+/// season, whose first page is twenty placeholder rows with neither
+/// title nor date. The rule passes an announced sequel over, so its
+/// page is not asked for: asked for, a rate limit or an error on that
+/// request would void a read that needs nothing from it.
+#[tokio::test]
+async fn an_announced_sequel_s_page_is_not_asked_for() {
+    use wiremock::matchers::{method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let announced =
+        crate::meta::kitsu::parse_episodes_response(&fixture("kitsu-episodes-49778-p1.json"))
+            .expect("the announced season's page");
+    assert!(announced.is_empty(), "nothing real on it: {announced:?}");
+    let kitsu = MockServer::start().await;
+    for (route, offset, file) in [
+        ("/anime/48677", None, "kitsu-anime-48677.json"),
+        (
+            "/anime/48677/episodes",
+            Some("20"),
+            "kitsu-episodes-48677-p2.json",
+        ),
+        (
+            "/anime/48677/episodes",
+            Some("40"),
+            "kitsu-episodes-48677-p3.json",
+        ),
+        (
+            "/anime/48677/media-relationships",
+            None,
+            "kitsu-relations-48677.json",
+        ),
+    ] {
+        let mock = Mock::given(method("GET")).and(path(route));
+        let mock = match offset {
+            Some(o) => mock.and(query_param("page[offset]", o)),
+            None => mock,
+        };
+        mock.respond_with(ResponseTemplate::new(200).set_body_bytes(fixture(file)))
+            .mount(&kitsu)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/anime/49778/episodes"))
+        .respond_with(ResponseTemplate::new(503))
+        .expect(0)
+        .mount(&kitsu)
+        .await;
+    let state = state_with_kitsu(&kitsu.uri());
+    crate::cache::meta_cache_put(
+        &state.cache_pool,
+        "airing:v2:48677",
+        &serde_json::to_string(&AiringStatus {
+            aired: Some(25),
+            ..AiringStatus::default()
+        })
+        .expect("json"),
+        60,
+    )
+    .expect("airing row");
+    let tail = KitsuTail::for_entry(&state, Some("48677"))
+        .expect("an entry")
+        .tail(25)
+        .await
+        .expect("read without the announced season's page");
+    assert!(tail.finished && tail.count == Some(25));
+    let sequel = tail
+        .related
+        .iter()
+        .find(|r| r.role == "sequel")
+        .expect("the announced sequel");
+    assert_eq!(sequel.status.as_deref(), Some("upcoming"));
+    assert_eq!(sequel.first_episodes, None);
+}

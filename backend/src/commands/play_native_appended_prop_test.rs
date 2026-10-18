@@ -5,8 +5,9 @@
 //! The cases start from conclusive evidence — a listing of distinct
 //! titles running a few rows past the count, Kitsu and AniList ending
 //! the show at the count, Kitsu's rows named as the listing names
-//! them, an OVA of the right length — and break at most one piece of
-//! it, so both readings are reached in every run.
+//! them, an OVA of the right length, a finished TV sequel whose first
+//! episodes Kitsu titles — and break at most one piece of it, so both
+//! readings are reached in every run.
 
 use super::*;
 use crate::commands::play_native_numbering::{
@@ -50,14 +51,31 @@ fn conclusive(count: u32, past: u32) -> EntryTail {
             })
             .collect(),
         read_past_count: true,
-        related: vec![Related {
-            role: "side_story".into(),
-            anime: true,
-            subtype: Some("OVA".into()),
-            status: Some("finished".into()),
-            episode_count: Some(past),
-            first_episodes: None,
-        }],
+        related: vec![
+            Related {
+                role: "side_story".into(),
+                anime: true,
+                subtype: Some("OVA".into()),
+                status: Some("finished".into()),
+                episode_count: Some(past),
+                first_episodes: None,
+            },
+            Related {
+                role: "sequel".into(),
+                anime: true,
+                subtype: Some("TV".into()),
+                status: Some("finished".into()),
+                episode_count: Some(past + 2),
+                first_episodes: Some(
+                    (1..=past + 2)
+                        .map(|n| SequelEpisode {
+                            number: n,
+                            title: Some(format!("Sequel {n}")),
+                        })
+                        .collect(),
+                ),
+            },
+        ],
         related_complete: true,
     }
 }
@@ -79,6 +97,10 @@ enum Break {
     Tagged(u32),
     OvaLength(u32),
     SequelAiring,
+    SequelUnread,
+    SequelUntitled(u32),
+    SequelMissing(u32),
+    SequelNamed(u32),
     RelationsInPart,
 }
 
@@ -99,6 +121,10 @@ fn a_break(count: u32, past: u32) -> impl Strategy<Value = Break> {
         1 => row.prop_map(Break::Tagged),
         1 => (0u32..12).prop_map(Break::OvaLength),
         1 => Just(Break::SequelAiring),
+        1 => Just(Break::SequelUnread),
+        1 => (1..=past + 2).prop_map(Break::SequelUntitled),
+        1 => (1..=past + 2).prop_map(Break::SequelMissing),
+        1 => (1..=past).prop_map(Break::SequelNamed),
         1 => Just(Break::RelationsInPart),
     ]
 }
@@ -134,15 +160,38 @@ fn broken(count: u32, past: u32, b: &Break) -> (Vec<EpisodeRef>, EntryTail) {
             episode_count: None,
             first_episodes: Some(Vec::new()),
         }),
+        Break::SequelUnread => tail.related[1].first_episodes = None,
+        Break::SequelUntitled(n) => sequel_episode(&mut tail, *n).title = None,
+        Break::SequelMissing(n) => {
+            let page = tail.related[1]
+                .first_episodes
+                .as_mut()
+                .expect("the sequel's page");
+            page.retain(|e| e.number != *n);
+        }
+        Break::SequelNamed(i) => {
+            sequel_episode(&mut tail, *i).title = rows[at(count + i)].title.clone();
+        }
         Break::RelationsInPart => tail.related_complete = false,
     }
     (rows, tail)
 }
 
+/// The sequel's episode `n` in the conclusive evidence.
+fn sequel_episode(tail: &mut EntryTail, n: u32) -> &mut SequelEpisode {
+    tail.related[1]
+        .first_episodes
+        .as_mut()
+        .expect("the sequel's page")
+        .iter_mut()
+        .find(|e| e.number == n)
+        .expect("an episode of the sequel")
+}
+
 /// Whether `b` leaves the evidence conclusive: the breaks that touch
 /// nothing the rule reads — a row before the last three, a row past
-/// the count renamed to another name of its own — or change a value to
-/// what it was.
+/// the count renamed to another name of its own, a sequel episode past
+/// the first few — or change a value to what it was.
 fn still_conclusive(count: u32, past: u32, b: &Break) -> bool {
     let first = count.saturating_sub(ALIGNED - 1).max(1);
     match b {
@@ -153,6 +202,9 @@ fn still_conclusive(count: u32, past: u32, b: &Break) -> bool {
         Break::Renamed(n) => *n < first || *n > count,
         Break::Untitled(n) | Break::Generic(n) => *n < first,
         Break::OvaLength(l) => *l == past,
+        // Only the sequel's first episodes, as many as the rows past
+        // the count, are read.
+        Break::SequelUntitled(n) | Break::SequelMissing(n) => *n > past,
         _ => false,
     }
 }
