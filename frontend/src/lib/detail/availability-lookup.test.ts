@@ -354,4 +354,28 @@ describe("startAvailabilityLookup — the show's versions", () => {
 		expect(failed.versions).toEqual([]);
 		expect(cancelled.versions).toEqual([]);
 	});
+
+	it('reports no versions from an answer unsettled for a named reason, and none from a refusal', async () => {
+		const versions: VersionInfo[] = [
+			{ kind: 'uncensored', show_key: 'a' },
+			{ kind: 'standard', show_key: 'b' }
+		];
+		// A reason other than a refusal establishes nothing: the page
+		// keeps the versions it had, and hears nothing.
+		const unanswered = harness(() =>
+			Promise.resolve(answer({ available: false, unsettled: 'unanswered', versions }))
+		);
+		startAvailabilityLookup(SUBJECT, 'sub', unanswered.deps);
+		// A refusal by name is the verdict that the catalogue lists
+		// nothing named for the show: a refused pool has no pick, so
+		// the page is told the show has no versions.
+		const refused = harness(() =>
+			Promise.resolve(answer({ available: false, unsettled: 'refused' }))
+		);
+		startAvailabilityLookup(SUBJECT, 'dub', refused.deps);
+		await settled();
+		expect(unanswered.versions).toEqual([]);
+		expect(refused.versions).toEqual([[]]);
+		expect(refused.modes).toEqual(['dub']);
+	});
 });
