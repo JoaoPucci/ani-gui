@@ -23,7 +23,7 @@
 	import HeroFramingSwitch from '$lib/hero/HeroFramingSwitch.svelte';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import {
 		altTitlesFromKitsu,
@@ -92,6 +92,7 @@
 	import { accentFor } from '$lib/design/accent';
 	import { clearForShow, getOrFire, makeKey } from '$lib/play/play-cache';
 	import { createShowReleases } from '$lib/play/show-release';
+	import { createNavigationClaims } from '$lib/navigation/claims';
 	import { detailWarmTargets } from '$lib/play/warm-plan';
 	import { buildPlayQuery } from '$lib/play/play-url';
 	import { followPlayed } from '$lib/play/played-episode';
@@ -227,6 +228,16 @@
 		gone = true;
 	});
 	/**
+	 * A navigation the viewer started. The page stays on screen until
+	 * it lands, with the same show and visit, and an action answering
+	 * in that window that went on to play would cancel the navigation
+	 * they asked for with its own `goto`. Actions that end in a play
+	 * claim navigation as they start, and their re-checks carry the
+	 * epoch in their context ($lib/navigation/claims).
+	 */
+	const navigationClaims = createNavigationClaims();
+	beforeNavigate(() => navigationClaims.started());
+	/**
 	 * Write back what the re-ask learned about the show.
 	 *
 	 * The lookup replaces the backend's whole cached row, so the page
@@ -289,7 +300,8 @@
 			// to write back.
 			return capGateAnswerFrom(r);
 		},
-		currentContext: () => (gone ? GONE : `${visit}:${detail?.id ?? ''}:${capGateMode()}`),
+		currentContext: () =>
+			gone ? GONE : `${visit}:${navigationClaims.epoch}:${detail?.id ?? ''}:${capGateMode()}`,
 		onCleared: (episode, _count, refresh) => {
 			applyCapGateRefresh(refresh);
 			// Overlay stays up; startPlay owns it from here.
@@ -349,7 +361,7 @@
 			},
 			isAired: () => !epAirState(n, airing).unaired,
 			beyondPlayable: () => beyondPlayable(n, playableEpisodeCount),
-			currentContext: () => (gone ? GONE : `${visit}:${id ?? ''}`),
+			currentContext: () => (gone ? GONE : `${visit}:${navigationClaims.epoch}:${id ?? ''}`),
 			play: () => onPickEpisode(n),
 			recheckProvider: () => onRecheckEpisode(n),
 			notifyStillUnaired: () =>
@@ -1400,10 +1412,11 @@
 		// The show and visit this play is for, and its request, taken at
 		// the click ($lib/play/owned-play): a late answer is judged
 		// against them, and records the show the viewer clicked.
+		const here = navigationClaims.claim();
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone
+			() => gone || !here()
 		);
 		const show = detail;
 		const playArgs = playArgsFor({
