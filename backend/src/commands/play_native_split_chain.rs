@@ -82,5 +82,6 @@ pub(crate) fn stitched(
     Some(crate::commands::play_native::PickedShow {
         hit: probed[chain[0]].0.clone(),
         episodes: merge_parts(&listings),
+        stitched: true,
     })
 }

@@ -46,6 +46,11 @@ pub struct PickedShow {
     pub hit: BrowseHit,
     /// The show's episodes, as returned by the probe.
     pub episodes: Vec<EpisodeRef>,
+    /// Whether `episodes` is several provider listings stitched into
+    /// one ([`super::play_native_split_chain`]): each part numbered on
+    /// from the one before it, so its rows can be untagged and
+    /// numbered by position like a single listing's.
+    pub stitched: bool,
 }
 
 /// Whether a transport-dead candidate outranks the winner: a

@@ -76,6 +76,7 @@ pub(super) async fn pick_without_count<P: Provider + ?Sized>(
                 return Ok(PickedShow {
                     hit: chosen.clone(),
                     episodes,
+                    stitched: false,
                 });
             }
             Err(e) if e.is_provider_block() || matches!(e, crate::error::AniError::GateRefused) => {

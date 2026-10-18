@@ -1253,6 +1253,7 @@ fn one_episode_show() -> crate::commands::play_native::PickedShow {
             number2: None,
             title: None,
         }],
+        stitched: false,
     }
 }
 

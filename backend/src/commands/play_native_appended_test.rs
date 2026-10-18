@@ -726,6 +726,7 @@ fn picked(rows: Vec<EpisodeRef>) -> PickedShow {
             jname: None,
         },
         episodes: rows,
+        stitched: false,
     }
 }
 

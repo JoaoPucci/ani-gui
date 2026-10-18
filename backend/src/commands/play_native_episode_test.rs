@@ -30,6 +30,7 @@ fn show(episodes: Vec<EpisodeRef>) -> PickedShow {
             jname: None,
         },
         episodes,
+        stitched: false,
     }
 }
 
