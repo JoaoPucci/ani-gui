@@ -284,8 +284,8 @@ fn recording_tool(bin: &std::path::Path, log: &std::path::Path) {
     std::fs::write(
         &p,
         format!(
-            "#!/bin/sh\necho \"$*\" >> '{}'\nprev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then printf 'video' > \"$a\"; fi; prev=\"$a\"; done\nexit 0\n",
-            log.display()
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> {}\nprev=\"\"\nfor a in \"$@\"; do if [ \"$prev\" = \"-o\" ]; then printf 'video' > \"$a\"; fi; prev=\"$a\"; done\nexit 0\n",
+            crate::stub_file::sh_quote(log)
         ),
     )
     .expect("write tool");

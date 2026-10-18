@@ -698,8 +698,8 @@ async fn a_cached_external_play_of_one_recap_after_another_reads_back_as_the_one
     std::fs::write(
         &state.config_path,
         format!(
-            "external_player = \"{}\"\ncache_resolutions = true\n",
-            player.display()
+            "external_player = {}\ncache_resolutions = true\n",
+            crate::stub_file::toml_quote(&player)
         ),
     )
     .expect("write config");

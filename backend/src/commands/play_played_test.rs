@@ -522,7 +522,10 @@ async fn a_handoff_whose_player_started_puts_the_pair_its_row_reads_through() {
     std::fs::set_permissions(&player, perms).expect("chmod");
     std::fs::write(
         &state.config_path,
-        format!("external_player = \"{}\"\n", player.display()),
+        format!(
+            "external_player = {}\n",
+            crate::stub_file::toml_quote(&player)
+        ),
     )
     .expect("config");
     crate::commands::play_external_command::play_external(&state, &cumulative_ask("0.5"))

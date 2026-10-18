@@ -7485,8 +7485,8 @@ async fn download_stitched(episode: &str, dest: &std::path::Path, ran: &std::pat
         bin.path(),
         "yt-dlp",
         &format!(
-            "echo ran >> '{ran}'\n{writer}\nexit 0",
-            ran = ran.display(),
+            "echo ran >> {ran}\n{writer}\nexit 0",
+            ran = crate::stub_file::sh_quote(ran),
             writer = writes_its_output("video")
         ),
     );
