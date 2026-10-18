@@ -613,4 +613,40 @@ describe('play route — a failed switch away from a failed stream', () => {
 		expect(reload()).not.toBeNull();
 		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
 	});
+
+	it('a Reload whose fresh resolve fails puts the error and Reload back', async () => {
+		useShowHandlers(() => new HttpResponse(null, { status: 204 }));
+		server.use(
+			http.post(`${API_BASE}/api/availability/batch`, () =>
+				HttpResponse.json({ cached: {}, playable_episode_counts: {} })
+			)
+		);
+		setUrl(`/play/${KITSU_ID}`, { session: 'session-1', episode: '1', kind: 'mp4' });
+		app = mount(PlayPage, { target });
+		await until(() => playerVideoInSlot(), 'the video in its slot');
+		await until(() => (target.textContent ?? '').includes(TITLE), 'the show detail');
+
+		const video = playerVideo();
+		Object.defineProperty(video, 'error', { value: { code: 3 }, configurable: true });
+		video.dispatchEvent(new Event('error'));
+		const reload = () =>
+			target.querySelector('button.player-error-reload') as HTMLButtonElement | null;
+		await until(() => reload() !== null, 'the Reload button');
+		const shown = target.querySelector('.player-error-detail')?.textContent;
+		reload()!.click();
+
+		const fresh = () =>
+			FakeEventSource.instances.find(
+				(i) => i.url.includes('episode=1') && !i.url.includes('prefetch=1')
+			);
+		await until(() => fresh() !== undefined, "the Reload's fresh resolve");
+		fresh()!.dispatch(
+			'error',
+			JSON.stringify({ kind: 'episode_unavailable', key: 'error.play.episode_unavailable' })
+		);
+		await new Promise((r) => setTimeout(r, 200));
+
+		expect(reload()).not.toBeNull();
+		expect(target.querySelector('.player-error-detail')?.textContent).toBe(shown);
+	});
 });
