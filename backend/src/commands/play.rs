@@ -389,7 +389,7 @@ where
     };
     // Only a play that records its watch moves the display stamp, and
     // prefetches stay out of the user's history. Both put the numbering
-    // right before anything is cached: a probe that takes the fresh
+    // right before the rows this play caches: a probe that takes the fresh
     // availability row fetches no listing to repair it from.
     if args.prefetch {
         crate::commands::play_native_record::stamp_numbering(state, &native, asked);
