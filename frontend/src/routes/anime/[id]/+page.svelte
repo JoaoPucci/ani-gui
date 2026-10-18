@@ -169,7 +169,8 @@
 	 * It BLOCKS, like every other long action here. `actionBusy`
 	 * raises the same overlay a play click does, so there is no window
 	 * in which a second tile can be clicked. The route can still change
-	 * under it — Back, or a link outside the overlay — and the context
+	 * under it — Back, or a link reached from the keyboard, which the
+	 * overlay does not hold — and the context
 	 * the answer is checked against says so: another show, a page left,
 	 * or a navigation started (`navigationClaims`). A cleared count
 	 * falls straight through into startPlay, which holds the overlay
@@ -238,13 +239,13 @@
 	 * epoch in their context ($lib/navigation/claims).
 	 *
 	 * Every navigation counts, the page's own included: `beforeNavigate`
-	 * reports them all. The page starts none while one of these
-	 * actions is out — the overlay holds it — except the episode
-	 * pager's, which a keyboard can still reach under the overlay, and
-	 * a link to the URL already on screen. Either ends the pending
-	 * action quietly, and a re-check superseded this way drops what it
-	 * learned about the show, as one superseded by a move to another
-	 * show does.
+	 * reports them all. The page's own, besides a play's, is the
+	 * episode pager's, which the overlay covers from the pointer but
+	 * not from the keyboard. A navigation that keeps this page as it
+	 * is, such as a link followed to the URL already on screen, counts
+	 * too. Either ends the pending action quietly, and a re-check
+	 * superseded this way drops what it learned about the show, as one
+	 * superseded by a move to another show does.
 	 */
 	const navigationClaims = createNavigationClaims();
 	beforeNavigate(() => navigationClaims.started());
