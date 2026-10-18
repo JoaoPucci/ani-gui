@@ -479,13 +479,17 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     // tool lets the chain succeed; the two together do not. ffmpeg
     // marks a finished run, so a chain that ran to its end and only
     // then reported the timeout leaves the mark behind.
+    // It marks its start as well: a chain that timed out before the
+    // fallback began says nothing about the fallback's deadline.
+    let started = dest.path().join("ffmpeg-started");
     let finished = dest.path().join("ffmpeg-finished");
     stage_tool(bin.path(), "yt-dlp", "sleep 1; exit 1");
     stage_tool(
         bin.path(),
         "ffmpeg",
         &format!(
-            "sleep 1; touch '{finished}'; exit 0",
+            "touch '{started}'; sleep 1; touch '{finished}'; exit 0",
+            started = started.display(),
             finished = finished.display()
         ),
     );
@@ -508,6 +512,10 @@ async fn the_ffmpeg_fallback_shares_the_transfer_deadline() {
     )
     .await
     .expect("the chain returned");
+    assert!(
+        started.exists(),
+        "the fallback ran: a chain cut off before it proves nothing about its deadline: {got:?}"
+    );
     assert!(
         matches!(got, Err(AniError::Timeout)),
         "the fallback runs against what is left of the deadline: {got:?}"
