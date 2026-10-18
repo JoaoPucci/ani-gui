@@ -421,6 +421,23 @@ describe('armQuality — trouble', () => {
 });
 
 describe('armQuality — recovery and what plays', () => {
+	it('only a segment of the level held is evidence that it is healthy', () => {
+		// The step down takes effect from the next request; a segment of
+		// the level left, in flight at the time, lands after it and says
+		// nothing about the level now held.
+		const s = arm();
+		s.parse();
+		s.at(10_000);
+		s.engine.emit(E.ERROR, { details: D.BUFFER_STALLED_ERROR, fatal: false });
+		expect(s.engine.loads).toEqual([2, 1]);
+		s.video.ahead = HEALTHY_BUFFER_S + 1;
+		s.at(10_000 + HEALTHY_WINDOWS_MS[0]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 2 } });
+		expect(s.engine.loads).toEqual([2, 1]);
+		s.engine.emit(E.FRAG_BUFFERED, { frag: { type: 'main', level: 1 } });
+		expect(s.engine.loads).toEqual([2, 1, 2]);
+	});
+
 	it('steps back up after a healthy window with buffer in hand', () => {
 		const s = arm();
 		s.parse();
