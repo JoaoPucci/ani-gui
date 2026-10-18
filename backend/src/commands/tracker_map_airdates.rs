@@ -9,35 +9,7 @@ use super::*;
 
 /// The episodes a page of Kitsu's episode list holds, as the detail
 /// page reads it.
-const KITSU_EPISODES_PAGE: u32 = 20;
-
-/// The Kitsu episode numbers that open and close each segment of the
-/// chain `entry_total` then `chain`, when those counts sum exactly to
-/// `kitsu_count`; empty otherwise, since no chain rule reads them then.
-pub(super) fn segment_bounds(
-    kitsu_count: u32,
-    entry_total: u32,
-    chain: &[TrackerShow],
-) -> BTreeSet<u32> {
-    let mut bounds = BTreeSet::from([1, entry_total]);
-    let mut covered = entry_total;
-    for hop in chain {
-        if covered >= kitsu_count {
-            break;
-        }
-        let Some(count) = hop.episodes.filter(|n| *n > 0) else {
-            return BTreeSet::new();
-        };
-        bounds.insert(covered + 1);
-        covered += count;
-        bounds.insert(covered);
-    }
-    if covered == kitsu_count && bounds.len() > 2 {
-        bounds
-    } else {
-        BTreeSet::new()
-    }
-}
+const KITSU_EPISODES_PAGE: u32 = crate::commands::kitsu::EPISODES_PAGE_LIMIT as u32;
 
 /// The air dates Kitsu's episode list gives `numbers`, read from the
 /// pages that hold them — through the episode pages' cache.

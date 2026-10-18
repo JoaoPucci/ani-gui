@@ -57,6 +57,9 @@ class CaseTable(unittest.TestCase):
         self.assertEqual(predict(ev)["shape"], "chain")
         ev["kitsu_airdates"] = {"53": "2005-09-10"}
         self.assertEqual(predict(ev)["why"], "unexplained")
+        # Wholly past Kitsu's end, the start needs its date too.
+        ev["kitsu_airdates"] = {"78": "2006-05-06"}
+        self.assertEqual(predict(ev)["why"], "unexplained")
 
     def test_a_run_two_days_past_kitsu_s_is_inside_and_three_is_not(self):
         def ev(end):
@@ -164,7 +167,8 @@ class Generation(unittest.TestCase):
         for f in ("chain", "shared", "split", "extras", "conflict", "plain", "recorded", "agreeing", "borrowed"):
             self.assertIn(f, families)
         full = {c["family"] for c in cases}
-        for f in ("chain-dated-both", "chain-dated-start_only", "chain-slack-1", "chain-slack-3"):
+        for f in ("chain-dated-both", "chain-dated-start_only", "chain-slack-1", "chain-slack-3",
+                  "chain-early-dated-both", "chain-start-slack-2", "chain-middle-dated"):
             self.assertIn(f, full)
         shapes = {c["expect"]["map"]["shape"] for c in cases}
         self.assertEqual(shapes, {"identity", "chain", "shared_entry", "split_parts", "extras"})

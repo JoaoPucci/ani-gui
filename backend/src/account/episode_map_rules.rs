@@ -23,11 +23,20 @@ use extras_rule::listed_number;
 use extras_rule::{extras, first_part_extras};
 use parts_rule::{shared_entry, split_parts};
 
-/// The Kitsu episodes whose air dates could place an exact chain the
-/// dates alone cannot (none yet).
+/// The Kitsu episodes whose own air dates could place an exact,
+/// unclaimed chain the dates alone leave outside Kitsu's run — what the
+/// gatherer reads Kitsu's episode list for; none for any other evidence.
 #[must_use]
-pub fn chain_dates_needed(_evidence: &Evidence) -> std::collections::BTreeSet<u32> {
-    std::collections::BTreeSet::new()
+pub fn chain_dates_needed(evidence: &Evidence) -> std::collections::BTreeSet<u32> {
+    match (
+        evidence.kitsu.episodes.filter(|n| *n > 0),
+        evidence.entry.episodes.filter(|n| *n > 0),
+    ) {
+        (Some(count), Some(total)) if total < count => {
+            chain_rule::chain_dates_needed(evidence, count, total)
+        }
+        _ => std::collections::BTreeSet::new(),
+    }
 }
 
 /// The map for `evidence`.

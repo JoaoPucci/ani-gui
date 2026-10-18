@@ -2,7 +2,9 @@
 //! entries. Split from [`super`] so each file stays inside the CRAP
 //! gate's per-file bar.
 
-use super::dates::inside_kitsu_run;
+use std::collections::BTreeSet;
+
+use super::dates::{inside_kitsu_run, unplaced_bounds};
 use crate::account::episode_map::{Evidence, Segment, TrackerShow};
 
 /// A segment filing Kitsu's `from..=to` under the whole of `show`.
@@ -28,6 +30,22 @@ pub(super) fn chain(
     kitsu_count: u32,
     tracker_total: u32,
 ) -> Option<Vec<Segment>> {
+    let (segments, shows) = exact_chain(evidence, kitsu_count, tracker_total)?;
+    shows
+        .iter()
+        .zip(&segments)
+        .all(|(show, segment)| inside_kitsu_run(evidence, show, segment))
+        .then_some(segments)
+}
+
+/// The chain's segments with the entry each files, when the counts sum
+/// exactly to Kitsu's over at least one hop and no segment past the
+/// first is a Kitsu entry's own — the chain rule short of its dates.
+fn exact_chain(
+    evidence: &Evidence,
+    kitsu_count: u32,
+    tracker_total: u32,
+) -> Option<(Vec<Segment>, Vec<&TrackerShow>)> {
     let mut segments = vec![whole_entry(
         &evidence.entry,
         tracker_total,
@@ -54,9 +72,26 @@ pub(super) fn chain(
     {
         return None;
     }
-    shows
-        .iter()
-        .zip(&segments)
-        .all(|(show, segment)| inside_kitsu_run(evidence, show, segment))
-        .then_some(segments)
+    Some((segments, shows))
+}
+
+/// The Kitsu episodes whose own air dates could place an exact,
+/// unclaimed chain whose every date is known but which the dates alone
+/// leave outside Kitsu's run; none otherwise.
+pub(super) fn chain_dates_needed(
+    evidence: &Evidence,
+    kitsu_count: u32,
+    tracker_total: u32,
+) -> BTreeSet<u32> {
+    let Some((segments, shows)) = exact_chain(evidence, kitsu_count, tracker_total) else {
+        return BTreeSet::new();
+    };
+    let mut needed = BTreeSet::new();
+    for (show, segment) in shows.iter().zip(&segments) {
+        let Some(unplaced) = unplaced_bounds(evidence, show, segment) else {
+            return BTreeSet::new();
+        };
+        needed.extend(unplaced.iter().map(|(n, _)| *n));
+    }
+    needed
 }
