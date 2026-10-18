@@ -7392,3 +7392,242 @@ async fn a_tool_that_cannot_be_started_is_the_tool_failing_not_the_network() {
         "a spawn failure must be the tool failing with its own key, got {got:?}"
     );
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_of_a_stitched_show_puts_its_former_tag_stamp_right() {
+    // A history row from before stamped the stitched recap's slot 2
+    // "2.5". A download of any episode pays for the listing, where
+    // slot 2 is "1.5", and puts the stamp right as a play would.
+    use crate::commands::play_native_test_provider::{stitched_recap, STITCHED, STITCHED_SLUG};
+    let server = std::sync::Arc::new(stitched_recap());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::scraper::provider::Provider::id(server.as_ref()),
+        STITCHED_SLUG,
+    )
+    .to_string();
+    crate::commands::numbering_offset::put_display(&state, &key, 0, 2, "2.5");
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": STITCHED,
+        "episode": "5",
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    assert_eq!(
+        crate::commands::numbering_offset::display_stamp(&state, &key),
+        Some((2, "1.5".to_string()))
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_of_a_stitched_show_puts_its_former_tag_stamp_right() {
+    use crate::commands::play_native_test_provider::{stitched_recap, STITCHED, STITCHED_SLUG};
+    let server = std::sync::Arc::new(stitched_recap());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::scraper::provider::Provider::id(server.as_ref()),
+        STITCHED_SLUG,
+    )
+    .to_string();
+    crate::commands::numbering_offset::put_display(&state, &key, 0, 2, "2.5");
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": STITCHED,
+        "episode": "4-5",
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    assert_eq!(
+        crate::commands::numbering_offset::display_stamp(&state, &key),
+        Some((2, "1.5".to_string()))
+    );
+}
+
+#[cfg(unix)]
+async fn download_stitched(episode: &str, dest: &std::path::Path, ran: &std::path::Path) {
+    use crate::commands::play_native_test_provider::{stitched_recap, STITCHED};
+    let server = std::sync::Arc::new(stitched_recap());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let bin = tempfile::tempdir().expect("bin");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!(
+            "echo ran >> '{ran}'\n{writer}\nexit 0",
+            ran = ran.display(),
+            writer = writes_its_output("video")
+        ),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": STITCHED,
+        "episode": episode,
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+        "download_dir": dest.to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_recap_downloaded_under_the_number_an_earlier_version_gave_it_is_that_episode() {
+    // The stitched recap is "1.5" now; an earlier version called it
+    // "2.5", and its download is in the folder under that name. A
+    // download of "1.5" finds it there rather than fetching a copy.
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    let earlier = dest.path().join("Stitched Show Episode 2.5.mp4");
+    std::fs::write(&earlier, b"already here").expect("stage the episode");
+    download_stitched("1.5", dest.path(), &ran).await;
+    assert!(!ran.exists(), "no tool runs for an episode in the folder");
+    assert!(!dest.path().join("Stitched Show Episode 1.5.mp4").exists());
+    assert_eq!(
+        std::fs::read_to_string(&earlier).ok().as_deref(),
+        Some("already here")
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_asked_for_by_a_former_number_is_named_for_the_episode_it_is() {
+    // Asked for "2.5" — a history row from before — the download is
+    // the recap, and is named for it as it is numbered now.
+    let dest = tempfile::tempdir().expect("dest");
+    let ran = dest.path().join("ran");
+    download_stitched("2.5", dest.path(), &ran).await;
+    assert!(dest.path().join("Stitched Show Episode 1.5.mp4").exists());
+    assert!(!dest.path().join("Stitched Show Episode 2.5.mp4").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_under_a_former_number_another_row_carries_now_is_not_the_episode() {
+    // The opening recap was "2.5" before; "Episode 2.5" in the folder
+    // may be the recap the listing tags "2.5" now, so a download of
+    // "1.5" fetches its own.
+    use crate::commands::play_native_test_provider::{stitched_shared_former, STITCHED};
+    let server = std::sync::Arc::new(stitched_shared_former());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let dest = tempfile::tempdir().expect("dest");
+    let other = dest.path().join("Stitched Show Episode 2.5.mp4");
+    std::fs::write(&other, b"the other recap").expect("stage");
+    let bin = tempfile::tempdir().expect("bin");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": STITCHED,
+        "episode": "1.5",
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    assert!(dest.path().join("Stitched Show Episode 1.5.mp4").exists());
+}
+
+/// A download whose numbering repair stands behind the availability
+/// row it caches: a probe that takes the fresh row fetches no listing,
+/// so a stamp still naming a former tag would stay as it is.
+#[cfg(unix)]
+async fn a_download_caches_availability_behind_its_repair(episode: &str) {
+    use crate::commands::play_native_test_provider::{
+        assert_rows_landed_after_the_repair, stamps_as_rows_land, stitched_recap, STITCHED,
+        STITCHED_SLUG,
+    };
+    let server = std::sync::Arc::new(stitched_recap());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let key = crate::scraper::provider::ShowKey::new(
+        crate::scraper::provider::Provider::id(server.as_ref()),
+        STITCHED_SLUG,
+    )
+    .to_string();
+    crate::commands::numbering_offset::put_display(&state, &key, 0, 2, "2.5");
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": STITCHED,
+        "episode": episode,
+        "mode": "sub",
+        "episode_count": 12,
+        "year": 2026,
+        "subtype": "ONA",
+        "kitsu_id": "77",
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    let (_observing, seen) = stamps_as_rows_land(&state, &key, &["availability:"]);
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    let after = crate::commands::numbering_offset::display_stamp(&state, &key);
+    assert_eq!(
+        after,
+        Some((2, "1.5".to_string())),
+        "the download repaired the stamp"
+    );
+    assert_rows_landed_after_the_repair(&seen, &["availability:"], &after);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_puts_the_numbering_right_before_it_caches_availability() {
+    a_download_caches_availability_behind_its_repair("5").await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_range_download_puts_the_numbering_right_before_it_caches_availability() {
+    a_download_caches_availability_behind_its_repair("4-5").await;
+}

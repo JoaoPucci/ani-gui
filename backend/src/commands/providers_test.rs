@@ -51,6 +51,9 @@ enum Behavior {
     /// The show found, the episode not: the provider's own verdict
     /// on the episode.
     MissEpisode,
+    /// The answered dead end of a walk whose every pool was refused
+    /// on how its hits are named.
+    Refused,
     Stall,
 }
 
@@ -106,16 +109,25 @@ impl Attempt for Scripted {
                 error: make(),
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             }),
             Behavior::Miss { clean } => Err(NativeError {
                 error: AniError::NoResults,
                 clean_miss: clean,
                 failed_at: None,
+                refused_by_name: false,
+            }),
+            Behavior::Refused => Err(NativeError {
+                error: AniError::NoResults,
+                clean_miss: false,
+                failed_at: None,
+                refused_by_name: true,
             }),
             Behavior::MissEpisode => Err(NativeError {
                 error: AniError::EpisodeUnavailable,
                 clean_miss: false,
                 failed_at: None,
+                refused_by_name: false,
             }),
             Behavior::Stall => std::future::pending().await,
         }
@@ -551,6 +563,8 @@ async fn resolve_unreachable(state: &AppState) -> NativeError {
             expected_count: None,
             year: None,
             subtype: None,
+            stamps_beside: None,
+            tail: None,
         },
         on_progress: &mut |_| {},
         answered_by: None,
@@ -603,6 +617,8 @@ async fn a_shipped_clients_requests_are_admitted_through_its_providers_gate() {
                     expected_count: None,
                     year: None,
                     subtype: None,
+                    stamps_beside: None,
+                    tail: None,
                 },
                 on_progress: &mut |_| {},
                 answered_by: None,
@@ -722,6 +738,7 @@ impl Attempt for Recording {
             error: AniError::Network,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         })
     }
 
@@ -964,7 +981,7 @@ mod surfaced_miss_props {
             clean_miss in any::<bool>(),
             error in error(),
         ) {
-            let miss = NativeError { error, clean_miss, failed_at: None };
+            let miss = NativeError { error, clean_miss, failed_at: None, refused_by_name: false };
             prop_assert_eq!(
                 miss_past_affinity(remembered_undenied, &miss),
                 clean_miss && remembered_undenied
@@ -985,7 +1002,7 @@ mod surfaced_miss_props {
                         tokio::time::Instant::now() + std::time::Duration::from_millis(ms)
                     });
                     let before = format!("{error:?}");
-                    let got = unavailability(Some(NativeError { error, clean_miss, failed_at }));
+                    let got = unavailability(Some(NativeError { error, clean_miss, failed_at, refused_by_name: false }));
                     prop_assert_eq!(format!("{:?}", got.error), before);
                     prop_assert_eq!(got.clean_miss, clean_miss);
                     prop_assert_eq!(got.failed_at, failed_at);
@@ -1070,6 +1087,7 @@ mod negative_rank_props {
                     error: self.error(),
                     clean_miss: self.clean_miss && !self.is_episode_verdict(),
                     failed_at: None,
+                    refused_by_name: false,
                 },
                 self.by,
             )
@@ -1255,6 +1273,7 @@ mod episode_verdict_rank_props {
                     },
                     clean_miss: self.clean_miss,
                     failed_at: None,
+                    refused_by_name: false,
                 },
                 Some(ProviderId::TestB),
             )
@@ -2877,6 +2896,7 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
             error: AniError::EpisodeUnavailable,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         },
         Some(ProviderId::TestA),
     );
@@ -2885,6 +2905,7 @@ fn an_episode_verdict_outranks_a_later_answered_title_dead_end() {
             error: AniError::NoResults,
             clean_miss: false,
             failed_at: None,
+            refused_by_name: false,
         },
         Some(ProviderId::TestB),
     );
@@ -3018,4 +3039,83 @@ async fn the_walk_clears_the_deadline_before_handing_the_client_back() {
         Some(None),
         "the client is handed back with no deadline: {told:?}"
     );
+}
+
+/// A refusal by name says the catalogue lists nothing named for the
+/// show — which only holds when no provider might list it. Past a
+/// remembered provider that has not denied the show, the refusal is
+/// not the verdict: that provider proved the show, and the walk's miss
+/// says nothing about it.
+#[tokio::test]
+async fn a_refusal_past_an_undenied_remembered_provider_is_no_refusal_by_name() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (
+            ProviderId::TestB,
+            Behavior::Unreachable(|| AniError::Network),
+        ),
+        (ProviderId::TestA, Behavior::Refused),
+    ]);
+    let ne = run_with(
+        &gates,
+        &ORDER,
+        Some(ProviderId::TestB),
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("no provider answered with the show");
+    assert!(
+        !ne.refused_by_name,
+        "{:?} clean={}",
+        ne.error, ne.clean_miss
+    );
+}
+
+/// Two providers' misses stand against each other where the walk sets
+/// a remembered provider's miss aside and asks the rest: a refusal by
+/// one beside the other's dead end on dead listings is no refusal by
+/// name, since the dead listing may have been the show's — whichever
+/// of the two answered which.
+#[tokio::test]
+async fn a_refusal_beside_another_providers_dead_end_is_no_refusal_by_name() {
+    for (remembered, rest) in [
+        (Behavior::Refused, Behavior::Miss { clean: false }),
+        (Behavior::Miss { clean: false }, Behavior::Refused),
+    ] {
+        let gates = Gates::new();
+        let mut attempt =
+            Scripted::new(&[(ProviderId::TestB, remembered), (ProviderId::TestA, rest)]);
+        let ne = run_with(
+            &gates,
+            &ORDER,
+            Some(ProviderId::TestB),
+            ScrapePriority::Interactive,
+            &mut attempt,
+        )
+        .await
+        .expect_err("both missed");
+        assert_eq!(attempt.asked().len(), 2, "both were asked");
+        assert!(!ne.refused_by_name, "{:?}", attempt.asked());
+    }
+}
+
+/// Every provider asked refusing by name is the refusal by name.
+#[tokio::test]
+async fn refusals_by_every_provider_asked_are_a_refusal_by_name() {
+    let gates = Gates::new();
+    let mut attempt = Scripted::new(&[
+        (ProviderId::TestA, Behavior::Refused),
+        (ProviderId::TestB, Behavior::Refused),
+    ]);
+    let ne = run_with(
+        &gates,
+        &ORDER,
+        None,
+        ScrapePriority::Interactive,
+        &mut attempt,
+    )
+    .await
+    .expect_err("refused");
+    assert!(ne.refused_by_name);
 }

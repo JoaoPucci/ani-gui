@@ -96,6 +96,7 @@ pub fn build_api_router(state: Arc<AppState>) -> Router {
         .route("/api/proxy-base-url", get(get_proxy_base_url))
         .route("/api/history", get(get_history).delete(delete_history))
         .route("/api/history/by-kitsu/:kitsu_id", get(get_history_by_kitsu))
+        .route("/api/history/:id/number", get(get_history_number))
         .route("/api/history/:id", delete(delete_history_entry))
         .route("/api/external-player", post(post_external_player))
         .route("/api/sessions", post(post_session))
@@ -200,6 +201,17 @@ async fn get_history_by_kitsu(
 ) -> Result<Json<Option<HistoryEntry>>, AniError> {
     let kitsu_id = crate::kitsu_id::require(&kitsu_id)?;
     Ok(Json(h_inner::history_by_kitsu(&state, kitsu_id)?))
+}
+
+/// The episode one history row reads as now — `null` when no row is
+/// the show's ([`crate::commands::history_number`]).
+async fn get_history_number(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<Option<crate::commands::history_number::HistoryNumber>>, AniError> {
+    Ok(Json(crate::commands::history_number::history_number(
+        &state, &id,
+    )?))
 }
 
 async fn post_external_player(
@@ -1614,6 +1626,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1660,6 +1674,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         let router = build_api_router(Arc::new(state));
@@ -1725,6 +1741,8 @@ mod tests {
                 resolved_slot: Some(5),
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         // A later resolve moved the display stamp to its own row.
@@ -1778,6 +1796,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         // The stamp names display 4 as slot 5.
@@ -1835,6 +1855,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -1890,6 +1912,8 @@ mod tests {
                     resolved_slot: Some(1),
                     subtitles: Vec::new(),
                     kitsu_id: None,
+                    played: None,
+                    former_episode: None,
                 },
             );
         }
@@ -1973,6 +1997,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         // Pre-cache the kitsu detail for Part 1 so the guard reads
@@ -2075,6 +2101,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         // Kitsu slug carries -part-2 → cour_from_slug=Some(2).
@@ -2166,6 +2194,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         // Kitsu detail has no slug → cour_from_slug=None.
@@ -2268,6 +2298,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
 
@@ -2376,6 +2408,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2429,6 +2463,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -2558,6 +2594,8 @@ mod tests {
                 resolved_slot: None,
                 subtitles: Vec::new(),
                 kitsu_id: None,
+                played: None,
+                former_episode: None,
             },
         );
         let pool = state.cache_pool.clone();
@@ -3094,11 +3132,14 @@ mod tests {
     }
 
     /// A probe that reaches the provider and comes back without a
-    /// verdict — here an entry with a count and no year whose only
+    /// settled verdict — here an entry with a count and no year whose only
     /// fitting hit is refused on how it is named — answers 200 with
-    /// `unsettled: true`, not 404. The renderer reads it as unknown and
-    /// keeps the card and the lazy play; an error status went to its
-    /// console as a failure of a request that in fact succeeded.
+    /// `unsettled: "refused"`, not 404: a normal answer naming why it
+    /// settled nothing, where an error status went to the renderer's
+    /// console as a failure of a request that in fact succeeded. The
+    /// renderer reads a refusal by name as the show not being in the
+    /// catalogue (`$lib/availability/verdict`); every other reason as
+    /// unknown.
     #[tokio::test]
     async fn post_availability_answers_an_unsettled_probe_as_a_normal_answer() {
         use crate::scraper::provider::{BrowseHit, EpisodeRef};
@@ -3110,6 +3151,8 @@ mod tests {
                 id: 7000 + u64::from(n),
                 number: n,
                 number2: None,
+                former_tag: None,
+                title: None,
             })
             .collect();
         state.providers.set_stub(Arc::new(
@@ -3144,7 +3187,7 @@ mod tests {
         );
         let body: serde_json::Value =
             serde_json::from_str(&body_string(r).await).expect("a JSON answer");
-        assert_eq!(body["unsettled"], serde_json::Value::Bool(true));
+        assert_eq!(body["unsettled"], "refused", "the answer says why");
         assert_eq!(body["available"], serde_json::Value::Bool(false));
         assert!(body["episode_count"].is_null(), "{body}");
     }

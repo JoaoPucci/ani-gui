@@ -85,6 +85,7 @@
 	"episode_now_playing": "Сейчас идёт",
 	"episode_card_num": "ЭП {episode}",
 	"episode_card_title_fallback": "Эпизод {num}",
+	"episode_card_extra_title_fallback": "Доп. эпизод {num}",
 	"episode_card_length_minutes": "{minutes} мин",
 	"episodes_error_message": "Не удалось загрузить эпизоды. {reason}",
 	"episodes_loading_message": "Загрузка эпизодов…",

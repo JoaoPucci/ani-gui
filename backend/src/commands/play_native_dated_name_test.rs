@@ -147,7 +147,7 @@ proptest! {
         let hits = hits(&rows);
         let names = page_names(&rows);
         let listing = |n: u32| -> Vec<EpisodeRef> {
-            (1..=n).map(|k| EpisodeRef { id: u64::from(k), number: k, number2: None }).collect()
+            (1..=n).map(|k| EpisodeRef { id: u64::from(k), number: k, number2: None, former_tag: None, title: None }).collect()
         };
         let mut probed: Vec<_> = hits
             .iter()
@@ -307,16 +307,32 @@ fn a_name_of_no_words_vouches_for_nothing() {
     ));
 }
 
-/// A candidate the rule rules out cannot win; one it does not read, or
-/// one a name vouches for, can.
+/// A candidate the name rules rule out cannot win; one a name vouches
+/// for, or one no name rule reads, can.
 #[test]
-fn only_a_dated_counted_entry_s_unnamed_candidate_cannot_win() {
+fn only_a_candidate_a_name_rule_rules_out_cannot_win() {
     let entry = EntryTitles::new(&ENTRY);
     let other = hit("other-1", "Other", None);
     let named = hit("shou-2", "Other", Some("Shou Arc"));
     let none = PageNames::new();
-    assert!(!may_win(&other, 12, NEEDLE, entry, Some(2020), &none));
-    assert!(may_win(&named, 12, NEEDLE, entry, Some(2020), &none));
-    assert!(may_win(&other, 12, NEEDLE, entry, None, &none));
-    assert!(may_win(&other, 1, NEEDLE, entry, Some(2020), &none));
+    // Dated with a count: the dated-name rule.
+    assert!(!may_win(&other, 12, NEEDLE, entry, Some(2020), &none, true));
+    assert!(may_win(&named, 12, NEEDLE, entry, Some(2020), &none, false));
+    // A count and no year: the count-alone rule, which reads the title.
+    assert!(!may_win(&other, 12, NEEDLE, entry, None, &none, false));
+    assert!(may_win(
+        &hit("s", "Shou Arc", None),
+        12,
+        NEEDLE,
+        entry,
+        None,
+        &none,
+        false
+    ));
+    // One video long: the single-video rule, which a matched year
+    // satisfies too.
+    assert!(!may_win(&other, 1, NEEDLE, entry, Some(2020), &none, false));
+    assert!(may_win(&other, 1, NEEDLE, entry, Some(2020), &none, true));
+    // A count of zero: no name rule reads it.
+    assert!(may_win(&other, 0, NEEDLE, entry, None, &none, false));
 }

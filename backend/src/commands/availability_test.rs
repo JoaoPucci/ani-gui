@@ -31,6 +31,8 @@ fn numbered(ids: &[u64]) -> Vec<EpisodeRef> {
             id: *id,
             number,
             number2: None,
+            former_tag: None,
+            title: None,
         })
         .collect()
 }
@@ -84,16 +86,20 @@ fn asked_the_mode(provider: &TableProvider) -> bool {
 }
 
 /// Whether a probe answered without a verdict: a normal answer whose
-/// wire shape says `unsettled`, saying the show is not available and
-/// meaning nothing by it. Read as the renderer reads it — from the
-/// serialized answer — since that shape is what the route sends.
+/// wire shape says `unsettled` — with the reason it settled nothing —
+/// saying the show is not available and meaning nothing by it. Read as
+/// the renderer reads it — from the serialized answer — since that
+/// shape is what the route sends.
 pub(super) fn unsettled(got: &Result<AvailabilityResponse>) -> bool {
-    got.as_ref().is_ok_and(|r| {
-        let wire = serde_json::to_value(r).expect("serializes");
-        wire["unsettled"] == serde_json::Value::Bool(true)
-            && !r.available
-            && r.episode_count.is_none()
-    })
+    unsettled_reason(got).is_some()
+}
+
+/// The reason an unsettled answer gives, read from the wire.
+pub(super) fn unsettled_reason(got: &Result<AvailabilityResponse>) -> Option<String> {
+    let r = got.as_ref().ok()?;
+    let wire = serde_json::to_value(r).expect("serializes");
+    let reason = wire["unsettled"].as_str()?.to_string();
+    (!r.available && r.episode_count.is_none()).then_some(reason)
 }
 
 /// [`check_availability`] with `table` answering in the slot of the
@@ -137,7 +143,7 @@ fn warm_backoff_keeps_the_pacing_gap_for_other_outcomes() {
         episode_count: None,
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         extra_episodes: Vec::new(),
     });
@@ -169,7 +175,7 @@ fn response_round_trips_with_episode_count_and_extras() {
         episode_count: Some(1160),
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         extra_episodes: vec!["1061.5".into()],
     };
@@ -1053,8 +1059,9 @@ async fn an_inconclusive_probe_everywhere_is_unknown_and_persists_nothing() {
     }))
     .expect("args");
     let got = check_with(&state, &args, &primary).await;
-    assert!(
-        unsettled(&got),
+    assert_eq!(
+        unsettled_reason(&got).as_deref(),
+        Some("unanswered"),
         "nobody answered for the mode — unknown, not an error: {got:?}"
     );
     assert!(asked_the_mode(&fallback), "the fallback was asked too");
@@ -1188,7 +1195,7 @@ fn a_negative_row_is_backed_exactly_when_its_provider_answers_and_those_ahead_re
                     extra_episodes: Vec::new(),
                     episode_count_approximate: false,
                     gate_refused: false,
-                    unsettled: false,
+                    unsettled: None,
                     provider,
                 };
                 let a_refusing = a_broken || a_paused;
@@ -1219,7 +1226,7 @@ fn the_remembered_provider_is_read_off_a_positive_row_alone() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider,
     };
     write_cache_full(
@@ -1411,21 +1418,29 @@ async fn a_native_probe_reports_the_listings_fractional_extras() {
                         id: 311,
                         number: 1,
                         number2: None,
+                        former_tag: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 312,
                         number: 2,
                         number2: None,
+                        former_tag: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 313,
                         number: 3,
                         number2: Some("2.5".into()),
+                        former_tag: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 314,
                         number: 4,
                         number2: Some("3".into()),
+                        former_tag: None,
+                        title: None,
                     },
                 ],
             )
@@ -1642,11 +1657,15 @@ async fn a_continuation_entry_caps_in_per_entry_numbering() {
                         id: 941,
                         number: 41,
                         number2: None,
+                        former_tag: None,
+                        title: None,
                     },
                     EpisodeRef {
                         id: 942,
                         number: 42,
                         number2: None,
+                        former_tag: None,
+                        title: None,
                     },
                 ],
             )
@@ -1854,7 +1873,7 @@ fn write_cache_full_round_trips_via_batch_cached() {
             extra_episodes: vec!["1061.5".into()],
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -1886,7 +1905,7 @@ fn write_cache_full_skips_empty_kitsu_id() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2018,9 +2037,10 @@ async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_noth
     }))
     .expect("args");
     let got = check_with(&state, &args, &other).await;
-    assert!(
-        unsettled(&got),
-        "a refusal by name is unknown, not an error: {got:?}"
+    assert_eq!(
+        unsettled_reason(&got).as_deref(),
+        Some("refused"),
+        "a refusal by name is unsettled, says so, and is no error: {got:?}"
     );
     assert!(
         other.count(|a| matches!(a, Asked::Episodes(_))) > 0,
@@ -2034,14 +2054,94 @@ async fn a_refused_pool_for_an_undated_entry_answers_unsettled_and_persists_noth
     );
 }
 
+/// A dated entry with a count is refused a hit no name vouches for —
+/// the dated-name rule — and the answer says the refusal is by name,
+/// as the count-alone rule's does; nothing is persisted.
+#[tokio::test]
+async fn a_refused_pool_for_a_dated_entry_answers_refused_and_persists_nothing() {
+    let other = Arc::new(one_show(
+        ProviderId::TestA,
+        ("other-7", "Other", Some("TV")),
+        &[
+            7001, 7002, 7003, 7004, 7005, 7006, 7007, 7008, 7009, 7010, 7011, 7012,
+        ],
+        true,
+        false,
+    ));
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Show: Arc",
+        "mode": "sub",
+        "kitsu_id": "592",
+        "episode_count": 12,
+        "year": 2016,
+        "subtype": "TV"
+    }))
+    .expect("args");
+    let got = check_with(&state, &args, &other).await;
+    assert_eq!(
+        unsettled_reason(&got).as_deref(),
+        Some("refused"),
+        "{got:?}"
+    );
+    assert!(
+        meta_cache_get(&state.cache_pool, &cache_key("592", "sub"))
+            .expect("cache read")
+            .is_none(),
+        "a refusal by name persists nothing"
+    );
+}
+
+/// A pool whose candidate's listing answers not-found is the answered
+/// dead end too, but no refusal by name: the dead listing may have been
+/// the show's. The answer is unsettled for another reason, and the
+/// renderer keeps the page's play for it.
+#[tokio::test]
+async fn a_pool_of_dead_listings_answers_unanswered_not_refused() {
+    let dead = Arc::new(
+        TableProvider::new()
+            .answering_as(ProviderId::TestA)
+            .search_default(hits(&[("ghost-show-9", "Ghost Show")])),
+    );
+    let td = tempfile::tempdir().expect("td");
+    let state = cache_only_state(&td);
+    let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
+        "title": "Ghost Show",
+        "mode": "sub",
+        "kitsu_id": "593",
+        "episode_count": 12
+    }))
+    .expect("args");
+    let got = check_with(&state, &args, &dead).await;
+    assert_eq!(
+        unsettled_reason(&got).as_deref(),
+        Some("unanswered"),
+        "{got:?}"
+    );
+}
+
 /// `cache_key` is what makes the schema bumps self-heal possible —
 /// each bump's new prefix supersedes any prior-version row with
 /// the same (kitsu_id, mode). Pin both shapes (sub/dub) so a typo
 /// in the key generator gets caught immediately.
 #[test]
 fn cache_key_is_versioned_per_mode() {
-    assert_eq!(cache_key("kid-1", "sub"), "availability:v19:kid-1:sub");
-    assert_eq!(cache_key("kid-1", "dub"), "availability:v19:kid-1:dub");
+    assert_eq!(cache_key("kid-1", "sub"), "availability:v21:kid-1:sub");
+    assert_eq!(cache_key("kid-1", "dub"), "availability:v21:kid-1:dub");
+}
+
+/// A verdict stamped before the extras a provider appends after a
+/// show's last episode were read as extras is not served: Noragami's
+/// row can hold the listing's fourteen as its cap, the two OADs as
+/// episodes 13 and 14.
+#[test]
+fn a_verdict_stamped_before_appended_extras_were_extras_is_not_read() {
+    let current = cache_key("7881", "sub");
+    assert!(
+        !current.starts_with("availability:v19:"),
+        "the key must have moved past v19: {current}"
+    );
 }
 
 /// A verdict the picker stamped before a dated entry with a count
@@ -2145,7 +2245,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2160,7 +2260,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2176,7 +2276,7 @@ fn batch_cached_returns_playable_episode_counts() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2238,7 +2338,7 @@ async fn bypass_cache_goes_to_the_network_despite_a_usable_row() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2316,7 +2416,7 @@ async fn a_lookup_leaves_the_row_alone_when_a_refresh_answered_first() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2390,7 +2490,7 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
             extra_episodes: Vec::new(),
             episode_count_approximate: false,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2461,7 +2561,7 @@ fn an_approximate_cached_count_is_not_a_usable_hit() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
@@ -2472,7 +2572,7 @@ fn an_approximate_cached_count_is_not_a_usable_hit() {
     let approximate = AvailabilityResponse {
         episode_count_approximate: true,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         ..exact.clone()
     };
@@ -2498,7 +2598,7 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
@@ -2512,7 +2612,7 @@ fn usable_hit_rules_for_legacy_and_negative_rows() {
         extra_episodes: Vec::new(),
         episode_count_approximate: false,
         gate_refused: false,
-        unsettled: false,
+        unsettled: None,
         provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
     };
     assert!(
@@ -2568,7 +2668,7 @@ fn usability_is_negative_or_a_confirmed_count() {
                 extra_episodes: extras,
                 episode_count_approximate: approximate,
                 gate_refused: false,
-                unsettled: false,
+                unsettled: None,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             };
             proptest::prop_assert_eq!(
@@ -2599,7 +2699,7 @@ fn an_unconfirmed_available_row_is_never_served() {
                 extra_episodes: Vec::new(),
                 episode_count_approximate: approximate,
                 gate_refused: false,
-                unsettled: false,
+                unsettled: None,
                 provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
             };
             proptest::prop_assert!(!cache_hit_is_usable(&state, &row));
@@ -2625,7 +2725,7 @@ fn write_cache_full_round_trips_the_approximate_flag() {
             extra_episodes: Vec::new(),
             episode_count_approximate: true,
             gate_refused: false,
-            unsettled: false,
+            unsettled: None,
             provider: Some(crate::provider_set::ProviderSet::TEST_DEFAULT),
         },
     );
@@ -2655,4 +2755,19 @@ fn a_legacy_row_without_the_flag_parses_as_exact() {
     .expect("parse");
     assert!(!parsed.episode_count_approximate);
     assert!(cache_hit_is_usable(&state, &parsed));
+}
+
+/// A verdict stamped before a continuation's offset recap, and a
+/// stitched recap before a cumulatively numbered part, were advertised
+/// as the entry's 0.5 and 12.5 is not served: master's v20 rows carry
+/// the old extras ("12.5" and "24.5"), and the probe that replaces them
+/// is what puts a history row's stamp from then right. The key sits
+/// above the one master moved to for the appended extras.
+#[test]
+fn a_verdict_stamped_before_offset_recaps_were_renumbered_is_not_read() {
+    let current = cache_key("7881", "sub");
+    assert!(
+        !current.starts_with("availability:v20:"),
+        "the key must have moved past master's v20: {current}"
+    );
 }

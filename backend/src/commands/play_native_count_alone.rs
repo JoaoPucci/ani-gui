@@ -58,6 +58,18 @@ pub(super) fn unvouched_counted(
     score_out_unvouched(probed, ep_count_threshold(expected), needle, entry)
 }
 
+/// Whether something beyond its count vouches for a candidate titled
+/// `title`: its own year matched the entry's (`confirmed`), it is the
+/// title searched (`needle`, normalized), or the entry names it.
+pub(super) fn vouched_beyond_count(
+    title: &str,
+    needle: &str,
+    entry: EntryTitles<'_>,
+    confirmed: bool,
+) -> bool {
+    confirmed || normalized(title) == needle || entry.names(title)
+}
+
 /// Scores [`UNFIT`] every probed candidate nothing but its count
 /// vouches for: not the title searched, not named as one of the
 /// entry's titles ([`EntryTitles::names`]), and without its own year
@@ -76,8 +88,7 @@ pub(super) fn score_out_unvouched(
 ) -> bool {
     let mut refused_a_fit = false;
     for (h, _, distance, confirmed) in probed.iter_mut() {
-        let vouched = *confirmed || normalized(&h.title) == needle || entry.names(&h.title);
-        if vouched || *distance == UNFIT {
+        if vouched_beyond_count(&h.title, needle, entry, *confirmed) || *distance == UNFIT {
             continue;
         }
         refused_a_fit |= *distance <= tolerance;
