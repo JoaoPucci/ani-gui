@@ -179,3 +179,23 @@ export function shouldResetStaleStreamBudget(args: {
 export function canRecoverFromStaleStream(args: { detail: unknown; switchBusy: boolean }): boolean {
 	return args.detail !== null && !args.switchBusy;
 }
+
+/** What a recovery's eviction answered into. */
+export interface RecoveryAfterEviction {
+	/** The page is gone, the route moved to another visit, or a
+	 *  navigation away from the page started since the recovery began. */
+	left: boolean;
+	/** A switch started since the recovery began. */
+	switchedSince: boolean;
+	/** A switch or re-check held the switch lock as the recovery began. */
+	switchBusyAtStart: boolean;
+	/** A switch or re-check holds the switch lock now. */
+	switchBusyNow: boolean;
+}
+
+/** What a stale-stream recovery does once its eviction has answered:
+ *  resolve the episode on screen afresh, or stand down. The recovery
+ *  does not hold the switch lock while it evicts. */
+export function recoveryAfterEviction(s: RecoveryAfterEviction): 'resolve' | 'stand-down' {
+	return s.left || s.switchedSince || s.switchBusyNow ? 'stand-down' : 'resolve';
+}

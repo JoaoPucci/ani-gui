@@ -4,6 +4,7 @@ import {
 	decideStreamFailureResponse,
 	HOLD_MIN_BUFFER_SECONDS,
 	isHostSlowStreamError,
+	recoveryAfterEviction,
 	shouldAttemptStaleStreamRetry,
 	shouldResetStaleStreamBudget,
 	STALL_NUDGE_BUDGET
@@ -378,5 +379,29 @@ describe('decideStreamFailureResponse — with buffered media in hand', () => {
 				bufferAheadSeconds: 120
 			})
 		).toBe('surface');
+	});
+});
+
+describe('recoveryAfterEviction', () => {
+	const quiet = {
+		left: false,
+		switchedSince: false,
+		switchBusyAtStart: false,
+		switchBusyNow: false
+	};
+
+	it('resolves the episode afresh when nothing happened meanwhile', () => {
+		expect(recoveryAfterEviction(quiet)).toBe('resolve');
+	});
+
+	it('stands down for a page left', () => {
+		expect(recoveryAfterEviction({ ...quiet, left: true })).toBe('stand-down');
+	});
+
+	it('stands down for a switch that started meanwhile', () => {
+		expect(recoveryAfterEviction({ ...quiet, switchedSince: true, switchBusyNow: true })).toBe(
+			'stand-down'
+		);
+		expect(recoveryAfterEviction({ ...quiet, switchedSince: true })).toBe('stand-down');
 	});
 });

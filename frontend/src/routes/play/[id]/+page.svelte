@@ -109,7 +109,7 @@
 	import { armSourceScopedListeners } from '$lib/play/arm-source-listeners';
 	import { bufferAheadSeconds } from '$lib/play/buffer-ahead';
 	import { scheduleHeldRetry } from '$lib/play/held-retry';
-	import { runwaySeconds } from '$lib/play/stale-stream';
+	import { runwaySeconds, recoveryAfterEviction } from '$lib/play/stale-stream';
 	import { HOLD_RUNWAY_MARGIN_S } from '$lib/play/stall-machine';
 	import { FragmentLoopGuard, fragmentLoopKey } from '$lib/play/fragment-loop-guard';
 	import { HLS_STALL_LOAD_POLICY } from '$lib/play/hls-load-policy';
@@ -2110,18 +2110,17 @@
 		if (!detail) return;
 		// The visit this recovery is for ($lib/play/owned-play): a page
 		// moved on while the eviction was out must not resolve afresh.
-		// Nor must one a switch overtook. The recovery does not hold the
-		// switch lock while it evicts. A switch that started meanwhile,
-		// landed or still resolving, brings its own session, which
-		// clearing the cache would abort or throw away. A re-check that
-		// holds the lock will end in a switch of its own.
+		// Nor must one a switch overtook: the recovery does not hold the
+		// switch lock while it evicts ($lib/play/stale-stream,
+		// recoveryAfterEviction).
 		const here = navigationClaims.claim();
-		const atSwitch = switchesStarted;
 		const owner = claimPlay(
 			id,
 			() => visit,
-			() => gone || !here() || switchesStarted !== atSwitch || switchBusy
+			() => gone || !here()
 		);
+		const atSwitch = switchesStarted;
+		const switchBusyAtStart = switchBusy;
 		// Clear the error AFTER the readiness check so a manual Reload
 		// click that races detail loading doesn't wipe the overlay
 		// into a blank frame. The user keeps the Reload button to try
@@ -2165,7 +2164,13 @@
 		// The viewer left while the eviction was out: a fresh resolve
 		// would only navigate them back. Or a switch overtook it, and its
 		// session is the one on its way.
-		if (!owner.isCurrent()) return;
+		const turn = recoveryAfterEviction({
+			left: !owner.isCurrent(),
+			switchedSince: switchesStarted !== atSwitch,
+			switchBusyAtStart,
+			switchBusyNow: switchBusy
+		});
+		if (turn !== 'resolve') return;
 		clearForShow(id);
 		await switchToEpisode(episodeNum);
 	}
