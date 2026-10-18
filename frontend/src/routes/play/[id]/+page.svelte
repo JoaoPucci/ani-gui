@@ -2014,7 +2014,8 @@
 		switchBusy = true;
 		switchProgress = null;
 		// Cleared for the stream the switch brings; kept to put back if
-		// the switch fails and the failed stream stays on screen.
+		// the switch fails, or its navigation does, and the failed stream
+		// stays on screen.
 		const errorBefore = playerError ?? failedStreamError;
 		playerError = null;
 		try {
@@ -2102,8 +2103,9 @@
 					withRow(withGuess(buildPlayQuery(outcome.session, played), guess), row),
 				{ replaceState: true }
 			).catch(() => {
-				// Nothing replaced the stream on screen: its error stands.
-				playerError ??= errorBefore;
+				// Nothing replaced the stream on screen: its error stands —
+				// unless the rejection came from the viewer navigating away.
+				if (owner.isCurrent()) playerError ??= errorBefore;
 			});
 			/* eslint-enable svelte/no-navigation-without-resolve */
 		} finally {
