@@ -2447,15 +2447,11 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
     // the reading has to be taken and used under the same lock, and
     // that is what this pins: while the row is held, a lookup that
     // has already got its answer must still be waiting.
-    let server = Arc::new(TableProvider::new());
+    let (hold, provider) = crate::held::gate();
+    let server = Arc::new(TableProvider::new().holding(hold));
     let td = tempfile::tempdir().expect("td");
     let state = cache_only_state(&td);
     let row = cache_key("889", "sub");
-
-    // Stand in for the refresh that is mid-section: it owns the row
-    // and has not written yet.
-    let held = state.availability_refreshes.for_row(&row);
-    let guard = held.lock().await;
 
     let args: AvailabilityArgs = serde_json::from_value(serde_json::json!({
         "title": "Section Test",
@@ -2463,7 +2459,7 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
         "kitsu_id": "889"
     }))
     .expect("args");
-    let bg = {
+    let mut bg = {
         let state = state.clone();
         let server = Arc::clone(&server);
         tokio::spawn(async move {
@@ -2471,16 +2467,42 @@ async fn a_lookup_holds_the_row_while_it_decides_whether_to_write() {
         })
     };
 
-    // Long enough for the unguarded lookup to finish its round-trip
-    // and write. Nothing may be in the row: the answer is in hand,
-    // but the decision about it is not this lookup's to make yet.
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    // The lookup has read the row as it stood and is out asking the
+    // provider. Stand in for the refresh that is mid-section now: it
+    // owns the row and has not written yet. Then let the lookup have
+    // its answer.
+    tokio::select! {
+        () = provider.asked() => {}
+        ended = &mut bg => panic!("the lookup ended without asking the provider: {ended:?}"),
+    }
+    let held = state.availability_refreshes.for_row(&row);
+    let guard = held.lock().await;
+    provider.release();
+
+    // The lookup comes to the row with its answer in hand and waits:
+    // the row's lock has one more handle on it than the map's and
+    // ours, which only a waiter for it, or its holder, keeps. Nothing
+    // may be in the row: the decision about it is not this lookup's
+    // to make yet.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    while Arc::strong_count(&held) < 3 {
+        assert!(
+            !bg.is_finished(),
+            "the lookup ended without waiting for the row"
+        );
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the lookup never came to the row"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    }
     assert!(
         meta_cache_get(&state.cache_pool, &row)
             .expect("cache read")
             .is_none(),
         "a lookup wrote the row while another writer held it"
     );
+    assert!(!bg.is_finished(), "the lookup is still waiting for the row");
 
     // Now the refresh finishes: its row lands, and the count says
     // so. The waiting lookup must see both.
