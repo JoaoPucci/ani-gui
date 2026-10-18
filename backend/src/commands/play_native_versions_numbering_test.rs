@@ -171,3 +171,24 @@ async fn a_probe_puts_every_copys_stamp_right() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_play_puts_every_copys_stamp_right() {
+    // The play reads the copy it plays; the other copy's history row
+    // reads its stamp all the same, and the availability row the play
+    // caches keeps the next probe from fetching a listing for it.
+    let td = tempfile::tempdir().expect("td");
+    let state = state(&td);
+    for slug in [PLAIN, UNCUT] {
+        crate::commands::numbering_offset::put_display(&state, &key(slug), 12, 1, "24.5");
+    }
+    crate::commands::play::play_with_progress(&state, &ask("1", None), |_| {})
+        .await
+        .expect("plays");
+    // The played copy's stamp moves to the watch the play records; the
+    // other copy's names the recap by its tag now.
+    assert_eq!(
+        crate::commands::numbering_offset::display_stamp(&state, &key(PLAIN)),
+        Some((1, "12.5".to_string()))
+    );
+}

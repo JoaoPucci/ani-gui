@@ -7810,3 +7810,52 @@ async fn a_range_download_puts_every_copys_stamp_right() {
         );
     }
 }
+
+/// A download of one episode of a season listed twice puts every
+/// copy's stamp right, as a range does.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_download_puts_every_copys_stamp_right() {
+    use crate::commands::play_native_versions::numbering_tests::{
+        two_cumulative_copies, PLAIN, TITLE, UNCUT,
+    };
+    let server = std::sync::Arc::new(two_cumulative_copies());
+    let td = tempfile::tempdir().expect("td");
+    let state = native_test_state(&td, &server);
+    let key = |slug: &str| {
+        crate::scraper::provider::ShowKey::new(
+            crate::scraper::provider::Provider::id(server.as_ref()),
+            slug,
+        )
+        .to_string()
+    };
+    for slug in [PLAIN, UNCUT] {
+        crate::commands::numbering_offset::put_display(&state, &key(slug), 12, 1, "24.5");
+    }
+    let bin = tempfile::tempdir().expect("bin");
+    let dest = tempfile::tempdir().expect("dest");
+    stage_tool(
+        bin.path(),
+        "yt-dlp",
+        &format!("{}\nexit 0", writes_its_output("video")),
+    );
+    let args: DownloadArgs = serde_json::from_value(serde_json::json!({
+        "title": TITLE,
+        "episode": "1",
+        "mode": "sub",
+        "episode_count": 2,
+        "year": 2026,
+        "download_dir": dest.path().to_string_lossy(),
+    }))
+    .expect("args");
+    download_with_tools(&state, &args, &bin.path().display().to_string(), |_p| {})
+        .await
+        .expect("downloaded");
+    for slug in [UNCUT, PLAIN] {
+        assert_eq!(
+            crate::commands::numbering_offset::display_stamp(&state, &key(slug)),
+            Some((1, "12.5".to_string())),
+            "{slug}: the stamp names the recap by its tag now"
+        );
+    }
+}
