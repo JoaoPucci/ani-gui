@@ -5534,7 +5534,10 @@ async fn sidecar_fetches_spend_the_hosts_budget() {
             url: format!("{}/subs/{lang}.vtt", server.uri()),
         })
         .collect();
-    let budget = HostBudget::fresh();
+    // The two tracks take their tokens a moment apart, and the app's
+    // refill would top the second up by that moment: a budget that
+    // does not refill counts the fetches alone.
+    let budget = HostBudget::fresh_without_refill();
     let staged = stage_sidecar_subtitles_with(
         &reqwest::Client::new(),
         &budget,
@@ -5551,7 +5554,7 @@ async fn sidecar_fetches_spend_the_hosts_budget() {
     let key = host_key(&url::Url::parse(&server.uri()).expect("server url"));
     let on_hand = budget.on_hand(&key).expect("the host was fetched from");
     assert!(
-        on_hand < f64::from(SEGMENT_BURST) - 1.0,
+        (on_hand - (f64::from(SEGMENT_BURST) - 2.0)).abs() < 1e-3,
         "two tracks spent two tokens: {on_hand}"
     );
 }
