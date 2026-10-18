@@ -275,10 +275,7 @@ starting it, and delete it when you find it done.
   slow disk were moved onto `crate::held` (`backend/src/held_test.rs`)
   and paused clocks. The fix is the same: wait for an event the
   subject raises on reaching the state (a held request arriving, a
-  marker file, a waiter count) instead of a sleep. The instances are
-  found by grepping the backend tests for a `sleep` followed by
-  `is_finished()`, an `is_err()` on a short `timeout`, or a read of
-  what should not be there.
+  marker file, a waiter count) instead of a sleep.
 
 ## Correctness in the app (continued)
 
