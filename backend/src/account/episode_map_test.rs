@@ -670,3 +670,27 @@ fn two_rules_filing_the_episodes_the_same_way_are_one_explanation() {
     ev.parts.reverse();
     assert_eq!(map_show(&ev), identity(Identity::Conflict));
 }
+
+#[test]
+fn a_later_part_is_not_filed_where_its_first_part_s_map_would_conflict() {
+    // Kamitsubaki's one-episode Kitsu sequel: from its own view only the
+    // split-parts rule fires (13 = 12 + 1), but from the first part's
+    // the entry's Episode 0 explains the same surplus — the two
+    // disagree about where the sequel's episode is, so neither part is
+    // filed.
+    let ev = Evidence {
+        kitsu: kitsu("50027", Some(1), "2025-10-02", "2025-10-02"),
+        entry: show(173_335, Some(13), true, "2025-07-03", "2025-09-25"),
+        listed: listed(&["0", "1", "2", "3", "4"]),
+        parts: vec![
+            kitsu("49900", Some(12), "2025-07-09", "2025-09-25"),
+            kitsu("50027", Some(1), "2025-10-02", "2025-10-02"),
+        ],
+        ..Default::default()
+    };
+    assert_eq!(map_show(&ev), identity(Identity::Conflict));
+    // With no Episode 0 listed, the sequel is the entry's 13th.
+    let mut plain = ev.clone();
+    plain.listed = listed(&["1", "2", "3"]);
+    assert_eq!(map_show(&plain).target(1), mapped(173_335, 13, true, &[]));
+}
