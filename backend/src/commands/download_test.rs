@@ -2040,16 +2040,50 @@ async fn cancelling_takes_the_tools_own_temporaries_with_it() {
         )
         .await
     });
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    // Everything the tool writes is on disk before the cancel: a cancel
+    // that comes before it has nothing to leave behind, and proves
+    // nothing.
+    until_dir(dest.path(), "the tool's temporaries", |names| {
+        [".part", ".ytdl", ".part-Frag7"]
+            .iter()
+            .all(|end| names.iter().any(|n| n.ends_with(end)))
+    })
+    .await;
     running.abort();
+    // The transfer is dropped, its tool taken down and its scratch
+    // swept, before the join returns.
     let _ = running.await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let leftovers = ours_in(dest.path());
     assert!(
         leftovers.is_empty(),
         "the tool's own temporaries are the transfer too: {leftovers:?}"
     );
+}
+
+/// The names in `dir`, once `cond` holds of them.
+#[cfg(unix)]
+async fn until_dir(
+    dir: &std::path::Path,
+    what: &str,
+    cond: impl Fn(&[String]) -> bool,
+) -> Vec<String> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let names: Vec<String> = std::fs::read_dir(dir)
+            .expect("dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        if cond(&names) {
+            return names;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}: {names:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
 }
 
 /// Every file in `dir` this app's transfer could have put there. The
@@ -2106,12 +2140,16 @@ async fn cancelling_a_download_takes_its_scratch_file_with_it() {
         )
         .await
     });
-    // Long enough for the stub to have written something.
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    // The partial file is on disk before the cancel: a cancel that
+    // comes before it has nothing to leave behind, and proves nothing.
+    until_dir(dest.path(), "the partial file", |names| {
+        names.iter().any(|n| n.contains("part"))
+    })
+    .await;
     running.abort();
+    // The transfer is dropped, its tool taken down and its scratch
+    // swept, before the join returns.
     let _ = running.await;
-    // The drop runs on the task's own thread; give it a moment to land.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let leftovers: Vec<String> = std::fs::read_dir(dest.path())
         .expect("dest")
