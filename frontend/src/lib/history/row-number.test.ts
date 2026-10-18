@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { refreshedRows } from './row-number';
+import { latestReads } from './latest-call';
 import type { HistoryEntry } from '$lib/api';
 
 const rows: HistoryEntry[] = [
@@ -102,5 +103,28 @@ describe('refreshedRows (a position kept under the old number)', () => {
 			() => false
 		);
 		expect(next).toBeNull();
+	});
+});
+
+describe('refreshedRows (two reads of one card out at once)', () => {
+	it('leaves the card on the newer answer when the older one lands last', async () => {
+		// The match's read goes out before the probe repairs the stamp
+		// and is answered after the probe's own read: the card keeps the
+		// probe's "12.5", not the "24.5" from before the repair, and no
+		// position moves for the older answer.
+		const answers: ((v: { ep_no: string; former_ep_no?: string }) => void)[] = [];
+		const read = latestReads(
+			() => new Promise<{ ep_no: string; former_ep_no?: string } | null>((r) => answers.push(r))
+		);
+		const move = vi.fn(() => true);
+		let card: HistoryEntry[] = rows;
+		const older = refreshedRows('a', () => card, read, move);
+		const newer = refreshedRows('a', () => card, read, move);
+		answers[1]({ ep_no: '12.5', former_ep_no: '24.5' });
+		card = (await newer) ?? card;
+		answers[0]({ ep_no: '24.5' });
+		card = (await older) ?? card;
+		expect(card.find((r) => r.id === 'a')?.ep_no).toBe('12.5');
+		expect(move).toHaveBeenCalledTimes(1);
 	});
 });
