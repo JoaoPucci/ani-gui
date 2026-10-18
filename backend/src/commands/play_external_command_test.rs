@@ -22,13 +22,9 @@ fn stub_provider(mock: &MockServer, query: &str) -> TableProvider {
 /// A listing whose provider slots and display tags diverge:
 /// slot 4 is the recap tagged `3.5`, so regular episode 4 lives in
 /// slot 5. Requesting display episode 4 must resolve slot 5, and the
-/// history row has to carry the slot rather than the tag.
-///
-/// The reader that cares is this app's own resume path: it takes the
-/// stored number back to the provider's listing, where 4 is the
-/// recap. Storing the display tag would resume the wrong episode.
-/// The offset store is what translates between the two when the
-/// strip needs a number to show.
+/// history row records the episode played, 4, as the app's own
+/// number, marked as such: neither the slot nor the sidecar decides
+/// what it reads back as.
 fn stub_provider_with_a_recap(mock: &MockServer, query: &str) -> TableProvider {
     let row = |id: u64, number: u32, tag: Option<&str>| EpisodeRef {
         id,

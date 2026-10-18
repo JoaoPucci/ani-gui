@@ -215,9 +215,10 @@ fn listed_as(state: &AppState) -> String {
 #[tokio::test]
 async fn a_replay_of_one_recap_after_another_reads_back_as_the_one_replayed() {
     // Two recaps sit between episodes 12 and 13: slot 13 ("12.5") and
-    // slot 14 ("12.75"). The second was played last, so the show's one
-    // display stamp names slot 14. Replaying the first from the cache
-    // writes slot 13; it must read back as "12.5", not as the slot.
+    // slot 14 ("12.75"). An earlier version's watch of the second left
+    // the show's display stamp on slot 14. Replaying the first from the
+    // cache records "12.5" itself, and it reads back so, whatever the
+    // stamp names.
     let upstream = wiremock::MockServer::start().await;
     wiremock::Mock::given(wiremock::matchers::method("HEAD"))
         .respond_with(wiremock::ResponseTemplate::new(200))
@@ -312,10 +313,9 @@ async fn a_replay_names_the_former_number_its_row_keeps() {
 
 #[tokio::test]
 async fn a_prefetch_after_a_watched_recap_leaves_the_row_reading_as_the_recap() {
-    // The recap is watched — the row holds its slot, the stamp names it
-    // "0.5" — then the player prefetches episode 1, a displaced row of
-    // its own. The prefetch records no watch, and the row still reads
-    // as the recap.
+    // The recap is watched — the row records "0.5" itself — then the
+    // player prefetches episode 1, a displaced row of its own. The
+    // prefetch records no watch, and the row still reads as the recap.
     use crate::commands::play_native_test_provider::{
         cumulative_opening_recap, CUMULATIVE, CUMULATIVE_SLUG,
     };
@@ -573,8 +573,8 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     // The recap was resolved by a prefetch alone, so the show has no
     // display stamp. The player marks it watched with the page's Kitsu
     // id, and the mapping lookup that follows the row hangs: a Continue
-    // card loaded meanwhile reads the row — as the recap, not as the
-    // slot it holds.
+    // card loaded meanwhile reads the row as the recap, the number it
+    // records.
     use tower::ServiceExt as _;
     let mock = kitsu_that_hangs().await;
     let td = tempfile::tempdir().expect("td");
@@ -623,8 +623,8 @@ async fn a_mark_watched_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
 #[tokio::test]
 async fn a_handoffs_watch_reads_as_the_recap_while_its_kitsu_lookup_is_out() {
     // The watch a handoff records from its fresh resolve, with the
-    // page's Kitsu id: the pair its row reads through goes in with the
-    // row, not after the lookup.
+    // page's Kitsu id: its row, the recap's own number, is written
+    // before the lookup, not after it.
     let mock = kitsu_that_hangs().await;
     let td = tempfile::tempdir().expect("td");
     let mut state = state(&td);

@@ -60,8 +60,10 @@ pub struct NativeResolved {
     /// `extra_episodes`, also already paid for.
     pub extra_tags: Vec<String>,
     /// The matched row's slot — its position in the provider's
-    /// listing. Cached with the resolution; no history writer stores it
-    /// now, since rows record the app's own number.
+    /// listing. Cached with the resolution; a history row records the
+    /// app's own number read from it and the tag
+    /// ([`crate::commands::play_native_record::matched_episode`]), the
+    /// slot itself only for a row with no tag, under the offset.
     pub resolved_slot: u32,
     /// The matched row's display tag, when it carries one: with the
     /// slot, what the app's own number for the episode is read from

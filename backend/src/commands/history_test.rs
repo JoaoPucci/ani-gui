@@ -1092,7 +1092,7 @@ fn a_list_read_while_a_writer_holds_the_guard_waits_for_it() {
         std::thread::sleep(std::time::Duration::from_millis(300));
         assert!(
             !reader.is_finished(),
-            "a reader waits for the watch to be written whole"
+            "a reader waits for the writer's hold to end"
         );
         held.upsert(HistoryEntry {
             ep_no: "1.5".into(),

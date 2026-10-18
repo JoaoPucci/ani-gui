@@ -258,7 +258,7 @@ async fn a_refused_play_keeps_an_id_the_title_agrees_with() {
 
 // — a removal while a watch is still being recorded ————————————————
 //
-// A recorded watch writes its row and stamp at once and the rest after
+// A recorded watch writes its row and watched-at stamp at once and the rest after
 // the cour guard has read Kitsu: the mapping, and the id on the row.
 // The frontend does not wait for it, so the user can be back on the
 // home page deleting the row while that read is still out. A removal

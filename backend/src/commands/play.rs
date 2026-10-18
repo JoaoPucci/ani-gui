@@ -375,8 +375,9 @@ where
             return Err(ne.error);
         }
     };
-    // Prefetches stay out of the user's history. Both put the numbering
-    // right before the rows this play caches: a probe that takes the fresh
+    // A prefetch stamps the numbering and stays out of the user's
+    // history; a play records its watch. Either puts the numbering right
+    // before the rows this play caches: a probe that takes the fresh
     // availability row fetches no listing to repair it from.
     if args.prefetch {
         crate::commands::play_native_record::stamp_numbering(state, &native, asked);

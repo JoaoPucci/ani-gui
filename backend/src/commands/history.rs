@@ -73,7 +73,9 @@ fn to_kitsu_numbering(
 /// be read.
 pub fn history_list(state: &crate::app::AppState) -> Result<Vec<HistoryEntry>> {
     // Under the guard every writer of a row holds, so a read never
-    // lands inside one of a writer's holds.
+    // lands inside one of a writer's holds: a removal forgets a show's
+    // mapping and title matches before it rewrites the file, and a read
+    // between the two would see the row with its mapping gone.
     crate::history::guard::hold(&state.history_path, |_| history_list_held(state))
 }
 
