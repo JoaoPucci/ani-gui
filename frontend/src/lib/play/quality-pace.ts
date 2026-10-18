@@ -8,18 +8,21 @@
  * level that has proven nothing yet, for an Auto play and a pinned
  * play alike — the two paths differ only in what moves the level:
  *
- * | Event                              | Auto                 | Pinned                          | Window      |
- * |------------------------------------|----------------------|---------------------------------|-------------|
- * | Stall outside a seek's grace       | steps down, or stays | stays                           | restarts    |
- * | Stall inside a seek's grace        | ignored              | ignored                         | —           |
- * | Segments fail (the hold)           | steps down / release | steps down / release            | step: widen |
- * | Playlist fails (the hold)          | nearest level        | nearest level, pin demoted      | restarts    |
- * | Switch over a side rendition       | follows, no climb    | follows; pin kept: a fall       | pinned: widen |
- * | Removal re-seats the hold          | nearest survivor     | nearest survivor, pin carried   | restarts    |
- * | Healthy climb                      | one level, to ceiling| one level, to the pin           | restarts    |
- * | Pick / Auto                        | Auto: fresh start    | pin = pick, no window           | Auto: reset |
+ * | Event                          | Auto                   | Pinned                                | Window                      |
+ * |--------------------------------|------------------------|---------------------------------------|-----------------------------|
+ * | Stall outside a seek's grace   | steps down, or stays   | stays                                 | step: widens; stay: restarts|
+ * | Stall inside a seek's grace    | ignored                | ignored                               | —                           |
+ * | Segments fail (the hold)       | steps down / release   | steps down / release                  | widens                      |
+ * | Playlist fails (the hold)      | nearest loadable level | same; a pin on it moves down          | restarts                    |
+ * | Switch over a side rendition   | follows                | follows; pin kept above: a fall       | restarts; that fall: widens |
+ * | Removal re-seats the hold      | nearest survivor       | nearest survivor, pin carried         | restarts (kept level: no)   |
+ * | Healthy climb                  | one level, to ceiling  | one level, to the pin                 | restarts                    |
+ * | Pick / Auto                    | Auto: fresh start      | pin = pick: nothing to climb to       | Auto: reset; pick: untouched|
  *
- * "Widen" counts a fall: the next window is the next longer one.
+ * "Widens" counts a fall: the next window is the next longer one. A
+ * climb retries one level per window, so a level the engine skipped
+ * over a failing rendition is tried once and then left; a pick leaves
+ * the play at its pin, where no climb is due.
  */
 
 /** A stall this soon after a seek is the seek's own wait for media,

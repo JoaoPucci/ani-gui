@@ -15,7 +15,7 @@ import {
 	type QualityTarget
 } from './quality-ladder';
 import { demotePin, startPin } from './quality-pinlevel';
-import { remapHold } from './quality-remap';
+import { remapHold, remapIndex } from './quality-remap';
 
 /** Why the level changed, for the log. */
 export type QualityReason =
@@ -108,9 +108,11 @@ export abstract class QualityHold {
 		this.engaged = next.engaged;
 		this.pinLevel = next.pinLevel;
 		this.unavailable = next.unavailable;
-		// A hold re-seated on a level that has proven nothing restarts the
-		// climb window, as any other move to one does.
-		if (next.current !== held.current) this.settled(now);
+		// A hold re-seated — its level removed — sits on a level that has
+		// proven nothing: the climb window restarts, as after any other
+		// such move. Asked by identity: an index before the removal says
+		// nothing about one after it.
+		if (remapIndex(held.current, mapping) === null) this.settled(now);
 	}
 
 	/** The level to start at. */
