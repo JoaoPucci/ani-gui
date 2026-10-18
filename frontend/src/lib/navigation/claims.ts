@@ -24,10 +24,21 @@ export interface NavigationClaims {
 }
 
 export function createNavigationClaims(): NavigationClaims {
+	let epoch = 0;
+	let gone = false;
 	return {
-		epoch: 0,
-		claim: () => () => true,
-		started() {},
-		left() {}
+		get epoch() {
+			return epoch;
+		},
+		claim() {
+			const at = epoch;
+			return () => !gone && epoch === at;
+		},
+		started() {
+			epoch += 1;
+		},
+		left() {
+			gone = true;
+		}
 	};
 }

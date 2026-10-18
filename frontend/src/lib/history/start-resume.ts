@@ -13,7 +13,9 @@
  *   write-back → play resolution → watched + tracker fan-out
  *   (fire-and-forget) → navigate. Busy stays set on
  *   success — navigation unmounts the page; failure clears busy and
- *   reports through onFailure.
+ *   reports through onFailure. A click whose navigation claim lapsed
+ *   meanwhile (claimNavigation) neither navigates nor reports, and
+ *   clears busy.
  */
 
 import type { HistoryEntry, KitsuAnimeRef } from '$lib/api';
@@ -128,6 +130,7 @@ export function makeStartResume(
 		if (deps.isBusy()) return;
 		const title = match.canonical_title;
 		if (!title) return;
+		const stillHere = deps.claimNavigation?.() ?? (() => true);
 		deps.onBusy(match.id);
 		deps.onProgress(null);
 
@@ -194,9 +197,23 @@ export function makeStartResume(
 			if (!guess) {
 				void deps.syncTrackers(match.id, played, seriesTotal, seriesFinished).catch(() => {});
 			}
+			// The viewer moved on while the session was on its way: the
+			// watch is still theirs, but a player opened now would pull
+			// them away from wherever they went.
+			if (!stillHere()) {
+				deps.onProgress(null);
+				deps.onBusy(null);
+				return;
+			}
 			deps.navigateToSession(match.id, session, played, guess, entry.id);
 		} catch (e) {
 			deps.onProgress(null);
+			// A failure about a page the viewer has moved on from says
+			// nothing.
+			if (!stillHere()) {
+				deps.onBusy(null);
+				return;
+			}
 			// Busy holds until the failure is on screen: the page words it
 			// after a cache lookup, and a card left idle meanwhile would
 			// take a second click whose play the late message then covers.

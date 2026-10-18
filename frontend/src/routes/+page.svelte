@@ -9,7 +9,7 @@
     4. Top Rated: kitsuTopRated().
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
@@ -38,7 +38,8 @@
 		return flip(node, animation, { duration: 280, easing: quintOut });
 	}
 	import { resolve } from '$app/paths';
-	import { goto } from '$app/navigation';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { createNavigationClaims } from '$lib/navigation/claims';
 	import {
 		allmangaKitsuMapGet,
 		altTitlesFromKitsu,
@@ -707,7 +708,14 @@
 		alt_titles: altTitlesFromKitsu(a.match),
 		kitsu_id: recordableId(a.match.id, a.guess === true)
 	});
+	// A Continue click awaits its session before it opens the player;
+	// one that answers after the viewer left home, or started another
+	// navigation, must not pull them back ($lib/navigation/claims).
+	const navigationClaims = createNavigationClaims();
+	beforeNavigate(() => navigationClaims.started());
+	onDestroy(() => navigationClaims.left());
 	const startResume = makeStartResume({
+		claimNavigation: () => navigationClaims.claim(),
 		leftPartWay,
 		markStarted: (kitsuId, episode, row) => markStarted(kitsuId, episode, undefined, row),
 		currentNumber: (entryId) => historyNumber(entryId),
