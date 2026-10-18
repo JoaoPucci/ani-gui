@@ -48,6 +48,18 @@ pub(crate) fn cut_row(
     let Ok(Some(row)) = meta_cache_row(pool, key) else {
         return;
     };
+    cut_seen_row(pool, key, &row, next_airing_at, aired, now);
+}
+
+/// [`cut_row`] for the row as it was read, `row`.
+pub(crate) fn cut_seen_row(
+    pool: &SqlitePool,
+    key: &str,
+    row: &crate::cache::db::MetaCacheRow,
+    next_airing_at: Option<u64>,
+    aired: Option<u32>,
+    now: u64,
+) {
     let Ok(body) = serde_json::from_str::<AvailabilityResponse>(&row.body) else {
         return;
     };
@@ -65,7 +77,7 @@ pub(crate) fn cut_row(
     if let Some(ttl) = cut {
         // Conditional on the row being the one read: a rewrite
         // in between keeps the window its own write gave it.
-        let _ = meta_cache_shorten(pool, key, &row, ttl);
+        let _ = meta_cache_shorten(pool, key, row, ttl);
     }
 }
 
